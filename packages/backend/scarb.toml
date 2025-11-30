@@ -1,5 +1,5 @@
 [package]
-name = "smart_contract_2"
+name = "backend"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
@@ -21,7 +21,7 @@ openzeppelin_testing.workspace = true
 starkware_utils_testing.workspace = true
 
 [[test]]
-name = "smart_contract_2_unittest"
+name = "backend_unittest"
 
 [scripts]
 test = "SNFORGE_BACKTRACE=1 snforge test"

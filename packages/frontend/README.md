@@ -1,2 +1,2 @@
-# Smart Contract 1
+# Frontend
 Document overview of this package here.

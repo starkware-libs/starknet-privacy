@@ -1,3 +1,3 @@
 #[starknet::interface]
-pub trait ISmartContract2<T> { //interface
+pub trait IBackend<T> { //interface
 }
