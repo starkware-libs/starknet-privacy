@@ -97,9 +97,9 @@ checksum = "sha256:902932ec296c2f400e0ac7c579edeaafd6067b6ce6d9854c1191de28e396f
 
 [[package]]
 name = "openzeppelin_testing"
-version = "4.2.0"
+version = "4.7.0"
 source = "registry+https://scarbs.xyz/"
-checksum = "sha256:c7a722ea85150147a7daeface39b9328d7d73ba1e73c065c5c7d92e845a240cc"
+checksum = "sha256:3ee1e2bdfb6e01e638a5d96c820dfbc92c433271c39a8ed26ad9e96ff80fef90"
 dependencies = [
  "snforge_std",
 ]
@@ -141,15 +141,15 @@ dependencies = [
 
 [[package]]
 name = "snforge_scarb_plugin"
-version = "0.45.0"
+version = "0.49.0"
 source = "registry+https://scarbs.xyz/"
-checksum = "sha256:568482e8c40e7018d9ea729d6df3d5ec22b665cfff1e89181d8ad31bacca11cc"
+checksum = "sha256:903150f0e9542e4277d417029eea4c03af0db398b581f9f7ae3ebbdac9afc657"
 
 [[package]]
 name = "snforge_std"
-version = "0.45.0"
+version = "0.49.0"
 source = "registry+https://scarbs.xyz/"
-checksum = "sha256:c08b359c266e45c4e71b71baa3c4af8dae7fc5416fc8168f0983e5c9a2ac0abe"
+checksum = "sha256:73d73653cc4356ec51b92a6bec9d8385b20318170c2f2ade7891e5185a0e7e64"
 dependencies = [
  "snforge_scarb_plugin",
 ]
@@ -157,7 +157,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=e716f3538e5edfefe441e3a8c207710460e3d511#e716f3538e5edfefe441e3a8c207710460e3d511"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=e11de236fe1e36c9556690749f834b6d0e1c4d49#e11de236fe1e36c9556690749f834b6d0e1c4d49"
 dependencies = [
  "openzeppelin",
 ]
@@ -165,10 +165,9 @@ dependencies = [
 [[package]]
 name = "starkware_utils_testing"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=e716f3538e5edfefe441e3a8c207710460e3d511#e716f3538e5edfefe441e3a8c207710460e3d511"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=e11de236fe1e36c9556690749f834b6d0e1c4d49#e11de236fe1e36c9556690749f834b6d0e1c4d49"
 dependencies = [
  "openzeppelin",
- "openzeppelin_testing",
  "snforge_std",
  "starkware_utils",
 ]
