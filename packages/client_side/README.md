@@ -1,2 +1,2 @@
-# Smart Contract 2
+# Client Side
 Document overview of this package here.

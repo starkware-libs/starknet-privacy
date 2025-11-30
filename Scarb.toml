@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "packages/smart_contract_1",
-    "packages/smart_contract_2",
+    "packages/client_side",
+    "packages/server_side",
 ]
 
 

@@ -2,6 +2,17 @@
 version = 1
 
 [[package]]
+name = "client_side"
+version = "0.1.0"
+dependencies = [
+ "openzeppelin",
+ "openzeppelin_testing",
+ "snforge_std",
+ "starkware_utils",
+ "starkware_utils_testing",
+]
+
+[[package]]
 name = "openzeppelin"
 version = "2.0.0"
 source = "registry+https://scarbs.xyz/"
@@ -129,7 +140,7 @@ source = "registry+https://scarbs.xyz/"
 checksum = "sha256:bf799c794139837f397975ffdf6a7ed5032d198bbf70e87a8f44f144a9dfc505"
 
 [[package]]
-name = "smart_contract_1"
+name = "server_side"
 version = "0.1.0"
 dependencies = [
  "openzeppelin",
