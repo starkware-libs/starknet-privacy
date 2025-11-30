@@ -1,7 +1,7 @@
 pub mod errors;
 pub mod events;
 pub mod interface;
-pub mod smart_contract_1;
+pub mod frontend;
 
 #[cfg(test)]
 pub mod tests;
