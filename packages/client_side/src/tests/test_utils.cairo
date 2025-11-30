@@ -1,0 +1,96 @@
+use client_side::interface::{
+    IClientSideDispatcher, IClientSideDispatcherTrait, IClientSideSafeDispatcher,
+    IClientSideSafeDispatcherTrait,
+};
+use client_side::objects::{NewNote, Note, NotePath};
+use core::num::traits::Zero;
+use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
+use starknet::ContractAddress;
+use starkware_utils_testing::test_utils::cheat_caller_address_once;
+
+#[derive(Copy, Drop)]
+pub(crate) struct ClientSideCfg {
+    pub address: ContractAddress,
+    pub server: ContractAddress,
+}
+
+#[derive(Drop)]
+struct User {
+    pub address: ContractAddress,
+    pub client_side: ContractAddress,
+    pub private_key: felt252,
+    pub public_key: felt252,
+}
+
+// TODO: Consider adding method to create note with user as recipient.
+#[generate_trait]
+pub(crate) impl UserImpl of UserTrait {
+    fn transfer(
+        self: @User, to_use: Span<NotePath>, to_create: Span<Note>,
+    ) -> (Span<felt252>, Span<NewNote>) {
+        cheat_caller_address_once(
+            contract_address: *self.client_side, caller_address: *self.address,
+        );
+        IClientSideDispatcher { contract_address: *self.client_side }
+            .transfer(
+                sender: *self.address, sender_private_key: *self.private_key, :to_use, :to_create,
+            )
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_transfer(
+        self: @User, to_use: Span<NotePath>, to_create: Span<Note>,
+    ) -> Result<(Span<felt252>, Span<NewNote>), Array<felt252>> {
+        cheat_caller_address_once(
+            contract_address: *self.client_side, caller_address: *self.address,
+        );
+        IClientSideSafeDispatcher { contract_address: *self.client_side }
+            .transfer(
+                sender: *self.address, sender_private_key: *self.private_key, :to_use, :to_create,
+            )
+    }
+}
+
+#[derive(Drop, Copy)]
+pub(crate) struct Test {
+    pub cfg: ClientSideCfg,
+    pub nonce: usize,
+}
+
+#[generate_trait]
+pub(crate) impl TestImpl of TestTrait {
+    fn new_user(ref self: Test) -> User {
+        self.nonce += 1;
+        User {
+            address: ('USER_ADDRESS' + self.nonce.into()).try_into().unwrap(),
+            client_side: self.cfg.address,
+            // TODO: Generate valid private-public key pair.
+            private_key: ('PRIVATE_KEY' + self.nonce.into()).try_into().unwrap(),
+            public_key: ('PUBLIC_KEY' + self.nonce.into()).try_into().unwrap(),
+        }
+    }
+
+    fn new_token(ref self: Test) -> ContractAddress {
+        self.nonce += 1;
+        ('TOKEN_ADDRESS' + self.nonce.into()).try_into().unwrap()
+    }
+}
+
+impl DefaultTestImpl of Default<Test> {
+    fn default() -> Test {
+        let cfg = deploy_client_side();
+        Test { cfg, nonce: Zero::zero() }
+    }
+}
+
+pub(crate) fn deploy_client_side() -> ClientSideCfg {
+    let server: ContractAddress = 'SERVER_ADDRESS'.try_into().unwrap();
+
+    let mut calldata = array![];
+    calldata.append(server.into());
+    let contract_class = declare(contract: "ClientSide").unwrap().contract_class();
+    let (contract_address, _) = contract_class.deploy(constructor_calldata: @calldata).unwrap();
+
+    ClientSideCfg { address: contract_address, server }
+}
+

@@ -1,1 +1,175 @@
+use client_side::errors::Errors;
+use client_side::objects::{NotePathTrait, NoteTrait};
+use client_side::tests::test_utils::{Test, TestTrait, UserTrait};
+use core::num::traits::Zero;
+use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
+use starkware_utils_testing::test_utils::{assert_panic_with_felt_error, generic_load};
 
+#[test]
+fn test_constructor() {
+    let mut test: Test = Default::default();
+
+    let actual_server = generic_load(
+        target: test.cfg.address, storage_address: selector!("server"),
+    );
+    assert_eq!(actual_server, test.cfg.server);
+}
+
+#[test]
+#[should_panic(expected_error: "SERVER_ZERO_ADDRESS")]
+fn test_constructor_server_zero_address() {
+    let mut calldata = array![];
+    calldata.append(Zero::zero());
+    declare(contract: "ClientSide")
+        .unwrap()
+        .contract_class()
+        .deploy(constructor_calldata: @calldata)
+        .unwrap();
+}
+
+
+#[test]
+fn test_transfer() {
+    let mut test: Test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.new_token();
+
+    let result = user_1
+        .transfer(
+            to_use: array![
+                NotePathTrait::new(channel_index: 0, note_index: 0),
+                NotePathTrait::new(channel_index: 0, note_index: 1),
+            ]
+                .span(),
+            to_create: array![
+                NoteTrait::new(
+                    recipient: user_2.address,
+                    recipient_public_key: user_2.public_key,
+                    :token,
+                    amount: 2,
+                ),
+            ]
+                .span(),
+        );
+
+    let expected_result = ([].span(), [].span());
+    assert_eq!(result, expected_result);
+}
+
+#[test]
+fn test_transfer_one_to_many() {
+    let mut test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let user_3 = test.new_user();
+    let token = test.new_token();
+
+    let result = user_1
+        .transfer(
+            to_use: array![NotePathTrait::new(channel_index: 0, note_index: 0)].span(),
+            to_create: array![
+                NoteTrait::new(
+                    recipient: user_2.address,
+                    recipient_public_key: user_2.public_key,
+                    :token,
+                    amount: 1,
+                ),
+                NoteTrait::new(
+                    recipient: user_2.address,
+                    recipient_public_key: user_2.public_key,
+                    :token,
+                    amount: 1,
+                ),
+                NoteTrait::new(
+                    recipient: user_3.address,
+                    recipient_public_key: user_3.public_key,
+                    :token,
+                    amount: 8,
+                ),
+            ]
+                .span(),
+        );
+    let expected_result = ([].span(), [].span());
+    assert_eq!(result, expected_result);
+}
+
+#[test]
+fn test_transfer_many_to_one() {
+    let mut test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.new_token();
+
+    let result = user_1
+        .transfer(
+            to_use: array![
+                NotePathTrait::new(channel_index: 0, note_index: 0),
+                NotePathTrait::new(channel_index: 0, note_index: 1),
+            ]
+                .span(),
+            to_create: array![
+                NoteTrait::new(
+                    recipient: user_2.address,
+                    recipient_public_key: user_2.public_key,
+                    :token,
+                    amount: 2,
+                ),
+            ]
+                .span(),
+        );
+    let expected_result = ([].span(), [].span());
+    assert_eq!(result, expected_result);
+
+    let result = user_1
+        .transfer(
+            to_use: array![
+                NotePathTrait::new(channel_index: 0, note_index: 0),
+                NotePathTrait::new(channel_index: 0, note_index: 1),
+            ]
+                .span(),
+            to_create: array![
+                NoteTrait::new(
+                    recipient: user_1.address,
+                    recipient_public_key: user_1.public_key,
+                    :token,
+                    amount: 2,
+                ),
+            ]
+                .span(),
+        );
+    let expected_result = ([].span(), [].span());
+    assert_eq!(result, expected_result);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_transfer_assertions() {
+    let mut test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.new_token();
+
+    // Catch EMPTY_TRANSFER_INPUT
+    let result = user_1
+        .safe_transfer(
+            array![].span(),
+            array![
+                NoteTrait::new(
+                    recipient: user_2.address,
+                    recipient_public_key: user_2.public_key,
+                    :token,
+                    amount: 1,
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: Errors::EMPTY_TRANSFER_INPUT);
+
+    // Catch EMPTY_TRANSFER_OUTPUT
+    let result = user_1
+        .safe_transfer(
+            array![NotePathTrait::new(channel_index: 0, note_index: 0)].span(), array![].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: Errors::EMPTY_TRANSFER_OUTPUT);
+}
