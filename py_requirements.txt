@@ -1,0 +1,9 @@
+black==23.1a1
+pytest==7.4.4
+pytest-asyncio
+asyncio
+starknet-py==0.26.0rc1
+requests
+pathlib
+pytest-xdist
+git+https://github.com/starkware-libs/starkware-starknet-utils.git@main#egg=test_utils&subdirectory=python
