@@ -1,86 +1,14 @@
-name: CI
+name: Pull Request Integration
 
 on:
   pull_request:
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - auto_merge_enabled
-      - edited
-
-concurrency:
-  group: >
-    ${{ github.workflow }}-
-    ${{ github.ref }}-
-    ${{ github.event_name == 'pull_request' && 'PR' || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    branches:
+      - main
 
 jobs:
-  cairo_tests:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  test:
+    uses: ./.github/workflows/test.yaml
+    secrets: inherit
 
-      - name: Install Starknet Foundry
-        uses: foundry-rs/setup-snfoundry@v3
-        with:
-          starknet-foundry-version: "0.45.0"
-
-      - name: Install scarb
-        uses: software-mansion/setup-scarb@v1
-        with:
-          scarb-version: "2.11.4"
-
-      - name: Install cairo-coverage
-        run: |
-          curl -L https://raw.githubusercontent.com/software-mansion/cairo-coverage/main/scripts/install.sh | sh
-
-      - name: Check Cairo formatting
-        run: scarb fmt -w --check
-      
-      - name: Run test and coverage
-        run: scarb test -w --coverage
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
-          verbose: true
-
-
-  python_tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install asdf
-        run: scripts/install_asdf.sh
-
-      - name: Install starknet-devnet
-        run: |
-          asdf plugin add starknet-devnet
-          asdf install starknet-devnet 0.3.0
-          asdf global starknet-devnet 0.3.0
-
-      - name: Install scarb
-        uses: software-mansion/setup-scarb@v1
-        with:
-          scarb-version: "2.11.4"
-
-      - name: Build Contracts
-        run: scarb build
-
-      - name: Install Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-          cache: 'pip'
-
-      - name: Install python testdependencies
-        run: pip install -r py_requirements.txt
-
-      - name: Run Python Tests
-        run: scripts/python_tests.sh
+  check_formatting:
+    uses: ./.github/workflows/check_formatting.yaml
