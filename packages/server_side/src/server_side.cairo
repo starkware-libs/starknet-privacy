@@ -1,10 +1,11 @@
 #[starknet::contract]
 pub mod ServerSide {
-    //use statements
     use server_side::interface::IServerSide;
+    use starknet::storage::{Map, StoragePathEntry, StoragePointerReadAccess};
 
     #[storage]
-    struct Storage { //storage variables
+    struct Storage {
+        notes: Map<felt252, bool>,
     }
 
     #[event]
@@ -17,6 +18,10 @@ pub mod ServerSide {
     }
 
     #[abi(embed_v0)]
-    pub impl ServerSideImpl of IServerSide<ContractState> { //impl logic
+    pub impl ServerSideImpl of IServerSide<ContractState> {
+        fn is_active(self: @ContractState, note: felt252) -> bool {
+            // TODO: Handle nullified notes.
+            self.notes.entry(note).read()
+        }
     }
 }
