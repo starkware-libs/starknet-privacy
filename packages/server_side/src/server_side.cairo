@@ -32,6 +32,10 @@ pub mod ServerSide {
         ) {
             let user = get_caller_address();
 
+            // Assert that inputs are valid.
+            assert!(viewing_key != 0, "{}", Error::INVALID_VIEWING_KEY);
+            assert!(compliance_viewing_key != 0, "{}", Error::INVALID_COMPLIANCE_VIEWING_KEY);
+
             // Assert that keys are empty before writing.
             assert!(self.viewing_key.read(user) == 0, "{}", Error::VIEWING_KEY_ALREADY_EXISTS);
             assert!(
