@@ -1,8 +1,11 @@
 #[starknet::contract]
 pub mod ServerSide {
     //use statements
+    use server_side::errors::Error;
+    use server_side::events::Events;
     use server_side::interface::IServerSide;
-    use starknet::ContractAddress;
+    use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
+    use starknet::{ContractAddress, get_caller_address};
 
     #[storage]
     struct Storage {
@@ -30,9 +33,10 @@ pub mod ServerSide {
             let user = get_caller_address();
 
             // Assert that keys are empty before writing.
-            assert(self.viewing_key.read(user) == 0, Error::VIEWING_KEY_ALREADY_EXISTS);
-            assert(
+            assert!(self.viewing_key.read(user) == 0, "{}", Error::VIEWING_KEY_ALREADY_EXISTS);
+            assert!(
                 self.compliance_viewing_key.read(user) == 0,
+                "{}",
                 Error::COMPLIANCE_VIEWING_KEY_ALREADY_EXISTS,
             );
 
