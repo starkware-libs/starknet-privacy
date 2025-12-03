@@ -1,1 +1,2 @@
-
+pub(crate) const INVALID_PUBLIC_KEY: felt252 = 'INVALID_PUBLIC_KEY';
+pub(crate) const PUBLIC_KEY_ALREADY_EXISTS: felt252 = 'PUBLIC_KEY_ALREADY_EXISTS';
