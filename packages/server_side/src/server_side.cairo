@@ -9,7 +9,7 @@ pub mod ServerSide {
 
     #[storage]
     struct Storage {
-        /// Map of user addresses to their viewing keys.
+        /// Map of user addresses to their public viewing keys.
         public_key: Map<ContractAddress, felt252>,
     }
 
