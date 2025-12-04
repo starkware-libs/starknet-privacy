@@ -35,10 +35,10 @@ pub mod ServerSide {
             // Assert that keys are empty before writing.
             assert(self.public_key.read(user).is_zero(), PUBLIC_KEY_ALREADY_EXISTS);
 
+            // TODO: Verify the proof on the encrypted compliance viewing key from the client side.
+
             // Write keys.
             self.public_key.write(user, public_key);
-
-            // TODO: Verify the proof on the encrypted compliance viewing key from the client side.
 
             self.emit(Events::Register { user, public_key });
         }
