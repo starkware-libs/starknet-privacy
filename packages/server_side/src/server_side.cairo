@@ -2,7 +2,7 @@
 pub mod ServerSide {
     use core::num::traits::zero::Zero;
     use server_side::errors::{INVALID_PUBLIC_KEY, PUBLIC_KEY_ALREADY_EXISTS};
-    use server_side::events::Events;
+    use server_side::events::Register;
     use server_side::interface::IServerSide;
     use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
     use starknet::{ContractAddress, get_caller_address};
@@ -16,7 +16,7 @@ pub mod ServerSide {
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
-        Register: Events::Register,
+        Register: Register,
     }
 
     #[constructor]
@@ -40,7 +40,7 @@ pub mod ServerSide {
             // Write keys.
             self.public_key.write(user, public_key);
 
-            self.emit(Events::Register { user, public_key });
+            self.emit(Register { user, public_key });
         }
     }
 }
