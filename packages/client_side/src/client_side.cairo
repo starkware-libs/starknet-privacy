@@ -5,9 +5,12 @@ pub mod ClientSide {
     use client_side::objects::{EncryptedNote, NewNote, NewNoteTrait, NotePath};
     use core::num::traits::Zero;
     use starknet::ContractAddress;
+    use starknet::storage::StoragePointerWriteAccess;
 
     #[storage]
-    struct Storage { //storage variables
+    struct Storage {
+        /// Address of the server contract.
+        server: ContractAddress,
     }
 
     #[event]
@@ -16,7 +19,9 @@ pub mod ClientSide {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState) { //constructor logic
+    fn constructor(ref self: ContractState, server: ContractAddress) {
+        assert(server.is_non_zero(), Errors::SERVER_ZERO_ADDRESS);
+        self.server.write(server);
     }
 
     #[abi(embed_v0)]

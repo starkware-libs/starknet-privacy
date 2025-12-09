@@ -2,7 +2,30 @@ use client_side::errors as Errors;
 use client_side::objects::{NewNote, NotePath};
 use client_side::tests::test_utils::{Test, TestTrait, UserTrait};
 use core::num::traits::Zero;
-use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
+use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
+use starkware_utils_testing::test_utils::{assert_panic_with_felt_error, generic_load};
+
+#[test]
+fn test_constructor() {
+    let mut test: Test = Default::default();
+
+    let actual_server = generic_load(
+        target: test.cfg.address, storage_address: selector!("server"),
+    );
+    assert_eq!(actual_server, test.cfg.server);
+}
+
+#[test]
+#[should_panic(expected_error: "SERVER_ZERO_ADDRESS")]
+fn test_constructor_server_zero_address() {
+    let mut calldata = array![];
+    calldata.append(Zero::zero());
+    declare(contract: "ClientSide")
+        .unwrap()
+        .contract_class()
+        .deploy(constructor_calldata: @calldata)
+        .unwrap();
+}
 
 #[test]
 fn test_transfer() {
