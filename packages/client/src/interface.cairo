@@ -1,8 +1,8 @@
-use client_side::objects::{EncryptedNote, NewNote, NotePath};
+use client::objects::{EncryptedNote, NewNote, NotePath};
 use starknet::ContractAddress;
 
 #[starknet::interface]
-pub trait IClientSide<T> {
+pub trait IClient<T> {
     /// Validates `notes_to_create` are a valid redistribution of funds from `notes_to_use`.
     ///
     /// A transfer consists of nullifying notes owned by `owner` and creating
@@ -34,13 +34,13 @@ pub trait IClientSide<T> {
     /// None
     ///
     /// #### Reverts
-    /// * [`NO_NOTES_TO_USE`](client_side::errors::NO_NOTES_TO_USE):
+    /// * [`NO_NOTES_TO_USE`](client::errors::NO_NOTES_TO_USE):
     /// Thrown if `notes_to_use` is empty.
-    /// * [`NO_NOTES_TO_CREATE`](client_side::errors::NO_NOTES_TO_CREATE):
+    /// * [`NO_NOTES_TO_CREATE`](client::errors::NO_NOTES_TO_CREATE):
     /// Thrown if `notes_to_create` is empty.
-    /// * [`UNEXPECTED_ZERO_VALUE`](client_side::errors::UNEXPECTED_ZERO_VALUE):
+    /// * [`UNEXPECTED_ZERO_VALUE`](client::errors::UNEXPECTED_ZERO_VALUE):
     /// Thrown if there's a note to be created with zero as the recipient, the token, or the amount.
-    /// * [`NOTE_SUM_MISMATCH`](client_side::errors::NOTE_SUM_MISMATCH):
+    /// * [`NOTE_SUM_MISMATCH`](client::errors::NOTE_SUM_MISMATCH):
     /// Thrown if there's a mismatch between the spent funds and the received funds.
     ///
     /// #### Access Control

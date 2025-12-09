@@ -1,7 +1,7 @@
 #[starknet::contract]
-pub mod ServerSide {
+pub mod Server {
     //use statements
-    use server_side::interface::IServerSide;
+    use server::interface::IServer;
 
     #[storage]
     struct Storage { //storage variables
@@ -17,6 +17,6 @@ pub mod ServerSide {
     }
 
     #[abi(embed_v0)]
-    pub impl ServerSideImpl of IServerSide<ContractState> { //impl logic
+    pub impl ServerImpl of IServer<ContractState> { //impl logic
     }
 }
