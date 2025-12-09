@@ -10,6 +10,7 @@ use starknet::ContractAddress;
 #[derive(Copy, Drop)]
 pub(crate) struct ClientSideCfg {
     pub address: ContractAddress,
+    pub server: ContractAddress,
 }
 
 #[derive(Drop)]
@@ -81,9 +82,12 @@ impl DefaultTestImpl of Default<Test> {
 }
 
 pub(crate) fn deploy_client_side() -> ClientSideCfg {
+    let server: ContractAddress = 'SERVER_ADDRESS'.try_into().unwrap();
+
     let mut calldata = array![];
+    calldata.append(server.into());
     let contract_class = declare(contract: "ClientSide").unwrap().contract_class();
     let (contract_address, _) = contract_class.deploy(constructor_calldata: @calldata).unwrap();
 
-    ClientSideCfg { address: contract_address }
+    ClientSideCfg { address: contract_address, server }
 }
