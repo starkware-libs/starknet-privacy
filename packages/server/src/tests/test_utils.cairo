@@ -96,10 +96,10 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
         self: @ServerCfg,
         recipient_addr: ContractAddress,
         enc_channel_info: EncChannelInfo,
-        channel_hash: felt252,
+        channel_id: felt252,
     ) {
         IServerDispatcher { contract_address: *self.address }
-            .open_channel(:recipient_addr, :enc_channel_info, :channel_hash)
+            .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
     }
 
     #[feature("safe_dispatcher")]
@@ -107,13 +107,13 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
         self: @ServerCfg,
         recipient_addr: ContractAddress,
         enc_channel_info: EncChannelInfo,
-        channel_hash: felt252,
+        channel_id: felt252,
     ) -> Result<(), Array<felt252>> {
         IServerSafeDispatcher { contract_address: *self.address }
-            .open_channel(:recipient_addr, :enc_channel_info, :channel_hash)
+            .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
     }
 
-    fn channel_exists(self: @ServerCfg, channel_hash: felt252) -> bool {
-        IServerDispatcher { contract_address: *self.address }.channel_exists(:channel_hash)
+    fn channel_exists(self: @ServerCfg, channel_id: felt252) -> bool {
+        IServerDispatcher { contract_address: *self.address }.channel_exists(:channel_id)
     }
 }

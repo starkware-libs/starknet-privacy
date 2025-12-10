@@ -17,7 +17,7 @@ pub trait IServer<T> {
     /// - `recipient_addr` (`ContractAddress`): The address of the recipient. Must not be zero.
     /// - `enc_channel_info` (`EncChannelInfo`): The encrypted channel information. Must not be
     /// zero.
-    /// - `channel_hash` (`felt252`): The hash of the channel. Must not be zero.
+    /// - `channel_id` (`felt252`): The id of the channel. Must not be zero.
     ///
     /// #### Returns
     /// None
@@ -34,7 +34,7 @@ pub trait IServer<T> {
     /// is zero.
     /// - [`ZERO_ENC_CHANNEL_INFO`](server::errors::ZERO_ENC_CHANNEL_INFO): Thrown if one of the
     /// fields in `enc_channel_info` is zero.
-    /// - [`ZERO_CHANNEL_HASH`](server::errors::ZERO_CHANNEL_HASH): Thrown if `channel_hash` is
+    /// - [`ZERO_CHANNEL_ID`](server::errors::ZERO_CHANNEL_ID): Thrown if `channel_id` is
     /// zero.
     /// - [`CHANNEL_ALREADY_EXISTS`](server::errors::CHANNEL_ALREADY_EXISTS): Thrown if the channel
     /// already exists.
@@ -45,13 +45,13 @@ pub trait IServer<T> {
         ref self: T,
         recipient_addr: ContractAddress,
         enc_channel_info: EncChannelInfo,
-        channel_hash: felt252,
+        channel_id: felt252,
     );
 
     /// Checks if a channel exists.
     ///
     /// #### Parameters
-    /// - `channel_hash` (`felt252`): The hash of the channel.
+    /// - `channel_id` (`felt252`): The id of the channel.
     ///
     /// #### Returns
     /// (`bool`): True if the channel exists in the contract, false otherwise.
@@ -67,7 +67,7 @@ pub trait IServer<T> {
     ///
     /// #### Access Control
     /// - Any address can call this function.
-    fn channel_exists(self: @T, channel_hash: felt252) -> bool;
+    fn channel_exists(self: @T, channel_id: felt252) -> bool;
 
     /// Returns the number of open channels for a given recipient.
     ///
