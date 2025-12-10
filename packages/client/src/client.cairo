@@ -20,7 +20,7 @@ pub mod Client {
 
     #[constructor]
     fn constructor(ref self: ContractState, server: ContractAddress) {
-        assert(server.is_non_zero(), Errors::SERVER_ZERO_ADDRESS);
+        assert(server.is_non_zero(), Errors::ZERO_SERVER);
         self.server.write(server);
     }
 

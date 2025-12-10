@@ -16,8 +16,8 @@ fn test_constructor() {
 }
 
 #[test]
-#[should_panic(expected_error: "SERVER_ZERO_ADDRESS")]
-fn test_constructor_server_zero_address() {
+#[should_panic(expected_error: "ZERO_SERVER")]
+fn test_constructor_zero_server() {
     let mut calldata = array![];
     calldata.append(Zero::zero());
     declare(contract: "Client")
