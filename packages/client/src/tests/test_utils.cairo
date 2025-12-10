@@ -1,10 +1,13 @@
+use client::client::Client::deploy_for_test;
 use client::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
 };
 use client::objects::{EncryptedNote, NewNote, NotePath};
 use core::num::traits::Zero;
-use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
+use snforge_std::{DeclareResultTrait, declare};
 use starknet::ContractAddress;
+use starknet::deployment::DeploymentParams;
+use starknet::storage::StorableStoragePointerReadAccess;
 
 #[derive(Copy, Drop)]
 pub(crate) struct ClientCfg {
@@ -83,10 +86,11 @@ impl DefaultTestImpl of Default<Test> {
 pub(crate) fn deploy_client() -> ClientCfg {
     let server: ContractAddress = 'SERVER_ADDRESS'.try_into().unwrap();
 
-    let mut calldata = array![];
-    calldata.append(server.into());
-    let contract_class = declare(contract: "Client").unwrap().contract_class();
-    let (contract_address, _) = contract_class.deploy(constructor_calldata: @calldata).unwrap();
-
+    let contract_class_hash = declare(contract: "Client").unwrap().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_for_test(
+        class_hash: *contract_class_hash, :deployment_params, :server,
+    )
+        .expect('Deployment failed');
     ClientCfg { address: contract_address, server }
 }
