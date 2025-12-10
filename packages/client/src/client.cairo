@@ -2,7 +2,7 @@
 pub mod Client {
     use client::errors as Errors;
     use client::interface::IClient;
-    use client::objects::{EncryptedNote, NewNote, NewNoteTrait, NotePath};
+    use client::objects::{EncryptedNote, NewNote, NotePath};
     use core::num::traits::Zero;
     use starknet::ContractAddress;
     use starknet::storage::StoragePointerWriteAccess;
@@ -70,10 +70,12 @@ pub mod Client {
             self: @ContractState, notes_to_create: Span<NewNote>,
         ) -> (Span<EncryptedNote>, u256) {
             for note in notes_to_create {
+                assert(note.recipient.is_non_zero(), Errors::ZERO_RECIPIENT);
+                assert(note.token.is_non_zero(), Errors::ZERO_TOKEN);
+                assert(note.amount.is_non_zero(), Errors::ZERO_AMOUNT);
                 // TODO: Verify notes are sequential in server storage.
-                // TODO: Sum note amounts.
-                // TODO: Verify tokens match.
-                assert(note.is_non_zero(), Errors::UNEXPECTED_ZERO_VALUE);
+            // TODO: Sum note amounts.
+            // TODO: Verify tokens match.
             }
             // TODO: Return new notes span and amount sum.
 

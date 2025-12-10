@@ -126,15 +126,15 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: Errors::NO_NOTES_TO_CREATE);
 
-    // Catch UNEXPECTED_ZERO_VALUE (recipient)
+    // Catch ZERO_RECIPIENT.
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [NewNote { recipient: Zero::zero(), token, amount: 1 }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::UNEXPECTED_ZERO_VALUE);
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_RECIPIENT);
 
-    // Catch UNEXPECTED_ZERO_VALUE (token)
+    // Catch ZERO_TOKEN.
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
@@ -143,14 +143,14 @@ fn test_transfer_assertions() {
             ]
                 .span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::UNEXPECTED_ZERO_VALUE);
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_TOKEN);
 
-    // Catch UNEXPECTED_ZERO_VALUE (amount)
+    // Catch ZERO_AMOUNT.
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [NewNote { recipient: user_2.address, token, amount: Zero::zero() },]
                 .span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::UNEXPECTED_ZERO_VALUE);
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_AMOUNT);
 }
