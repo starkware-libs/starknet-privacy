@@ -47,7 +47,7 @@ pub(crate) impl TestImpl of TestTrait {
         }
     }
 
-    /// Returns the encrypted channel information and the channel hash.
+    /// Returns the encrypted channel information and the channel id.
     fn new_channel(ref self: Test) -> (EncChannelInfo, felt252) {
         self.nonce += 1;
         let enc_channel_info = EncChannelInfo {
@@ -56,8 +56,8 @@ pub(crate) impl TestImpl of TestTrait {
             enc_token: ('ENC_TOKEN' + self.nonce.into()).try_into().unwrap(),
             enc_sender_addr: ('ENC_SENDER_ADDR' + self.nonce.into()).try_into().unwrap(),
         };
-        let channel_hash = ('CHANNEL_HASH' + self.nonce.into()).try_into().unwrap();
-        (enc_channel_info, channel_hash)
+        let channel_id = ('CHANNEL_ID' + self.nonce.into()).try_into().unwrap();
+        (enc_channel_info, channel_id)
     }
 }
 
@@ -96,10 +96,10 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
         self: @ServerCfg,
         recipient_addr: ContractAddress,
         enc_channel_info: EncChannelInfo,
-        channel_hash: felt252,
+        channel_id: felt252,
     ) {
         IServerDispatcher { contract_address: *self.address }
-            .open_channel(:recipient_addr, :enc_channel_info, :channel_hash)
+            .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
     }
 
     #[feature("safe_dispatcher")]
@@ -107,13 +107,13 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
         self: @ServerCfg,
         recipient_addr: ContractAddress,
         enc_channel_info: EncChannelInfo,
-        channel_hash: felt252,
+        channel_id: felt252,
     ) -> Result<(), Array<felt252>> {
         IServerSafeDispatcher { contract_address: *self.address }
-            .open_channel(:recipient_addr, :enc_channel_info, :channel_hash)
+            .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
     }
 
-    fn channel_exists(self: @ServerCfg, channel_hash: felt252) -> bool {
-        IServerDispatcher { contract_address: *self.address }.channel_exists(:channel_hash)
+    fn channel_exists(self: @ServerCfg, channel_id: felt252) -> bool {
+        IServerDispatcher { contract_address: *self.address }.channel_exists(:channel_id)
     }
 }

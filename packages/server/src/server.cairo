@@ -13,9 +13,10 @@ pub mod Server {
     #[storage]
     struct Storage {
         /// Map of recipient addresses to a list of their encrypted channels.
-        channels: Map<ContractAddress, Vec<EncChannelInfo>>,
-        /// Map of channel hash to whether it exists.
-        channel_hashes: Map<felt252, bool>,
+        recipient_channels: Map<ContractAddress, Vec<EncChannelInfo>>,
+        /// Map of channel id to whether it exists.
+        // TODO: Rename storage var / abi function to not have the same name?
+        channel_exists: Map<felt252, bool>,
     }
 
     #[event]
@@ -33,13 +34,13 @@ pub mod Server {
             ref self: ContractState,
             recipient_addr: ContractAddress,
             enc_channel_info: EncChannelInfo,
-            channel_hash: felt252,
+            channel_id: felt252,
         ) {
             // Assert inputs are not zero.
             // TODO: Remove assert not zero for hashes?
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(enc_channel_info.is_non_zero(), errors::ZERO_ENC_CHANNEL_INFO);
-            assert(channel_hash.is_non_zero(), errors::ZERO_CHANNEL_HASH);
+            assert(channel_id.is_non_zero(), errors::ZERO_CHANNEL_ID);
 
             // TODO: Verify client's proof.
 
@@ -47,22 +48,22 @@ pub mod Server {
             // public key of `recipient_addr`.
 
             // Assert channel does not already exist.
-            assert(!self.channel_hashes.read(channel_hash), errors::CHANNEL_ALREADY_EXISTS);
+            assert(!self.channel_exists.read(channel_id), errors::CHANNEL_ALREADY_EXISTS);
 
             // Write channel to storage.
-            self.channel_hashes.write(channel_hash, true);
-            self.channels.entry(recipient_addr).push(enc_channel_info);
+            self.channel_exists.write(channel_id, true);
+            self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
         }
 
-        fn channel_exists(self: @ContractState, channel_hash: felt252) -> bool {
+        fn channel_exists(self: @ContractState, channel_id: felt252) -> bool {
             // TODO: Restrict access?
-            self.channel_hashes.read(channel_hash)
+            self.channel_exists.read(channel_id)
         }
 
         fn get_num_of_channels(self: @ContractState, recipient_addr: ContractAddress) -> u64 {
             // TODO: Restrict access to `recipient_addr`?
             // TODO: Assert `recipient_addr` is registered?
-            self.channels.entry(recipient_addr).len()
+            self.recipient_channels.entry(recipient_addr).len()
         }
 
         fn get_channel_info(
@@ -72,7 +73,7 @@ pub mod Server {
             // TODO: Assert `recipient_addr` is registered?
             // TODO: Consider defining custom error instead of using `at` (with "Index out of
             // bounds" error)?
-            self.channels.entry(recipient_addr).at(channel_index).read()
+            self.recipient_channels.entry(recipient_addr).at(channel_index).read()
         }
     }
 }
