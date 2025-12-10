@@ -1,7 +1,7 @@
 use server::interface::{
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
 };
-use server::objects::EncChannel;
+use server::objects::EncChannelInfo;
 use server::server::Server;
 use snforge_std::{ContractClassTrait, DeclareResultTrait, declare, interact_with_state};
 use starknet::ContractAddress;
@@ -25,25 +25,25 @@ pub(crate) fn deploy_server() -> ServerCfg {
 
 #[generate_trait]
 pub(crate) impl ServerCfgImpl of ServerCfgTrait {
-    fn create_channel(
+    fn open_channel(
         self: @ServerCfg,
         recipient_addr: ContractAddress,
-        enc_channel_info: EncChannel,
+        enc_channel_info: EncChannelInfo,
         channel_hash: felt252,
     ) {
         IServerDispatcher { contract_address: *self.address }
-            .create_channel(:recipient_addr, :enc_channel_info, :channel_hash)
+            .open_channel(:recipient_addr, :enc_channel_info, :channel_hash)
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_create_channel(
+    fn safe_open_channel(
         self: @ServerCfg,
         recipient_addr: ContractAddress,
-        enc_channel_info: EncChannel,
+        enc_channel_info: EncChannelInfo,
         channel_hash: felt252,
     ) -> Result<(), Array<felt252>> {
         IServerSafeDispatcher { contract_address: *self.address }
-            .create_channel(:recipient_addr, :enc_channel_info, :channel_hash)
+            .open_channel(:recipient_addr, :enc_channel_info, :channel_hash)
     }
 
     fn read_channel_hashes(self: @ServerCfg, key: felt252) -> bool {
@@ -69,7 +69,7 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
 
     fn read_channels_at(
         self: @ServerCfg, recipient_addr: ContractAddress, index: u64,
-    ) -> EncChannel {
+    ) -> EncChannelInfo {
         interact_with_state(
             *self.address,
             || {

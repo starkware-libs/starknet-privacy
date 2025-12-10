@@ -3,7 +3,7 @@ pub mod Server {
     use core::num::traits::Zero;
     use server::errors;
     use server::interface::IServer;
-    use server::objects::{EncChannel, EncChannelTrait};
+    use server::objects::{EncChannelInfo, EncChannelInfoTrait};
     use starknet::ContractAddress;
     use starknet::storage::{
         Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry, Vec,
@@ -12,7 +12,7 @@ pub mod Server {
     #[storage]
     struct Storage {
         /// Map of recipient addresses to a list of their encrypted channels.
-        pub channels: Map<ContractAddress, Vec<EncChannel>>,
+        pub channels: Map<ContractAddress, Vec<EncChannelInfo>>,
         /// Map of channel hash to whether it exists.
         pub channel_hashes: Map<felt252, bool>,
     }
@@ -28,10 +28,10 @@ pub mod Server {
 
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
-        fn create_channel(
+        fn open_channel(
             ref self: ContractState,
             recipient_addr: ContractAddress,
-            enc_channel_info: EncChannel,
+            enc_channel_info: EncChannelInfo,
             channel_hash: felt252,
         ) {
             // Assert inputs are not zero.
