@@ -38,8 +38,12 @@ pub trait IClient<T> {
     /// Thrown if `notes_to_use` is empty.
     /// * [`NO_NOTES_TO_CREATE`](client::errors::NO_NOTES_TO_CREATE):
     /// Thrown if `notes_to_create` is empty.
-    /// * [`UNEXPECTED_ZERO_VALUE`](client::errors::UNEXPECTED_ZERO_VALUE):
-    /// Thrown if there's a note to be created with zero as the recipient, the token, or the amount.
+    /// * [`ZERO_RECIPIENT`](client::errors::ZERO_RECIPIENT):
+    /// Thrown if there's a note to be created with zero as the recipient.
+    /// * [`ZERO_TOKEN`](client::errors::ZERO_TOKEN):
+    /// Thrown if there's a note to be created with zero as the token.
+    /// * [`ZERO_AMOUNT`](client::errors::ZERO_AMOUNT):
+    /// Thrown if there's a note to be created with zero as the amount.
     /// * [`NOTE_SUM_MISMATCH`](client::errors::NOTE_SUM_MISMATCH):
     /// Thrown if there's a mismatch between the spent funds and the received funds.
     ///
