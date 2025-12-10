@@ -3,6 +3,7 @@ use server::interface::{
 };
 use server::objects::EncChannel;
 use server::server::Server;
+use server::server::Server::ServerInternalTrait;
 use snforge_std::{ContractClassTrait, DeclareResultTrait, declare, interact_with_state};
 use starknet::ContractAddress;
 use starknet::storage::{
@@ -76,6 +77,26 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
                 let mut state = Server::contract_state_for_testing();
                 let channels_vec = state.channels.entry(key: recipient_addr);
                 channels_vec.at(:index).read()
+            },
+        )
+    }
+
+    fn create_note(self: @ServerCfg, note_id: felt252, enc_note_value: felt252) {
+        interact_with_state(
+            *self.address,
+            || {
+                let mut state = Server::contract_state_for_testing();
+                state.create_note(:note_id, :enc_note_value)
+            },
+        )
+    }
+
+    fn read_notes(self: @ServerCfg, note_id: felt252) -> felt252 {
+        interact_with_state(
+            *self.address,
+            || {
+                let mut state = Server::contract_state_for_testing();
+                state.notes.read(key: note_id)
             },
         )
     }

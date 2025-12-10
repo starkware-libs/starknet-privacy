@@ -15,6 +15,8 @@ pub mod Server {
         pub channels: Map<ContractAddress, Vec<EncChannel>>,
         /// Map of channel hash to whether it exists.
         pub channel_hashes: Map<felt252, bool>,
+        /// Map of note ids to their encrypted values.
+        pub notes: Map<felt252, felt252>,
     }
 
     #[event]
@@ -51,6 +53,24 @@ pub mod Server {
             // Write channel to storage.
             self.channel_hashes.write(channel_hash, true);
             self.channels.entry(recipient_addr).push(enc_channel_info);
+        }
+    }
+
+    #[generate_trait]
+    pub(crate) impl ServerInternalImpl of ServerInternalTrait {
+        fn create_note(ref self: ContractState, note_id: felt252, enc_note_value: felt252) {
+            // Assert inputs are not zero.
+            // TODO: Remove assert not zero for hashes?
+            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
+            assert(enc_note_value.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
+
+            // TODO: Verify client's proof.
+
+            // Assert note does not already exist.
+            assert(self.notes.read(note_id).is_zero(), errors::NOTE_ALREADY_EXISTS);
+
+            // Write note to storage.
+            self.notes.write(note_id, enc_note_value);
         }
     }
 }

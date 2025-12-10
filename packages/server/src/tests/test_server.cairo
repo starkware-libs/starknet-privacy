@@ -121,3 +121,54 @@ fn test_create_channel_assertions() {
     let result = server.safe_create_channel(:recipient_addr, :enc_channel_info, :channel_hash);
     assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_ALREADY_EXISTS);
 }
+
+#[test]
+fn test_create_note() {
+    let server = deploy_server();
+    let note_id = 'NOTE_ID'.try_into().unwrap();
+    let enc_note_value = 'ENC_NOTE_VALUE'.try_into().unwrap();
+    server.create_note(:note_id, :enc_note_value);
+    assert_eq!(server.read_notes(:note_id), enc_note_value);
+}
+
+#[test]
+fn test_create_note_twice() {
+    let server = deploy_server();
+    let note_id_1 = 'NOTE_ID'.try_into().unwrap();
+    let enc_note_value_1 = 'ENC_NOTE_VALUE'.try_into().unwrap();
+    server.create_note(note_id: note_id_1, enc_note_value: enc_note_value_1);
+    let note_id_2 = note_id_1 + 1;
+    let enc_note_value_2 = enc_note_value_1 + 1;
+    server.create_note(note_id: note_id_2, enc_note_value: enc_note_value_2);
+    assert_eq!(server.read_notes(note_id: note_id_1), enc_note_value_1);
+    assert_eq!(server.read_notes(note_id: note_id_2), enc_note_value_2);
+}
+
+
+// TODO: Figure out how to safely call internal functions.
+#[test]
+#[should_panic(expected_error: "ZERO_NOTE_ID")]
+fn test_create_note_zero_note_id() {
+    let server = deploy_server();
+    let enc_note_value = 'ENC_NOTE_VALUE'.try_into().unwrap();
+    server.create_note(note_id: Zero::zero(), :enc_note_value);
+}
+
+#[test]
+#[should_panic(expected_error: "ZERO_ENC_NOTE_VALUE")]
+fn test_create_note_zero_enc_note_value() {
+    let server = deploy_server();
+    let note_id = 'NOTE_ID'.try_into().unwrap();
+    server.create_note(:note_id, enc_note_value: Zero::zero());
+}
+
+#[test]
+#[should_panic(expected_error: "NOTE_ALREADY_EXISTS")]
+fn test_create_note_note_already_exists() {
+    let server = deploy_server();
+    let note_id = 'NOTE_ID'.try_into().unwrap();
+    let enc_note_value = 'ENC_NOTE_VALUE'.try_into().unwrap();
+    server.create_note(:note_id, :enc_note_value);
+    let diff_enc_note_value = enc_note_value + 1;
+    server.create_note(:note_id, enc_note_value: diff_enc_note_value);
+}
