@@ -13,7 +13,7 @@ pub struct NotePath {
 #[derive(Serde, Copy, Drop)]
 pub struct NewNote {
     /// The recipient's address.
-    pub recipient: ContractAddress,
+    pub recipient_addr: ContractAddress,
     /// The token's address.
     pub token: ContractAddress,
     /// The amount the note represents.

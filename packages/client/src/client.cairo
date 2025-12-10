@@ -20,7 +20,7 @@ pub mod Client {
 
     #[constructor]
     fn constructor(ref self: ContractState, server: ContractAddress) {
-        assert(server.is_non_zero(), Errors::SERVER_ZERO_ADDRESS);
+        assert(server.is_non_zero(), Errors::ZERO_SERVER);
         self.server.write(server);
     }
 
@@ -70,7 +70,7 @@ pub mod Client {
             self: @ContractState, notes_to_create: Span<NewNote>,
         ) -> (Span<EncryptedNote>, u256) {
             for note in notes_to_create {
-                assert(note.recipient.is_non_zero(), Errors::ZERO_RECIPIENT);
+                assert(note.recipient_addr.is_non_zero(), Errors::ZERO_RECIPIENT_ADDR);
                 assert(note.token.is_non_zero(), Errors::ZERO_TOKEN);
                 assert(note.amount.is_non_zero(), Errors::ZERO_AMOUNT);
                 // TODO: Verify notes are sequential in server storage.
