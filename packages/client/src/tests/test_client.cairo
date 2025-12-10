@@ -37,7 +37,7 @@ fn test_transfer() {
     let result = user_1
         .transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 },].span(),
-            notes_to_create: [NewNote { recipient: user_2.address, token, amount: 1 }].span(),
+            notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
         );
 
     let expected_result = ([].span(), [].span());
@@ -53,7 +53,7 @@ fn test_transfer_to_self() {
     let result = user
         .transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 },].span(),
-            notes_to_create: [NewNote { recipient: user.address, token, amount: 1 }].span(),
+            notes_to_create: [NewNote { recipient_addr: user.address, token, amount: 1 }].span(),
         );
 
     let expected_result = ([].span(), [].span());
@@ -72,9 +72,9 @@ fn test_transfer_one_to_many() {
         .transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [
-                NewNote { recipient: user_2.address, token, amount: 1 },
-                NewNote { recipient: user_2.address, token, amount: 1 },
-                NewNote { recipient: user_3.address, token, amount: 8 },
+                NewNote { recipient_addr: user_2.address, token, amount: 1 },
+                NewNote { recipient_addr: user_2.address, token, amount: 1 },
+                NewNote { recipient_addr: user_3.address, token, amount: 8 },
             ]
                 .span(),
         );
@@ -96,7 +96,7 @@ fn test_transfer_many_to_one() {
                 NotePath { channel_index: 0, note_index: 1 },
             ]
                 .span(),
-            notes_to_create: [NewNote { recipient: user_2.address, token, amount: 2 }].span(),
+            notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 2 }].span(),
         );
     let expected_result = ([].span(), [].span());
     assert_eq!(result, expected_result);
@@ -114,7 +114,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [].span(),
-            notes_to_create: [NewNote { recipient: user_2.address, token, amount: 1 }].span(),
+            notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: Errors::NO_NOTES_TO_USE);
 
@@ -130,16 +130,16 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [NewNote { recipient: Zero::zero(), token, amount: 1 }].span(),
+            notes_to_create: [NewNote { recipient_addr: Zero::zero(), token, amount: 1 }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_RECIPIENT);
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_TOKEN.
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [
-                NewNote { recipient: user_2.address, token: Zero::zero(), amount: 1 },
+                NewNote { recipient_addr: user_2.address, token: Zero::zero(), amount: 1 },
             ]
                 .span(),
         );
@@ -149,7 +149,9 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [NewNote { recipient: user_2.address, token, amount: Zero::zero() },]
+            notes_to_create: [
+                NewNote { recipient_addr: user_2.address, token, amount: Zero::zero() },
+            ]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_AMOUNT);
