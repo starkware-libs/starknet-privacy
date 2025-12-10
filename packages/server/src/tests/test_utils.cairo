@@ -3,8 +3,11 @@ use server::interface::{
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
 };
 use server::objects::EncChannelInfo;
-use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
+use server::server::Server::deploy_for_test;
+use snforge_std::{DeclareResultTrait, declare};
 use starknet::ContractAddress;
+use starknet::deployment::DeploymentParams;
+use starknet::storage::StorableStoragePointerReadAccess;
 
 // TODO: Consider merging test utils for client and server in shared package.
 
@@ -14,10 +17,12 @@ pub(crate) struct ServerCfg {
 }
 
 pub(crate) fn deploy_server() -> ServerCfg {
-    let calldata = array![];
-    let contract_class = declare(contract: "Server").unwrap().contract_class();
-    let (contract_address, _) = contract_class.deploy(constructor_calldata: @calldata).unwrap();
-
+    let contract_class_hash = declare(contract: "Server").unwrap().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_for_test(
+        class_hash: *contract_class_hash, :deployment_params,
+    )
+        .expect('Deployment failed');
     ServerCfg { address: contract_address }
 }
 
