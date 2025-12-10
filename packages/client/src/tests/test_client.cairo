@@ -110,7 +110,7 @@ fn test_transfer_assertions() {
     let user_2 = test.new_user();
     let token = test.new_token();
 
-    // Catch NO_NOTES_TO_USE
+    // Catch NO_NOTES_TO_USE.
     let result = user_1
         .safe_transfer(
             notes_to_use: [].span(),
@@ -118,7 +118,7 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: Errors::NO_NOTES_TO_USE);
 
-    // Catch NO_NOTES_TO_CREATE
+    // Catch NO_NOTES_TO_CREATE.
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
