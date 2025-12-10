@@ -17,6 +17,8 @@ pub mod Server {
         /// Map of channel id to whether it exists.
         // TODO: Rename storage var / abi function to not have the same name?
         channel_exists: Map<felt252, bool>,
+        /// Map of note ids to their encrypted values.
+        notes: Map<felt252, felt252>,
     }
 
     #[event]
@@ -74,6 +76,28 @@ pub mod Server {
             // TODO: Consider defining custom error instead of using `at` (with "Index out of
             // bounds" error)?
             self.recipient_channels.entry(recipient_addr).at(channel_index).read()
+        }
+
+        fn get_note(self: @ContractState, note_id: felt252) -> felt252 {
+            self.notes.read(note_id)
+        }
+    }
+
+    #[generate_trait]
+    pub(crate) impl ServerInternalImpl of ServerInternalTrait {
+        fn create_note(ref self: ContractState, note_id: felt252, enc_note_value: felt252) {
+            // Assert inputs are not zero.
+            // TODO: Remove assert not zero for hashes?
+            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
+            assert(enc_note_value.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
+
+            // TODO: Verify client's proof.
+
+            // Assert note does not already exist.
+            assert(self.notes.read(note_id).is_zero(), errors::NOTE_ALREADY_EXISTS);
+
+            // Write note to storage.
+            self.notes.write(note_id, enc_note_value);
         }
     }
 }

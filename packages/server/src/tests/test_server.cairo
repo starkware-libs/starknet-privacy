@@ -181,3 +181,59 @@ fn test_get_channel_info_index_out_of_bounds() {
     let result = user.safe_get_channel_info(channel_index: 1);
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 }
+
+#[test]
+fn test_get_note() {
+    let mut test: Test = Default::default();
+    let (note_id, enc_note_value) = test.new_note();
+    assert_eq!(test.server.get_note(:note_id), Zero::zero());
+    test.server.create_note(:note_id, :enc_note_value);
+    assert_eq!(test.server.get_note(:note_id), enc_note_value);
+}
+
+#[test]
+fn test_create_note() {
+    let mut test: Test = Default::default();
+    let (note_id, enc_note_value) = test.new_note();
+    test.server.create_note(:note_id, :enc_note_value);
+    assert_eq!(test.server.get_note(:note_id), enc_note_value);
+}
+
+#[test]
+fn test_create_note_twice() {
+    let mut test: Test = Default::default();
+    let (note_id_1, enc_note_value_1) = test.new_note();
+    test.server.create_note(note_id: note_id_1, enc_note_value: enc_note_value_1);
+    let (note_id_2, enc_note_value_2) = test.new_note();
+    test.server.create_note(note_id: note_id_2, enc_note_value: enc_note_value_2);
+    assert_eq!(test.server.get_note(note_id: note_id_1), enc_note_value_1);
+    assert_eq!(test.server.get_note(note_id: note_id_2), enc_note_value_2);
+}
+
+
+// TODO: Figure out how to safely call internal functions.
+#[test]
+#[should_panic(expected_error: "ZERO_NOTE_ID")]
+fn test_create_note_zero_note_id() {
+    let mut test: Test = Default::default();
+    let (_, enc_note_value) = test.new_note();
+    test.server.create_note(note_id: Zero::zero(), :enc_note_value);
+}
+
+#[test]
+#[should_panic(expected_error: "ZERO_ENC_NOTE_VALUE")]
+fn test_create_note_zero_enc_note_value() {
+    let mut test: Test = Default::default();
+    let (note_id, _) = test.new_note();
+    test.server.create_note(:note_id, enc_note_value: Zero::zero());
+}
+
+#[test]
+#[should_panic(expected_error: "NOTE_ALREADY_EXISTS")]
+fn test_create_note_note_already_exists() {
+    let mut test: Test = Default::default();
+    let (note_id, enc_note_value) = test.new_note();
+    test.server.create_note(:note_id, :enc_note_value);
+    let (_, diff_enc_note_value) = test.new_note();
+    test.server.create_note(:note_id, enc_note_value: diff_enc_note_value);
+}
