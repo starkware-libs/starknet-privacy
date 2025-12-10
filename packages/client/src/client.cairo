@@ -1,8 +1,8 @@
 #[starknet::contract]
-pub mod ClientSide {
-    use client_side::errors as Errors;
-    use client_side::interface::IClientSide;
-    use client_side::objects::{EncryptedNote, NewNote, NewNoteTrait, NotePath};
+pub mod Client {
+    use client::errors as Errors;
+    use client::interface::IClient;
+    use client::objects::{EncryptedNote, NewNote, NewNoteTrait, NotePath};
     use core::num::traits::Zero;
     use starknet::ContractAddress;
     use starknet::storage::StoragePointerWriteAccess;
@@ -25,7 +25,7 @@ pub mod ClientSide {
     }
 
     #[abi(embed_v0)]
-    pub impl ClientSideImpl of IClientSide<ContractState> {
+    pub impl ClientImpl of IClient<ContractState> {
         fn transfer(
             self: @ContractState,
             owner: ContractAddress,
@@ -51,7 +51,7 @@ pub mod ClientSide {
     }
 
     #[generate_trait]
-    impl ClientSideInternalImpl of ClientSideInternalTrait {
+    impl ClientInternalImpl of ClientInternalTrait {
         fn use_notes(
             self: @ContractState,
             owner: ContractAddress,

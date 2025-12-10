@@ -2,7 +2,7 @@
 version = 1
 
 [[package]]
-name = "client_side"
+name = "client"
 version = "0.1.0"
 dependencies = [
  "openzeppelin",
@@ -140,7 +140,7 @@ source = "registry+https://scarbs.xyz/"
 checksum = "sha256:bf799c794139837f397975ffdf6a7ed5032d198bbf70e87a8f44f144a9dfc505"
 
 [[package]]
-name = "server_side"
+name = "server"
 version = "0.1.0"
 dependencies = [
  "openzeppelin",

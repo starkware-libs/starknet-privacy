@@ -1,6 +1,6 @@
-use client_side::errors as Errors;
-use client_side::objects::{NewNote, NotePath};
-use client_side::tests::test_utils::{Test, TestTrait, UserTrait};
+use client::errors as Errors;
+use client::objects::{NewNote, NotePath};
+use client::tests::test_utils::{Test, TestTrait, UserTrait};
 use core::num::traits::Zero;
 use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
 use starkware_utils_testing::test_utils::{assert_panic_with_felt_error, generic_load};
@@ -20,7 +20,7 @@ fn test_constructor() {
 fn test_constructor_server_zero_address() {
     let mut calldata = array![];
     calldata.append(Zero::zero());
-    declare(contract: "ClientSide")
+    declare(contract: "Client")
         .unwrap()
         .contract_class()
         .deploy(constructor_calldata: @calldata)
