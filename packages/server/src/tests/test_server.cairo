@@ -237,3 +237,47 @@ fn test_create_note_note_already_exists() {
     let (_, diff_enc_note_value) = test.new_note();
     test.server.create_note(:note_id, enc_note_value: diff_enc_note_value);
 }
+
+#[test]
+fn test_nullifier_exists() {
+    let mut test: Test = Default::default();
+    let nullifier = test.new_nullifier();
+    assert_eq!(test.server.nullifier_exists(:nullifier), false);
+    test.server.use_note(:nullifier);
+    assert_eq!(test.server.nullifier_exists(:nullifier), true);
+}
+
+#[test]
+fn test_use_note() {
+    let mut test: Test = Default::default();
+    let nullifier = test.new_nullifier();
+    test.server.use_note(:nullifier);
+    assert_eq!(test.server.nullifier_exists(:nullifier), true);
+}
+
+#[test]
+fn test_use_note_twice() {
+    let mut test: Test = Default::default();
+    let nullifier_1 = test.new_nullifier();
+    let nullifier_2 = test.new_nullifier();
+    test.server.use_note(nullifier: nullifier_1);
+    test.server.use_note(nullifier: nullifier_2);
+    assert_eq!(test.server.nullifier_exists(nullifier: nullifier_1), true);
+    assert_eq!(test.server.nullifier_exists(nullifier: nullifier_2), true);
+}
+
+#[test]
+#[should_panic(expected_error: errors::ZERO_NULLIFIER)]
+fn test_use_note_zero_nullifier() {
+    let mut test: Test = Default::default();
+    test.server.use_note(nullifier: Zero::zero());
+}
+
+#[test]
+#[should_panic(expected_error: errors::NULLIFIER_ALREADY_EXISTS)]
+fn test_use_note_nullifier_already_exists() {
+    let mut test: Test = Default::default();
+    let nullifier = test.new_nullifier();
+    test.server.use_note(nullifier: nullifier);
+    test.server.use_note(nullifier: nullifier);
+}

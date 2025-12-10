@@ -19,6 +19,8 @@ pub mod Server {
         channel_exists: Map<felt252, bool>,
         /// Map of note ids to their encrypted values.
         notes: Map<felt252, felt252>,
+        /// Map of nullifier to whether it exists.
+        nullifiers: Map<felt252, bool>,
     }
 
     #[event]
@@ -81,6 +83,10 @@ pub mod Server {
         fn get_note(self: @ContractState, note_id: felt252) -> felt252 {
             self.notes.read(note_id)
         }
+
+        fn nullifier_exists(self: @ContractState, nullifier: felt252) -> bool {
+            self.nullifiers.read(nullifier)
+        }
     }
 
     #[generate_trait]
@@ -96,6 +102,18 @@ pub mod Server {
 
             // Write note to storage.
             self.notes.write(note_id, enc_note_value);
+        }
+
+        fn use_note(ref self: ContractState, nullifier: felt252) {
+            // Assert inputs are not zero.
+            // TODO: Remove assert not zero for hashes?
+            assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
+
+            // Assert nullifier does not already exist.
+            assert(!self.nullifiers.read(nullifier), errors::NULLIFIER_ALREADY_EXISTS);
+
+            // Write nullifier to storage.
+            self.nullifiers.write(nullifier, true);
         }
     }
 }
