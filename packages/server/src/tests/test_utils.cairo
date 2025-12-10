@@ -3,10 +3,13 @@ use server::interface::{
 };
 use server::objects::EncChannel;
 use server::server::Server;
-use snforge_std::{ContractClassTrait, DeclareResultTrait, declare, interact_with_state};
+use server::server::Server::deploy_for_test;
+use snforge_std::{DeclareResultTrait, declare, interact_with_state};
 use starknet::ContractAddress;
+use starknet::deployment::DeploymentParams;
 use starknet::storage::{
-    MutableVecTrait, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
+    MutableVecTrait, StorableStoragePointerReadAccess, StorageMapReadAccess, StoragePathEntry,
+    StoragePointerReadAccess,
 };
 
 #[derive(Copy, Drop)]
@@ -16,10 +19,12 @@ pub(crate) struct ServerCfg {
 
 
 pub(crate) fn deploy_server() -> ServerCfg {
-    let calldata = array![];
-    let contract_class = declare(contract: "Server").unwrap().contract_class();
-    let (contract_address, _) = contract_class.deploy(constructor_calldata: @calldata).unwrap();
-
+    let contract_class_hash = declare(contract: "Server").unwrap().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_for_test(
+        class_hash: *contract_class_hash, :deployment_params,
+    )
+        .expect('Deployment failed');
     ServerCfg { address: contract_address }
 }
 
