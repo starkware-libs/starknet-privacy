@@ -1,4 +1,3 @@
-use core::num::traits::Zero;
 use starknet::ContractAddress;
 
 /// The path of an existing note in the server storage.
@@ -20,13 +19,6 @@ pub struct NewNote {
     /// The amount the note represents.
     // TODO: Consider using different type.
     pub amount: u128,
-}
-
-#[generate_trait]
-pub impl NewNoteImpl of NewNoteTrait {
-    fn is_non_zero(self: @NewNote) -> bool {
-        self.recipient.is_non_zero() && self.token.is_non_zero() && self.amount.is_non_zero()
-    }
 }
 
 // TODO: Move to server package.
