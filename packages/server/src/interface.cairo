@@ -114,4 +114,25 @@ pub trait IServer<T> {
     fn get_channel_info(
         self: @T, recipient_addr: ContractAddress, channel_index: u64,
     ) -> EncChannelInfo;
+
+    /// Returns the encrypted note value for a given note id.
+    ///
+    /// #### Parameters
+    /// - `note_id` (`felt252`): The id of the note.
+    ///
+    /// #### Returns
+    /// (`felt252`): The encrypted note value.
+    ///
+    /// #### Preconditions
+    /// None
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// None
+    ///
+    /// #### Access Control
+    /// - Any address can call this function.
+    fn get_note(self: @T, note_id: felt252) -> felt252;
 }

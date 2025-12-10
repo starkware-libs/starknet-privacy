@@ -3,7 +3,9 @@ use server::interface::{
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
 };
 use server::objects::EncChannelInfo;
-use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
+use server::server::Server;
+use server::server::Server::ServerInternalTrait;
+use snforge_std::{ContractClassTrait, DeclareResultTrait, declare, interact_with_state};
 use starknet::ContractAddress;
 
 // TODO: Consider merging test utils for client and server in shared package.
@@ -58,6 +60,14 @@ pub(crate) impl TestImpl of TestTrait {
         };
         let channel_id = ('CHANNEL_ID' + self.nonce.into()).try_into().unwrap();
         (enc_channel_info, channel_id)
+    }
+
+    /// Returns the note id and the encrypted note value.
+    fn new_note(ref self: Test) -> (felt252, felt252) {
+        self.nonce += 1;
+        let note_id = ('NOTE_ID' + self.nonce.into()).try_into().unwrap();
+        let enc_note_value = ('ENC_NOTE_VALUE' + self.nonce.into()).try_into().unwrap();
+        (note_id, enc_note_value)
     }
 }
 
@@ -115,5 +125,19 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
 
     fn channel_exists(self: @ServerCfg, channel_id: felt252) -> bool {
         IServerDispatcher { contract_address: *self.address }.channel_exists(:channel_id)
+    }
+
+    fn create_note(self: @ServerCfg, note_id: felt252, enc_note_value: felt252) {
+        interact_with_state(
+            *self.address,
+            || {
+                let mut state = Server::contract_state_for_testing();
+                state.create_note(:note_id, :enc_note_value)
+            },
+        )
+    }
+
+    fn get_note(self: @ServerCfg, note_id: felt252) -> felt252 {
+        IServerDispatcher { contract_address: *self.address }.get_note(:note_id)
     }
 }
