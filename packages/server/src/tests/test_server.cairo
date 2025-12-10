@@ -1,123 +1,183 @@
 use core::num::traits::Zero;
 use server::errors;
-use server::objects::EncChannel;
-use server::tests::test_utils::{ServerCfgTrait, deploy_server};
-use starknet::ContractAddress;
-use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
+use server::tests::test_utils::{ServerCfgTrait, Test, TestTrait, UserTrait};
+use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
 #[test]
-fn test_create_channel() {
-    let server = deploy_server();
-    let recipient_addr: ContractAddress = 'RECIPIENT_ADDRESS'.try_into().unwrap();
-    let enc_channel_info = EncChannel {
-        ephemeral_pubkey: 'EPHEMERAL_PUBKEY'.try_into().unwrap(),
-        enc_channel_key: 'ENC_CHANNEL_KEY'.try_into().unwrap(),
-        enc_token: 'ENC_TOKEN'.try_into().unwrap(),
-        enc_sender_addr: 'ENC_SENDER_ADDR'.try_into().unwrap(),
-    };
-    let channel_hash = 'CHANNEL_HASH'.try_into().unwrap();
-    server.create_channel(:recipient_addr, :enc_channel_info, :channel_hash);
-    assert_eq!(server.read_channel_hashes(key: channel_hash), true);
-    assert_eq!(server.read_channels_length(:recipient_addr), 1);
-    assert_eq!(server.read_channels_at(:recipient_addr, index: 0), enc_channel_info);
+fn test_open_channel() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let (enc_channel_info, channel_hash) = test.new_channel();
+    test.server.open_channel(recipient_addr: user.address, :enc_channel_info, :channel_hash);
+    assert_eq!(test.server.channel_exists(channel_hash: channel_hash), true);
+    assert_eq!(user.get_num_of_channels(), 1);
+    assert_eq!(user.get_channel_info(channel_index: 0), enc_channel_info);
 }
 
 #[test]
-fn test_create_channel_twice() {
-    let server = deploy_server();
-    let recipient_addr: ContractAddress = 'RECIPIENT_ADDRESS'.try_into().unwrap();
-    let mut nonce = 0;
-    let enc_channel_info_1 = EncChannel {
-        ephemeral_pubkey: ('EPHEMERAL_PUBKEY' + nonce.into()).try_into().unwrap(),
-        enc_channel_key: ('ENC_CHANNEL_KEY' + nonce.into()).try_into().unwrap(),
-        enc_token: ('ENC_TOKEN' + nonce.into()).try_into().unwrap(),
-        enc_sender_addr: ('ENC_SENDER_ADDR' + nonce.into()).try_into().unwrap(),
-    };
-    let channel_hash_1 = ('CHANNEL_HASH' + nonce.into()).try_into().unwrap();
-    nonce += 1;
-    server
-        .create_channel(
-            :recipient_addr, enc_channel_info: enc_channel_info_1, channel_hash: channel_hash_1,
+fn test_open_channel_twice() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    // Open first channel.
+    let (enc_channel_info_1, channel_hash_1) = test.new_channel();
+    test
+        .server
+        .open_channel(
+            recipient_addr: user.address,
+            enc_channel_info: enc_channel_info_1,
+            channel_hash: channel_hash_1,
         );
-    let enc_channel_info_2 = EncChannel {
-        ephemeral_pubkey: ('EPHEMERAL_PUBKEY' + nonce.into()).try_into().unwrap(),
-        enc_channel_key: ('ENC_CHANNEL_KEY' + nonce.into()).try_into().unwrap(),
-        enc_token: ('ENC_TOKEN' + nonce.into()).try_into().unwrap(),
-        enc_sender_addr: ('ENC_SENDER_ADDR' + nonce.into()).try_into().unwrap(),
-    };
-    let channel_hash_2 = ('CHANNEL_HASH' + nonce.into()).try_into().unwrap();
-    server
-        .create_channel(
-            :recipient_addr, enc_channel_info: enc_channel_info_2, channel_hash: channel_hash_2,
+    // Open second channel.
+    let (enc_channel_info_2, channel_hash_2) = test.new_channel();
+    test
+        .server
+        .open_channel(
+            recipient_addr: user.address,
+            enc_channel_info: enc_channel_info_2,
+            channel_hash: channel_hash_2,
         );
 
-    assert_eq!(server.read_channel_hashes(key: channel_hash_1), true);
-    assert_eq!(server.read_channel_hashes(key: channel_hash_2), true);
-    assert_eq!(server.read_channels_length(:recipient_addr), 2);
-    assert_eq!(server.read_channels_at(:recipient_addr, index: 0), enc_channel_info_1);
-    assert_eq!(server.read_channels_at(:recipient_addr, index: 1), enc_channel_info_2);
+    assert_eq!(test.server.channel_exists(channel_hash: channel_hash_1), true);
+    assert_eq!(test.server.channel_exists(channel_hash: channel_hash_2), true);
+    assert_eq!(user.get_num_of_channels(), 2);
+    assert_eq!(user.get_channel_info(channel_index: 0), enc_channel_info_1);
+    assert_eq!(user.get_channel_info(channel_index: 1), enc_channel_info_2);
 }
 
 #[test]
-fn test_create_channel_assertions() {
-    let server = deploy_server();
-    let mut recipient_addr: ContractAddress = 'RECIPIENT_ADDRESS'.try_into().unwrap();
-    let mut enc_channel_info = EncChannel {
-        ephemeral_pubkey: 'EPHEMERAL_PUBKEY'.try_into().unwrap(),
-        enc_channel_key: 'ENC_CHANNEL_KEY'.try_into().unwrap(),
-        enc_token: 'ENC_TOKEN'.try_into().unwrap(),
-        enc_sender_addr: 'ENC_SENDER_ADDR'.try_into().unwrap(),
-    };
-    let mut channel_hash = 'CHANNEL_HASH'.try_into().unwrap();
+fn test_open_channel_assertions() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let recipient_addr = user.address;
+    let (enc_channel_info, channel_hash) = test.new_channel();
 
     // Catch ZERO_RECIPIENT_ADDR.
-    let result = server
-        .safe_create_channel(recipient_addr: Zero::zero(), :enc_channel_info, :channel_hash);
+    let result = test
+        .server
+        .safe_open_channel(recipient_addr: Zero::zero(), :enc_channel_info, :channel_hash);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_ENC_CHANNEL_INFO (ephemeral_pubkey).
     let mut enc_channel_info_zero = enc_channel_info;
     enc_channel_info_zero.ephemeral_pubkey = Zero::zero();
-    let result = server
-        .safe_create_channel(
-            :recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_hash,
-        );
+    let result = test
+        .server
+        .safe_open_channel(:recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_hash);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_CHANNEL_INFO);
 
     // Catch ZERO_ENC_CHANNEL_INFO (enc_channel_key).
     let mut enc_channel_info_zero = enc_channel_info;
     enc_channel_info_zero.enc_channel_key = Zero::zero();
-    let result = server
-        .safe_create_channel(
-            :recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_hash,
-        );
+    let result = test
+        .server
+        .safe_open_channel(:recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_hash);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_CHANNEL_INFO);
 
     // Catch ZERO_ENC_CHANNEL_INFO (enc_token).
     let mut enc_channel_info_zero = enc_channel_info;
     enc_channel_info_zero.enc_token = Zero::zero();
-    let result = server
-        .safe_create_channel(
-            :recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_hash,
-        );
+    let result = test
+        .server
+        .safe_open_channel(:recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_hash);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_CHANNEL_INFO);
 
     // Catch ZERO_ENC_CHANNEL_INFO (enc_sender_addr).
     let mut enc_channel_info_zero = enc_channel_info;
     enc_channel_info_zero.enc_sender_addr = Zero::zero();
-    let result = server
-        .safe_create_channel(
-            :recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_hash,
-        );
+    let result = test
+        .server
+        .safe_open_channel(:recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_hash);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_CHANNEL_INFO);
 
     // Catch ZERO_CHANNEL_HASH.
-    let result = server
-        .safe_create_channel(:recipient_addr, :enc_channel_info, channel_hash: Zero::zero());
+    let result = test
+        .server
+        .safe_open_channel(:recipient_addr, :enc_channel_info, channel_hash: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_HASH);
 
     // Catch CHANNEL_ALREADY_EXISTS.
-    server.create_channel(:recipient_addr, :enc_channel_info, :channel_hash);
-    let result = server.safe_create_channel(:recipient_addr, :enc_channel_info, :channel_hash);
+    test.server.open_channel(:recipient_addr, :enc_channel_info, :channel_hash);
+    let result = test.server.safe_open_channel(:recipient_addr, :enc_channel_info, :channel_hash);
     assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_ALREADY_EXISTS);
+}
+
+#[test]
+fn test_channel_exists() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let recipient_addr = user.address;
+    let (enc_channel_info, channel_hash) = test.new_channel();
+    assert_eq!(test.server.channel_exists(:channel_hash), false);
+    test.server.open_channel(:recipient_addr, :enc_channel_info, :channel_hash);
+    assert_eq!(test.server.channel_exists(:channel_hash), true);
+    let (_, channel_hash) = test.new_channel();
+    assert_eq!(test.server.channel_exists(:channel_hash), false);
+}
+
+#[test]
+fn test_get_num_of_channels() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let recipient_addr = user.address;
+    // TODO: Test before registeration and after registration.
+    assert_eq!(user.get_num_of_channels(), 0);
+    let (enc_channel_info, channel_hash) = test.new_channel();
+    test.server.open_channel(:recipient_addr, :enc_channel_info, :channel_hash);
+    assert_eq!(user.get_num_of_channels(), 1);
+    let (enc_channel_info, channel_hash) = test.new_channel();
+    test.server.open_channel(:recipient_addr, :enc_channel_info, :channel_hash);
+    assert_eq!(user.get_num_of_channels(), 2);
+    let different_user = test.new_user();
+    assert_eq!(different_user.get_num_of_channels(), 0);
+}
+
+#[test]
+fn test_get_channel_info() {
+    let mut test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let (channel_1_user_1, channel_hash_1_user_1) = test.new_channel();
+    let (channel_2_user_1, channel_hash_2_user_1) = test.new_channel();
+    let (channel_1_user_2, channel_hash_1_user_2) = test.new_channel();
+    test
+        .server
+        .open_channel(
+            recipient_addr: user_1.address,
+            enc_channel_info: channel_1_user_1,
+            channel_hash: channel_hash_1_user_1,
+        );
+    test
+        .server
+        .open_channel(
+            recipient_addr: user_1.address,
+            enc_channel_info: channel_2_user_1,
+            channel_hash: channel_hash_2_user_1,
+        );
+    test
+        .server
+        .open_channel(
+            recipient_addr: user_2.address,
+            enc_channel_info: channel_1_user_2,
+            channel_hash: channel_hash_1_user_2,
+        );
+
+    assert_eq!(user_1.get_channel_info(channel_index: 0), channel_1_user_1);
+    assert_eq!(user_1.get_channel_info(channel_index: 1), channel_2_user_1);
+    assert_eq!(user_2.get_channel_info(channel_index: 0), channel_1_user_2);
+}
+
+#[test]
+fn test_get_channel_info_index_out_of_bounds() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let result = user.safe_get_channel_info(channel_index: 0);
+    assert_panic_with_error(:result, expected_error: "Index out of bounds");
+
+    let (enc_channel_info, channel_hash) = test.new_channel();
+    test.server.open_channel(recipient_addr: user.address, :enc_channel_info, :channel_hash);
+
+    let result = user.safe_get_channel_info(channel_index: 0);
+    assert!(result.is_ok());
+    let result = user.safe_get_channel_info(channel_index: 1);
+    assert_panic_with_error(:result, expected_error: "Index out of bounds");
 }
