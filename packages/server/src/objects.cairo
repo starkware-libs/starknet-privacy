@@ -1,5 +1,6 @@
 use core::num::traits::Zero;
 
+// TODO: Move to a different file?
 /// Domain-separation tags for contract hashes.
 ///
 /// Template (stable, lowercase):

@@ -1,6 +1,7 @@
 use client::errors as Errors;
 use client::objects::{NewNote, NotePath};
 use client::tests::test_utils::{Test, TestTrait, UserTrait};
+use client::utils::{encrypt_channel_info, hash};
 use core::num::traits::Zero;
 use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
 use starkware_utils_testing::test_utils::{assert_panic_with_felt_error, generic_load};
@@ -156,3 +157,388 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_AMOUNT);
 }
+
+#[test]
+fn test_open_channel() {
+    let mut test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    let token = test.new_token();
+    let random = test.get_random();
+
+    let (recipient_addr, enc_channel_info, channel_id) = user_1
+        .open_channel(recipient_addr: user_2.address, :token, :random);
+    assert_eq!(recipient_addr, user_2.address);
+    let channel_key = hash(
+        [
+            user_1.address.into(), user_1.private_key, user_2.address.into(), user_2.public_key,
+            token.into(),
+        ]
+            .span(),
+    );
+    // TODO: Is it ok for tests to reuse the same util function as the contract?
+    let expected_enc_channel_info = encrypt_channel_info(
+        ephemeral_scalar: random,
+        recipient_public_key: user_2.public_key,
+        :channel_key,
+        :token,
+        sender_addr: user_1.address,
+    );
+    let expected_channel_id = hash([channel_key].span());
+    assert_eq!(enc_channel_info, expected_enc_channel_info);
+    assert_eq!(channel_id, expected_channel_id);
+}
+
+#[test]
+fn test_open_channel_self_channel() {
+    let mut test = Default::default();
+    let user = test.new_user();
+    user.register_server();
+    let token = test.new_token();
+    let random = test.get_random();
+
+    let (recipient_addr, enc_channel_info, channel_id) = user
+        .open_channel(recipient_addr: user.address, :token, :random);
+    assert_eq!(recipient_addr, user.address);
+    let channel_key = hash(
+        [user.address.into(), user.private_key, user.address.into(), user.public_key, token.into()]
+            .span(),
+    );
+    let expected_enc_channel_info = encrypt_channel_info(
+        ephemeral_scalar: random,
+        recipient_public_key: user.public_key,
+        :channel_key,
+        :token,
+        sender_addr: user.address,
+    );
+    let expected_channel_id = hash([channel_key].span());
+    assert_eq!(enc_channel_info, expected_enc_channel_info);
+    assert_eq!(channel_id, expected_channel_id);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_open_channel_assertions() {
+    let mut test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.new_token();
+    let random = test.get_random();
+
+    // Catch ZERO_SENDER_ADDR.
+    let mut user_zero_addr = user_1;
+    user_zero_addr.address = Zero::zero();
+    let result = user_zero_addr.safe_open_channel(recipient_addr: user_2.address, :token, :random);
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_SENDER_ADDR);
+
+    // Catch ZERO_SENDER_PRIVATE_KEY.
+    let mut user_zero_private_key = user_1;
+    user_zero_private_key.private_key = Zero::zero();
+    let result = user_zero_private_key
+        .safe_open_channel(recipient_addr: user_2.address, :token, :random);
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_SENDER_PRIVATE_KEY);
+
+    // Catch ZERO_RECIPIENT_ADDR.
+    let result = user_1.safe_open_channel(recipient_addr: Zero::zero(), :token, :random);
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_RECIPIENT_ADDR);
+
+    // Catch ZERO_TOKEN.
+    let result = user_1
+        .safe_open_channel(recipient_addr: user_2.address, token: Zero::zero(), :random);
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_TOKEN);
+
+    // Catch ZERO_RANDOM.
+    let result = user_1
+        .safe_open_channel(recipient_addr: user_2.address, :token, random: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_RANDOM);
+
+    // TODO: Catch SENDER_NOT_AUTHENTICATED - sender not registered.
+    let result = user_1.safe_open_channel(recipient_addr: user_2.address, :token, :random);
+    assert_panic_with_felt_error(:result, expected_error: Errors::SENDER_NOT_AUTHENTICATED);
+
+    // TODO: Catch RECIPIENT_NOT_REGISTERED - sender use wrong private key.
+    user_1.register_server();
+    let user_1_private_key = user_1.private_key;
+    user_1.private_key = user_1.public_key;
+    let result = user_1.safe_open_channel(recipient_addr: user_2.address, :token, :random);
+    assert_panic_with_felt_error(:result, expected_error: Errors::SENDER_NOT_AUTHENTICATED);
+    user_1.private_key = user_1_private_key;
+
+    // TODO: Catch RECIPIENT_NOT_REGISTERED - recipient not registered.
+    let result = user_1.safe_open_channel(recipient_addr: user_2.address, :token, :random);
+    assert_panic_with_felt_error(:result, expected_error: Errors::RECIPIENT_NOT_REGISTERED);
+}
+
+#[test]
+fn test_open_channel_multiple_channels_same_sender() {
+    let mut test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let user_3 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    user_3.register_server();
+    let token = test.new_token();
+    let random_1 = test.get_random();
+    let random_2 = test.get_random();
+
+    let c1_output = user_1.open_channel(recipient_addr: user_2.address, :token, random: random_1);
+    let c2_output = user_1.open_channel(recipient_addr: user_3.address, :token, random: random_2);
+    let (c1_recipient_addr, c1_enc_channel_info, c1_channel_id) = c1_output;
+    let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
+    assert_eq!(c1_recipient_addr, user_2.address);
+    assert_eq!(c2_recipient_addr, user_3.address);
+    let channel_key_1 = hash(
+        [
+            user_1.address.into(), user_1.private_key, user_2.address.into(), user_2.public_key,
+            token.into(),
+        ]
+            .span(),
+    );
+    let channel_key_2 = hash(
+        [
+            user_1.address.into(), user_1.private_key, user_3.address.into(), user_3.public_key,
+            token.into(),
+        ]
+            .span(),
+    );
+    assert_ne!(channel_key_1, channel_key_2);
+    let expected_enc_channel_info_1 = encrypt_channel_info(
+        ephemeral_scalar: random_1,
+        recipient_public_key: user_2.public_key,
+        channel_key: channel_key_1,
+        :token,
+        sender_addr: user_1.address,
+    );
+    let expected_enc_channel_info_2 = encrypt_channel_info(
+        ephemeral_scalar: random_2,
+        recipient_public_key: user_3.public_key,
+        channel_key: channel_key_2,
+        :token,
+        sender_addr: user_1.address,
+    );
+    assert_ne!(
+        expected_enc_channel_info_1.ephemeral_pubkey, expected_enc_channel_info_2.ephemeral_pubkey,
+    );
+    assert_ne!(
+        expected_enc_channel_info_1.enc_channel_key, expected_enc_channel_info_2.enc_channel_key,
+    );
+    assert_ne!(expected_enc_channel_info_1.enc_token, expected_enc_channel_info_2.enc_token);
+    assert_ne!(
+        expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
+    );
+    assert_eq!(c1_enc_channel_info, expected_enc_channel_info_1);
+    assert_eq!(c2_enc_channel_info, expected_enc_channel_info_2);
+    let expected_channel_id_1 = hash([channel_key_1].span());
+    let expected_channel_id_2 = hash([channel_key_2].span());
+    assert_ne!(expected_channel_id_1, expected_channel_id_2);
+    assert_eq!(c1_channel_id, expected_channel_id_1);
+    assert_eq!(c2_channel_id, expected_channel_id_2);
+}
+
+
+#[test]
+fn test_open_channel_multiple_channels_same_recipient() {
+    let mut test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let user_3 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    user_3.register_server();
+    let token = test.new_token();
+    let random_1 = test.get_random();
+    let random_2 = test.get_random();
+
+    let c1_output = user_2.open_channel(recipient_addr: user_1.address, :token, random: random_1);
+    let c2_output = user_3.open_channel(recipient_addr: user_1.address, :token, random: random_2);
+    let (c1_recipient_addr, c1_enc_channel_info, c1_channel_id) = c1_output;
+    let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
+    assert_eq!(c1_recipient_addr, user_1.address);
+    assert_eq!(c2_recipient_addr, user_1.address);
+    let channel_key_1 = hash(
+        [
+            user_2.address.into(), user_2.private_key, user_1.address.into(), user_1.public_key,
+            token.into(),
+        ]
+            .span(),
+    );
+    let channel_key_2 = hash(
+        [
+            user_3.address.into(), user_3.private_key, user_1.address.into(), user_1.public_key,
+            token.into(),
+        ]
+            .span(),
+    );
+    assert_ne!(channel_key_1, channel_key_2);
+    let expected_enc_channel_info_1 = encrypt_channel_info(
+        ephemeral_scalar: random_1,
+        recipient_public_key: user_1.public_key,
+        channel_key: channel_key_1,
+        :token,
+        sender_addr: user_2.address,
+    );
+    let expected_enc_channel_info_2 = encrypt_channel_info(
+        ephemeral_scalar: random_2,
+        recipient_public_key: user_1.public_key,
+        channel_key: channel_key_2,
+        :token,
+        sender_addr: user_3.address,
+    );
+    assert_ne!(
+        expected_enc_channel_info_1.ephemeral_pubkey, expected_enc_channel_info_2.ephemeral_pubkey,
+    );
+    assert_ne!(
+        expected_enc_channel_info_1.enc_channel_key, expected_enc_channel_info_2.enc_channel_key,
+    );
+    assert_ne!(expected_enc_channel_info_1.enc_token, expected_enc_channel_info_2.enc_token);
+    assert_ne!(
+        expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
+    );
+    assert_eq!(c1_enc_channel_info, expected_enc_channel_info_1);
+    assert_eq!(c2_enc_channel_info, expected_enc_channel_info_2);
+    let expected_channel_id_1 = hash([channel_key_1].span());
+    let expected_channel_id_2 = hash([channel_key_2].span());
+    assert_ne!(expected_channel_id_1, expected_channel_id_2);
+    assert_eq!(c1_channel_id, expected_channel_id_1);
+    assert_eq!(c2_channel_id, expected_channel_id_2);
+}
+
+#[test]
+fn test_open_channel_multiple_tokens() {
+    let mut test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    let token_1 = test.new_token();
+    let token_2 = test.new_token();
+    let random_1 = test.get_random();
+    let random_2 = test.get_random();
+
+    let c1_output = user_1
+        .open_channel(recipient_addr: user_2.address, token: token_1, random: random_1);
+    let c2_output = user_1
+        .open_channel(recipient_addr: user_2.address, token: token_2, random: random_2);
+    let (c1_recipient_addr, c1_enc_channel_info, c1_channel_id) = c1_output;
+    let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
+    assert_eq!(c1_recipient_addr, user_2.address);
+    assert_eq!(c2_recipient_addr, user_2.address);
+    let channel_key_1 = hash(
+        [
+            user_1.address.into(), user_1.private_key, user_2.address.into(), user_2.public_key,
+            token_1.into(),
+        ]
+            .span(),
+    );
+    let channel_key_2 = hash(
+        [
+            user_1.address.into(), user_1.private_key, user_2.address.into(), user_2.public_key,
+            token_2.into(),
+        ]
+            .span(),
+    );
+    assert_ne!(channel_key_1, channel_key_2);
+    let expected_enc_channel_info_1 = encrypt_channel_info(
+        ephemeral_scalar: random_1,
+        recipient_public_key: user_2.public_key,
+        channel_key: channel_key_1,
+        token: token_1,
+        sender_addr: user_1.address,
+    );
+    let expected_enc_channel_info_2 = encrypt_channel_info(
+        ephemeral_scalar: random_2,
+        recipient_public_key: user_2.public_key,
+        channel_key: channel_key_2,
+        token: token_2,
+        sender_addr: user_1.address,
+    );
+    assert_ne!(
+        expected_enc_channel_info_1.ephemeral_pubkey, expected_enc_channel_info_2.ephemeral_pubkey,
+    );
+    assert_ne!(
+        expected_enc_channel_info_1.enc_channel_key, expected_enc_channel_info_2.enc_channel_key,
+    );
+    assert_ne!(expected_enc_channel_info_1.enc_token, expected_enc_channel_info_2.enc_token);
+    assert_ne!(
+        expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
+    );
+    assert_eq!(c1_enc_channel_info, expected_enc_channel_info_1);
+    assert_eq!(c2_enc_channel_info, expected_enc_channel_info_2);
+    let expected_channel_id_1 = hash([channel_key_1].span());
+    let expected_channel_id_2 = hash([channel_key_2].span());
+    assert_ne!(expected_channel_id_1, expected_channel_id_2);
+    assert_eq!(c1_channel_id, expected_channel_id_1);
+    assert_eq!(c2_channel_id, expected_channel_id_2);
+}
+
+#[test]
+fn test_open_channel_self_channel_multiple_tokens() {
+    let mut test = Default::default();
+    let user = test.new_user();
+    user.register_server();
+    let token_1 = test.new_token();
+    let token_2 = test.new_token();
+    let random_1 = test.get_random();
+    let random_2 = test.get_random();
+
+    let c1_output = user
+        .open_channel(recipient_addr: user.address, token: token_1, random: random_1);
+    let c2_output = user
+        .open_channel(recipient_addr: user.address, token: token_2, random: random_2);
+    let (c1_recipient_addr, c1_enc_channel_info, c1_channel_id) = c1_output;
+    let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
+    assert_eq!(c1_recipient_addr, user.address);
+    assert_eq!(c2_recipient_addr, user.address);
+    let channel_key_1 = hash(
+        [
+            user.address.into(), user.private_key, user.address.into(), user.public_key,
+            token_1.into(),
+        ]
+            .span(),
+    );
+    let channel_key_2 = hash(
+        [
+            user.address.into(), user.private_key, user.address.into(), user.public_key,
+            token_2.into(),
+        ]
+            .span(),
+    );
+    assert_ne!(channel_key_1, channel_key_2);
+    let expected_enc_channel_info_1 = encrypt_channel_info(
+        ephemeral_scalar: random_1,
+        recipient_public_key: user.public_key,
+        channel_key: channel_key_1,
+        token: token_1,
+        sender_addr: user.address,
+    );
+    let expected_enc_channel_info_2 = encrypt_channel_info(
+        ephemeral_scalar: random_2,
+        recipient_public_key: user.public_key,
+        channel_key: channel_key_2,
+        token: token_2,
+        sender_addr: user.address,
+    );
+    assert_ne!(
+        expected_enc_channel_info_1.ephemeral_pubkey, expected_enc_channel_info_2.ephemeral_pubkey,
+    );
+    assert_ne!(
+        expected_enc_channel_info_1.enc_channel_key, expected_enc_channel_info_2.enc_channel_key,
+    );
+    assert_ne!(expected_enc_channel_info_1.enc_token, expected_enc_channel_info_2.enc_token);
+    assert_ne!(
+        expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
+    );
+    assert_eq!(c1_enc_channel_info, expected_enc_channel_info_1);
+    assert_eq!(c2_enc_channel_info, expected_enc_channel_info_2);
+    let expected_channel_id_1 = hash([channel_key_1].span());
+    let expected_channel_id_2 = hash([channel_key_2].span());
+    assert_ne!(expected_channel_id_1, expected_channel_id_2);
+    assert_eq!(c1_channel_id, expected_channel_id_1);
+    assert_eq!(c2_channel_id, expected_channel_id_2);
+}
+// TODO: Test open channels with same random values.
+
+

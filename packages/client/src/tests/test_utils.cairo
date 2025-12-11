@@ -1,14 +1,18 @@
-use client::client::Client::deploy_for_test;
+use client::client::Client::deploy_for_test as deploy_client_for_test;
 use client::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
 };
 use client::objects::{NewNote, NotePath};
+use client::utils::{derive_public_key, hash};
 use core::num::traits::Zero;
-use server::objects::EncNote;
+use server::interface::{IServerDispatcher, IServerDispatcherTrait};
+use server::objects::{EncChannelInfo, EncNote};
+use server::server::Server::deploy_for_test as deploy_server_for_test;
 use snforge_std::{DeclareResultTrait, declare};
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
+use starkware_utils_testing::test_utils::cheat_caller_address_once;
 
 #[derive(Copy, Drop)]
 pub(crate) struct ClientCfg {
@@ -16,10 +20,11 @@ pub(crate) struct ClientCfg {
     pub server: ContractAddress,
 }
 
-#[derive(Drop)]
+#[derive(Drop, Copy)]
 struct User {
     pub address: ContractAddress,
     pub client: ContractAddress,
+    pub server: ContractAddress,
     pub private_key: felt252,
     pub public_key: felt252,
 }
@@ -50,6 +55,38 @@ pub(crate) impl UserImpl of UserTrait {
                 :notes_to_create,
             )
     }
+
+    fn open_channel(
+        self: @User, recipient_addr: ContractAddress, token: ContractAddress, random: felt252,
+    ) -> (ContractAddress, EncChannelInfo, felt252) {
+        IClientDispatcher { contract_address: *self.client }
+            .open_channel(
+                sender_addr: *self.address,
+                sender_private_key: *self.private_key,
+                :recipient_addr,
+                :token,
+                :random,
+            )
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_open_channel(
+        self: @User, recipient_addr: ContractAddress, token: ContractAddress, random: felt252,
+    ) -> Result<(ContractAddress, EncChannelInfo, felt252), Array<felt252>> {
+        IClientSafeDispatcher { contract_address: *self.client }
+            .open_channel(
+                sender_addr: *self.address,
+                sender_private_key: *self.private_key,
+                :recipient_addr,
+                :token,
+                :random,
+            )
+    }
+
+    fn register_server(self: @User) {
+        cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
+        IServerDispatcher { contract_address: *self.server }.register(public_key: *self.public_key)
+    }
 }
 
 #[derive(Drop, Copy)]
@@ -62,18 +99,25 @@ pub(crate) struct Test {
 pub(crate) impl TestImpl of TestTrait {
     fn new_user(ref self: Test) -> User {
         self.nonce += 1;
+        let private_key = ('PRIVATE_KEY' + self.nonce.into()).try_into().unwrap();
+        let public_key = derive_public_key(:private_key);
         User {
             address: ('USER_ADDRESS' + self.nonce.into()).try_into().unwrap(),
             client: self.cfg.address,
-            // TODO: Generate valid private-public key pair.
-            private_key: ('PRIVATE_KEY' + self.nonce.into()).try_into().unwrap(),
-            public_key: ('PUBLIC_KEY' + self.nonce.into()).try_into().unwrap(),
+            server: self.cfg.server,
+            private_key,
+            public_key,
         }
     }
 
     fn new_token(ref self: Test) -> ContractAddress {
         self.nonce += 1;
         ('TOKEN_ADDRESS' + self.nonce.into()).try_into().unwrap()
+    }
+
+    fn get_random(ref self: Test) -> felt252 {
+        self.nonce += 1;
+        hash(['RANDOM', self.nonce.into()].span())
     }
 }
 
@@ -85,13 +129,24 @@ impl DefaultTestImpl of Default<Test> {
 }
 
 pub(crate) fn deploy_client() -> ClientCfg {
-    let server: ContractAddress = 'SERVER_ADDRESS'.try_into().unwrap();
+    let server = deploy_server();
 
     let contract_class_hash = declare(contract: "Client").unwrap().contract_class().class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
-    let (contract_address, _) = deploy_for_test(
+    let (contract_address, _) = deploy_client_for_test(
         class_hash: *contract_class_hash, :deployment_params, :server,
     )
-        .expect('Deployment failed');
+        .expect('Client deployment failed');
     ClientCfg { address: contract_address, server }
+}
+
+// TODO: Import from server or shared package.
+pub(crate) fn deploy_server() -> ContractAddress {
+    let contract_class_hash = declare(contract: "Server").unwrap().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_server_for_test(
+        class_hash: *contract_class_hash, :deployment_params,
+    )
+        .expect('Server deployment failed');
+    contract_address
 }
