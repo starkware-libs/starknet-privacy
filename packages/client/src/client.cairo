@@ -2,8 +2,9 @@
 pub mod Client {
     use client::errors as Errors;
     use client::interface::IClient;
-    use client::objects::{EncryptedNote, NewNote, NotePath};
+    use client::objects::{NewNote, NotePath};
     use core::num::traits::Zero;
+    use server::objects::EncNote;
     use starknet::ContractAddress;
     use starknet::storage::StoragePointerWriteAccess;
 
@@ -32,7 +33,7 @@ pub mod Client {
             private_key: felt252,
             notes_to_use: Span<NotePath>,
             notes_to_create: Span<NewNote>,
-        ) -> (Span<felt252>, Span<EncryptedNote>) {
+        ) -> (Span<felt252>, Span<EncNote>) {
             assert(!notes_to_use.is_empty(), Errors::NO_NOTES_TO_USE);
             assert(!notes_to_create.is_empty(), Errors::NO_NOTES_TO_CREATE);
 
@@ -68,7 +69,7 @@ pub mod Client {
 
         fn create_notes(
             self: @ContractState, notes_to_create: Span<NewNote>,
-        ) -> (Span<EncryptedNote>, u256) {
+        ) -> (Span<EncNote>, u256) {
             for note in notes_to_create {
                 assert(note.recipient_addr.is_non_zero(), Errors::ZERO_RECIPIENT_ADDR);
                 assert(note.token.is_non_zero(), Errors::ZERO_TOKEN);

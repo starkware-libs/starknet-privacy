@@ -1,4 +1,5 @@
-use client::objects::{EncryptedNote, NewNote, NotePath};
+use client::objects::{NewNote, NotePath};
+use server::objects::EncNote;
 use starknet::ContractAddress;
 
 #[starknet::interface]
@@ -20,7 +21,7 @@ pub trait IClient<T> {
     ///
     /// #### Returns
     /// - (`Span<felt252>`) - The nullifiers of `notes_to_use`.
-    /// - (`Span<EncryptedNote>`) - An encrypted representation of `notes_to_create`.
+    /// - (`Span<EncNote>`) - An encrypted representation of `notes_to_create`.
     ///
     /// #### Preconditions
     /// - `owner` is registered with `private_key` in the server.
@@ -57,5 +58,5 @@ pub trait IClient<T> {
         private_key: felt252,
         notes_to_use: Span<NotePath>,
         notes_to_create: Span<NewNote>,
-    ) -> (Span<felt252>, Span<EncryptedNote>);
+    ) -> (Span<felt252>, Span<EncNote>);
 }

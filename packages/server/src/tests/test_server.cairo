@@ -1,10 +1,7 @@
 use core::num::traits::Zero;
 use server::errors;
-use server::interface::{IServerSafeDispatcher, IServerSafeDispatcherTrait};
 use server::tests::test_utils::{ServerCfgTrait, Test, TestTrait, UserTrait};
-use starkware_utils_testing::test_utils::{
-    assert_panic_with_error, assert_panic_with_felt_error, cheat_caller_address_once,
-};
+use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 #[test]
 fn test_open_channel() {
     let mut test: Test = Default::default();
@@ -187,29 +184,29 @@ fn test_get_channel_info_index_out_of_bounds() {
 #[test]
 fn test_get_note() {
     let mut test: Test = Default::default();
-    let (note_id, enc_note_value) = test.new_note();
-    assert_eq!(test.server.get_note(:note_id), Zero::zero());
-    test.server.create_note(:note_id, :enc_note_value);
-    assert_eq!(test.server.get_note(:note_id), enc_note_value);
+    let note = test.new_note();
+    assert_eq!(test.server.get_note(note_id: note.id), Zero::zero());
+    test.server.create_note(:note);
+    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
 }
 
 #[test]
 fn test_create_note() {
     let mut test: Test = Default::default();
-    let (note_id, enc_note_value) = test.new_note();
-    test.server.create_note(:note_id, :enc_note_value);
-    assert_eq!(test.server.get_note(:note_id), enc_note_value);
+    let note = test.new_note();
+    test.server.create_note(:note);
+    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
 }
 
 #[test]
 fn test_create_note_twice() {
     let mut test: Test = Default::default();
-    let (note_id_1, enc_note_value_1) = test.new_note();
-    test.server.create_note(note_id: note_id_1, enc_note_value: enc_note_value_1);
-    let (note_id_2, enc_note_value_2) = test.new_note();
-    test.server.create_note(note_id: note_id_2, enc_note_value: enc_note_value_2);
-    assert_eq!(test.server.get_note(note_id: note_id_1), enc_note_value_1);
-    assert_eq!(test.server.get_note(note_id: note_id_2), enc_note_value_2);
+    let note_1 = test.new_note();
+    test.server.create_note(note: note_1);
+    let note_2 = test.new_note();
+    test.server.create_note(note: note_2);
+    assert_eq!(test.server.get_note(note_id: note_1.id), note_1.enc_amount);
+    assert_eq!(test.server.get_note(note_id: note_2.id), note_2.enc_amount);
 }
 
 
@@ -218,26 +215,29 @@ fn test_create_note_twice() {
 #[should_panic(expected_error: errors::ZERO_NOTE_ID)]
 fn test_create_note_zero_note_id() {
     let mut test: Test = Default::default();
-    let (_, enc_note_value) = test.new_note();
-    test.server.create_note(note_id: Zero::zero(), :enc_note_value);
+    let mut note = test.new_note();
+    note.id = Zero::zero();
+    test.server.create_note(:note);
 }
 
 #[test]
 #[should_panic(expected_error: errors::ZERO_ENC_NOTE_VALUE)]
 fn test_create_note_zero_enc_note_value() {
     let mut test: Test = Default::default();
-    let (note_id, _) = test.new_note();
-    test.server.create_note(:note_id, enc_note_value: Zero::zero());
+    let mut note = test.new_note();
+    note.enc_amount = Zero::zero();
+    test.server.create_note(:note);
 }
 
 #[test]
 #[should_panic(expected_error: errors::NOTE_ALREADY_EXISTS)]
 fn test_create_note_note_already_exists() {
     let mut test: Test = Default::default();
-    let (note_id, enc_note_value) = test.new_note();
-    test.server.create_note(:note_id, :enc_note_value);
-    let (_, diff_enc_note_value) = test.new_note();
-    test.server.create_note(:note_id, enc_note_value: diff_enc_note_value);
+    let note = test.new_note();
+    test.server.create_note(:note);
+    let mut diff_note = test.new_note();
+    diff_note.id = note.id;
+    test.server.create_note(note: diff_note);
 }
 
 #[test]
@@ -298,15 +298,16 @@ fn test_register() {
 #[feature("safe_dispatcher")]
 fn test_register_assertions() {
     let mut test: Test = Default::default();
-    let user = test.new_user();
+    let mut user = test.new_user();
+    let first_public_key = user.public_key;
 
     // Catch ZERO_PUBLIC_KEY.
-    cheat_caller_address_once(contract_address: user.server, caller_address: user.address);
-    let result = IServerSafeDispatcher { contract_address: user.server }
-        .register(public_key: Zero::zero());
+    user.public_key = Zero::zero();
+    let result = user.safe_register();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
     // Catch USER_ALREADY_REGISTERED.
+    user.public_key = first_public_key;
     user.register();
     let result = user.safe_register();
     assert_panic_with_felt_error(:result, expected_error: errors::USER_ALREADY_REGISTERED);
@@ -328,6 +329,7 @@ fn test_register_multiple_users() {
     let mut test: Test = Default::default();
     let user1 = test.new_user();
     let user2 = test.new_user();
+    let user3 = test.new_user();
     let public_key1 = user1.public_key;
     let public_key2 = user2.public_key;
     assert_ne!(public_key1, public_key2, "Public keys should be different.");
@@ -341,5 +343,26 @@ fn test_register_multiple_users() {
     // Verify both public keys are stored correctly.
     assert_eq!(user1.get_public_key(), public_key1);
     assert_eq!(user2.get_public_key(), public_key2);
+    // User3 has not registered, so get_public_key should return zero.
+    assert_eq!(user3.get_public_key(), Zero::zero());
+}
+
+#[test]
+fn test_register_multiple_users_same_public_key() {
+    let mut test: Test = Default::default();
+    let user1 = test.new_user();
+    let mut user2 = test.new_user();
+
+    // Set the same public key for both users.
+    let shared_public_key = user1.public_key;
+    user2.public_key = shared_public_key;
+
+    // Register both users.
+    user1.register();
+    user2.register();
+
+    // Both should be able to fetch the shared public key.
+    assert_eq!(user1.get_public_key(), shared_public_key);
+    assert_eq!(user2.get_public_key(), shared_public_key);
 }
 
