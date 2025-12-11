@@ -7,6 +7,7 @@ version = "0.1.0"
 dependencies = [
  "openzeppelin",
  "openzeppelin_testing",
+ "server",
  "snforge_std",
  "starkware_utils",
  "starkware_utils_testing",
