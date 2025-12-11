@@ -290,25 +290,25 @@ fn test_register() {
     let user = test.new_user();
     let public_key = user.public_key;
     cheat_caller_address_once(contract_address: test.server.address, caller_address: user.address);
-    test.server.register(:public_key);
+    user.register(:public_key);
     // Verify that user is registered with the correct public key.
-    assert_eq!(test.server.get_public_key(user: user.address), public_key);
+    assert_eq!(user.get_public_key(user: user.address), public_key);
 }
 
 #[test]
 #[feature("safe_dispatcher")]
 fn test_register_assertions() {
     let mut test: Test = Default::default();
+    let user = test.new_user();
 
     // Catch ZERO_PUBLIC_KEY.
-    let result = test.server.safe_register(public_key: Zero::zero());
+    let result = user.safe_register(public_key: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
     // Catch USER_ALREADY_REGISTERED.
-    let user = test.new_user();
     let public_key = user.public_key;
-    test.server.register(:public_key);
-    let result = test.server.safe_register(public_key: public_key);
+    user.register(:public_key);
+    let result = user.safe_register(public_key: public_key);
     assert_panic_with_felt_error(:result, expected_error: errors::USER_ALREADY_REGISTERED);
 }
 
@@ -317,11 +317,11 @@ fn test_get_public_key() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     // Don't register the user.
-    assert_eq!(test.server.get_public_key(user: user.address), Zero::zero());
+    assert_eq!(user.get_public_key(user: user.address), Zero::zero());
     // Register the user.
     cheat_caller_address_once(contract_address: test.server.address, caller_address: user.address);
-    test.server.register(public_key: user.public_key);
-    assert_eq!(test.server.get_public_key(user: user.address), user.public_key);
+    user.register(public_key: user.public_key);
+    assert_eq!(user.get_public_key(user: user.address), user.public_key);
 }
 
 #[test]
@@ -335,14 +335,14 @@ fn test_register_multiple_users() {
 
     // Register user1.
     cheat_caller_address_once(contract_address: test.server.address, caller_address: user1.address);
-    test.server.register(public_key: public_key1);
+    user1.register(public_key: public_key1);
 
     // Register user2.
     cheat_caller_address_once(contract_address: test.server.address, caller_address: user2.address);
-    test.server.register(public_key: public_key2);
+    user2.register(public_key: public_key2);
 
     // Verify both public keys are stored correctly.
-    assert_eq!(test.server.get_public_key(user: user1.address), public_key1);
-    assert_eq!(test.server.get_public_key(user: user2.address), public_key2);
+    assert_eq!(user1.get_public_key(user: user1.address), public_key1);
+    assert_eq!(user2.get_public_key(user: user2.address), public_key2);
 }
 
