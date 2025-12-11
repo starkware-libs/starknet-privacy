@@ -1,5 +1,6 @@
-use server::objects::EncChannelInfo;
+use server::objects::{EncChannelInfo, EncNote};
 use starknet::ContractAddress;
+use starkware_utils::erc20::erc20_errors::Erc20Error;
 
 // TODO: Consider separate interface for views.
 
@@ -202,4 +203,44 @@ pub trait IServer<T> {
     /// #### Access Control
     /// - Any address can call this function.
     fn get_public_key(self: @T, user: ContractAddress) -> felt252;
+
+    /// Deposits funds into the contract and creates a note.
+    ///
+    /// #### Parameters
+    /// - `user` (`ContractAddress`): The address of the user depositing the funds.
+    ///                               Must not be zero.
+    /// - `token` (`ContractAddress`): The address of the token to deposit. Must not be zero.
+    /// - `amount` (`u128`): The amount to deposit. Must not be zero.
+    /// - `note` (`EncNote`): The encrypted note to create.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Preconditions
+    /// - All inputs must not be zero.
+    /// - The note must not already exist.
+    /// - The user must have approved the contract to spend the amount.
+    /// - The user must have enough balance.
+    ///
+    /// #### Events Emitted
+    /// - TODO
+    ///
+    /// #### Reverts
+    /// TODO: Figure out a way to link external errors.
+    /// - [`ZERO_USER`](server::errors::ZERO_USER): Thrown if `user` is zero.
+    /// - [`ZERO_TOKEN`](server::errors::ZERO_TOKEN): Thrown if `token` is zero.
+    /// - [`ZERO_AMOUNT`](server::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
+    /// - [`ZERO_NOTE_ID`](server::errors::ZERO_NOTE_ID): Thrown if `note.id` is zero.
+    /// - [`ZERO_ENC_NOTE_VALUE`](server::errors::ZERO_ENC_NOTE_VALUE): Thrown if
+    /// `note.enc_amount` is zero.
+    /// - [`NOTE_ALREADY_EXISTS`](server::errors::NOTE_ALREADY_EXISTS): Thrown if the note already
+    /// exists.
+    /// - [`INSUFFICIENT_ALLOWANCE`]: Thrown if the allowance is insufficient.
+    /// - [`INSUFFICIENT_BALANCE`]: Thrown if the balance is insufficient.
+    ///
+    /// #### Access Control
+    /// - TODO
+    fn deposit(
+        ref self: T, user: ContractAddress, token: ContractAddress, amount: u128, note: EncNote,
+    );
 }

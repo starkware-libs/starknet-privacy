@@ -1,6 +1,7 @@
 #[starknet::contract]
 pub mod Server {
     use core::num::traits::Zero;
+    use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use server::errors;
     use server::interface::IServer;
     use server::objects::{EncChannelInfo, EncChannelInfoTrait, EncNote};
@@ -8,7 +9,8 @@ pub mod Server {
         Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
         StoragePointerReadAccess, Vec, VecTrait,
     };
-    use starknet::{ContractAddress, get_caller_address};
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use starkware_utils::erc20::erc20_utils::CheckedIERC20DispatcherTrait;
 
     #[storage]
     struct Storage {
@@ -109,6 +111,26 @@ pub mod Server {
 
         fn get_public_key(self: @ContractState, user: ContractAddress) -> felt252 {
             self.public_key.read(user)
+        }
+
+        fn deposit(
+            ref self: ContractState,
+            user: ContractAddress,
+            token: ContractAddress,
+            amount: u128,
+            note: EncNote,
+        ) {
+            // Assert inputs are valid.
+            assert(user.is_non_zero(), errors::ZERO_USER);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+
+            self.create_note(:note);
+
+            IERC20Dispatcher { contract_address: token }
+                .checked_transfer_from(
+                    sender: user, recipient: get_contract_address(), amount: amount.into(),
+                );
         }
     }
 

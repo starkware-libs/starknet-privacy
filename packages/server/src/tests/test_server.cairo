@@ -1,6 +1,11 @@
 use core::num::traits::Zero;
 use server::errors;
-use server::tests::test_utils::{ServerCfgTrait, Test, TestTrait, UserTrait};
+use server::tests::test_utils::{
+    PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
+};
+use snforge_std::{CustomToken, Token};
+use starkware_utils::erc20::erc20_errors::Erc20Error;
+use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
 #[test]
@@ -185,7 +190,7 @@ fn test_get_channel_info_index_out_of_bounds() {
 #[test]
 fn test_get_note() {
     let mut test: Test = Default::default();
-    let note = test.new_note();
+    let note = test.new_note(amount: constants::DEFAULT_AMOUNT);
     assert_eq!(test.server.get_note(note_id: note.id), Zero::zero());
     test.server.create_note(:note);
     assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
@@ -194,7 +199,7 @@ fn test_get_note() {
 #[test]
 fn test_create_note() {
     let mut test: Test = Default::default();
-    let note = test.new_note();
+    let note = test.new_note(amount: constants::DEFAULT_AMOUNT);
     test.server.create_note(:note);
     assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
 }
@@ -202,9 +207,10 @@ fn test_create_note() {
 #[test]
 fn test_create_note_twice() {
     let mut test: Test = Default::default();
-    let note_1 = test.new_note();
+    let amount = constants::DEFAULT_AMOUNT;
+    let note_1 = test.new_note(:amount);
     test.server.create_note(note: note_1);
-    let note_2 = test.new_note();
+    let note_2 = test.new_note(:amount);
     test.server.create_note(note: note_2);
     assert_eq!(test.server.get_note(note_id: note_1.id), note_1.enc_amount);
     assert_eq!(test.server.get_note(note_id: note_2.id), note_2.enc_amount);
@@ -216,7 +222,7 @@ fn test_create_note_twice() {
 #[should_panic(expected_error: errors::ZERO_NOTE_ID)]
 fn test_create_note_zero_note_id() {
     let mut test: Test = Default::default();
-    let mut note = test.new_note();
+    let mut note = test.new_note(amount: constants::DEFAULT_AMOUNT);
     note.id = Zero::zero();
     test.server.create_note(:note);
 }
@@ -225,7 +231,7 @@ fn test_create_note_zero_note_id() {
 #[should_panic(expected_error: errors::ZERO_ENC_NOTE_VALUE)]
 fn test_create_note_zero_enc_note_value() {
     let mut test: Test = Default::default();
-    let mut note = test.new_note();
+    let mut note = test.new_note(amount: constants::DEFAULT_AMOUNT);
     note.enc_amount = Zero::zero();
     test.server.create_note(:note);
 }
@@ -234,9 +240,10 @@ fn test_create_note_zero_enc_note_value() {
 #[should_panic(expected_error: errors::NOTE_ALREADY_EXISTS)]
 fn test_create_note_note_already_exists() {
     let mut test: Test = Default::default();
-    let note = test.new_note();
+    let amount = constants::DEFAULT_AMOUNT;
+    let note = test.new_note(:amount);
     test.server.create_note(:note);
-    let mut diff_note = test.new_note();
+    let mut diff_note = test.new_note(:amount);
     diff_note.id = note.id;
     test.server.create_note(note: diff_note);
 }
@@ -367,3 +374,87 @@ fn test_register_multiple_users_same_public_key() {
     assert_eq!(user2.get_public_key(), shared_public_key);
 }
 
+#[test]
+fn test_deposit() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let user = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    token.supply(:user, :amount);
+    let note = test.new_note(:amount);
+
+    // Check balances
+    assert_eq!(token.balance_of(address: user.address), amount.into());
+    assert_eq!(token.balance_of(address: test.server.address), Zero::zero());
+
+    // Deposit
+    user.deposit(:token, :amount, :note);
+
+    // Check balances after deposit
+    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.server.address), amount.into());
+
+    // Check storage
+    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_deposit_assertions() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let token = test.new_token();
+    let zero_token = Token::Custom(
+        CustomToken { contract_address: Zero::zero(), balances_variable_selector: Zero::zero() },
+    );
+    let amount = constants::DEFAULT_AMOUNT;
+    let note = test.new_note(:amount);
+
+    // Catch ZERO_TOKEN
+    let result = user.safe_deposit(token: zero_token, :amount, :note);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+
+    // Catch ZERO_AMOUNT
+    let result = user.safe_deposit(:token, amount: Zero::zero(), :note);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
+
+    // Catch ZERO_USER
+    let mut zero_user = test.new_user();
+    zero_user.address = Zero::zero();
+    let result = zero_user.safe_deposit(:token, :amount, :note);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER);
+
+    // Catch ZERO_NOTE_ID
+    let mut zero_note = test.new_note(:amount);
+    zero_note.id = Zero::zero();
+    let result = user.safe_deposit(:token, :amount, note: zero_note);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NOTE_ID);
+
+    // Catch ZERO_ENC_NOTE_VALUE
+    let mut zero_note = test.new_note(:amount);
+    zero_note.enc_amount = Zero::zero();
+    let result = user.safe_deposit(:token, :amount, note: zero_note);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_NOTE_VALUE);
+
+    // Catch INSUFFICIENT_BALANCE
+    let result = user.safe_deposit(:token, :amount, :note);
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
+
+    // Catch INSUFFICIENT_ALLOWANCE
+    let note = test.new_note(:amount); // New note because of snforge revert storage bug.
+    token.supply(:user, :amount);
+    let result = user.safe_deposit(:token, :amount, :note);
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
+
+    // Catch NOTE_ALREADY_EXISTS (same user)
+    let note = test.new_note(:amount); // New note because of snforge revert storage bug.
+    user.deposit(:token, :amount, :note);
+    let result = user.safe_deposit(:token, :amount, :note);
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
+
+    // Catch NOTE_ALREADY_EXISTS (different user)
+    let different_user = test.new_user();
+    token.supply(user: different_user, :amount);
+    let result = different_user.safe_deposit(:token, :amount, :note);
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
+}
