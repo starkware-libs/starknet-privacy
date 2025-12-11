@@ -2,7 +2,7 @@ use client::client::Client::deploy_for_test;
 use client::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
 };
-use client::objects::{EncryptedNote, NewNote, NotePath};
+use client::objects::{EncNote, NewNote, NotePath};
 use core::num::traits::Zero;
 use snforge_std::{DeclareResultTrait, declare};
 use starknet::ContractAddress;
@@ -27,7 +27,7 @@ struct User {
 pub(crate) impl UserImpl of UserTrait {
     fn transfer(
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
-    ) -> (Span<felt252>, Span<EncryptedNote>) {
+    ) -> (Span<felt252>, Span<EncNote>) {
         IClientDispatcher { contract_address: *self.client }
             .transfer(
                 owner: *self.address,
@@ -40,7 +40,7 @@ pub(crate) impl UserImpl of UserTrait {
     #[feature("safe_dispatcher")]
     fn safe_transfer(
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
-    ) -> Result<(Span<felt252>, Span<EncryptedNote>), Array<felt252>> {
+    ) -> Result<(Span<felt252>, Span<EncNote>), Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.client }
             .transfer(
                 owner: *self.address,

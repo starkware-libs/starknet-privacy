@@ -24,9 +24,9 @@ pub struct NewNote {
 // TODO: Move to server package.
 /// An encrypted note, to be sent to the server.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct EncryptedNote {
+pub struct EncNote {
     /// The note's id.
     id: felt252,
-    /// The encrypted value of the note.
-    encrypted_amount: felt252,
+    /// The encrypted amount of the note.
+    enc_amount: felt252,
 }
