@@ -42,6 +42,8 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
 }
 
 /// An encrypted note, to be written to server storage.
+// TODO: Consider moving to interface.
+// TODO: Consider using private members and trait (for backwards compatibility).
 #[derive(Serde, Copy, Drop, PartialEq, Debug, starknet::Store)]
 pub struct EncryptedNote {
     /// The note's id.
