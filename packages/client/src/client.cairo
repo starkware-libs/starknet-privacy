@@ -2,8 +2,9 @@
 pub mod Client {
     use client::errors as Errors;
     use client::interface::IClient;
-    use client::objects::{EncNote, NewNote, NotePath};
+    use client::objects::{NewNote, NotePath};
     use core::num::traits::Zero;
+    use server::objects::EncNote;
     use starknet::ContractAddress;
     use starknet::storage::StoragePointerWriteAccess;
 
