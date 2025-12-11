@@ -157,30 +157,34 @@ pub trait IServer<T> {
     /// - Any address can call this function.
     fn nullifier_exists(self: @T, nullifier: felt252) -> bool;
 
-    /// Registers the caller as a new user with the specified public viewing key.
+    /// Registers the caller as a new user with the specified public viewing key and encrypted
+    /// global viewing key.
     ///
     /// #### Parameters
     /// - `public_key` (`felt252`): The public viewing key of the user. Must not be zero.
+    /// - `enc_global_viewing_key` (`felt252`): The encrypted global viewing key. Must not be zero.
     ///
     /// #### Returns
     /// None
     ///
     /// #### Preconditions
     /// - `public_key` must not be zero.
-    /// - Caller must not have already registered a public key.
+    /// - `enc_global_viewing_key` must not be zero.
+    /// - Caller must not have already registered a public key or an encrypted global viewing key.
     ///
     /// #### Events Emitted
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_PUBLIC_KEY`](server::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is
-    /// zero.
+    /// - [`ZERO_PUBLIC_KEY`](server::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is zero.
+    /// - [`ZERO_ENC_GLOBAL_VIEWING_KEY`](server::errors::ZERO_ENC_GLOBAL_VIEWING_KEY): Thrown if
+    /// `enc_global_viewing_key` is zero.
     /// - [`USER_ALREADY_REGISTERED`](server::errors::USER_ALREADY_REGISTERED): Thrown if the
-    /// caller has already registered a public key.
+    /// caller has already registered a public key or an encrypted global viewing key.
     ///
     /// #### Access Control
     /// - Self-registration only.
-    fn register(ref self: T, public_key: felt252);
+    fn register(ref self: T, public_key: felt252, enc_global_viewing_key: felt252);
 
     /// Returns the registered public viewing key of the given user address.
     ///
@@ -202,4 +206,27 @@ pub trait IServer<T> {
     /// #### Access Control
     /// - Any address can call this function.
     fn get_public_key(self: @T, user: ContractAddress) -> felt252;
+
+    /// Returns the registered encrypted global viewing key of the given user address.
+    ///
+    /// #### Parameters
+    /// - `user` (`ContractAddress`): The address whose encrypted global viewing key is being
+    /// queried.
+    ///
+    /// #### Returns
+    /// - (`felt252`): The encrypted global viewing key associated with the user, or zero if not
+    /// registered.
+    ///
+    /// #### Preconditions
+    /// None
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// None
+    ///
+    /// #### Access Control
+    /// - Any address can call this function.
+    fn get_global_viewing_key(self: @T, user: ContractAddress) -> felt252;
 }

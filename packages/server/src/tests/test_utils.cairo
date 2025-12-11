@@ -51,6 +51,9 @@ pub(crate) impl TestImpl of TestTrait {
             // TODO: Generate valid private-public key pair.
             private_key: ('PRIVATE_KEY' + self.nonce.into()).try_into().unwrap(),
             public_key: ('PUBLIC_KEY' + self.nonce.into()).try_into().unwrap(),
+            enc_global_viewing_key: ('ENC_GLOBAL_VIEWING_KEY' + self.nonce.into())
+                .try_into()
+                .unwrap(),
         }
     }
 
@@ -87,6 +90,7 @@ struct User {
     pub server: ContractAddress,
     pub private_key: felt252,
     pub public_key: felt252,
+    pub enc_global_viewing_key: felt252,
 }
 
 #[generate_trait]
@@ -111,18 +115,28 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn register(self: @User) {
         cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
-        IServerDispatcher { contract_address: *self.server }.register(public_key: *self.public_key)
+        IServerDispatcher { contract_address: *self.server }
+            .register(
+                public_key: *self.public_key, enc_global_viewing_key: *self.enc_global_viewing_key,
+            )
     }
 
     #[feature("safe_dispatcher")]
     fn safe_register(self: @User) -> Result<(), Array<felt252>> {
         cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
         IServerSafeDispatcher { contract_address: *self.server }
-            .register(public_key: *self.public_key)
+            .register(
+                public_key: *self.public_key, enc_global_viewing_key: *self.enc_global_viewing_key,
+            )
     }
 
     fn get_public_key(self: @User) -> felt252 {
         IServerDispatcher { contract_address: *self.server }.get_public_key(user: *self.address)
+    }
+
+    fn get_global_viewing_key(self: @User) -> felt252 {
+        IServerDispatcher { contract_address: *self.server }
+            .get_global_viewing_key(user: *self.address)
     }
 }
 

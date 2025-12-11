@@ -293,6 +293,8 @@ fn test_register() {
     user.register();
     // Verify that user is registered with the correct public key.
     assert_eq!(user.get_public_key(), public_key);
+    // Verify that user is registered with the correct encrypted global viewing key.
+    assert_eq!(user.get_global_viewing_key(), user.enc_global_viewing_key);
 }
 
 #[test]
@@ -301,14 +303,21 @@ fn test_register_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let non_zero_public_key = user.public_key;
+    let non_zero_enc_global_viewing_key = user.enc_global_viewing_key;
 
     // Catch ZERO_PUBLIC_KEY.
     user.public_key = Zero::zero();
     let result = user.safe_register();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
-    // Catch USER_ALREADY_REGISTERED.
+    // Catch ZERO_ENC_GLOBAL_VIEWING_KEY.
     user.public_key = non_zero_public_key;
+    user.enc_global_viewing_key = Zero::zero();
+    let result = user.safe_register();
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_GLOBAL_VIEWING_KEY);
+
+    // Catch USER_ALREADY_REGISTERED.
+    user.enc_global_viewing_key = non_zero_enc_global_viewing_key;
     user.register();
     let result = user.safe_register();
     assert_panic_with_felt_error(:result, expected_error: errors::USER_ALREADY_REGISTERED);
@@ -326,6 +335,17 @@ fn test_get_public_key() {
 }
 
 #[test]
+fn test_get_global_viewing_key() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    // Don't register the user.
+    assert_eq!(user.get_global_viewing_key(), Zero::zero());
+    // Register the user.
+    user.register();
+    assert_eq!(user.get_global_viewing_key(), user.enc_global_viewing_key);
+}
+
+#[test]
 fn test_register_multiple_users() {
     let mut test: Test = Default::default();
     let user1 = test.new_user();
@@ -333,7 +353,12 @@ fn test_register_multiple_users() {
     let user3 = test.new_user();
     let public_key1 = user1.public_key;
     let public_key2 = user2.public_key;
+    let global_viewing_key1 = user1.enc_global_viewing_key;
+    let global_viewing_key2 = user2.enc_global_viewing_key;
     assert_ne!(public_key1, public_key2, "Public keys should be different.");
+    assert_ne!(
+        global_viewing_key1, global_viewing_key2, "Global viewing keys should be different.",
+    );
 
     // Register user1.
     user1.register();
@@ -344,8 +369,12 @@ fn test_register_multiple_users() {
     // Verify both public keys are stored correctly.
     assert_eq!(user1.get_public_key(), public_key1);
     assert_eq!(user2.get_public_key(), public_key2);
-    // User3 has not registered, so get_public_key should return zero.
+    // Verify both global viewing keys are stored correctly.
+    assert_eq!(user1.get_global_viewing_key(), global_viewing_key1);
+    assert_eq!(user2.get_global_viewing_key(), global_viewing_key2);
+    // User3 has not registered, so get_public_key and get_global_viewing_key should return zero.
     assert_eq!(user3.get_public_key(), Zero::zero());
+    assert_eq!(user3.get_global_viewing_key(), Zero::zero());
 }
 
 #[test]
@@ -365,5 +394,24 @@ fn test_register_multiple_users_same_public_key() {
     // Both should be able to fetch the shared public key.
     assert_eq!(user1.get_public_key(), shared_public_key);
     assert_eq!(user2.get_public_key(), shared_public_key);
+}
+
+#[test]
+fn test_register_multiple_users_same_global_viewing_key() {
+    let mut test: Test = Default::default();
+    let user1 = test.new_user();
+    let mut user2 = test.new_user();
+
+    // Set the same global viewing key for both users.
+    let shared_global_viewing_key = user1.enc_global_viewing_key;
+    user2.enc_global_viewing_key = shared_global_viewing_key;
+
+    // Register both users.
+    user1.register();
+    user2.register();
+
+    // Both should be able to fetch the shared global viewing key.
+    assert_eq!(user1.get_global_viewing_key(), shared_global_viewing_key);
+    assert_eq!(user2.get_global_viewing_key(), shared_global_viewing_key);
 }
 
