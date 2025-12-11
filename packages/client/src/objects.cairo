@@ -20,13 +20,3 @@ pub struct NewNote {
     // TODO: Consider using different type.
     pub amount: u128,
 }
-
-// TODO: Move to server package.
-/// An encrypted note, to be sent to the server.
-#[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct EncNote {
-    /// The note's id.
-    id: felt252,
-    /// The encrypted amount of the note.
-    enc_amount: felt252,
-}
