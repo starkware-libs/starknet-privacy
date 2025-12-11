@@ -24,6 +24,7 @@ starkware_utils_testing.workspace = true
 
 [[test]]
 name = "client_unittest"
+build-external-contracts = ["server::server::Server"]
 
 [scripts]
 test = "SNFORGE_BACKTRACE=1 snforge test"
