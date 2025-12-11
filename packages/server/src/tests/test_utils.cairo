@@ -73,6 +73,11 @@ pub(crate) impl TestImpl of TestTrait {
         let enc_note_value = ('ENC_NOTE_VALUE' + self.nonce.into()).try_into().unwrap();
         (note_id, enc_note_value)
     }
+
+    fn new_nullifier(ref self: Test) -> felt252 {
+        self.nonce += 1;
+        ('NULLIFIER' + self.nonce.into()).try_into().unwrap()
+    }
 }
 
 #[derive(Drop)]
@@ -143,5 +148,19 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
 
     fn get_note(self: @ServerCfg, note_id: felt252) -> felt252 {
         IServerDispatcher { contract_address: *self.address }.get_note(:note_id)
+    }
+
+    fn use_note(self: @ServerCfg, nullifier: felt252) {
+        interact_with_state(
+            *self.address,
+            || {
+                let mut state = Server::contract_state_for_testing();
+                state.use_note(:nullifier)
+            },
+        )
+    }
+
+    fn nullifier_exists(self: @ServerCfg, nullifier: felt252) -> bool {
+        IServerDispatcher { contract_address: *self.address }.nullifier_exists(:nullifier)
     }
 }

@@ -135,4 +135,25 @@ pub trait IServer<T> {
     /// #### Access Control
     /// - Any address can call this function.
     fn get_note(self: @T, note_id: felt252) -> felt252;
+
+    /// Checks if a nullifier exists.
+    ///
+    /// #### Parameters
+    /// - `nullifier` (`felt252`): The nullifier.
+    ///
+    /// #### Returns
+    /// (`bool`): True if the nullifier exists in the contract, false otherwise.
+    ///
+    /// #### Preconditions
+    /// None
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// None
+    ///
+    /// #### Access Control
+    /// - Any address can call this function.
+    fn nullifier_exists(self: @T, nullifier: felt252) -> bool;
 }
