@@ -1,5 +1,5 @@
 use client::objects::{NewNote, NotePath};
-use server::objects::EncryptedNote;
+use server::objects::EncNote;
 use starknet::ContractAddress;
 
 #[starknet::interface]
@@ -58,5 +58,5 @@ pub trait IClient<T> {
         private_key: felt252,
         notes_to_use: Span<NotePath>,
         notes_to_create: Span<NewNote>,
-    ) -> (Span<felt252>, Span<EncryptedNote>);
+    ) -> (Span<felt252>, Span<EncNote>);
 }
