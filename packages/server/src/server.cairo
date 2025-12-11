@@ -4,11 +4,11 @@ pub mod Server {
     use server::errors;
     use server::interface::IServer;
     use server::objects::{EncChannelInfo, EncChannelInfoTrait, EncNote};
-    use starknet::ContractAddress;
     use starknet::storage::{
         Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
         StoragePointerReadAccess, Vec, VecTrait,
     };
+    use starknet::{ContractAddress, get_caller_address};
 
     #[storage]
     struct Storage {
@@ -21,6 +21,8 @@ pub mod Server {
         notes: Map<felt252, felt252>,
         /// Map of nullifier to whether it exists.
         nullifiers: Map<felt252, bool>,
+        /// Map of user addresses to their public viewing keys.
+        public_key: Map<ContractAddress, felt252>,
     }
 
     #[event]
@@ -86,6 +88,27 @@ pub mod Server {
 
         fn nullifier_exists(self: @ContractState, nullifier: felt252) -> bool {
             self.nullifiers.read(nullifier)
+        }
+
+        fn register(ref self: ContractState, public_key: felt252) {
+            // TODO: Add compliance.
+            // TODO: Consider remove get_caller_address() and instead pass the user address.
+            let user = get_caller_address();
+
+            // Assert that inputs are valid.
+            assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
+
+            // Assert that keys are empty before writing.
+            assert(self.public_key.read(user).is_zero(), errors::USER_ALREADY_REGISTERED);
+
+            // TODO: Verify the proof on the encrypted compliance viewing key from the client side.
+
+            // Write key to storage.
+            self.public_key.write(user, public_key);
+        }
+
+        fn get_public_key(self: @ContractState, user: ContractAddress) -> felt252 {
+            self.public_key.read(user)
         }
     }
 

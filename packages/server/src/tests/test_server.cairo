@@ -1,6 +1,5 @@
 use core::num::traits::Zero;
 use server::errors;
-use server::objects::EncNote;
 use server::tests::test_utils::{ServerCfgTrait, Test, TestTrait, UserTrait};
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
@@ -285,3 +284,86 @@ fn test_use_note_nullifier_already_exists() {
     test.server.use_note(nullifier: nullifier);
     test.server.use_note(nullifier: nullifier);
 }
+
+#[test]
+fn test_register() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let public_key = user.public_key;
+    user.register();
+    // Verify that user is registered with the correct public key.
+    assert_eq!(user.get_public_key(), public_key);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_register_assertions() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let non_zero_public_key = user.public_key;
+
+    // Catch ZERO_PUBLIC_KEY.
+    user.public_key = Zero::zero();
+    let result = user.safe_register();
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
+
+    // Catch USER_ALREADY_REGISTERED.
+    user.public_key = non_zero_public_key;
+    user.register();
+    let result = user.safe_register();
+    assert_panic_with_felt_error(:result, expected_error: errors::USER_ALREADY_REGISTERED);
+}
+
+#[test]
+fn test_get_public_key() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    // Don't register the user.
+    assert_eq!(user.get_public_key(), Zero::zero());
+    // Register the user.
+    user.register();
+    assert_eq!(user.get_public_key(), user.public_key);
+}
+
+#[test]
+fn test_register_multiple_users() {
+    let mut test: Test = Default::default();
+    let user1 = test.new_user();
+    let user2 = test.new_user();
+    let user3 = test.new_user();
+    let public_key1 = user1.public_key;
+    let public_key2 = user2.public_key;
+    assert_ne!(public_key1, public_key2, "Public keys should be different.");
+
+    // Register user1.
+    user1.register();
+
+    // Register user2.
+    user2.register();
+
+    // Verify both public keys are stored correctly.
+    assert_eq!(user1.get_public_key(), public_key1);
+    assert_eq!(user2.get_public_key(), public_key2);
+    // User3 has not registered, so get_public_key should return zero.
+    assert_eq!(user3.get_public_key(), Zero::zero());
+}
+
+#[test]
+fn test_register_multiple_users_same_public_key() {
+    let mut test: Test = Default::default();
+    let user1 = test.new_user();
+    let mut user2 = test.new_user();
+
+    // Set the same public key for both users.
+    let shared_public_key = user1.public_key;
+    user2.public_key = shared_public_key;
+
+    // Register both users.
+    user1.register();
+    user2.register();
+
+    // Both should be able to fetch the shared public key.
+    assert_eq!(user1.get_public_key(), shared_public_key);
+    assert_eq!(user2.get_public_key(), shared_public_key);
+}
+

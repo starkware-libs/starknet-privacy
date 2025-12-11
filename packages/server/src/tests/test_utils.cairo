@@ -6,9 +6,10 @@ use server::objects::{EncChannelInfo, EncNote};
 use server::server::Server;
 use server::server::Server::{ServerInternalTrait, deploy_for_test};
 use snforge_std::{DeclareResultTrait, declare, interact_with_state};
-use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
+use starknet::{ContractAddress, contract_address};
+use starkware_utils_testing::test_utils::cheat_caller_address_once;
 
 // TODO: Consider merging test utils for client and server in shared package.
 
@@ -107,6 +108,22 @@ pub(crate) impl UserImpl of UserTrait {
         IServerSafeDispatcher { contract_address: *self.server }
             .get_channel_info(recipient_addr: *self.address, :channel_index)
     }
+
+    fn register(self: @User) {
+        cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
+        IServerDispatcher { contract_address: *self.server }.register(public_key: *self.public_key)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_register(self: @User) -> Result<(), Array<felt252>> {
+        cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
+        IServerSafeDispatcher { contract_address: *self.server }
+            .register(public_key: *self.public_key)
+    }
+
+    fn get_public_key(self: @User) -> felt252 {
+        IServerDispatcher { contract_address: *self.server }.get_public_key(user: *self.address)
+    }
 }
 
 #[generate_trait]
@@ -164,3 +181,4 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
         IServerDispatcher { contract_address: *self.address }.nullifier_exists(:nullifier)
     }
 }
+
