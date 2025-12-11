@@ -13,6 +13,7 @@ scarb.workspace = true
 starknet.workspace = true
 openzeppelin.workspace = true
 starkware_utils.workspace = true
+server = {path = "../server"}
 
 [dev-dependencies]
 assert_macros.workspace = true

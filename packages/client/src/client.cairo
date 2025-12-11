@@ -3,7 +3,9 @@ pub mod Client {
     use client::errors as Errors;
     use client::interface::IClient;
     use client::objects::{EncryptedNote, NewNote, NotePath};
+    use client::utils::{encrypt_channel_info, hash};
     use core::num::traits::Zero;
+    use server::objects::EncChannelInfo;
     use starknet::ContractAddress;
     use starknet::storage::StoragePointerWriteAccess;
 
@@ -26,6 +28,45 @@ pub mod Client {
 
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
+        fn open_channel(
+            self: @ContractState,
+            sender_addr: ContractAddress,
+            sender_private_key: felt252,
+            recipient_addr: ContractAddress,
+            token: ContractAddress,
+            random: felt252,
+        ) -> (ContractAddress, EncChannelInfo, felt252) {
+            // TODO: Remove assert not zero for sender_addr, sender_private_key, recipient_addr?
+            // (will fail in the registration check).
+            assert(sender_addr.is_non_zero(), Errors::ZERO_SENDER_ADDR);
+            assert(sender_private_key.is_non_zero(), Errors::ZERO_SENDER_PRIVATE_KEY);
+            assert(recipient_addr.is_non_zero(), Errors::ZERO_RECIPIENT_ADDR);
+            assert(token.is_non_zero(), Errors::ZERO_TOKEN);
+            assert(random.is_non_zero(), Errors::ZERO_RANDOM);
+
+            // TODO: Verify sender signature on TX.
+
+            // TODO: Assert sender is registered with the given private key. Use error
+            // SENDER_NOT_AUTHENTICATED.
+            // TODO: Read recipient public key from server and assert it is not zero. Use error
+            // RECIPIENT_NOT_REGISTERED.
+            let recipient_pubkey = 1;
+
+            let channel_key = hash(
+                [
+                    sender_addr.into(), sender_private_key, recipient_addr.into(), recipient_pubkey,
+                    token.into(),
+                ]
+                    .span(),
+            );
+            let enc_channel_info = encrypt_channel_info(
+                ephemeral_scalar: random, :recipient_pubkey, :channel_key, :token, :sender_addr,
+            );
+            let channel_id = hash([channel_key].span());
+
+            (recipient_addr, enc_channel_info, channel_id)
+        }
+
         fn transfer(
             self: @ContractState,
             owner: ContractAddress,
