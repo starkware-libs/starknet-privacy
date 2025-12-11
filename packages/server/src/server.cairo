@@ -1,9 +1,9 @@
 #[starknet::contract]
 pub mod Server {
     use core::num::traits::Zero;
-    use server::errors;
     use server::interface::IServer;
     use server::objects::{EncChannelInfo, EncChannelInfoTrait, EncNote};
+    use server::{errors, utils as Utils};
     use starknet::storage::{
         Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
         StoragePointerReadAccess, Vec, VecTrait,
@@ -109,6 +109,21 @@ pub mod Server {
 
         fn get_public_key(self: @ContractState, user: ContractAddress) -> felt252 {
             self.public_key.read(user)
+        }
+
+        fn deposit(
+            ref self: ContractState,
+            owner: ContractAddress,
+            token: ContractAddress,
+            amount: u128,
+            note: EncNote,
+        ) {
+            assert(owner.is_non_zero(), errors::ZERO_OWNER);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+
+            self.create_note(:note);
+            Utils::claim_funds(:owner, :token, amount: amount.into());
         }
     }
 
