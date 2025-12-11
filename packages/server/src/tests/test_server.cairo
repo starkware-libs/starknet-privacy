@@ -299,7 +299,7 @@ fn test_register() {
 fn test_register_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    let first_public_key = user.public_key;
+    let non_zero_public_key = user.public_key;
 
     // Catch ZERO_PUBLIC_KEY.
     user.public_key = Zero::zero();
@@ -307,7 +307,7 @@ fn test_register_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
     // Catch USER_ALREADY_REGISTERED.
-    user.public_key = first_public_key;
+    user.public_key = non_zero_public_key;
     user.register();
     let result = user.safe_register();
     assert_panic_with_felt_error(:result, expected_error: errors::USER_ALREADY_REGISTERED);
