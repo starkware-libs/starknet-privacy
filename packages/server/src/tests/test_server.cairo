@@ -2,6 +2,7 @@ use core::num::traits::Zero;
 use server::errors;
 use server::tests::test_utils::{ServerCfgTrait, Test, TestTrait, UserTrait};
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
+
 #[test]
 fn test_open_channel() {
     let mut test: Test = Default::default();
