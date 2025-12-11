@@ -1,17 +1,30 @@
 use core::num::traits::Zero;
+use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use server::interface::{
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
 };
 use server::objects::{EncChannelInfo, EncNote};
 use server::server::Server;
 use server::server::Server::{ServerInternalTrait, deploy_for_test};
-use snforge_std::{DeclareResultTrait, declare, interact_with_state};
+use snforge_std::{
+    CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state, set_balance,
+};
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
 use starknet::{ContractAddress, contract_address};
-use starkware_utils_testing::test_utils::cheat_caller_address_once;
+use starkware_utils_testing::test_utils::{Deployable, TokenConfig, cheat_caller_address_once};
 
 // TODO: Consider merging test utils for client and server in shared package.
+
+pub(crate) mod constants {
+    use core::num::traits::Pow;
+    use starknet::ContractAddress;
+
+    pub const DECIMALS: u8 = 18;
+    pub const TOKEN_SUPPLY: u256 = 10_u256.pow(12 + DECIMALS.into());
+    pub const TOKEN_OWNER: ContractAddress = 'TOKEN_OWNER'.try_into().unwrap();
+    pub const DEFAULT_AMOUNT: u128 = 10_u128.pow(DECIMALS.into());
+}
 
 #[derive(Copy, Drop)]
 pub(crate) struct ServerCfg {
@@ -68,10 +81,11 @@ pub(crate) impl TestImpl of TestTrait {
     }
 
     /// Returns the note id and the encrypted note value.
-    fn new_note(ref self: Test) -> EncNote {
+    fn new_note(ref self: Test, amount: u128) -> EncNote {
         self.nonce += 1;
         let id = ('NOTE_ID' + self.nonce.into()).try_into().unwrap();
-        let enc_amount = ('ENC_AMOUNT' + self.nonce.into()).try_into().unwrap();
+        // TODO: Encrypt amount properly.
+        let enc_amount = ('ENC' + amount.into() + self.nonce.into()).try_into().unwrap();
         EncNote { id, enc_amount }
     }
 
@@ -79,10 +93,43 @@ pub(crate) impl TestImpl of TestTrait {
         self.nonce += 1;
         ('NULLIFIER' + self.nonce.into()).try_into().unwrap()
     }
+
+    fn new_token(ref self: Test) -> Token {
+        self.nonce += 1;
+        let config = TokenConfig {
+            name: format!("Token {}", self.nonce),
+            symbol: format!("Token {}", self.nonce),
+            decimals: constants::DECIMALS,
+            initial_supply: constants::TOKEN_SUPPLY,
+            owner: constants::TOKEN_OWNER,
+        };
+        let token = config.deploy();
+
+        Token::Custom(
+            CustomToken {
+                contract_address: token.address,
+                balances_variable_selector: selector!("ERC20_balances"),
+            },
+        )
+    }
 }
 
-#[derive(Drop)]
-struct User {
+#[generate_trait]
+pub(crate) impl PrivacyTokenImpl of PrivacyTokenTrait {
+    fn balance_of(self: @Token, address: ContractAddress) -> u256 {
+        IERC20Dispatcher { contract_address: self.contract_address() }.balance_of(account: address)
+    }
+
+    fn supply(self: @Token, user: User, amount: u128) {
+        let current_balance = self.balance_of(user.address);
+        set_balance(
+            target: user.address, new_balance: current_balance + amount.into(), token: *self,
+        );
+    }
+}
+
+#[derive(Drop, Copy)]
+pub(crate) struct User {
     pub address: ContractAddress,
     pub server: ContractAddress,
     pub private_key: felt252,
@@ -123,6 +170,26 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn get_public_key(self: @User) -> felt252 {
         IServerDispatcher { contract_address: *self.server }.get_public_key(user: *self.address)
+    }
+
+    fn approve_server(self: @User, token: Token, amount: u256) {
+        let token_addr = token.contract_address();
+        cheat_caller_address_once(contract_address: token_addr, caller_address: *self.address);
+        IERC20Dispatcher { contract_address: token_addr }.approve(spender: *self.server, :amount);
+    }
+
+    fn deposit(self: @User, token: Token, amount: u128, note: EncNote) {
+        self.approve_server(:token, amount: amount.into());
+        IServerDispatcher { contract_address: *self.server }
+            .deposit(user: *self.address, token: token.contract_address(), :amount, :note);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_deposit(
+        self: @User, token: Token, amount: u128, note: EncNote,
+    ) -> Result<(), Array<felt252>> {
+        IServerSafeDispatcher { contract_address: *self.server }
+            .deposit(user: *self.address, token: token.contract_address(), :amount, :note)
     }
 }
 
