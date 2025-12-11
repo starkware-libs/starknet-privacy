@@ -163,4 +163,17 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
     fn nullifier_exists(self: @ServerCfg, nullifier: felt252) -> bool {
         IServerDispatcher { contract_address: *self.address }.nullifier_exists(:nullifier)
     }
+
+    fn register(self: @ServerCfg, public_key: felt252) {
+        IServerDispatcher { contract_address: *self.address }.register(:public_key)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_register(self: @ServerCfg, public_key: felt252) -> Result<(), Array<felt252>> {
+        IServerSafeDispatcher { contract_address: *self.address }.register(:public_key)
+    }
+
+    fn get_public_key(self: @ServerCfg, user: ContractAddress) -> felt252 {
+        IServerDispatcher { contract_address: *self.address }.get_public_key(:user)
+    }
 }
