@@ -2,6 +2,7 @@
 pub mod Server {
     use core::num::traits::Zero;
     use server::errors;
+    use server::events::{ChannelOpened, KeyRegistered, NoteCreated, NullifierAdded};
     use server::interface::IServer;
     use server::objects::{EncChannelInfo, EncChannelInfoTrait, EncNote};
     use starknet::storage::{
@@ -27,7 +28,11 @@ pub mod Server {
 
     #[event]
     #[derive(Drop, starknet::Event)]
-    pub enum Event { //event variables
+    pub enum Event {
+        NoteCreated: NoteCreated,
+        NullifierAdded: NullifierAdded,
+        ChannelOpened: ChannelOpened,
+        KeyRegistered: KeyRegistered,
     }
 
     #[constructor]
@@ -59,6 +64,12 @@ pub mod Server {
             // Write channel to storage.
             self.channel_exists.write(channel_id, true);
             self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
+            self
+                .emit(
+                    Event::ChannelOpened(
+                        ChannelOpened { channel_id, recipient: recipient_addr, enc_channel_info },
+                    ),
+                );
         }
 
         fn channel_exists(self: @ContractState, channel_id: felt252) -> bool {
@@ -105,6 +116,7 @@ pub mod Server {
 
             // Write key to storage.
             self.public_key.write(user, public_key);
+            self.emit(Event::KeyRegistered(KeyRegistered { user, public_key }));
         }
 
         fn get_public_key(self: @ContractState, user: ContractAddress) -> felt252 {
@@ -125,6 +137,12 @@ pub mod Server {
 
             // Write note to storage.
             self.notes.write(note.id, note.enc_amount);
+            self
+                .emit(
+                    Event::NoteCreated(
+                        NoteCreated { note_id: note.id, enc_amount: note.enc_amount },
+                    ),
+                );
         }
 
         fn use_note(ref self: ContractState, nullifier: felt252) {
@@ -137,6 +155,7 @@ pub mod Server {
 
             // Write nullifier to storage.
             self.nullifiers.write(nullifier, true);
+            self.emit(Event::NullifierAdded(NullifierAdded { nullifier }));
         }
     }
 }
