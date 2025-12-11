@@ -1,16 +1,23 @@
 use core::num::traits::Zero;
 
+// TODO: Move to a different file?
 /// Domain-separation tags for contract hashes.
 ///
 /// Template (stable, lowercase):
-/// <field_name>:v<major_version>'.
-// TODO: Find good template for one felt.
+/// <object_name>:<field_name>:v<major_version>'.
+// TODO: Find good template for a single felt.
+// TODO: Find better naming convention for tags.
 pub mod domain_separation {
+    /// Tag for `channel_id`.
+    pub const CHANNEL_ID_TAG: felt252 = 'channel_id:v1';
+    /// Tag for `channel_key`.
+    pub const CHANNEL_KEY_TAG: felt252 = 'channel_key:v1';
     /// Tags for the `EncChannelInfo` struct.
+    // TODO: Now using "channel_info" instead of "enc_channel_info" to fit in a single felt.
     pub mod enc_channel_info {
-        pub const CHANNEL_KEY_TAG: felt252 = 'enc_channel_key:v1';
-        pub const TOKEN_TAG: felt252 = 'enc_token:v1';
-        pub const SENDER_ADDR_TAG: felt252 = 'enc_sender_addr:v1';
+        pub const ENC_CHANNEL_KEY_TAG: felt252 = 'channel_info:enc_channel_key:v1';
+        pub const ENC_TOKEN_TAG: felt252 = 'channel_info:enc_token:v1';
+        pub const ENC_SENDER_ADDR_TAG: felt252 = 'channel_info:enc_sender_addr:v1';
     }
 }
 
