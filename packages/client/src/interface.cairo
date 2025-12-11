@@ -1,4 +1,5 @@
-use client::objects::{EncryptedNote, NewNote, NotePath};
+use client::objects::{NewNote, NotePath};
+use server::objects::EncryptedNote;
 use starknet::ContractAddress;
 
 #[starknet::interface]

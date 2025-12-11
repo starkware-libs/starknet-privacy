@@ -40,3 +40,12 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
             && self.enc_sender_addr.is_non_zero();
     }
 }
+
+/// An encrypted note, to be written to server storage.
+#[derive(Serde, Copy, Drop, PartialEq, Debug, starknet::Store)]
+pub struct EncryptedNote {
+    /// The note's id.
+    pub id: felt252,
+    /// The encrypted value of the note.
+    pub encrypted_amount: felt252,
+}
