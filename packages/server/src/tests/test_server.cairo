@@ -323,3 +323,26 @@ fn test_get_public_key() {
     test.server.register(public_key: user.public_key);
     assert_eq!(test.server.get_public_key(user: user.address), user.public_key);
 }
+
+#[test]
+fn test_register_multiple_users() {
+    let mut test: Test = Default::default();
+    let user1 = test.new_user();
+    let user2 = test.new_user();
+    let public_key1 = user1.public_key;
+    let public_key2 = user2.public_key;
+    assert_ne!(public_key1, public_key2, "Public keys should be different.");
+
+    // Register user1.
+    cheat_caller_address_once(contract_address: test.server.address, caller_address: user1.address);
+    test.server.register(public_key: public_key1);
+
+    // Register user2.
+    cheat_caller_address_once(contract_address: test.server.address, caller_address: user2.address);
+    test.server.register(public_key: public_key2);
+
+    // Verify both public keys are stored correctly.
+    assert_eq!(test.server.get_public_key(user: user1.address), public_key1);
+    assert_eq!(test.server.get_public_key(user: user2.address), public_key2);
+}
+
