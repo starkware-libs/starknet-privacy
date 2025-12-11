@@ -2,8 +2,9 @@ use client::client::Client::deploy_for_test;
 use client::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
 };
-use client::objects::{EncNote, NewNote, NotePath};
+use client::objects::{NewNote, NotePath};
 use core::num::traits::Zero;
+use server::objects::EncNote;
 use snforge_std::{DeclareResultTrait, declare};
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;

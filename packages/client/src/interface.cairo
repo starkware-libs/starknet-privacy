@@ -1,4 +1,5 @@
-use client::objects::{EncNote, NewNote, NotePath};
+use client::objects::{NewNote, NotePath};
+use server::objects::EncNote;
 use starknet::ContractAddress;
 
 #[starknet::interface]
