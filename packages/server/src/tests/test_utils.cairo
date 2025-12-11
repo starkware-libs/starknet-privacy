@@ -2,7 +2,7 @@ use core::num::traits::Zero;
 use server::interface::{
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
 };
-use server::objects::EncChannelInfo;
+use server::objects::{EncChannelInfo, EncryptedNote};
 use server::server::Server;
 use server::server::Server::{ServerInternalTrait, deploy_for_test};
 use snforge_std::{DeclareResultTrait, declare, interact_with_state};
@@ -67,11 +67,11 @@ pub(crate) impl TestImpl of TestTrait {
     }
 
     /// Returns the note id and the encrypted note value.
-    fn new_note(ref self: Test) -> (felt252, felt252) {
+    fn new_encrypted_note(ref self: Test) -> EncryptedNote {
         self.nonce += 1;
         let note_id = ('NOTE_ID' + self.nonce.into()).try_into().unwrap();
         let enc_note_value = ('ENC_NOTE_VALUE' + self.nonce.into()).try_into().unwrap();
-        (note_id, enc_note_value)
+        EncryptedNote { id: note_id, encrypted_amount: enc_note_value }
     }
 }
 
@@ -131,12 +131,12 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
         IServerDispatcher { contract_address: *self.address }.channel_exists(:channel_id)
     }
 
-    fn create_note(self: @ServerCfg, note_id: felt252, enc_note_value: felt252) {
+    fn create_note(self: @ServerCfg, note: EncryptedNote) {
         interact_with_state(
             *self.address,
             || {
                 let mut state = Server::contract_state_for_testing();
-                state.create_note(:note_id, :enc_note_value)
+                state.create_note(:note)
             },
         )
     }

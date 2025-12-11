@@ -3,7 +3,7 @@ pub mod Server {
     use core::num::traits::Zero;
     use server::errors;
     use server::interface::IServer;
-    use server::objects::{EncChannelInfo, EncChannelInfoTrait};
+    use server::objects::{EncChannelInfo, EncChannelInfoTrait, EncryptedNote};
     use starknet::ContractAddress;
     use starknet::storage::{
         Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
@@ -85,17 +85,17 @@ pub mod Server {
 
     #[generate_trait]
     pub(crate) impl ServerInternalImpl of ServerInternalTrait {
-        fn create_note(ref self: ContractState, note_id: felt252, enc_note_value: felt252) {
+        fn create_note(ref self: ContractState, note: EncryptedNote) {
             // Assert inputs are not zero.
             // TODO: Remove assert not zero for hashes?
-            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
-            assert(enc_note_value.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
+            assert(note.id.is_non_zero(), errors::ZERO_NOTE_ID);
+            assert(note.encrypted_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
 
             // Assert note does not already exist.
-            assert(self.notes.read(note_id).is_zero(), errors::NOTE_ALREADY_EXISTS);
+            assert(self.notes.read(note.id).is_zero(), errors::NOTE_ALREADY_EXISTS);
 
             // Write note to storage.
-            self.notes.write(note_id, enc_note_value);
+            self.notes.write(note.id, note.encrypted_amount);
         }
     }
 }
