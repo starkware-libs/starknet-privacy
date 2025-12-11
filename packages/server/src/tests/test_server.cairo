@@ -1,7 +1,9 @@
 use core::num::traits::Zero;
 use server::errors;
 use server::tests::test_utils::{ServerCfgTrait, Test, TestTrait, UserTrait};
-use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
+use starkware_utils_testing::test_utils::{
+    assert_panic_with_error, assert_panic_with_felt_error, cheat_caller_address_once,
+};
 
 #[test]
 fn test_open_channel() {
@@ -280,4 +282,44 @@ fn test_use_note_nullifier_already_exists() {
     let nullifier = test.new_nullifier();
     test.server.use_note(nullifier: nullifier);
     test.server.use_note(nullifier: nullifier);
+}
+
+#[test]
+fn test_register() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let public_key = user.public_key;
+    cheat_caller_address_once(contract_address: test.server.address, caller_address: user.address);
+    test.server.register(:public_key);
+    // Verify that user is registered with the correct public key.
+    assert_eq!(test.server.get_public_key(user: user.address), public_key);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_register_assertions() {
+    let mut test: Test = Default::default();
+
+    // Catch ZERO_PUBLIC_KEY.
+    let result = test.server.safe_register(public_key: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
+
+    // Catch USER_ALREADY_REGISTERED.
+    let user = test.new_user();
+    let public_key = user.public_key;
+    test.server.register(:public_key);
+    let result = test.server.safe_register(public_key: public_key);
+    assert_panic_with_felt_error(:result, expected_error: errors::USER_ALREADY_REGISTERED);
+}
+
+#[test]
+fn test_get_public_key() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    // Don't register the user.
+    assert_eq!(test.server.get_public_key(user: user.address), Zero::zero());
+    // Register the user.
+    cheat_caller_address_once(contract_address: test.server.address, caller_address: user.address);
+    test.server.register(public_key: user.public_key);
+    assert_eq!(test.server.get_public_key(user: user.address), user.public_key);
 }

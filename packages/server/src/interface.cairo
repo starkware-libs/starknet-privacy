@@ -156,4 +156,50 @@ pub trait IServer<T> {
     /// #### Access Control
     /// - Any address can call this function.
     fn nullifier_exists(self: @T, nullifier: felt252) -> bool;
+
+    /// Registers the caller as a new user with the specified public viewing key.
+    ///
+    /// #### Parameters
+    /// - `public_key` (`felt252`): The public viewing key of the user. Must not be zero.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Preconditions
+    /// - `public_key` must not be zero.
+    /// - Caller must not have already registered a public key.
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// - [`ZERO_PUBLIC_KEY`](server::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is
+    /// zero.
+    /// - [`USER_ALREADY_REGISTERED`](server::errors::USER_ALREADY_REGISTERED): Thrown if the
+    /// caller has already registered a public key.
+    ///
+    /// #### Access Control
+    /// - Self-registration only.
+    fn register(ref self: T, public_key: felt252);
+
+    /// Returns the registered public viewing key of the given user address.
+    ///
+    /// #### Parameters
+    /// - `user` (`ContractAddress`): The address whose public key is being queried.
+    ///
+    /// #### Returns
+    /// - (`felt252`): The public key associated with the user, or zero if not registered.
+    ///
+    /// #### Preconditions
+    /// None
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// None
+    ///
+    /// #### Access Control
+    /// - Any address can call this function.
+    fn get_public_key(self: @T, user: ContractAddress) -> felt252;
 }
