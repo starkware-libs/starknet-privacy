@@ -3,14 +3,20 @@ pub mod Client {
     use client::errors as Errors;
     use client::interface::IClient;
     use client::objects::{NewNote, NotePath};
+    use client::utils::{
+        compute_channel_id, compute_channel_key, derive_public_key, encrypt_channel_info,
+        is_canonical_key,
+    };
     use core::num::traits::Zero;
-    use server::objects::EncNote;
+    use server::interface::{IServerDispatcher, IServerDispatcherTrait};
+    use server::objects::{EncChannelInfo, EncNote};
     use starknet::ContractAddress;
-    use starknet::storage::StoragePointerWriteAccess;
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
 
     #[storage]
     struct Storage {
         /// Address of the server contract.
+        // TODO: Change type to Dispatcher.
         server: ContractAddress,
     }
 
@@ -27,6 +33,53 @@ pub mod Client {
 
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
+        fn open_channel(
+            self: @ContractState,
+            sender_addr: ContractAddress,
+            sender_private_key: felt252,
+            recipient_addr: ContractAddress,
+            token: ContractAddress,
+            random: felt252,
+        ) -> (ContractAddress, EncChannelInfo, felt252) {
+            // TODO: Remove assert not zero for sender_addr, recipient_addr?
+            // (will fail in the registration check).
+            // TODO: Consider generate random instead of passing it as an argument.
+            assert(sender_addr.is_non_zero(), Errors::ZERO_SENDER_ADDR);
+            assert(sender_private_key.is_non_zero(), Errors::ZERO_SENDER_PRIVATE_KEY);
+            assert(recipient_addr.is_non_zero(), Errors::ZERO_RECIPIENT_ADDR);
+            assert(token.is_non_zero(), Errors::ZERO_TOKEN);
+            assert(random.is_non_zero(), Errors::ZERO_RANDOM);
+
+            // TODO: Verify sender signature on TX.
+
+            // Assert sender private key is canonical.
+            assert(is_canonical_key(key: sender_private_key), Errors::PRIVATE_KEY_NOT_CANONICAL);
+
+            // Assert sender is registered with the given private key.
+            let server = IServerDispatcher { contract_address: self.server.read() };
+            let sender_public_key = server.get_public_key(user: sender_addr);
+            assert(sender_public_key.is_non_zero(), Errors::SENDER_NOT_REGISTERED);
+            assert(
+                sender_public_key == derive_public_key(private_key: sender_private_key),
+                Errors::SENDER_NOT_AUTHENTICATED,
+            );
+
+            // Assert recipient is registered.
+            let recipient_public_key = server.get_public_key(user: recipient_addr);
+            assert(recipient_public_key.is_non_zero(), Errors::RECIPIENT_NOT_REGISTERED);
+
+            // Compute the output values.
+            let channel_key = compute_channel_key(
+                :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key, :token,
+            );
+            let enc_channel_info = encrypt_channel_info(
+                ephemeral_scalar: random, :recipient_public_key, :channel_key, :token, :sender_addr,
+            );
+            let channel_id = compute_channel_id(:channel_key);
+
+            (recipient_addr, enc_channel_info, channel_id)
+        }
+
         fn transfer(
             self: @ContractState,
             owner: ContractAddress,
