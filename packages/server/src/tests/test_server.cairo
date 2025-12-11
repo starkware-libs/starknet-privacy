@@ -1,5 +1,6 @@
 use core::num::traits::Zero;
 use server::errors;
+use server::objects::EncNote;
 use server::tests::test_utils::{ServerCfgTrait, Test, TestTrait, UserTrait};
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
@@ -185,29 +186,29 @@ fn test_get_channel_info_index_out_of_bounds() {
 #[test]
 fn test_get_note() {
     let mut test: Test = Default::default();
-    let (note_id, enc_note_value) = test.new_note();
-    assert_eq!(test.server.get_note(:note_id), Zero::zero());
-    test.server.create_note(:note_id, :enc_note_value);
-    assert_eq!(test.server.get_note(:note_id), enc_note_value);
+    let note = test.new_note();
+    assert_eq!(test.server.get_note(note_id: note.id), Zero::zero());
+    test.server.create_note(:note);
+    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
 }
 
 #[test]
 fn test_create_note() {
     let mut test: Test = Default::default();
-    let (note_id, enc_note_value) = test.new_note();
-    test.server.create_note(:note_id, :enc_note_value);
-    assert_eq!(test.server.get_note(:note_id), enc_note_value);
+    let note = test.new_note();
+    test.server.create_note(:note);
+    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
 }
 
 #[test]
 fn test_create_note_twice() {
     let mut test: Test = Default::default();
-    let (note_id_1, enc_note_value_1) = test.new_note();
-    test.server.create_note(note_id: note_id_1, enc_note_value: enc_note_value_1);
-    let (note_id_2, enc_note_value_2) = test.new_note();
-    test.server.create_note(note_id: note_id_2, enc_note_value: enc_note_value_2);
-    assert_eq!(test.server.get_note(note_id: note_id_1), enc_note_value_1);
-    assert_eq!(test.server.get_note(note_id: note_id_2), enc_note_value_2);
+    let note_1 = test.new_note();
+    test.server.create_note(note: note_1);
+    let note_2 = test.new_note();
+    test.server.create_note(note: note_2);
+    assert_eq!(test.server.get_note(note_id: note_1.id), note_1.enc_amount);
+    assert_eq!(test.server.get_note(note_id: note_2.id), note_2.enc_amount);
 }
 
 
@@ -216,26 +217,29 @@ fn test_create_note_twice() {
 #[should_panic(expected_error: errors::ZERO_NOTE_ID)]
 fn test_create_note_zero_note_id() {
     let mut test: Test = Default::default();
-    let (_, enc_note_value) = test.new_note();
-    test.server.create_note(note_id: Zero::zero(), :enc_note_value);
+    let mut note = test.new_note();
+    note.id = Zero::zero();
+    test.server.create_note(:note);
 }
 
 #[test]
 #[should_panic(expected_error: errors::ZERO_ENC_NOTE_VALUE)]
 fn test_create_note_zero_enc_note_value() {
     let mut test: Test = Default::default();
-    let (note_id, _) = test.new_note();
-    test.server.create_note(:note_id, enc_note_value: Zero::zero());
+    let mut note = test.new_note();
+    note.enc_amount = Zero::zero();
+    test.server.create_note(:note);
 }
 
 #[test]
 #[should_panic(expected_error: errors::NOTE_ALREADY_EXISTS)]
 fn test_create_note_note_already_exists() {
     let mut test: Test = Default::default();
-    let (note_id, enc_note_value) = test.new_note();
-    test.server.create_note(:note_id, :enc_note_value);
-    let (_, diff_enc_note_value) = test.new_note();
-    test.server.create_note(:note_id, enc_note_value: diff_enc_note_value);
+    let note = test.new_note();
+    test.server.create_note(:note);
+    let mut diff_note = test.new_note();
+    diff_note.id = note.id;
+    test.server.create_note(note: diff_note);
 }
 
 #[test]

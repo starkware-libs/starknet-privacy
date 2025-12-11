@@ -13,6 +13,8 @@ scarb.workspace = true
 starknet.workspace = true
 openzeppelin.workspace = true
 starkware_utils.workspace = true
+# TODO: Use git revision / package version instead of path
+server = { path = "../server" }
 
 [dev-dependencies]
 assert_macros.workspace = true
