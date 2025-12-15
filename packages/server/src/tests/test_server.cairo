@@ -1,7 +1,7 @@
 use core::num::traits::Zero;
 use server::errors;
 use server::tests::test_utils::{
-    PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
+    PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, User, UserTrait, constants,
 };
 use snforge_std::{CustomToken, Token};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
@@ -554,4 +554,80 @@ fn test_transfer_assertions() {
         .server
         .safe_transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
+}
+
+#[test]
+fn test_withdraw() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let user = test.new_user();
+    let note = test.new_note(constants::DEFAULT_AMOUNT);
+    let recipient = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    let nullifier = test.new_nullifier();
+
+    // Deposit tokens to the server.
+    token.supply(:user, :amount);
+    user.deposit(:token, :amount, :note);
+
+    // Check balances before withdraw.
+    assert_eq!(token.balance_of(address: test.server.address), amount.into());
+    assert_eq!(token.balance_of(address: recipient.address), Zero::zero());
+
+    // Check storage before withdraw.
+    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.server.nullifier_exists(:nullifier), false);
+
+    // Withdraw
+    user.withdraw(recipient_addr: recipient.address, :token, :amount, :nullifier);
+
+    // Check balances after withdraw.
+    assert_eq!(token.balance_of(address: test.server.address), Zero::zero());
+    assert_eq!(token.balance_of(address: recipient.address), amount.into());
+
+    // Check storage after withdraw.
+    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.server.nullifier_exists(:nullifier), true);
+    // TODO: Test user balance in contract.
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_withdraw_assertions() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let recipient = test.new_user();
+    let token = test.new_token();
+    let zero_token = Token::Custom(
+        CustomToken { contract_address: Zero::zero(), balances_variable_selector: Zero::zero() },
+    );
+    let amount = constants::DEFAULT_AMOUNT;
+    let note = test.new_note(:amount);
+    let nullifier = test.new_nullifier();
+
+    // Catch ZERO_RECIPIENT_ADDR
+    let result = user.safe_withdraw(recipient_addr: Zero::zero(), :token, :amount, :nullifier);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
+
+    // Catch ZERO_TOKEN
+    let result = user
+        .safe_withdraw(recipient_addr: recipient.address, token: zero_token, :amount, :nullifier);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+
+    // Catch ZERO_AMOUNT
+    let result = user
+        .safe_withdraw(recipient_addr: recipient.address, :token, amount: Zero::zero(), :nullifier);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
+
+    // Catch ZERO_NULLIFIER
+    let result = user
+        .safe_withdraw(recipient_addr: recipient.address, :token, :amount, nullifier: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NULLIFIER);
+
+    // Catch NULLIFIER_ALREADY_EXISTS
+    token.supply(:user, :amount);
+    user.deposit(:token, :amount, :note);
+    user.withdraw(recipient_addr: recipient.address, :token, :amount, :nullifier);
+    let result = user.safe_withdraw(recipient_addr: recipient.address, :token, :amount, :nullifier);
+    assert_panic_with_felt_error(:result, expected_error: errors::NULLIFIER_ALREADY_EXISTS);
 }

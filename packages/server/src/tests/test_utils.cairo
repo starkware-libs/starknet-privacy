@@ -193,6 +193,29 @@ pub(crate) impl UserImpl of UserTrait {
         IServerSafeDispatcher { contract_address: *self.server }
             .deposit(user_addr: *self.address, token: token.contract_address(), :amount, :note)
     }
+
+    fn withdraw(
+        self: @User,
+        recipient_addr: ContractAddress,
+        token: Token,
+        amount: u128,
+        nullifier: felt252,
+    ) {
+        IServerDispatcher { contract_address: *self.server }
+            .withdraw(:recipient_addr, token: token.contract_address(), :amount, :nullifier);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_withdraw(
+        self: @User,
+        recipient_addr: ContractAddress,
+        token: Token,
+        amount: u128,
+        nullifier: felt252,
+    ) -> Result<(), Array<felt252>> {
+        IServerSafeDispatcher { contract_address: *self.server }
+            .withdraw(:recipient_addr, token: token.contract_address(), :amount, :nullifier)
+    }
 }
 
 #[generate_trait]
