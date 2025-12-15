@@ -280,4 +280,42 @@ pub trait IServer<T> {
     /// #### Access Control
     /// - TODO
     fn transfer(ref self: T, nullifiers: Span<felt252>, new_notes: Span<EncNote>);
+
+    /// Withdraws funds from the contract and consumes a note.
+    ///
+    /// #### Parameters
+    /// - `recipient_addr` (`ContractAddress`): The address of the recipient receiving the funds.
+    /// Must not be zero.
+    /// - `token` (`ContractAddress`): The address of the token to withdraw. Must not be zero.
+    /// - `amount` (`u128`): The amount to withdraw. Must not be zero.
+    /// - `nullifier` (`felt252`): The nullifier of the note to consume. Must not be zero.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Preconditions
+    /// - All inputs must not be zero.
+    /// - The nullifier must not already exist.
+    ///
+    /// #### Events Emitted
+    /// - TODO
+    ///
+    /// #### Reverts
+    /// - [`ZERO_RECIPIENT_ADDR`](server::errors::ZERO_RECIPIENT_ADDR): Thrown if `recipient_addr`
+    /// is zero.
+    /// - [`ZERO_TOKEN`](server::errors::ZERO_TOKEN): Thrown if `token` is zero.
+    /// - [`ZERO_AMOUNT`](server::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
+    /// - [`ZERO_NULLIFIER`](server::errors::ZERO_NULLIFIER): Thrown if `nullifier` is zero.
+    /// - [`NULLIFIER_ALREADY_EXISTS`](server::errors::NULLIFIER_ALREADY_EXISTS): Thrown if the
+    /// nullifier already exists.
+    ///
+    /// #### Access Control
+    /// - TODO
+    fn withdraw(
+        ref self: T,
+        recipient_addr: ContractAddress,
+        token: ContractAddress,
+        amount: u128,
+        nullifier: felt252,
+    );
 }

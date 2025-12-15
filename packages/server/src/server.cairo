@@ -148,6 +148,25 @@ pub mod Server {
                 self.create_note(note: *note);
             }
         }
+
+        fn withdraw(
+            ref self: ContractState,
+            recipient_addr: ContractAddress,
+            token: ContractAddress,
+            amount: u128,
+            nullifier: felt252,
+        ) {
+            // Assert inputs are valid.
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+            assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
+
+            self.use_note(:nullifier);
+
+            IERC20Dispatcher { contract_address: token }
+                .checked_transfer(recipient: recipient_addr, amount: amount.into());
+        }
     }
 
     #[generate_trait]

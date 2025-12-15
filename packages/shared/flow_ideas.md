@@ -28,3 +28,17 @@
 
 ### Server
 1. Unauthorized Transfer: User tries to spend a note they don't own - should fail.
+
+## Withdraw
+### Client + Server
+1. Withdraw end-to-end.
+2. User withdraw different notes.
+3. Call server withdraw twice with the same input.
+4. User withdraw a note that was already nullified.
+5. User withdraw a note from a non-existent channel (channel index).
+6. User withdraw a note from a non-existent note (note index).
+7. User withdraw multiple notes in a row.
+
+### Server
+1. User withdraw a note that doesn't belong to him (someone else's nullifier).
+2. User withdraw a note that doesn't exist (invalid nullifier).
