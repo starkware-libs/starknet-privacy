@@ -31,7 +31,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> (Span<felt252>, Span<EncNote>) {
         IClientDispatcher { contract_address: *self.client }
             .transfer(
-                owner: *self.address,
+                owner_addr: *self.address,
                 owner_private_key: *self.private_key,
                 :notes_to_use,
                 :notes_to_create,
@@ -44,7 +44,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> Result<(Span<felt252>, Span<EncNote>), Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.client }
             .transfer(
-                owner: *self.address,
+                owner_addr: *self.address,
                 owner_private_key: *self.private_key,
                 :notes_to_use,
                 :notes_to_create,

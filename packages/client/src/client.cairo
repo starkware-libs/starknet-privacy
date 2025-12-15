@@ -29,7 +29,7 @@ pub mod Client {
     pub impl ClientImpl of IClient<ContractState> {
         fn transfer(
             self: @ContractState,
-            owner: ContractAddress,
+            owner_addr: ContractAddress,
             owner_private_key: felt252,
             notes_to_use: Span<NotePath>,
             notes_to_create: Span<NewNote>,
@@ -40,7 +40,7 @@ pub mod Client {
             // TODO: Verify owner signature on TX.
 
             let (nullifiers, consumed_sum) = self
-                .use_notes(:owner, :owner_private_key, :notes_to_use);
+                .use_notes(:owner_addr, :owner_private_key, :notes_to_use);
             let (new_notes, created_sum) = self.create_notes(:notes_to_create);
 
             // TODO: Consider multi-token support (sum per token).
@@ -56,7 +56,7 @@ pub mod Client {
     impl ClientInternalImpl of ClientInternalTrait {
         fn use_notes(
             self: @ContractState,
-            owner: ContractAddress,
+            owner_addr: ContractAddress,
             owner_private_key: felt252,
             notes_to_use: Span<NotePath>,
         ) -> (Span<felt252>, u256) {

@@ -7,12 +7,12 @@ pub trait IClient<T> {
     // TODO: Re-read preconditions after implementing the create and use notes function.
     /// Validates `notes_to_create` are a valid redistribution of funds from `notes_to_use`.
     ///
-    /// A transfer consists of nullifying notes owned by `owner` and creating
+    /// A transfer consists of nullifying notes owned by `owner_addr` and creating
     /// new notes for the recipients.
     /// The owner can be one of the recipients.
     ///
     /// #### Parameters
-    /// - `owner` (`ContractAddress`) - The owner's address.
+    /// - `owner_addr` (`ContractAddress`) - The owner's address.
     /// - `owner_private_key` (`felt252`) - The owner's private key.
     /// - `notes_to_use` (`Span<NotePath>`) - The notes that are consumed as part of the transfer.
     /// Must not be empty.
@@ -25,9 +25,9 @@ pub trait IClient<T> {
     /// - (`Span<EncNote>`) - An encrypted representation of `notes_to_create`.
     ///
     /// #### Preconditions
-    /// - `owner` is registered with `owner_private_key` in the server.
+    /// - `owner_addr` is registered with `owner_private_key` in the server.
     /// - Each recipient is registered in the server.
-    /// - A channel exists from `owner` to each recipient.
+    /// - A channel exists from `owner_addr` to each recipient.
     /// - `notes_to_use` use valid channels and indexes.
     /// - The sum of the amounts of `notes_to_create` equals the sum of the amounts of
     /// `notes_to_use`.
@@ -52,10 +52,10 @@ pub trait IClient<T> {
     /// Thrown if there's a mismatch between the spent funds and the received funds.
     ///
     /// #### Access Control
-    /// - Can be called by anyone, but the transaction must be signed by `owner`.
+    /// - Can be called by anyone, but the transaction must be signed by `owner_addr`.
     fn transfer(
         self: @T,
-        owner: ContractAddress,
+        owner_addr: ContractAddress,
         owner_private_key: felt252,
         notes_to_use: Span<NotePath>,
         notes_to_create: Span<NewNote>,
