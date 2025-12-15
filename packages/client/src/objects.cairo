@@ -9,6 +9,7 @@ pub struct NotePath {
     pub note_index: usize,
 }
 
+// TODO: Consider adding recipient public key.
 /// A note that is created by the owner and sent to a recipient.
 #[derive(Serde, Copy, Drop)]
 pub struct NewNote {
@@ -19,4 +20,6 @@ pub struct NewNote {
     /// The amount the note represents.
     // TODO: Consider using different type.
     pub amount: u128,
+    /// The index of the note within the channel.
+    pub index: usize,
 }

@@ -4,7 +4,8 @@ pub mod Client {
     use client::interface::IClient;
     use client::objects::{NewNote, NotePath};
     use client::utils::{
-        derive_public_key, encrypt_channel_info, get_channel_id, get_channel_key, is_canonical_key,
+        derive_public_key, encrypt_channel_info, encrypt_note_amount, get_channel_id,
+        get_channel_key, get_note_id, is_canonical_key,
     };
     use core::num::traits::Zero;
     use server::interface::{IServerDispatcher, IServerDispatcherTrait};
@@ -92,7 +93,8 @@ pub mod Client {
 
             let (nullifiers, consumed_sum) = self
                 .use_notes(:owner, :owner_private_key, :notes_to_use);
-            let (new_notes, created_sum) = self.create_notes(:notes_to_create);
+            let (new_notes, created_sum) = self
+                .create_notes(:owner, :owner_private_key, :notes_to_create);
 
             // TODO: Consider multi-token support (sum per token).
             // TODO: Implement test to catch this error.
@@ -120,19 +122,65 @@ pub mod Client {
         }
 
         fn create_notes(
-            self: @ContractState, notes_to_create: Span<NewNote>,
+            self: @ContractState,
+            owner: ContractAddress,
+            private_key: felt252,
+            notes_to_create: Span<NewNote>,
         ) -> (Span<EncNote>, u256) {
+            let mut enc_notes: Array<EncNote> = array![];
+            let mut sum: u256 = Zero::zero();
+            // TODO: Consider adding context to the errors (which note is causing the error).
             for note in notes_to_create {
                 assert(note.recipient_addr.is_non_zero(), Errors::ZERO_RECIPIENT_ADDR);
                 assert(note.token.is_non_zero(), Errors::ZERO_TOKEN);
                 assert(note.amount.is_non_zero(), Errors::ZERO_AMOUNT);
-                // TODO: Verify notes are sequential in server storage.
-            // TODO: Sum note amounts.
-            // TODO: Verify tokens match.
-            }
-            // TODO: Return new notes span and amount sum.
 
-            ([].span(), Zero::zero())
+                // Read recipient public key from server.
+                // TODO: Consider using public key from input instead of reading from server.
+                let server = IServerDispatcher { contract_address: self.server.read() };
+                let recipient_public_key = server.get_public_key(user: *note.recipient_addr);
+                assert(recipient_public_key.is_non_zero(), Errors::RECIPIENT_NOT_REGISTERED);
+
+                // Compute channel key.
+                let channel_key = get_channel_key(
+                    sender_addr: owner,
+                    sender_private_key: private_key,
+                    recipient_addr: *note.recipient_addr,
+                    :recipient_public_key,
+                    token: *note.token,
+                );
+
+                // Assert channel exists.
+                let channel_id = get_channel_id(:channel_key);
+                assert(server.channel_exists(channel_id), Errors::CHANNEL_NOT_FOUND);
+
+                // Assert index is sequential, i.e. the previous note exists.
+                assert(
+                    note.index.is_zero()
+                        || server
+                            .get_note(
+                                note_id: get_note_id(
+                                    :channel_key,
+                                    index: *note.index - 1,
+                                    public_key: recipient_public_key,
+                                ),
+                            )
+                            .is_non_zero(),
+                    Errors::NOTE_INDEX_NOT_SEQUENTIAL,
+                );
+
+                // Compute note values.
+                let note_id = get_note_id(
+                    :channel_key, index: *note.index, public_key: recipient_public_key,
+                );
+                let enc_amount = encrypt_note_amount(:channel_key, amount: *note.amount);
+
+                enc_notes.append(EncNote { id: note_id, enc_amount });
+                sum += (*note.amount).into();
+                // TODO: Verify tokens match.
+            }
+
+            (enc_notes.span(), sum)
         }
     }
 }
