@@ -110,6 +110,26 @@ fn test_transfer_assertions() {
     let user_2 = test.new_user();
     let token = test.new_token();
 
+    // Catch ZERO_OWNER.
+    let mut user_1_zero = user_1;
+    user_1_zero.address = Zero::zero();
+    let result = user_1_zero
+        .safe_transfer(
+            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
+            notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_OWNER);
+
+    // Catch ZERO_OWNER_PRIVATE_KEY.
+    let mut user_1_zero_private_key = user_1;
+    user_1_zero_private_key.private_key = Zero::zero();
+    let result = user_1_zero_private_key
+        .safe_transfer(
+            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
+            notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_OWNER_PRIVATE_KEY);
+
     // Catch NO_NOTES_TO_USE.
     let result = user_1
         .safe_transfer(

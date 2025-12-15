@@ -2,6 +2,8 @@
 pub const ZERO_SERVER: felt252 = 'ZERO_SERVER';
 
 // Transfer errors.
+pub const ZERO_OWNER: felt252 = 'ZERO_OWNER';
+pub const ZERO_OWNER_PRIVATE_KEY: felt252 = 'ZERO_OWNER_PRIVATE_KEY';
 pub const NO_NOTES_TO_USE: felt252 = 'NO_NOTES_TO_USE';
 pub const NO_NOTES_TO_CREATE: felt252 = 'NO_NOTES_TO_CREATE';
 pub const ZERO_RECIPIENT_ADDR: felt252 = 'ZERO_RECIPIENT_ADDR';

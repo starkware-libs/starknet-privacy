@@ -34,6 +34,8 @@ pub mod Client {
             notes_to_use: Span<NotePath>,
             notes_to_create: Span<NewNote>,
         ) -> (Span<felt252>, Span<EncNote>) {
+            assert(owner.is_non_zero(), Errors::ZERO_OWNER);
+            assert(owner_private_key.is_non_zero(), Errors::ZERO_OWNER_PRIVATE_KEY);
             assert(!notes_to_use.is_empty(), Errors::NO_NOTES_TO_USE);
             assert(!notes_to_create.is_empty(), Errors::NO_NOTES_TO_CREATE);
 
