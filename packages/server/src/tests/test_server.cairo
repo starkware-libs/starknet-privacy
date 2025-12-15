@@ -458,3 +458,100 @@ fn test_deposit_assertions() {
     let result = different_user.safe_deposit(:token, :amount, :note);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
 }
+
+#[test]
+fn test_transfer() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let user = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    token.supply(:user, :amount);
+    let note = test.new_note(:amount);
+    let nullifier = test.new_nullifier();
+    let new_note = test.new_note(:amount);
+
+    // Deposit
+    user.deposit(:token, :amount, :note);
+
+    // Verify balances before.
+    assert_eq!(token.balance_of(address: test.server.address), amount.into());
+    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+
+    // Check storage before.
+    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.server.get_note(note_id: new_note.id), Zero::zero());
+    assert_eq!(test.server.nullifier_exists(:nullifier), false);
+
+    // Transfer
+    test.server.transfer(nullifiers: [nullifier].span(), new_notes: [new_note].span());
+
+    // Verify balances haven't changed.
+    assert_eq!(token.balance_of(address: test.server.address), amount.into());
+    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+
+    // Check storage after.
+    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.server.get_note(note_id: new_note.id), new_note.enc_amount);
+    assert_eq!(test.server.nullifier_exists(:nullifier), true);
+    // TODO: Test user balances in contract.
+}
+
+#[test]
+fn test_transfer_assertions() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let user = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    token.supply(:user, :amount);
+    let note = test.new_note(:amount);
+    let nullifier = test.new_nullifier();
+
+    // Catch EMPTY_NULLIFIERS
+    let result = test.server.safe_transfer(nullifiers: [].span(), new_notes: [note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::EMPTY_NULLIFIERS);
+
+    // Catch EMPTY_NEW_NOTES
+    let result = test.server.safe_transfer(nullifiers: [nullifier].span(), new_notes: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::EMPTY_NEW_NOTES);
+
+    // Catch ZERO_NULLIFIER
+    let result = test
+        .server
+        .safe_transfer(nullifiers: [Zero::zero()].span(), new_notes: [note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NULLIFIER);
+
+    // Catch NULLIFIER_ALREADY_EXISTS
+    test.server.transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
+    let result = test
+        .server
+        .safe_transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NULLIFIER_ALREADY_EXISTS);
+
+    // Catch ZERO_NOTE_ID
+    let nullifier = test.new_nullifier();
+    let mut zero_note = test.new_note(:amount);
+    zero_note.id = Zero::zero();
+    let result = test
+        .server
+        .safe_transfer(nullifiers: [nullifier].span(), new_notes: [zero_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NOTE_ID);
+
+    // Catch ZERO_ENC_NOTE_VALUE
+    let nullifier = test.new_nullifier(); // New nullifier because of snforge revert storage bug.
+    let mut zero_note = test.new_note(:amount);
+    zero_note.enc_amount = Zero::zero();
+    let result = test
+        .server
+        .safe_transfer(nullifiers: [nullifier].span(), new_notes: [zero_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_NOTE_VALUE);
+
+    // Catch NOTE_ALREADY_EXISTS
+    let nullifier = test.new_nullifier(); // New nullifier because of snforge revert storage bug.
+    let note = test.new_note(:amount); // New note because of snforge revert storage bug.
+    token.supply(:user, :amount);
+    user.deposit(:token, :amount, :note);
+    let result = test
+        .server
+        .safe_transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
+}

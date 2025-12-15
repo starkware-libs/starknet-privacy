@@ -89,6 +89,7 @@ pub(crate) impl TestImpl of TestTrait {
         EncNote { id, enc_amount }
     }
 
+    // TODO: Get note as input and generate appropriate nullifier.
     fn new_nullifier(ref self: Test) -> felt252 {
         self.nonce += 1;
         ('NULLIFIER' + self.nonce.into()).try_into().unwrap()
@@ -246,6 +247,17 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
 
     fn nullifier_exists(self: @ServerCfg, nullifier: felt252) -> bool {
         IServerDispatcher { contract_address: *self.address }.nullifier_exists(:nullifier)
+    }
+
+    fn transfer(self: @ServerCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>) {
+        IServerDispatcher { contract_address: *self.address }.transfer(:nullifiers, :new_notes)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_transfer(
+        self: @ServerCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>,
+    ) -> Result<(), Array<felt252>> {
+        IServerSafeDispatcher { contract_address: *self.address }.transfer(:nullifiers, :new_notes)
     }
 }
 
