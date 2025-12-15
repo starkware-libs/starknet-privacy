@@ -12,7 +12,7 @@ pub trait IClient<T> {
     ///
     /// #### Parameters
     /// - `owner` (`ContractAddress`) - The owner's address.
-    /// - `private_key` (`felt252`) - The owner's private key.
+    /// - `owner_private_key` (`felt252`) - The owner's private key.
     /// - `notes_to_use` (`Span<NotePath>`) - The notes that are consumed as part of the transfer.
     /// Must not be empty.
     /// - `notes_to_create` (`Span<NewNote>`) - The notes that are created as a result of the
@@ -24,7 +24,7 @@ pub trait IClient<T> {
     /// - (`Span<EncNote>`) - An encrypted representation of `notes_to_create`.
     ///
     /// #### Preconditions
-    /// - `owner` is registered with `private_key` in the server.
+    /// - `owner` is registered with `owner_private_key` in the server.
     /// - Each recipient is registered in the server.
     /// - A channel exists from `owner` to each recipient.
     /// - `notes_to_use` use valid channels and indexes.
@@ -55,7 +55,7 @@ pub trait IClient<T> {
     fn transfer(
         self: @T,
         owner: ContractAddress,
-        private_key: felt252,
+        owner_private_key: felt252,
         notes_to_use: Span<NotePath>,
         notes_to_create: Span<NewNote>,
     ) -> (Span<felt252>, Span<EncNote>);

@@ -32,7 +32,7 @@ pub(crate) impl UserImpl of UserTrait {
         IClientDispatcher { contract_address: *self.client }
             .transfer(
                 owner: *self.address,
-                private_key: *self.private_key,
+                owner_private_key: *self.private_key,
                 :notes_to_use,
                 :notes_to_create,
             )
@@ -45,7 +45,7 @@ pub(crate) impl UserImpl of UserTrait {
         IClientSafeDispatcher { contract_address: *self.client }
             .transfer(
                 owner: *self.address,
-                private_key: *self.private_key,
+                owner_private_key: *self.private_key,
                 :notes_to_use,
                 :notes_to_create,
             )
