@@ -38,6 +38,9 @@ pub trait IClient<T> {
     /// None
     ///
     /// #### Reverts
+    /// - [`ZERO_OWNER`](client::errors::ZERO_OWNER): Thrown if `owner` is zero.
+    /// - [`ZERO_OWNER_PRIVATE_KEY`](client::errors::ZERO_OWNER_PRIVATE_KEY):
+    /// Thrown if `owner_private_key` is zero.
     /// - [`NO_NOTES_TO_USE`](client::errors::NO_NOTES_TO_USE):
     /// Thrown if `notes_to_use` is empty.
     /// - [`NO_NOTES_TO_CREATE`](client::errors::NO_NOTES_TO_CREATE):
