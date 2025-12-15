@@ -16,7 +16,7 @@ pub(crate) struct ClientCfg {
     pub server: ContractAddress,
 }
 
-#[derive(Drop)]
+#[derive(Copy, Drop)]
 struct User {
     pub address: ContractAddress,
     pub client: ContractAddress,
