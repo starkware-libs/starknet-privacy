@@ -113,7 +113,7 @@ pub mod Server {
     }
 
     #[generate_trait]
-    pub(crate) impl ServerInternalImpl of ServerInternalTrait {
+    pub impl ServerInternalImpl of ServerInternalTrait {
         fn create_note(ref self: ContractState, note: EncNote) {
             // Assert inputs are not zero.
             // TODO: Remove assert not zero for hashes?

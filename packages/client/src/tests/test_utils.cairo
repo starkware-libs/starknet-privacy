@@ -1,4 +1,5 @@
-use client::client::Client::deploy_for_test as deploy_client_for_test;
+use client::client::Client;
+use client::client::Client::{ClientInternalTrait, deploy_for_test as deploy_client_for_test};
 use client::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
 };
@@ -8,8 +9,9 @@ use core::num::traits::Zero;
 use core::traits::Neg;
 use server::interface::{IServerDispatcher, IServerDispatcherTrait};
 use server::objects::{EncChannelInfo, EncNote};
-use server::server::Server::deploy_for_test as deploy_server_for_test;
-use snforge_std::{DeclareResultTrait, declare};
+use server::server::Server;
+use server::server::Server::{ServerInternalTrait, deploy_for_test as deploy_server_for_test};
+use snforge_std::{DeclareResultTrait, declare, interact_with_state};
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
@@ -80,6 +82,22 @@ pub(crate) impl UserImpl of UserTrait {
         (random, output)
     }
 
+    fn _open_channel_server(
+        self: @User,
+        recipient_addr: ContractAddress,
+        enc_channel_info: EncChannelInfo,
+        channel_id: felt252,
+    ) {
+        IServerDispatcher { contract_address: *self.server }
+            .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
+    }
+
+    fn open_channel_e2e(ref self: User, recipient: User, token: ContractAddress) {
+        let (_, channel_output) = self.open_channel_generate_random(recipient: recipient, :token);
+        let (recipient_addr, enc_channel_info, channel_id) = channel_output;
+        self._open_channel_server(:recipient_addr, :enc_channel_info, :channel_id)
+    }
+
     #[feature("safe_dispatcher")]
     fn safe_open_channel(
         self: @User, recipient: User, token: ContractAddress, random: felt252,
@@ -102,6 +120,40 @@ pub(crate) impl UserImpl of UserTrait {
     fn get_random(ref self: User) -> felt252 {
         self.nonce += 1;
         hash(['RANDOM', self.nonce.into()].span())
+    }
+
+    fn create_note(self: @User, note: NewNote) -> (EncNote, u128) {
+        interact_with_state(
+            *self.client,
+            || {
+                let mut state = Client::contract_state_for_testing();
+                state
+                    .create_note(
+                        owner_addr: *self.address,
+                        owner_private_key: *self.private_key,
+                        :note,
+                        server: IServerDispatcher { contract_address: *self.server },
+                    )
+            },
+        )
+    }
+
+    fn create_note_server(self: @User, note: EncNote) {
+        interact_with_state(
+            *self.server,
+            || {
+                let mut state = Server::contract_state_for_testing();
+                state.create_note(:note)
+            },
+        )
+    }
+
+
+    // TODO: Remember index somewhere instead of passing it as an argument.
+    fn new_note(
+        self: @User, recipient: User, token: ContractAddress, amount: u128, index: usize,
+    ) -> NewNote {
+        NewNote { recipient_addr: recipient.address, token, amount, index }
     }
 }
 
