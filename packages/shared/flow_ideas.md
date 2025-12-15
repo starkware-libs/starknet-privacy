@@ -42,3 +42,7 @@
 ### Server
 1. User withdraw a note that doesn't belong to him (someone else's nullifier).
 2. User withdraw a note that doesn't exist (invalid nullifier).
+
+### Create note
+1. Try to create same note twice in one transfer.
+2. Try to create same note twice in different transfers.
