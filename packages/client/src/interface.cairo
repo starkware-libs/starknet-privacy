@@ -4,6 +4,7 @@ use starknet::ContractAddress;
 
 #[starknet::interface]
 pub trait IClient<T> {
+    // TODO: Re-read preconditions after implementing the create and use notes function.
     /// Validates `notes_to_create` are a valid redistribution of funds from `notes_to_use`.
     ///
     /// A transfer consists of nullifying notes owned by `owner` and creating
