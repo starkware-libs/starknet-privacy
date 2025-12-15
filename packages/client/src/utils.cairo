@@ -3,7 +3,9 @@ use core::ec::{EcPoint, EcPointTrait};
 use core::hash::{HashStateExTrait, HashStateTrait};
 use core::poseidon::{PoseidonTrait, poseidon_hash_span};
 use server::objects::EncChannelInfo;
-use server::objects::domain_separation::{CHANNEL_ID_TAG, CHANNEL_KEY_TAG, enc_channel_info};
+use server::objects::domain_separation::{
+    CHANNEL_ID_TAG, CHANNEL_KEY_TAG, enc_channel_info, enc_note,
+};
 use starknet::ContractAddress;
 
 // TODO: Move to a different file?
@@ -75,4 +77,14 @@ pub(crate) fn derive_public_key(private_key: felt252) -> felt252 {
 /// Checks if the key is canonical, i.e. less than ORDER / 2.
 pub(crate) fn is_canonical_key(key: felt252) -> bool {
     key.into() < (ORDER.into() / 2_u256)
+}
+
+/// Computes the note id.
+pub(crate) fn compute_note_id(channel_key: felt252, index: usize, public_key: felt252) -> felt252 {
+    hash([enc_note::NOTE_ID_TAG, channel_key, index.into(), public_key].span())
+}
+
+/// Encrypts the note amount.
+pub(crate) fn encrypt_note_amount(channel_key: felt252, amount: u128) -> felt252 {
+    hash([enc_note::ENC_AMOUNT_TAG, channel_key, amount.into()].span())
 }
