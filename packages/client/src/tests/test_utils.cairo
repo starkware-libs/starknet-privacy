@@ -1,15 +1,22 @@
-use client::client::Client::deploy_for_test as deploy_client_for_test;
+use client::client::Client;
+use client::client::Client::{ClientInternalTrait, deploy_for_test as deploy_client_for_test};
 use client::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
 };
 use client::objects::{NewNote, NotePath};
-use client::utils::{derive_public_key, hash, is_canonical_key};
+use client::utils::{
+    compute_channel_key, compute_enc_amount_hash, compute_enc_channel_key_hash,
+    compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, derive_public_key,
+    encrypt_note_amount, hash, is_canonical_key,
+};
+use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
 use server::interface::{IServerDispatcher, IServerDispatcherTrait};
 use server::objects::{EncChannelInfo, EncNote};
-use server::server::Server::deploy_for_test as deploy_server_for_test;
-use snforge_std::{DeclareResultTrait, declare};
+use server::server::Server;
+use server::server::Server::{ServerInternalTrait, deploy_for_test as deploy_server_for_test};
+use snforge_std::{DeclareResultTrait, declare, interact_with_state};
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
@@ -130,6 +137,63 @@ pub(crate) impl UserImpl of UserTrait {
         self.nonce += 1;
         hash(['RANDOM', self.nonce.into()].span())
     }
+
+    fn create_note(self: @User, note: NewNote) -> EncNote {
+        interact_with_state(
+            *self.client,
+            || {
+                let mut state = Client::contract_state_for_testing();
+                state
+                    .create_note(
+                        owner_addr: *self.address,
+                        owner_private_key: *self.private_key,
+                        :note,
+                        server: IServerDispatcher { contract_address: *self.server },
+                    )
+            },
+        )
+    }
+
+    fn create_note_server(self: @User, note: EncNote) {
+        interact_with_state(
+            *self.server,
+            || {
+                let mut state = Server::contract_state_for_testing();
+                state.create_note(:note)
+            },
+        )
+    }
+
+    fn compute_channel_key(self: @User, recipient: User, token: ContractAddress) -> felt252 {
+        compute_channel_key(
+            sender_addr: *self.address,
+            sender_private_key: *self.private_key,
+            recipient_addr: recipient.address,
+            recipient_public_key: recipient.public_key,
+            :token,
+        )
+    }
+
+    fn compute_enc_note(
+        self: @User, recipient: User, token: ContractAddress, index: usize, amount: u128,
+    ) -> EncNote {
+        let channel_key = self.compute_channel_key(:recipient, :token);
+        let note_id = compute_note_id(:channel_key, :index, public_key: recipient.public_key);
+        let enc_amount = encrypt_note_amount(:channel_key, :index, :amount);
+        EncNote { id: note_id, enc_amount }
+    }
+
+    // TODO: Remember index somewhere instead of passing it as an argument.
+    fn new_note(
+        self: @User, recipient: User, token: ContractAddress, amount: u128, index: usize,
+    ) -> NewNote {
+        NewNote { recipient_addr: recipient.address, token, amount, index }
+    }
+
+    // TODO: Consider different trait.
+    fn get_note_server(self: @User, note_id: felt252) -> felt252 {
+        IServerDispatcher { contract_address: *self.server }.get_note(:note_id)
+    }
 }
 
 #[derive(Drop, Copy)]
@@ -191,4 +255,37 @@ pub(crate) fn deploy_server() -> ContractAddress {
     )
         .expect('Server deployment failed');
     contract_address
+}
+
+/// Returns (channel_key, token, sender_addr) decrypted from the given `enc_channel_info` and
+/// recipient's `private_key`.
+pub(crate) fn decrypt_channel_info(
+    enc_channel_info: EncChannelInfo, private_key: felt252,
+) -> (felt252, ContractAddress, ContractAddress) {
+    // Find shared point.
+    let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_channel_info.ephemeral_pubkey)
+        .unwrap();
+    let shared_point = ephemeral_pubkey_point.mul(scalar: private_key);
+    let shared_x = shared_point.try_into().unwrap().x();
+
+    // Decrypt channel key.
+    let decrypted_channel_key = enc_channel_info.enc_channel_key
+        - compute_enc_channel_key_hash(:shared_x);
+
+    // Decrypt token.
+    let decrypted_token = enc_channel_info.enc_token - compute_enc_token_hash(:shared_x);
+
+    // Decrypt sender address.
+    let decrypted_sender_addr = enc_channel_info.enc_sender_addr
+        - compute_enc_sender_addr_hash(:shared_x);
+
+    (
+        decrypted_channel_key,
+        decrypted_token.try_into().unwrap(),
+        decrypted_sender_addr.try_into().unwrap(),
+    )
+}
+
+pub(crate) fn decrypt_note_amount(channel_key: felt252, index: usize, enc_amount: felt252) -> u128 {
+    (enc_amount - compute_enc_amount_hash(:channel_key, :index)).try_into().unwrap()
 }

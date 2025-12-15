@@ -1,15 +1,17 @@
 use client::errors;
 use client::objects::{NewNote, NotePath};
-use client::tests::test_utils::{Test, TestTrait, UserTrait};
-use client::utils::{
-    compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
-    compute_enc_sender_addr_hash, compute_enc_token_hash, encrypt_channel_info, is_canonical_key,
+use client::tests::test_utils::{
+    Test, TestTrait, UserTrait, decrypt_channel_info, decrypt_note_amount,
 };
-use core::ec::EcPointTrait;
+use client::utils::{
+    compute_channel_id, compute_channel_key, compute_note_id, encrypt_channel_info,
+    is_canonical_key,
+};
 use core::num::traits::Zero;
 use server::objects::domain_separation::enc_channel_info;
 use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
 use starkware_utils_testing::test_utils::{assert_panic_with_felt_error, generic_load};
+
 
 #[test]
 fn test_constructor() {
@@ -36,83 +38,134 @@ fn test_constructor_zero_server() {
 #[test]
 fn test_transfer() {
     let mut test: Test = Default::default();
-    let user_1 = test.new_user();
+    let mut user_1 = test.new_user();
     let user_2 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
     let token = test.new_token();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let amount = 1;
+    let note_index = 0;
+    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
 
-    let result = user_1
+    let (nullifiers, new_notes) = user_1
         .transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 },].span(),
-            notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
+            notes_to_use: [NotePath { channel_index: 0, note_index },].span(),
+            notes_to_create: [note].span(),
         );
 
-    let expected_result = ([].span(), [].span());
-    assert_eq!(result, expected_result);
+    // Test use_note output.
+    let expected_nullifiers = [].span();
+    assert_eq!(nullifiers, expected_nullifiers);
+
+    // Test create_note output.
+    let enc_note = user_1.compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
+    let expected_new_notes = [enc_note].span();
+    assert_eq!(new_notes, expected_new_notes);
 }
 
 #[test]
 fn test_transfer_to_self() {
     let mut test: Test = Default::default();
-    let user = test.new_user();
+    let mut user = test.new_user();
+    user.register_server();
     let token = test.new_token();
+    user.open_channel_e2e(recipient: user, :token);
+    let amount = 1;
+    let note_index = 0;
+    let note = user.new_note(recipient: user, :token, :amount, index: note_index);
 
-    let result = user
+    let (nullifiers, new_notes) = user
         .transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 },].span(),
-            notes_to_create: [NewNote { recipient_addr: user.address, token, amount: 1 }].span(),
+            notes_to_use: [NotePath { channel_index: 0, note_index },].span(),
+            notes_to_create: [note].span(),
         );
 
-    let expected_result = ([].span(), [].span());
-    assert_eq!(result, expected_result);
+    // Test use_note output.
+    let expected_nullifiers = [].span();
+    assert_eq!(nullifiers, expected_nullifiers);
+
+    // Test create_note output.
+    let enc_note = user.compute_enc_note(recipient: user, :token, index: note_index, :amount);
+    let expected_new_notes = [enc_note].span();
+    assert_eq!(new_notes, expected_new_notes);
 }
 
 #[test]
 fn test_transfer_one_to_many() {
     let mut test = Default::default();
-    let user_1 = test.new_user();
+    let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     let user_3 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    user_3.register_server();
     let token = test.new_token();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_3, :token);
+    let note_index = 0;
+    let amount_1 = 1;
+    let amount_2 = 8;
+    let note_1 = user_1.new_note(recipient: user_2, :token, amount: amount_1, index: note_index);
+    let note_2 = user_1.new_note(recipient: user_3, :token, amount: amount_2, index: note_index);
 
-    let result = user_1
+    let (nullifiers, new_notes) = user_1
         .transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: 1 },
-                NewNote { recipient_addr: user_2.address, token, amount: 1 },
-                NewNote { recipient_addr: user_3.address, token, amount: 8 },
-            ]
-                .span(),
+            notes_to_create: [note_1, note_2].span(),
         );
-    let expected_result = ([].span(), [].span());
-    assert_eq!(result, expected_result);
+
+    // Test use_note output.
+    let expected_nullifiers = [].span();
+    assert_eq!(nullifiers, expected_nullifiers);
+
+    // Test create_note output.
+    let enc_note_1 = user_1
+        .compute_enc_note(recipient: user_2, :token, index: note_index, amount: amount_1);
+    let enc_note_2 = user_1
+        .compute_enc_note(recipient: user_3, :token, index: note_index, amount: amount_2);
+    let expected_new_notes = [enc_note_1, enc_note_2].span();
+    assert_eq!(new_notes, expected_new_notes);
 }
 
 #[test]
 fn test_transfer_many_to_one() {
     let mut test = Default::default();
-    let user_1 = test.new_user();
+    let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     let token = test.new_token();
+    user_1.register_server();
+    user_2.register_server();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let amount = 2;
+    let note_index = 0;
+    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
 
-    let result = user_1
+    let (nullifiers, new_notes) = user_1
         .transfer(
             notes_to_use: [
                 NotePath { channel_index: 0, note_index: 0 },
                 NotePath { channel_index: 0, note_index: 1 },
             ]
                 .span(),
-            notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 2 }].span(),
+            notes_to_create: [note].span(),
         );
-    let expected_result = ([].span(), [].span());
-    assert_eq!(result, expected_result);
+
+    // Test use_note output.
+    let expected_nullifiers = [].span();
+    assert_eq!(nullifiers, expected_nullifiers);
+
+    // Test create_note output.
+    let enc_note = user_1.compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
+    let expected_new_notes = [enc_note].span();
+    assert_eq!(new_notes, expected_new_notes);
 }
 
 #[test]
 #[feature("safe_dispatcher")]
 fn test_transfer_assertions() {
     let mut test = Default::default();
-    let user_1 = test.new_user();
+    let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     let token = test.new_token();
 
@@ -122,7 +175,10 @@ fn test_transfer_assertions() {
     let result = user_1_zero
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
+            notes_to_create: [
+                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
+            ]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_ADDR);
 
@@ -132,7 +188,10 @@ fn test_transfer_assertions() {
     let result = user_1_zero_private_key
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
+            notes_to_create: [
+                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
+            ]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
 
@@ -140,7 +199,10 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [].span(),
-            notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
+            notes_to_create: [
+                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
+            ]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_USE);
 
@@ -152,11 +214,14 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_CREATE);
 
+    // Create note errors.
+
     // Catch ZERO_RECIPIENT.
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [NewNote { recipient_addr: Zero::zero(), token, amount: 1 }].span(),
+            notes_to_create: [NewNote { recipient_addr: Zero::zero(), token, amount: 1, index: 0 }]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
@@ -165,7 +230,9 @@ fn test_transfer_assertions() {
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token: Zero::zero(), amount: 1 },
+                NewNote {
+                    recipient_addr: user_2.address, token: Zero::zero(), amount: 1, index: 0,
+                },
             ]
                 .span(),
         );
@@ -176,11 +243,49 @@ fn test_transfer_assertions() {
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: Zero::zero() },
+                NewNote { recipient_addr: user_2.address, token, amount: Zero::zero(), index: 0 },
             ]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
+
+    // Catch RECIPIENT_NOT_REGISTERED.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
+            notes_to_create: [
+                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
+
+    user_2.register_server();
+
+    // Catch CHANNEL_NOT_FOUND.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
+            notes_to_create: [
+                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_NOT_FOUND);
+
+    user_1.register_server();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+
+    // Catch NOTE_INDEX_NOT_SEQUENTIAL.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
+            notes_to_create: [
+                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 1 }
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_INDEX_NOT_SEQUENTIAL);
 }
 
 #[test]
@@ -586,19 +691,13 @@ fn test_open_channel_decrypt_channel_info() {
     user_1.open_channel_e2e(recipient: user_2, :token);
 
     // User 2 should be able to decrypt the channel info.
-
     assert_eq!(user_2.get_num_of_channels_server(), 1);
     let enc_channel_info = user_2.get_enc_channel_info_server(channel_index: 0);
+    let (decrypted_channel_key, decrypted_token, decrypted_sender_addr) = decrypt_channel_info(
+        :enc_channel_info, private_key: user_2.private_key,
+    );
 
-    // Find shared point.
-    let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_channel_info.ephemeral_pubkey)
-        .unwrap();
-    let shared_point = ephemeral_pubkey_point.mul(scalar: user_2.private_key);
-    let shared_x = shared_point.try_into().unwrap().x();
-
-    // Decrypt channel key.
-    let decrypted_channel_key = enc_channel_info.enc_channel_key
-        - compute_enc_channel_key_hash(:shared_x);
+    // Verify decrypted channel key.
     let expected_channel_key = compute_channel_key(
         sender_addr: user_1.address,
         sender_private_key: user_1.private_key,
@@ -608,13 +707,198 @@ fn test_open_channel_decrypt_channel_info() {
     );
     assert_eq!(decrypted_channel_key, expected_channel_key);
 
-    // Decrypt token.
-    let decrypted_token = enc_channel_info.enc_token - compute_enc_token_hash(:shared_x);
+    // Verify decrypted token.
     assert_eq!(decrypted_token.try_into().unwrap(), token);
 
-    // Decrypt sender address.
-    let decrypted_sender_addr = enc_channel_info.enc_sender_addr
-        - compute_enc_sender_addr_hash(:shared_x);
-    assert_eq!(decrypted_sender_addr.try_into().unwrap(), user_1.address);
+    // Verify decrypted sender address.
+    assert_eq!(decrypted_sender_addr, user_1.address);
 }
 
+#[test]
+fn test_create_note() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    let token = test.new_token();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let amount = 1;
+    let note_index = 0;
+    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
+    let enc_note = user_1.create_note(:note);
+    let expected_enc_note = user_1
+        .compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
+    assert_eq!(enc_note, expected_enc_note);
+}
+
+#[test]
+fn test_create_note_self_note() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    user.register_server();
+    let token = test.new_token();
+    user.open_channel_e2e(recipient: user, :token);
+    let amount = 1;
+    let note_index = 0;
+    let note = user.new_note(recipient: user, :token, :amount, index: note_index);
+    let enc_note = user.create_note(:note);
+    let expected_enc_note = user
+        .compute_enc_note(recipient: user, :token, index: note_index, :amount);
+    assert_eq!(enc_note, expected_enc_note);
+}
+
+#[test]
+fn test_create_note_twice() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    let token = test.new_token();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let amount_1 = 1;
+    let note_index_1 = 0;
+    let note_1 = user_1.new_note(recipient: user_2, :token, amount: amount_1, index: note_index_1);
+    let enc_note_1 = user_1.create_note(note: note_1);
+    let amount_2 = amount_1 + 1;
+    let note_index_2 = note_index_1 + 1;
+    user_1.create_note_server(enc_note_1);
+    let note_2 = user_1.new_note(recipient: user_2, :token, amount: amount_2, index: note_index_2);
+    let enc_note_2 = user_1.create_note(note: note_2);
+    assert_ne!(enc_note_1.id, enc_note_2.id);
+    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    let expected_note_1 = user_1
+        .compute_enc_note(recipient: user_2, :token, index: note_index_1, amount: amount_1);
+    let expected_note_2 = user_1
+        .compute_enc_note(recipient: user_2, :token, index: note_index_2, amount: amount_2);
+    assert_eq!(enc_note_1, expected_note_1);
+    assert_eq!(enc_note_2, expected_note_2);
+}
+
+#[test]
+fn test_create_note_twice_same_amount() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    let token = test.new_token();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let amount = 1;
+    let note_index_1 = 0;
+    let note_1 = user_1.new_note(recipient: user_2, :token, :amount, index: note_index_1);
+    let enc_note_1 = user_1.create_note(note: note_1);
+    let note_index_2 = note_index_1 + 1;
+    user_1.create_note_server(enc_note_1);
+    let note_2 = user_1.new_note(recipient: user_2, :token, :amount, index: note_index_2);
+    let enc_note_2 = user_1.create_note(note: note_2);
+    assert_ne!(enc_note_1.id, enc_note_2.id);
+    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    let expected_note_1 = user_1
+        .compute_enc_note(recipient: user_2, :token, index: note_index_1, amount: amount);
+    let expected_note_2 = user_1
+        .compute_enc_note(recipient: user_2, :token, index: note_index_2, amount: amount);
+    assert_eq!(enc_note_1, expected_note_1);
+    assert_eq!(enc_note_2, expected_note_2);
+}
+
+#[test]
+#[should_panic(expected_error: errors::ZERO_RECIPIENT_ADDR)]
+fn test_create_note_zero_recipient_addr() {
+    let mut test: Test = Default::default();
+    let user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token = test.new_token();
+    user_2.address = Zero::zero();
+    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected_error: errors::ZERO_TOKEN)]
+fn test_create_note_zero_token() {
+    let mut test: Test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let note = user_1.new_note(recipient: user_2, token: Zero::zero(), amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected_error: errors::ZERO_TOKEN)]
+fn test_create_note_zero_amount() {
+    let mut test: Test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.new_token();
+    let note = user_1.new_note(recipient: user_2, :token, amount: 0, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected_error: errors::RECIPIENT_NOT_REGISTERED)]
+fn test_create_note_recipient_not_registered() {
+    let mut test: Test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.new_token();
+    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected_error: errors::CHANNEL_NOT_FOUND)]
+fn test_create_note_channel_not_found() {
+    let mut test: Test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    let token = test.new_token();
+    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected_error: errors::NOTE_INDEX_NOT_SEQUENTIAL)]
+fn test_create_note_note_index_not_sequential() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    let token = test.new_token();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let amount = 1;
+    let note = user_1.new_note(recipient: user_2, :token, :amount, index: 1);
+    user_1.create_note(:note);
+}
+
+// TODO: Consider move this test to common test file.
+#[test]
+fn test_create_note_decrypt_amount() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_server();
+    user_2.register_server();
+    let token = test.new_token();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let amount = 1;
+    let note_index = 0;
+    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
+    let enc_note = user_1.create_note(:note);
+    user_1.create_note_server(enc_note);
+
+    // User 2 should be able to decrypt the amount.
+    // Decrypt channel key.
+    let enc_channel_info = user_2.get_enc_channel_info_server(channel_index: 0);
+    let (channel_key, _, _) = decrypt_channel_info(
+        :enc_channel_info, private_key: user_2.private_key,
+    );
+    let note_id = compute_note_id(:channel_key, index: note_index, public_key: user_2.public_key);
+    let enc_amount = user_2.get_note_server(:note_id);
+    let decrypted_amount = decrypt_note_amount(:channel_key, index: note_index, :enc_amount);
+    assert_eq!(decrypted_amount, amount);
+}
