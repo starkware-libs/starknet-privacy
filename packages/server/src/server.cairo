@@ -132,6 +132,22 @@ pub mod Server {
                     sender: user, recipient: get_contract_address(), amount: amount.into(),
                 );
         }
+
+        fn transfer(ref self: ContractState, nullifiers: Span<felt252>, new_notes: Span<EncNote>) {
+            // Assert inputs are valid.
+            assert(!nullifiers.is_empty(), errors::EMPTY_NULLIFIERS);
+            assert(!new_notes.is_empty(), errors::EMPTY_NEW_NOTES);
+
+            // Mark notes as used.
+            for nullifier in nullifiers {
+                self.use_note(nullifier: *nullifier);
+            }
+
+            // Create new notes.
+            for note in new_notes {
+                self.create_note(note: *note);
+            }
+        }
     }
 
     #[generate_trait]

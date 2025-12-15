@@ -14,3 +14,17 @@
 11. User A deposit multiple notes, transfer them to one note for user B, user B withdraw it.
 12. User A deposit one note, transfer to users B and C, users B and C withdraw the notes.
 13. User A deposit one note, transfer to users B and C with leftover for themselves, all users withdraw.
+
+## Transfer
+### Client + Server
+1. Transfer end-to-end.
+2. Split Transfer: User A sends to User B and gets change back.
+3. Merge Transfer: User A combines multiple notes into one.
+4. Double Spend: User tries to spend the same note twice - should fail.
+5. Call server transfer twice with the same input.
+6. User A transfer to user B, user B to user C, user C back to A.
+7. User A transfer to users B and C, users B and C back to A.
+8. User A split one note into two notes for themselves - should fail.
+
+### Server
+1. Unauthorized Transfer: User tries to spend a note they don't own - should fail.

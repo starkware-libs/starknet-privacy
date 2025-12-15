@@ -22,3 +22,7 @@ pub const USER_ALREADY_REGISTERED: felt252 = 'USER_ALREADY_REGISTERED';
 pub const ZERO_USER: felt252 = 'ZERO_USER';
 pub const ZERO_TOKEN: felt252 = 'ZERO_TOKEN';
 pub const ZERO_AMOUNT: felt252 = 'ZERO_AMOUNT';
+
+// Transfer errors.
+pub const EMPTY_NULLIFIERS: felt252 = 'EMPTY_NULLIFIERS';
+pub const EMPTY_NEW_NOTES: felt252 = 'EMPTY_NEW_NOTES';
