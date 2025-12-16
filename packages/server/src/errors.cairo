@@ -17,3 +17,8 @@ pub const NULLIFIER_ALREADY_EXISTS: felt252 = 'NULLIFIER_ALREADY_EXISTS';
 // Reigster errors.
 pub const ZERO_PUBLIC_KEY: felt252 = 'ZERO_PUBLIC_KEY';
 pub const USER_ALREADY_REGISTERED: felt252 = 'USER_ALREADY_REGISTERED';
+
+// Deposit errors.
+pub const ZERO_USER: felt252 = 'ZERO_USER';
+pub const ZERO_TOKEN: felt252 = 'ZERO_TOKEN';
+pub const ZERO_AMOUNT: felt252 = 'ZERO_AMOUNT';
