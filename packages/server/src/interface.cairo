@@ -1,6 +1,5 @@
 use server::objects::{EncChannelInfo, EncNote};
 use starknet::ContractAddress;
-use starkware_utils::erc20::erc20_errors::Erc20Error;
 
 // TODO: Consider separate interface for views.
 
