@@ -9,7 +9,7 @@ use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
 use server::interface::{IServerDispatcher, IServerDispatcherTrait};
-use server::objects::domain_separation::{enc_channel_info, enc_note};
+use server::objects::domain_separation::enc_channel_info;
 use server::objects::{EncChannelInfo, EncNote};
 use server::server::Server;
 use server::server::Server::{ServerInternalTrait, deploy_for_test as deploy_server_for_test};
@@ -264,10 +264,4 @@ pub(crate) fn decrypt_channel_info(
         decrypted_token.try_into().unwrap(),
         decrypted_sender_addr.try_into().unwrap(),
     )
-}
-
-pub(crate) fn decrypt_note_amount(channel_key: felt252, index: usize, enc_amount: felt252) -> u128 {
-    (enc_amount - hash([enc_note::ENC_AMOUNT_TAG, channel_key, index.into()].span()))
-        .try_into()
-        .unwrap()
 }

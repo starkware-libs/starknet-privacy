@@ -4,9 +4,12 @@ use core::hash::{HashStateExTrait, HashStateTrait};
 use core::poseidon::{PoseidonTrait, poseidon_hash_span};
 use server::objects::EncChannelInfo;
 use server::objects::domain_separation::{
-    CHANNEL_ID_TAG, CHANNEL_KEY_TAG, enc_channel_info, enc_note,
+    CHANNEL_ID_TAG, CHANNEL_KEY_TAG, NULLIFIER_TAG, enc_channel_info, enc_note,
 };
 use starknet::ContractAddress;
+
+// TODO: Extract hashes to a seperate functions. for example, hashes in encrypt_channel_info, hash
+// in encrypt_note_amount, etc, and consider separate (common?) file.
 
 // TODO: Move to a different file?
 /// Returns the generator point.
@@ -89,6 +92,18 @@ pub(crate) fn encrypt_channel_info(
     }
 }
 
+/// Decrypts the channel key from `EncChannelInfo`.
+pub(crate) fn decrypt_channel_key(
+    enc_channel_info: EncChannelInfo, recipient_private_key: felt252,
+) -> felt252 {
+    let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_channel_info.ephemeral_pubkey)
+        .unwrap();
+    let shared_point = ephemeral_pubkey_point.mul(scalar: recipient_private_key);
+    let shared_x = shared_point.try_into().unwrap().x();
+    enc_channel_info.enc_channel_key
+        - hash([enc_channel_info::ENC_CHANNEL_KEY_TAG, shared_x].span())
+}
+
 /// Derives the public key from the private key.
 /// Assumes the private key is not zero.
 pub(crate) fn derive_public_key(private_key: felt252) -> felt252 {
@@ -109,4 +124,20 @@ pub(crate) fn compute_note_id(channel_key: felt252, index: usize, public_key: fe
 /// Encrypts the note amount.
 pub(crate) fn encrypt_note_amount(channel_key: felt252, index: usize, amount: u128) -> felt252 {
     hash([enc_note::ENC_AMOUNT_TAG, channel_key, index.into()].span()) + amount.into()
+}
+
+/// Decrypts the note amount from `EncNote`.
+pub(crate) fn decrypt_note_amount(
+    enc_note_value: felt252, channel_key: felt252, index: usize,
+) -> u128 {
+    (enc_note_value - hash([enc_note::ENC_AMOUNT_TAG, channel_key, index.into()].span()))
+        .try_into()
+        .unwrap()
+}
+
+/// Computes the nullifier.
+pub(crate) fn compute_nullifier(
+    channel_key: felt252, index: usize, owner_private_key: felt252,
+) -> felt252 {
+    hash([NULLIFIER_TAG, channel_key, index.into(), owner_private_key].span())
 }
