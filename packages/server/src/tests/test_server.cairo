@@ -1,4 +1,4 @@
-use core::num::traits::Zero;
+use core::num::traits::{Pow, Zero};
 use server::errors;
 use server::tests::test_utils::{
     PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
@@ -11,6 +11,7 @@ use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_
 #[test]
 fn test_open_channel() {
     let mut test: Test = Default::default();
+    let unused = 1;
     let user = test.new_user();
     let (enc_channel_info, channel_id) = test.new_channel();
     test.server.open_channel(recipient_addr: user.address, :enc_channel_info, :channel_id);

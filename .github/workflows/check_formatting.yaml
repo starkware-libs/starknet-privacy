@@ -2,6 +2,7 @@ name: Check Formatting
 
 on:
   workflow_call:
+  pull_request:
 
 jobs:
   check_formatting:
