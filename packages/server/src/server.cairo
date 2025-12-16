@@ -23,8 +23,9 @@ pub mod Server {
         notes: Map<felt252, felt252>,
         /// Map of nullifier to whether it exists.
         nullifiers: Map<felt252, bool>,
-        /// Map of user addresses to their public viewing keys.
-        public_key: Map<ContractAddress, felt252>,
+        /// Map of user addresses to their public viewing keys (list of historical keys).
+        /// The last element in the vector is the current public key.
+        public_key: Map<ContractAddress, Vec<felt252>>,
     }
 
     #[event]
@@ -101,16 +102,35 @@ pub mod Server {
             assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
 
             // Assert that keys are empty before writing.
-            assert(self.public_key.read(user).is_zero(), errors::USER_ALREADY_REGISTERED);
+            assert(self.public_key.entry(user).len().is_zero(), errors::USER_ALREADY_REGISTERED);
 
             // TODO: Verify the proof on the encrypted compliance viewing key from the client side.
 
-            // Write key to storage.
-            self.public_key.write(user, public_key);
+            // Write key to storage (first key in the vector).
+            self.public_key.entry(user).push(public_key);
         }
 
         fn get_public_key(self: @ContractState, user_addr: ContractAddress) -> felt252 {
-            self.public_key.read(user_addr)
+            let keys = self.public_key.entry(user_addr);
+            let len = keys.len();
+            if len.is_zero() {
+                return Zero::zero();
+            }
+            let last_index = len - 1;
+            keys.at(last_index).read()
+        }
+
+        fn change_public_key(ref self: ContractState, public_key: felt252) {
+            let user = get_caller_address();
+
+            // Assert that input is valid.
+            assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
+
+            // Assert that user has already registered (vector is not empty).
+            assert(self.public_key.entry(user).len().is_non_zero(), errors::USER_NOT_REGISTERED);
+
+            // Append new key to storage (preserving old keys).
+            self.public_key.entry(user).push(public_key);
         }
 
         fn deposit(
