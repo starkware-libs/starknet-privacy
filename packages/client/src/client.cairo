@@ -109,6 +109,25 @@ pub mod Client {
 
             (nullifiers, new_notes)
         }
+
+        fn deposit(
+            self: @ContractState,
+            owner_addr: ContractAddress,
+            owner_private_key: felt252,
+            note: NewNote,
+        ) -> (ContractAddress, ContractAddress, u128, EncNote) {
+            // Assert input is valid.
+            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
+            // TODO: Consider allowing deposits to other addresses.
+            assert(owner_addr == note.recipient_addr, errors::NON_SELF_DEPOSIT);
+
+            // TODO: Verify owner signature on TX.
+
+            let server = IServerDispatcher { contract_address: self.server.read() };
+            let enc_note = self.create_note(:owner_addr, :owner_private_key, :note, :server);
+
+            (owner_addr, note.token, note.amount, enc_note)
+        }
     }
 
     #[generate_trait]

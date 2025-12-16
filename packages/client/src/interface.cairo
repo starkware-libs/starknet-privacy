@@ -119,4 +119,53 @@ pub trait IClient<T> {
         notes_to_use: Span<NotePath>,
         notes_to_create: Span<NewNote>,
     ) -> (Span<felt252>, Span<EncNote>);
+
+    /// Generates a deposit transaction to create a new note for the owner.
+    ///
+    /// This function prepares the inputs for the `deposit` function in the server.
+    /// It encrypts a new note for `owner_addr` (who must be the recipient) with the specified
+    /// `note` details.
+    ///
+    /// #### Parameters
+    /// - `owner_addr` (`ContractAddress`) - The address of the note owner (sender of the deposit).
+    /// Must not be zero. // TODO: Consider using `note.recipient_addr` instead.
+    /// - `owner_private_key` (`felt252`) - The owner's private key. Must not be zero.
+    /// - `note` (`NewNote`) - The details of the note to be created.
+    /// `note.recipient_addr` must be equal to `owner_addr`.
+    /// All `note` fields must not be zero.
+    ///
+    /// #### Returns
+    /// - (`ContractAddress`) - The recipient of the note (owner).
+    /// - (`ContractAddress`) - The token address.
+    /// - (`u128`) - The amount to deposit.
+    /// - (`EncNote`) - The encrypted note to be stored. // TODO: Figure out external notes.
+    ///
+    /// #### Preconditions
+    /// - A self-channel exists for `owner_addr` with `note.token`.
+    /// - `note.index == 0` or note `note.index - 1` exists in the self-channel.
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// - [`ZERO_OWNER_PRIVATE_KEY`](client::errors::ZERO_OWNER_PRIVATE_KEY): Thrown if
+    /// `owner_private_key` is zero.
+    /// - [`NON_SELF_DEPOSIT`](client::errors::NON_SELF_DEPOSIT): Thrown if `owner_addr` is not the
+    /// recipient.
+    /// - [`ZERO_RECIPIENT_ADDR`](client::errors::ZERO_RECIPIENT_ADDR): Thrown if
+    /// `note.recipient_addr` is zero.
+    /// - [`ZERO_TOKEN`](client::errors::ZERO_TOKEN): Thrown if `note.token` is zero.
+    /// - [`ZERO_AMOUNT`](client::errors::ZERO_AMOUNT): Thrown if `note.amount` is zero.
+    /// - [`RECIPIENT_NOT_REGISTERED`](client::errors::RECIPIENT_NOT_REGISTERED): Thrown if
+    /// `note.recipient_addr` is not registered in the server.
+    /// - [`CHANNEL_NOT_FOUND`](client::errors::CHANNEL_NOT_FOUND): Thrown if a self-channel for
+    /// `owner_addr` with `token` does not exist.
+    /// - [`NOTE_INDEX_NOT_SEQUENTIAL`](client::errors::NOTE_INDEX_NOT_SEQUENTIAL): Thrown if
+    /// `note.index` is not sequential (`note.index != 0` and `note.index - 1` does not exist).
+    ///
+    /// #### Access Control
+    /// - TODO
+    fn deposit(
+        self: @T, owner_addr: ContractAddress, owner_private_key: felt252, note: NewNote,
+    ) -> (ContractAddress, ContractAddress, u128, EncNote);
 }
