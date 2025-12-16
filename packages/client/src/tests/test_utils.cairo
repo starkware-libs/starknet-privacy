@@ -5,8 +5,9 @@ use client::interface::{
 };
 use client::objects::{NewNote, NotePath};
 use client::utils::{
-    compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash, derive_public_key, hash, is_canonical_key,
+    compute_channel_key, compute_enc_amount_hash, compute_enc_channel_key_hash,
+    compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, derive_public_key,
+    encrypt_note_amount, hash, is_canonical_key,
 };
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
@@ -174,6 +175,38 @@ pub(crate) impl UserImpl of UserTrait {
     // TODO: Consider different trait.
     fn get_note_server(self: @User, note_id: felt252) -> felt252 {
         IServerDispatcher { contract_address: *self.server }.get_note(:note_id)
+    }
+
+    fn deposit(self: @User, note: NewNote) -> (ContractAddress, ContractAddress, u128, EncNote) {
+        IClientDispatcher { contract_address: *self.client }
+            .deposit(owner_private_key: *self.private_key, :note)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_deposit(
+        self: @User, note: NewNote,
+    ) -> Result<(ContractAddress, ContractAddress, u128, EncNote), Array<felt252>> {
+        IClientSafeDispatcher { contract_address: *self.client }
+            .deposit(owner_private_key: *self.private_key, :note)
+    }
+
+    fn compute_channel_key(self: @User, recipient: User, token: ContractAddress) -> felt252 {
+        compute_channel_key(
+            sender_addr: *self.address,
+            sender_private_key: *self.private_key,
+            recipient_addr: recipient.address,
+            recipient_public_key: recipient.public_key,
+            :token,
+        )
+    }
+
+    fn compute_enc_note(
+        self: @User, recipient: User, token: ContractAddress, index: usize, amount: u128,
+    ) -> EncNote {
+        let channel_key = self.compute_channel_key(:recipient, :token);
+        let note_id = compute_note_id(:channel_key, :index, public_key: recipient.public_key);
+        let enc_amount = encrypt_note_amount(:channel_key, :index, :amount);
+        EncNote { id: note_id, enc_amount }
     }
 }
 
