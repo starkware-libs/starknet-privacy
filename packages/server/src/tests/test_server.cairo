@@ -418,11 +418,11 @@ fn test_deposit_assertions() {
     let result = user.safe_deposit(:token, amount: Zero::zero(), :note);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
-    // Catch ZERO_USER
+    // Catch ZERO_USER_ADDR
     let mut zero_user = test.new_user();
     zero_user.address = Zero::zero();
     let result = zero_user.safe_deposit(:token, :amount, :note);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_NOTE_ID
     let mut zero_note = test.new_note(:amount);
