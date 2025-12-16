@@ -28,3 +28,6 @@ pub const NOTE_SUM_MISMATCH: felt252 = 'NOTE_SUM_MISMATCH';
 pub const ZERO_AMOUNT: felt252 = 'ZERO_AMOUNT';
 pub const CHANNEL_NOT_FOUND: felt252 = 'CHANNEL_NOT_FOUND';
 pub const NOTE_INDEX_NOT_SEQUENTIAL: felt252 = 'NOTE_INDEX_NOT_SEQUENTIAL';
+
+// Use note errors.
+pub const NOTE_NOT_FOUND: felt252 = 'NOTE_NOT_FOUND';
