@@ -16,3 +16,12 @@ jobs:
       - name: Check formatting
         run: |
           scarb fmt -w --check
+
+      - name: Check unused imports
+        run: |
+          output=$(scarb build 2>&1)
+          if echo "$output" | grep -q "warn: Unused import"; then
+            echo "Unused imports detected:"
+            echo "$output" | grep "warn: Unused import" -A 2
+            exit 1
+          fi
