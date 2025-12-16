@@ -194,6 +194,21 @@ pub(crate) impl UserImpl of UserTrait {
     fn get_note_server(self: @User, note_id: felt252) -> felt252 {
         IServerDispatcher { contract_address: *self.server }.get_note(:note_id)
     }
+
+    fn deposit(
+        self: @User, new_note: NewNote,
+    ) -> (ContractAddress, ContractAddress, u128, EncNote) {
+        IClientDispatcher { contract_address: *self.client }
+            .deposit(owner_private_key: *self.private_key, :new_note)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_deposit(
+        self: @User, new_note: NewNote,
+    ) -> Result<(ContractAddress, ContractAddress, u128, EncNote), Array<felt252>> {
+        IClientSafeDispatcher { contract_address: *self.client }
+            .deposit(owner_private_key: *self.private_key, :new_note)
+    }
 }
 
 #[derive(Drop, Copy)]
