@@ -4,8 +4,9 @@ use starknet::ContractAddress;
 #[derive(Serde, Copy, Drop)]
 pub struct NotePath {
     /// The index of the channel within the owner's channel vector.
-    pub channel_index: usize,
+    pub channel_index: u64,
     /// The index of the note within the channel.
+    // TODO: Consider changing type to u64.
     pub note_index: usize,
 }
 

@@ -5,8 +5,8 @@ use client::interface::{
 };
 use client::objects::{NewNote, NotePath};
 use client::utils::{
-    compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash, derive_public_key, hash, is_canonical_key,
+    compute_enc_channel_key_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
+    derive_public_key, hash, is_canonical_key,
 };
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
@@ -163,6 +163,36 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
+    fn create_note_e2e(self: @User, note: NewNote) {
+        let enc_note = self.create_note(:note);
+        self.create_note_server(note: enc_note);
+    }
+
+    fn use_note(self: @User, note: NotePath) -> (felt252, u128) {
+        interact_with_state(
+            *self.client,
+            || {
+                let mut state = Client::contract_state_for_testing();
+                state
+                    .use_note(
+                        owner_addr: *self.address,
+                        owner_private_key: *self.private_key,
+                        :note,
+                        server: IServerDispatcher { contract_address: *self.server },
+                    )
+            },
+        )
+    }
+
+    fn use_note_server(self: @User, nullifier: felt252) {
+        interact_with_state(
+            *self.server,
+            || {
+                let mut state = Server::contract_state_for_testing();
+                state.use_note(:nullifier)
+            },
+        )
+    }
 
     // TODO: Remember index somewhere instead of passing it as an argument.
     fn new_note(
@@ -174,6 +204,11 @@ pub(crate) impl UserImpl of UserTrait {
     // TODO: Consider different trait.
     fn get_note_server(self: @User, note_id: felt252) -> felt252 {
         IServerDispatcher { contract_address: *self.server }.get_note(:note_id)
+    }
+
+    // TODO: Consider different trait.
+    fn nullifier_exists_server(self: @User, nullifier: felt252) -> bool {
+        IServerDispatcher { contract_address: *self.server }.nullifier_exists(:nullifier)
     }
 }
 
@@ -265,8 +300,4 @@ pub(crate) fn decrypt_channel_info(
         decrypted_token.try_into().unwrap(),
         decrypted_sender_addr.try_into().unwrap(),
     )
-}
-
-pub(crate) fn decrypt_note_amount(channel_key: felt252, index: usize, enc_amount: felt252) -> u128 {
-    (enc_amount - compute_enc_amount_hash(:channel_key, :index)).try_into().unwrap()
 }
