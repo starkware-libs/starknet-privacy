@@ -119,4 +119,56 @@ pub trait IClient<T> {
         notes_to_use: Span<NotePath>,
         notes_to_create: Span<NewNote>,
     ) -> (Span<felt252>, Span<EncNote>);
+
+    /// Generates a deposit transaction to create a new note for the owner.
+    ///
+    /// This function creates a new note for `owner_addr` in a `token` channel to themselves, with
+    /// `amount` funds.
+    ///
+    /// #### Parameters
+    /// - `owner_addr` (`ContractAddress`) - The address of the note owner.
+    /// - `owner_private_key` (`felt252`) - The owner's private key.
+    /// - `index` (`usize`) - The index used for note generation (e.g. for key derivation).
+    /// - `token` (`ContractAddress`) - The address of the token to deposit.
+    /// - `amount` (`u128`) - The amount to deposit.
+    ///
+    /// #### Returns
+    /// - (`ContractAddress`) - The recipient of the note (owner).
+    /// - (`ContractAddress`) - The token address.
+    /// - (`u128`) - The amount deposited.
+    /// - (`EncNote`) - The encrypted note.
+    ///
+    /// #### Preconditions
+    /// - `owner_addr` is non-zero.
+    /// - `owner_private_key` is non-zero.
+    /// - `token` is non-zero.
+    /// - `amount` is non-zero.
+    /// - A channel exists from `owner_addr` to `owner_addr` for `token`.
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// - [`ZERO_OWNER_ADDR`](client::errors::ZERO_OWNER_ADDR): Thrown if `owner_addr` is zero.
+    /// - [`ZERO_OWNER_PRIVATE_KEY`](client::errors::ZERO_OWNER_PRIVATE_KEY): Thrown if
+    /// `owner_private_key` is zero.
+    /// - [`ZERO_TOKEN`](client::errors::ZERO_TOKEN): Thrown if `token` is zero.
+    /// - [`ZERO_AMOUNT`](client::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
+    /// - [`RECIPIENT_NOT_REGISTERED`](client::errors::RECIPIENT_NOT_REGISTERED):
+    /// Thrown if `owner_addr` is not registered in the server.
+    /// - [`CHANNEL_NOT_FOUND`](client::errors::CHANNEL_NOT_FOUND):
+    /// Thrown if a channel from `owner_addr` to `owner_addr` with `token` does not exist.
+    /// - [`NOTE_INDEX_NOT_SEQUENTIAL`](client::errors::NOTE_INDEX_NOT_SEQUENTIAL):
+    /// Thrown if `index` is not sequential (previous note does not exist).
+    ///
+    /// #### Access Control
+    /// - TODO
+    fn deposit(
+        self: @T,
+        owner_addr: ContractAddress,
+        owner_private_key: felt252,
+        index: usize,
+        token: ContractAddress,
+        amount: u128,
+    ) -> (ContractAddress, ContractAddress, u128, EncNote);
 }
