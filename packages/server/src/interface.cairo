@@ -162,7 +162,7 @@ pub trait IServer<T> {
     ///
     /// #### Parameters
     /// - `public_key` (`felt252`): The public viewing key of the user. Must not be zero.
-    /// - `enc_private_viewing_key` (`felt252`): The encrypted private viewing key. Must not be
+    /// - `enc_private_key` (`felt252`): The encrypted private viewing key. Must not be
     /// zero.
     ///
     /// #### Returns
@@ -170,7 +170,7 @@ pub trait IServer<T> {
     ///
     /// #### Preconditions
     /// - `public_key` must not be zero.
-    /// - `enc_private_viewing_key` must not be zero.
+    /// - `enc_private_key` must not be zero.
     /// - Caller must not have already registered a public key or an encrypted private viewing key.
     ///
     /// #### Events Emitted
@@ -179,13 +179,13 @@ pub trait IServer<T> {
     /// #### Reverts
     /// - [`ZERO_PUBLIC_KEY`](server::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is zero.
     /// - [`ZERO_ENC_PRIVATE_VIEWING_KEY`](server::errors::ZERO_ENC_PRIVATE_VIEWING_KEY): Thrown if
-    /// `enc_private_viewing_key` is zero.
+    /// `enc_private_key` is zero.
     /// - [`USER_ALREADY_REGISTERED`](server::errors::USER_ALREADY_REGISTERED): Thrown if the
     /// caller has already registered.
     ///
     /// #### Access Control
     /// - Self-registration only.
-    fn register(ref self: T, public_key: felt252, enc_private_viewing_key: felt252);
+    fn register(ref self: T, public_key: felt252, enc_private_key: felt252);
 
     /// Returns the registered public viewing key of the given user address.
     ///
@@ -206,7 +206,6 @@ pub trait IServer<T> {
     ///
     /// #### Access Control
     /// - Any address can call this function.
-    // TODO: Rename to `get_public_viewing_key`
     fn get_public_key(self: @T, user: ContractAddress) -> felt252;
 
     /// Returns the registered encrypted private viewing key of the given user address.
@@ -230,5 +229,5 @@ pub trait IServer<T> {
     ///
     /// #### Access Control
     /// - Any address can call this function.
-    fn get_enc_private_viewing_key(self: @T, user: ContractAddress) -> felt252;
+    fn get_enc_private_key(self: @T, user: ContractAddress) -> felt252;
 }
