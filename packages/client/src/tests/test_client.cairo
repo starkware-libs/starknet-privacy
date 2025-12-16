@@ -1,11 +1,9 @@
 use client::errors;
 use client::objects::{NewNote, NotePath};
-use client::tests::test_utils::{
-    Test, TestTrait, UserTrait, decrypt_channel_info, decrypt_note_amount,
-};
+use client::tests::test_utils::{Test, TestTrait, UserTrait, decrypt_channel_info};
 use client::utils::{
-    compute_channel_id, compute_channel_key, compute_note_id, encrypt_channel_info,
-    encrypt_note_amount, is_canonical_key,
+    compute_channel_id, compute_channel_key, compute_note_id, decrypt_note_amount,
+    encrypt_channel_info, encrypt_note_amount, is_canonical_key,
 };
 use core::num::traits::Zero;
 use server::objects::EncNote;
@@ -988,6 +986,8 @@ fn test_create_note_decrypt_amount() {
     );
     let note_id = compute_note_id(:channel_key, index: note_index, public_key: user_2.public_key);
     let enc_amount = user_2.get_note_server(:note_id);
-    let decrypted_amount = decrypt_note_amount(:channel_key, index: note_index, :enc_amount);
+    let decrypted_amount = decrypt_note_amount(
+        enc_note_value: enc_amount, :channel_key, index: note_index,
+    );
     assert_eq!(decrypted_amount, amount);
 }

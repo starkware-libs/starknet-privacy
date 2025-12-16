@@ -12,6 +12,8 @@ pub mod domain_separation {
     pub const CHANNEL_ID_TAG: felt252 = 'channel_id:v1';
     /// Tag for `channel_key`.
     pub const CHANNEL_KEY_TAG: felt252 = 'channel_key:v1';
+    /// Tag for `nullifier`.
+    pub const NULLIFIER_TAG: felt252 = 'nullifier:v1';
     /// Tags for the `EncChannelInfo` struct.
     // TODO: Now using "channel_info" instead of "enc_channel_info" to fit in a single felt.
     pub mod enc_channel_info {

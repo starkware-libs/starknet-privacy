@@ -5,8 +5,8 @@ use client::interface::{
 };
 use client::objects::{NewNote, NotePath};
 use client::utils::{
-    compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash, derive_public_key, hash, is_canonical_key,
+    compute_enc_channel_key_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
+    derive_public_key, hash, is_canonical_key,
 };
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
@@ -265,8 +265,4 @@ pub(crate) fn decrypt_channel_info(
         decrypted_token.try_into().unwrap(),
         decrypted_sender_addr.try_into().unwrap(),
     )
-}
-
-pub(crate) fn decrypt_note_amount(channel_key: felt252, index: usize, enc_amount: felt252) -> u128 {
-    (enc_amount - compute_enc_amount_hash(:channel_key, :index)).try_into().unwrap()
 }
