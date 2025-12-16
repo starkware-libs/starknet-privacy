@@ -169,7 +169,8 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn get_public_key(self: @User) -> felt252 {
-        IServerDispatcher { contract_address: *self.server }.get_public_key(user: *self.address)
+        IServerDispatcher { contract_address: *self.server }
+            .get_public_key(user_addr: *self.address)
     }
 
     fn approve_server(self: @User, token: Token, amount: u256) {
@@ -181,7 +182,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn deposit(self: @User, token: Token, amount: u128, note: EncNote) {
         self.approve_server(:token, amount: amount.into());
         IServerDispatcher { contract_address: *self.server }
-            .deposit(user: *self.address, token: token.contract_address(), :amount, :note);
+            .deposit(user_addr: *self.address, token: token.contract_address(), :amount, :note);
     }
 
     #[feature("safe_dispatcher")]
@@ -189,7 +190,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, token: Token, amount: u128, note: EncNote,
     ) -> Result<(), Array<felt252>> {
         IServerSafeDispatcher { contract_address: *self.server }
-            .deposit(user: *self.address, token: token.contract_address(), :amount, :note)
+            .deposit(user_addr: *self.address, token: token.contract_address(), :amount, :note)
     }
 }
 
