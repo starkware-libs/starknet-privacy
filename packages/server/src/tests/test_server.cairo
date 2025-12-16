@@ -191,7 +191,7 @@ fn test_get_channel_info_index_out_of_bounds() {
 fn test_get_note() {
     let mut test: Test = Default::default();
     let note = test.new_note(amount: constants::DEFAULT_AMOUNT);
-    assert_eq!(test.server.get_note(note_id: note.id), Zero::zero());
+    assert!(test.server.get_note(note_id: note.id).is_zero());
     test.server.create_note(:note);
     assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
 }
@@ -326,7 +326,7 @@ fn test_get_public_key() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     // Don't register the user.
-    assert_eq!(user.get_public_key(), Zero::zero());
+    assert!(user.get_public_key().is_zero());
     // Register the user.
     user.register();
     assert_eq!(user.get_public_key(), user.public_key);
@@ -352,7 +352,7 @@ fn test_register_multiple_users() {
     assert_eq!(user1.get_public_key(), public_key1);
     assert_eq!(user2.get_public_key(), public_key2);
     // User3 has not registered, so get_public_key should return zero.
-    assert_eq!(user3.get_public_key(), Zero::zero());
+    assert!(user3.get_public_key().is_zero());
 }
 
 #[test]
@@ -385,13 +385,13 @@ fn test_deposit() {
 
     // Check balances
     assert_eq!(token.balance_of(address: user.address), amount.into());
-    assert_eq!(token.balance_of(address: test.server.address), Zero::zero());
+    assert!(token.balance_of(address: test.server.address).is_zero());
 
     // Deposit
     user.deposit(:token, :amount, :note);
 
     // Check balances after deposit
-    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    assert!(token.balance_of(address: user.address).is_zero());
     assert_eq!(token.balance_of(address: test.server.address), amount.into());
 
     // Check storage
@@ -475,11 +475,11 @@ fn test_transfer() {
 
     // Verify balances before.
     assert_eq!(token.balance_of(address: test.server.address), amount.into());
-    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    assert!(token.balance_of(address: user.address).is_zero());
 
     // Check storage before.
     assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
-    assert_eq!(test.server.get_note(note_id: new_note.id), Zero::zero());
+    assert!(test.server.get_note(note_id: new_note.id).is_zero());
     assert_eq!(test.server.nullifier_exists(:nullifier), false);
 
     // Transfer
@@ -487,7 +487,7 @@ fn test_transfer() {
 
     // Verify balances haven't changed.
     assert_eq!(token.balance_of(address: test.server.address), amount.into());
-    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    assert!(token.balance_of(address: user.address).is_zero());
 
     // Check storage after.
     assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
@@ -572,30 +572,30 @@ fn test_withdraw() {
 
     // Check balances before withdraw.
     assert_eq!(token.balance_of(address: test.server.address), amount.into());
-    assert_eq!(token.balance_of(address: recipient.address), Zero::zero());
-    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    assert!(token.balance_of(address: recipient.address).is_zero());
+    assert!(token.balance_of(address: user.address).is_zero());
 
     // Check storage before withdraw.
     assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
     assert_eq!(test.server.nullifier_exists(:nullifier), false);
 
     // Recipient is not registered.
-    assert_eq!(recipient.get_public_key(), Zero::zero());
+    assert!(recipient.get_public_key().is_zero());
 
     // Withdraw
     user.withdraw(recipient_addr: recipient.address, :token, :amount, :nullifier);
 
     // Check balances after withdraw.
-    assert_eq!(token.balance_of(address: test.server.address), Zero::zero());
+    assert!(token.balance_of(address: test.server.address).is_zero());
     assert_eq!(token.balance_of(address: recipient.address), amount.into());
-    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    assert!(token.balance_of(address: user.address).is_zero());
 
     // Check storage after withdraw.
     assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
     assert_eq!(test.server.nullifier_exists(:nullifier), true);
 
     // Recipient is not registered.
-    assert_eq!(recipient.get_public_key(), Zero::zero());
+    assert!(recipient.get_public_key().is_zero());
     // TODO: Test user balance in contract.
 }
 
