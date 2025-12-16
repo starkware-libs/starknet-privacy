@@ -23,8 +23,8 @@ pub mod Server {
         nullifiers: Map<felt252, bool>,
         /// Map of user addresses to their public viewing keys.
         public_key: Map<ContractAddress, felt252>,
-        // Map of user addresses to their encrypted global viewing key.
-        global_viewing_key: Map<ContractAddress, felt252>,
+        // Map of user addresses to their encrypted private viewing key.
+        enc_private_viewing_key: Map<ContractAddress, felt252>,
     }
 
     #[event]
@@ -92,31 +92,35 @@ pub mod Server {
             self.nullifiers.read(nullifier)
         }
 
-        fn register(ref self: ContractState, public_key: felt252, enc_global_viewing_key: felt252) {
+        fn register(
+            ref self: ContractState, public_key: felt252, enc_private_viewing_key: felt252,
+        ) {
             // TODO: Consider remove get_caller_address() and instead pass the user address.
             let user = get_caller_address();
 
             // Assert that inputs are valid.
             assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
-            assert(enc_global_viewing_key.is_non_zero(), errors::ZERO_ENC_GLOBAL_VIEWING_KEY);
+            assert(enc_private_viewing_key.is_non_zero(), errors::ZERO_ENC_PRIVATE_VIEWING_KEY);
 
             // Assert that keys are empty before writing.
             assert(self.public_key.read(user).is_zero(), errors::USER_ALREADY_REGISTERED);
-            assert(self.global_viewing_key.read(user).is_zero(), errors::USER_ALREADY_REGISTERED);
+            assert(
+                self.enc_private_viewing_key.read(user).is_zero(), errors::USER_ALREADY_REGISTERED,
+            );
 
             // TODO: Verify the proof on the encrypted compliance viewing key from the client side.
 
             // Write keys to storage.
             self.public_key.write(user, public_key);
-            self.global_viewing_key.write(user, enc_global_viewing_key);
+            self.enc_private_viewing_key.write(user, enc_private_viewing_key);
         }
 
         fn get_public_key(self: @ContractState, user: ContractAddress) -> felt252 {
             self.public_key.read(user)
         }
 
-        fn get_global_viewing_key(self: @ContractState, user: ContractAddress) -> felt252 {
-            self.global_viewing_key.read(user)
+        fn get_enc_private_viewing_key(self: @ContractState, user: ContractAddress) -> felt252 {
+            self.enc_private_viewing_key.read(user)
         }
     }
 

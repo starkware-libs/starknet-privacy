@@ -294,7 +294,7 @@ fn test_register() {
     // Verify that user is registered with the correct public key.
     assert_eq!(user.get_public_key(), public_key);
     // Verify that user is registered with the correct encrypted global viewing key.
-    assert_eq!(user.get_global_viewing_key(), user.enc_global_viewing_key);
+    assert_eq!(user.get_enc_private_viewing_key(), user.enc_global_viewing_key);
 }
 
 #[test]
@@ -310,11 +310,11 @@ fn test_register_assertions() {
     let result = user.safe_register();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
-    // Catch ZERO_ENC_GLOBAL_VIEWING_KEY.
+    // Catch ZERO_ENC_PRIVATE_VIEWING_KEY.
     user.public_key = non_zero_public_key;
     user.enc_global_viewing_key = Zero::zero();
     let result = user.safe_register();
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_GLOBAL_VIEWING_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_PRIVATE_VIEWING_KEY);
 
     // Catch USER_ALREADY_REGISTERED.
     user.enc_global_viewing_key = non_zero_enc_global_viewing_key;
@@ -335,14 +335,14 @@ fn test_get_public_key() {
 }
 
 #[test]
-fn test_get_global_viewing_key() {
+fn test_get_enc_private_viewing_key() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     // Don't register the user.
-    assert_eq!(user.get_global_viewing_key(), Zero::zero());
+    assert_eq!(user.get_enc_private_viewing_key(), Zero::zero());
     // Register the user.
     user.register();
-    assert_eq!(user.get_global_viewing_key(), user.enc_global_viewing_key);
+    assert_eq!(user.get_enc_private_viewing_key(), user.enc_global_viewing_key);
 }
 
 #[test]
@@ -370,11 +370,12 @@ fn test_register_multiple_users() {
     assert_eq!(user1.get_public_key(), public_key1);
     assert_eq!(user2.get_public_key(), public_key2);
     // Verify both global viewing keys are stored correctly.
-    assert_eq!(user1.get_global_viewing_key(), global_viewing_key1);
-    assert_eq!(user2.get_global_viewing_key(), global_viewing_key2);
-    // User3 has not registered, so get_public_key and get_global_viewing_key should return zero.
+    assert_eq!(user1.get_enc_private_viewing_key(), global_viewing_key1);
+    assert_eq!(user2.get_enc_private_viewing_key(), global_viewing_key2);
+    // User3 has not registered, so get_public_key and get_enc_private_viewing_key should return
+    // zero.
     assert_eq!(user3.get_public_key(), Zero::zero());
-    assert_eq!(user3.get_global_viewing_key(), Zero::zero());
+    assert_eq!(user3.get_enc_private_viewing_key(), Zero::zero());
 }
 
 #[test]
@@ -411,7 +412,7 @@ fn test_register_multiple_users_same_global_viewing_key() {
     user2.register();
 
     // Both should be able to fetch the shared global viewing key.
-    assert_eq!(user1.get_global_viewing_key(), shared_global_viewing_key);
-    assert_eq!(user2.get_global_viewing_key(), shared_global_viewing_key);
+    assert_eq!(user1.get_enc_private_viewing_key(), shared_global_viewing_key);
+    assert_eq!(user2.get_enc_private_viewing_key(), shared_global_viewing_key);
 }
 

@@ -117,7 +117,7 @@ pub(crate) impl UserImpl of UserTrait {
         cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
         IServerDispatcher { contract_address: *self.server }
             .register(
-                public_key: *self.public_key, enc_global_viewing_key: *self.enc_global_viewing_key,
+                public_key: *self.public_key, enc_private_viewing_key: *self.enc_global_viewing_key,
             )
     }
 
@@ -126,7 +126,7 @@ pub(crate) impl UserImpl of UserTrait {
         cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
         IServerSafeDispatcher { contract_address: *self.server }
             .register(
-                public_key: *self.public_key, enc_global_viewing_key: *self.enc_global_viewing_key,
+                public_key: *self.public_key, enc_private_viewing_key: *self.enc_global_viewing_key,
             )
     }
 
@@ -134,9 +134,9 @@ pub(crate) impl UserImpl of UserTrait {
         IServerDispatcher { contract_address: *self.server }.get_public_key(user: *self.address)
     }
 
-    fn get_global_viewing_key(self: @User) -> felt252 {
+    fn get_enc_private_viewing_key(self: @User) -> felt252 {
         IServerDispatcher { contract_address: *self.server }
-            .get_global_viewing_key(user: *self.address)
+            .get_enc_private_viewing_key(user: *self.address)
     }
 }
 
