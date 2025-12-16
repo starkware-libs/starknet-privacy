@@ -75,3 +75,6 @@ __pycache__
 
 # cursor
 .cursor
+
+# devnet
+accounts.json
