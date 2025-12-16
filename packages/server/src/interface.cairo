@@ -207,8 +207,8 @@ pub trait IServer<T> {
     /// Deposits funds into the contract and creates a note.
     ///
     /// #### Parameters
-    /// - `user_addr` (`ContractAddress`): The address of the user depositing the funds.
-    ///                                    Must not be zero.
+    /// - `user_addr` (`ContractAddress`): The address of the user depositing the funds. Must not be
+    /// zero.
     /// - `token` (`ContractAddress`): The address of the token to deposit. Must not be zero.
     /// - `amount` (`u128`): The amount to deposit. Must not be zero.
     /// - `note` (`EncNote`): The encrypted note to create.
