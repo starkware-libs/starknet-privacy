@@ -243,4 +243,38 @@ pub trait IServer<T> {
     fn deposit(
         ref self: T, user: ContractAddress, token: ContractAddress, amount: u128, note: EncNote,
     );
+
+    /// Transfers funds by nullifying existing notes and creating new ones.
+    ///
+    /// #### Parameters
+    /// - `nullifiers` (`Span<felt252>`): The nullifiers of the notes to be spent.
+    /// - `new_notes` (`Span<EncNote>`): The new encrypted notes to be created.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Preconditions
+    /// - `nullifiers` must not be empty.
+    /// - `new_notes` must not be empty.
+    /// - All nullifiers must not be zero and must not already exist.
+    /// - All new notes must have non-zero fields and must not already exist.
+    ///
+    /// #### Events Emitted
+    /// - TODO
+    ///
+    /// #### Reverts
+    /// - [`EMPTY_NULLIFIERS`](server::errors::EMPTY_NULLIFIERS): Thrown if `nullifiers` is empty.
+    /// - [`EMPTY_NEW_NOTES`](server::errors::EMPTY_NEW_NOTES): Thrown if `new_notes` is empty.
+    /// - [`ZERO_NULLIFIER`](server::errors::ZERO_NULLIFIER): Thrown if a nullifier is zero.
+    /// - [`NULLIFIER_ALREADY_EXISTS`](server::errors::NULLIFIER_ALREADY_EXISTS): Thrown if a
+    /// nullifier already exists.
+    /// - [`ZERO_NOTE_ID`](server::errors::ZERO_NOTE_ID): Thrown if a note id is zero.
+    /// - [`ZERO_ENC_NOTE_VALUE`](server::errors::ZERO_ENC_NOTE_VALUE): Thrown if a note encrypted
+    /// amount is zero.
+    /// - [`NOTE_ALREADY_EXISTS`](server::errors::NOTE_ALREADY_EXISTS): Thrown if a note already
+    /// exists.
+    ///
+    /// #### Access Control
+    /// - TODO
+    fn transfer(ref self: T, nullifiers: Span<felt252>, new_notes: Span<EncNote>);
 }
