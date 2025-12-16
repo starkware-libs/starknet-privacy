@@ -186,7 +186,7 @@ pub trait IServer<T> {
     /// Returns the registered public viewing key of the given user address.
     ///
     /// #### Parameters
-    /// - `user` (`ContractAddress`): The address whose public key is being queried.
+    /// - `user_addr` (`ContractAddress`): The address whose public key is being queried.
     ///
     /// #### Returns
     /// - (`felt252`): The public key associated with the user, or zero if not registered.
@@ -202,13 +202,13 @@ pub trait IServer<T> {
     ///
     /// #### Access Control
     /// - Any address can call this function.
-    fn get_public_key(self: @T, user: ContractAddress) -> felt252;
+    fn get_public_key(self: @T, user_addr: ContractAddress) -> felt252;
 
     /// Deposits funds into the contract and creates a note.
     ///
     /// #### Parameters
-    /// - `user` (`ContractAddress`): The address of the user depositing the funds.
-    ///                               Must not be zero.
+    /// - `user_addr` (`ContractAddress`): The address of the user depositing the funds.
+    ///                                    Must not be zero.
     /// - `token` (`ContractAddress`): The address of the token to deposit. Must not be zero.
     /// - `amount` (`u128`): The amount to deposit. Must not be zero.
     /// - `note` (`EncNote`): The encrypted note to create.
@@ -227,7 +227,7 @@ pub trait IServer<T> {
     ///
     /// #### Reverts
     /// TODO: Figure out a way to link external errors.
-    /// - [`ZERO_USER`](server::errors::ZERO_USER): Thrown if `user` is zero.
+    /// - [`ZERO_USER_ADDR`](server::errors::ZERO_USER): Thrown if `user_addr` is zero.
     /// - [`ZERO_TOKEN`](server::errors::ZERO_TOKEN): Thrown if `token` is zero.
     /// - [`ZERO_AMOUNT`](server::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
     /// - [`ZERO_NOTE_ID`](server::errors::ZERO_NOTE_ID): Thrown if `note.id` is zero.
@@ -241,6 +241,10 @@ pub trait IServer<T> {
     /// #### Access Control
     /// - TODO
     fn deposit(
-        ref self: T, user: ContractAddress, token: ContractAddress, amount: u128, note: EncNote,
+        ref self: T,
+        user_addr: ContractAddress,
+        token: ContractAddress,
+        amount: u128,
+        note: EncNote,
     );
 }
