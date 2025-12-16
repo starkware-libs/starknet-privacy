@@ -985,3 +985,71 @@ fn test_create_note_decrypt_amount() {
     let decrypted_amount = decrypt_note_amount(:channel_key, index: note_index, :enc_amount);
     assert_eq!(decrypted_amount, amount);
 }
+
+#[test]
+fn test_deposit() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let token = test.new_token();
+    let amount = 100;
+
+    user.register_server();
+    user.open_channel_e2e(recipient: user, :token);
+    let note = user.new_note(recipient: user, :token, :amount, index: 0);
+    let result = user.deposit(:note);
+
+    let expected_result = (
+        user.address,
+        token,
+        amount,
+        user.compute_enc_note(recipient: user, :token, index: 0, :amount),
+    );
+    assert_eq!(result, expected_result);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_deposit_assertions() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let token = test.new_token();
+    let amount = 100;
+    let note = user.new_note(recipient: user, :token, :amount, index: 0);
+
+    // Catch ZERO_OWNER_PRIVATE_KEY.
+    let mut user_zero_key = user;
+    user_zero_key.private_key = Zero::zero();
+    let result = user_zero_key.safe_deposit(:note);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
+
+    // Catch ZERO_RECIPIENT_ADDR.
+    let mut user_zero_addr = test.new_user();
+    user_zero_addr.address = Zero::zero();
+    let result = user_zero_addr
+        .safe_deposit(
+            note: user_zero_addr.new_note(recipient: user_zero_addr, :token, :amount, index: 0),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
+
+    // Catch ZERO_TOKEN.
+    let result = user.safe_deposit(note: NewNote { token: Zero::zero(), ..note });
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+
+    // Catch ZERO_AMOUNT.
+    let result = user.safe_deposit(note: NewNote { amount: Zero::zero(), ..note });
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
+
+    // Catch RECIPIENT_NOT_REGISTERED.
+    let result = user.safe_deposit(:note);
+    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
+
+    // Catch CHANNEL_NOT_FOUND.
+    user.register_server();
+    let result = user.safe_deposit(:note);
+    assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_NOT_FOUND);
+
+    // Catch NOTE_INDEX_NOT_SEQUENTIAL.
+    user.open_channel_e2e(recipient: user, :token);
+    let result = user.safe_deposit(note: NewNote { index: 1, ..note });
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_INDEX_NOT_SEQUENTIAL);
+}
