@@ -5,8 +5,8 @@ use client::interface::{
 };
 use client::objects::{NewNote, NotePath};
 use client::utils::{
-    compute_channel_key, compute_enc_amount_hash, compute_enc_channel_key_hash,
-    compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, derive_public_key,
+    compute_channel_key, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
+    compute_enc_token_hash, compute_note_id, compute_nullifier, derive_public_key,
     encrypt_note_amount, hash, is_canonical_key,
 };
 use core::ec::EcPointTrait;
@@ -164,6 +164,11 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
+    fn create_note_e2e(self: @User, note: NewNote) {
+        let enc_note = self.create_note(:note);
+        self.create_note_server(note: enc_note);
+    }
+
     fn compute_channel_key(self: @User, recipient: User, token: ContractAddress) -> felt252 {
         compute_channel_key(
             sender_addr: *self.address,
@@ -183,6 +188,42 @@ pub(crate) impl UserImpl of UserTrait {
         EncNote { id: note_id, enc_amount }
     }
 
+    fn use_note(self: @User, note: NotePath) -> (felt252, u128) {
+        interact_with_state(
+            *self.client,
+            || {
+                let mut state = Client::contract_state_for_testing();
+                state
+                    .use_note(
+                        owner_addr: *self.address,
+                        owner_private_key: *self.private_key,
+                        :note,
+                        server: IServerDispatcher { contract_address: *self.server },
+                    )
+            },
+        )
+    }
+
+    fn use_note_server(self: @User, nullifier: felt252) {
+        interact_with_state(
+            *self.server,
+            || {
+                let mut state = Server::contract_state_for_testing();
+                state.use_note(:nullifier)
+            },
+        )
+    }
+
+    fn compute_nullifier(
+        self: @User, sender: User, token: ContractAddress, note_index: usize,
+    ) -> felt252 {
+        compute_nullifier(
+            channel_key: sender.compute_channel_key(recipient: *self, :token),
+            index: note_index,
+            owner_private_key: *self.private_key,
+        )
+    }
+
     // TODO: Remember index somewhere instead of passing it as an argument.
     fn new_note(
         self: @User, recipient: User, token: ContractAddress, amount: u128, index: usize,
@@ -193,6 +234,11 @@ pub(crate) impl UserImpl of UserTrait {
     // TODO: Consider different trait.
     fn get_note_server(self: @User, note_id: felt252) -> felt252 {
         IServerDispatcher { contract_address: *self.server }.get_note(:note_id)
+    }
+
+    // TODO: Consider different trait.
+    fn nullifier_exists_server(self: @User, nullifier: felt252) -> bool {
+        IServerDispatcher { contract_address: *self.server }.nullifier_exists(:nullifier)
     }
 }
 
@@ -284,8 +330,4 @@ pub(crate) fn decrypt_channel_info(
         decrypted_token.try_into().unwrap(),
         decrypted_sender_addr.try_into().unwrap(),
     )
-}
-
-pub(crate) fn decrypt_note_amount(channel_key: felt252, index: usize, enc_amount: felt252) -> u128 {
-    (enc_amount - compute_enc_amount_hash(:channel_key, :index)).try_into().unwrap()
 }

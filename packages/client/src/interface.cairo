@@ -61,6 +61,7 @@ pub trait IClient<T> {
     ) -> (ContractAddress, EncChannelInfo, felt252);
 
     // TODO: Re-read preconditions after implementing the create and use notes function.
+    // TODO: Add index out of bounds error?
     /// Validates `notes_to_create` are a valid redistribution of funds from `notes_to_use`.
     ///
     /// A transfer consists of nullifying notes owned by `owner_addr` and creating
