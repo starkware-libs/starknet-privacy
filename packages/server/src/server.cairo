@@ -109,19 +109,19 @@ pub mod Server {
             self.public_key.write(user, public_key);
         }
 
-        fn get_public_key(self: @ContractState, user: ContractAddress) -> felt252 {
-            self.public_key.read(user)
+        fn get_public_key(self: @ContractState, user_addr: ContractAddress) -> felt252 {
+            self.public_key.read(user_addr)
         }
 
         fn deposit(
             ref self: ContractState,
-            user: ContractAddress,
+            user_addr: ContractAddress,
             token: ContractAddress,
             amount: u128,
             note: EncNote,
         ) {
             // Assert inputs are valid.
-            assert(user.is_non_zero(), errors::ZERO_USER);
+            assert(user_addr.is_non_zero(), errors::ZERO_USER);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
 
@@ -129,7 +129,7 @@ pub mod Server {
 
             IERC20Dispatcher { contract_address: token }
                 .checked_transfer_from(
-                    sender: user, recipient: get_contract_address(), amount: amount.into(),
+                    sender: user_addr, recipient: get_contract_address(), amount: amount.into(),
                 );
         }
     }
