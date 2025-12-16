@@ -1,4 +1,4 @@
-use client::errors as Errors;
+use client::errors;
 use client::objects::{NewNote, NotePath};
 use client::tests::test_utils::{Test, TestTrait, UserTrait};
 use core::num::traits::Zero;
@@ -118,7 +118,7 @@ fn test_transfer_assertions() {
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_OWNER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_ADDR);
 
     // Catch ZERO_OWNER_PRIVATE_KEY.
     let mut user_1_zero_private_key = user_1;
@@ -128,7 +128,7 @@ fn test_transfer_assertions() {
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_OWNER_PRIVATE_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
 
     // Catch NO_NOTES_TO_USE.
     let result = user_1
@@ -136,7 +136,7 @@ fn test_transfer_assertions() {
             notes_to_use: [].span(),
             notes_to_create: [NewNote { recipient_addr: user_2.address, token, amount: 1 }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::NO_NOTES_TO_USE);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_USE);
 
     // Catch NO_NOTES_TO_CREATE.
     let result = user_1
@@ -144,7 +144,7 @@ fn test_transfer_assertions() {
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::NO_NOTES_TO_CREATE);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_CREATE);
 
     // Catch ZERO_RECIPIENT.
     let result = user_1
@@ -152,7 +152,7 @@ fn test_transfer_assertions() {
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [NewNote { recipient_addr: Zero::zero(), token, amount: 1 }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_RECIPIENT_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_TOKEN.
     let result = user_1
@@ -163,7 +163,7 @@ fn test_transfer_assertions() {
             ]
                 .span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT.
     let result = user_1
@@ -174,5 +174,5 @@ fn test_transfer_assertions() {
             ]
                 .span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: Errors::ZERO_AMOUNT);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 }
