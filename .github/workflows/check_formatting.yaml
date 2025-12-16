@@ -16,3 +16,13 @@ jobs:
       - name: Check formatting
         run: |
           scarb fmt -w --check
+
+      - name: Check unused imports and variables
+        run: |
+          output=$(scarb build 2>&1)
+          matches=$(echo "$output" | grep -E "warn: Unused import|warn\[E0001\]: Unused variable" -A 2 || true)
+          if [ -n "$matches" ]; then
+            echo "Unused imports or variables detected:"
+            echo "$matches"
+            exit 1
+          fi
