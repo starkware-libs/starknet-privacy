@@ -97,16 +97,14 @@ pub mod Client {
 
             // TODO: Verify owner signature on TX.
 
-            let (nullifiers, _consumed_sum) = self
+            let (nullifiers, consumed_sum) = self
                 .use_notes(:owner_addr, :owner_private_key, :notes_to_use);
-            let (new_notes, _created_sum) = self
+            let (new_notes, created_sum) = self
                 .create_notes(:owner_addr, :owner_private_key, :notes_to_create);
 
             // TODO: Consider multi-token support (sum per token).
-            // TODO: Implement test to catch NOTE_SUM_MISMATCH error.
             // TODO: Verify the tokens match in all notes.
-            // TODO: Assert consumed_sum == created_sum.
-            // assert(consumed_sum == created_sum, Errors::NOTE_SUM_MISMATCH);
+            assert(consumed_sum == created_sum, errors::NOTE_SUM_MISMATCH);
 
             (nullifiers, new_notes)
         }
