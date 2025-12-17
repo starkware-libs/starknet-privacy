@@ -114,6 +114,8 @@ pub mod Server {
         }
 
         fn replace_public_key(ref self: ContractState, public_key: felt252) {
+            // TODO: Add compliance.
+            // TODO: Consider remove get_caller_address() and instead pass the user address.
             let user = get_caller_address();
 
             // Assert that input is valid.

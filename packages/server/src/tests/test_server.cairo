@@ -343,13 +343,13 @@ fn test_replace_public_key() {
     assert_eq!(user.get_public_key(), original_public_key);
 
     // Replace the public key first time.
-    let new_public_key_1 = ('NEW_PUBLIC_KEY_1').try_into().unwrap();
-    user.replace_public_key(new_public_key_1);
+    let new_public_key_1 = user.new_public_key();
+    user.replace_public_key();
     assert_eq!(user.get_public_key(), new_public_key_1);
 
     // Replace the public key second time.
-    let new_public_key_2 = ('NEW_PUBLIC_KEY_2').try_into().unwrap();
-    user.replace_public_key(new_public_key_2);
+    let new_public_key_2 = user.new_public_key();
+    user.replace_public_key();
     assert_eq!(user.get_public_key(), new_public_key_2);
 }
 
@@ -364,7 +364,7 @@ fn test_replace_public_key_same_key() {
     assert_eq!(user.get_public_key(), original_public_key);
 
     // Replace with the same public key.
-    user.replace_public_key(new_public_key: original_public_key);
+    user.replace_public_key();
     assert_eq!(user.get_public_key(), original_public_key);
 }
 
@@ -385,7 +385,8 @@ fn test_replace_public_key_to_other_user_key() {
     assert_eq!(user2.get_public_key(), user2_public_key);
 
     // User1 replaces their public key to user2's public key.
-    user1.replace_public_key(new_public_key: user2_public_key);
+    user1.public_key = user2_public_key;
+    user1.replace_public_key();
 
     // Verify user1 now has user2's public key.
     assert_eq!(user1.get_public_key(), user2_public_key);
