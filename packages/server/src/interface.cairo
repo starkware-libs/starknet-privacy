@@ -203,7 +203,7 @@ pub trait IServer<T> {
     /// - Any address can call this function.
     fn get_public_key(self: @T, user_addr: ContractAddress) -> felt252;
 
-    /// Changes the caller's public viewing key to a new value.
+    /// Replaces the caller's public viewing key to a new value.
     ///
     /// #### Parameters
     /// - `public_key` (`felt252`): The new public viewing key. Must not be zero.
@@ -224,8 +224,8 @@ pub trait IServer<T> {
     /// registered a public key.
     ///
     /// #### Access Control
-    /// - Self-service only. The caller can only change their own public key.
-    fn change_public_key(ref self: T, public_key: felt252);
+    /// - Self-service only. The caller can only replace their own public key.
+    fn replace_public_key(ref self: T, public_key: felt252);
 
     /// Deposits funds into the contract and creates a note.
     ///

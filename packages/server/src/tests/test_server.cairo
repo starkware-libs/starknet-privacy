@@ -333,24 +333,82 @@ fn test_get_public_key() {
 }
 
 #[test]
-fn test_change_public_key() {
+fn test_replace_public_key() {
     let mut test: Test = Default::default();
-    let user = test.new_user();
+    let mut user = test.new_user();
     let original_public_key = user.public_key;
 
     // Register the user first.
     user.register();
     assert_eq!(user.get_public_key(), original_public_key);
 
-    // Change the public key first time.
+    // Replace the public key first time.
     let new_public_key_1 = ('NEW_PUBLIC_KEY_1').try_into().unwrap();
-    user.change_public_key(new_public_key_1);
+    user.replace_public_key(new_public_key_1);
     assert_eq!(user.get_public_key(), new_public_key_1);
 
-    // Change the public key second time.
+    // Replace the public key second time.
     let new_public_key_2 = ('NEW_PUBLIC_KEY_2').try_into().unwrap();
-    user.change_public_key(new_public_key_2);
+    user.replace_public_key(new_public_key_2);
     assert_eq!(user.get_public_key(), new_public_key_2);
+}
+
+#[test]
+fn test_replace_public_key_same_key() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let original_public_key = user.public_key;
+
+    // Register the user first.
+    user.register();
+    assert_eq!(user.get_public_key(), original_public_key);
+
+    // Replace with the same public key.
+    user.replace_public_key(new_public_key: original_public_key);
+    assert_eq!(user.get_public_key(), original_public_key);
+}
+
+#[test]
+fn test_replace_public_key_to_other_user_key() {
+    let mut test: Test = Default::default();
+    let mut user1 = test.new_user();
+    let user2 = test.new_user();
+    let user1_original_key = user1.public_key;
+    let user2_public_key = user2.public_key;
+
+    // Register both users.
+    user1.register();
+    user2.register();
+
+    // Verify initial keys.
+    assert_eq!(user1.get_public_key(), user1_original_key);
+    assert_eq!(user2.get_public_key(), user2_public_key);
+
+    // User1 replaces their public key to user2's public key.
+    user1.replace_public_key(new_public_key: user2_public_key);
+
+    // Verify user1 now has user2's public key.
+    assert_eq!(user1.get_public_key(), user2_public_key);
+    // Verify user2's key is unchanged.
+    assert_eq!(user2.get_public_key(), user2_public_key);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_replace_public_key_assertions() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let non_zero_public_key = ('NON_ZERO_PUBLIC_KEY').try_into().unwrap();
+
+    // Catch ZERO_PUBLIC_KEY.
+    user.register();
+    let result = user.safe_replace_public_key(new_public_key: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
+
+    // Catch USER_NOT_REGISTERED.
+    let unregistered_user = test.new_user();
+    let result = unregistered_user.safe_replace_public_key(new_public_key: non_zero_public_key);
+    assert_panic_with_felt_error(:result, expected_error: errors::USER_NOT_REGISTERED);
 }
 
 #[test]
@@ -618,24 +676,6 @@ fn test_withdraw() {
     // Recipient is not registered.
     assert_eq!(recipient.get_public_key(), Zero::zero());
     // TODO: Test user balance in contract.
-}
-
-#[test]
-#[feature("safe_dispatcher")]
-fn test_change_public_key_assertions() {
-    let mut test: Test = Default::default();
-    let user = test.new_user();
-    let non_zero_public_key = ('NON_ZERO_PUBLIC_KEY').try_into().unwrap();
-
-    // Catch ZERO_PUBLIC_KEY.
-    user.register();
-    let result = user.safe_change_public_key(new_public_key: Zero::zero());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
-
-    // Catch USER_NOT_REGISTERED.
-    let unregistered_user = test.new_user();
-    let result = unregistered_user.safe_change_public_key(new_public_key: non_zero_public_key);
-    assert_panic_with_felt_error(:result, expected_error: errors::USER_NOT_REGISTERED);
 }
 
 #[test]

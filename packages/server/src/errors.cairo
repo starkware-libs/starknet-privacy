@@ -18,7 +18,7 @@ pub const NULLIFIER_ALREADY_EXISTS: felt252 = 'NULLIFIER_ALREADY_EXISTS';
 pub const ZERO_PUBLIC_KEY: felt252 = 'ZERO_PUBLIC_KEY';
 pub const USER_ALREADY_REGISTERED: felt252 = 'USER_ALREADY_REGISTERED';
 
-// Change public key errors.
+// Replace public key errors.
 pub const USER_NOT_REGISTERED: felt252 = 'USER_NOT_REGISTERED';
 
 // Deposit errors.

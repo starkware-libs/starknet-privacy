@@ -120,7 +120,7 @@ pub mod Server {
             keys.at(last_index).read()
         }
 
-        fn change_public_key(ref self: ContractState, public_key: felt252) {
+        fn replace_public_key(ref self: ContractState, public_key: felt252) {
             let user = get_caller_address();
 
             // Assert that input is valid.
