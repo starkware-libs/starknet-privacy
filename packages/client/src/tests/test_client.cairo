@@ -236,62 +236,36 @@ fn test_transfer_assertions() {
     let user_2 = test.new_user();
     let token = test.new_token();
 
+    let note_path = NotePath { channel_index: 0, note_index: 0 };
+    let new_note = NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 };
+
     // Catch ZERO_OWNER_ADDR.
     let mut user_1_zero = user_1;
     user_1_zero.address = Zero::zero();
     let result = user_1_zero
-        .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
-            ]
-                .span(),
-        );
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_ADDR);
 
     // Catch ZERO_OWNER_PRIVATE_KEY.
     let mut user_1_zero_private_key = user_1;
     user_1_zero_private_key.private_key = Zero::zero();
     let result = user_1_zero_private_key
-        .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
-            ]
-                .span(),
-        );
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
 
     // Catch NO_NOTES_TO_USE.
-    let result = user_1
-        .safe_transfer(
-            notes_to_use: [].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
-            ]
-                .span(),
-        );
+    let result = user_1.safe_transfer(notes_to_use: [].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_USE);
 
     // Catch NO_NOTES_TO_CREATE.
-    let result = user_1
-        .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [].span(),
-        );
+    let result = user_1.safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_CREATE);
 
     // Use note errors.
 
     // Catch INDEX_OUT_OF_BOUNDS ("Index out of bounds").
     let result = user_1
-        .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
-            ]
-                .span(),
-        );
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 
     user_1.register_server();
@@ -299,13 +273,7 @@ fn test_transfer_assertions() {
 
     // Catch NOTE_NOT_FOUND.
     let result = user_1
-        .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
-            ]
-                .span(),
-        );
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     let note = user_1.new_note(recipient: user_1, :token, amount: 1, index: 0);
@@ -316,58 +284,37 @@ fn test_transfer_assertions() {
     // Catch ZERO_RECIPIENT.
     let result = user_1
         .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [NewNote { recipient_addr: Zero::zero(), token, amount: 1, index: 0 }]
-                .span(),
+            notes_to_use: [note_path].span(),
+            notes_to_create: [NewNote { recipient_addr: Zero::zero(), ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_TOKEN.
     let result = user_1
         .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote {
-                    recipient_addr: user_2.address, token: Zero::zero(), amount: 1, index: 0,
-                },
-            ]
-                .span(),
+            notes_to_use: [note_path].span(),
+            notes_to_create: [NewNote { token: Zero::zero(), ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT.
     let result = user_1
         .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: Zero::zero(), index: 0 },
-            ]
-                .span(),
+            notes_to_use: [note_path].span(),
+            notes_to_create: [NewNote { amount: Zero::zero(), ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch RECIPIENT_NOT_REGISTERED.
     let result = user_1
-        .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
-            ]
-                .span(),
-        );
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 
     user_2.register_server();
 
     // Catch CHANNEL_NOT_FOUND.
     let result = user_1
-        .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 }
-            ]
-                .span(),
-        );
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_NOT_FOUND);
 
     user_1.open_channel_e2e(recipient: user_2, :token);
@@ -375,11 +322,8 @@ fn test_transfer_assertions() {
     // Catch NOTE_INDEX_NOT_SEQUENTIAL.
     let result = user_1
         .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: 1, index: 1 }
-            ]
-                .span(),
+            notes_to_use: [note_path].span(),
+            notes_to_create: [NewNote { index: 1, ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_INDEX_NOT_SEQUENTIAL);
 
@@ -388,11 +332,8 @@ fn test_transfer_assertions() {
     // Catch NOTE_SUM_MISMATCH.
     let result = user_1
         .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token, amount: 2, index: 0 }
-            ]
-                .span(),
+            notes_to_use: [note_path].span(),
+            notes_to_create: [NewNote { amount: 2, ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_SUM_MISMATCH);
 }
