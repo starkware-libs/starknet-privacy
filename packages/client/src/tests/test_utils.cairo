@@ -8,6 +8,7 @@ use client::utils::{
     compute_enc_channel_key_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
     derive_public_key, hash, is_canonical_key,
 };
+use core::dict::{Felt252Dict, Felt252DictTrait};
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
@@ -61,6 +62,31 @@ pub(crate) impl UserImpl of UserTrait {
                 owner_private_key: *self.private_key,
                 :notes_to_use,
                 :notes_to_create,
+            )
+    }
+
+    fn withdraw(
+        self: @User, recipient_addr: ContractAddress, note_path: NotePath,
+    ) -> (ContractAddress, ContractAddress, u128, felt252) {
+        IClientDispatcher { contract_address: *self.client }
+            .withdraw(
+                owner_addr: *self.address,
+                owner_private_key: *self.private_key,
+                :recipient_addr,
+                :note_path,
+            )
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_withdraw(
+        self: @User, recipient_addr: ContractAddress, note_path: NotePath,
+    ) -> Result<(ContractAddress, ContractAddress, u128, felt252), Array<felt252>> {
+        IClientSafeDispatcher { contract_address: *self.client }
+            .withdraw(
+                owner_addr: *self.address,
+                owner_private_key: *self.private_key,
+                :recipient_addr,
+                :note_path,
             )
     }
 
@@ -168,7 +194,7 @@ pub(crate) impl UserImpl of UserTrait {
         self.create_note_server(note: enc_note);
     }
 
-    fn use_note(self: @User, note: NotePath) -> (felt252, u128) {
+    fn use_note(self: @User, note: NotePath) -> (felt252, ContractAddress, u128) {
         interact_with_state(
             *self.client,
             || {
@@ -300,4 +326,31 @@ pub(crate) fn decrypt_channel_info(
         decrypted_token.try_into().unwrap(),
         decrypted_sender_addr.try_into().unwrap(),
     )
+}
+
+pub fn assert_unique_felts(values: Span<felt252>) {
+    let mut buckets: Felt252Dict<bool> = Default::default();
+    for v in values {
+        assert!(!buckets.get(key: *v), "{} appears twice in {:?}", *v, values);
+        buckets.insert(key: *v, value: true);
+    }
+}
+
+#[test]
+fn test_unique_felts_positive() {
+    assert_unique_felts([].span());
+    assert_unique_felts([0].span());
+    assert_unique_felts([0, 1, 2].span());
+}
+
+#[test]
+#[should_panic(expected_error: "0 appears twice in [0, 0]")]
+fn test_unique_felts_negative_twice() {
+    assert_unique_felts([0, 0].span());
+}
+
+#[test]
+#[should_panic(expected_error: "0 appears twice in [0, 0, 0]")]
+fn test_unique_felts_negative_thrice() {
+    assert_unique_felts([0, 0, 0].span());
 }

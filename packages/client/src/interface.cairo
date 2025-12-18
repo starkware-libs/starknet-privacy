@@ -120,4 +120,46 @@ pub trait IClient<T> {
         notes_to_use: Span<NotePath>,
         notes_to_create: Span<NewNote>,
     ) -> (Span<felt252>, Span<EncNote>);
+
+    /// Validates a note and generates the nullifier and withdrawal details.
+    ///
+    /// This function simulates a withdrawal by consuming a note and returning the
+    /// withdrawal details.
+    ///
+    /// #### Parameters
+    /// - `owner_addr` (`ContractAddress`) - The address of the note owner.
+    /// - `owner_private_key` (`felt252`) - The owner's private key.
+    /// - `recipient_addr` (`ContractAddress`) - The address where the funds will be withdrawn to.
+    /// - `note_path` ([`NotePath`](client::objects::NotePath)) - The note to be withdrawn.
+    ///
+    /// #### Returns
+    /// - (`ContractAddress`) - The recipient's address.
+    /// - (`ContractAddress`) - The token address.
+    /// - (`u128`) - The withdrawal amount.
+    /// - (`felt252`) - The nullifier of the note.
+    ///
+    /// #### Preconditions
+    /// - `owner_addr` is registered with `owner_private_key` in the server.
+    /// - The note exists and belongs to the owner.
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// - [`ZERO_OWNER_ADDR`](client::errors::ZERO_OWNER_ADDR): Thrown if `owner_addr` is zero.
+    /// - [`ZERO_OWNER_PRIVATE_KEY`](client::errors::ZERO_OWNER_PRIVATE_KEY):
+    /// Thrown if `owner_private_key` is zero.
+    /// - [`ZERO_RECIPIENT_ADDR`](client::errors::ZERO_RECIPIENT_ADDR):
+    /// Thrown if `recipient_addr` is zero.
+    /// - [`NOTE_NOT_FOUND`](client::errors::NOTE_NOT_FOUND): Thrown if the note is not found.
+    ///
+    /// #### Access Control
+    /// - Can be called by anyone, but requires the owner's private key.
+    fn withdraw(
+        self: @T,
+        owner_addr: ContractAddress,
+        owner_private_key: felt252,
+        recipient_addr: ContractAddress,
+        note_path: NotePath,
+    ) -> (ContractAddress, ContractAddress, u128, felt252);
 }
