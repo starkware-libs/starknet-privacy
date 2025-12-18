@@ -20,3 +20,4 @@ pub const NOTE_INDEX_NOT_SEQUENTIAL: felt252 = 'NOTE_INDEX_NOT_SEQUENTIAL';
 
 // Use note errors.
 pub const NOTE_NOT_FOUND: felt252 = 'NOTE_NOT_FOUND';
+pub const NOTE_TOKEN_MISMATCH: felt252 = 'NOTE_TOKEN_MISMATCH';
