@@ -1,3 +1,4 @@
+use client::internal::errors as internal_errors;
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
 use core::hash::{HashStateExTrait, HashStateTrait};
@@ -104,16 +105,26 @@ pub(crate) fn encrypt_channel_info(
     }
 }
 
-/// Decrypts the channel key from `EncChannelInfo`.
-pub(crate) fn decrypt_channel_key(
+/// Decrypts the channel info from `EncChannelInfo`.
+pub(crate) fn decrypt_channel_info(
     enc_channel_info: EncChannelInfo, recipient_private_key: felt252,
-) -> felt252 {
+) -> (felt252, ContractAddress, ContractAddress) {
     let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_channel_info.ephemeral_pubkey)
         .unwrap();
     let shared_point = ephemeral_pubkey_point.mul(scalar: recipient_private_key);
     let shared_x = shared_point.try_into().unwrap().x();
-    enc_channel_info.enc_channel_key
-        - hash([enc_channel_info::ENC_CHANNEL_KEY_TAG, shared_x].span())
+    let channel_key = enc_channel_info.enc_channel_key
+        - hash([enc_channel_info::ENC_CHANNEL_KEY_TAG, shared_x].span());
+    let token = (enc_channel_info.enc_token
+        - hash([enc_channel_info::ENC_TOKEN_TAG, shared_x].span()))
+        .try_into()
+        .expect(internal_errors::TOKEN_DECRYPT_ERROR);
+    let sender_addr = (enc_channel_info.enc_sender_addr
+        - hash([enc_channel_info::ENC_SENDER_ADDR_TAG, shared_x].span()))
+        .try_into()
+        .expect(internal_errors::SENDER_ADDR_DECRYPT_ERROR);
+
+    (channel_key, token, sender_addr)
 }
 
 /// Derives the public key from the private key.
