@@ -140,13 +140,17 @@ pub mod Client {
             owner_private_key: felt252,
             notes_to_use: Span<NotePath>,
         ) -> (Span<felt252>, u256) {
-            // TODO: Verify tokens match.
             let server = IServerDispatcher { contract_address: self.server.read() };
             let mut nullifiers: Array<felt252> = array![];
             let mut sum: u256 = Zero::zero();
+            let mut token = None;
             for note in notes_to_use {
-                let (nullifier, _, amount) = self
+                let (nullifier, note_token, amount) = self
                     .use_note(:owner_addr, :owner_private_key, note: *note, :server);
+                match token {
+                    None => token = Some(note_token),
+                    Some(t) => assert(t == note_token, errors::NOTE_TOKEN_MISMATCH),
+                }
                 nullifiers.append(nullifier);
                 sum += amount.into();
             }
