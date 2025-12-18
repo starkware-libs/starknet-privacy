@@ -5,7 +5,7 @@ pub mod Client {
     use client::objects::{NewNote, NotePath};
     use client::utils::{
         compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
-        decrypt_channel_key, decrypt_note_amount, derive_public_key, encrypt_channel_info,
+        decrypt_channel_info, decrypt_note_amount, derive_public_key, encrypt_channel_info,
         encrypt_note_amount, is_canonical_key,
     };
     use core::num::traits::Zero;
@@ -110,6 +110,25 @@ pub mod Client {
 
             (nullifiers, new_notes)
         }
+
+        fn withdraw(
+            self: @ContractState,
+            owner_addr: ContractAddress,
+            owner_private_key: felt252,
+            withdrawal_target: ContractAddress,
+            note_to_withdraw: NotePath,
+        ) -> (ContractAddress, ContractAddress, u128, felt252) {
+            // Assert valid input.
+            assert(owner_addr.is_non_zero(), errors::ZERO_OWNER_ADDR);
+            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
+            assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
+
+            let server = IServerDispatcher { contract_address: self.server.read() };
+            let (nullifier, token, amount) = self
+                .use_note(:owner_addr, :owner_private_key, note: note_to_withdraw, :server);
+
+            (withdrawal_target, token, amount, nullifier)
+        }
     }
 
     #[generate_trait]
@@ -126,7 +145,7 @@ pub mod Client {
             let mut nullifiers: Array<felt252> = array![];
             let mut sum: u256 = Zero::zero();
             for note in notes_to_use {
-                let (nullifier, amount) = self
+                let (nullifier, _token, amount) = self
                     .use_note(:owner_addr, :owner_private_key, note: *note, :server);
                 nullifiers.append(nullifier);
                 sum += amount.into();
@@ -134,18 +153,19 @@ pub mod Client {
             (nullifiers.span(), sum)
         }
 
+        // Returns (nullifier, token, amount).
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             note: NotePath,
             server: IServerDispatcher,
-        ) -> (felt252, u128) {
-            // Read and decrypt c from server.
-            // TODO: Decrypt token and assert it matches.
+        ) -> (felt252, ContractAddress, u128) {
+            // Read and decrypt channel key and token from server.
+            // TODO: Assert token matches.
             let enc_channel_info = server
                 .get_channel_info(recipient_addr: owner_addr, channel_index: note.channel_index);
-            let channel_key = decrypt_channel_key(
+            let (channel_key, token) = decrypt_channel_info(
                 enc_channel_info: enc_channel_info, recipient_private_key: owner_private_key,
             );
 
@@ -170,8 +190,8 @@ pub mod Client {
                 :channel_key, index: note.note_index, :owner_private_key,
             );
 
-            // Return nullifier and amount.
-            (nullifier, note_amount)
+            // Return nullifier, token, and amount.
+            (nullifier, token, note_amount)
         }
 
         // TODO: Consider merging this with `create_note` function.
