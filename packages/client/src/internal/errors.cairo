@@ -1,0 +1,1 @@
+pub(crate) const TOKEN_DECRYPT_ERROR: felt252 = 'TOKEN_DECRYPT_ERROR';
