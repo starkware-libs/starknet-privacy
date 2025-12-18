@@ -21,3 +21,4 @@ pub const ZERO_WITHDRAWAL_TARGET: felt252 = 'ZERO_WITHDRAWAL_TARGET';
 
 // Use note errors.
 pub const NOTE_NOT_FOUND: felt252 = 'NOTE_NOT_FOUND';
+pub const NOTE_TOKEN_MISMATCH: felt252 = 'NOTE_TOKEN_MISMATCH';
