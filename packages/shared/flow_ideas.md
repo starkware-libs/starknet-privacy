@@ -26,6 +26,7 @@
 7. User A transfer to users B and C, users B and C back to A.
 8. User A split one note into two notes for themselves - should fail.
 9. Attempt to use note with wrong amount in a transfer.
+10. Attempt to use note with wrong token in a transfer.
 
 ### Server
 1. Unauthorized Transfer: User tries to spend a note they don't own - should fail.

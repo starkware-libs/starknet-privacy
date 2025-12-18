@@ -97,10 +97,10 @@ pub mod Client {
 
             // TODO: Verify owner signature on TX.
 
-            let (nullifiers, _consumed_sum) = self
+            let (nullifiers, token, _consumed_sum) = self
                 .use_notes(:owner_addr, :owner_private_key, :notes_to_use);
             let (new_notes, _created_sum) = self
-                .create_notes(:owner_addr, :owner_private_key, :notes_to_create);
+                .create_notes(:owner_addr, :owner_private_key, :token, :notes_to_create);
 
             // TODO: Consider multi-token support (sum per token).
             // TODO: Implement test to catch NOTE_SUM_MISMATCH error.
@@ -150,23 +150,31 @@ pub mod Client {
     #[generate_trait]
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
         // TODO: Consider merging this with `use_note` function.
+        /// Returns (nullifiers, token, sum).
         fn use_notes(
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             notes_to_use: Span<NotePath>,
-        ) -> (Span<felt252>, u256) {
-            // TODO: Verify tokens match.
+        ) -> (Span<felt252>, ContractAddress, u256) {
             let server = IServerDispatcher { contract_address: self.server.read() };
             let mut nullifiers: Array<felt252> = array![];
             let mut sum: u256 = Zero::zero();
+            let mut token = None;
             for note in notes_to_use {
-                let (nullifier, _token, amount) = self
+                let (nullifier, note_token, amount) = self
                     .use_note(:owner_addr, :owner_private_key, note: *note, :server);
+                match token {
+                    None => token = Some(note_token),
+                    Some(expected_token) => assert(
+                        note_token == expected_token, errors::NOTE_TOKEN_MISMATCH,
+                    ),
+                }
                 nullifiers.append(nullifier);
                 sum += amount.into();
             }
-            (nullifiers.span(), sum)
+            // TODO: Unwrap instead of expect?
+            (nullifiers.span(), token.expect('NO_TOKEN_FOUND'), sum)
         }
 
         // Returns (nullifier, token, amount).
@@ -215,17 +223,18 @@ pub mod Client {
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
+            token: ContractAddress,
             notes_to_create: Span<NewNote>,
         ) -> (Span<EncNote>, u256) {
             let mut enc_notes: Array<EncNote> = array![];
             let mut sum: u256 = Zero::zero();
             let server = IServerDispatcher { contract_address: self.server.read() };
             for note in notes_to_create {
+                assert(*note.token == token, errors::NOTE_TOKEN_MISMATCH);
                 let enc_note = self
                     .create_note(:owner_addr, :owner_private_key, note: *note, :server);
                 enc_notes.append(enc_note);
                 sum += (*note.amount).into();
-                // TODO: Verify tokens match.
             }
             (enc_notes.span(), sum)
         }
