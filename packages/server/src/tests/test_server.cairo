@@ -343,20 +343,25 @@ fn test_replace_public_key() {
     assert_eq!(user.get_public_key(), original_public_key);
 
     // Replace the public key first time.
-    let new_public_key_1 = user.new_public_key();
+    user.new_public_key();
     user.replace_public_key();
-    assert_eq!(user.get_public_key(), new_public_key_1);
+    assert_eq!(user.get_public_key(), user.public_key);
 
     // Replace the public key second time.
-    let new_public_key_2 = user.new_public_key();
+    user.new_public_key();
     user.replace_public_key();
-    assert_eq!(user.get_public_key(), new_public_key_2);
+    assert_eq!(user.get_public_key(), user.public_key);
+
+    // Replace back to original public key.
+    user.public_key = original_public_key;
+    user.replace_public_key();
+    assert_eq!(user.get_public_key(), original_public_key);
 }
 
 #[test]
 fn test_replace_public_key_same_key() {
     let mut test: Test = Default::default();
-    let mut user = test.new_user();
+    let user = test.new_user();
     let original_public_key = user.public_key;
 
     // Register the user first.
@@ -398,17 +403,17 @@ fn test_replace_public_key_to_other_user_key() {
 #[feature("safe_dispatcher")]
 fn test_replace_public_key_assertions() {
     let mut test: Test = Default::default();
-    let user = test.new_user();
-    let non_zero_public_key = ('NON_ZERO_PUBLIC_KEY').try_into().unwrap();
+    let mut user = test.new_user();
 
     // Catch ZERO_PUBLIC_KEY.
     user.register();
-    let result = user.safe_replace_public_key(new_public_key: Zero::zero());
+    user.public_key = Zero::zero();
+    let result = user.safe_replace_public_key();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
     // Catch USER_NOT_REGISTERED.
-    let unregistered_user = test.new_user();
-    let result = unregistered_user.safe_replace_public_key(new_public_key: non_zero_public_key);
+    let mut unregistered_user = test.new_user();
+    let result = unregistered_user.safe_replace_public_key();
     assert_panic_with_felt_error(:result, expected_error: errors::USER_NOT_REGISTERED);
 }
 

@@ -124,6 +124,8 @@ pub mod Server {
             // Assert that user has already registered.
             assert(self.public_key.read(user).is_non_zero(), errors::USER_NOT_REGISTERED);
 
+            // TODO: Verify the proof from the client side.
+
             // Replace the key in storage.
             self.public_key.write(user, public_key);
         }

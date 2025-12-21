@@ -205,9 +205,10 @@ pub trait IServer<T> {
 
     /// Replaces the caller's public viewing key to a new value.
     ///
-    /// **New notes created after this operation will be associated with the new public key.**
-    /// **Previously created notes (old notes) remain encrypted with the previous public key and are
-    /// not migrated.**
+    /// **Notes that were created before updating your public key remain encrypted with the old key
+    /// and are not automatically re-encrypted or migrated. These notes can only be accessed using
+    /// the private key that was previously associated with your account. To use your new public
+    /// key, you must open new channels.**
     ///
     /// #### Parameters
     /// - `public_key` (`felt252`): The new public viewing key. Must not be zero.
