@@ -29,6 +29,16 @@
 ### Server
 1. Unauthorized Transfer: User tries to spend a note they don't own - should fail.
 
+### Client
+1. Test transfer use and create note same channel.
+    1.1. Test transfer use and create note same channel same amount (actually same note).
+    1.2 Test transfer use notes multi channels create note to one channel of the used notes.
+    1.3 Test transfer use note one channel create notes multi channels that one of them is the channel of the used note.
+    1.4. Test transfer use notes same channel create note same channel (merging notes).
+2. Test transfer use and create note multi channels and multi amounts (also one with same channel and one with same amount).
+3. Use many notes form the same channel.
+4. Transfer many to many different partion of amounts.
+
 ## Withdraw
 ### Client + Server
 1. Withdraw end-to-end.
@@ -46,6 +56,12 @@
 ## Create note
 1. Try to create same note twice in one transfer.
 2. Try to create same note twice in different transfers.
+
+## Use note
+1. use note, change public key, try to use note again.
+2. Try to use same note twice in one transfer.
+3. Try to use smae note twice in different transfers.
+4. Use note with wrong amount in transfer.
 
 ## Replace Public Key
 ### Server
