@@ -14,6 +14,7 @@
 11. User A deposit multiple notes, transfer them to one note for user B, user B withdraw it.
 12. User A deposit one note, transfer to users B and C, users B and C withdraw the notes.
 13. User A deposit one note, transfer to users B and C with leftover for themselves, all users withdraw.
+14. Deposit, change public key, deposit again.
 
 ## Transfer
 ### Client + Server
@@ -25,6 +26,9 @@
 6. User A transfer to user B, user B to user C, user C back to A.
 7. User A transfer to users B and C, users B and C back to A.
 8. User A split one note into two notes for themselves - should fail.
+9. Use note (transfer), change public key, try to use same note again.
+10. Use note (withdraw), change public key, try to use same note again.
+11. Attempt to use multiple notes that were created for different public keys in the same transfer.
 
 ### Server
 1. Unauthorized Transfer: User tries to spend a note they don't own - should fail.
@@ -38,6 +42,8 @@
 5. User withdraw a note from a non-existent channel (channel index).
 6. User withdraw a note from a non-existent note (note index).
 7. User withdraw multiple notes in a row.
+8. Withdraw, change public key, try to withdraw same note again.
+9. Use note (transfer), change public key, try to withdraw note.
 
 ### Server
 1. User withdraw a note that doesn't belong to him (someone else's nullifier).
