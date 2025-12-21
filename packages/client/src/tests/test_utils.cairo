@@ -64,6 +64,31 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
+    fn withdraw(
+        self: @User, withdrawal_target: ContractAddress, note_to_withdraw: NotePath,
+    ) -> (ContractAddress, ContractAddress, u128, felt252) {
+        IClientDispatcher { contract_address: *self.client }
+            .withdraw(
+                owner_addr: *self.address,
+                owner_private_key: *self.private_key,
+                :withdrawal_target,
+                :note_to_withdraw,
+            )
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_withdraw(
+        self: @User, withdrawal_target: ContractAddress, note_to_withdraw: NotePath,
+    ) -> Result<(ContractAddress, ContractAddress, u128, felt252), Array<felt252>> {
+        IClientSafeDispatcher { contract_address: *self.client }
+            .withdraw(
+                owner_addr: *self.address,
+                owner_private_key: *self.private_key,
+                :withdrawal_target,
+                :note_to_withdraw,
+            )
+    }
+
     fn open_channel(
         self: @User, recipient: User, token: ContractAddress, random: felt252,
     ) -> (ContractAddress, EncChannelInfo, felt252) {
@@ -168,7 +193,7 @@ pub(crate) impl UserImpl of UserTrait {
         self.create_note_server(note: enc_note);
     }
 
-    fn use_note(self: @User, note: NotePath) -> (felt252, u128) {
+    fn use_note(self: @User, note: NotePath) -> (felt252, ContractAddress, u128) {
         interact_with_state(
             *self.client,
             || {
