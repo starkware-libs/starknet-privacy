@@ -112,7 +112,10 @@ pub mod Client {
         }
 
         fn deposit(
-            self: @ContractState, owner_private_key: felt252, new_note: NewNote,
+            self: @ContractState,
+            owner_private_key: felt252,
+            token: ContractAddress,
+            new_note: NewNote,
         ) -> (ContractAddress, ContractAddress, u128, EncNote) {
             // Assert input is valid.
             assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
@@ -122,9 +125,9 @@ pub mod Client {
             let owner_addr = new_note.recipient_addr;
             let server = IServerDispatcher { contract_address: self.server.read() };
             let enc_note = self
-                .create_note(:owner_addr, :owner_private_key, note: new_note, :server);
+                .create_note(:owner_addr, :owner_private_key, :token, note: new_note, :server);
 
-            (owner_addr, new_note.token, new_note.amount, enc_note)
+            (owner_addr, token, new_note.amount, enc_note)
         }
 
         fn withdraw(
@@ -230,9 +233,8 @@ pub mod Client {
             let mut sum: u256 = Zero::zero();
             let server = IServerDispatcher { contract_address: self.server.read() };
             for note in notes_to_create {
-                assert(*note.token == token, errors::NOTE_TOKEN_MISMATCH);
                 let enc_note = self
-                    .create_note(:owner_addr, :owner_private_key, note: *note, :server);
+                    .create_note(:owner_addr, :owner_private_key, :token, note: *note, :server);
                 enc_notes.append(enc_note);
                 sum += (*note.amount).into();
             }
@@ -244,13 +246,14 @@ pub mod Client {
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
+            token: ContractAddress,
             note: NewNote,
             server: IServerDispatcher,
         ) -> EncNote {
             // TODO: Verify tokens match.
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(note.amount.is_non_zero(), errors::ZERO_AMOUNT);
 
             // TODO: Consider impl helper function for common code.
@@ -266,7 +269,7 @@ pub mod Client {
                 sender_private_key: owner_private_key,
                 recipient_addr: note.recipient_addr,
                 :recipient_public_key,
-                token: note.token,
+                :token,
             );
 
             // Assert channel exists.

@@ -132,9 +132,10 @@ pub trait IClient<T> {
     ///
     /// #### Parameters
     /// - `owner_private_key` (`felt252`) - The owner's private key. Must not be zero.
+    /// - `token` (`ContractAddress`) - The token address. Must not be zero.
     /// - `new_note` ([`NewNote`](client::objects::NewNote)) - The details of the note to be
     /// created.
-    /// `new_note.recipient_addr`, `new_note.token`, and `new_note.amount` must not be zero.
+    /// `new_note.recipient_addr` and `new_note.amount` must not be zero.
     ///
     /// #### Returns
     /// - (`ContractAddress`) - The address to transfer the deposit from.
@@ -143,7 +144,7 @@ pub trait IClient<T> {
     /// - ([`EncNote`](server::objects::EncNote)) - The encrypted note to be stored.
     ///
     /// #### Preconditions
-    /// - A self-channel exists for `new_note.recipient_addr` with `new_note.token` for
+    /// - A self-channel exists for `new_note.recipient_addr` with `token` for
     /// `owner_private_key`'s public key.
     /// - `owner_private_key` matches the `new_note.recipient_addr`'s public key.
     /// - `new_note.index` is sequential within the channel.
@@ -170,7 +171,7 @@ pub trait IClient<T> {
     /// #### Access Control
     /// - TODO
     fn deposit(
-        self: @T, owner_private_key: felt252, new_note: NewNote,
+        self: @T, owner_private_key: felt252, token: ContractAddress, new_note: NewNote,
     ) -> (ContractAddress, ContractAddress, u128, EncNote);
 
     /// Validates a withdrawal of a note and generates the nullifier and withdrawal details for the
