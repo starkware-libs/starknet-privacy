@@ -412,7 +412,7 @@ fn test_replace_public_key_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
     // Catch USER_NOT_REGISTERED.
-    let mut unregistered_user = test.new_user();
+    let unregistered_user = test.new_user();
     let result = unregistered_user.safe_replace_public_key();
     assert_panic_with_felt_error(:result, expected_error: errors::USER_NOT_REGISTERED);
 }

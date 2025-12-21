@@ -208,7 +208,7 @@ pub trait IServer<T> {
     /// **Notes that were created before updating your public key remain encrypted with the old key
     /// and are not automatically re-encrypted or migrated. These notes can only be accessed using
     /// the private key that was previously associated with your account. To use your new public
-    /// key, you must open new channels.**
+    /// key, the sender must open new channels with you.**
     ///
     /// #### Parameters
     /// - `public_key` (`felt252`): The new public viewing key. Must not be zero.

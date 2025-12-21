@@ -46,3 +46,8 @@
 ## Create note
 1. Try to create same note twice in one transfer.
 2. Try to create same note twice in different transfers.
+
+## Replace Public Key
+### Server
+1. Replace public key and verify that compliance is still able to view all user data.
+2. Replace the public key multiple times across 10 blocks.
