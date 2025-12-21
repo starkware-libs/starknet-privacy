@@ -25,9 +25,11 @@
 6. User A transfer to user B, user B to user C, user C back to A.
 7. User A transfer to users B and C, users B and C back to A.
 8. User A split one note into two notes for themselves - should fail.
+9. Attempt to use note with wrong amount in a transfer.
 
 ### Server
 1. Unauthorized Transfer: User tries to spend a note they don't own - should fail.
+2. Catch NOTE_NOT_FOUND: wrong user addr, wrong private key, wrong channel index, and wrong note index.
 
 ### Client
 1. Test transfer use and create note same channel.
