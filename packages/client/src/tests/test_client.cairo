@@ -3,10 +3,7 @@ use client::objects::{NewNote, NotePath};
 use client::tests::test_utils::{
     Test, TestTrait, UserTrait, decrypt_channel_info, decrypt_note_amount,
 };
-use client::utils::{
-    compute_channel_id, compute_channel_key, compute_note_id, encrypt_channel_info,
-    is_canonical_key,
-};
+use client::utils::{compute_channel_id, compute_note_id, encrypt_channel_info, is_canonical_key};
 use core::num::traits::Zero;
 use server::objects::domain_separation::enc_channel_info;
 use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
@@ -301,13 +298,7 @@ fn test_open_channel() {
         .open_channel_with_generated_random(recipient: user_2, :token);
     let (recipient_addr, enc_channel_info, channel_id) = channel_output;
     assert_eq!(recipient_addr, user_2.address);
-    let channel_key = compute_channel_key(
-        sender_addr: user_1.address,
-        sender_private_key: user_1.private_key,
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        :token,
-    );
+    let channel_key = user_1.compute_channel_key(recipient: user_2, :token);
     // TODO: Is it ok for tests to reuse the same util function as the contract?
     let expected_enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random,
@@ -331,13 +322,7 @@ fn test_open_channel_self_channel() {
     let (random, channel_output) = user.open_channel_with_generated_random(recipient: user, :token);
     let (recipient_addr, enc_channel_info, channel_id) = channel_output;
     assert_eq!(recipient_addr, user.address);
-    let channel_key = compute_channel_key(
-        sender_addr: user.address,
-        sender_private_key: user.private_key,
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        :token,
-    );
+    let channel_key = user.compute_channel_key(recipient: user, :token);
     let expected_enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random,
         recipient_public_key: user.public_key,
@@ -430,20 +415,8 @@ fn test_open_channel_multiple_channels_same_sender() {
     let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
     assert_eq!(c1_recipient_addr, user_2.address);
     assert_eq!(c2_recipient_addr, user_3.address);
-    let channel_key_1 = compute_channel_key(
-        sender_addr: user_1.address,
-        sender_private_key: user_1.private_key,
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        :token,
-    );
-    let channel_key_2 = compute_channel_key(
-        sender_addr: user_1.address,
-        sender_private_key: user_1.private_key,
-        recipient_addr: user_3.address,
-        recipient_public_key: user_3.public_key,
-        :token,
-    );
+    let channel_key_1 = user_1.compute_channel_key(recipient: user_2, :token);
+    let channel_key_2 = user_1.compute_channel_key(recipient: user_3, :token);
     assert_ne!(channel_key_1, channel_key_2);
     let expected_enc_channel_info_1 = encrypt_channel_info(
         ephemeral_secret: random_1,
@@ -498,20 +471,8 @@ fn test_open_channel_multiple_channels_same_recipient() {
     let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
     assert_eq!(c1_recipient_addr, user_1.address);
     assert_eq!(c2_recipient_addr, user_1.address);
-    let channel_key_1 = compute_channel_key(
-        sender_addr: user_2.address,
-        sender_private_key: user_2.private_key,
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        :token,
-    );
-    let channel_key_2 = compute_channel_key(
-        sender_addr: user_3.address,
-        sender_private_key: user_3.private_key,
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        :token,
-    );
+    let channel_key_1 = user_2.compute_channel_key(recipient: user_1, :token);
+    let channel_key_2 = user_3.compute_channel_key(recipient: user_1, :token);
     assert_ne!(channel_key_1, channel_key_2);
     let expected_enc_channel_info_1 = encrypt_channel_info(
         ephemeral_secret: random_1,
@@ -566,20 +527,8 @@ fn test_open_channel_multiple_tokens() {
     let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
     assert_eq!(c1_recipient_addr, user_2.address);
     assert_eq!(c2_recipient_addr, user_2.address);
-    let channel_key_1 = compute_channel_key(
-        sender_addr: user_1.address,
-        sender_private_key: user_1.private_key,
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_1,
-    );
-    let channel_key_2 = compute_channel_key(
-        sender_addr: user_1.address,
-        sender_private_key: user_1.private_key,
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_2,
-    );
+    let channel_key_1 = user_1.compute_channel_key(recipient: user_2, token: token_1);
+    let channel_key_2 = user_1.compute_channel_key(recipient: user_2, token: token_2);
     assert_ne!(channel_key_1, channel_key_2);
     let expected_enc_channel_info_1 = encrypt_channel_info(
         ephemeral_secret: random_1,
@@ -630,20 +579,8 @@ fn test_open_channel_self_channel_multiple_tokens() {
     let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
     assert_eq!(c1_recipient_addr, user.address);
     assert_eq!(c2_recipient_addr, user.address);
-    let channel_key_1 = compute_channel_key(
-        sender_addr: user.address,
-        sender_private_key: user.private_key,
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_1,
-    );
-    let channel_key_2 = compute_channel_key(
-        sender_addr: user.address,
-        sender_private_key: user.private_key,
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_2,
-    );
+    let channel_key_1 = user.compute_channel_key(recipient: user, token: token_1);
+    let channel_key_2 = user.compute_channel_key(recipient: user, token: token_2);
     assert_ne!(channel_key_1, channel_key_2);
     let expected_enc_channel_info_1 = encrypt_channel_info(
         ephemeral_secret: random_1,
@@ -698,13 +635,7 @@ fn test_open_channel_decrypt_channel_info() {
     );
 
     // Verify decrypted channel key.
-    let expected_channel_key = compute_channel_key(
-        sender_addr: user_1.address,
-        sender_private_key: user_1.private_key,
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        :token,
-    );
+    let expected_channel_key = user_1.compute_channel_key(recipient: user_2, :token);
     assert_eq!(decrypted_channel_key, expected_channel_key);
 
     // Verify decrypted token.
