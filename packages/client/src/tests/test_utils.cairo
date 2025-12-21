@@ -163,7 +163,7 @@ pub(crate) impl UserImpl of UserTrait {
         hash(['RANDOM', self.nonce.into()].span())
     }
 
-    fn create_note(self: @User, note: NewNote) -> EncNote {
+    fn create_note(self: @User, token: ContractAddress, note: NewNote) -> EncNote {
         interact_with_state(
             *self.client,
             || {
@@ -172,6 +172,7 @@ pub(crate) impl UserImpl of UserTrait {
                     .create_note(
                         owner_addr: *self.address,
                         owner_private_key: *self.private_key,
+                        :token,
                         :note,
                         server: IServerDispatcher { contract_address: *self.server },
                     )
@@ -189,8 +190,8 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    fn create_note_e2e(self: @User, note: NewNote) {
-        let enc_note = self.create_note(:note);
+    fn create_note_e2e(self: @User, token: ContractAddress, note: NewNote) {
+        let enc_note = self.create_note(:token, :note);
         self.create_note_server(note: enc_note);
     }
 
@@ -250,10 +251,8 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     // TODO: Remember index somewhere instead of passing it as an argument.
-    fn new_note(
-        self: @User, recipient: User, token: ContractAddress, amount: u128, index: usize,
-    ) -> NewNote {
-        NewNote { recipient_addr: recipient.address, token, amount, index }
+    fn new_note(self: @User, recipient: User, amount: u128, index: usize) -> NewNote {
+        NewNote { recipient_addr: recipient.address, amount, index }
     }
 
     // TODO: Consider different trait.
@@ -262,18 +261,18 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn deposit(
-        self: @User, new_note: NewNote,
+        self: @User, token: ContractAddress, new_note: NewNote,
     ) -> (ContractAddress, ContractAddress, u128, EncNote) {
         IClientDispatcher { contract_address: *self.client }
-            .deposit(owner_private_key: *self.private_key, :new_note)
+            .deposit(owner_private_key: *self.private_key, :token, :new_note)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_deposit(
-        self: @User, new_note: NewNote,
+        self: @User, token: ContractAddress, new_note: NewNote,
     ) -> Result<(ContractAddress, ContractAddress, u128, EncNote), Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.client }
-            .deposit(owner_private_key: *self.private_key, :new_note)
+            .deposit(owner_private_key: *self.private_key, :token, :new_note)
     }
 
     // TODO: Consider different trait.

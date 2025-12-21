@@ -47,11 +47,11 @@ fn test_transfer() {
     user_1.open_channel_e2e(recipient: user_1, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_1, :amount, index: note_index);
+    user_1.create_note_e2e(:token, :note);
 
     let note_path = NotePath { channel_index: 0, note_index };
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
+    let note = user_1.new_note(recipient: user_2, :amount, index: note_index);
     let (nullifiers, new_notes) = user_1
         .transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
 
@@ -78,11 +78,11 @@ fn test_transfer_to_self() {
     user_2.open_channel_e2e(recipient: user_1, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_2.new_note(recipient: user_1, :token, :amount, index: note_index);
-    user_2.create_note_e2e(:note);
+    let note = user_2.new_note(recipient: user_1, :amount, index: note_index);
+    user_2.create_note_e2e(:token, :note);
 
     let note_path = NotePath { channel_index: 1, note_index };
-    let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
+    let note = user_1.new_note(recipient: user_1, :amount, index: note_index);
 
     let (nullifiers, new_notes) = user_1
         .transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
@@ -114,13 +114,12 @@ fn test_transfer_one_to_many() {
     let note_index = 0;
     let amount_1 = 1;
     let amount_2 = 8;
-    let note = user_1
-        .new_note(recipient: user_1, :token, amount: amount_1 + amount_2, index: note_index);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_1, amount: amount_1 + amount_2, index: note_index);
+    user_1.create_note_e2e(:token, :note);
 
     let note_path = NotePath { channel_index: 0, note_index };
-    let note_1 = user_1.new_note(recipient: user_2, :token, amount: amount_1, index: note_index);
-    let note_2 = user_1.new_note(recipient: user_3, :token, amount: amount_2, index: note_index);
+    let note_1 = user_1.new_note(recipient: user_2, amount: amount_1, index: note_index);
+    let note_2 = user_1.new_note(recipient: user_3, amount: amount_2, index: note_index);
 
     let (nullifiers, new_notes) = user_1
         .transfer(notes_to_use: [note_path].span(), notes_to_create: [note_1, note_2].span());
@@ -154,15 +153,15 @@ fn test_transfer_many_to_one() {
     user_3.open_channel_e2e(recipient: user_1, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_2.new_note(recipient: user_1, :token, :amount, index: note_index);
-    user_2.create_note_e2e(:note);
-    let note = user_3.new_note(recipient: user_1, :token, :amount, index: note_index);
-    user_3.create_note_e2e(:note);
+    let note = user_2.new_note(recipient: user_1, :amount, index: note_index);
+    user_2.create_note_e2e(:token, :note);
+    let note = user_3.new_note(recipient: user_1, :amount, index: note_index);
+    user_3.create_note_e2e(:token, :note);
 
     let note_path_1 = NotePath { channel_index: 0, note_index: 0 };
     let note_path_2 = NotePath { channel_index: 1, note_index: 0 };
     let amount = 2 * amount;
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
+    let note = user_1.new_note(recipient: user_2, :amount, index: note_index);
 
     let (nullifiers, new_notes) = user_1
         .transfer(notes_to_use: [note_path_1, note_path_2].span(), notes_to_create: [note].span());
@@ -196,15 +195,15 @@ fn test_transfer_many_to_many() {
     user_3.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_3, :token, :amount, index: note_index);
-    user_1.create_note_e2e(:note);
-    let note = user_2.new_note(recipient: user_3, :token, :amount, index: note_index);
-    user_2.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_3, :amount, index: note_index);
+    user_1.create_note_e2e(:token, :note);
+    let note = user_2.new_note(recipient: user_3, :amount, index: note_index);
+    user_2.create_note_e2e(:token, :note);
 
     let note_path_1 = NotePath { channel_index: 0, note_index: 0 };
     let note_path_2 = NotePath { channel_index: 1, note_index: 0 };
-    let note_1 = user_3.new_note(recipient: user_1, :token, :amount, index: note_index);
-    let note_2 = user_3.new_note(recipient: user_2, :token, :amount, index: note_index);
+    let note_1 = user_3.new_note(recipient: user_1, :amount, index: note_index);
+    let note_2 = user_3.new_note(recipient: user_2, :amount, index: note_index);
 
     let (nullifiers, new_notes) = user_3
         .transfer(
@@ -243,9 +242,7 @@ fn test_transfer_assertions() {
     let result = user_1_zero
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token: token_1, amount: 1, index: 0 }
-            ]
+            notes_to_create: [NewNote { recipient_addr: user_2.address, amount: 1, index: 0 }]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_ADDR);
@@ -256,9 +253,7 @@ fn test_transfer_assertions() {
     let result = user_1_zero_private_key
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token: token_1, amount: 1, index: 0 }
-            ]
+            notes_to_create: [NewNote { recipient_addr: user_2.address, amount: 1, index: 0 }]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
@@ -267,9 +262,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token: token_1, amount: 1, index: 0 }
-            ]
+            notes_to_create: [NewNote { recipient_addr: user_2.address, amount: 1, index: 0 }]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_USE);
@@ -288,9 +281,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token: token_1, amount: 1, index: 0 }
-            ]
+            notes_to_create: [NewNote { recipient_addr: user_2.address, amount: 1, index: 0 }]
                 .span(),
         );
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
@@ -302,20 +293,18 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token: token_1, amount: 1, index: 0 }
-            ]
+            notes_to_create: [NewNote { recipient_addr: user_2.address, amount: 1, index: 0 }]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
-    let note_1 = user_1.new_note(recipient: user_1, token: token_1, amount: 1, index: 0);
-    user_1.create_note_e2e(note: note_1);
+    let note_1 = user_1.new_note(recipient: user_1, amount: 1, index: 0);
+    user_1.create_note_e2e(token: token_1, note: note_1);
 
-    // Catch NOTE_TOKEN_MISMATCH (notes_to_use).
-    let note_2 = user_1.new_note(recipient: user_1, token: token_2, amount: 2, index: 0);
+    // Catch NOTE_TOKEN_MISMATCH.
+    let note_2 = user_1.new_note(recipient: user_1, amount: 2, index: 0);
     user_1.open_channel_e2e(recipient: user_1, token: token_2);
-    user_1.create_note_e2e(note: note_2);
+    user_1.create_note_e2e(token: token_2, note: note_2);
     let result = user_1
         .safe_transfer(
             notes_to_use: [
@@ -323,9 +312,7 @@ fn test_transfer_assertions() {
                 NotePath { channel_index: 1, note_index: 0 },
             ]
                 .span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_1.address, token: token_1, amount: 2, index: 0 }
-            ]
+            notes_to_create: [NewNote { recipient_addr: user_1.address, amount: 2, index: 0 }]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_TOKEN_MISMATCH);
@@ -336,10 +323,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: Zero::zero(), token: token_1, amount: 1, index: 0 }
-            ]
-                .span(),
+            notes_to_create: [NewNote { recipient_addr: Zero::zero(), amount: 1, index: 0 }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
@@ -348,9 +332,7 @@ fn test_transfer_assertions() {
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
             notes_to_create: [
-                NewNote {
-                    recipient_addr: user_2.address, token: token_1, amount: Zero::zero(), index: 0,
-                },
+                NewNote { recipient_addr: user_2.address, amount: Zero::zero(), index: 0 },
             ]
                 .span(),
         );
@@ -360,9 +342,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token: token_1, amount: 1, index: 0 }
-            ]
+            notes_to_create: [NewNote { recipient_addr: user_2.address, amount: 1, index: 0 }]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
@@ -373,9 +353,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token: token_1, amount: 1, index: 0 }
-            ]
+            notes_to_create: [NewNote { recipient_addr: user_2.address, amount: 1, index: 0 }]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_NOT_FOUND);
@@ -386,24 +364,10 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token: token_1, amount: 1, index: 1 }
-            ]
+            notes_to_create: [NewNote { recipient_addr: user_2.address, amount: 1, index: 1 }]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_INDEX_NOT_SEQUENTIAL);
-
-    // Catch NOTE_TOKEN_MISMATCH (notes_to_create).
-    let result = user_1
-        .safe_transfer(
-            notes_to_use: [NotePath { channel_index: 0, note_index: 0 },].span(),
-            notes_to_create: [
-                NewNote { recipient_addr: user_2.address, token: token_1, amount: 1, index: 0 },
-                NewNote { recipient_addr: user_1.address, token: token_2, amount: 1, index: 1 },
-            ]
-                .span(),
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_TOKEN_MISMATCH);
 }
 
 #[test]
@@ -777,8 +741,8 @@ fn test_create_note() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
-    let enc_note = user_1.create_note(:note);
+    let note = user_1.new_note(recipient: user_2, :amount, index: note_index);
+    let enc_note = user_1.create_note(:token, :note);
     let expected_enc_note = user_1
         .compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
     assert_eq!(enc_note, expected_enc_note);
@@ -793,8 +757,8 @@ fn test_create_note_self_note() {
     user.open_channel_e2e(recipient: user, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user.new_note(recipient: user, :token, :amount, index: note_index);
-    let enc_note = user.create_note(:note);
+    let note = user.new_note(recipient: user, :amount, index: note_index);
+    let enc_note = user.create_note(:token, :note);
     let expected_enc_note = user
         .compute_enc_note(recipient: user, :token, index: note_index, :amount);
     assert_eq!(enc_note, expected_enc_note);
@@ -811,13 +775,13 @@ fn test_create_note_twice() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount_1 = 1;
     let note_index_1 = 0;
-    let note_1 = user_1.new_note(recipient: user_2, :token, amount: amount_1, index: note_index_1);
-    let enc_note_1 = user_1.create_note(note: note_1);
+    let note_1 = user_1.new_note(recipient: user_2, amount: amount_1, index: note_index_1);
+    let enc_note_1 = user_1.create_note(:token, note: note_1);
     let amount_2 = amount_1 + 1;
     let note_index_2 = note_index_1 + 1;
     user_1.create_note_server(enc_note_1);
-    let note_2 = user_1.new_note(recipient: user_2, :token, amount: amount_2, index: note_index_2);
-    let enc_note_2 = user_1.create_note(note: note_2);
+    let note_2 = user_1.new_note(recipient: user_2, amount: amount_2, index: note_index_2);
+    let enc_note_2 = user_1.create_note(:token, note: note_2);
     assert_ne!(enc_note_1.id, enc_note_2.id);
     assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
     let expected_note_1 = user_1
@@ -839,12 +803,12 @@ fn test_create_note_twice_same_amount() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
     let note_index_1 = 0;
-    let note_1 = user_1.new_note(recipient: user_2, :token, :amount, index: note_index_1);
-    let enc_note_1 = user_1.create_note(note: note_1);
+    let note_1 = user_1.new_note(recipient: user_2, :amount, index: note_index_1);
+    let enc_note_1 = user_1.create_note(:token, note: note_1);
     let note_index_2 = note_index_1 + 1;
     user_1.create_note_server(enc_note_1);
-    let note_2 = user_1.new_note(recipient: user_2, :token, :amount, index: note_index_2);
-    let enc_note_2 = user_1.create_note(note: note_2);
+    let note_2 = user_1.new_note(recipient: user_2, :amount, index: note_index_2);
+    let enc_note_2 = user_1.create_note(:token, note: note_2);
     assert_ne!(enc_note_1.id, enc_note_2.id);
     assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
     let expected_note_1 = user_1
@@ -863,8 +827,8 @@ fn test_create_note_zero_recipient_addr() {
     let mut user_2 = test.new_user();
     let token = test.new_token();
     user_2.address = Zero::zero();
-    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
-    user_1.create_note(:note);
+    let note = user_1.new_note(recipient: user_2, amount: 1, index: 0);
+    user_1.create_note(:token, :note);
 }
 
 #[test]
@@ -873,8 +837,8 @@ fn test_create_note_zero_token() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
     let user_2 = test.new_user();
-    let note = user_1.new_note(recipient: user_2, token: Zero::zero(), amount: 1, index: 0);
-    user_1.create_note(:note);
+    let note = user_1.new_note(recipient: user_2, amount: 1, index: 0);
+    user_1.create_note(token: Zero::zero(), :note);
 }
 
 #[test]
@@ -884,8 +848,8 @@ fn test_create_note_zero_amount() {
     let user_1 = test.new_user();
     let user_2 = test.new_user();
     let token = test.new_token();
-    let note = user_1.new_note(recipient: user_2, :token, amount: 0, index: 0);
-    user_1.create_note(:note);
+    let note = user_1.new_note(recipient: user_2, amount: 0, index: 0);
+    user_1.create_note(:token, :note);
 }
 
 #[test]
@@ -895,8 +859,8 @@ fn test_create_note_recipient_not_registered() {
     let user_1 = test.new_user();
     let user_2 = test.new_user();
     let token = test.new_token();
-    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
-    user_1.create_note(:note);
+    let note = user_1.new_note(recipient: user_2, amount: 1, index: 0);
+    user_1.create_note(:token, :note);
 }
 
 #[test]
@@ -908,8 +872,8 @@ fn test_create_note_channel_not_found() {
     user_1.register_server();
     user_2.register_server();
     let token = test.new_token();
-    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
-    user_1.create_note(:note);
+    let note = user_1.new_note(recipient: user_2, amount: 1, index: 0);
+    user_1.create_note(:token, :note);
 }
 
 #[test]
@@ -923,8 +887,8 @@ fn test_create_note_note_index_not_sequential() {
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: 1);
-    user_1.create_note(:note);
+    let note = user_1.new_note(recipient: user_2, :amount, index: 1);
+    user_1.create_note(:token, :note);
 }
 
 // TODO: Consider move this test to common test file.
@@ -939,8 +903,8 @@ fn test_create_note_decrypt_amount() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
-    let enc_note = user_1.create_note(:note);
+    let note = user_1.new_note(recipient: user_2, :amount, index: note_index);
+    let enc_note = user_1.create_note(:token, :note);
     user_1.create_note_server(enc_note);
 
     // User 2 should be able to decrypt the amount.
@@ -968,10 +932,10 @@ fn test_deposit() {
     user.register_server();
     user.open_channel_e2e(recipient: user, :token);
     let index = 0;
-    let note = user.new_note(recipient: user, :token, :amount, :index);
+    let note = user.new_note(recipient: user, :amount, :index);
 
     // Deposit.
-    let result = user.deposit(new_note: note);
+    let result = user.deposit(:token, new_note: note);
 
     // Assert deposit result.
     let expected_result = (
@@ -989,7 +953,7 @@ fn test_deposit() {
     // Deposit again (same token and amount).
     let index = 1;
     let note = NewNote { index, ..note };
-    let result = user.deposit(new_note: note);
+    let result = user.deposit(:token, new_note: note);
 
     // Assert deposit result.
     let expected_result = (
@@ -1013,38 +977,39 @@ fn test_deposit_assertions() {
     let mut user = test.new_user();
     let token = test.new_token();
     let amount = 100;
-    let note = user.new_note(recipient: user, :token, :amount, index: 0);
+    let note = user.new_note(recipient: user, :amount, index: 0);
 
     // Catch ZERO_OWNER_PRIVATE_KEY.
     let mut user_zero_key = user;
     user_zero_key.private_key = Zero::zero();
-    let result = user_zero_key.safe_deposit(new_note: note);
+    let result = user_zero_key.safe_deposit(:token, new_note: note);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
 
     // Catch ZERO_RECIPIENT_ADDR.
-    let result = user.safe_deposit(new_note: NewNote { recipient_addr: Zero::zero(), ..note });
+    let result = user
+        .safe_deposit(:token, new_note: NewNote { recipient_addr: Zero::zero(), ..note });
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_TOKEN.
-    let result = user.safe_deposit(new_note: NewNote { token: Zero::zero(), ..note });
+    let result = user.safe_deposit(token: Zero::zero(), new_note: note);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT.
-    let result = user.safe_deposit(new_note: NewNote { amount: Zero::zero(), ..note });
+    let result = user.safe_deposit(:token, new_note: NewNote { amount: Zero::zero(), ..note });
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch RECIPIENT_NOT_REGISTERED.
-    let result = user.safe_deposit(new_note: note);
+    let result = user.safe_deposit(:token, new_note: note);
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 
     // Catch CHANNEL_NOT_FOUND.
     user.register_server();
-    let result = user.safe_deposit(new_note: note);
+    let result = user.safe_deposit(:token, new_note: note);
     assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_NOT_FOUND);
 
     // Catch NOTE_INDEX_NOT_SEQUENTIAL.
     user.open_channel_e2e(recipient: user, :token);
-    let result = user.safe_deposit(new_note: NewNote { index: 1, ..note });
+    let result = user.safe_deposit(:token, new_note: NewNote { index: 1, ..note });
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_INDEX_NOT_SEQUENTIAL);
 }
 
@@ -1059,8 +1024,8 @@ fn test_use_note() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_2, :amount, index: note_index);
+    user_1.create_note_e2e(:token, :note);
     let note_path = NotePath { channel_index: 0, note_index };
     let (nullifier, note_token, note_amount) = user_2.use_note(note: note_path);
     assert_eq!(note_amount, amount);
@@ -1078,8 +1043,8 @@ fn test_use_note_self_note() {
     user.open_channel_e2e(recipient: user, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user.new_note(recipient: user, :token, :amount, index: note_index);
-    user.create_note_e2e(:note);
+    let note = user.new_note(recipient: user, :amount, index: note_index);
+    user.create_note_e2e(:token, :note);
     let note_path = NotePath { channel_index: 0, note_index };
     let (nullifier, note_token, note_amount) = user.use_note(note: note_path);
     assert_eq!(note_amount, amount);
@@ -1100,12 +1065,12 @@ fn test_use_note_multiple_notes() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount_1 = 1;
     let amount_2 = 2;
-    let note_1 = user_1.new_note(recipient: user_2, :token, amount: amount_1, index: 0);
-    let note_2 = user_1.new_note(recipient: user_2, :token, amount: amount_2, index: 1);
-    let note_3 = user_2.new_note(recipient: user_2, :token, amount: amount_1, index: 0);
-    user_1.create_note_e2e(note: note_1);
-    user_1.create_note_e2e(note: note_2);
-    user_2.create_note_e2e(note: note_3);
+    let note_1 = user_1.new_note(recipient: user_2, amount: amount_1, index: 0);
+    let note_2 = user_1.new_note(recipient: user_2, amount: amount_2, index: 1);
+    let note_3 = user_2.new_note(recipient: user_2, amount: amount_1, index: 0);
+    user_1.create_note_e2e(:token, note: note_1);
+    user_1.create_note_e2e(:token, note: note_2);
+    user_2.create_note_e2e(:token, note: note_3);
     let note_1_path = NotePath { channel_index: 1, note_index: 0 };
     let note_2_path = NotePath { channel_index: 1, note_index: 1 };
     let note_3_path = NotePath { channel_index: 0, note_index: 0 };
@@ -1139,10 +1104,10 @@ fn test_use_note_same_amount() {
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
-    let note_1 = user_1.new_note(recipient: user_2, :token, :amount, index: 0);
-    let note_2 = user_1.new_note(recipient: user_2, :token, :amount, index: 1);
-    user_1.create_note_e2e(note: note_1);
-    user_1.create_note_e2e(note: note_2);
+    let note_1 = user_1.new_note(recipient: user_2, :amount, index: 0);
+    let note_2 = user_1.new_note(recipient: user_2, :amount, index: 1);
+    user_1.create_note_e2e(:token, note: note_1);
+    user_1.create_note_e2e(:token, note: note_2);
     let note_path_1 = NotePath { channel_index: 0, note_index: 0 };
     let note_path_2 = NotePath { channel_index: 0, note_index: 1 };
     let (nullifier_1, note_token_1, note_amount_1) = user_2.use_note(note: note_path_1);
@@ -1178,8 +1143,8 @@ fn test_use_note_wrong_owner_addr() {
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     user_2.open_channel_e2e(recipient: user_1, :token);
-    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_2, amount: 1, index: 0);
+    user_1.create_note_e2e(:token, :note);
     let note_path = NotePath { channel_index: 0, note_index: 0 };
     user_2.address = user_1.address;
     user_2.use_note(note: note_path);
@@ -1197,8 +1162,8 @@ fn test_use_note_wrong_owner_private_key() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_2, :amount, index: note_index);
+    user_1.create_note_e2e(:token, :note);
     let note_path = NotePath { channel_index: 0, note_index };
     user_2.private_key = user_1.private_key;
     user_2.use_note(note: note_path);
@@ -1216,8 +1181,8 @@ fn test_use_note_wrong_note_index() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_2, :amount, index: note_index);
+    user_1.create_note_e2e(:token, :note);
     let note_path = NotePath { channel_index: 0, note_index: note_index + 1 };
     user_2.use_note(note: note_path);
 }
@@ -1235,8 +1200,8 @@ fn test_use_note_wrong_channel_index() {
     user_2.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_2, :amount, index: note_index);
+    user_1.create_note_e2e(:token, :note);
     let note_path = NotePath { channel_index: 1, note_index };
     user_2.use_note(note: note_path);
 }
@@ -1253,8 +1218,8 @@ fn test_use_note_find_nullifier() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_2, :amount, index: note_index);
+    user_1.create_note_e2e(:token, :note);
 
     // User 2 should be able to find the nullifier.
     let enc_channel_info = user_2.get_enc_channel_info_server(channel_index: 0);
@@ -1292,8 +1257,8 @@ fn test_withdraw() {
     user_1.open_channel_e2e(recipient: user_1, :token);
     let amount = 1;
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_1, :amount, index: note_index);
+    user_1.create_note_e2e(:token, :note);
 
     let note_to_withdraw = NotePath { channel_index: 0, note_index: 0 };
     let (withdrawal_target, withdrawn_token, withdrawn_amount, nullifier) = user_1
@@ -1323,8 +1288,8 @@ fn test_withdraw_different_targets() {
 
     // Setup note.
     let note_index = 0;
-    let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_1, :amount, index: note_index);
+    user_1.create_note_e2e(:token, :note);
     let note_to_withdraw = NotePath { channel_index: 0, note_index };
     let nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
 
@@ -1358,7 +1323,10 @@ fn test_withdraw_note_from_other_user() {
     user_1.open_channel_e2e(recipient: user_2, :token);
 
     let note_index = 0;
-    user_1.create_note_e2e(user_1.new_note(recipient: user_2, :token, :amount, index: note_index));
+    user_1
+        .create_note_e2e(
+            :token, note: user_1.new_note(recipient: user_2, :amount, index: note_index),
+        );
     let result = user_2
         .withdraw(
             withdrawal_target: user_2.address,
@@ -1421,8 +1389,8 @@ fn test_withdraw_note_not_found() {
     user_1.open_channel_e2e(recipient: user_1, :token); // User 1 Channel 0
     user_1.open_channel_e2e(recipient: user_2, :token); // User 2 Channel 0
     user_2.open_channel_e2e(recipient: user_2, :token); // User 2 Channel 1
-    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
-    user_1.create_note_e2e(:note);
+    let note = user_1.new_note(recipient: user_2, amount: 1, index: 0);
+    user_1.create_note_e2e(:token, :note);
     let note_to_withdraw = NotePath { channel_index: 0, note_index: 0 };
 
     // Catch NOTE_NOT_FOUND (wrong user address).

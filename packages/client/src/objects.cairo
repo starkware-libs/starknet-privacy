@@ -17,8 +17,6 @@ pub struct NotePath {
 pub struct NewNote {
     /// The recipient's address.
     pub recipient_addr: ContractAddress,
-    /// The token's address.
-    pub token: ContractAddress,
     /// The amount the note represents.
     // TODO: Consider using different type.
     pub amount: u128,
