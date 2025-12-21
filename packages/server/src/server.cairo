@@ -113,6 +113,24 @@ pub mod Server {
             self.public_key.read(user_addr)
         }
 
+        fn replace_public_key(ref self: ContractState, public_key: felt252) {
+            // TODO: Add compliance.
+            // TODO: Consider remove get_caller_address() and instead pass the user address.
+            // TODO: Enforce cooldown between key replacements? (track last update time).
+            let user = get_caller_address();
+
+            // Assert that input is valid.
+            assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
+
+            // Assert that user has already registered.
+            assert(self.public_key.read(user).is_non_zero(), errors::USER_NOT_REGISTERED);
+
+            // TODO: Verify the proof from the client side.
+
+            // Replace the key in storage.
+            self.public_key.write(user, public_key);
+        }
+
         fn deposit(
             ref self: ContractState,
             user_addr: ContractAddress,

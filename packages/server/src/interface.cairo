@@ -203,6 +203,35 @@ pub trait IServer<T> {
     /// - Any address can call this function.
     fn get_public_key(self: @T, user_addr: ContractAddress) -> felt252;
 
+    /// Replaces the caller's public viewing key to a new value.
+    ///
+    /// **Notes that were created before updating your public key remain encrypted with the old key
+    /// and are not automatically re-encrypted or migrated. These notes can only be accessed using
+    /// the private key that was previously associated with your account. To use your new public
+    /// key, the sender must open new channels with you.**
+    ///
+    /// #### Parameters
+    /// - `public_key` (`felt252`): The new public viewing key. Must not be zero.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Preconditions
+    /// - `public_key` must not be zero.
+    /// - Caller must have already registered a public key.
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// - [`ZERO_PUBLIC_KEY`](server::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is zero.
+    /// - [`USER_NOT_REGISTERED`](server::errors::USER_NOT_REGISTERED): Thrown if the caller has not
+    /// registered a public key.
+    ///
+    /// #### Access Control
+    /// - Self-service only. The caller can only replace their own public key.
+    fn replace_public_key(ref self: T, public_key: felt252);
+
     /// Deposits funds into the contract and creates a note.
     ///
     /// #### Parameters

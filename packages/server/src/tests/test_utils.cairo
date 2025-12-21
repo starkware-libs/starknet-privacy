@@ -174,6 +174,25 @@ pub(crate) impl UserImpl of UserTrait {
             .get_public_key(user_addr: *self.address)
     }
 
+    fn replace_public_key(self: @User) {
+        cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
+        IServerDispatcher { contract_address: *self.server }
+            .replace_public_key(public_key: *self.public_key);
+    }
+
+    // TODO: Generate valid private-public key pair.
+    /// Generate a new public key.
+    fn new_public_key(ref self: User) {
+        self.public_key = self.public_key * 2;
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_replace_public_key(self: @User) -> Result<(), Array<felt252>> {
+        cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
+        IServerSafeDispatcher { contract_address: *self.server }
+            .replace_public_key(public_key: *self.public_key)
+    }
+
     fn approve_server(self: @User, token: Token, amount: u256) {
         let token_addr = token.contract_address();
         cheat_caller_address_once(contract_address: token_addr, caller_address: *self.address);
