@@ -19,6 +19,11 @@ pub mod domain_separation {
         pub const ENC_TOKEN_TAG: felt252 = 'channel_info:enc_token:v1';
         pub const ENC_SENDER_ADDR_TAG: felt252 = 'channel_info:enc_sender_addr:v1';
     }
+    /// Tags for the `EncNote` struct.
+    pub mod enc_note {
+        pub const NOTE_ID_TAG: felt252 = 'enc_note:id:v1';
+        pub const ENC_AMOUNT_TAG: felt252 = 'enc_note:enc_amount:v1';
+    }
 }
 
 /// Ciphertext for an ECDH-based encryption of channel data.
