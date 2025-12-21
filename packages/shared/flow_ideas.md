@@ -51,3 +51,8 @@
 ### Server
 1. Replace public key and verify that compliance is still able to view all user data.
 2. Replace the public key multiple times across 10 blocks.
+3. After replacing public key, use (spend) a note created with the old public key.
+4. After replacing public key, open a new channel to the user using the new public key (reopen channel that already existed with previous public key).
+5. Try to create a note to a channel associated with the old public key after public key replacement.
+6. Try to open a new channel using the old public key (should fail, only new public key should be accepted).
+7. Migrate (transfer) all notes belonging to the user from their old public key to the new public key after replacement.
