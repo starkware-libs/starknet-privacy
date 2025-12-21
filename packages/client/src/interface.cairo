@@ -172,4 +172,50 @@ pub trait IClient<T> {
     fn deposit(
         self: @T, owner_private_key: felt252, new_note: NewNote,
     ) -> (ContractAddress, ContractAddress, u128, EncNote);
+
+    /// Validates a withdrawal of a note and generates the nullifier and withdrawal details for the
+    /// server.
+    ///
+    /// Only a single note can be withdrawn at a time, and it's entire amount must be withdrawn.
+    ///
+    /// #### Parameters
+    /// - `owner_addr` (`ContractAddress`) - The address of the note owner. Must not be zero.
+    /// - `owner_private_key` (`felt252`) - The owner's private key. Must not be zero.
+    /// - `withdrawal_target` (`ContractAddress`) - The address where the funds will be withdrawn
+    /// to. Must not be zero.
+    /// - `note_to_withdraw` ([`NotePath`](client::objects::NotePath)) - The note to be withdrawn.
+    ///
+    /// #### Returns
+    /// - (`ContractAddress`) - The address to transfer the withdrawn funds to.
+    /// - (`ContractAddress`) - The token address.
+    /// - (`u128`) - The withdrawal amount.
+    /// - (`felt252`) - The nullifier of the note.
+    ///
+    /// #### Preconditions
+    /// - `owner_addr`, `owner_private_key`, and `withdrawal_target` are not zero.
+    /// - `owner_private_key`` matches the `owner_addr`'s public key that composes the note's
+    /// channel.
+    /// - The note exists and belongs to the owner.
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// - [`ZERO_OWNER_ADDR`](client::errors::ZERO_OWNER_ADDR): Thrown if `owner_addr` is zero.
+    /// - [`ZERO_OWNER_PRIVATE_KEY`](client::errors::ZERO_OWNER_PRIVATE_KEY): Thrown if
+    /// `owner_private_key` is zero.
+    /// - [`ZERO_WITHDRAWAL_TARGET`](client::errors::ZERO_WITHDRAWAL_TARGET): Thrown if
+    /// `withdrawal_target` is zero.
+    /// - [`NOTE_NOT_FOUND`](client::errors::NOTE_NOT_FOUND): Thrown if the note is not found.
+    /// // TODO - Consider adding "Index out of bounds".
+    ///
+    /// #### Access Control
+    /// - TODO
+    fn withdraw(
+        self: @T,
+        owner_addr: ContractAddress,
+        owner_private_key: felt252,
+        withdrawal_target: ContractAddress,
+        note_to_withdraw: NotePath,
+    ) -> (ContractAddress, ContractAddress, u128, felt252);
 }
