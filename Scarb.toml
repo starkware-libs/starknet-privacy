@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "packages/client",
-    "packages/server",
 ]
 
 
