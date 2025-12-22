@@ -229,4 +229,43 @@ pub trait IClient<T> {
         withdrawal_target: ContractAddress,
         note_to_withdraw: NotePath,
     ) -> (ContractAddress, ContractAddress, u128, felt252);
+
+    /// Replaces the caller's public viewing key to a new value.
+    ///
+    /// **Notes that were created before updating your public key remain encrypted with the old key
+    /// and are not automatically re-encrypted or migrated. These notes can only be accessed using
+    /// the private key that was previously associated with your account. To use your new public
+    /// key, the sender must open new channels with you.**
+    ///
+    /// #### Parameters
+    /// - `user_addr` (`ContractAddress`) - The user's address. Must not be zero.
+    /// - `private_key` (`felt252`) - The user's private key. Must not be zero and must be
+    /// canonical.
+    ///
+    /// #### Returns
+    /// - (`felt252`) - The derived public key.
+    ///
+    /// #### Preconditions
+    /// - `user_addr` must not be zero.
+    /// - `private_key` must not be zero.
+    /// - `private_key` must be canonical (0 < private_key < curve_order/2).
+    /// - The user must already be registered in the server.
+    /// - `private_key` must match the user's current public key in the server.
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// - [`ZERO_USER_ADDR`](client::errors::ZERO_USER_ADDR): Thrown if `user_addr` is zero.
+    /// - [`ZERO_PRIVATE_KEY`](client::errors::ZERO_PRIVATE_KEY): Thrown if `private_key` is zero.
+    /// - [`PRIVATE_KEY_NOT_CANONICAL`](client::errors::PRIVATE_KEY_NOT_CANONICAL): Thrown if
+    /// `private_key` is not canonical.
+    /// - [`USER_NOT_REGISTERED`](client::errors::USER_NOT_REGISTERED): Thrown if the user is not
+    /// registered in the server.
+    /// - [`USER_NOT_AUTHENTICATED`](client::errors::USER_NOT_AUTHENTICATED): Thrown if the
+    /// `private_key` does not match the user's current public key.
+    ///
+    /// #### Access Control
+    /// - Can be called by anyone.
+    fn replace_public_key(self: @T, user_addr: ContractAddress, private_key: felt252) -> felt252;
 }
