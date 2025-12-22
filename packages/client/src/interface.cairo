@@ -54,7 +54,7 @@ pub trait IClient<T> {
     ///
     /// #### Access Control
     /// - Can be called by anyone, but the transaction must be signed by `sender_addr`.
-    fn open_channel(
+    fn prepare_open_channel(
         self: @T,
         sender_addr: ContractAddress,
         sender_private_key: felt252,
@@ -126,7 +126,7 @@ pub trait IClient<T> {
     ///
     /// #### Access Control
     /// - Can be called by anyone, but the transaction must be signed by `owner_addr`.
-    fn transfer(
+    fn prepare_transfer(
         self: @T,
         owner_addr: ContractAddress,
         owner_private_key: felt252,
@@ -180,7 +180,7 @@ pub trait IClient<T> {
     ///
     /// #### Access Control
     /// - TODO
-    fn deposit(
+    fn prepare_deposit(
         self: @T, owner_private_key: felt252, new_note: NewNote,
     ) -> (ContractAddress, ContractAddress, u128, EncNote);
 
@@ -222,7 +222,7 @@ pub trait IClient<T> {
     ///
     /// #### Access Control
     /// - TODO
-    fn withdraw(
+    fn prepare_withdraw(
         self: @T,
         owner_addr: ContractAddress,
         owner_private_key: felt252,

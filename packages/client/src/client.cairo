@@ -34,7 +34,7 @@ pub mod Client {
 
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
-        fn open_channel(
+        fn prepare_open_channel(
             self: @ContractState,
             sender_addr: ContractAddress,
             sender_private_key: felt252,
@@ -83,7 +83,7 @@ pub mod Client {
             (recipient_addr, enc_channel_info, channel_id)
         }
 
-        fn transfer(
+        fn prepare_transfer(
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
@@ -109,7 +109,7 @@ pub mod Client {
             (nullifiers, new_notes)
         }
 
-        fn deposit(
+        fn prepare_deposit(
             self: @ContractState, owner_private_key: felt252, new_note: NewNote,
         ) -> (ContractAddress, ContractAddress, u128, EncNote) {
             // Assert input is valid.
@@ -125,7 +125,7 @@ pub mod Client {
             (owner_addr, new_note.token, new_note.amount, enc_note)
         }
 
-        fn withdraw(
+        fn prepare_withdraw(
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
