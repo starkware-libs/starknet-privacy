@@ -1,9 +1,10 @@
 use client::client::Client;
-use client::client::Client::{ClientInternalTrait, deploy_for_test as deploy_client_for_test};
+use client::client::Client::deploy_for_test as deploy_client_for_test;
 use client::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
+    IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
 };
-use client::objects::{NewNote, NotePath};
+use client::objects::{EncChannelInfo, EncNote, NewNote, NotePath};
 use client::utils::{
     compute_channel_key, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
     compute_enc_token_hash, compute_note_id, compute_nullifier, derive_public_key,
@@ -12,19 +13,29 @@ use client::utils::{
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
-use server::interface::{IServerDispatcher, IServerDispatcherTrait};
-use server::objects::{EncChannelInfo, EncNote};
-use server::server::Server;
-use server::server::Server::{ServerInternalTrait, deploy_for_test as deploy_server_for_test};
-use snforge_std::{DeclareResultTrait, declare, interact_with_state};
+use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+use snforge_std::{
+    CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state, set_balance,
+};
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
-use starkware_utils_testing::test_utils::cheat_caller_address_once;
+use starkware_utils_testing::test_utils::{Deployable, TokenConfig, cheat_caller_address_once};
+
+pub(crate) mod constants {
+    use core::num::traits::Pow;
+    use starknet::ContractAddress;
+
+    pub const DECIMALS: u8 = 18;
+    pub const TOKEN_SUPPLY: u256 = 10_u256.pow(12 + DECIMALS.into());
+    pub const TOKEN_OWNER: ContractAddress = 'TOKEN_OWNER'.try_into().unwrap();
+    pub const DEFAULT_AMOUNT: u128 = 10_u128.pow(DECIMALS.into());
+}
 
 #[derive(Copy, Drop)]
 pub(crate) struct ClientCfg {
     pub address: ContractAddress,
+    // TODO: Remove.
     pub server: ContractAddress,
 }
 
@@ -32,6 +43,7 @@ pub(crate) struct ClientCfg {
 struct User {
     pub address: ContractAddress,
     pub client: ContractAddress,
+    // TODO: Remove.
     pub server: ContractAddress,
     pub private_key: felt252,
     pub public_key: felt252,
@@ -169,13 +181,13 @@ pub(crate) impl UserImpl of UserTrait {
             *self.client,
             || {
                 let mut state = Client::contract_state_for_testing();
-                state
-                    .create_note(
-                        owner_addr: *self.address,
-                        owner_private_key: *self.private_key,
-                        :note,
-                        server: IServerDispatcher { contract_address: *self.server },
-                    )
+                Client::ClientInternalTrait::create_note(
+                    @state,
+                    owner_addr: *self.address,
+                    owner_private_key: *self.private_key,
+                    :note,
+                    server: IServerDispatcher { contract_address: *self.server },
+                )
             },
         )
     }
@@ -184,8 +196,8 @@ pub(crate) impl UserImpl of UserTrait {
         interact_with_state(
             *self.server,
             || {
-                let mut state = Server::contract_state_for_testing();
-                state.create_note(:note)
+                let mut state = Client::contract_state_for_testing();
+                Client::ServerInternalTrait::create_note(ref state, :note)
             },
         )
     }
@@ -219,13 +231,13 @@ pub(crate) impl UserImpl of UserTrait {
             *self.client,
             || {
                 let mut state = Client::contract_state_for_testing();
-                state
-                    .use_note(
-                        owner_addr: *self.address,
-                        owner_private_key: *self.private_key,
-                        :note,
-                        server: IServerDispatcher { contract_address: *self.server },
-                    )
+                Client::ClientInternalTrait::use_note(
+                    @state,
+                    owner_addr: *self.address,
+                    owner_private_key: *self.private_key,
+                    :note,
+                    server: IServerDispatcher { contract_address: *self.server },
+                )
             },
         )
     }
@@ -234,8 +246,8 @@ pub(crate) impl UserImpl of UserTrait {
         interact_with_state(
             *self.server,
             || {
-                let mut state = Server::contract_state_for_testing();
-                state.use_note(:nullifier)
+                let mut state = Client::contract_state_for_testing();
+                Client::ServerInternalTrait::use_note(ref state, :nullifier)
             },
         )
     }
@@ -281,6 +293,103 @@ pub(crate) impl UserImpl of UserTrait {
     fn nullifier_exists_server(self: @User, nullifier: felt252) -> bool {
         IServerDispatcher { contract_address: *self.server }.nullifier_exists(:nullifier)
     }
+
+    fn get_num_of_channels(self: @User) -> u64 {
+        IServerDispatcher { contract_address: *self.server }
+            .get_num_of_channels(recipient_addr: *self.address)
+    }
+
+    fn get_channel_info(self: @User, channel_index: u64) -> EncChannelInfo {
+        IServerDispatcher { contract_address: *self.server }
+            .get_channel_info(recipient_addr: *self.address, :channel_index)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_get_channel_info(
+        self: @User, channel_index: u64,
+    ) -> Result<EncChannelInfo, Array<felt252>> {
+        IServerSafeDispatcher { contract_address: *self.server }
+            .get_channel_info(recipient_addr: *self.address, :channel_index)
+    }
+
+    fn register(self: @User) {
+        cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
+        IServerDispatcher { contract_address: *self.server }.register(public_key: *self.public_key)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_register(self: @User) -> Result<(), Array<felt252>> {
+        cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
+        IServerSafeDispatcher { contract_address: *self.server }
+            .register(public_key: *self.public_key)
+    }
+
+    fn get_public_key(self: @User) -> felt252 {
+        IServerDispatcher { contract_address: *self.server }
+            .get_public_key(user_addr: *self.address)
+    }
+
+    fn replace_public_key(self: @User) {
+        cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
+        IServerDispatcher { contract_address: *self.server }
+            .replace_public_key(public_key: *self.public_key);
+    }
+
+    // TODO: Generate valid private-public key pair.
+    /// Generate a new public key.
+    fn new_public_key(ref self: User) {
+        self.public_key = self.public_key * 2;
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_replace_public_key(self: @User) -> Result<(), Array<felt252>> {
+        cheat_caller_address_once(contract_address: *self.server, caller_address: *self.address);
+        IServerSafeDispatcher { contract_address: *self.server }
+            .replace_public_key(public_key: *self.public_key)
+    }
+
+    fn approve_server(self: @User, token: Token, amount: u256) {
+        let token_addr = token.contract_address();
+        cheat_caller_address_once(contract_address: token_addr, caller_address: *self.address);
+        IERC20Dispatcher { contract_address: token_addr }.approve(spender: *self.server, :amount);
+    }
+
+    fn deposit_server(self: @User, token: Token, amount: u128, note: EncNote) {
+        self.approve_server(:token, amount: amount.into());
+        IServerDispatcher { contract_address: *self.server }
+            .deposit(user_addr: *self.address, token: token.contract_address(), :amount, :note);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_deposit_server(
+        self: @User, token: Token, amount: u128, note: EncNote,
+    ) -> Result<(), Array<felt252>> {
+        IServerSafeDispatcher { contract_address: *self.server }
+            .deposit(user_addr: *self.address, token: token.contract_address(), :amount, :note)
+    }
+
+    fn withdraw_server(
+        self: @User,
+        recipient_addr: ContractAddress,
+        token: Token,
+        amount: u128,
+        nullifier: felt252,
+    ) {
+        IServerDispatcher { contract_address: *self.server }
+            .withdraw(:recipient_addr, token: token.contract_address(), :amount, :nullifier);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_withdraw_server(
+        self: @User,
+        recipient_addr: ContractAddress,
+        token: Token,
+        amount: u128,
+        nullifier: felt252,
+    ) -> Result<(), Array<felt252>> {
+        IServerSafeDispatcher { contract_address: *self.server }
+            .withdraw(:recipient_addr, token: token.contract_address(), :amount, :nullifier)
+    }
 }
 
 #[derive(Drop, Copy)]
@@ -312,6 +421,134 @@ pub(crate) impl TestImpl of TestTrait {
         self.nonce += 1;
         ('TOKEN_ADDRESS' + self.nonce.into()).try_into().unwrap()
     }
+
+    /// Returns the encrypted channel information and the channel id.
+    fn new_channel(ref self: Test) -> (EncChannelInfo, felt252) {
+        self.nonce += 1;
+        let enc_channel_info = EncChannelInfo {
+            ephemeral_pubkey: ('EPHEMERAL_PUBKEY' + self.nonce.into()).try_into().unwrap(),
+            enc_channel_key: ('ENC_CHANNEL_KEY' + self.nonce.into()).try_into().unwrap(),
+            enc_token: ('ENC_TOKEN' + self.nonce.into()).try_into().unwrap(),
+            enc_sender_addr: ('ENC_SENDER_ADDR' + self.nonce.into()).try_into().unwrap(),
+        };
+        let channel_id = ('CHANNEL_ID' + self.nonce.into()).try_into().unwrap();
+        (enc_channel_info, channel_id)
+    }
+
+    /// Returns the note id and the encrypted note value.
+    fn new_note_server(ref self: Test, amount: u128) -> EncNote {
+        self.nonce += 1;
+        let id = ('NOTE_ID' + self.nonce.into()).try_into().unwrap();
+        // TODO: Encrypt amount properly.
+        let enc_amount = ('ENC' + amount.into() + self.nonce.into()).try_into().unwrap();
+        EncNote { id, enc_amount }
+    }
+
+    // TODO: Get note as input and generate appropriate nullifier.
+    fn new_nullifier(ref self: Test) -> felt252 {
+        self.nonce += 1;
+        ('NULLIFIER' + self.nonce.into()).try_into().unwrap()
+    }
+
+    fn new_token_server(ref self: Test) -> Token {
+        self.nonce += 1;
+        let config = TokenConfig {
+            name: format!("Token {}", self.nonce),
+            symbol: format!("Token {}", self.nonce),
+            decimals: constants::DECIMALS,
+            initial_supply: constants::TOKEN_SUPPLY,
+            owner: constants::TOKEN_OWNER,
+        };
+        let token = config.deploy();
+
+        Token::Custom(
+            CustomToken {
+                contract_address: token.address,
+                balances_variable_selector: selector!("ERC20_balances"),
+            },
+        )
+    }
+}
+
+#[generate_trait]
+pub(crate) impl PrivacyTokenImpl of PrivacyTokenTrait {
+    fn balance_of(self: @Token, address: ContractAddress) -> u256 {
+        IERC20Dispatcher { contract_address: self.contract_address() }.balance_of(account: address)
+    }
+
+    fn supply(self: @Token, user: User, amount: u128) {
+        let current_balance = self.balance_of(user.address);
+        set_balance(
+            target: user.address, new_balance: current_balance + amount.into(), token: *self,
+        );
+    }
+}
+
+#[generate_trait]
+pub(crate) impl ServerCfgImpl of ServerCfgTrait {
+    fn open_channel(
+        self: @ClientCfg,
+        recipient_addr: ContractAddress,
+        enc_channel_info: EncChannelInfo,
+        channel_id: felt252,
+    ) {
+        IServerDispatcher { contract_address: *self.server }
+            .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_open_channel(
+        self: @ClientCfg,
+        recipient_addr: ContractAddress,
+        enc_channel_info: EncChannelInfo,
+        channel_id: felt252,
+    ) -> Result<(), Array<felt252>> {
+        IServerSafeDispatcher { contract_address: *self.server }
+            .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
+    }
+
+    fn channel_exists(self: @ClientCfg, channel_id: felt252) -> bool {
+        IServerDispatcher { contract_address: *self.server }.channel_exists(:channel_id)
+    }
+
+    fn create_note(self: @ClientCfg, note: EncNote) {
+        interact_with_state(
+            *self.server,
+            || {
+                let mut state = Client::contract_state_for_testing();
+                Client::ServerInternalTrait::create_note(ref state, :note)
+            },
+        )
+    }
+
+    fn get_note(self: @ClientCfg, note_id: felt252) -> felt252 {
+        IServerDispatcher { contract_address: *self.server }.get_note(:note_id)
+    }
+
+    fn use_note(self: @ClientCfg, nullifier: felt252) {
+        interact_with_state(
+            *self.server,
+            || {
+                let mut state = Client::contract_state_for_testing();
+                Client::ServerInternalTrait::use_note(ref state, :nullifier)
+            },
+        )
+    }
+
+    fn nullifier_exists(self: @ClientCfg, nullifier: felt252) -> bool {
+        IServerDispatcher { contract_address: *self.server }.nullifier_exists(:nullifier)
+    }
+
+    fn transfer(self: @ClientCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>) {
+        IServerDispatcher { contract_address: *self.server }.transfer(:nullifiers, :new_notes)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_transfer(
+        self: @ClientCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>,
+    ) -> Result<(), Array<felt252>> {
+        IServerSafeDispatcher { contract_address: *self.server }.transfer(:nullifiers, :new_notes)
+    }
 }
 
 impl DefaultTestImpl of Default<Test> {
@@ -322,26 +559,13 @@ impl DefaultTestImpl of Default<Test> {
 }
 
 pub(crate) fn deploy_client() -> ClientCfg {
-    let server = deploy_server();
-
     let contract_class_hash = declare(contract: "Client").unwrap().contract_class().class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
     let (contract_address, _) = deploy_client_for_test(
-        class_hash: *contract_class_hash, :deployment_params, :server,
-    )
-        .expect('Client deployment failed');
-    ClientCfg { address: contract_address, server }
-}
-
-// TODO: Import from server or shared package.
-pub(crate) fn deploy_server() -> ContractAddress {
-    let contract_class_hash = declare(contract: "Server").unwrap().contract_class().class_hash;
-    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
-    let (contract_address, _) = deploy_server_for_test(
         class_hash: *contract_class_hash, :deployment_params,
     )
-        .expect('Server deployment failed');
-    contract_address
+        .expect('Client deployment failed');
+    ClientCfg { address: contract_address, server: contract_address }
 }
 
 /// Returns (channel_key, token, sender_addr) decrypted from the given `enc_channel_info` and

@@ -13,8 +13,6 @@ scarb.workspace = true
 starknet.workspace = true
 openzeppelin.workspace = true
 starkware_utils.workspace = true
-# TODO: Use git revision / package version instead of path
-server = { path = "../server" }
 
 [dev-dependencies]
 assert_macros.workspace = true
@@ -24,7 +22,7 @@ starkware_utils_testing.workspace = true
 
 [[test]]
 name = "client_unittest"
-build-external-contracts = ["server::server::Server"]
+build-external-contracts = ["starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock"]
 
 [scripts]
 test = "SNFORGE_BACKTRACE=1 snforge test"
