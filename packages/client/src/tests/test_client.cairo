@@ -382,6 +382,19 @@ fn test_transfer_assertions() {
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_INDEX_NOT_SEQUENTIAL);
+
+    // Transfer errors.
+
+    // Catch NOTE_SUM_MISMATCH.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [NotePath { channel_index: 0, note_index: 0 }].span(),
+            notes_to_create: [
+                NewNote { recipient_addr: user_2.address, token, amount: 2, index: 0 }
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_SUM_MISMATCH);
 }
 
 #[test]
