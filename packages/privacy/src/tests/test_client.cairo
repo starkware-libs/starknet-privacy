@@ -1,12 +1,12 @@
-use client::errors;
-use client::objects::domain_separation::enc_channel_info;
-use client::objects::{NewNote, NotePath};
-use client::tests::test_utils::{Test, TestTrait, UserTrait, decrypt_channel_info};
-use client::utils::{
+use core::num::traits::Zero;
+use privacy::errors;
+use privacy::objects::domain_separation::enc_channel_info;
+use privacy::objects::{NewNote, NotePath};
+use privacy::tests::test_utils::{Test, TestTrait, UserTrait, decrypt_channel_info};
+use privacy::utils::{
     compute_channel_id, compute_note_id, compute_nullifier, decrypt_note_amount,
     encrypt_channel_info, is_canonical_key,
 };
-use core::num::traits::Zero;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
 

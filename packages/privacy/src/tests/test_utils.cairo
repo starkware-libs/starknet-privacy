@@ -1,21 +1,21 @@
-use client::client::Client;
-use client::client::Client::{
-    ClientInternalTrait, ServerInternalTrait, deploy_for_test as deploy_client_for_test,
-};
-use client::interface::{
-    IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
-    IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
-};
-use client::objects::{EncChannelInfo, EncNote, NewNote, NotePath};
-use client::utils::{
-    compute_channel_key, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash, compute_note_id, compute_nullifier, derive_public_key,
-    encrypt_note_amount, hash, is_canonical_key,
-};
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+use privacy::interface::{
+    IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
+    IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
+};
+use privacy::objects::{EncChannelInfo, EncNote, NewNote, NotePath};
+use privacy::privacy::Privacy;
+use privacy::privacy::Privacy::{
+    ClientInternalTrait, ServerInternalTrait, deploy_for_test as deploy_privacy_for_test,
+};
+use privacy::utils::{
+    compute_channel_key, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
+    compute_enc_token_hash, compute_note_id, compute_nullifier, derive_public_key,
+    encrypt_note_amount, hash, is_canonical_key,
+};
 use snforge_std::{
     CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state, set_balance,
 };
@@ -35,7 +35,7 @@ pub(crate) mod constants {
 }
 
 #[derive(Copy, Drop)]
-pub(crate) struct ClientCfg {
+pub(crate) struct PrivacyCfg {
     pub address: ContractAddress,
     // TODO: Remove.
     pub server: ContractAddress,
@@ -44,6 +44,7 @@ pub(crate) struct ClientCfg {
 #[derive(Copy, Drop)]
 struct User {
     pub address: ContractAddress,
+    // TODO: Rename.
     pub client: ContractAddress,
     // TODO: Remove.
     pub server: ContractAddress,
@@ -182,7 +183,7 @@ pub(crate) impl UserImpl of UserTrait {
         interact_with_state(
             *self.client,
             || {
-                let mut state = Client::contract_state_for_testing();
+                let mut state = Privacy::contract_state_for_testing();
                 state
                     .create_note(
                         owner_addr: *self.address, owner_private_key: *self.private_key, :note,
@@ -195,7 +196,7 @@ pub(crate) impl UserImpl of UserTrait {
         interact_with_state(
             *self.server,
             || {
-                let mut state = Client::contract_state_for_testing();
+                let mut state = Privacy::contract_state_for_testing();
                 state._create_note(:note)
             },
         )
@@ -229,7 +230,7 @@ pub(crate) impl UserImpl of UserTrait {
         interact_with_state(
             *self.client,
             || {
-                let mut state = Client::contract_state_for_testing();
+                let mut state = Privacy::contract_state_for_testing();
                 state
                     .use_note(
                         owner_addr: *self.address, owner_private_key: *self.private_key, :note,
@@ -242,7 +243,7 @@ pub(crate) impl UserImpl of UserTrait {
         interact_with_state(
             *self.server,
             || {
-                let mut state = Client::contract_state_for_testing();
+                let mut state = Privacy::contract_state_for_testing();
                 state._use_note(:nullifier)
             },
         )
@@ -390,7 +391,7 @@ pub(crate) impl UserImpl of UserTrait {
 
 #[derive(Drop, Copy)]
 pub(crate) struct Test {
-    pub cfg: ClientCfg,
+    pub cfg: PrivacyCfg,
     pub nonce: usize,
 }
 
@@ -483,7 +484,7 @@ pub(crate) impl PrivacyTokenImpl of PrivacyTokenTrait {
 #[generate_trait]
 pub(crate) impl ServerCfgImpl of ServerCfgTrait {
     fn open_channel(
-        self: @ClientCfg,
+        self: @PrivacyCfg,
         recipient_addr: ContractAddress,
         enc_channel_info: EncChannelInfo,
         channel_id: felt252,
@@ -494,7 +495,7 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_open_channel(
-        self: @ClientCfg,
+        self: @PrivacyCfg,
         recipient_addr: ContractAddress,
         enc_channel_info: EncChannelInfo,
         channel_id: felt252,
@@ -503,45 +504,45 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
             .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
     }
 
-    fn channel_exists(self: @ClientCfg, channel_id: felt252) -> bool {
+    fn channel_exists(self: @PrivacyCfg, channel_id: felt252) -> bool {
         IServerDispatcher { contract_address: *self.server }.channel_exists(:channel_id)
     }
 
-    fn create_note(self: @ClientCfg, note: EncNote) {
+    fn create_note(self: @PrivacyCfg, note: EncNote) {
         interact_with_state(
             *self.server,
             || {
-                let mut state = Client::contract_state_for_testing();
+                let mut state = Privacy::contract_state_for_testing();
                 state._create_note(:note)
             },
         )
     }
 
-    fn get_note(self: @ClientCfg, note_id: felt252) -> felt252 {
+    fn get_note(self: @PrivacyCfg, note_id: felt252) -> felt252 {
         IServerDispatcher { contract_address: *self.server }.get_note(:note_id)
     }
 
-    fn use_note(self: @ClientCfg, nullifier: felt252) {
+    fn use_note(self: @PrivacyCfg, nullifier: felt252) {
         interact_with_state(
             *self.server,
             || {
-                let mut state = Client::contract_state_for_testing();
+                let mut state = Privacy::contract_state_for_testing();
                 state._use_note(:nullifier)
             },
         )
     }
 
-    fn nullifier_exists(self: @ClientCfg, nullifier: felt252) -> bool {
+    fn nullifier_exists(self: @PrivacyCfg, nullifier: felt252) -> bool {
         IServerDispatcher { contract_address: *self.server }.nullifier_exists(:nullifier)
     }
 
-    fn transfer(self: @ClientCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>) {
+    fn transfer(self: @PrivacyCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>) {
         IServerDispatcher { contract_address: *self.server }.transfer(:nullifiers, :new_notes)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_transfer(
-        self: @ClientCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>,
+        self: @PrivacyCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>,
     ) -> Result<(), Array<felt252>> {
         IServerSafeDispatcher { contract_address: *self.server }.transfer(:nullifiers, :new_notes)
     }
@@ -549,19 +550,19 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
 
 impl DefaultTestImpl of Default<Test> {
     fn default() -> Test {
-        let cfg = deploy_client();
+        let cfg = deploy_privacy();
         Test { cfg, nonce: Zero::zero() }
     }
 }
 
-pub(crate) fn deploy_client() -> ClientCfg {
-    let contract_class_hash = declare(contract: "Client").unwrap().contract_class().class_hash;
+pub(crate) fn deploy_privacy() -> PrivacyCfg {
+    let contract_class_hash = declare(contract: "Privacy").unwrap().contract_class().class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
-    let (contract_address, _) = deploy_client_for_test(
+    let (contract_address, _) = deploy_privacy_for_test(
         class_hash: *contract_class_hash, :deployment_params,
     )
-        .expect('Client deployment failed');
-    ClientCfg { address: contract_address, server: contract_address }
+        .expect('Privacy deployment failed');
+    PrivacyCfg { address: contract_address, server: contract_address }
 }
 
 /// Returns (channel_key, token, sender_addr) decrypted from the given `enc_channel_info` and

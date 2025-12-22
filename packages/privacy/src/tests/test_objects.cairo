@@ -1,5 +1,5 @@
-use client::objects::{EncChannelInfo, EncChannelInfoTrait};
 use core::num::traits::Zero;
+use privacy::objects::{EncChannelInfo, EncChannelInfoTrait};
 
 #[test]
 fn test_enc_channel_info_is_non_zero() {
