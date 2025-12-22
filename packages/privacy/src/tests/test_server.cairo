@@ -1,8 +1,8 @@
-use client::errors;
-use client::tests::test_utils::{
+use core::num::traits::Zero;
+use privacy::errors;
+use privacy::tests::test_utils::{
     PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
 };
-use core::num::traits::Zero;
 use snforge_std::{CustomToken, Token};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;

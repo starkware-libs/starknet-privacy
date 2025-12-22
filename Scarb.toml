@@ -1,6 +1,6 @@
 [workspace]
 members = [
-    "packages/client",
+    "packages/privacy",
 ]
 
 

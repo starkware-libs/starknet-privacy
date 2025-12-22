@@ -1,15 +1,15 @@
 #[starknet::contract]
-pub mod Client {
-    use client::errors;
-    use client::interface::{IClient, IServer};
-    use client::objects::{EncChannelInfo, EncChannelInfoTrait, EncNote, NewNote, NotePath};
-    use client::utils::{
+pub mod Privacy {
+    use core::num::traits::Zero;
+    use openzeppelin::token::erc20::interface::IERC20Dispatcher;
+    use privacy::errors;
+    use privacy::interface::{IClient, IServer};
+    use privacy::objects::{EncChannelInfo, EncChannelInfoTrait, EncNote, NewNote, NotePath};
+    use privacy::utils::{
         compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
         decrypt_channel_info, decrypt_note_amount, derive_public_key, encrypt_channel_info,
         encrypt_note_amount, is_canonical_key,
     };
-    use core::num::traits::Zero;
-    use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use starknet::storage::{
         Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
         StoragePointerReadAccess, Vec, VecTrait,
