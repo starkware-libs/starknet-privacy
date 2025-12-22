@@ -65,11 +65,20 @@
 4. Use note with wrong amount in transfer.
 
 ## Replace Public Key
+### Client + Server
+1. Withdraw, change public key, try to withdraw same note again.
+2. Use note (transfer), change public key, try to withdraw note.
+3. Use note (transfer), change public key, try to use (transfer) same note again.
+4. Use note (withdraw), change public key, try to use (transfer) same note again.
+5. Attempt to use multiple notes that were created for different public keys in the same transfer.
+6. Deposit, change public key, deposit again.
+7. Change public key, create note, withdraw with new key.
+8. Create note, change public key, attempt to withdraw with old key.
+
 ### Server
 1. Replace public key and verify that compliance is still able to view all user data.
 2. Replace the public key multiple times across 10 blocks.
-3. After replacing public key, use (spend) a note created with the old public key.
-4. After replacing public key, open a new channel to the user using the new public key (reopen channel that already existed with previous public key).
-5. Try to create a note to a channel associated with the old public key after public key replacement.
-6. Try to open a new channel using the old public key (should fail, only new public key should be accepted).
-7. Migrate (transfer) all notes belonging to the user from their old public key to the new public key after replacement.
+3. After replacing public key, open a new channel to the user using the new public key (reopen channel that already existed with previous public key).
+4. Try to create a note to a channel associated with the old public key after public key replacement.
+5. Try to open a new channel using the old public key (should fail, only new public key should be accepted).
+6. Migrate (transfer) all notes belonging to the user from their old public key to the new public key after replacement.
