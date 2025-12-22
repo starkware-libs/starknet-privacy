@@ -45,7 +45,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
     ) -> (Span<felt252>, Span<EncNote>) {
         IClientDispatcher { contract_address: *self.client }
-            .transfer(
+            .prepare_transfer(
                 owner_addr: *self.address,
                 owner_private_key: *self.private_key,
                 :notes_to_use,
@@ -58,7 +58,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
     ) -> Result<(Span<felt252>, Span<EncNote>), Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.client }
-            .transfer(
+            .prepare_transfer(
                 owner_addr: *self.address,
                 owner_private_key: *self.private_key,
                 :notes_to_use,
@@ -70,7 +70,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, withdrawal_target: ContractAddress, note_to_withdraw: NotePath,
     ) -> (ContractAddress, ContractAddress, u128, felt252) {
         IClientDispatcher { contract_address: *self.client }
-            .withdraw(
+            .prepare_withdraw(
                 owner_addr: *self.address,
                 owner_private_key: *self.private_key,
                 :withdrawal_target,
@@ -83,7 +83,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, withdrawal_target: ContractAddress, note_to_withdraw: NotePath,
     ) -> Result<(ContractAddress, ContractAddress, u128, felt252), Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.client }
-            .withdraw(
+            .prepare_withdraw(
                 owner_addr: *self.address,
                 owner_private_key: *self.private_key,
                 :withdrawal_target,
@@ -95,7 +95,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, recipient: User, token: ContractAddress, random: felt252,
     ) -> (ContractAddress, EncChannelInfo, felt252) {
         IClientDispatcher { contract_address: *self.client }
-            .open_channel(
+            .prepare_open_channel(
                 sender_addr: *self.address,
                 sender_private_key: *self.private_key,
                 recipient_addr: recipient.address,
@@ -109,7 +109,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, recipient: User, token: ContractAddress, random: felt252,
     ) -> Result<(ContractAddress, EncChannelInfo, felt252), Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.client }
-            .open_channel(
+            .prepare_open_channel(
                 sender_addr: *self.address,
                 sender_private_key: *self.private_key,
                 recipient_addr: recipient.address,
@@ -266,7 +266,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, new_note: NewNote,
     ) -> (ContractAddress, ContractAddress, u128, EncNote) {
         IClientDispatcher { contract_address: *self.client }
-            .deposit(owner_private_key: *self.private_key, :new_note)
+            .prepare_deposit(owner_private_key: *self.private_key, :new_note)
     }
 
     #[feature("safe_dispatcher")]
@@ -274,7 +274,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, new_note: NewNote,
     ) -> Result<(ContractAddress, ContractAddress, u128, EncNote), Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.client }
-            .deposit(owner_private_key: *self.private_key, :new_note)
+            .prepare_deposit(owner_private_key: *self.private_key, :new_note)
     }
 
     // TODO: Consider different trait.
