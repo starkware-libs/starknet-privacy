@@ -1,24 +1,38 @@
 #[starknet::contract]
 pub mod Client {
     use client::errors;
-    use client::interface::IClient;
-    use client::objects::{NewNote, NotePath};
+    use client::interface::{IClient, IServer, IServerDispatcher, IServerDispatcherTrait};
+    use client::objects::{EncChannelInfo, EncChannelInfoTrait, EncNote, NewNote, NotePath};
     use client::utils::{
         compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
         decrypt_channel_info, decrypt_note_amount, derive_public_key, encrypt_channel_info,
         encrypt_note_amount, is_canonical_key,
     };
     use core::num::traits::Zero;
-    use server::interface::{IServerDispatcher, IServerDispatcherTrait};
-    use server::objects::{EncChannelInfo, EncNote};
-    use starknet::ContractAddress;
-    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use openzeppelin::token::erc20::interface::IERC20Dispatcher;
+    use starknet::storage::{
+        Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
+        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
+    };
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use starkware_utils::erc20::erc20_utils::CheckedIERC20DispatcherTrait;
 
     #[storage]
     struct Storage {
-        /// Address of the server contract.
+        /// Address of the server contract (points to self after PR 2).
         // TODO: Change type to Dispatcher.
         server: ContractAddress,
+        /// Map of recipient addresses to a list of their encrypted channels.
+        recipient_channels: Map<ContractAddress, Vec<EncChannelInfo>>,
+        /// Map of channel id to whether it exists.
+        // TODO: Rename storage var / abi function to not have the same name?
+        channel_exists: Map<felt252, bool>,
+        /// Map of note ids to their encrypted values.
+        notes: Map<felt252, felt252>,
+        /// Map of nullifier to whether it exists.
+        nullifiers: Map<felt252, bool>,
+        /// Map of user addresses to their public viewing keys.
+        public_key: Map<ContractAddress, felt252>,
     }
 
     #[event]
@@ -28,8 +42,10 @@ pub mod Client {
 
     #[constructor]
     fn constructor(ref self: ContractState, server: ContractAddress) {
-        assert(server.is_non_zero(), errors::ZERO_SERVER);
-        self.server.write(server);
+        // In PR 2, server points to self (same contract)
+        // Parameter is kept for backward compatibility but ignored
+        let self_address = get_contract_address();
+        self.server.write(self_address);
     }
 
     #[abi(embed_v0)]
@@ -57,7 +73,7 @@ pub mod Client {
             assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
 
             // Assert sender is registered with the given private key.
-            let server = IServerDispatcher { contract_address: self.server.read() };
+            let server = IServerDispatcher { contract_address: get_contract_address() };
             let sender_public_key = server.get_public_key(user_addr: sender_addr);
             assert(sender_public_key.is_non_zero(), errors::SENDER_NOT_REGISTERED);
             assert(
@@ -118,7 +134,7 @@ pub mod Client {
             // TODO: Verify owner signature on TX.
 
             let owner_addr = new_note.recipient_addr;
-            let server = IServerDispatcher { contract_address: self.server.read() };
+            let server = IServerDispatcher { contract_address: get_contract_address() };
             let enc_note = self
                 .create_note(:owner_addr, :owner_private_key, note: new_note, :server);
 
@@ -137,7 +153,7 @@ pub mod Client {
             assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
             assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
 
-            let server = IServerDispatcher { contract_address: self.server.read() };
+            let server = IServerDispatcher { contract_address: get_contract_address() };
             let (nullifier, token, amount) = self
                 .use_note(:owner_addr, :owner_private_key, note: note_to_withdraw, :server);
 
@@ -155,7 +171,7 @@ pub mod Client {
             notes_to_use: Span<NotePath>,
         ) -> (Span<felt252>, u256) {
             // TODO: Verify tokens match.
-            let server = IServerDispatcher { contract_address: self.server.read() };
+            let server = IServerDispatcher { contract_address: get_contract_address() };
             let mut nullifiers: Array<felt252> = array![];
             let mut sum: u256 = Zero::zero();
             for note in notes_to_use {
@@ -217,7 +233,7 @@ pub mod Client {
         ) -> (Span<EncNote>, u256) {
             let mut enc_notes: Array<EncNote> = array![];
             let mut sum: u256 = Zero::zero();
-            let server = IServerDispatcher { contract_address: self.server.read() };
+            let server = IServerDispatcher { contract_address: get_contract_address() };
             for note in notes_to_create {
                 let enc_note = self
                     .create_note(:owner_addr, :owner_private_key, note: *note, :server);
@@ -286,6 +302,185 @@ pub mod Client {
             );
 
             EncNote { id: note_id, enc_amount }
+        }
+    }
+
+    #[abi(embed_v0)]
+    pub impl ServerImpl of IServer<ContractState> {
+        fn open_channel(
+            ref self: ContractState,
+            recipient_addr: ContractAddress,
+            enc_channel_info: EncChannelInfo,
+            channel_id: felt252,
+        ) {
+            // Assert inputs are not zero.
+            // TODO: Remove assert not zero for hashes?
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(enc_channel_info.is_non_zero(), errors::ZERO_ENC_CHANNEL_INFO);
+            assert(channel_id.is_non_zero(), errors::ZERO_CHANNEL_ID);
+
+            // TODO: Verify client's proof.
+
+            // TODO: Consider add `recipient_public_key` to the params and assert it is the current
+            // public key of `recipient_addr`.
+
+            // Assert channel does not already exist.
+            assert(!self.channel_exists.read(channel_id), errors::CHANNEL_ALREADY_EXISTS);
+
+            // Write channel to storage.
+            self.channel_exists.write(channel_id, true);
+            self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
+        }
+
+        fn channel_exists(self: @ContractState, channel_id: felt252) -> bool {
+            // TODO: Restrict access?
+            self.channel_exists.read(channel_id)
+        }
+
+        fn get_num_of_channels(self: @ContractState, recipient_addr: ContractAddress) -> u64 {
+            // TODO: Restrict access to `recipient_addr`?
+            // TODO: Assert `recipient_addr` is registered?
+            self.recipient_channels.entry(recipient_addr).len()
+        }
+
+        fn get_channel_info(
+            self: @ContractState, recipient_addr: ContractAddress, channel_index: u64,
+        ) -> EncChannelInfo {
+            // TODO: Restrict access to `recipient_addr` and client contract?
+            // TODO: Assert `recipient_addr` is registered?
+            // TODO: Consider defining custom error instead of using `at` (with "Index out of
+            // bounds" error)?
+            self.recipient_channels.entry(recipient_addr).at(channel_index).read()
+        }
+
+        fn get_note(self: @ContractState, note_id: felt252) -> felt252 {
+            self.notes.read(note_id)
+        }
+
+        fn nullifier_exists(self: @ContractState, nullifier: felt252) -> bool {
+            self.nullifiers.read(nullifier)
+        }
+
+        fn register(ref self: ContractState, public_key: felt252) {
+            // TODO: Add compliance.
+            // TODO: Consider remove get_caller_address() and instead pass the user address.
+            let user = get_caller_address();
+
+            // Assert that inputs are valid.
+            assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
+
+            // Assert that keys are empty before writing.
+            assert(self.public_key.read(user).is_zero(), errors::USER_ALREADY_REGISTERED);
+
+            // TODO: Verify the proof on the encrypted compliance viewing key from the client side.
+
+            // Write key to storage.
+            self.public_key.write(user, public_key);
+        }
+
+        fn get_public_key(self: @ContractState, user_addr: ContractAddress) -> felt252 {
+            self.public_key.read(user_addr)
+        }
+
+        fn replace_public_key(ref self: ContractState, public_key: felt252) {
+            // TODO: Add compliance.
+            // TODO: Consider remove get_caller_address() and instead pass the user address.
+            // TODO: Enforce cooldown between key replacements? (track last update time).
+            let user = get_caller_address();
+
+            // Assert that input is valid.
+            assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
+
+            // Assert that user has already registered.
+            assert(self.public_key.read(user).is_non_zero(), errors::USER_NOT_REGISTERED);
+
+            // TODO: Verify the proof from the client side.
+
+            // Replace the key in storage.
+            self.public_key.write(user, public_key);
+        }
+
+        fn deposit(
+            ref self: ContractState,
+            user_addr: ContractAddress,
+            token: ContractAddress,
+            amount: u128,
+            note: EncNote,
+        ) {
+            // Assert inputs are valid.
+            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+
+            ServerInternalTrait::create_note(ref self, :note);
+
+            IERC20Dispatcher { contract_address: token }
+                .checked_transfer_from(
+                    sender: user_addr, recipient: get_contract_address(), amount: amount.into(),
+                );
+        }
+
+        fn transfer(ref self: ContractState, nullifiers: Span<felt252>, new_notes: Span<EncNote>) {
+            // Assert inputs are valid.
+            assert(!nullifiers.is_empty(), errors::EMPTY_NULLIFIERS);
+            assert(!new_notes.is_empty(), errors::EMPTY_NEW_NOTES);
+
+            // Mark notes as used.
+            for nullifier in nullifiers {
+                ServerInternalTrait::use_note(ref self, nullifier: *nullifier);
+            }
+
+            // Create new notes.
+            for note in new_notes {
+                ServerInternalTrait::create_note(ref self, note: *note);
+            }
+        }
+
+        fn withdraw(
+            ref self: ContractState,
+            recipient_addr: ContractAddress,
+            token: ContractAddress,
+            amount: u128,
+            nullifier: felt252,
+        ) {
+            // Assert inputs are valid.
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+            assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
+
+            ServerInternalTrait::use_note(ref self, :nullifier);
+
+            IERC20Dispatcher { contract_address: token }
+                .checked_transfer(recipient: recipient_addr, amount: amount.into());
+        }
+    }
+
+    #[generate_trait]
+    pub impl ServerInternalImpl of ServerInternalTrait {
+        fn create_note(ref self: ContractState, note: EncNote) {
+            // Assert inputs are not zero.
+            // TODO: Remove assert not zero for hashes?
+            assert(note.id.is_non_zero(), errors::ZERO_NOTE_ID);
+            assert(note.enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
+
+            // Assert note does not already exist.
+            assert(self.notes.read(note.id).is_zero(), errors::NOTE_ALREADY_EXISTS);
+
+            // Write note to storage.
+            self.notes.write(note.id, note.enc_amount);
+        }
+
+        fn use_note(ref self: ContractState, nullifier: felt252) {
+            // Assert inputs are not zero.
+            // TODO: Remove assert not zero for hashes?
+            assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
+
+            // Assert nullifier does not already exist.
+            assert(!self.nullifiers.read(nullifier), errors::NULLIFIER_ALREADY_EXISTS);
+
+            // Write nullifier to storage.
+            self.nullifiers.write(nullifier, true);
         }
     }
 }
