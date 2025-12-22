@@ -143,6 +143,27 @@ pub mod Client {
 
             (withdrawal_target, token, amount, nullifier)
         }
+
+        fn register(
+            self: @ContractState, user_addr: ContractAddress, private_key: felt252,
+        ) -> felt252 {
+            // TODO: Add compliance.
+
+            // Assert inputs are valid.
+            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            assert(private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
+
+            // Assert private key is canonical.
+            assert(is_canonical_key(key: private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+
+            // Assert that the user is not already registered.
+            let server = IServerDispatcher { contract_address: self.server.read() };
+            let existing_public_key = server.get_public_key(:user_addr);
+            assert(existing_public_key.is_zero(), errors::USER_ALREADY_REGISTERED);
+
+            // Derive public key from private key.
+            derive_public_key(:private_key)
+        }
     }
 
     #[generate_trait]
