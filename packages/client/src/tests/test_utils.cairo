@@ -1,5 +1,7 @@
 use client::client::Client;
-use client::client::Client::deploy_for_test as deploy_client_for_test;
+use client::client::Client::{
+    ClientInternalTrait, ServerInternalTrait, deploy_for_test as deploy_client_for_test,
+};
 use client::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
@@ -181,14 +183,10 @@ pub(crate) impl UserImpl of UserTrait {
             *self.client,
             || {
                 let mut state = Client::contract_state_for_testing();
-                // TODO: Use state.
-                Client::ClientInternalTrait::create_note(
-                    @state,
-                    owner_addr: *self.address,
-                    owner_private_key: *self.private_key,
-                    :note,
-                    server: IServerDispatcher { contract_address: *self.server },
-                )
+                state
+                    .create_note(
+                        owner_addr: *self.address, owner_private_key: *self.private_key, :note,
+                    )
             },
         )
     }
@@ -198,8 +196,7 @@ pub(crate) impl UserImpl of UserTrait {
             *self.server,
             || {
                 let mut state = Client::contract_state_for_testing();
-                // TODO: Use state.
-                Client::ServerInternalTrait::create_note(ref state, :note)
+                state._create_note(:note)
             },
         )
     }
@@ -233,14 +230,10 @@ pub(crate) impl UserImpl of UserTrait {
             *self.client,
             || {
                 let mut state = Client::contract_state_for_testing();
-                // TODO: Use state.
-                Client::ClientInternalTrait::use_note(
-                    @state,
-                    owner_addr: *self.address,
-                    owner_private_key: *self.private_key,
-                    :note,
-                    server: IServerDispatcher { contract_address: *self.server },
-                )
+                state
+                    .use_note(
+                        owner_addr: *self.address, owner_private_key: *self.private_key, :note,
+                    )
             },
         )
     }
@@ -250,8 +243,7 @@ pub(crate) impl UserImpl of UserTrait {
             *self.server,
             || {
                 let mut state = Client::contract_state_for_testing();
-                // TODO: Use state.
-                Client::ServerInternalTrait::use_note(ref state, :nullifier)
+                state._use_note(:nullifier)
             },
         )
     }
@@ -520,8 +512,7 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
             *self.server,
             || {
                 let mut state = Client::contract_state_for_testing();
-                // TODO: Use state.
-                Client::ServerInternalTrait::create_note(ref state, :note)
+                state._create_note(:note)
             },
         )
     }
@@ -535,8 +526,7 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
             *self.server,
             || {
                 let mut state = Client::contract_state_for_testing();
-                // TODO: Use state.
-                Client::ServerInternalTrait::use_note(ref state, :nullifier)
+                state._use_note(:nullifier)
             },
         )
     }
