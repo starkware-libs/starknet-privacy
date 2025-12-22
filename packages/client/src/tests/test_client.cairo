@@ -1,4 +1,5 @@
 use client::errors;
+use client::objects::domain_separation::enc_channel_info;
 use client::objects::{NewNote, NotePath};
 use client::tests::test_utils::{Test, TestTrait, UserTrait, decrypt_channel_info};
 use client::utils::{
@@ -6,7 +7,6 @@ use client::utils::{
     encrypt_channel_info, is_canonical_key,
 };
 use core::num::traits::Zero;
-use server::objects::domain_separation::enc_channel_info;
 use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
 use starkware_utils_testing::test_utils::{
     assert_panic_with_error, assert_panic_with_felt_error, generic_load,
@@ -20,19 +20,24 @@ fn test_constructor() {
     let actual_server = generic_load(
         target: test.cfg.address, storage_address: selector!("server"),
     );
-    assert_eq!(actual_server, test.cfg.server);
+    assert_eq!(actual_server, test.cfg.address);
 }
 
 #[test]
-#[should_panic(expected_error: "ZERO_SERVER")]
 fn test_constructor_zero_server() {
+    // In PR 2, constructor ignores server parameter and sets it to self
     let mut calldata = array![];
     calldata.append(Zero::zero());
-    declare(contract: "Client")
+    let (contract_address, _) = declare(contract: "Client")
         .unwrap()
         .contract_class()
         .deploy(constructor_calldata: @calldata)
         .unwrap();
+    // Verify that server is set to self (contract address)
+    let actual_server = generic_load(
+        target: contract_address, storage_address: selector!("server"),
+    );
+    assert_eq!(actual_server, contract_address);
 }
 
 #[test]

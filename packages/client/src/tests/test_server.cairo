@@ -1,8 +1,8 @@
-use core::num::traits::Zero;
-use server::errors;
-use server::tests::test_utils::{
+use client::errors;
+use client::tests::test_utils::{
     PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
 };
+use core::num::traits::Zero;
 use snforge_std::{CustomToken, Token};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
@@ -13,8 +13,10 @@ fn test_open_channel() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let (enc_channel_info, channel_id) = test.new_channel();
-    test.server.open_channel(recipient_addr: user.address, :enc_channel_info, :channel_id);
-    assert_eq!(test.server.channel_exists(:channel_id), true);
+    ServerCfgTrait::open_channel(
+        @test.cfg, recipient_addr: user.address, :enc_channel_info, :channel_id,
+    );
+    assert_eq!(test.cfg.channel_exists(:channel_id), true);
     assert_eq!(user.get_num_of_channels(), 1);
     assert_eq!(user.get_channel_info(channel_index: 0), enc_channel_info);
 }
@@ -26,7 +28,7 @@ fn test_open_channel_twice() {
     // Open first channel.
     let (enc_channel_info_1, channel_id_1) = test.new_channel();
     test
-        .server
+        .cfg
         .open_channel(
             recipient_addr: user.address,
             enc_channel_info: enc_channel_info_1,
@@ -35,15 +37,15 @@ fn test_open_channel_twice() {
     // Open second channel.
     let (enc_channel_info_2, channel_id_2) = test.new_channel();
     test
-        .server
+        .cfg
         .open_channel(
             recipient_addr: user.address,
             enc_channel_info: enc_channel_info_2,
             channel_id: channel_id_2,
         );
 
-    assert_eq!(test.server.channel_exists(channel_id: channel_id_1), true);
-    assert_eq!(test.server.channel_exists(channel_id: channel_id_2), true);
+    assert_eq!(test.cfg.channel_exists(channel_id: channel_id_1), true);
+    assert_eq!(test.cfg.channel_exists(channel_id: channel_id_2), true);
     assert_eq!(user.get_num_of_channels(), 2);
     assert_eq!(user.get_channel_info(channel_index: 0), enc_channel_info_1);
     assert_eq!(user.get_channel_info(channel_index: 1), enc_channel_info_2);
@@ -58,7 +60,7 @@ fn test_open_channel_assertions() {
 
     // Catch ZERO_RECIPIENT_ADDR.
     let result = test
-        .server
+        .cfg
         .safe_open_channel(recipient_addr: Zero::zero(), :enc_channel_info, :channel_id);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
@@ -66,7 +68,7 @@ fn test_open_channel_assertions() {
     let mut enc_channel_info_zero = enc_channel_info;
     enc_channel_info_zero.ephemeral_pubkey = Zero::zero();
     let result = test
-        .server
+        .cfg
         .safe_open_channel(:recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_id);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_CHANNEL_INFO);
 
@@ -74,7 +76,7 @@ fn test_open_channel_assertions() {
     let mut enc_channel_info_zero = enc_channel_info;
     enc_channel_info_zero.enc_channel_key = Zero::zero();
     let result = test
-        .server
+        .cfg
         .safe_open_channel(:recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_id);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_CHANNEL_INFO);
 
@@ -82,7 +84,7 @@ fn test_open_channel_assertions() {
     let mut enc_channel_info_zero = enc_channel_info;
     enc_channel_info_zero.enc_token = Zero::zero();
     let result = test
-        .server
+        .cfg
         .safe_open_channel(:recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_id);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_CHANNEL_INFO);
 
@@ -90,19 +92,19 @@ fn test_open_channel_assertions() {
     let mut enc_channel_info_zero = enc_channel_info;
     enc_channel_info_zero.enc_sender_addr = Zero::zero();
     let result = test
-        .server
+        .cfg
         .safe_open_channel(:recipient_addr, enc_channel_info: enc_channel_info_zero, :channel_id);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_CHANNEL_INFO);
 
     // Catch ZERO_CHANNEL_ID.
     let result = test
-        .server
+        .cfg
         .safe_open_channel(:recipient_addr, :enc_channel_info, channel_id: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_ID);
 
     // Catch CHANNEL_ALREADY_EXISTS.
-    test.server.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
-    let result = test.server.safe_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    test.cfg.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    let result = test.cfg.safe_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
     assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_ALREADY_EXISTS);
 }
 
@@ -112,11 +114,11 @@ fn test_channel_exists() {
     let user = test.new_user();
     let recipient_addr = user.address;
     let (enc_channel_info, channel_id) = test.new_channel();
-    assert_eq!(test.server.channel_exists(:channel_id), false);
-    test.server.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
-    assert_eq!(test.server.channel_exists(:channel_id), true);
+    assert_eq!(test.cfg.channel_exists(:channel_id), false);
+    test.cfg.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    assert_eq!(test.cfg.channel_exists(:channel_id), true);
     let (_, channel_id) = test.new_channel();
-    assert_eq!(test.server.channel_exists(:channel_id), false);
+    assert_eq!(test.cfg.channel_exists(:channel_id), false);
 }
 
 #[test]
@@ -127,10 +129,10 @@ fn test_get_num_of_channels() {
     // TODO: Test before registeration and after registration.
     assert_eq!(user.get_num_of_channels(), 0);
     let (enc_channel_info, channel_id) = test.new_channel();
-    test.server.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    test.cfg.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
     assert_eq!(user.get_num_of_channels(), 1);
     let (enc_channel_info, channel_id) = test.new_channel();
-    test.server.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    test.cfg.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
     assert_eq!(user.get_num_of_channels(), 2);
     let different_user = test.new_user();
     assert_eq!(different_user.get_num_of_channels(), 0);
@@ -145,21 +147,21 @@ fn test_get_channel_info() {
     let (channel_2_user_1, channel_id_2_user_1) = test.new_channel();
     let (channel_1_user_2, channel_id_1_user_2) = test.new_channel();
     test
-        .server
+        .cfg
         .open_channel(
             recipient_addr: user_1.address,
             enc_channel_info: channel_1_user_1,
             channel_id: channel_id_1_user_1,
         );
     test
-        .server
+        .cfg
         .open_channel(
             recipient_addr: user_1.address,
             enc_channel_info: channel_2_user_1,
             channel_id: channel_id_2_user_1,
         );
     test
-        .server
+        .cfg
         .open_channel(
             recipient_addr: user_2.address,
             enc_channel_info: channel_1_user_2,
@@ -179,7 +181,9 @@ fn test_get_channel_info_index_out_of_bounds() {
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 
     let (enc_channel_info, channel_id) = test.new_channel();
-    test.server.open_channel(recipient_addr: user.address, :enc_channel_info, :channel_id);
+    ServerCfgTrait::open_channel(
+        @test.cfg, recipient_addr: user.address, :enc_channel_info, :channel_id,
+    );
 
     let result = user.safe_get_channel_info(channel_index: 0);
     assert!(result.is_ok());
@@ -190,30 +194,30 @@ fn test_get_channel_info_index_out_of_bounds() {
 #[test]
 fn test_get_note() {
     let mut test: Test = Default::default();
-    let note = test.new_note(amount: constants::DEFAULT_AMOUNT);
-    assert_eq!(test.server.get_note(note_id: note.id), Zero::zero());
-    test.server.create_note(:note);
-    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
+    let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
+    assert_eq!(test.cfg.get_note(note_id: note.id), Zero::zero());
+    test.cfg.create_note(:note);
+    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
 }
 
 #[test]
 fn test_create_note() {
     let mut test: Test = Default::default();
-    let note = test.new_note(amount: constants::DEFAULT_AMOUNT);
-    test.server.create_note(:note);
-    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
+    let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
+    test.cfg.create_note(:note);
+    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
 }
 
 #[test]
 fn test_create_note_twice() {
     let mut test: Test = Default::default();
     let amount = constants::DEFAULT_AMOUNT;
-    let note_1 = test.new_note(:amount);
-    test.server.create_note(note: note_1);
-    let note_2 = test.new_note(:amount);
-    test.server.create_note(note: note_2);
-    assert_eq!(test.server.get_note(note_id: note_1.id), note_1.enc_amount);
-    assert_eq!(test.server.get_note(note_id: note_2.id), note_2.enc_amount);
+    let note_1 = test.new_note_server(:amount);
+    test.cfg.create_note(note: note_1);
+    let note_2 = test.new_note_server(:amount);
+    test.cfg.create_note(note: note_2);
+    assert_eq!(test.cfg.get_note(note_id: note_1.id), note_1.enc_amount);
+    assert_eq!(test.cfg.get_note(note_id: note_2.id), note_2.enc_amount);
 }
 
 
@@ -222,18 +226,18 @@ fn test_create_note_twice() {
 #[should_panic(expected_error: errors::ZERO_NOTE_ID)]
 fn test_create_note_zero_note_id() {
     let mut test: Test = Default::default();
-    let mut note = test.new_note(amount: constants::DEFAULT_AMOUNT);
+    let mut note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
     note.id = Zero::zero();
-    test.server.create_note(:note);
+    test.cfg.create_note(:note);
 }
 
 #[test]
 #[should_panic(expected_error: errors::ZERO_ENC_NOTE_VALUE)]
 fn test_create_note_zero_enc_note_value() {
     let mut test: Test = Default::default();
-    let mut note = test.new_note(amount: constants::DEFAULT_AMOUNT);
+    let mut note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
     note.enc_amount = Zero::zero();
-    test.server.create_note(:note);
+    test.cfg.create_note(:note);
 }
 
 #[test]
@@ -241,28 +245,28 @@ fn test_create_note_zero_enc_note_value() {
 fn test_create_note_note_already_exists() {
     let mut test: Test = Default::default();
     let amount = constants::DEFAULT_AMOUNT;
-    let note = test.new_note(:amount);
-    test.server.create_note(:note);
-    let mut diff_note = test.new_note(:amount);
+    let note = test.new_note_server(:amount);
+    test.cfg.create_note(:note);
+    let mut diff_note = test.new_note_server(:amount);
     diff_note.id = note.id;
-    test.server.create_note(note: diff_note);
+    test.cfg.create_note(note: diff_note);
 }
 
 #[test]
 fn test_nullifier_exists() {
     let mut test: Test = Default::default();
     let nullifier = test.new_nullifier();
-    assert_eq!(test.server.nullifier_exists(:nullifier), false);
-    test.server.use_note(:nullifier);
-    assert_eq!(test.server.nullifier_exists(:nullifier), true);
+    assert_eq!(test.cfg.nullifier_exists(:nullifier), false);
+    test.cfg.use_note(:nullifier);
+    assert_eq!(test.cfg.nullifier_exists(:nullifier), true);
 }
 
 #[test]
 fn test_use_note() {
     let mut test: Test = Default::default();
     let nullifier = test.new_nullifier();
-    test.server.use_note(:nullifier);
-    assert_eq!(test.server.nullifier_exists(:nullifier), true);
+    test.cfg.use_note(:nullifier);
+    assert_eq!(test.cfg.nullifier_exists(:nullifier), true);
 }
 
 #[test]
@@ -270,17 +274,17 @@ fn test_use_note_twice() {
     let mut test: Test = Default::default();
     let nullifier_1 = test.new_nullifier();
     let nullifier_2 = test.new_nullifier();
-    test.server.use_note(nullifier: nullifier_1);
-    test.server.use_note(nullifier: nullifier_2);
-    assert_eq!(test.server.nullifier_exists(nullifier: nullifier_1), true);
-    assert_eq!(test.server.nullifier_exists(nullifier: nullifier_2), true);
+    test.cfg.use_note(nullifier: nullifier_1);
+    test.cfg.use_note(nullifier: nullifier_2);
+    assert_eq!(test.cfg.nullifier_exists(nullifier: nullifier_1), true);
+    assert_eq!(test.cfg.nullifier_exists(nullifier: nullifier_2), true);
 }
 
 #[test]
 #[should_panic(expected_error: errors::ZERO_NULLIFIER)]
 fn test_use_note_zero_nullifier() {
     let mut test: Test = Default::default();
-    test.server.use_note(nullifier: Zero::zero());
+    test.cfg.use_note(nullifier: Zero::zero());
 }
 
 #[test]
@@ -288,8 +292,8 @@ fn test_use_note_zero_nullifier() {
 fn test_use_note_nullifier_already_exists() {
     let mut test: Test = Default::default();
     let nullifier = test.new_nullifier();
-    test.server.use_note(nullifier: nullifier);
-    test.server.use_note(nullifier: nullifier);
+    test.cfg.use_note(nullifier: nullifier);
+    test.cfg.use_note(nullifier: nullifier);
 }
 
 #[test]
@@ -462,25 +466,25 @@ fn test_register_multiple_users_same_public_key() {
 #[test]
 fn test_deposit() {
     let mut test: Test = Default::default();
-    let token = test.new_token();
+    let token = test.new_token_server();
     let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
     token.supply(:user, :amount);
-    let note = test.new_note(:amount);
+    let note = test.new_note_server(:amount);
 
     // Check balances
     assert_eq!(token.balance_of(address: user.address), amount.into());
-    assert_eq!(token.balance_of(address: test.server.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.cfg.address), Zero::zero());
 
     // Deposit
-    user.deposit(:token, :amount, :note);
+    user.deposit_server(:token, :amount, :note);
 
     // Check balances after deposit
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
-    assert_eq!(token.balance_of(address: test.server.address), amount.into());
+    assert_eq!(token.balance_of(address: test.cfg.address), amount.into());
 
     // Check storage
-    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
 }
 
 #[test]
@@ -488,196 +492,199 @@ fn test_deposit() {
 fn test_deposit_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let token = test.new_token();
+    let token = test.new_token_server();
     let zero_token = Token::Custom(
         CustomToken { contract_address: Zero::zero(), balances_variable_selector: Zero::zero() },
     );
     let amount = constants::DEFAULT_AMOUNT;
-    let note = test.new_note(:amount);
+    let note = test.new_note_server(:amount);
 
     // Catch ZERO_TOKEN
-    let result = user.safe_deposit(token: zero_token, :amount, :note);
+    let result = user.safe_deposit_server(token: zero_token, :amount, :note);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT
-    let result = user.safe_deposit(:token, amount: Zero::zero(), :note);
+    let result = user.safe_deposit_server(:token, amount: Zero::zero(), :note);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch ZERO_USER_ADDR
     let mut zero_user = test.new_user();
     zero_user.address = Zero::zero();
-    let result = zero_user.safe_deposit(:token, :amount, :note);
+    let result = zero_user.safe_deposit_server(:token, :amount, :note);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_NOTE_ID
-    let mut zero_note = test.new_note(:amount);
+    let mut zero_note = test.new_note_server(:amount);
     zero_note.id = Zero::zero();
-    let result = user.safe_deposit(:token, :amount, note: zero_note);
+    let result = user.safe_deposit_server(:token, :amount, note: zero_note);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NOTE_ID);
 
     // Catch ZERO_ENC_NOTE_VALUE
-    let mut zero_note = test.new_note(:amount);
+    let mut zero_note = test.new_note_server(:amount);
     zero_note.enc_amount = Zero::zero();
-    let result = user.safe_deposit(:token, :amount, note: zero_note);
+    let result = user.safe_deposit_server(:token, :amount, note: zero_note);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_NOTE_VALUE);
 
     // Catch INSUFFICIENT_BALANCE
-    let result = user.safe_deposit(:token, :amount, :note);
+    let result = user.safe_deposit_server(:token, :amount, :note);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 
     // Catch INSUFFICIENT_ALLOWANCE
-    let note = test.new_note(:amount); // New note because of snforge revert storage bug.
+    let note = test.new_note_server(:amount); // New note because of snforge revert storage bug.
     token.supply(:user, :amount);
-    let result = user.safe_deposit(:token, :amount, :note);
+    let result = user.safe_deposit_server(:token, :amount, :note);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
 
     // Catch NOTE_ALREADY_EXISTS (same user)
-    let note = test.new_note(:amount); // New note because of snforge revert storage bug.
-    user.deposit(:token, :amount, :note);
-    let result = user.safe_deposit(:token, :amount, :note);
+    let note = test.new_note_server(:amount); // New note because of snforge revert storage bug.
+    user.deposit_server(:token, :amount, :note);
+    let result = user.safe_deposit_server(:token, :amount, :note);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
 
     // Catch NOTE_ALREADY_EXISTS (different user)
     let different_user = test.new_user();
     token.supply(user: different_user, :amount);
-    let result = different_user.safe_deposit(:token, :amount, :note);
+    let result = different_user.safe_deposit_server(:token, :amount, :note);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
 }
 
 #[test]
 fn test_transfer() {
     let mut test: Test = Default::default();
-    let token = test.new_token();
+    let token = test.new_token_server();
     let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
     token.supply(:user, :amount);
-    let note = test.new_note(:amount);
+    let note = test.new_note_server(:amount);
     let nullifier = test.new_nullifier();
-    let new_note = test.new_note(:amount);
+    let new_note = test.new_note_server(:amount);
 
     // Deposit
-    user.deposit(:token, :amount, :note);
+    user.deposit_server(:token, :amount, :note);
 
     // Verify balances before.
-    assert_eq!(token.balance_of(address: test.server.address), amount.into());
+    assert_eq!(token.balance_of(address: test.cfg.address), amount.into());
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
 
     // Check storage before.
-    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
-    assert_eq!(test.server.get_note(note_id: new_note.id), Zero::zero());
-    assert_eq!(test.server.nullifier_exists(:nullifier), false);
+    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.cfg.get_note(note_id: new_note.id), Zero::zero());
+    assert_eq!(test.cfg.nullifier_exists(:nullifier), false);
 
     // Transfer
-    test.server.transfer(nullifiers: [nullifier].span(), new_notes: [new_note].span());
+    test.cfg.transfer(nullifiers: [nullifier].span(), new_notes: [new_note].span());
 
     // Verify balances haven't changed.
-    assert_eq!(token.balance_of(address: test.server.address), amount.into());
+    assert_eq!(token.balance_of(address: test.cfg.address), amount.into());
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
 
     // Check storage after.
-    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
-    assert_eq!(test.server.get_note(note_id: new_note.id), new_note.enc_amount);
-    assert_eq!(test.server.nullifier_exists(:nullifier), true);
+    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.cfg.get_note(note_id: new_note.id), new_note.enc_amount);
+    assert_eq!(test.cfg.nullifier_exists(:nullifier), true);
     // TODO: Test user balances in contract.
 }
 
 #[test]
 fn test_transfer_assertions() {
     let mut test: Test = Default::default();
-    let token = test.new_token();
+    let token = test.new_token_server();
     let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    token.supply(:user, :amount);
-    let note = test.new_note(:amount);
+    let note = test.new_note_server(:amount);
     let nullifier = test.new_nullifier();
 
     // Catch EMPTY_NULLIFIERS
-    let result = test.server.safe_transfer(nullifiers: [].span(), new_notes: [note].span());
+    let result = ServerCfgTrait::safe_transfer(
+        @test.cfg, nullifiers: [].span(), new_notes: [note].span(),
+    );
     assert_panic_with_felt_error(:result, expected_error: errors::EMPTY_NULLIFIERS);
 
     // Catch EMPTY_NEW_NOTES
-    let result = test.server.safe_transfer(nullifiers: [nullifier].span(), new_notes: [].span());
+    let result = ServerCfgTrait::safe_transfer(
+        @test.cfg, nullifiers: [nullifier].span(), new_notes: [].span(),
+    );
     assert_panic_with_felt_error(:result, expected_error: errors::EMPTY_NEW_NOTES);
 
     // Catch ZERO_NULLIFIER
-    let result = test
-        .server
-        .safe_transfer(nullifiers: [Zero::zero()].span(), new_notes: [note].span());
+    let result = ServerCfgTrait::safe_transfer(
+        @test.cfg, nullifiers: [Zero::zero()].span(), new_notes: [note].span(),
+    );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NULLIFIER);
 
     // Catch NULLIFIER_ALREADY_EXISTS
-    test.server.transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
-    let result = test
-        .server
-        .safe_transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
+    test.cfg.transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
+    let result = ServerCfgTrait::safe_transfer(
+        @test.cfg, nullifiers: [nullifier].span(), new_notes: [note].span(),
+    );
     assert_panic_with_felt_error(:result, expected_error: errors::NULLIFIER_ALREADY_EXISTS);
 
     // Catch ZERO_NOTE_ID
     let nullifier = test.new_nullifier();
-    let mut zero_note = test.new_note(:amount);
+    let mut zero_note = test.new_note_server(:amount);
     zero_note.id = Zero::zero();
-    let result = test
-        .server
-        .safe_transfer(nullifiers: [nullifier].span(), new_notes: [zero_note].span());
+    let result = ServerCfgTrait::safe_transfer(
+        @test.cfg, nullifiers: [nullifier].span(), new_notes: [zero_note].span(),
+    );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NOTE_ID);
 
     // Catch ZERO_ENC_NOTE_VALUE
     let nullifier = test.new_nullifier(); // New nullifier because of snforge revert storage bug.
-    let mut zero_note = test.new_note(:amount);
+    let mut zero_note = test.new_note_server(:amount);
     zero_note.enc_amount = Zero::zero();
-    let result = test
-        .server
-        .safe_transfer(nullifiers: [nullifier].span(), new_notes: [zero_note].span());
+    let result = ServerCfgTrait::safe_transfer(
+        @test.cfg, nullifiers: [nullifier].span(), new_notes: [zero_note].span(),
+    );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_NOTE_VALUE);
 
     // Catch NOTE_ALREADY_EXISTS
     let nullifier = test.new_nullifier(); // New nullifier because of snforge revert storage bug.
-    let note = test.new_note(:amount); // New note because of snforge revert storage bug.
+    let note = test.new_note_server(:amount); // New note because of snforge revert storage bug.
     token.supply(:user, :amount);
-    user.deposit(:token, :amount, :note);
-    let result = test
-        .server
-        .safe_transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
+    user.deposit_server(:token, :amount, :note);
+    let result = ServerCfgTrait::safe_transfer(
+        @test.cfg, nullifiers: [nullifier].span(), new_notes: [note].span(),
+    );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
 }
 
 #[test]
 fn test_withdraw() {
     let mut test: Test = Default::default();
-    let token = test.new_token();
+    let token = test.new_token_server();
     let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    let note = test.new_note(:amount);
+    let note = test.new_note_server(:amount);
     let recipient = test.new_user();
     let nullifier = test.new_nullifier();
 
     // Deposit tokens to the server.
     token.supply(:user, :amount);
-    user.deposit(:token, :amount, :note);
+    user.deposit_server(:token, :amount, :note);
 
     // Check balances before withdraw.
-    assert_eq!(token.balance_of(address: test.server.address), amount.into());
+    assert_eq!(token.balance_of(address: test.cfg.address), amount.into());
     assert_eq!(token.balance_of(address: recipient.address), Zero::zero());
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
 
     // Check storage before withdraw.
-    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
-    assert_eq!(test.server.nullifier_exists(:nullifier), false);
+    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.cfg.nullifier_exists(:nullifier), false);
 
     // Recipient is not registered.
     assert_eq!(recipient.get_public_key(), Zero::zero());
 
     // Withdraw
-    user.withdraw(recipient_addr: recipient.address, :token, :amount, :nullifier);
+    user.withdraw_server(recipient_addr: recipient.address, :token, :amount, :nullifier);
 
     // Check balances after withdraw.
-    assert_eq!(token.balance_of(address: test.server.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.cfg.address), Zero::zero());
     assert_eq!(token.balance_of(address: recipient.address), amount.into());
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
 
     // Check storage after withdraw.
-    assert_eq!(test.server.get_note(note_id: note.id), note.enc_amount);
-    assert_eq!(test.server.nullifier_exists(:nullifier), true);
+    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.cfg.nullifier_exists(:nullifier), true);
 
     // Recipient is not registered.
     assert_eq!(recipient.get_public_key(), Zero::zero());
@@ -690,37 +697,46 @@ fn test_withdraw_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let recipient = test.new_user();
-    let token = test.new_token();
+    let token = test.new_token_server();
     let zero_token = Token::Custom(
         CustomToken { contract_address: Zero::zero(), balances_variable_selector: Zero::zero() },
     );
     let amount = constants::DEFAULT_AMOUNT;
-    let note = test.new_note(:amount);
+    let note = test.new_note_server(:amount);
     let nullifier = test.new_nullifier();
 
     // Catch ZERO_RECIPIENT_ADDR
-    let result = user.safe_withdraw(recipient_addr: Zero::zero(), :token, :amount, :nullifier);
+    let result = user
+        .safe_withdraw_server(recipient_addr: Zero::zero(), :token, :amount, :nullifier);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_TOKEN
     let result = user
-        .safe_withdraw(recipient_addr: recipient.address, token: zero_token, :amount, :nullifier);
+        .safe_withdraw_server(
+            recipient_addr: recipient.address, token: zero_token, :amount, :nullifier,
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT
     let result = user
-        .safe_withdraw(recipient_addr: recipient.address, :token, amount: Zero::zero(), :nullifier);
+        .safe_withdraw_server(
+            recipient_addr: recipient.address, :token, amount: Zero::zero(), :nullifier,
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch ZERO_NULLIFIER
     let result = user
-        .safe_withdraw(recipient_addr: recipient.address, :token, :amount, nullifier: Zero::zero());
+        .safe_withdraw_server(
+            recipient_addr: recipient.address, :token, :amount, nullifier: Zero::zero(),
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NULLIFIER);
 
     // Catch NULLIFIER_ALREADY_EXISTS
     token.supply(:user, :amount);
-    user.deposit(:token, :amount, :note);
-    user.withdraw(recipient_addr: recipient.address, :token, :amount, :nullifier);
-    let result = user.safe_withdraw(recipient_addr: recipient.address, :token, :amount, :nullifier);
+    user.deposit_server(:token, :amount, :note);
+    user.withdraw_server(recipient_addr: recipient.address, :token, :amount, :nullifier);
+    let result = user
+        .safe_withdraw_server(recipient_addr: recipient.address, :token, :amount, :nullifier);
     assert_panic_with_felt_error(:result, expected_error: errors::NULLIFIER_ALREADY_EXISTS);
 }
+
