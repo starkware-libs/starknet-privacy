@@ -1,11 +1,11 @@
+use client::objects::EncChannelInfo;
+use client::objects::domain_separation::{
+    CHANNEL_ID_TAG, CHANNEL_KEY_TAG, NULLIFIER_TAG, enc_channel_info, enc_note,
+};
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
 use core::hash::{HashStateExTrait, HashStateTrait};
 use core::poseidon::{PoseidonTrait, poseidon_hash_span};
-use server::objects::EncChannelInfo;
-use server::objects::domain_separation::{
-    CHANNEL_ID_TAG, CHANNEL_KEY_TAG, NULLIFIER_TAG, enc_channel_info, enc_note,
-};
 use starknet::ContractAddress;
 
 // TODO: Consider separate (common?) file for compute hashes functions.
