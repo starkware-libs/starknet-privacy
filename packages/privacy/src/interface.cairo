@@ -292,7 +292,7 @@ pub trait IServer<T> {
     /// #### Reverts
     /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is
     /// zero.
-    /// - [`USER_ALREADY_REGISTERED`](privacy::errors::USER_ALREADY_REGISTERED): Thrown if the
+    /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the
     /// caller has already registered a public key.
     ///
     /// #### Access Control

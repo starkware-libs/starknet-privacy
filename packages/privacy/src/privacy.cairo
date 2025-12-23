@@ -346,13 +346,15 @@ pub mod Privacy {
             // Assert that inputs are valid.
             assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
 
-            // Assert that keys are empty before writing.
-            assert(self.get_public_key(:user_addr).is_zero(), errors::USER_ALREADY_REGISTERED);
-
             // TODO: Verify the proof on the encrypted compliance viewing key from the client side.
 
-            // Write key to storage.
-            self.public_key.write(user_addr, public_key);
+            // Build action list.
+            let actions: Array<ServerAction> = array![
+                ServerAction::WriteIfZero((self.public_key.entry(user_addr).into(), public_key)),
+            ];
+
+            // Execute actions.
+            self.execute_actions(actions.span());
         }
 
         fn replace_public_key(ref self: ContractState, public_key: felt252) {
