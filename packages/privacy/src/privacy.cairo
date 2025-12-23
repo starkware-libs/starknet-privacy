@@ -3,7 +3,7 @@ pub mod Privacy {
     use core::num::traits::Zero;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::errors;
-    use privacy::interface::{IClient, IServer};
+    use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{EncChannelInfo, EncChannelInfoTrait, EncNote, NewNote, NotePath};
     use privacy::utils::{
         compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
@@ -315,35 +315,6 @@ pub mod Privacy {
             self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
         }
 
-        fn channel_exists(self: @ContractState, channel_id: felt252) -> bool {
-            // TODO: Restrict access?
-            self.channel_exists.read(channel_id)
-        }
-
-        fn get_num_of_channels(self: @ContractState, recipient_addr: ContractAddress) -> u64 {
-            // TODO: Restrict access to `recipient_addr`?
-            // TODO: Assert `recipient_addr` is registered?
-            self.recipient_channels.entry(recipient_addr).len()
-        }
-
-        fn get_channel_info(
-            self: @ContractState, recipient_addr: ContractAddress, channel_index: u64,
-        ) -> EncChannelInfo {
-            // TODO: Restrict access to `recipient_addr` and client contract?
-            // TODO: Assert `recipient_addr` is registered?
-            // TODO: Consider defining custom error instead of using `at` (with "Index out of
-            // bounds" error)?
-            self.recipient_channels.entry(recipient_addr).at(channel_index).read()
-        }
-
-        fn get_note(self: @ContractState, note_id: felt252) -> felt252 {
-            self.notes.read(note_id)
-        }
-
-        fn nullifier_exists(self: @ContractState, nullifier: felt252) -> bool {
-            self.nullifiers.read(nullifier)
-        }
-
         fn register(ref self: ContractState, public_key: felt252) {
             // TODO: Add compliance.
             // TODO: Consider remove get_caller_address() and instead pass the user address.
@@ -359,10 +330,6 @@ pub mod Privacy {
 
             // Write key to storage.
             self.public_key.write(user_addr, public_key);
-        }
-
-        fn get_public_key(self: @ContractState, user_addr: ContractAddress) -> felt252 {
-            self.public_key.read(user_addr)
         }
 
         fn replace_public_key(ref self: ContractState, public_key: felt252) {
@@ -464,6 +431,42 @@ pub mod Privacy {
 
             // Write nullifier to storage.
             self.nullifiers.write(nullifier, true);
+        }
+    }
+
+    #[abi(embed_v0)]
+    pub impl ViewsImpl of IViews<ContractState> {
+        fn channel_exists(self: @ContractState, channel_id: felt252) -> bool {
+            // TODO: Restrict access?
+            self.channel_exists.read(channel_id)
+        }
+
+        fn get_num_of_channels(self: @ContractState, recipient_addr: ContractAddress) -> u64 {
+            // TODO: Restrict access to `recipient_addr`?
+            // TODO: Assert `recipient_addr` is registered?
+            self.recipient_channels.entry(recipient_addr).len()
+        }
+
+        fn get_channel_info(
+            self: @ContractState, recipient_addr: ContractAddress, channel_index: u64,
+        ) -> EncChannelInfo {
+            // TODO: Restrict access to `recipient_addr` and client contract?
+            // TODO: Assert `recipient_addr` is registered?
+            // TODO: Consider defining custom error instead of using `at` (with "Index out of
+            // bounds" error)?
+            self.recipient_channels.entry(recipient_addr).at(channel_index).read()
+        }
+
+        fn get_note(self: @ContractState, note_id: felt252) -> felt252 {
+            self.notes.read(note_id)
+        }
+
+        fn nullifier_exists(self: @ContractState, nullifier: felt252) -> bool {
+            self.nullifiers.read(nullifier)
+        }
+
+        fn get_public_key(self: @ContractState, user_addr: ContractAddress) -> felt252 {
+            self.public_key.read(user_addr)
         }
     }
 }
