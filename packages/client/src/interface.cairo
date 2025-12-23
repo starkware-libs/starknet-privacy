@@ -231,32 +231,34 @@ pub trait IClient<T> {
         note_to_withdraw: NotePath,
     ) -> (ContractAddress, ContractAddress, u128, felt252);
 
-    /// Registers a user by deriving their public key from their private key.
+    /// Registers the caller by deriving their public key from their private key.
     ///
-    /// Validates that the user is not already registered in the server and returns the derived
+    /// Validates that the caller is not already registered in the server and returns the derived
     /// public key for registration.
     ///
     /// #### Parameters
-    /// - `user_addr` (`ContractAddress`) - The user's address. Must not be zero.
-    /// - `private_key` (`felt252`) - The user's private key. Must not be zero and must be
+    /// - `private_key` (`felt252`) - The caller's private key. Must not be zero and must be
     /// canonical.
     ///
     /// #### Returns
     /// - (`felt252`) - The derived public key.
     ///
     /// #### Preconditions
-    /// - `user_addr` must not be zero.
     /// - `private_key` must not be zero.
     /// - `private_key` must be canonical (0 < private_key < curve_order/2).
-    /// - The user must not already be registered in the server.
-    /// - [`ZERO_USER_ADDR`](client::errors::ZERO_USER_ADDR): Thrown if `user_addr` is zero.
+    /// - The caller must not already be registered in the server.
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
     /// - [`ZERO_PRIVATE_KEY`](client::errors::ZERO_PRIVATE_KEY): Thrown if `private_key` is zero.
     /// - [`PRIVATE_KEY_NOT_CANONICAL`](client::errors::PRIVATE_KEY_NOT_CANONICAL): Thrown if
     /// `private_key` is not canonical.
-    /// - [`USER_ALREADY_REGISTERED`](client::errors::USER_ALREADY_REGISTERED): Thrown if the user
+    /// - [`USER_ALREADY_REGISTERED`](client::errors::USER_ALREADY_REGISTERED): Thrown if the caller
     /// is already registered in the server.
     ///
     /// #### Access Control
-    /// - TODO
-    fn register(self: @T, user_addr: ContractAddress, private_key: felt252) -> felt252;
+    /// - Self-registration only. The caller can only register themselves.
+    fn register(self: @T, private_key: felt252) -> felt252;
 }
