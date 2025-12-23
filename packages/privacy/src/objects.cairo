@@ -91,3 +91,20 @@ pub struct EncNote {
     /// The encrypted amount of the note.
     pub enc_amount: felt252,
 }
+
+/// Identifies which storage location an action operates on.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub enum StorageIdentifier {
+    ChannelExists,
+}
+
+/// An action to be executed by the server.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub enum ServerAction {
+    /// Verify that a map value is zero/empty.
+    VerifyMapEmpty: (StorageIdentifier, felt252),
+    /// Write a bool value to a storage map.
+    WriteBoolMap: (StorageIdentifier, felt252, bool),
+    /// Add a channel to the recipient's channel list.
+    AddChannel: (ContractAddress, EncChannelInfo),
+}
