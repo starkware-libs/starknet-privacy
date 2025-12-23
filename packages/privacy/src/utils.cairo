@@ -7,6 +7,7 @@ use privacy::objects::domain_separation::{
     CHANNEL_ID_TAG, CHANNEL_KEY_TAG, NULLIFIER_TAG, enc_channel_info, enc_note,
 };
 use starknet::ContractAddress;
+use starknet::storage::{StorageAsPointer, StoragePath};
 
 // TODO: Consider separate (common?) file for compute hashes functions.
 
@@ -161,4 +162,12 @@ pub(crate) fn compute_nullifier(
     channel_key: felt252, index: usize, owner_private_key: felt252,
 ) -> felt252 {
     hash([NULLIFIER_TAG, channel_key, index.into(), owner_private_key].span())
+}
+
+pub(crate) impl StoragePathIntoFelt<
+    T, +StorageAsPointer<StoragePath<T>>,
+> of Into<StoragePath<T>, felt252> {
+    fn into(self: StoragePath<T>) -> felt252 {
+        self.as_ptr().__storage_pointer_address__.into()
+    }
 }

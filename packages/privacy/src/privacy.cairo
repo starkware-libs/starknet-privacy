@@ -4,15 +4,17 @@ pub mod Privacy {
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::errors;
     use privacy::interface::{IClient, IServer, IViews};
-    use privacy::objects::{EncChannelInfo, EncChannelInfoTrait, EncNote, NewNote, NotePath};
+    use privacy::objects::{
+        EncChannelInfo, EncChannelInfoTrait, EncNote, NewNote, NotePath, ServerAction,
+    };
     use privacy::utils::{
-        compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
-        decrypt_channel_info, decrypt_note_amount, derive_public_key, encrypt_channel_info,
-        encrypt_note_amount, is_canonical_key,
+        StoragePathIntoFelt, compute_channel_id, compute_channel_key, compute_note_id,
+        compute_nullifier, decrypt_channel_info, decrypt_note_amount, derive_public_key,
+        encrypt_channel_info, encrypt_note_amount, is_canonical_key,
     };
     use starknet::storage::{
-        Map, MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
-        StoragePointerReadAccess, Vec, VecTrait,
+        Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StorageMapWriteAccess,
+        StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use starkware_utils::erc20::erc20_utils::CheckedIERC20DispatcherTrait;
@@ -290,6 +292,24 @@ pub mod Privacy {
 
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
+        fn execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
+            for action in actions {
+                match *action {
+                    ServerAction::WriteIfZero((
+                        storage_address, value,
+                    )) => { self._execute_write_if_zero(:storage_address, :value); },
+                    ServerAction::AppendToVec((
+                        recipient_addr, enc_channel_info,
+                    )) => {
+                        self
+                            ._execute_append_to_vector(
+                                key: recipient_addr, value: enc_channel_info,
+                            );
+                    },
+                };
+            };
+        }
+
         fn open_channel(
             ref self: ContractState,
             recipient_addr: ContractAddress,
@@ -307,12 +327,15 @@ pub mod Privacy {
             // TODO: Consider add `recipient_public_key` to the params and assert it is the current
             // public key of `recipient_addr`.
 
-            // Assert channel does not already exist.
-            assert(!self.channel_exists(:channel_id), errors::CHANNEL_ALREADY_EXISTS);
-
-            // Write channel to storage.
-            self.channel_exists.write(channel_id, true);
-            self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
+            // Build action list.
+            let actions: Array<ServerAction> = array![
+                ServerAction::WriteIfZero(
+                    (self.channel_exists.entry(channel_id).into(), true.into()),
+                ),
+                ServerAction::AppendToVec((recipient_addr, enc_channel_info)),
+            ];
+            // Execute actions.
+            self.execute_actions(actions.span());
         }
 
         fn register(ref self: ContractState, public_key: felt252) {
@@ -431,6 +454,21 @@ pub mod Privacy {
 
             // Write nullifier to storage.
             self.nullifiers.write(nullifier, true);
+        }
+
+        fn _execute_write_if_zero(
+            ref self: ContractState, storage_address: felt252, value: felt252,
+        ) {
+            let mut target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
+            assert(target.read().is_zero(), errors::NON_ZERO_VALUE);
+            target.write(value);
+        }
+
+        // TODO: Make generic.
+        fn _execute_append_to_vector(
+            ref self: ContractState, key: ContractAddress, value: EncChannelInfo,
+        ) {
+            self.recipient_channels.entry(key).push(value);
         }
     }
 
