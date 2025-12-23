@@ -11,8 +11,8 @@ pub mod Client {
     use core::num::traits::Zero;
     use server::interface::{IServerDispatcher, IServerDispatcherTrait};
     use server::objects::{EncChannelInfo, EncNote};
-    use starknet::ContractAddress;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use starknet::{ContractAddress, get_caller_address};
 
     #[storage]
     struct Storage {
@@ -144,17 +144,18 @@ pub mod Client {
             (withdrawal_target, token, amount, nullifier)
         }
 
-        fn replace_public_key(
-            self: @ContractState, user_addr: ContractAddress, private_key: felt252,
-        ) -> felt252 {
+        fn replace_public_key(self: @ContractState, private_key: felt252) -> felt252 {
             // TODO: Add compliance.
 
             // Assert inputs are valid.
-            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             assert(private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
 
             // Assert private key is canonical.
             assert(is_canonical_key(key: private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+
+            // Get the caller's address and assert it is not zero.
+            let user_addr = get_caller_address();
+            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
 
             // Assert that the user is already registered.
             let server = IServerDispatcher { contract_address: self.server.read() };

@@ -238,34 +238,33 @@ pub trait IClient<T> {
     /// key, the sender must open new channels with you.**
     ///
     /// #### Parameters
-    /// - `user_addr` (`ContractAddress`) - The user's address. Must not be zero.
-    /// - `private_key` (`felt252`) - The user's private key. Must not be zero and must be
+    /// - `private_key` (`felt252`) - The caller's private key. Must not be zero and must be
     /// canonical.
     ///
     /// #### Returns
     /// - (`felt252`) - The derived public key.
     ///
     /// #### Preconditions
-    /// - `user_addr` must not be zero.
     /// - `private_key` must not be zero.
     /// - `private_key` must be canonical (0 < private_key < curve_order/2).
-    /// - The user must already be registered in the server.
-    /// - `private_key` must match the user's current public key in the server.
+    /// - The caller must already be registered in the server.
+    /// - `private_key` must match the caller's current public key in the server.
     ///
     /// #### Events Emitted
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_USER_ADDR`](client::errors::ZERO_USER_ADDR): Thrown if `user_addr` is zero.
+    /// - [`ZERO_USER_ADDR`](client::errors::ZERO_USER_ADDR): Thrown if the caller's address is
+    /// zero.
     /// - [`ZERO_PRIVATE_KEY`](client::errors::ZERO_PRIVATE_KEY): Thrown if `private_key` is zero.
     /// - [`PRIVATE_KEY_NOT_CANONICAL`](client::errors::PRIVATE_KEY_NOT_CANONICAL): Thrown if
     /// `private_key` is not canonical.
-    /// - [`USER_NOT_REGISTERED`](client::errors::USER_NOT_REGISTERED): Thrown if the user is not
+    /// - [`USER_NOT_REGISTERED`](client::errors::USER_NOT_REGISTERED): Thrown if the caller is not
     /// registered in the server.
     /// - [`USER_NOT_AUTHENTICATED`](client::errors::USER_NOT_AUTHENTICATED): Thrown if the
-    /// `private_key` does not match the user's current public key.
+    /// `private_key` does not match the caller's current public key.
     ///
     /// #### Access Control
-    /// - Can be called by anyone.
-    fn replace_public_key(self: @T, user_addr: ContractAddress, private_key: felt252) -> felt252;
+    /// - Self-service only. The caller can only replace their own public key.
+    fn replace_public_key(self: @T, private_key: felt252) -> felt252;
 }
