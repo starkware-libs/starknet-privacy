@@ -1,5 +1,6 @@
 use core::num::traits::Zero;
 use privacy::errors;
+use privacy::objects::{ServerAction, StorageIdentifier};
 use privacy::tests::test_utils::{
     PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
 };
@@ -740,3 +741,85 @@ fn test_withdraw_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NULLIFIER_ALREADY_EXISTS);
 }
 
+#[test]
+fn test_execute_write_if_zero() {
+    let mut test: Test = Default::default();
+    let (_, channel_id) = test.new_channel();
+
+    // Verify channel doesn't exist and write.
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((StorageIdentifier::ChannelExists, channel_id, true.into())),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify channel exists.
+    assert!(test.cfg.channel_exists(:channel_id));
+}
+
+
+#[test]
+fn test_execute_write_if_zero_assertions() {
+    let mut test: Test = Default::default();
+    let (_, channel_id) = test.new_channel();
+
+    // Catch INVALID_STORAGE_IDENTIFIER
+    let result = test
+        .cfg
+        .safe_execute_actions(
+            array![
+                ServerAction::WriteIfZero(
+                    (StorageIdentifier::RecipientChannels, channel_id, true.into()),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_STORAGE_IDENTIFIER);
+
+    // Catch CHANNEL_ALREADY_EXISTS
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((StorageIdentifier::ChannelExists, channel_id, true.into())),
+    ];
+    test.cfg.execute_actions(actions.span());
+    let result = test.cfg.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_ALREADY_EXISTS);
+}
+
+
+#[test]
+fn test_execute_append_to_vector() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let (enc_channel_info, _) = test.new_channel();
+
+    // Append channel to vector
+    let actions: Array<ServerAction> = array![
+        ServerAction::AppendToVec(
+            (StorageIdentifier::RecipientChannels, user.address, enc_channel_info),
+        ),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify channel was added
+    assert_eq!(user.get_num_of_channels(), 1);
+    assert_eq!(user.get_channel_info(channel_index: 0), enc_channel_info);
+}
+
+#[test]
+fn test_execute_append_to_vector_assertions() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let (enc_channel_info, _) = test.new_channel();
+
+    // Catch INVALID_STORAGE_IDENTIFIER
+    let result = test
+        .cfg
+        .safe_execute_actions(
+            array![
+                ServerAction::AppendToVec(
+                    (StorageIdentifier::ChannelExists, user.address, enc_channel_info),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_STORAGE_IDENTIFIER);
+}
