@@ -5,6 +5,7 @@ use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTr
 use privacy::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
+    IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{EncChannelInfo, EncNote, NewNote, NotePath};
 use privacy::privacy::Privacy;
@@ -160,12 +161,12 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn get_num_of_channels_server(self: @User) -> u64 {
-        IServerDispatcher { contract_address: *self.privacy }
+        IViewsDispatcher { contract_address: *self.privacy }
             .get_num_of_channels(recipient_addr: *self.address)
     }
 
     fn get_enc_channel_info_server(self: @User, channel_index: u64) -> EncChannelInfo {
-        IServerDispatcher { contract_address: *self.privacy }
+        IViewsDispatcher { contract_address: *self.privacy }
             .get_channel_info(recipient_addr: *self.address, :channel_index)
     }
 
@@ -263,7 +264,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     // TODO: Consider different trait.
     fn get_note_server(self: @User, note_id: felt252) -> felt252 {
-        IServerDispatcher { contract_address: *self.privacy }.get_note(:note_id)
+        IViewsDispatcher { contract_address: *self.privacy }.get_note(:note_id)
     }
 
     fn deposit(
@@ -283,16 +284,16 @@ pub(crate) impl UserImpl of UserTrait {
 
     // TODO: Consider different trait.
     fn nullifier_exists_server(self: @User, nullifier: felt252) -> bool {
-        IServerDispatcher { contract_address: *self.privacy }.nullifier_exists(:nullifier)
+        IViewsDispatcher { contract_address: *self.privacy }.nullifier_exists(:nullifier)
     }
 
     fn get_num_of_channels(self: @User) -> u64 {
-        IServerDispatcher { contract_address: *self.privacy }
+        IViewsDispatcher { contract_address: *self.privacy }
             .get_num_of_channels(recipient_addr: *self.address)
     }
 
     fn get_channel_info(self: @User, channel_index: u64) -> EncChannelInfo {
-        IServerDispatcher { contract_address: *self.privacy }
+        IViewsDispatcher { contract_address: *self.privacy }
             .get_channel_info(recipient_addr: *self.address, :channel_index)
     }
 
@@ -300,7 +301,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn safe_get_channel_info(
         self: @User, channel_index: u64,
     ) -> Result<EncChannelInfo, Array<felt252>> {
-        IServerSafeDispatcher { contract_address: *self.privacy }
+        IViewsSafeDispatcher { contract_address: *self.privacy }
             .get_channel_info(recipient_addr: *self.address, :channel_index)
     }
 
@@ -317,7 +318,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn get_public_key(self: @User) -> felt252 {
-        IServerDispatcher { contract_address: *self.privacy }
+        IViewsDispatcher { contract_address: *self.privacy }
             .get_public_key(user_addr: *self.address)
     }
 
@@ -499,7 +500,7 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
     }
 
     fn channel_exists(self: @PrivacyCfg, channel_id: felt252) -> bool {
-        IServerDispatcher { contract_address: *self.address }.channel_exists(:channel_id)
+        IViewsDispatcher { contract_address: *self.address }.channel_exists(:channel_id)
     }
 
     fn create_note(self: @PrivacyCfg, note: EncNote) {
@@ -513,7 +514,7 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
     }
 
     fn get_note(self: @PrivacyCfg, note_id: felt252) -> felt252 {
-        IServerDispatcher { contract_address: *self.address }.get_note(:note_id)
+        IViewsDispatcher { contract_address: *self.address }.get_note(:note_id)
     }
 
     fn use_note(self: @PrivacyCfg, nullifier: felt252) {
@@ -527,7 +528,7 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
     }
 
     fn nullifier_exists(self: @PrivacyCfg, nullifier: felt252) -> bool {
-        IServerDispatcher { contract_address: *self.address }.nullifier_exists(:nullifier)
+        IViewsDispatcher { contract_address: *self.address }.nullifier_exists(:nullifier)
     }
 
     fn transfer(self: @PrivacyCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>) {
