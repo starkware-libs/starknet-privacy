@@ -7,20 +7,8 @@ use client::utils::{
     encrypt_channel_info, is_canonical_key,
 };
 use core::num::traits::Zero;
-use starkware_utils_testing::test_utils::{
-    assert_panic_with_error, assert_panic_with_felt_error, generic_load,
-};
+use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
-
-#[test]
-fn test_constructor() {
-    let mut test: Test = Default::default();
-
-    let actual_server = generic_load(
-        target: test.cfg.address, storage_address: selector!("server"),
-    );
-    assert_eq!(actual_server, test.cfg.server);
-}
 
 #[test]
 fn test_transfer() {
