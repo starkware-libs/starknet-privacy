@@ -1,9 +1,12 @@
 use core::num::traits::Zero;
 use privacy::errors;
+use privacy::objects::StorageIdentifier;
+use privacy::privacy::Privacy;
+use privacy::privacy::Privacy::ServerInternalTrait;
 use privacy::tests::test_utils::{
     PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
 };
-use snforge_std::{CustomToken, Token};
+use snforge_std::{CustomToken, Token, interact_with_state};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
@@ -738,5 +741,108 @@ fn test_withdraw_assertions() {
     let result = user
         .safe_withdraw_server(recipient_addr: recipient.address, :token, :amount, :nullifier);
     assert_panic_with_felt_error(:result, expected_error: errors::NULLIFIER_ALREADY_EXISTS);
+}
+
+#[test]
+#[should_panic(expected_error: errors::CHANNEL_ALREADY_EXISTS)]
+fn test_execute_verify_map_empty_channel_exists() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let (enc_channel_info, channel_id) = test.new_channel();
+
+    // Verify channel doesn't exist - should pass
+    interact_with_state(
+        test.cfg.address,
+        || {
+            let mut state = Privacy::contract_state_for_testing();
+            state
+                ._execute_verify_map_empty(
+                    storage_id: StorageIdentifier::ChannelExists, key: channel_id,
+                );
+        },
+    );
+
+    // Create channel
+    test
+        .cfg
+        .open_channel(
+            recipient_addr: user.address,
+            enc_channel_info: enc_channel_info,
+            channel_id: channel_id,
+        );
+
+    // Verify channel exists - should panic
+    interact_with_state(
+        test.cfg.address,
+        || {
+            let mut state = Privacy::contract_state_for_testing();
+            state
+                ._execute_verify_map_empty(
+                    storage_id: StorageIdentifier::ChannelExists, key: channel_id,
+                );
+        },
+    );
+}
+
+
+#[test]
+fn test_execute_write_bool_map_channel_exists() {
+    let mut test: Test = Default::default();
+    let (_, channel_id) = test.new_channel();
+
+    // Write channel exists
+    interact_with_state(
+        test.cfg.address,
+        || {
+            let mut state = Privacy::contract_state_for_testing();
+            state
+                ._execute_write_bool_map(
+                    storage_id: StorageIdentifier::ChannelExists, key: channel_id, value: true,
+                );
+        },
+    );
+
+    // Verify channel exists
+    assert_eq!(test.cfg.channel_exists(channel_id: channel_id), true);
+
+    // Write channel doesn't exist
+    let (_, channel_id_2) = test.new_channel();
+    interact_with_state(
+        test.cfg.address,
+        || {
+            let mut state = Privacy::contract_state_for_testing();
+            state
+                ._execute_write_bool_map(
+                    storage_id: StorageIdentifier::ChannelExists, key: channel_id_2, value: false,
+                );
+        },
+    );
+
+    // Verify channel doesn't exist
+    assert_eq!(test.cfg.channel_exists(channel_id: channel_id_2), false);
+}
+
+
+#[test]
+fn test_execute_add_channel() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let (enc_channel_info, _) = test.new_channel();
+
+    // Add channel
+    interact_with_state(
+        test.cfg.address,
+        || {
+            let mut state = Privacy::contract_state_for_testing();
+            state
+                ._execute_add_channel(
+                    recipient_addr: user.address, enc_channel_info: enc_channel_info,
+                );
+        },
+    );
+
+    // Verify channel was added
+    assert_eq!(user.get_num_of_channels(), 1);
+    assert_eq!(user.get_channel_info(channel_index: 0), enc_channel_info);
 }
 

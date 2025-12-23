@@ -4,7 +4,10 @@ pub mod Privacy {
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::errors;
     use privacy::interface::{IClient, IServer, IViews};
-    use privacy::objects::{EncChannelInfo, EncChannelInfoTrait, EncNote, NewNote, NotePath};
+    use privacy::objects::{
+        EncChannelInfo, EncChannelInfoTrait, EncNote, NewNote, NotePath, ServerAction,
+        StorageIdentifier,
+    };
     use privacy::utils::{
         compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
         decrypt_channel_info, decrypt_note_amount, derive_public_key, encrypt_channel_info,
@@ -290,6 +293,23 @@ pub mod Privacy {
 
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
+        fn execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
+            for action_ptr in actions {
+                let action = *action_ptr;
+                match action {
+                    ServerAction::VerifyMapEmpty((
+                        storage_id, key,
+                    )) => { self._execute_verify_map_empty(:storage_id, :key); },
+                    ServerAction::WriteBoolMap((
+                        storage_id, key, value,
+                    )) => { self._execute_write_bool_map(:storage_id, :key, :value); },
+                    ServerAction::AddChannel((
+                        recipient_addr, enc_channel_info,
+                    )) => { self._execute_add_channel(:recipient_addr, :enc_channel_info); },
+                };
+            };
+        }
+
         fn open_channel(
             ref self: ContractState,
             recipient_addr: ContractAddress,
@@ -307,12 +327,15 @@ pub mod Privacy {
             // TODO: Consider add `recipient_public_key` to the params and assert it is the current
             // public key of `recipient_addr`.
 
-            // Assert channel does not already exist.
-            assert(!self.channel_exists(:channel_id), errors::CHANNEL_ALREADY_EXISTS);
+            // Build action list.
+            let actions: Array<ServerAction> = array![
+                ServerAction::VerifyMapEmpty((StorageIdentifier::ChannelExists, channel_id)),
+                ServerAction::WriteBoolMap((StorageIdentifier::ChannelExists, channel_id, true)),
+                ServerAction::AddChannel((recipient_addr, enc_channel_info)),
+            ];
 
-            // Write channel to storage.
-            self.channel_exists.write(channel_id, true);
-            self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
+            // Execute actions.
+            self.execute_actions(actions.span());
         }
 
         fn register(ref self: ContractState, public_key: felt252) {
@@ -431,6 +454,33 @@ pub mod Privacy {
 
             // Write nullifier to storage.
             self.nullifiers.write(nullifier, true);
+        }
+
+        fn _execute_verify_map_empty(
+            ref self: ContractState, storage_id: StorageIdentifier, key: felt252,
+        ) {
+            match storage_id {
+                StorageIdentifier::ChannelExists => {
+                    assert(!self.channel_exists(channel_id: key), errors::CHANNEL_ALREADY_EXISTS);
+                },
+            };
+        }
+
+        fn _execute_write_bool_map(
+            ref self: ContractState, storage_id: StorageIdentifier, key: felt252, value: bool,
+        ) {
+            // TODO: Consider disallowing writes if value is already set.
+            match storage_id {
+                StorageIdentifier::ChannelExists => { self.channel_exists.write(key, value); },
+            };
+        }
+
+        fn _execute_add_channel(
+            ref self: ContractState,
+            recipient_addr: ContractAddress,
+            enc_channel_info: EncChannelInfo,
+        ) {
+            self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
         }
     }
 
