@@ -1,5 +1,6 @@
 use core::num::traits::Zero;
 use privacy::errors;
+use privacy::objects::{ServerAction, StorageIdentifier};
 use privacy::tests::test_utils::{
     PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
 };
@@ -738,5 +739,80 @@ fn test_withdraw_assertions() {
     let result = user
         .safe_withdraw_server(recipient_addr: recipient.address, :token, :amount, :nullifier);
     assert_panic_with_felt_error(:result, expected_error: errors::NULLIFIER_ALREADY_EXISTS);
+}
+
+#[test]
+#[should_panic(expected_error: errors::CHANNEL_ALREADY_EXISTS)]
+fn test_execute_write_if_zero_channel_exists() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let (enc_channel_info, channel_id) = test.new_channel();
+
+    // Verify channel doesn't exist and write - should pass
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((StorageIdentifier::ChannelExists, channel_id, true.into())),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Create channel
+    test
+        .cfg
+        .open_channel(
+            recipient_addr: user.address,
+            enc_channel_info: enc_channel_info,
+            channel_id: channel_id,
+        );
+
+    // Verify channel exists - should panic
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((StorageIdentifier::ChannelExists, channel_id, true.into())),
+    ];
+    test.cfg.execute_actions(actions.span());
+}
+
+
+#[test]
+fn test_execute_write_if_zero_basic() {
+    let mut test: Test = Default::default();
+    let (_, channel_id) = test.new_channel();
+
+    // Write channel exists (verifies empty first)
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((StorageIdentifier::ChannelExists, channel_id, true.into())),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify channel exists
+    assert_eq!(test.cfg.channel_exists(channel_id: channel_id), true);
+
+    // Write channel doesn't exist (verifies empty first)
+    let (_, channel_id_2) = test.new_channel();
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((StorageIdentifier::ChannelExists, channel_id_2, false.into())),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify channel doesn't exist
+    assert_eq!(test.cfg.channel_exists(channel_id: channel_id_2), false);
+}
+
+
+#[test]
+fn test_execute_append_to_vector() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let (enc_channel_info, _) = test.new_channel();
+
+    // Append channel to vector
+    let actions: Array<ServerAction> = array![
+        ServerAction::AppendToVector(
+            (StorageIdentifier::RecipientChannels, user.address, enc_channel_info),
+        ),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify channel was added
+    assert_eq!(user.get_num_of_channels(), 1);
+    assert_eq!(user.get_channel_info(channel_index: 0), enc_channel_info);
 }
 
