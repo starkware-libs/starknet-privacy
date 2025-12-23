@@ -153,9 +153,12 @@ pub mod Client {
             // Assert private key is canonical.
             assert(is_canonical_key(key: private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
 
+            // Get the caller's address and assert it is not zero.
+            let user_addr = get_caller_address();
+            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+
             // Assert that the user is not already registered.
             let server = IServerDispatcher { contract_address: self.server.read() };
-            let user_addr = get_caller_address();
             let existing_public_key = server.get_public_key(:user_addr);
             assert(existing_public_key.is_zero(), errors::USER_ALREADY_REGISTERED);
 
