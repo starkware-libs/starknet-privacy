@@ -1,5 +1,5 @@
 [package]
-name = "client"
+name = "privacy"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
@@ -21,7 +21,7 @@ openzeppelin_testing.workspace = true
 starkware_utils_testing.workspace = true
 
 [[test]]
-name = "client_unittest"
+name = "privacy_unittest"
 build-external-contracts = ["starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock"]
 
 [scripts]

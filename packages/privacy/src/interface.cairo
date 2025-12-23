@@ -1,4 +1,4 @@
-use client::objects::{EncChannelInfo, EncNote, NewNote, NotePath};
+use privacy::objects::{EncChannelInfo, EncNote, NewNote, NotePath};
 use starknet::ContractAddress;
 
 // TODO: Use same naming convention for the functions. (owner/sender,
@@ -20,7 +20,8 @@ pub trait IClient<T> {
     ///
     /// #### Returns
     /// - (`ContractAddress`) - The recipient's address.
-    /// - ([`EncChannelInfo`](client::objects::EncChannelInfo)) - The encrypted channel information.
+    /// - ([`EncChannelInfo`](privacy::objects::EncChannelInfo)) - The encrypted channel
+    /// information.
     /// - (`felt252`) - The channel id.
     ///
     /// #### Preconditions
@@ -33,20 +34,20 @@ pub trait IClient<T> {
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_SENDER_ADDR`](client::errors::ZERO_SENDER_ADDR): Thrown if `sender_addr` is zero.
-    /// - [`ZERO_SENDER_PRIVATE_KEY`](client::errors::ZERO_SENDER_PRIVATE_KEY): Thrown if
+    /// - [`ZERO_SENDER_ADDR`](privacy::errors::ZERO_SENDER_ADDR): Thrown if `sender_addr` is zero.
+    /// - [`ZERO_SENDER_PRIVATE_KEY`](privacy::errors::ZERO_SENDER_PRIVATE_KEY): Thrown if
     /// `sender_private_key` is zero.
-    /// - [`ZERO_RECIPIENT_ADDR`](client::errors::ZERO_RECIPIENT_ADDR): Thrown if `recipient_addr`
+    /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if `recipient_addr`
     /// is zero.
-    /// - [`ZERO_TOKEN`](client::errors::ZERO_TOKEN): Thrown if `token` is zero.
-    /// - [`ZERO_RANDOM`](client::errors::ZERO_RANDOM): Thrown if `random` is zero.
-    /// - [`PRIVATE_KEY_NOT_CANONICAL`](client::errors::PRIVATE_KEY_NOT_CANONICAL): Thrown if
+    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if `token` is zero.
+    /// - [`ZERO_RANDOM`](privacy::errors::ZERO_RANDOM): Thrown if `random` is zero.
+    /// - [`PRIVATE_KEY_NOT_CANONICAL`](privacy::errors::PRIVATE_KEY_NOT_CANONICAL): Thrown if
     /// `sender_private_key` is not canonical.
-    /// - [`SENDER_NOT_REGISTERED`](client::errors::SENDER_NOT_REGISTERED): Thrown if `sender_addr`
+    /// - [`SENDER_NOT_REGISTERED`](privacy::errors::SENDER_NOT_REGISTERED): Thrown if `sender_addr`
     /// is not registered in the server.
-    /// - [`SENDER_NOT_AUTHENTICATED`](client::errors::SENDER_NOT_AUTHENTICATED): Thrown if
+    /// - [`SENDER_NOT_AUTHENTICATED`](privacy::errors::SENDER_NOT_AUTHENTICATED): Thrown if
     /// `sender_addr` is not registered with `sender_private_key` in the server.
-    /// - [`RECIPIENT_NOT_REGISTERED`](client::errors::RECIPIENT_NOT_REGISTERED): Thrown if
+    /// - [`RECIPIENT_NOT_REGISTERED`](privacy::errors::RECIPIENT_NOT_REGISTERED): Thrown if
     /// `recipient_addr` is not registered in the server.
     ///
     /// #### Access Control
@@ -70,10 +71,10 @@ pub trait IClient<T> {
     /// #### Parameters
     /// - `owner_addr` (`ContractAddress`) - The owner's address. Must not be zero.
     /// - `owner_private_key` (`felt252`) - The owner's private key. Must not be zero.
-    /// - `notes_to_use` (`Span<`[`NotePath`](client::objects::NotePath)`>`) - The notes that are
+    /// - `notes_to_use` (`Span<`[`NotePath`](privacy::objects::NotePath)`>`) - The notes that are
     /// consumed as part of the transfer.
     /// Must not be empty.
-    /// - `notes_to_create` (`Span<`[`NewNote`](client::objects::NewNote)`>`) - The notes that are
+    /// - `notes_to_create` (`Span<`[`NewNote`](privacy::objects::NewNote)`>`) - The notes that are
     /// created as a result of the transfer. Must not be empty and have non-zero `recipient_addr`s,
     /// `token`s, and `amount`s.
     ///
@@ -98,27 +99,27 @@ pub trait IClient<T> {
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_OWNER_ADDR`](client::errors::ZERO_OWNER_ADDR): Thrown if `owner_addr` is zero.
-    /// - [`ZERO_OWNER_PRIVATE_KEY`](client::errors::ZERO_OWNER_PRIVATE_KEY): Thrown if
+    /// - [`ZERO_OWNER_ADDR`](privacy::errors::ZERO_OWNER_ADDR): Thrown if `owner_addr` is zero.
+    /// - [`ZERO_OWNER_PRIVATE_KEY`](privacy::errors::ZERO_OWNER_PRIVATE_KEY): Thrown if
     /// `owner_private_key` is zero.
-    /// - [`NO_NOTES_TO_USE`](client::errors::NO_NOTES_TO_USE): Thrown if `notes_to_use` is empty.
-    /// - [`NO_NOTES_TO_CREATE`](client::errors::NO_NOTES_TO_CREATE): Thrown if `notes_to_create` is
-    /// empty.
-    /// - [`NOTE_NOT_FOUND`](client::errors::NOTE_NOT_FOUND): Thrown if a note to be used is not
+    /// - [`NO_NOTES_TO_USE`](privacy::errors::NO_NOTES_TO_USE): Thrown if `notes_to_use` is empty.
+    /// - [`NO_NOTES_TO_CREATE`](privacy::errors::NO_NOTES_TO_CREATE): Thrown if `notes_to_create`
+    /// is empty.
+    /// - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if a note to be used is not
     /// found.
-    /// - [`ZERO_RECIPIENT_ADDR`](client::errors::ZERO_RECIPIENT_ADDR): Thrown if there's a note to
+    /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if there's a note to
     /// be created with zero as the recipient.
-    /// - [`ZERO_TOKEN`](client::errors::ZERO_TOKEN): Thrown if there's a note to be created with
+    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if there's a note to be created with
     /// zero as the token.
-    /// - [`ZERO_AMOUNT`](client::errors::ZERO_AMOUNT): Thrown if there's a note to be created with
+    /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if there's a note to be created with
     /// zero as the amount.
-    /// - [`RECIPIENT_NOT_REGISTERED`](client::errors::RECIPIENT_NOT_REGISTERED): Thrown if a
+    /// - [`RECIPIENT_NOT_REGISTERED`](privacy::errors::RECIPIENT_NOT_REGISTERED): Thrown if a
     /// recipient is not registered in the server.
-    /// - [`CHANNEL_NOT_FOUND`](client::errors::CHANNEL_NOT_FOUND): Thrown if a channel is not found
-    /// for one of the `notes_to_create`.
-    /// - [`NOTE_INDEX_NOT_SEQUENTIAL`](client::errors::NOTE_INDEX_NOT_SEQUENTIAL): Thrown if a note
-    /// index is not sequential for one of the `notes_to_create`.
-    /// - [`NOTE_SUM_MISMATCH`](client::errors::NOTE_SUM_MISMATCH): Thrown if there's a mismatch
+    /// - [`CHANNEL_NOT_FOUND`](privacy::errors::CHANNEL_NOT_FOUND): Thrown if a channel is not
+    /// found for one of the `notes_to_create`.
+    /// - [`NOTE_INDEX_NOT_SEQUENTIAL`](privacy::errors::NOTE_INDEX_NOT_SEQUENTIAL): Thrown if a
+    /// note index is not sequential for one of the `notes_to_create`.
+    /// - [`NOTE_SUM_MISMATCH`](privacy::errors::NOTE_SUM_MISMATCH): Thrown if there's a mismatch
     /// between the spent funds and the received funds.
     ///
     /// #### Access Control
@@ -140,7 +141,7 @@ pub trait IClient<T> {
     ///
     /// #### Parameters
     /// - `owner_private_key` (`felt252`) - The owner's private key. Must not be zero.
-    /// - `new_note` ([`NewNote`](client::objects::NewNote)) - The details of the note to be
+    /// - `new_note` ([`NewNote`](privacy::objects::NewNote)) - The details of the note to be
     /// created.
     /// `new_note.recipient_addr`, `new_note.token`, and `new_note.amount` must not be zero.
     ///
@@ -148,7 +149,7 @@ pub trait IClient<T> {
     /// - (`ContractAddress`) - The address to transfer the deposit from.
     /// - (`ContractAddress`) - The token address.
     /// - (`u128`) - The amount to deposit.
-    /// - ([`EncNote`](client::objects::EncNote)) - The encrypted note to be stored.
+    /// - ([`EncNote`](privacy::objects::EncNote)) - The encrypted note to be stored.
     ///
     /// #### Preconditions
     /// - A self-channel exists for `new_note.recipient_addr` with `new_note.token` for
@@ -160,18 +161,18 @@ pub trait IClient<T> {
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_OWNER_PRIVATE_KEY`](client::errors::ZERO_OWNER_PRIVATE_KEY): Thrown if
+    /// - [`ZERO_OWNER_PRIVATE_KEY`](privacy::errors::ZERO_OWNER_PRIVATE_KEY): Thrown if
     /// `owner_private_key` is zero.
-    /// - [`ZERO_RECIPIENT_ADDR`](client::errors::ZERO_RECIPIENT_ADDR): Thrown if
+    /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if
     /// `new_note.recipient_addr` is zero.
-    /// - [`ZERO_TOKEN`](client::errors::ZERO_TOKEN): Thrown if `new_note.token` is zero.
-    /// - [`ZERO_AMOUNT`](client::errors::ZERO_AMOUNT): Thrown if `new_note.amount` is zero.
-    /// - [`RECIPIENT_NOT_REGISTERED`](client::errors::RECIPIENT_NOT_REGISTERED): Thrown if
+    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if `new_note.token` is zero.
+    /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `new_note.amount` is zero.
+    /// - [`RECIPIENT_NOT_REGISTERED`](privacy::errors::RECIPIENT_NOT_REGISTERED): Thrown if
     /// `new_note.recipient_addr` is not registered in the server.
-    /// - [`CHANNEL_NOT_FOUND`](client::errors::CHANNEL_NOT_FOUND): Thrown if a self-channel for
+    /// - [`CHANNEL_NOT_FOUND`](privacy::errors::CHANNEL_NOT_FOUND): Thrown if a self-channel for
     /// `new_note.recipient_addr` with `new_note.token` doesn't exist with the given
     /// `owner_private_key`.
-    /// - [`NOTE_INDEX_NOT_SEQUENTIAL`](client::errors::NOTE_INDEX_NOT_SEQUENTIAL): Thrown if
+    /// - [`NOTE_INDEX_NOT_SEQUENTIAL`](privacy::errors::NOTE_INDEX_NOT_SEQUENTIAL): Thrown if
     /// `new_note.index` is not sequential (`new_note.index != 0` and `new_note.index - 1` does not
     /// exist).
     ///
@@ -191,7 +192,7 @@ pub trait IClient<T> {
     /// - `owner_private_key` (`felt252`) - The owner's private key. Must not be zero.
     /// - `withdrawal_target` (`ContractAddress`) - The address where the funds will be withdrawn
     /// to. Must not be zero.
-    /// - `note_to_withdraw` ([`NotePath`](client::objects::NotePath)) - The note to be withdrawn.
+    /// - `note_to_withdraw` ([`NotePath`](privacy::objects::NotePath)) - The note to be withdrawn.
     ///
     /// #### Returns
     /// - (`ContractAddress`) - The address to transfer the withdrawn funds to.
@@ -209,12 +210,12 @@ pub trait IClient<T> {
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_OWNER_ADDR`](client::errors::ZERO_OWNER_ADDR): Thrown if `owner_addr` is zero.
-    /// - [`ZERO_OWNER_PRIVATE_KEY`](client::errors::ZERO_OWNER_PRIVATE_KEY): Thrown if
+    /// - [`ZERO_OWNER_ADDR`](privacy::errors::ZERO_OWNER_ADDR): Thrown if `owner_addr` is zero.
+    /// - [`ZERO_OWNER_PRIVATE_KEY`](privacy::errors::ZERO_OWNER_PRIVATE_KEY): Thrown if
     /// `owner_private_key` is zero.
-    /// - [`ZERO_WITHDRAWAL_TARGET`](client::errors::ZERO_WITHDRAWAL_TARGET): Thrown if
+    /// - [`ZERO_WITHDRAWAL_TARGET`](privacy::errors::ZERO_WITHDRAWAL_TARGET): Thrown if
     /// `withdrawal_target` is zero.
-    /// - [`NOTE_NOT_FOUND`](client::errors::NOTE_NOT_FOUND): Thrown if the note is not found.
+    /// - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if the note is not found.
     /// // TODO - Consider adding "Index out of bounds".
     ///
     /// #### Access Control
@@ -257,13 +258,13 @@ pub trait IServer<T> {
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_RECIPIENT_ADDR`](client::errors::ZERO_RECIPIENT_ADDR): Thrown if `recipient_addr`
+    /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if `recipient_addr`
     /// is zero.
-    /// - [`ZERO_ENC_CHANNEL_INFO`](client::errors::ZERO_ENC_CHANNEL_INFO): Thrown if one of the
+    /// - [`ZERO_ENC_CHANNEL_INFO`](privacy::errors::ZERO_ENC_CHANNEL_INFO): Thrown if one of the
     /// fields in `enc_channel_info` is zero.
-    /// - [`ZERO_CHANNEL_ID`](client::errors::ZERO_CHANNEL_ID): Thrown if `channel_id` is
+    /// - [`ZERO_CHANNEL_ID`](privacy::errors::ZERO_CHANNEL_ID): Thrown if `channel_id` is
     /// zero.
-    /// - [`CHANNEL_ALREADY_EXISTS`](client::errors::CHANNEL_ALREADY_EXISTS): Thrown if the channel
+    /// - [`CHANNEL_ALREADY_EXISTS`](privacy::errors::CHANNEL_ALREADY_EXISTS): Thrown if the channel
     /// already exists.
     ///
     /// #### Access Control
@@ -400,9 +401,9 @@ pub trait IServer<T> {
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_PUBLIC_KEY`](client::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is
+    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is
     /// zero.
-    /// - [`USER_ALREADY_REGISTERED`](client::errors::USER_ALREADY_REGISTERED): Thrown if the
+    /// - [`USER_ALREADY_REGISTERED`](privacy::errors::USER_ALREADY_REGISTERED): Thrown if the
     /// caller has already registered a public key.
     ///
     /// #### Access Control
@@ -451,9 +452,9 @@ pub trait IServer<T> {
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_PUBLIC_KEY`](client::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is zero.
-    /// - [`USER_NOT_REGISTERED`](client::errors::USER_NOT_REGISTERED): Thrown if the caller has not
-    /// registered a public key.
+    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is zero.
+    /// - [`USER_NOT_REGISTERED`](privacy::errors::USER_NOT_REGISTERED): Thrown if the caller has
+    /// not registered a public key.
     ///
     /// #### Access Control
     /// - Self-service only. The caller can only replace their own public key.
@@ -482,13 +483,13 @@ pub trait IServer<T> {
     ///
     /// #### Reverts
     /// TODO: Figure out a way to link external errors.
-    /// - [`ZERO_USER_ADDR`](client::errors::ZERO_USER_ADDR): Thrown if `user_addr` is zero.
-    /// - [`ZERO_TOKEN`](client::errors::ZERO_TOKEN): Thrown if `token` is zero.
-    /// - [`ZERO_AMOUNT`](client::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
-    /// - [`ZERO_NOTE_ID`](client::errors::ZERO_NOTE_ID): Thrown if `note.id` is zero.
-    /// - [`ZERO_ENC_NOTE_VALUE`](client::errors::ZERO_ENC_NOTE_VALUE): Thrown if
+    /// - [`ZERO_USER_ADDR`](privacy::errors::ZERO_USER_ADDR): Thrown if `user_addr` is zero.
+    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if `token` is zero.
+    /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
+    /// - [`ZERO_NOTE_ID`](privacy::errors::ZERO_NOTE_ID): Thrown if `note.id` is zero.
+    /// - [`ZERO_ENC_NOTE_VALUE`](privacy::errors::ZERO_ENC_NOTE_VALUE): Thrown if
     /// `note.enc_amount` is zero.
-    /// - [`NOTE_ALREADY_EXISTS`](client::errors::NOTE_ALREADY_EXISTS): Thrown if the note already
+    /// - [`NOTE_ALREADY_EXISTS`](privacy::errors::NOTE_ALREADY_EXISTS): Thrown if the note already
     /// exists.
     /// - [`INSUFFICIENT_ALLOWANCE`]: Thrown if the allowance is insufficient.
     /// - [`INSUFFICIENT_BALANCE`]: Thrown if the balance is insufficient.
@@ -522,15 +523,15 @@ pub trait IServer<T> {
     /// - TODO
     ///
     /// #### Reverts
-    /// - [`EMPTY_NULLIFIERS`](client::errors::EMPTY_NULLIFIERS): Thrown if `nullifiers` is empty.
-    /// - [`EMPTY_NEW_NOTES`](client::errors::EMPTY_NEW_NOTES): Thrown if `new_notes` is empty.
-    /// - [`ZERO_NULLIFIER`](client::errors::ZERO_NULLIFIER): Thrown if a nullifier is zero.
-    /// - [`NULLIFIER_ALREADY_EXISTS`](client::errors::NULLIFIER_ALREADY_EXISTS): Thrown if a
+    /// - [`EMPTY_NULLIFIERS`](privacy::errors::EMPTY_NULLIFIERS): Thrown if `nullifiers` is empty.
+    /// - [`EMPTY_NEW_NOTES`](privacy::errors::EMPTY_NEW_NOTES): Thrown if `new_notes` is empty.
+    /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if a nullifier is zero.
+    /// - [`NULLIFIER_ALREADY_EXISTS`](privacy::errors::NULLIFIER_ALREADY_EXISTS): Thrown if a
     /// nullifier already exists.
-    /// - [`ZERO_NOTE_ID`](client::errors::ZERO_NOTE_ID): Thrown if a note id is zero.
-    /// - [`ZERO_ENC_NOTE_VALUE`](client::errors::ZERO_ENC_NOTE_VALUE): Thrown if a note encrypted
+    /// - [`ZERO_NOTE_ID`](privacy::errors::ZERO_NOTE_ID): Thrown if a note id is zero.
+    /// - [`ZERO_ENC_NOTE_VALUE`](privacy::errors::ZERO_ENC_NOTE_VALUE): Thrown if a note encrypted
     /// amount is zero.
-    /// - [`NOTE_ALREADY_EXISTS`](client::errors::NOTE_ALREADY_EXISTS): Thrown if a note already
+    /// - [`NOTE_ALREADY_EXISTS`](privacy::errors::NOTE_ALREADY_EXISTS): Thrown if a note already
     /// exists.
     ///
     /// #### Access Control
@@ -557,12 +558,12 @@ pub trait IServer<T> {
     /// - TODO
     ///
     /// #### Reverts
-    /// - [`ZERO_RECIPIENT_ADDR`](client::errors::ZERO_RECIPIENT_ADDR): Thrown if `recipient_addr`
+    /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if `recipient_addr`
     /// is zero.
-    /// - [`ZERO_TOKEN`](client::errors::ZERO_TOKEN): Thrown if `token` is zero.
-    /// - [`ZERO_AMOUNT`](client::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
-    /// - [`ZERO_NULLIFIER`](client::errors::ZERO_NULLIFIER): Thrown if `nullifier` is zero.
-    /// - [`NULLIFIER_ALREADY_EXISTS`](client::errors::NULLIFIER_ALREADY_EXISTS): Thrown if the
+    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if `token` is zero.
+    /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
+    /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if `nullifier` is zero.
+    /// - [`NULLIFIER_ALREADY_EXISTS`](privacy::errors::NULLIFIER_ALREADY_EXISTS): Thrown if the
     /// nullifier already exists.
     ///
     /// #### Access Control
