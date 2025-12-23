@@ -1,4 +1,4 @@
-use privacy::objects::{EncChannelInfo, EncNote, NewNote, NotePath};
+use privacy::objects::{EncChannelInfo, EncNote, NewNote, NotePath, ServerAction};
 use starknet::ContractAddress;
 
 // TODO: Use same naming convention for the functions. (owner/sender,
@@ -262,7 +262,7 @@ pub trait IServer<T> {
     /// fields in `enc_channel_info` is zero.
     /// - [`ZERO_CHANNEL_ID`](privacy::errors::ZERO_CHANNEL_ID): Thrown if `channel_id` is
     /// zero.
-    /// - [`CHANNEL_ALREADY_EXISTS`](privacy::errors::CHANNEL_ALREADY_EXISTS): Thrown if the channel
+    /// - [`VALUE_ALREADY_EXISTS`](privacy::errors::VALUE_ALREADY_EXISTS): Thrown if the channel
     /// already exists.
     ///
     /// #### Access Control
@@ -443,6 +443,28 @@ pub trait IServer<T> {
         amount: u128,
         nullifier: felt252,
     );
+
+    /// Executes a list of actions atomically.
+    ///
+    /// #### Parameters
+    /// - `actions` (`Span<ServerAction>`): The list of actions to execute.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Preconditions
+    /// - TODO
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// - [`VALUE_ALREADY_EXISTS`](privacy::errors::VALUE_ALREADY_EXISTS): Thrown if
+    /// `WriteIfZero` action is executed and the value at the specified storage path already exists.
+    ///
+    /// #### Access Control
+    /// - TODO
+    fn execute_actions(ref self: T, actions: Span<ServerAction>);
 }
 
 #[starknet::interface]

@@ -7,7 +7,7 @@ use privacy::interface::{
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
-use privacy::objects::{EncChannelInfo, EncNote, NewNote, NotePath};
+use privacy::objects::{EncChannelInfo, EncNote, NewNote, NotePath, ServerAction};
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{
     ClientInternalTrait, ServerInternalTrait, deploy_for_test as deploy_privacy_for_test,
@@ -540,6 +540,17 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
         self: @PrivacyCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>,
     ) -> Result<(), Array<felt252>> {
         IServerSafeDispatcher { contract_address: *self.address }.transfer(:nullifiers, :new_notes)
+    }
+
+    fn execute_actions(self: @PrivacyCfg, actions: Span<ServerAction>) {
+        IServerDispatcher { contract_address: *self.address }.execute_actions(:actions);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_execute_actions(
+        self: @PrivacyCfg, actions: Span<ServerAction>,
+    ) -> Result<(), Array<felt252>> {
+        IServerSafeDispatcher { contract_address: *self.address }.execute_actions(:actions)
     }
 }
 

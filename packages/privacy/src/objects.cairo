@@ -91,3 +91,12 @@ pub struct EncNote {
     /// The encrypted amount of the note.
     pub enc_amount: felt252,
 }
+
+/// An action to be executed by the server.
+#[derive(Serde, Copy, Drop, Debug)]
+pub enum ServerAction {
+    /// Verify that a map value is zero/empty and then write to it.
+    WriteIfZero: (felt252, felt252),
+    /// Append a value to a vector in storage.
+    AppendToVec: (ContractAddress, EncChannelInfo),
+}
