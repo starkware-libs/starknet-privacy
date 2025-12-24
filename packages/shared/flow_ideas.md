@@ -82,3 +82,21 @@
 4. Try to create a note to a channel associated with the old public key after public key replacement.
 5. Try to open a new channel using the old public key (should fail, only new public key should be accepted).
 6. Migrate (transfer) all notes belonging to the user from their old public key to the new public key after replacement.
+
+## Swap and Deposit
+### Swap Executor
+1. Swap and deposit end-to-end: User swaps tokens and receives deposit in privacy pool.
+2. Swap with different exchange rates: Test various AMM exchange rates (1:1, 2:1, 1:2).
+3. Swap with zero output: AMM returns zero tokens (should not deposit).
+4. Swap multiple tokens: User swaps token A for token B, then token B for token C.
+5. Swap and transfer: User swaps, receives note, then transfers note to another user.
+6. Swap and withdraw: User swaps, receives note, then withdraws the note.
+7. Multiple swaps in sequence: User performs multiple swaps in the same transaction flow.
+8. Swap with insufficient AMM liquidity: AMM doesn't have enough output tokens.
+9. Swap with slippage protection: Test with min_output_amount in swap calldata.
+10. Swap executor unauthorized access: Non-privacy-pool contract tries to call swap_and_deposit.
+11. Swap executor with invalid note: Note doesn't exist in server before swap.
+12. Swap executor balance tracking: Verify only the difference (received amount) is deposited.
+13. Swap executor with different owners: Swap for user A, then swap for user B.
+14. Swap executor partial swap: AMM returns less than expected (due to fees or slippage).
+15. Swap executor with multiple tokens in one transaction: Complex multi-token swap scenarios.

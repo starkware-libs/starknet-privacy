@@ -550,7 +550,7 @@ impl DefaultTestImpl of Default<Test> {
     }
 }
 
-pub(crate) fn deploy_privacy() -> PrivacyCfg {
+pub fn deploy_privacy() -> PrivacyCfg {
     let contract_class_hash = declare(contract: "Privacy").unwrap().contract_class().class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
     let (contract_address, _) = deploy_privacy_for_test(

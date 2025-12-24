@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "packages/privacy",
+    "packages/swap_executor",
 ]
 
 
