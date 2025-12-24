@@ -97,6 +97,8 @@ pub struct EncNote {
 pub enum ServerAction {
     /// Verify that a map value is zero/empty and then write to it.
     WriteIfZero: (felt252, felt252),
+    /// Verify that a storage value is non-zero and then write to it.
+    WriteIfNonZero: (felt252, felt252),
     /// Append a value to a vector in storage.
     AppendToVec: (ContractAddress, EncChannelInfo),
 }
