@@ -424,10 +424,10 @@ fn test_replace_public_key_assertions() {
     let result = user.safe_replace_public_key();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
-    // Catch USER_NOT_REGISTERED.
+    // Catch ZERO_VALUE.
     let unregistered_user = test.new_user();
     let result = unregistered_user.safe_replace_public_key();
-    assert_panic_with_felt_error(:result, expected_error: errors::USER_NOT_REGISTERED);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
 }
 
 #[test]
@@ -789,6 +789,44 @@ fn test_execute_write_if_zero_assertions() {
     test.cfg.execute_actions(actions.span());
     let result = test.cfg.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+}
+
+#[test]
+fn test_execute_write_if_non_zero() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+
+    // Set initial public key.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((storage_path_felt, user.public_key)),
+    ];
+    test.cfg.execute_actions(actions.span());
+    assert_eq!(user.get_public_key(), user.public_key);
+
+    // Change public key.
+    user.new_public_key();
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfNonZero((storage_path_felt, user.public_key)),
+    ];
+    test.cfg.execute_actions(actions.span());
+    assert_eq!(user.get_public_key(), user.public_key);
+}
+
+#[test]
+fn test_execute_write_if_non_zero_assertions() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfNonZero((storage_path_felt, user.public_key)),
+    ];
+    let result = test.cfg.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
 }
 
 #[test]
