@@ -88,7 +88,8 @@ pub mod SwapExecutor {
             // Deposit the received amount to the privacy pool.
             if received_amount > 0 {
                 // Approve the privacy pool to spend the output tokens.
-                output_token_dispatcher.approve(spender: privacy_pool_addr, amount: received_amount);
+                output_token_dispatcher
+                    .approve(spender: privacy_pool_addr, amount: received_amount);
 
                 let views = IViewsDispatcher { contract_address: privacy_pool_addr };
                 // Get the encrypted amount from the server using the note_id.
