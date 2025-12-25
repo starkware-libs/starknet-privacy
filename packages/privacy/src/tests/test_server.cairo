@@ -734,13 +734,13 @@ fn test_withdraw_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NULLIFIER);
 
-    // Catch NULLIFIER_ALREADY_EXISTS
+    // Catch NON_ZERO_VALUE
     token.supply(:user, :amount);
     user.deposit_server(:token, :amount, :note);
     user.withdraw_server(recipient_addr: recipient.address, :token, :amount, :nullifier);
     let result = user
         .safe_withdraw_server(recipient_addr: recipient.address, :token, :amount, :nullifier);
-    assert_panic_with_felt_error(:result, expected_error: errors::NULLIFIER_ALREADY_EXISTS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -788,6 +788,23 @@ fn test_execute_write_if_zero() {
 
     // Verify note was written.
     assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
+
+    // Verify nullifier doesn't exist and write.
+    let nullifier = test.new_nullifier();
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+    );
+    let current_value: bool = generic_load(
+        target: test.cfg.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, false);
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify nullifier was written.
+    assert_eq!(test.cfg.nullifier_exists(:nullifier), true);
 }
 
 #[test]
@@ -798,6 +815,18 @@ fn test_execute_write_if_zero_assertions() {
     // Catch NON_ZERO_VALUE
     let storage_path_felt = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+    ];
+    test.cfg.execute_actions(actions.span());
+    let result = test.cfg.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+
+    // Catch NON_ZERO_VALUE for nullifiers.
+    let nullifier = test.new_nullifier();
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
@@ -930,4 +959,47 @@ fn test_execute_transfer_from_assertions() {
     ];
     let result = test.cfg.safe_execute_actions(actions.span());
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
+}
+
+#[test]
+fn test_execute_transfer_to() {
+    let mut test: Test = Default::default();
+    let token = test.new_token_server();
+    let recipient = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+
+    // Supply tokens to the server (via deposit).
+    let user = test.new_user();
+    let note = test.new_note_server(:amount);
+    token.supply(:user, :amount);
+    user.deposit_server(:token, :amount, :note);
+
+    // Verify balances before transfer.
+    assert_eq!(token.balance_of(address: test.cfg.address), amount.into());
+    assert_eq!(token.balance_of(address: recipient.address), Zero::zero());
+
+    // Test transfer_to.
+    let actions: Array<ServerAction> = array![
+        ServerAction::TransferTo((token.contract_address(), recipient.address, amount)),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify balances after transfer.
+    assert_eq!(token.balance_of(address: test.cfg.address), Zero::zero());
+    assert_eq!(token.balance_of(address: recipient.address), amount.into());
+}
+
+#[test]
+fn test_execute_transfer_to_assertions() {
+    let mut test: Test = Default::default();
+    let token = test.new_token_server();
+    let recipient = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+
+    // Catch INSUFFICIENT_BALANCE.
+    let actions: Array<ServerAction> = array![
+        ServerAction::TransferTo((token.contract_address(), recipient.address, amount)),
+    ];
+    let result = test.cfg.safe_execute_actions(actions.span());
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 }
