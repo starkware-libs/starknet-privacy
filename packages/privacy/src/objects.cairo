@@ -96,10 +96,14 @@ pub struct EncNote {
 #[derive(Serde, Copy, Drop, Debug)]
 pub enum ServerAction {
     /// Verify that a map value is zero/empty and then write to it.
+    /// (storage_address: felt252, new_value: felt252)
     WriteIfZero: (felt252, felt252),
-    /// Verify that a storage value is non-zero and then write to it.
     // TODO: Consider merging with WriteIfZero.
+    /// Verify that a storage value is non-zero and then write to it.
+    /// (storage_address: felt252, new_value: felt252)
     WriteIfNonZero: (felt252, felt252),
+    // TODO: Generalize to any vector.
     /// Append a value to a vector in storage.
+    /// (recipient_addr: ContractAddress, enc_channel_info: EncChannelInfo)
     AppendToVec: (ContractAddress, EncChannelInfo),
 }
