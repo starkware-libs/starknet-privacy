@@ -394,13 +394,11 @@ pub trait IServer<T> {
     /// - [`EMPTY_NULLIFIERS`](privacy::errors::EMPTY_NULLIFIERS): Thrown if `nullifiers` is empty.
     /// - [`EMPTY_NEW_NOTES`](privacy::errors::EMPTY_NEW_NOTES): Thrown if `new_notes` is empty.
     /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if a nullifier is zero.
-    /// - [`NULLIFIER_ALREADY_EXISTS`](privacy::errors::NULLIFIER_ALREADY_EXISTS): Thrown if a
-    /// nullifier already exists.
     /// - [`ZERO_NOTE_ID`](privacy::errors::ZERO_NOTE_ID): Thrown if a note id is zero.
     /// - [`ZERO_ENC_NOTE_VALUE`](privacy::errors::ZERO_ENC_NOTE_VALUE): Thrown if a note encrypted
     /// amount is zero.
-    /// - [`NOTE_ALREADY_EXISTS`](privacy::errors::NOTE_ALREADY_EXISTS): Thrown if a note already
-    /// exists.
+    /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if one of the notes or
+    /// nullifiers already exist.
     ///
     /// #### Access Control
     /// - TODO

@@ -619,10 +619,10 @@ fn test_transfer_assertions() {
         .safe_transfer(nullifiers: [Zero::zero()].span(), new_notes: [note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NULLIFIER);
 
-    // Catch NULLIFIER_ALREADY_EXISTS
+    // Catch NON_ZERO_VALUE (nullifier)
     test.cfg.transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
     let result = test.cfg.safe_transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NULLIFIER_ALREADY_EXISTS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch ZERO_NOTE_ID
     let nullifier = test.new_nullifier();
@@ -642,13 +642,13 @@ fn test_transfer_assertions() {
         .safe_transfer(nullifiers: [nullifier].span(), new_notes: [zero_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ENC_NOTE_VALUE);
 
-    // Catch NOTE_ALREADY_EXISTS
+    // Catch NON_ZERO_VALUE (note)
     let nullifier = test.new_nullifier(); // New nullifier because of snforge revert storage bug.
     let note = test.new_note_server(:amount); // New note because of snforge revert storage bug.
     token.supply(:user, :amount);
     user.deposit_server(:token, :amount, :note);
     let result = test.cfg.safe_transfer(nullifiers: [nullifier].span(), new_notes: [note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]

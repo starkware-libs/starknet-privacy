@@ -408,15 +408,32 @@ pub mod Privacy {
             assert(!nullifiers.is_empty(), errors::EMPTY_NULLIFIERS);
             assert(!new_notes.is_empty(), errors::EMPTY_NEW_NOTES);
 
-            // Mark notes as used.
+            let mut actions: Array<ServerAction> = array![];
+
+            // Add actions to mark notes as used.
             for nullifier in nullifiers {
-                self._use_note(nullifier: *nullifier);
+                assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
+                actions
+                    .append(
+                        ServerAction::WriteIfZero(
+                            (self.nullifiers.entry(*nullifier).into(), true.into()),
+                        ),
+                    );
             }
 
-            // Create new notes.
+            // Add actions to create new notes.
             for note in new_notes {
-                self._create_note(note: *note);
+                assert(note.id.is_non_zero(), errors::ZERO_NOTE_ID);
+                assert(note.enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
+                actions
+                    .append(
+                        ServerAction::WriteIfZero(
+                            (self.notes.entry((*note).id).into(), (*note).enc_amount),
+                        ),
+                    );
             }
+
+            self.execute_actions(actions.span());
         }
 
         fn withdraw(
@@ -442,6 +459,7 @@ pub mod Privacy {
 
     #[generate_trait]
     pub impl ServerInternalImpl of ServerInternalTrait {
+        // TODO: Remove.
         fn _create_note(ref self: ContractState, note: EncNote) {
             // Assert inputs are not zero.
             // TODO: Remove assert not zero for hashes?
@@ -455,6 +473,7 @@ pub mod Privacy {
             self.notes.write(note.id, note.enc_amount);
         }
 
+        // TODO: Remove.
         fn _use_note(ref self: ContractState, nullifier: felt252) {
             // Assert inputs are not zero.
             // TODO: Remove assert not zero for hashes?
