@@ -1,6 +1,7 @@
 use core::array::Span;
 use core::num::traits::Zero;
 use privacy::objects::EncNote;
+use privacy::privacy::Privacy::{ServerInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use snforge_std::{CustomToken, DeclareResultTrait, Token, declare, interact_with_state};
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
@@ -8,9 +9,6 @@ use starkware_utils_testing::test_utils::{Deployable, TokenConfig};
 use swap_executor::interface::{ISwapExecutorSafeDispatcher, ISwapExecutorSafeDispatcherTrait};
 use swap_executor::swap_executor::SwapExecutor::deploy_for_test as deploy_swap_executor_for_test;
 use swap_executor::tests::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
-use swap_executor::tests::mock_privacy::MockPrivacy::{
-    MockPrivacyInternalTrait, deploy_for_test as deploy_mock_privacy_for_test,
-};
 
 pub(crate) mod constants {
     use core::num::traits::Pow;
@@ -77,7 +75,7 @@ impl DefaultTestImpl of Default<Test> {
 }
 
 pub(crate) fn deploy_swap_executor() -> SwapExecutorCfg {
-    let privacy = deploy_mock_privacy();
+    let privacy = deploy_privacy();
 
     let contract_class_hash = declare(contract: "SwapExecutor")
         .unwrap()
@@ -91,13 +89,13 @@ pub(crate) fn deploy_swap_executor() -> SwapExecutorCfg {
     SwapExecutorCfg { address: contract_address, privacy }
 }
 
-pub(crate) fn deploy_mock_privacy() -> ContractAddress {
-    let contract_class_hash = declare(contract: "MockPrivacy").unwrap().contract_class().class_hash;
+pub(crate) fn deploy_privacy() -> ContractAddress {
+    let contract_class_hash = declare(contract: "Privacy").unwrap().contract_class().class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
-    let (contract_address, _) = deploy_mock_privacy_for_test(
+    let (contract_address, _) = deploy_privacy_for_test(
         class_hash: *contract_class_hash, :deployment_params,
     )
-        .expect('MockPrivacy deployment failed');
+        .expect('Privacy deployment failed');
     contract_address
 }
 
@@ -117,8 +115,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         interact_with_state(
             *self.privacy,
             || {
-                let mut state =
-                    swap_executor::tests::mock_privacy::MockPrivacy::contract_state_for_testing();
+                let mut state = privacy::privacy::Privacy::contract_state_for_testing();
                 state._create_note(:note)
             },
         )
