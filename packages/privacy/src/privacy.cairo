@@ -316,6 +316,9 @@ pub mod Privacy {
                     ServerAction::TransferFrom((
                         sender, token, amount,
                     )) => { self._execute_transfer_from(:sender, :token, :amount); },
+                    ServerAction::TransferTo((
+                        recipient, token, amount,
+                    )) => { self._execute_transfer_to(:token, :recipient, :amount); },
                 };
             };
         }
@@ -429,10 +432,11 @@ pub mod Privacy {
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
             assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
 
-            self._use_note(:nullifier);
-
-            IERC20Dispatcher { contract_address: token }
-                .checked_transfer(recipient: recipient_addr, amount: amount.into());
+            let actions: Array<ServerAction> = array![
+                ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into())),
+                ServerAction::TransferTo((recipient_addr, token, amount)),
+            ];
+            self.execute_actions(actions.span());
         }
     }
 
@@ -493,6 +497,16 @@ pub mod Privacy {
                 .checked_transfer_from(
                     :sender, recipient: get_contract_address(), amount: amount.into(),
                 );
+        }
+
+        fn _execute_transfer_to(
+            ref self: ContractState,
+            token: ContractAddress,
+            recipient: ContractAddress,
+            amount: u128,
+        ) {
+            IERC20Dispatcher { contract_address: token }
+                .checked_transfer(:recipient, amount: amount.into());
         }
     }
 

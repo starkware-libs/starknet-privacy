@@ -104,4 +104,6 @@ pub enum ServerAction {
     AppendToVec: (ContractAddress, EncChannelInfo),
     /// Transfer tokens from a user to the contract (ERC20 transfer_from).
     TransferFrom: (ContractAddress, ContractAddress, u128),
+    /// Transfer tokens from the contract to a recipient (ERC20 transfer).
+    TransferTo: (ContractAddress, ContractAddress, u128),
 }
