@@ -1,9 +1,10 @@
 use core::num::traits::Zero;
 use privacy::errors;
+use privacy::objects::ServerAction;
 use privacy::tests::test_utils::{
     PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
 };
-use snforge_std::{CustomToken, Token};
+use snforge_std::{CustomToken, Token, map_entry_address};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
@@ -106,10 +107,10 @@ fn test_open_channel_assertions() {
         .safe_open_channel(:recipient_addr, :enc_channel_info, channel_id: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_ID);
 
-    // Catch CHANNEL_ALREADY_EXISTS.
+    // Catch NON_ZERO_VALUE.
     test.cfg.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
     let result = test.cfg.safe_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
-    assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_ALREADY_EXISTS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -740,3 +741,57 @@ fn test_withdraw_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NULLIFIER_ALREADY_EXISTS);
 }
 
+#[test]
+fn test_execute_write_if_zero() {
+    let mut test: Test = Default::default();
+    let (_, channel_id) = test.new_channel();
+
+    // Compute storage path felt using contract state.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+    );
+
+    // Verify channel doesn't exist and write.
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify channel exists.
+    assert!(test.cfg.channel_exists(:channel_id));
+}
+
+
+#[test]
+fn test_execute_write_if_zero_assertions() {
+    let mut test: Test = Default::default();
+    let (_, channel_id) = test.new_channel();
+
+    // Catch NON_ZERO_VALUE
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+    ];
+    test.cfg.execute_actions(actions.span());
+    let result = test.cfg.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+}
+
+#[test]
+fn test_execute_append_to_vector() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let (enc_channel_info, _) = test.new_channel();
+
+    // Append channel to vector
+    let actions: Array<ServerAction> = array![
+        ServerAction::AppendToVec((user.address, enc_channel_info)),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify channel was added
+    assert_eq!(user.get_num_of_channels(), 1);
+    assert_eq!(user.get_channel_info(channel_index: 0), enc_channel_info);
+}
