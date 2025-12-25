@@ -327,11 +327,11 @@ fn test_register_assertions() {
     let result = user.safe_register();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
-    // Catch USER_ALREADY_REGISTERED.
+    // Catch NON_ZERO_VALUE.
     user.public_key = non_zero_public_key;
     user.register();
     let result = user.safe_register();
-    assert_panic_with_felt_error(:result, expected_error: errors::USER_ALREADY_REGISTERED);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -744,6 +744,7 @@ fn test_withdraw_assertions() {
 #[test]
 fn test_execute_write_if_zero() {
     let mut test: Test = Default::default();
+    let user = test.new_user();
     let (_, channel_id) = test.new_channel();
 
     // Compute storage path felt using contract state.
@@ -759,8 +760,19 @@ fn test_execute_write_if_zero() {
 
     // Verify channel exists.
     assert!(test.cfg.channel_exists(:channel_id));
-}
 
+    // Verify user is not registered and write public key.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((storage_path_felt, user.public_key)),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify public key was written.
+    assert_eq!(user.get_public_key(), user.public_key);
+}
 
 #[test]
 fn test_execute_write_if_zero_assertions() {
