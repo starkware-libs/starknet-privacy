@@ -327,14 +327,12 @@ pub mod Privacy {
             // TODO: Consider add `recipient_public_key` to the params and assert it is the current
             // public key of `recipient_addr`.
 
-            // Build action list.
             let actions: Array<ServerAction> = array![
                 ServerAction::WriteIfZero(
                     (self.channel_exists.entry(channel_id).into(), true.into()),
                 ),
                 ServerAction::AppendToVec((recipient_addr, enc_channel_info)),
             ];
-            // Execute actions.
             self.execute_actions(actions.span());
         }
 
@@ -348,12 +346,9 @@ pub mod Privacy {
 
             // TODO: Verify the proof on the encrypted compliance viewing key from the client side.
 
-            // Build action list.
             let actions: Array<ServerAction> = array![
                 ServerAction::WriteIfZero((self.public_key.entry(user_addr).into(), public_key)),
             ];
-
-            // Execute actions.
             self.execute_actions(actions.span());
         }
 
