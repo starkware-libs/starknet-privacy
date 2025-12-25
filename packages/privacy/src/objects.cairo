@@ -96,14 +96,20 @@ pub struct EncNote {
 #[derive(Serde, Copy, Drop, Debug)]
 pub enum ServerAction {
     /// Verify that a storage value is zero/empty and then write to it.
+    /// (storage_address: felt252, new_value: felt252)
     WriteIfZero: (felt252, felt252),
-    /// Verify that a storage value is non-zero and then write to it.
     // TODO: Consider merging with WriteIfZero.
+    /// Verify that a storage value is non-zero and then write to it.
+    /// (storage_address: felt252, new_value: felt252)
     WriteIfNonZero: (felt252, felt252),
+    // TODO: Generalize to any vector.
     /// Append a value to a vector in storage.
+    /// (recipient_addr: ContractAddress, enc_channel_info: EncChannelInfo)
     AppendToVec: (ContractAddress, EncChannelInfo),
     /// Transfer tokens from a user to the contract (ERC20 transfer_from).
+    /// (sender: ContractAddress, token: ContractAddress, amount: u128)
     TransferFrom: (ContractAddress, ContractAddress, u128),
     /// Transfer tokens from the contract to a recipient (ERC20 transfer).
+    /// (recipient: ContractAddress, token: ContractAddress, amount: u128)
     TransferTo: (ContractAddress, ContractAddress, u128),
 }
