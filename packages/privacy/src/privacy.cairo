@@ -296,8 +296,10 @@ pub mod Privacy {
             for action in actions {
                 match *action {
                     ServerAction::WriteIfZero((
-                        storage_address, value,
-                    )) => { self._execute_write_if_zero(:storage_address, :value); },
+                        storage_address, new_value,
+                    )) => {
+                        self._execute_write(:storage_address, :new_value, require_zero: true);
+                    },
                     ServerAction::AppendToVec((
                         recipient_addr, enc_channel_info,
                     )) => {
@@ -305,6 +307,11 @@ pub mod Privacy {
                             ._execute_append_to_vector(
                                 key: recipient_addr, value: enc_channel_info,
                             );
+                    },
+                    ServerAction::WriteIfNonZero((
+                        storage_address, new_value,
+                    )) => {
+                        self._execute_write(:storage_address, :new_value, require_zero: false);
                     },
                 };
             };
@@ -361,13 +368,12 @@ pub mod Privacy {
             // Assert that input is valid.
             assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
 
-            // Assert that user has already registered.
-            assert(self.get_public_key(:user_addr).is_non_zero(), errors::USER_NOT_REGISTERED);
-
             // TODO: Verify the proof from the client side.
 
-            // Replace the key in storage.
-            self.public_key.write(user_addr, public_key);
+            let actions: Array<ServerAction> = array![
+                ServerAction::WriteIfNonZero((self.public_key.entry(user_addr).into(), public_key)),
+            ];
+            self.execute_actions(actions.span());
         }
 
         fn deposit(
@@ -453,12 +459,20 @@ pub mod Privacy {
             self.nullifiers.write(nullifier, true);
         }
 
-        fn _execute_write_if_zero(
-            ref self: ContractState, storage_address: felt252, value: felt252,
+        fn _execute_write(
+            ref self: ContractState,
+            storage_address: felt252,
+            new_value: felt252,
+            require_zero: bool,
         ) {
             let mut target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
-            assert(target.read().is_zero(), errors::NON_ZERO_VALUE);
-            target.write(value);
+            let current_value = target.read();
+            if require_zero {
+                assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
+            } else {
+                assert(current_value.is_non_zero(), errors::ZERO_VALUE);
+            }
+            target.write(new_value);
         }
 
         // TODO: Make generic.
