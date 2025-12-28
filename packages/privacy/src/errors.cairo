@@ -26,7 +26,6 @@ pub const NOTE_ALREADY_EXISTS: felt252 = 'NOTE_ALREADY_EXISTS';
 pub const ZERO_NULLIFIER: felt252 = 'ZERO_NULLIFIER';
 pub const NULLIFIER_ALREADY_EXISTS: felt252 = 'NULLIFIER_ALREADY_EXISTS';
 pub const ZERO_PUBLIC_KEY: felt252 = 'ZERO_PUBLIC_KEY';
-pub const ZERO_USER_ADDR: felt252 = 'ZERO_USER_ADDR';
 pub const NON_ZERO_VALUE: felt252 = 'NON_ZERO_VALUE';
 pub const ZERO_VALUE: felt252 = 'ZERO_VALUE';
 // TODO: Move to internal errors?

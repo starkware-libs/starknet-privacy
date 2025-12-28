@@ -136,7 +136,7 @@ pub mod Privacy {
 
         fn prepare_deposit(
             self: @ContractState, owner_private_key: felt252, new_note: NewNote,
-        ) -> (ContractAddress, ContractAddress, u128, EncNote) {
+        ) -> Span<ServerAction> {
             // Assert input is valid.
             assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
 
@@ -145,7 +145,13 @@ pub mod Privacy {
             let owner_addr = new_note.recipient_addr;
             let enc_note = self.create_note(:owner_addr, :owner_private_key, note: new_note);
 
-            (owner_addr, new_note.token, new_note.amount, enc_note)
+            [
+                ServerAction::WriteIfZero(
+                    (self.notes.entry(enc_note.id).into(), enc_note.enc_amount),
+                ),
+                ServerAction::TransferFrom((owner_addr, new_note.token, new_note.amount)),
+            ]
+                .span()
         }
 
         fn prepare_withdraw(
@@ -384,27 +390,6 @@ pub mod Privacy {
 
             let actions: Array<ServerAction> = array![
                 ServerAction::WriteIfNonZero((self.public_key.entry(user_addr).into(), public_key)),
-            ];
-            self.execute_actions(actions.span());
-        }
-
-        fn deposit(
-            ref self: ContractState,
-            user_addr: ContractAddress,
-            token: ContractAddress,
-            amount: u128,
-            note: EncNote,
-        ) {
-            // Assert inputs are valid.
-            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-            assert(note.id.is_non_zero(), errors::ZERO_NOTE_ID);
-            assert(note.enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
-
-            let actions: Array<ServerAction> = array![
-                ServerAction::WriteIfZero((self.notes.entry(note.id).into(), note.enc_amount)),
-                ServerAction::TransferFrom((user_addr, token, amount)),
             ];
             self.execute_actions(actions.span());
         }

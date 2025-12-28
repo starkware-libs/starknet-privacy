@@ -1,4 +1,4 @@
-use privacy::objects::{EncChannelInfo, EncNote, NewNote, NotePath, ServerAction};
+use privacy::objects::{EncChannelInfo, NewNote, NotePath, ServerAction};
 use starknet::ContractAddress;
 
 // TODO: Use same naming convention for the functions. (owner/sender,
@@ -163,6 +163,12 @@ pub trait IClient<T> {
     /// deposit from.
     /// The function encrypts a new note for the owner based on the provided details.
     ///
+    /// Returns a span containing actions to execute the deposit:
+    /// 1. `WriteIfZero` - Stores the encrypted note for the owner. Verifies that the note
+    ///    doesn't already exist (storage value is zero) and writes the encrypted note value to
+    ///    storage.
+    /// 2. `TransferFrom` - Transfers the deposit from the owner to the contract.
+    ///
     /// #### Parameters
     /// - `owner_private_key` (`felt252`) - The owner's private key. Must not be zero.
     /// - `new_note` ([`NewNote`](privacy::objects::NewNote)) - The details of the note to be
@@ -170,10 +176,8 @@ pub trait IClient<T> {
     /// `new_note.recipient_addr`, `new_note.token`, and `new_note.amount` must not be zero.
     ///
     /// #### Returns
-    /// - (`ContractAddress`) - The address to transfer the deposit from.
-    /// - (`ContractAddress`) - The token address.
-    /// - (`u128`) - The amount to deposit.
-    /// - ([`EncNote`](privacy::objects::EncNote)) - The encrypted note to be stored.
+    /// - (`Span<ServerAction>`) - A span containing the WriteIfZero and TransferFrom actions to
+    /// execute the deposit.
     ///
     /// #### Preconditions
     /// - A self-channel exists for `new_note.recipient_addr` with `new_note.token` for
@@ -199,12 +203,15 @@ pub trait IClient<T> {
     /// - [`NOTE_INDEX_NOT_SEQUENTIAL`](privacy::errors::NOTE_INDEX_NOT_SEQUENTIAL): Thrown if
     /// `new_note.index` is not sequential (`new_note.index != 0` and `new_note.index - 1` does not
     /// exist).
+    /// - [`ZERO_NOTE_ID`](privacy::errors::ZERO_NOTE_ID): Thrown if a calculated note id is zero.
+    /// - [`ZERO_ENC_NOTE_VALUE`](privacy::errors::ZERO_ENC_NOTE_VALUE): Thrown if a calculated note
+    /// encrypted amount is zero.
     ///
     /// #### Access Control
     /// - TODO
     fn prepare_deposit(
         self: @T, owner_private_key: felt252, new_note: NewNote,
-    ) -> (ContractAddress, ContractAddress, u128, EncNote);
+    ) -> Span<ServerAction>;
 
     /// Validates a withdrawal of a note and generates the nullifier and withdrawal details for the
     /// server.
@@ -308,50 +315,6 @@ pub trait IServer<T> {
     /// #### Access Control
     /// - Self-service only. The caller can only replace their own public key.
     fn replace_public_key(ref self: T, public_key: felt252);
-
-    /// Deposits funds into the contract and creates a note.
-    ///
-    /// #### Parameters
-    /// - `user_addr` (`ContractAddress`): The address of the user depositing the funds. Must not be
-    /// zero.
-    /// - `token` (`ContractAddress`): The address of the token to deposit. Must not be zero.
-    /// - `amount` (`u128`): The amount to deposit. Must not be zero.
-    /// - `note` (`EncNote`): The encrypted note to create.
-    ///
-    /// #### Returns
-    /// None
-    ///
-    /// #### Preconditions
-    /// - All inputs must not be zero.
-    /// - The note must not already exist.
-    /// - The user must have approved the contract to spend the amount.
-    /// - The user must have enough balance.
-    ///
-    /// #### Events Emitted
-    /// - TODO
-    ///
-    /// #### Reverts
-    /// TODO: Figure out a way to link external errors.
-    /// - [`ZERO_USER_ADDR`](privacy::errors::ZERO_USER_ADDR): Thrown if `user_addr` is zero.
-    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if `token` is zero.
-    /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
-    /// - [`ZERO_NOTE_ID`](privacy::errors::ZERO_NOTE_ID): Thrown if `note.id` is zero.
-    /// - [`ZERO_ENC_NOTE_VALUE`](privacy::errors::ZERO_ENC_NOTE_VALUE): Thrown if
-    /// `note.enc_amount` is zero.
-    /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the note already
-    /// exists.
-    /// - [`INSUFFICIENT_ALLOWANCE`]: Thrown if the allowance is insufficient.
-    /// - [`INSUFFICIENT_BALANCE`]: Thrown if the balance is insufficient.
-    ///
-    /// #### Access Control
-    /// - TODO
-    fn deposit(
-        ref self: T,
-        user_addr: ContractAddress,
-        token: ContractAddress,
-        amount: u128,
-        note: EncNote,
-    );
 
     /// Withdraws funds from the contract and consumes a note.
     ///
