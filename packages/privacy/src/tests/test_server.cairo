@@ -820,6 +820,26 @@ fn test_execute_write_if_zero_assertions() {
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
     ];
     test.cfg.execute_actions(actions.span());
+    let current_value: bool = generic_load(
+        target: test.cfg.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, true);
+    let result = test.cfg.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+
+    // Catch NON_ZERO_VALUE for notes.
+    let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("notes"), keys: [note.id].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((storage_path_felt, note.enc_amount)),
+    ];
+    test.cfg.execute_actions(actions.span());
+    let current_value: felt252 = generic_load(
+        target: test.cfg.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, note.enc_amount);
     let result = test.cfg.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
@@ -832,6 +852,10 @@ fn test_execute_write_if_zero_assertions() {
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
     ];
     test.cfg.execute_actions(actions.span());
+    let current_value: bool = generic_load(
+        target: test.cfg.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, true);
     let result = test.cfg.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
