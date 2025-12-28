@@ -29,6 +29,8 @@
 6. User A transfer to user B, user B to user C, user C back to A.
 7. User A transfer to users B and C, users B and C back to A.
 8. User A split one note into two notes for themselves - should fail.
+9. Make transfers and verify external balances don't change.
+10. Make transfers and test user balances in contract.
 
 ### Server
 1. Unauthorized Transfer: User tries to spend a note they don't own - should fail.
