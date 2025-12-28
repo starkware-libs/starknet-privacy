@@ -51,7 +51,7 @@ pub mod Privacy {
             recipient_addr: ContractAddress,
             token: ContractAddress,
             random: felt252,
-        ) -> (ContractAddress, EncChannelInfo, felt252) {
+        ) -> Span<ServerAction> {
             // TODO: Remove assert not zero for sender_addr, recipient_addr?
             // (will fail in the registration check).
             // TODO: Consider generate random instead of passing it as an argument.
@@ -89,7 +89,13 @@ pub mod Privacy {
             );
             let channel_id = compute_channel_id(:channel_key);
 
-            (recipient_addr, enc_channel_info, channel_id)
+            [
+                ServerAction::WriteIfZero(
+                    (self.channel_exists.entry(channel_id).into(), true.into()),
+                ),
+                ServerAction::AppendToVec((recipient_addr, enc_channel_info)),
+            ]
+                .span()
         }
 
         fn prepare_transfer(

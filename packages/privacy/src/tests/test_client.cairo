@@ -1,12 +1,13 @@
 use core::num::traits::Zero;
 use privacy::errors;
 use privacy::objects::domain_separation::enc_channel_info;
-use privacy::objects::{NewNote, NotePath};
+use privacy::objects::{NewNote, NotePath, ServerAction};
 use privacy::tests::test_utils::{Test, TestTrait, UserTrait, decrypt_channel_info};
 use privacy::utils::{
     compute_channel_id, compute_note_id, compute_nullifier, decrypt_note_amount,
     encrypt_channel_info, is_canonical_key,
 };
+use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
 
@@ -324,8 +325,6 @@ fn test_open_channel() {
 
     let (random, channel_output) = user_1
         .open_channel_with_generated_random(recipient: user_2, :token);
-    let (recipient_addr, enc_channel_info, channel_id) = channel_output;
-    assert_eq!(recipient_addr, user_2.address);
     let channel_key = user_1.compute_channel_key(recipient: user_2, :token);
     // TODO: Is it ok for tests to reuse the same util function as the contract?
     let expected_enc_channel_info = encrypt_channel_info(
@@ -336,8 +335,15 @@ fn test_open_channel() {
         sender_addr: user_1.address,
     );
     let expected_channel_id = compute_channel_id(:channel_key);
-    assert_eq!(enc_channel_info, expected_enc_channel_info);
-    assert_eq!(channel_id, expected_channel_id);
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::AppendToVec((user_2.address, expected_enc_channel_info)),
+    ]
+        .span();
+    assert_eq!(channel_output, expected_actions);
 }
 
 #[test]
@@ -348,8 +354,6 @@ fn test_open_channel_self_channel() {
     let token = test.new_token();
 
     let (random, channel_output) = user.open_channel_with_generated_random(recipient: user, :token);
-    let (recipient_addr, enc_channel_info, channel_id) = channel_output;
-    assert_eq!(recipient_addr, user.address);
     let channel_key = user.compute_channel_key(recipient: user, :token);
     let expected_enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random,
@@ -359,8 +363,15 @@ fn test_open_channel_self_channel() {
         sender_addr: user.address,
     );
     let expected_channel_id = compute_channel_id(:channel_key);
-    assert_eq!(enc_channel_info, expected_enc_channel_info);
-    assert_eq!(channel_id, expected_channel_id);
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::AppendToVec((user.address, expected_enc_channel_info)),
+    ]
+        .span();
+    assert_eq!(channel_output, expected_actions);
 }
 
 #[test]
@@ -439,10 +450,6 @@ fn test_open_channel_multiple_channels_same_sender() {
         .open_channel_with_generated_random(recipient: user_2, :token);
     let (random_2, c2_output) = user_1
         .open_channel_with_generated_random(recipient: user_3, :token);
-    let (c1_recipient_addr, c1_enc_channel_info, c1_channel_id) = c1_output;
-    let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
-    assert_eq!(c1_recipient_addr, user_2.address);
-    assert_eq!(c2_recipient_addr, user_3.address);
     let channel_key_1 = user_1.compute_channel_key(recipient: user_2, :token);
     let channel_key_2 = user_1.compute_channel_key(recipient: user_3, :token);
     assert_ne!(channel_key_1, channel_key_2);
@@ -470,13 +477,27 @@ fn test_open_channel_multiple_channels_same_sender() {
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    assert_eq!(c1_enc_channel_info, expected_enc_channel_info_1);
-    assert_eq!(c2_enc_channel_info, expected_enc_channel_info_2);
     let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
     let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    assert_eq!(c1_channel_id, expected_channel_id_1);
-    assert_eq!(c2_channel_id, expected_channel_id_2);
+    let storage_path_felt_1 = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
+    );
+    let storage_path_felt_2 = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
+    );
+    let expected_actions_1 = array![
+        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_1)),
+    ]
+        .span();
+    let expected_actions_2 = array![
+        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::AppendToVec((user_3.address, expected_enc_channel_info_2)),
+    ]
+        .span();
+    assert_eq!(c1_output, expected_actions_1);
+    assert_eq!(c2_output, expected_actions_2);
 }
 
 
@@ -495,10 +516,6 @@ fn test_open_channel_multiple_channels_same_recipient() {
         .open_channel_with_generated_random(recipient: user_1, :token);
     let (random_2, c2_output) = user_3
         .open_channel_with_generated_random(recipient: user_1, :token);
-    let (c1_recipient_addr, c1_enc_channel_info, c1_channel_id) = c1_output;
-    let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
-    assert_eq!(c1_recipient_addr, user_1.address);
-    assert_eq!(c2_recipient_addr, user_1.address);
     let channel_key_1 = user_2.compute_channel_key(recipient: user_1, :token);
     let channel_key_2 = user_3.compute_channel_key(recipient: user_1, :token);
     assert_ne!(channel_key_1, channel_key_2);
@@ -528,13 +545,27 @@ fn test_open_channel_multiple_channels_same_recipient() {
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    assert_eq!(c1_enc_channel_info, expected_enc_channel_info_1);
-    assert_eq!(c2_enc_channel_info, expected_enc_channel_info_2);
     let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
     let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    assert_eq!(c1_channel_id, expected_channel_id_1);
-    assert_eq!(c2_channel_id, expected_channel_id_2);
+    let storage_path_felt_1 = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
+    );
+    let storage_path_felt_2 = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
+    );
+    let expected_actions_1 = array![
+        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::AppendToVec((user_1.address, expected_enc_channel_info_1)),
+    ]
+        .span();
+    let expected_actions_2 = array![
+        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::AppendToVec((user_1.address, expected_enc_channel_info_2)),
+    ]
+        .span();
+    assert_eq!(c1_output, expected_actions_1);
+    assert_eq!(c2_output, expected_actions_2);
 }
 
 #[test]
@@ -551,10 +582,6 @@ fn test_open_channel_multiple_tokens() {
         .open_channel_with_generated_random(recipient: user_2, token: token_1);
     let (random_2, c2_output) = user_1
         .open_channel_with_generated_random(recipient: user_2, token: token_2);
-    let (c1_recipient_addr, c1_enc_channel_info, c1_channel_id) = c1_output;
-    let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
-    assert_eq!(c1_recipient_addr, user_2.address);
-    assert_eq!(c2_recipient_addr, user_2.address);
     let channel_key_1 = user_1.compute_channel_key(recipient: user_2, token: token_1);
     let channel_key_2 = user_1.compute_channel_key(recipient: user_2, token: token_2);
     assert_ne!(channel_key_1, channel_key_2);
@@ -582,13 +609,27 @@ fn test_open_channel_multiple_tokens() {
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    assert_eq!(c1_enc_channel_info, expected_enc_channel_info_1);
-    assert_eq!(c2_enc_channel_info, expected_enc_channel_info_2);
     let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
     let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    assert_eq!(c1_channel_id, expected_channel_id_1);
-    assert_eq!(c2_channel_id, expected_channel_id_2);
+    let storage_path_felt_1 = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
+    );
+    let storage_path_felt_2 = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
+    );
+    let expected_actions_1 = array![
+        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_1)),
+    ]
+        .span();
+    let expected_actions_2 = array![
+        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_2)),
+    ]
+        .span();
+    assert_eq!(c1_output, expected_actions_1);
+    assert_eq!(c2_output, expected_actions_2);
 }
 
 #[test]
@@ -603,10 +644,6 @@ fn test_open_channel_self_channel_multiple_tokens() {
         .open_channel_with_generated_random(recipient: user, token: token_1);
     let (random_2, c2_output) = user
         .open_channel_with_generated_random(recipient: user, token: token_2);
-    let (c1_recipient_addr, c1_enc_channel_info, c1_channel_id) = c1_output;
-    let (c2_recipient_addr, c2_enc_channel_info, c2_channel_id) = c2_output;
-    assert_eq!(c1_recipient_addr, user.address);
-    assert_eq!(c2_recipient_addr, user.address);
     let channel_key_1 = user.compute_channel_key(recipient: user, token: token_1);
     let channel_key_2 = user.compute_channel_key(recipient: user, token: token_2);
     assert_ne!(channel_key_1, channel_key_2);
@@ -634,13 +671,27 @@ fn test_open_channel_self_channel_multiple_tokens() {
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    assert_eq!(c1_enc_channel_info, expected_enc_channel_info_1);
-    assert_eq!(c2_enc_channel_info, expected_enc_channel_info_2);
     let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
     let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    assert_eq!(c1_channel_id, expected_channel_id_1);
-    assert_eq!(c2_channel_id, expected_channel_id_2);
+    let storage_path_felt_1 = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
+    );
+    let storage_path_felt_2 = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
+    );
+    let expected_actions_1 = array![
+        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::AppendToVec((user.address, expected_enc_channel_info_1)),
+    ]
+        .span();
+    let expected_actions_2 = array![
+        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::AppendToVec((user.address, expected_enc_channel_info_2)),
+    ]
+        .span();
+    assert_eq!(c1_output, expected_actions_1);
+    assert_eq!(c2_output, expected_actions_2);
 }
 // TODO: Test open channels with same sender and same random.
 
