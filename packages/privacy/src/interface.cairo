@@ -130,6 +130,11 @@ pub trait IClient<T> {
     /// note index is not sequential for one of the `notes_to_create`.
     /// - [`NOTE_SUM_MISMATCH`](privacy::errors::NOTE_SUM_MISMATCH): Thrown if there's a mismatch
     /// between the spent funds and the received funds.
+    /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if a calculated nullifier is
+    /// zero.
+    /// - [`ZERO_NOTE_ID`](privacy::errors::ZERO_NOTE_ID): Thrown if a calculated note id is zero.
+    /// - [`ZERO_ENC_NOTE_VALUE`](privacy::errors::ZERO_ENC_NOTE_VALUE): Thrown if a calculated note
+    /// encrypted amount is zero.
     ///
     /// #### Access Control
     /// - Can be called by anyone, but the transaction must be signed by `owner_addr`.
@@ -139,7 +144,7 @@ pub trait IClient<T> {
         owner_private_key: felt252,
         notes_to_use: Span<NotePath>,
         notes_to_create: Span<NewNote>,
-    ) -> (Span<felt252>, Span<EncNote>);
+    ) -> Span<ServerAction>;
 
     /// Generates a deposit transaction to create a new note for the owner.
     ///
@@ -337,38 +342,6 @@ pub trait IServer<T> {
         amount: u128,
         note: EncNote,
     );
-
-    /// Transfers funds by nullifying existing notes and creating new ones.
-    ///
-    /// #### Parameters
-    /// - `nullifiers` (`Span<felt252>`): The nullifiers of the notes to be spent.
-    /// - `new_notes` (`Span<EncNote>`): The new encrypted notes to be created.
-    ///
-    /// #### Returns
-    /// None
-    ///
-    /// #### Preconditions
-    /// - `nullifiers` must not be empty.
-    /// - `new_notes` must not be empty.
-    /// - All nullifiers must not be zero and must not already exist.
-    /// - All new notes must have non-zero fields and must not already exist.
-    ///
-    /// #### Events Emitted
-    /// - TODO
-    ///
-    /// #### Reverts
-    /// - [`EMPTY_NULLIFIERS`](privacy::errors::EMPTY_NULLIFIERS): Thrown if `nullifiers` is empty.
-    /// - [`EMPTY_NEW_NOTES`](privacy::errors::EMPTY_NEW_NOTES): Thrown if `new_notes` is empty.
-    /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if a nullifier is zero.
-    /// - [`ZERO_NOTE_ID`](privacy::errors::ZERO_NOTE_ID): Thrown if a note id is zero.
-    /// - [`ZERO_ENC_NOTE_VALUE`](privacy::errors::ZERO_ENC_NOTE_VALUE): Thrown if a note encrypted
-    /// amount is zero.
-    /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if one of the notes or
-    /// nullifiers already exist.
-    ///
-    /// #### Access Control
-    /// - TODO
-    fn transfer(ref self: T, nullifiers: Span<felt252>, new_notes: Span<EncNote>);
 
     /// Withdraws funds from the contract and consumes a note.
     ///
