@@ -160,7 +160,7 @@ pub mod Privacy {
             owner_private_key: felt252,
             withdrawal_target: ContractAddress,
             note_to_withdraw: NotePath,
-        ) -> (ContractAddress, ContractAddress, u128, felt252) {
+        ) -> Span<ServerAction> {
             // Assert valid input.
             assert(owner_addr.is_non_zero(), errors::ZERO_OWNER_ADDR);
             assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
@@ -169,7 +169,11 @@ pub mod Privacy {
             let (nullifier, token, amount) = self
                 .use_note(:owner_addr, :owner_private_key, note: note_to_withdraw);
 
-            (withdrawal_target, token, amount, nullifier)
+            [
+                ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into())),
+                ServerAction::TransferTo((withdrawal_target, token, amount)),
+            ]
+                .span()
         }
     }
 
@@ -390,26 +394,6 @@ pub mod Privacy {
 
             let actions: Array<ServerAction> = array![
                 ServerAction::WriteIfNonZero((self.public_key.entry(user_addr).into(), public_key)),
-            ];
-            self.execute_actions(actions.span());
-        }
-
-        fn withdraw(
-            ref self: ContractState,
-            recipient_addr: ContractAddress,
-            token: ContractAddress,
-            amount: u128,
-            nullifier: felt252,
-        ) {
-            // Assert inputs are valid.
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-            assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
-
-            let actions: Array<ServerAction> = array![
-                ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into())),
-                ServerAction::TransferTo((recipient_addr, token, amount)),
             ];
             self.execute_actions(actions.span());
         }

@@ -1292,15 +1292,17 @@ fn test_withdraw() {
     user_1.create_note_e2e(:note);
 
     let note_to_withdraw = NotePath { channel_index: 0, note_index: 0 };
-    let (withdrawal_target, withdrawn_token, withdrawn_amount, nullifier) = user_1
-        .withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-
-    assert_eq!(withdrawal_target, user_2.address);
-    assert_eq!(withdrawn_token, token);
-    assert_eq!(withdrawn_amount, amount);
-
+    let actions = user_1.withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
-    assert_eq!(nullifier, expected_nullifier);
+    let storage_path_felt_nullifier = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
+    );
+    let expected_actions = [
+        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
+        ServerAction::TransferTo((user_2.address, token, amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -1323,21 +1325,36 @@ fn test_withdraw_different_targets() {
     user_1.create_note_e2e(:note);
     let note_to_withdraw = NotePath { channel_index: 0, note_index };
     let nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
+    let storage_path_felt_nullifier = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+    );
 
     // Withdraw note to self.
-    let result = user_1.withdraw(withdrawal_target: user_1.address, :note_to_withdraw);
-    let expected_result = (user_1.address, token, amount, nullifier);
-    assert_eq!(result, expected_result);
+    let actions = user_1.withdraw(withdrawal_target: user_1.address, :note_to_withdraw);
+    let expected_actions = [
+        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
+        ServerAction::TransferTo((user_1.address, token, amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 
     // Withdraw note to other registered user.
-    let result = user_1.withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-    let expected_result = (user_2.address, token, amount, nullifier);
-    assert_eq!(result, expected_result);
+    let actions = user_1.withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
+    let expected_actions = [
+        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
+        ServerAction::TransferTo((user_2.address, token, amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 
     // Withdraw note to not registered user.
-    let result = user_1.withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    let expected_result = (user_3.address, token, amount, nullifier);
-    assert_eq!(result, expected_result);
+    let actions = user_1.withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
+    let expected_actions = [
+        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
+        ServerAction::TransferTo((user_3.address, token, amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -1355,18 +1372,21 @@ fn test_withdraw_note_from_other_user() {
 
     let note_index = 0;
     user_1.create_note_e2e(user_1.new_note(recipient: user_2, :token, :amount, index: note_index));
-    let result = user_2
+    let expected_nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
+    let actions = user_2
         .withdraw(
             withdrawal_target: user_2.address,
             note_to_withdraw: NotePath { channel_index: 0, note_index },
         );
-    let expected_result = (
-        user_2.address,
-        token,
-        amount,
-        user_2.compute_nullifier(sender: user_1, :token, :note_index),
+    let storage_path_felt_nullifier = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
-    assert_eq!(result, expected_result);
+    let expected_actions = [
+        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
+        ServerAction::TransferTo((user_2.address, token, amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
