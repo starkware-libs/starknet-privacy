@@ -175,6 +175,20 @@ pub mod Privacy {
             ]
                 .span()
         }
+
+        fn register(self: @ContractState, public_key: felt252) -> Span<ServerAction> {
+            // TODO: Add compliance.
+            // TODO: Consider remove get_caller_address() and instead pass the user address.
+            let user_addr = get_caller_address();
+
+            // Assert that inputs are valid.
+            assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
+
+            // TODO: Verify the proof on the encrypted compliance viewing key from the client side.
+
+            [ServerAction::WriteIfZero((self.public_key.entry(user_addr).into(), public_key)),]
+                .span()
+        }
     }
 
     #[generate_trait]
@@ -363,22 +377,6 @@ pub mod Privacy {
                     )) => { self._execute_transfer_to(:recipient, :token, :amount); },
                 };
             };
-        }
-
-        fn register(ref self: ContractState, public_key: felt252) {
-            // TODO: Add compliance.
-            // TODO: Consider remove get_caller_address() and instead pass the user address.
-            let user_addr = get_caller_address();
-
-            // Assert that inputs are valid.
-            assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
-
-            // TODO: Verify the proof on the encrypted compliance viewing key from the client side.
-
-            let actions: Array<ServerAction> = array![
-                ServerAction::WriteIfZero((self.public_key.entry(user_addr).into(), public_key)),
-            ];
-            self.execute_actions(actions.span());
         }
 
         fn replace_public_key(ref self: ContractState, public_key: felt252) {
