@@ -313,6 +313,9 @@ pub mod Privacy {
                     )) => {
                         self._execute_write(:storage_address, :new_value, require_zero: false);
                     },
+                    ServerAction::TransferFrom((
+                        sender, token, amount,
+                    )) => { self._execute_transfer_from(:sender, :token, :amount); },
                 };
             };
         }
@@ -387,13 +390,14 @@ pub mod Privacy {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+            assert(note.id.is_non_zero(), errors::ZERO_NOTE_ID);
+            assert(note.enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
 
-            self._create_note(:note);
-
-            IERC20Dispatcher { contract_address: token }
-                .checked_transfer_from(
-                    sender: user_addr, recipient: get_contract_address(), amount: amount.into(),
-                );
+            let actions: Array<ServerAction> = array![
+                ServerAction::WriteIfZero((self.notes.entry(note.id).into(), note.enc_amount)),
+                ServerAction::TransferFrom((user_addr, token, amount)),
+            ];
+            self.execute_actions(actions.span());
         }
 
         fn transfer(ref self: ContractState, nullifiers: Span<felt252>, new_notes: Span<EncNote>) {
@@ -480,6 +484,15 @@ pub mod Privacy {
             ref self: ContractState, key: ContractAddress, value: EncChannelInfo,
         ) {
             self.recipient_channels.entry(key).push(value);
+        }
+
+        fn _execute_transfer_from(
+            ref self: ContractState, sender: ContractAddress, token: ContractAddress, amount: u128,
+        ) {
+            IERC20Dispatcher { contract_address: token }
+                .checked_transfer_from(
+                    :sender, recipient: get_contract_address(), amount: amount.into(),
+                );
         }
     }
 

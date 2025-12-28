@@ -4,10 +4,12 @@ use privacy::objects::ServerAction;
 use privacy::tests::test_utils::{
     PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
 };
-use snforge_std::{CustomToken, Token, map_entry_address};
+use snforge_std::{CustomToken, Token, TokenTrait, map_entry_address};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
-use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
+use starkware_utils_testing::test_utils::{
+    assert_panic_with_error, assert_panic_with_felt_error, generic_load,
+};
 
 #[test]
 fn test_open_channel() {
@@ -544,17 +546,17 @@ fn test_deposit_assertions() {
     let result = user.safe_deposit_server(:token, :amount, :note);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
 
-    // Catch NOTE_ALREADY_EXISTS (same user)
+    // Catch NON_ZERO_VALUE (same user)
     let note = test.new_note_server(:amount); // New note because of snforge revert storage bug.
     user.deposit_server(:token, :amount, :note);
     let result = user.safe_deposit_server(:token, :amount, :note);
-    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
-    // Catch NOTE_ALREADY_EXISTS (different user)
+    // Catch NON_ZERO_VALUE (different user)
     let different_user = test.new_user();
     token.supply(user: different_user, :amount);
     let result = different_user.safe_deposit_server(:token, :amount, :note);
-    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_EXISTS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -772,6 +774,20 @@ fn test_execute_write_if_zero() {
 
     // Verify public key was written.
     assert_eq!(user.get_public_key(), user.public_key);
+
+    // Verify note doesn't exist and write.
+    let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("notes"), keys: [note.id].span(),
+    );
+    assert_eq!(test.cfg.get_note(note_id: note.id), Zero::zero());
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((storage_path_felt, note.enc_amount)),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify note was written.
+    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
 }
 
 #[test]
@@ -834,6 +850,21 @@ fn test_execute_write_if_non_zero_assertions() {
     ];
     let result = test.cfg.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
+
+    // Catch ZERO_VALUE for notes.
+    let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("notes"), keys: [note.id].span(),
+    );
+    let current_value: felt252 = generic_load(
+        target: test.cfg.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, Zero::zero());
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfNonZero((storage_path_felt, note.enc_amount)),
+    ];
+    let result = test.cfg.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
 }
 
 #[test]
@@ -851,4 +882,52 @@ fn test_execute_append_to_vector() {
     // Verify channel was added
     assert_eq!(user.get_num_of_channels(), 1);
     assert_eq!(user.get_channel_info(channel_index: 0), enc_channel_info);
+}
+
+#[test]
+fn test_execute_transfer_from() {
+    let mut test: Test = Default::default();
+    let token = test.new_token_server();
+    let user = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+
+    token.supply(:user, :amount);
+    user.approve_server(:token, amount: amount.into());
+
+    // Verify balances before transfer.
+    assert_eq!(token.balance_of(address: user.address), amount.into());
+    assert_eq!(token.balance_of(address: test.cfg.address), Zero::zero());
+
+    // Test transfer_from.
+    let actions: Array<ServerAction> = array![
+        ServerAction::TransferFrom((user.address, token.contract_address(), amount)),
+    ];
+    test.cfg.execute_actions(actions.span());
+
+    // Verify balances after transfer.
+    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.cfg.address), amount.into());
+}
+
+#[test]
+fn test_execute_transfer_from_assertions() {
+    let mut test: Test = Default::default();
+    let token = test.new_token_server();
+    let user = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+
+    // Catch INSUFFICIENT_BALANCE.
+    let actions: Array<ServerAction> = array![
+        ServerAction::TransferFrom((user.address, token.contract_address(), amount)),
+    ];
+    let result = test.cfg.safe_execute_actions(actions.span());
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
+
+    // Catch INSUFFICIENT_ALLOWANCE.
+    token.supply(:user, :amount);
+    let actions: Array<ServerAction> = array![
+        ServerAction::TransferFrom((user.address, token.contract_address(), amount)),
+    ];
+    let result = test.cfg.safe_execute_actions(actions.span());
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
 }

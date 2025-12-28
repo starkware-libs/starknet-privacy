@@ -357,7 +357,7 @@ pub trait IServer<T> {
     /// - [`ZERO_NOTE_ID`](privacy::errors::ZERO_NOTE_ID): Thrown if `note.id` is zero.
     /// - [`ZERO_ENC_NOTE_VALUE`](privacy::errors::ZERO_ENC_NOTE_VALUE): Thrown if
     /// `note.enc_amount` is zero.
-    /// - [`NOTE_ALREADY_EXISTS`](privacy::errors::NOTE_ALREADY_EXISTS): Thrown if the note already
+    /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the note already
     /// exists.
     /// - [`INSUFFICIENT_ALLOWANCE`]: Thrown if the allowance is insufficient.
     /// - [`INSUFFICIENT_BALANCE`]: Thrown if the balance is insufficient.
@@ -461,6 +461,10 @@ pub trait IServer<T> {
     /// #### Reverts
     /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if
     /// `WriteIfZero` action is executed and the value at the specified storage path already exists.
+    /// - [`INSUFFICIENT_BALANCE`]: Thrown if `TransferFrom` action is executed and the sender has
+    /// insufficient balance.
+    /// - [`INSUFFICIENT_ALLOWANCE`]: Thrown if `TransferFrom` action is executed and the sender has
+    /// insufficient allowance.
     ///
     /// #### Access Control
     /// - TODO
