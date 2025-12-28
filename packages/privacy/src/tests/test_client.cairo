@@ -10,14 +10,40 @@ use privacy::utils::{
 use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
+#[test]
+fn test_register() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let public_key = user.public_key;
+    let actions = user.register();
+
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let expected_actions = array![ServerAction::WriteIfZero((storage_path_felt, public_key))]
+        .span();
+    assert_eq!(actions, expected_actions);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_register_assertions() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+
+    // Catch ZERO_PUBLIC_KEY.
+    user.public_key = Zero::zero();
+    let result = user.safe_register();
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
+}
 
 #[test]
 fn test_transfer() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     user_1.open_channel_e2e(recipient: user_1, :token);
@@ -51,8 +77,8 @@ fn test_transfer_to_self() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_1, :token);
     user_2.open_channel_e2e(recipient: user_1, :token);
@@ -87,9 +113,9 @@ fn test_transfer_one_to_many() {
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     let user_3 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
-    user_3.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_3.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     user_1.open_channel_e2e(recipient: user_3, :token);
@@ -137,9 +163,9 @@ fn test_transfer_many_to_one() {
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
     let token = test.new_token();
-    user_1.register_server();
-    user_2.register_server();
-    user_3.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_3.register_e2e();
     user_1.open_channel_e2e(recipient: user_2, :token);
     user_2.open_channel_e2e(recipient: user_1, :token);
     user_3.open_channel_e2e(recipient: user_1, :token);
@@ -188,9 +214,9 @@ fn test_transfer_many_to_many() {
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
     let token = test.new_token();
-    user_1.register_server();
-    user_2.register_server();
-    user_3.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_3.register_e2e();
     user_1.open_channel_e2e(recipient: user_3, :token);
     user_2.open_channel_e2e(recipient: user_3, :token);
     user_3.open_channel_e2e(recipient: user_1, :token);
@@ -282,7 +308,7 @@ fn test_transfer_assertions() {
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 
-    user_1.register_server();
+    user_1.register_e2e();
     user_1.open_channel_e2e(recipient: user_1, :token);
 
     // Catch NOTE_NOT_FOUND.
@@ -324,7 +350,7 @@ fn test_transfer_assertions() {
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 
-    user_2.register_server();
+    user_2.register_e2e();
 
     // Catch CHANNEL_NOT_FOUND.
     let result = user_1
@@ -357,8 +383,8 @@ fn test_open_channel() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
 
     let (random, channel_output) = user_1
@@ -388,7 +414,7 @@ fn test_open_channel() {
 fn test_open_channel_self_channel() {
     let mut test = Default::default();
     let mut user = test.new_user();
-    user.register_server();
+    user.register_e2e();
     let token = test.new_token();
 
     let (random, channel_output) = user.open_channel_with_generated_random(recipient: user, :token);
@@ -458,7 +484,7 @@ fn test_open_channel_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_REGISTERED);
 
     // Catch SENDER_NOT_AUTHENTICATED.
-    user_1.register_server();
+    user_1.register_e2e();
     let user_1_private_key = user_1.private_key;
     user_1.private_key = user_1.public_key;
     if !is_canonical_key(key: user_1.private_key) {
@@ -479,9 +505,9 @@ fn test_open_channel_multiple_channels_same_sender() {
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     let user_3 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
-    user_3.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_3.register_e2e();
     let token = test.new_token();
 
     let (random_1, c1_output) = user_1
@@ -545,9 +571,9 @@ fn test_open_channel_multiple_channels_same_recipient() {
     let user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
-    user_3.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_3.register_e2e();
     let token = test.new_token();
 
     let (random_1, c1_output) = user_2
@@ -611,8 +637,8 @@ fn test_open_channel_multiple_tokens() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token_1 = test.new_token();
     let token_2 = test.new_token();
 
@@ -674,7 +700,7 @@ fn test_open_channel_multiple_tokens() {
 fn test_open_channel_self_channel_multiple_tokens() {
     let mut test = Default::default();
     let mut user = test.new_user();
-    user.register_server();
+    user.register_e2e();
     let token_1 = test.new_token();
     let token_2 = test.new_token();
 
@@ -739,8 +765,8 @@ fn test_open_channel_decrypt_channel_info() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
 
@@ -767,8 +793,8 @@ fn test_create_note() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
@@ -784,7 +810,7 @@ fn test_create_note() {
 fn test_create_note_self_note() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    user.register_server();
+    user.register_e2e();
     let token = test.new_token();
     user.open_channel_e2e(recipient: user, :token);
     let amount = 1;
@@ -801,8 +827,8 @@ fn test_create_note_twice() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount_1 = 1;
@@ -829,8 +855,8 @@ fn test_create_note_twice_same_amount() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
@@ -901,8 +927,8 @@ fn test_create_note_channel_not_found() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
     user_1.create_note(:note);
@@ -914,8 +940,8 @@ fn test_create_note_note_index_not_sequential() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
@@ -929,8 +955,8 @@ fn test_create_note_decrypt_amount() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
@@ -961,7 +987,7 @@ fn test_deposit() {
     let amount = 100;
 
     // Setup user and note.
-    user.register_server();
+    user.register_e2e();
     user.open_channel_e2e(recipient: user, :token);
     let index = 0;
     let note = user.new_note(recipient: user, :token, :amount, :index);
@@ -1034,7 +1060,7 @@ fn test_deposit_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 
     // Catch CHANNEL_NOT_FOUND.
-    user.register_server();
+    user.register_e2e();
     let result = user.safe_deposit(new_note: note);
     assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_NOT_FOUND);
 
@@ -1049,8 +1075,8 @@ fn test_use_note() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
@@ -1069,7 +1095,7 @@ fn test_use_note() {
 fn test_use_note_self_note() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    user.register_server();
+    user.register_e2e();
     let token = test.new_token();
     user.open_channel_e2e(recipient: user, :token);
     let amount = 1;
@@ -1089,8 +1115,8 @@ fn test_use_note_multiple_notes() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_2.open_channel_e2e(recipient: user_2, :token);
     user_1.open_channel_e2e(recipient: user_2, :token);
@@ -1130,8 +1156,8 @@ fn test_use_note_same_amount() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
@@ -1169,8 +1195,8 @@ fn test_use_note_wrong_owner_addr() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     user_2.open_channel_e2e(recipient: user_1, :token);
@@ -1187,8 +1213,8 @@ fn test_use_note_wrong_owner_private_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
@@ -1206,8 +1232,8 @@ fn test_use_note_wrong_note_index() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
@@ -1224,8 +1250,8 @@ fn test_use_note_wrong_channel_index() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     user_2.open_channel_e2e(recipient: user_2, :token);
@@ -1243,8 +1269,8 @@ fn test_use_note_find_nullifier() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     let token = test.new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     let amount = 1;
@@ -1282,7 +1308,7 @@ fn test_withdraw() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    user_1.register_server();
+    user_1.register_e2e();
     let token = test.new_token();
 
     user_1.open_channel_e2e(recipient: user_1, :token);
@@ -1315,8 +1341,8 @@ fn test_withdraw_different_targets() {
     let mut user_1 = test.new_user(); // Owner.
     let user_2 = test.new_user(); // Registered user.
     let user_3 = test.new_user(); // Not registered.
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     user_1.open_channel_e2e(recipient: user_1, :token);
 
     // Setup note.
@@ -1366,8 +1392,8 @@ fn test_withdraw_note_from_other_user() {
     // Setup users.
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     user_1.open_channel_e2e(recipient: user_2, :token);
 
     let note_index = 0;
@@ -1432,8 +1458,8 @@ fn test_withdraw_note_not_found() {
     let user_3 = test.new_user();
     let token = test.new_token();
 
-    user_1.register_server();
-    user_2.register_server();
+    user_1.register_e2e();
+    user_2.register_e2e();
     user_1.open_channel_e2e(recipient: user_1, :token); // User 1 Channel 0
     user_1.open_channel_e2e(recipient: user_2, :token); // User 2 Channel 0
     user_2.open_channel_e2e(recipient: user_2, :token); // User 2 Channel 1
