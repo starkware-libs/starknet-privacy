@@ -1,4 +1,8 @@
 # Flow Ideas
+## Open Channel
+### Client + Server
+1. Open 2 channels in succession.
+
 ## Deposit
 ### Client + Server
 1. Deposit end-to-end.
