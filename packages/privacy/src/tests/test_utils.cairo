@@ -142,11 +142,6 @@ pub(crate) impl UserImpl of UserTrait {
         IServerDispatcher { contract_address: self.privacy }.execute_actions(:actions);
     }
 
-    fn register_server(self: @User) {
-        cheat_caller_address_once(contract_address: *self.privacy, caller_address: *self.address);
-        IServerDispatcher { contract_address: *self.privacy }.register(public_key: *self.public_key)
-    }
-
     fn get_num_of_channels_server(self: @User) -> u64 {
         IViewsDispatcher { contract_address: *self.privacy }
             .get_num_of_channels(recipient_addr: *self.address)
@@ -291,15 +286,20 @@ pub(crate) impl UserImpl of UserTrait {
             .get_channel_info(recipient_addr: *self.address, :channel_index)
     }
 
-    fn register(self: @User) {
+    fn register(self: @User) -> Span<ServerAction> {
         cheat_caller_address_once(contract_address: *self.privacy, caller_address: *self.address);
-        IServerDispatcher { contract_address: *self.privacy }.register(public_key: *self.public_key)
+        IClientDispatcher { contract_address: *self.privacy }.register(public_key: *self.public_key)
+    }
+
+    fn register_e2e(self: @User) {
+        let actions = self.register();
+        IServerDispatcher { contract_address: *self.privacy }.execute_actions(:actions);
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_register(self: @User) -> Result<(), Array<felt252>> {
+    fn safe_register(self: @User) -> Result<Span<ServerAction>, Array<felt252>> {
         cheat_caller_address_once(contract_address: *self.privacy, caller_address: *self.address);
-        IServerSafeDispatcher { contract_address: *self.privacy }
+        IClientSafeDispatcher { contract_address: *self.privacy }
             .register(public_key: *self.public_key)
     }
 

@@ -5,6 +5,33 @@ use starknet::ContractAddress;
 // private_key/sender_private_key, etc).
 #[starknet::interface]
 pub trait IClient<T> {
+    /// Registers the caller as a new user with the specified public viewing key.
+    ///
+    /// Returns a span containing an action to register the user:
+    /// 1. `WriteIfZero` - Verifies that the caller has not already registered a public key
+    ///    (storage value is zero) and writes the public key to storage.
+    ///
+    /// #### Parameters
+    /// - `public_key` (`felt252`): The public viewing key of the user. Must not be zero.
+    ///
+    /// #### Returns
+    /// - (`Span<ServerAction>`) - A span containing the WriteIfZero action to register the user.
+    ///
+    /// #### Preconditions
+    /// - `public_key` must not be zero.
+    /// - Caller must not have already registered a public key.
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is
+    /// zero.
+    ///
+    /// #### Access Control
+    /// - Self-registration only.
+    fn register(self: @T, public_key: felt252) -> Span<ServerAction>;
+
     // TODO: Access control.
     /// Opens a new channel from `sender_addr` to `recipient_addr`.
     ///
@@ -270,31 +297,6 @@ pub trait IClient<T> {
 
 #[starknet::interface]
 pub trait IServer<T> {
-    /// Registers the caller as a new user with the specified public viewing key.
-    ///
-    /// #### Parameters
-    /// - `public_key` (`felt252`): The public viewing key of the user. Must not be zero.
-    ///
-    /// #### Returns
-    /// None
-    ///
-    /// #### Preconditions
-    /// - `public_key` must not be zero.
-    /// - Caller must not have already registered a public key.
-    ///
-    /// #### Events Emitted
-    /// None
-    ///
-    /// #### Reverts
-    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is
-    /// zero.
-    /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the
-    /// caller has already registered a public key.
-    ///
-    /// #### Access Control
-    /// - Self-registration only.
-    fn register(ref self: T, public_key: felt252);
-
     /// Replaces the caller's public viewing key to a new value.
     ///
     /// **Notes that were created before updating your public key remain encrypted with the old key
