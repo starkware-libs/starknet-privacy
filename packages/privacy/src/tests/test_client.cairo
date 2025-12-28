@@ -2,12 +2,13 @@ use core::num::traits::Zero;
 use privacy::errors;
 use privacy::objects::domain_separation::enc_channel_info;
 use privacy::objects::{NewNote, NotePath, ServerAction};
-use privacy::tests::test_utils::{Test, TestTrait, UserTrait, decrypt_channel_info};
+use privacy::tests::test_utils::{
+    Test, TestTrait, UserTrait, channel_exists_storage_path, decrypt_channel_info,
+};
 use privacy::utils::{
     compute_channel_id, compute_note_id, compute_nullifier, decrypt_note_amount,
     encrypt_channel_info, is_canonical_key,
 };
-use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
 
@@ -335,11 +336,10 @@ fn test_open_channel() {
         sender_addr: user_1.address,
     );
     let expected_channel_id = compute_channel_id(:channel_key);
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
-    );
     let expected_actions = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            (channel_exists_storage_path(channel_id: expected_channel_id), true.into()),
+        ),
         ServerAction::AppendToVec((user_2.address, expected_enc_channel_info)),
     ]
         .span();
@@ -363,11 +363,10 @@ fn test_open_channel_self_channel() {
         sender_addr: user.address,
     );
     let expected_channel_id = compute_channel_id(:channel_key);
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
-    );
     let expected_actions = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            (channel_exists_storage_path(channel_id: expected_channel_id), true.into()),
+        ),
         ServerAction::AppendToVec((user.address, expected_enc_channel_info)),
     ]
         .span();
@@ -480,19 +479,17 @@ fn test_open_channel_multiple_channels_same_sender() {
     let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
     let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    let storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
-    );
-    let storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
-    );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::WriteIfZero(
+            (channel_exists_storage_path(channel_id: expected_channel_id_1), true.into()),
+        ),
         ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::WriteIfZero(
+            (channel_exists_storage_path(channel_id: expected_channel_id_2), true.into()),
+        ),
         ServerAction::AppendToVec((user_3.address, expected_enc_channel_info_2)),
     ]
         .span();
@@ -548,19 +545,17 @@ fn test_open_channel_multiple_channels_same_recipient() {
     let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
     let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    let storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
-    );
-    let storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
-    );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::WriteIfZero(
+            (channel_exists_storage_path(channel_id: expected_channel_id_1), true.into()),
+        ),
         ServerAction::AppendToVec((user_1.address, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::WriteIfZero(
+            (channel_exists_storage_path(channel_id: expected_channel_id_2), true.into()),
+        ),
         ServerAction::AppendToVec((user_1.address, expected_enc_channel_info_2)),
     ]
         .span();
@@ -612,19 +607,17 @@ fn test_open_channel_multiple_tokens() {
     let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
     let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    let storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
-    );
-    let storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
-    );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::WriteIfZero(
+            (channel_exists_storage_path(channel_id: expected_channel_id_1), true.into()),
+        ),
         ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::WriteIfZero(
+            (channel_exists_storage_path(channel_id: expected_channel_id_2), true.into()),
+        ),
         ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_2)),
     ]
         .span();
@@ -674,19 +667,17 @@ fn test_open_channel_self_channel_multiple_tokens() {
     let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
     let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    let storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
-    );
-    let storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
-    );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::WriteIfZero(
+            (channel_exists_storage_path(channel_id: expected_channel_id_1), true.into()),
+        ),
         ServerAction::AppendToVec((user.address, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::WriteIfZero(
+            (channel_exists_storage_path(channel_id: expected_channel_id_2), true.into()),
+        ),
         ServerAction::AppendToVec((user.address, expected_enc_channel_info_2)),
     ]
         .span();

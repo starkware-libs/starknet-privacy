@@ -590,3 +590,20 @@ pub(crate) fn decrypt_channel_info(
         decrypted_sender_addr.try_into().unwrap(),
     )
 }
+
+// TODO: Consider using trait.
+pub(crate) fn channel_exists_storage_path(channel_id: felt252) -> felt252 {
+    map_entry_address(map_selector: selector!("channel_exists"), keys: [channel_id].span())
+}
+
+pub(crate) fn notes_storage_path(note_id: felt252) -> felt252 {
+    map_entry_address(map_selector: selector!("notes"), keys: [note_id].span())
+}
+
+pub(crate) fn nullifiers_storage_path(nullifier: felt252) -> felt252 {
+    map_entry_address(map_selector: selector!("nullifiers"), keys: [nullifier].span())
+}
+
+pub(crate) fn public_key_storage_path(user_addr: ContractAddress) -> felt252 {
+    map_entry_address(map_selector: selector!("public_key"), keys: [user_addr.into()].span())
+}

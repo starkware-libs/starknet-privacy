@@ -2,7 +2,8 @@ use core::num::traits::Zero;
 use privacy::errors;
 use privacy::objects::ServerAction;
 use privacy::tests::test_utils::{
-    PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
+    PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, channel_exists_storage_path,
+    constants, notes_storage_path, nullifiers_storage_path, public_key_storage_path,
 };
 use snforge_std::{CustomToken, Token, TokenTrait, map_entry_address};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
@@ -558,14 +559,9 @@ fn test_execute_write_if_zero() {
     let user = test.new_user();
     let (_, channel_id) = test.new_channel();
 
-    // Compute storage path felt using contract state.
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
-    );
-
     // Verify channel doesn't exist and write.
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::WriteIfZero((channel_exists_storage_path(:channel_id), true.into())),
     ];
     test.cfg.execute_actions(actions.span());
 
@@ -573,9 +569,7 @@ fn test_execute_write_if_zero() {
     assert!(test.cfg.channel_exists(:channel_id));
 
     // Verify user is not registered and write public key.
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
-    );
+    let storage_path_felt = public_key_storage_path(user_addr: user.address);
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, user.public_key)),
     ];
@@ -586,9 +580,7 @@ fn test_execute_write_if_zero() {
 
     // Verify note doesn't exist and write.
     let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("notes"), keys: [note.id].span(),
-    );
+    let storage_path_felt = notes_storage_path(note_id: note.id);
     assert_eq!(test.cfg.get_note(note_id: note.id), Zero::zero());
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, note.enc_amount)),
@@ -600,9 +592,7 @@ fn test_execute_write_if_zero() {
 
     // Verify nullifier doesn't exist and write.
     let nullifier = test.new_nullifier();
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
-    );
+    let storage_path_felt = nullifiers_storage_path(:nullifier);
     let current_value: bool = generic_load(
         target: test.cfg.address, storage_address: storage_path_felt,
     );
@@ -622,9 +612,7 @@ fn test_execute_write_if_zero_assertions() {
     let (_, channel_id) = test.new_channel();
 
     // Catch NON_ZERO_VALUE
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
-    );
+    let storage_path_felt = channel_exists_storage_path(:channel_id);
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
     ];
@@ -638,9 +626,7 @@ fn test_execute_write_if_zero_assertions() {
 
     // Catch NON_ZERO_VALUE for notes.
     let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("notes"), keys: [note.id].span(),
-    );
+    let storage_path_felt = notes_storage_path(note_id: note.id);
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, note.enc_amount)),
     ];
@@ -654,9 +640,7 @@ fn test_execute_write_if_zero_assertions() {
 
     // Catch NON_ZERO_VALUE for nullifiers.
     let nullifier = test.new_nullifier();
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
-    );
+    let storage_path_felt = nullifiers_storage_path(:nullifier);
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
     ];
