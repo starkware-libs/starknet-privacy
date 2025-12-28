@@ -1504,3 +1504,110 @@ fn test_withdraw_note_not_found() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 }
+
+#[test]
+fn test_replace_public_key() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let original_public_key = user.public_key;
+
+    // Register the user first.
+    user.register_e2e();
+    assert_eq!(user.get_public_key(), original_public_key);
+
+    // Replace the public key.
+    user.new_public_key();
+    let actions = user.replace_public_key();
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let expected_actions = [ServerAction::WriteIfNonZero((storage_path_felt, user.public_key))]
+        .span();
+    assert_eq!(actions, expected_actions);
+}
+
+#[test]
+fn test_replace_public_key_sanity() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let original_public_key = user.public_key;
+
+    // Register the user first.
+    user.register_e2e();
+    assert_eq!(user.get_public_key(), original_public_key);
+
+    // Replace the public key first time.
+    user.new_public_key();
+    user.replace_public_key_e2e();
+    assert_eq!(user.get_public_key(), user.public_key);
+
+    // Replace the public key second time.
+    user.new_public_key();
+    user.replace_public_key_e2e();
+    assert_eq!(user.get_public_key(), user.public_key);
+
+    // Replace back to original public key.
+    user.public_key = original_public_key;
+    user.replace_public_key_e2e();
+    assert_eq!(user.get_public_key(), original_public_key);
+}
+
+#[test]
+fn test_replace_public_key_same_key() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let original_public_key = user.public_key;
+
+    // Register the user first.
+    user.register_e2e();
+    assert_eq!(user.get_public_key(), original_public_key);
+
+    // Replace with the same public key.
+    user.replace_public_key_e2e();
+    assert_eq!(user.get_public_key(), original_public_key);
+}
+
+#[test]
+fn test_replace_public_key_to_other_user_key() {
+    let mut test: Test = Default::default();
+    let mut user1 = test.new_user();
+    let user2 = test.new_user();
+    let user1_original_key = user1.public_key;
+    let user2_public_key = user2.public_key;
+
+    // Register both users.
+    user1.register_e2e();
+    user2.register_e2e();
+
+    // Verify initial keys.
+    assert_eq!(user1.get_public_key(), user1_original_key);
+    assert_eq!(user2.get_public_key(), user2_public_key);
+
+    // User1 replaces their public key to user2's public key.
+    user1.public_key = user2_public_key;
+    user1.replace_public_key_e2e();
+
+    // Verify user1 now has user2's public key.
+    assert_eq!(user1.get_public_key(), user2_public_key);
+    // Verify user2's key is unchanged.
+    assert_eq!(user2.get_public_key(), user2_public_key);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_replace_public_key_assertions() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+
+    // Catch ZERO_PUBLIC_KEY.
+    let mut user_zero_public_key = user;
+    user_zero_public_key.public_key = Zero::zero();
+    let result = user_zero_public_key.safe_replace_public_key();
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
+
+    // Catch ZERO_USER_ADDR.
+    let mut user_zero_addr = user;
+    user_zero_addr.address = Zero::zero();
+    let result = user_zero_addr.safe_replace_public_key();
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+}
