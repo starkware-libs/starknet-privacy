@@ -32,6 +32,40 @@ pub trait IClient<T> {
     /// - Self-registration only.
     fn register(self: @T, public_key: felt252) -> Span<ServerAction>;
 
+    /// Replaces the caller's public viewing key to a new value.
+    ///
+    /// **Notes that were created before updating your public key remain encrypted with the old key
+    /// and are not automatically re-encrypted or migrated. These notes can only be accessed using
+    /// the private key that was previously associated with your account. To use your new public
+    /// key, the sender must open new channels with you.**
+    ///
+    /// Returns a span containing an action to replace the public key:
+    /// 1. `WriteIfNonZero` - Verifies that the caller has already registered a public key
+    ///    (storage value is non-zero) and writes the new public key to storage.
+    ///
+    /// #### Parameters
+    /// - `public_key` (`felt252`): The new public viewing key. Must not be zero.
+    ///
+    /// #### Returns
+    /// - (`Span<ServerAction>`) - A span containing the WriteIfNonZero action to replace the public
+    /// key.
+    ///
+    /// #### Preconditions
+    /// - `public_key` must not be zero.
+    /// - Caller must have already registered a public key.
+    ///
+    /// #### Events Emitted
+    /// None
+    ///
+    /// #### Reverts
+    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is zero.
+    /// - [`ZERO_VALUE`](privacy::errors::ZERO_VALUE): Thrown if the caller has
+    /// not registered a public key.
+    ///
+    /// #### Access Control
+    /// - Self-service only. The caller can only replace their own public key.
+    fn replace_public_key(self: @T, public_key: felt252) -> Span<ServerAction>;
+
     // TODO: Access control.
     /// Opens a new channel from `sender_addr` to `recipient_addr`.
     ///
@@ -297,35 +331,6 @@ pub trait IClient<T> {
 
 #[starknet::interface]
 pub trait IServer<T> {
-    /// Replaces the caller's public viewing key to a new value.
-    ///
-    /// **Notes that were created before updating your public key remain encrypted with the old key
-    /// and are not automatically re-encrypted or migrated. These notes can only be accessed using
-    /// the private key that was previously associated with your account. To use your new public
-    /// key, the sender must open new channels with you.**
-    ///
-    /// #### Parameters
-    /// - `public_key` (`felt252`): The new public viewing key. Must not be zero.
-    ///
-    /// #### Returns
-    /// None
-    ///
-    /// #### Preconditions
-    /// - `public_key` must not be zero.
-    /// - Caller must have already registered a public key.
-    ///
-    /// #### Events Emitted
-    /// None
-    ///
-    /// #### Reverts
-    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is zero.
-    /// - [`ZERO_VALUE`](privacy::errors::ZERO_VALUE): Thrown if the caller has
-    /// not registered a public key.
-    ///
-    /// #### Access Control
-    /// - Self-service only. The caller can only replace their own public key.
-    fn replace_public_key(ref self: T, public_key: felt252);
-
     /// Executes a list of actions atomically.
     ///
     /// #### Parameters
