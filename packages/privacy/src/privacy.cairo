@@ -51,7 +51,7 @@ pub mod Privacy {
             recipient_addr: ContractAddress,
             token: ContractAddress,
             random: felt252,
-        ) -> (ContractAddress, EncChannelInfo, felt252) {
+        ) -> Span<ServerAction> {
             // TODO: Remove assert not zero for sender_addr, recipient_addr?
             // (will fail in the registration check).
             // TODO: Consider generate random instead of passing it as an argument.
@@ -74,8 +74,8 @@ pub mod Privacy {
                 errors::SENDER_NOT_AUTHENTICATED,
             );
 
-            // TODO: Consider passing the recipient's public key as input and moving this check to
-            // the server.
+            // TODO: Consider passing the recipient's public key as input and asserting it is the
+            // current public key of `recipient_addr`.
             // Assert recipient is registered.
             let recipient_public_key = self.get_public_key(user_addr: recipient_addr);
             assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
@@ -89,7 +89,15 @@ pub mod Privacy {
             );
             let channel_id = compute_channel_id(:channel_key);
 
-            (recipient_addr, enc_channel_info, channel_id)
+            assert(channel_id.is_non_zero(), errors::ZERO_CHANNEL_ID);
+            assert(enc_channel_info.is_non_zero(), errors::ZERO_ENC_CHANNEL_INFO);
+            [
+                ServerAction::WriteIfZero(
+                    (self.channel_exists.entry(channel_id).into(), true.into()),
+                ),
+                ServerAction::AppendToVec((recipient_addr, enc_channel_info)),
+            ]
+                .span()
         }
 
         fn prepare_transfer(
@@ -321,32 +329,6 @@ pub mod Privacy {
                     )) => { self._execute_transfer_to(:recipient, :token, :amount); },
                 };
             };
-        }
-
-        fn open_channel(
-            ref self: ContractState,
-            recipient_addr: ContractAddress,
-            enc_channel_info: EncChannelInfo,
-            channel_id: felt252,
-        ) {
-            // Assert inputs are not zero.
-            // TODO: Remove assert not zero for hashes?
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(enc_channel_info.is_non_zero(), errors::ZERO_ENC_CHANNEL_INFO);
-            assert(channel_id.is_non_zero(), errors::ZERO_CHANNEL_ID);
-
-            // TODO: Verify client's proof.
-
-            // TODO: Consider add `recipient_public_key` to the params and assert it is the current
-            // public key of `recipient_addr`.
-
-            let actions: Array<ServerAction> = array![
-                ServerAction::WriteIfZero(
-                    (self.channel_exists.entry(channel_id).into(), true.into()),
-                ),
-                ServerAction::AppendToVec((recipient_addr, enc_channel_info)),
-            ];
-            self.execute_actions(actions.span());
         }
 
         fn register(ref self: ContractState, public_key: felt252) {

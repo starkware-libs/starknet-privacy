@@ -103,7 +103,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn open_channel(
         self: @User, recipient: User, token: ContractAddress, random: felt252,
-    ) -> (ContractAddress, EncChannelInfo, felt252) {
+    ) -> Span<ServerAction> {
         IClientDispatcher { contract_address: *self.privacy }
             .prepare_open_channel(
                 sender_addr: *self.address,
@@ -117,7 +117,7 @@ pub(crate) impl UserImpl of UserTrait {
     #[feature("safe_dispatcher")]
     fn safe_open_channel(
         self: @User, recipient: User, token: ContractAddress, random: felt252,
-    ) -> Result<(ContractAddress, EncChannelInfo, felt252), Array<felt252>> {
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.privacy }
             .prepare_open_channel(
                 sender_addr: *self.address,
@@ -131,27 +131,15 @@ pub(crate) impl UserImpl of UserTrait {
     /// Returns (random, output) where output is the output of `open_channel`.
     fn open_channel_with_generated_random(
         ref self: User, recipient: User, token: ContractAddress,
-    ) -> (felt252, (ContractAddress, EncChannelInfo, felt252)) {
+    ) -> (felt252, Span<ServerAction>) {
         let random = self.get_random();
         let output = self.open_channel(:recipient, :token, :random);
         (random, output)
     }
 
-    fn _open_channel_server(
-        self: @User,
-        recipient_addr: ContractAddress,
-        enc_channel_info: EncChannelInfo,
-        channel_id: felt252,
-    ) {
-        IServerDispatcher { contract_address: *self.privacy }
-            .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
-    }
-
     fn open_channel_e2e(ref self: User, recipient: User, token: ContractAddress) {
-        let (_, channel_output) = self
-            .open_channel_with_generated_random(recipient: recipient, :token);
-        let (recipient_addr, enc_channel_info, channel_id) = channel_output;
-        self._open_channel_server(:recipient_addr, :enc_channel_info, :channel_id)
+        let (_, actions) = self.open_channel_with_generated_random(recipient: recipient, :token);
+        IServerDispatcher { contract_address: self.privacy }.execute_actions(:actions);
     }
 
     fn register_server(self: @User) {
@@ -486,19 +474,19 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
         enc_channel_info: EncChannelInfo,
         channel_id: felt252,
     ) {
-        IServerDispatcher { contract_address: *self.address }
-            .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_open_channel(
-        self: @PrivacyCfg,
-        recipient_addr: ContractAddress,
-        enc_channel_info: EncChannelInfo,
-        channel_id: felt252,
-    ) -> Result<(), Array<felt252>> {
-        IServerSafeDispatcher { contract_address: *self.address }
-            .open_channel(:recipient_addr, :enc_channel_info, :channel_id)
+        let actions = [
+            ServerAction::WriteIfZero(
+                (
+                    map_entry_address(
+                        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+                    ),
+                    true.into(),
+                ),
+            ),
+            ServerAction::AppendToVec((recipient_addr, enc_channel_info)),
+        ]
+            .span();
+        self.execute_actions(:actions);
     }
 
     fn channel_exists(self: @PrivacyCfg, channel_id: felt252) -> bool {
