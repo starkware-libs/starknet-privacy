@@ -108,7 +108,7 @@ pub mod Privacy {
             owner_private_key: felt252,
             notes_to_use: Span<NotePath>,
             notes_to_create: Span<NewNote>,
-        ) -> (Span<felt252>, Span<EncNote>) {
+        ) -> Span<ServerAction> {
             assert(owner_addr.is_non_zero(), errors::ZERO_OWNER_ADDR);
             assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
             assert(!notes_to_use.is_empty(), errors::NO_NOTES_TO_USE);
@@ -116,16 +116,22 @@ pub mod Privacy {
 
             // TODO: Verify owner signature on TX.
 
-            let (nullifiers, consumed_sum) = self
-                .use_notes(:owner_addr, :owner_private_key, :notes_to_use);
-            let (new_notes, created_sum) = self
-                .create_notes(:owner_addr, :owner_private_key, :notes_to_create);
+            let mut actions: Array<ServerAction> = array![];
+            let consumed_sum = self
+                .use_notes(ref :actions, :owner_addr, :owner_private_key, :notes_to_use);
+            assert(actions.len() == notes_to_use.len(), errors::ACTIONS_LENGTH_MISMATCH);
+            let created_sum = self
+                .create_notes(ref :actions, :owner_addr, :owner_private_key, :notes_to_create);
+            assert(
+                actions.len() == notes_to_use.len() + notes_to_create.len(),
+                errors::ACTIONS_LENGTH_MISMATCH,
+            );
 
             // TODO: Consider multi-token support (sum per token).
             // TODO: Verify the tokens match in all notes.
             assert(consumed_sum == created_sum, errors::NOTE_SUM_MISMATCH);
 
-            (nullifiers, new_notes)
+            actions.span()
         }
 
         fn prepare_deposit(
@@ -166,20 +172,25 @@ pub mod Privacy {
         // TODO: Consider merging this with `use_note` function.
         fn use_notes(
             self: @ContractState,
+            ref actions: Array<ServerAction>,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             notes_to_use: Span<NotePath>,
-        ) -> (Span<felt252>, u256) {
+        ) -> u256 {
             // TODO: Verify tokens match.
-            let mut nullifiers: Array<felt252> = array![];
             let mut sum: u256 = Zero::zero();
             for note in notes_to_use {
                 let (nullifier, _token, amount) = self
                     .use_note(:owner_addr, :owner_private_key, note: *note);
-                nullifiers.append(nullifier);
+                actions
+                    .append(
+                        ServerAction::WriteIfZero(
+                            (self.nullifiers.entry(nullifier).into(), true.into()),
+                        ),
+                    );
                 sum += amount.into();
             }
-            (nullifiers.span(), sum)
+            sum
         }
 
         // Returns (nullifier, token, amount).
@@ -196,6 +207,7 @@ pub mod Privacy {
             let (channel_key, token) = decrypt_channel_info(
                 :enc_channel_info, recipient_private_key: owner_private_key,
             );
+            // TODO: Sanity assert token is non zero?
 
             // Compute note id.
             let owner_public_key = derive_public_key(private_key: owner_private_key);
@@ -218,6 +230,8 @@ pub mod Privacy {
                 :channel_key, index: note.note_index, :owner_private_key,
             );
 
+            assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
+
             // Return nullifier, token, and amount.
             (nullifier, token, note_amount)
         }
@@ -225,19 +239,24 @@ pub mod Privacy {
         // TODO: Consider merging this with `create_note` function.
         fn create_notes(
             self: @ContractState,
+            ref actions: Array<ServerAction>,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             notes_to_create: Span<NewNote>,
-        ) -> (Span<EncNote>, u256) {
-            let mut enc_notes: Array<EncNote> = array![];
+        ) -> u256 {
             let mut sum: u256 = Zero::zero();
             for note in notes_to_create {
                 let enc_note = self.create_note(:owner_addr, :owner_private_key, note: *note);
-                enc_notes.append(enc_note);
+                actions
+                    .append(
+                        ServerAction::WriteIfZero(
+                            (self.notes.entry(enc_note.id).into(), enc_note.enc_amount),
+                        ),
+                    );
                 sum += (*note.amount).into();
                 // TODO: Verify tokens match.
             }
-            (enc_notes.span(), sum)
+            sum
         }
 
         /// Returns the encrypted note and the amount of the given new note if it is valid.
@@ -295,6 +314,9 @@ pub mod Privacy {
             let enc_amount = encrypt_note_amount(
                 :channel_key, index: note.index, amount: note.amount,
             );
+
+            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
+            assert(enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
 
             EncNote { id: note_id, enc_amount }
         }
@@ -384,39 +406,6 @@ pub mod Privacy {
                 ServerAction::WriteIfZero((self.notes.entry(note.id).into(), note.enc_amount)),
                 ServerAction::TransferFrom((user_addr, token, amount)),
             ];
-            self.execute_actions(actions.span());
-        }
-
-        fn transfer(ref self: ContractState, nullifiers: Span<felt252>, new_notes: Span<EncNote>) {
-            // Assert inputs are valid.
-            assert(!nullifiers.is_empty(), errors::EMPTY_NULLIFIERS);
-            assert(!new_notes.is_empty(), errors::EMPTY_NEW_NOTES);
-
-            let mut actions: Array<ServerAction> = array![];
-
-            // Add actions to mark notes as used.
-            for nullifier in nullifiers {
-                assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
-                actions
-                    .append(
-                        ServerAction::WriteIfZero(
-                            (self.nullifiers.entry(*nullifier).into(), true.into()),
-                        ),
-                    );
-            }
-
-            // Add actions to create new notes.
-            for note in new_notes {
-                assert(note.id.is_non_zero(), errors::ZERO_NOTE_ID);
-                assert(note.enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
-                actions
-                    .append(
-                        ServerAction::WriteIfZero(
-                            (self.notes.entry((*note).id).into(), (*note).enc_amount),
-                        ),
-                    );
-            }
-
             self.execute_actions(actions.span());
         }
 
