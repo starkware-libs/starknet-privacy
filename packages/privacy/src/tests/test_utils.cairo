@@ -257,17 +257,13 @@ pub(crate) impl UserImpl of UserTrait {
         IViewsDispatcher { contract_address: *self.privacy }.get_note(:note_id)
     }
 
-    fn deposit(
-        self: @User, new_note: NewNote,
-    ) -> (ContractAddress, ContractAddress, u128, EncNote) {
+    fn deposit(self: @User, new_note: NewNote) -> Span<ServerAction> {
         IClientDispatcher { contract_address: *self.privacy }
             .prepare_deposit(owner_private_key: *self.private_key, :new_note)
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_deposit(
-        self: @User, new_note: NewNote,
-    ) -> Result<(ContractAddress, ContractAddress, u128, EncNote), Array<felt252>> {
+    fn safe_deposit(self: @User, new_note: NewNote) -> Result<Span<ServerAction>, Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.privacy }
             .prepare_deposit(owner_private_key: *self.private_key, :new_note)
     }
@@ -339,16 +335,17 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn deposit_server(self: @User, token: Token, amount: u128, note: EncNote) {
         self.approve_server(:token, amount: amount.into());
-        IServerDispatcher { contract_address: *self.privacy }
-            .deposit(user_addr: *self.address, token: token.contract_address(), :amount, :note);
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_deposit_server(
-        self: @User, token: Token, amount: u128, note: EncNote,
-    ) -> Result<(), Array<felt252>> {
-        IServerSafeDispatcher { contract_address: *self.privacy }
-            .deposit(user_addr: *self.address, token: token.contract_address(), :amount, :note)
+        let actions = [
+            ServerAction::WriteIfZero(
+                (
+                    map_entry_address(map_selector: selector!("notes"), keys: [note.id].span()),
+                    note.enc_amount,
+                ),
+            ),
+            ServerAction::TransferFrom((*self.address, token.contract_address(), amount)),
+        ]
+            .span();
+        IServerDispatcher { contract_address: *self.privacy }.execute_actions(:actions);
     }
 
     fn withdraw_server(

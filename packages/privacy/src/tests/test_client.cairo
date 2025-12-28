@@ -967,39 +967,39 @@ fn test_deposit() {
     let note = user.new_note(recipient: user, :token, :amount, :index);
 
     // Deposit.
-    let result = user.deposit(new_note: note);
-
-    // Assert deposit result.
-    let expected_result = (
-        user.address,
-        token,
-        amount,
-        user.compute_enc_note(recipient: user, :token, :index, :amount),
+    let actions = user.deposit(new_note: note);
+    let expected_enc_note_1 = user.compute_enc_note(recipient: user, :token, :index, :amount);
+    let storage_path_felt_note = map_entry_address(
+        map_selector: selector!("notes"), keys: [expected_enc_note_1.id].span(),
     );
-    assert_eq!(result, expected_result);
+    let expected_actions = [
+        ServerAction::WriteIfZero((storage_path_felt_note, expected_enc_note_1.enc_amount)),
+        ServerAction::TransferFrom((user.address, token, amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 
     // Cheat server deposit.
-    let (_, _, _, enc_note_1) = result;
-    user.create_note_server(note: enc_note_1);
+    user.create_note_server(note: expected_enc_note_1);
 
     // Deposit again (same token and amount).
     let index = 1;
     let note = NewNote { index, ..note };
-    let result = user.deposit(new_note: note);
-
-    // Assert deposit result.
-    let expected_result = (
-        user.address,
-        token,
-        amount,
-        user.compute_enc_note(recipient: user, :token, :index, :amount),
+    let actions = user.deposit(new_note: note);
+    let expected_enc_note_2 = user.compute_enc_note(recipient: user, :token, :index, :amount);
+    let storage_path_felt_note = map_entry_address(
+        map_selector: selector!("notes"), keys: [expected_enc_note_2.id].span(),
     );
-    assert_eq!(result, expected_result);
+    let expected_actions = [
+        ServerAction::WriteIfZero((storage_path_felt_note, expected_enc_note_2.enc_amount)),
+        ServerAction::TransferFrom((user.address, token, amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 
     // Assert enc_notes are different.
-    let (_, _, _, enc_note_2) = result;
-    assert_ne!(enc_note_1.id, enc_note_2.id);
-    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    assert_ne!(expected_enc_note_1.id, expected_enc_note_2.id);
+    assert_ne!(expected_enc_note_1.enc_amount, expected_enc_note_2.enc_amount);
 }
 
 #[test]
