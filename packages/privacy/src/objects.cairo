@@ -95,7 +95,7 @@ pub struct EncNote {
 /// An action to be executed by the server.
 #[derive(Serde, Copy, Drop, Debug)]
 pub enum ServerAction {
-    /// Verify that a map value is zero/empty and then write to it.
+    /// Verify that a storage value is zero/empty and then write to it.
     WriteIfZero: (felt252, felt252),
     /// Verify that a storage value is non-zero and then write to it.
     // TODO: Consider merging with WriteIfZero.
