@@ -26,5 +26,6 @@ pub const ZERO_NULLIFIER: felt252 = 'ZERO_NULLIFIER';
 pub const ZERO_PUBLIC_KEY: felt252 = 'ZERO_PUBLIC_KEY';
 pub const NON_ZERO_VALUE: felt252 = 'NON_ZERO_VALUE';
 pub const ZERO_VALUE: felt252 = 'ZERO_VALUE';
+pub const ZERO_USER_ADDR: felt252 = 'ZERO_USER_ADDR';
 // TODO: Move to internal errors?
 pub const ACTIONS_LENGTH_MISMATCH: felt252 = 'ACTIONS_LENGTH_MISMATCH';
