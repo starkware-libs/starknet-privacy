@@ -117,42 +117,13 @@ fn test_nullifier_exists() {
 }
 
 #[test]
-fn test_register() {
-    let mut test: Test = Default::default();
-    let user = test.new_user();
-    let public_key = user.public_key;
-    user.register();
-    // Verify that user is registered with the correct public key.
-    assert_eq!(user.get_public_key(), public_key);
-}
-
-#[test]
-#[feature("safe_dispatcher")]
-fn test_register_assertions() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    let non_zero_public_key = user.public_key;
-
-    // Catch ZERO_PUBLIC_KEY.
-    user.public_key = Zero::zero();
-    let result = user.safe_register();
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
-
-    // Catch NON_ZERO_VALUE.
-    user.public_key = non_zero_public_key;
-    user.register();
-    let result = user.safe_register();
-    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-}
-
-#[test]
 fn test_get_public_key() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     // Don't register the user.
     assert_eq!(user.get_public_key(), Zero::zero());
     // Register the user.
-    user.register();
+    user.register_e2e();
     assert_eq!(user.get_public_key(), user.public_key);
 }
 
@@ -163,7 +134,7 @@ fn test_replace_public_key() {
     let original_public_key = user.public_key;
 
     // Register the user first.
-    user.register();
+    user.register_e2e();
     assert_eq!(user.get_public_key(), original_public_key);
 
     // Replace the public key first time.
@@ -189,7 +160,7 @@ fn test_replace_public_key_same_key() {
     let original_public_key = user.public_key;
 
     // Register the user first.
-    user.register();
+    user.register_e2e();
     assert_eq!(user.get_public_key(), original_public_key);
 
     // Replace with the same public key.
@@ -206,8 +177,8 @@ fn test_replace_public_key_to_other_user_key() {
     let user2_public_key = user2.public_key;
 
     // Register both users.
-    user1.register();
-    user2.register();
+    user1.register_e2e();
+    user2.register_e2e();
 
     // Verify initial keys.
     assert_eq!(user1.get_public_key(), user1_original_key);
@@ -230,7 +201,7 @@ fn test_replace_public_key_assertions() {
     let mut user = test.new_user();
 
     // Catch ZERO_PUBLIC_KEY.
-    user.register();
+    user.register_e2e();
     user.public_key = Zero::zero();
     let result = user.safe_replace_public_key();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
@@ -252,10 +223,10 @@ fn test_register_multiple_users() {
     assert_ne!(public_key1, public_key2, "Public keys should be different.");
 
     // Register user1.
-    user1.register();
+    user1.register_e2e();
 
     // Register user2.
-    user2.register();
+    user2.register_e2e();
 
     // Verify both public keys are stored correctly.
     assert_eq!(user1.get_public_key(), public_key1);
@@ -275,8 +246,8 @@ fn test_register_multiple_users_same_public_key() {
     user2.public_key = shared_public_key;
 
     // Register both users.
-    user1.register();
-    user2.register();
+    user1.register_e2e();
+    user2.register_e2e();
 
     // Both should be able to fetch the shared public key.
     assert_eq!(user1.get_public_key(), shared_public_key);
