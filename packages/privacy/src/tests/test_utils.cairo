@@ -78,7 +78,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn withdraw(
         self: @User, withdrawal_target: ContractAddress, note_to_withdraw: NotePath,
-    ) -> (ContractAddress, ContractAddress, u128, felt252) {
+    ) -> Span<ServerAction> {
         IClientDispatcher { contract_address: *self.privacy }
             .prepare_withdraw(
                 owner_addr: *self.address,
@@ -91,7 +91,7 @@ pub(crate) impl UserImpl of UserTrait {
     #[feature("safe_dispatcher")]
     fn safe_withdraw(
         self: @User, withdrawal_target: ContractAddress, note_to_withdraw: NotePath,
-    ) -> Result<(ContractAddress, ContractAddress, u128, felt252), Array<felt252>> {
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.privacy }
             .prepare_withdraw(
                 owner_addr: *self.address,
@@ -355,20 +355,19 @@ pub(crate) impl UserImpl of UserTrait {
         amount: u128,
         nullifier: felt252,
     ) {
-        IServerDispatcher { contract_address: *self.privacy }
-            .withdraw(:recipient_addr, token: token.contract_address(), :amount, :nullifier);
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_withdraw_server(
-        self: @User,
-        recipient_addr: ContractAddress,
-        token: Token,
-        amount: u128,
-        nullifier: felt252,
-    ) -> Result<(), Array<felt252>> {
-        IServerSafeDispatcher { contract_address: *self.privacy }
-            .withdraw(:recipient_addr, token: token.contract_address(), :amount, :nullifier)
+        let actions = [
+            ServerAction::WriteIfZero(
+                (
+                    map_entry_address(
+                        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+                    ),
+                    true.into(),
+                ),
+            ),
+            ServerAction::TransferTo((recipient_addr, token.contract_address(), amount)),
+        ]
+            .span();
+        IServerDispatcher { contract_address: *self.privacy }.execute_actions(:actions);
     }
 }
 

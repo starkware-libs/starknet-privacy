@@ -218,6 +218,12 @@ pub trait IClient<T> {
     ///
     /// Only a single note can be withdrawn at a time, and it's entire amount must be withdrawn.
     ///
+    /// Returns a span containing actions to execute the withdrawal:
+    /// 1. `WriteIfZero` - Marks the nullifier to prevent double-spending. Verifies that the
+    ///    nullifier doesn't already exist (storage value is zero) and writes `true` to mark it as
+    ///    used.
+    /// 2. `TransferTo` - Transfers the withdrawn funds to the withdrawal target.
+    ///
     /// #### Parameters
     /// - `owner_addr` (`ContractAddress`) - The address of the note owner. Must not be zero.
     /// - `owner_private_key` (`felt252`) - The owner's private key. Must not be zero.
@@ -226,10 +232,8 @@ pub trait IClient<T> {
     /// - `note_to_withdraw` ([`NotePath`](privacy::objects::NotePath)) - The note to be withdrawn.
     ///
     /// #### Returns
-    /// - (`ContractAddress`) - The address to transfer the withdrawn funds to.
-    /// - (`ContractAddress`) - The token address.
-    /// - (`u128`) - The withdrawal amount.
-    /// - (`felt252`) - The nullifier of the note.
+    /// - (`Span<ServerAction>`) - A span containing the WriteIfZero and TransferTo actions to
+    /// execute the withdrawal.
     ///
     /// #### Preconditions
     /// - `owner_addr`, `owner_private_key`, and `withdrawal_target` are not zero.
@@ -247,6 +251,10 @@ pub trait IClient<T> {
     /// - [`ZERO_WITHDRAWAL_TARGET`](privacy::errors::ZERO_WITHDRAWAL_TARGET): Thrown if
     /// `withdrawal_target` is zero.
     /// - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if the note is not found.
+    /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if a calculated nullifier is
+    /// zero.
+    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
+    /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if the withdrawal amount is zero.
     /// // TODO - Consider adding "Index out of bounds".
     ///
     /// #### Access Control
@@ -257,7 +265,7 @@ pub trait IClient<T> {
         owner_private_key: felt252,
         withdrawal_target: ContractAddress,
         note_to_withdraw: NotePath,
-    ) -> (ContractAddress, ContractAddress, u128, felt252);
+    ) -> Span<ServerAction>;
 }
 
 #[starknet::interface]
@@ -315,44 +323,6 @@ pub trait IServer<T> {
     /// #### Access Control
     /// - Self-service only. The caller can only replace their own public key.
     fn replace_public_key(ref self: T, public_key: felt252);
-
-    /// Withdraws funds from the contract and consumes a note.
-    ///
-    /// #### Parameters
-    /// - `recipient_addr` (`ContractAddress`): The address of the recipient receiving the funds.
-    /// Must not be zero.
-    /// - `token` (`ContractAddress`): The address of the token to withdraw. Must not be zero.
-    /// - `amount` (`u128`): The amount to withdraw. Must not be zero.
-    /// - `nullifier` (`felt252`): The nullifier of the note to consume. Must not be zero.
-    ///
-    /// #### Returns
-    /// None
-    ///
-    /// #### Preconditions
-    /// - All inputs must not be zero.
-    /// - The nullifier must not already exist.
-    ///
-    /// #### Events Emitted
-    /// - TODO
-    ///
-    /// #### Reverts
-    /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if `recipient_addr`
-    /// is zero.
-    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if `token` is zero.
-    /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
-    /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if `nullifier` is zero.
-    /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the
-    /// nullifier already exists.
-    ///
-    /// #### Access Control
-    /// - TODO
-    fn withdraw(
-        ref self: T,
-        recipient_addr: ContractAddress,
-        token: ContractAddress,
-        amount: u128,
-        nullifier: felt252,
-    );
 
     /// Executes a list of actions atomically.
     ///
