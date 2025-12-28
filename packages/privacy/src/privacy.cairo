@@ -13,8 +13,8 @@ pub mod Privacy {
         encrypt_channel_info, encrypt_note_amount, is_canonical_key,
     };
     use starknet::storage::{
-        Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StorageMapWriteAccess,
-        StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
+        Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
+        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use starkware_utils::erc20::erc20_utils::CheckedIERC20DispatcherTrait;
@@ -459,33 +459,6 @@ pub mod Privacy {
 
     #[generate_trait]
     pub impl ServerInternalImpl of ServerInternalTrait {
-        // TODO: Remove.
-        fn _create_note(ref self: ContractState, note: EncNote) {
-            // Assert inputs are not zero.
-            // TODO: Remove assert not zero for hashes?
-            assert(note.id.is_non_zero(), errors::ZERO_NOTE_ID);
-            assert(note.enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
-
-            // Assert note does not already exist.
-            assert(self.notes.read(note.id).is_zero(), errors::NOTE_ALREADY_EXISTS);
-
-            // Write note to storage.
-            self.notes.write(note.id, note.enc_amount);
-        }
-
-        // TODO: Remove.
-        fn _use_note(ref self: ContractState, nullifier: felt252) {
-            // Assert inputs are not zero.
-            // TODO: Remove assert not zero for hashes?
-            assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
-
-            // Assert nullifier does not already exist.
-            assert(!self.nullifiers.read(nullifier), errors::NULLIFIER_ALREADY_EXISTS);
-
-            // Write nullifier to storage.
-            self.nullifiers.write(nullifier, true);
-        }
-
         fn _execute_write(
             ref self: ContractState,
             storage_address: felt252,

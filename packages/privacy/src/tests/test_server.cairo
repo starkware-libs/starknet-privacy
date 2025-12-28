@@ -212,99 +212,12 @@ fn test_get_note() {
 }
 
 #[test]
-fn test_create_note() {
-    let mut test: Test = Default::default();
-    let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
-    test.cfg.create_note(:note);
-    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
-}
-
-#[test]
-fn test_create_note_twice() {
-    let mut test: Test = Default::default();
-    let amount = constants::DEFAULT_AMOUNT;
-    let note_1 = test.new_note_server(:amount);
-    test.cfg.create_note(note: note_1);
-    let note_2 = test.new_note_server(:amount);
-    test.cfg.create_note(note: note_2);
-    assert_eq!(test.cfg.get_note(note_id: note_1.id), note_1.enc_amount);
-    assert_eq!(test.cfg.get_note(note_id: note_2.id), note_2.enc_amount);
-}
-
-
-// TODO: Figure out how to safely call internal functions.
-#[test]
-#[should_panic(expected_error: errors::ZERO_NOTE_ID)]
-fn test_create_note_zero_note_id() {
-    let mut test: Test = Default::default();
-    let mut note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
-    note.id = Zero::zero();
-    test.cfg.create_note(:note);
-}
-
-#[test]
-#[should_panic(expected_error: errors::ZERO_ENC_NOTE_VALUE)]
-fn test_create_note_zero_enc_note_value() {
-    let mut test: Test = Default::default();
-    let mut note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
-    note.enc_amount = Zero::zero();
-    test.cfg.create_note(:note);
-}
-
-#[test]
-#[should_panic(expected_error: errors::NOTE_ALREADY_EXISTS)]
-fn test_create_note_note_already_exists() {
-    let mut test: Test = Default::default();
-    let amount = constants::DEFAULT_AMOUNT;
-    let note = test.new_note_server(:amount);
-    test.cfg.create_note(:note);
-    let mut diff_note = test.new_note_server(:amount);
-    diff_note.id = note.id;
-    test.cfg.create_note(note: diff_note);
-}
-
-#[test]
 fn test_nullifier_exists() {
     let mut test: Test = Default::default();
     let nullifier = test.new_nullifier();
     assert_eq!(test.cfg.nullifier_exists(:nullifier), false);
     test.cfg.use_note(:nullifier);
     assert_eq!(test.cfg.nullifier_exists(:nullifier), true);
-}
-
-#[test]
-fn test_use_note() {
-    let mut test: Test = Default::default();
-    let nullifier = test.new_nullifier();
-    test.cfg.use_note(:nullifier);
-    assert_eq!(test.cfg.nullifier_exists(:nullifier), true);
-}
-
-#[test]
-fn test_use_note_twice() {
-    let mut test: Test = Default::default();
-    let nullifier_1 = test.new_nullifier();
-    let nullifier_2 = test.new_nullifier();
-    test.cfg.use_note(nullifier: nullifier_1);
-    test.cfg.use_note(nullifier: nullifier_2);
-    assert_eq!(test.cfg.nullifier_exists(nullifier: nullifier_1), true);
-    assert_eq!(test.cfg.nullifier_exists(nullifier: nullifier_2), true);
-}
-
-#[test]
-#[should_panic(expected_error: errors::ZERO_NULLIFIER)]
-fn test_use_note_zero_nullifier() {
-    let mut test: Test = Default::default();
-    test.cfg.use_note(nullifier: Zero::zero());
-}
-
-#[test]
-#[should_panic(expected_error: errors::NULLIFIER_ALREADY_EXISTS)]
-fn test_use_note_nullifier_already_exists() {
-    let mut test: Test = Default::default();
-    let nullifier = test.new_nullifier();
-    test.cfg.use_note(nullifier: nullifier);
-    test.cfg.use_note(nullifier: nullifier);
 }
 
 #[test]

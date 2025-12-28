@@ -9,16 +9,15 @@ use privacy::interface::{
 };
 use privacy::objects::{EncChannelInfo, EncNote, NewNote, NotePath, ServerAction};
 use privacy::privacy::Privacy;
-use privacy::privacy::Privacy::{
-    ClientInternalTrait, ServerInternalTrait, deploy_for_test as deploy_privacy_for_test,
-};
+use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::utils::{
     compute_channel_key, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
     compute_enc_token_hash, compute_note_id, compute_nullifier, derive_public_key,
     encrypt_note_amount, hash, is_canonical_key,
 };
 use snforge_std::{
-    CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state, set_balance,
+    CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state,
+    map_entry_address, set_balance,
 };
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
@@ -188,14 +187,16 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
+    // TODO: Remove, replace with cfg function.
     fn create_note_server(self: @User, note: EncNote) {
-        interact_with_state(
-            *self.privacy,
-            || {
-                let mut state = Privacy::contract_state_for_testing();
-                state._create_note(:note)
-            },
-        )
+        let storage_path_felt = map_entry_address(
+            map_selector: selector!("notes"), keys: [note.id].span(),
+        );
+        IServerDispatcher { contract_address: *self.privacy }
+            .execute_actions(
+                actions: array![ServerAction::WriteIfZero((storage_path_felt, note.enc_amount))]
+                    .span(),
+            )
     }
 
     fn create_note_e2e(self: @User, note: NewNote) {
@@ -235,14 +236,15 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
+    // TODO: Remove, replace with cfg function.
     fn use_note_server(self: @User, nullifier: felt252) {
-        interact_with_state(
-            *self.privacy,
-            || {
-                let mut state = Privacy::contract_state_for_testing();
-                state._use_note(:nullifier)
-            },
-        )
+        let storage_path_felt = map_entry_address(
+            map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+        );
+        IServerDispatcher { contract_address: *self.privacy }
+            .execute_actions(
+                actions: array![ServerAction::WriteIfZero((storage_path_felt, true.into()))].span(),
+            )
     }
 
     fn compute_nullifier(
@@ -504,13 +506,14 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
     }
 
     fn create_note(self: @PrivacyCfg, note: EncNote) {
-        interact_with_state(
-            *self.address,
-            || {
-                let mut state = Privacy::contract_state_for_testing();
-                state._create_note(:note)
-            },
-        )
+        let storage_path_felt = map_entry_address(
+            map_selector: selector!("notes"), keys: [note.id].span(),
+        );
+        IServerDispatcher { contract_address: *self.address }
+            .execute_actions(
+                actions: array![ServerAction::WriteIfZero((storage_path_felt, note.enc_amount))]
+                    .span(),
+            )
     }
 
     fn get_note(self: @PrivacyCfg, note_id: felt252) -> felt252 {
@@ -518,13 +521,13 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
     }
 
     fn use_note(self: @PrivacyCfg, nullifier: felt252) {
-        interact_with_state(
-            *self.address,
-            || {
-                let mut state = Privacy::contract_state_for_testing();
-                state._use_note(:nullifier)
-            },
-        )
+        let storage_path_felt = map_entry_address(
+            map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+        );
+        IServerDispatcher { contract_address: *self.address }
+            .execute_actions(
+                actions: array![ServerAction::WriteIfZero((storage_path_felt, true.into()))].span(),
+            )
     }
 
     fn nullifier_exists(self: @PrivacyCfg, nullifier: felt252) -> bool {
