@@ -28,18 +28,22 @@ fn test_transfer() {
 
     let note_path = NotePath { channel_index: 0, note_index };
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
-    let (nullifiers, new_notes) = user_1
-        .transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
+    let actions = user_1.transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
 
-    // Test use_note output.
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
-    let expected_nullifiers = [expected_nullifier].span();
-    assert_eq!(nullifiers, expected_nullifiers);
-
-    // Test create_note output.
     let enc_note = user_1.compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
-    let expected_new_notes = [enc_note].span();
-    assert_eq!(new_notes, expected_new_notes);
+    let storage_path_felt_nullifier = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
+    );
+    let storage_path_felt_note = map_entry_address(
+        map_selector: selector!("notes"), keys: [enc_note.id].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
+        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.enc_amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -60,18 +64,21 @@ fn test_transfer_to_self() {
     let note_path = NotePath { channel_index: 1, note_index };
     let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
 
-    let (nullifiers, new_notes) = user_1
-        .transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
-
-    // Test use_note output.
+    let actions = user_1.transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
     let expected_nullifier = user_1.compute_nullifier(sender: user_2, :token, :note_index);
-    let expected_nullifiers = [expected_nullifier].span();
-    assert_eq!(nullifiers, expected_nullifiers);
-
-    // Test create_note output.
     let enc_note = user_1.compute_enc_note(recipient: user_1, :token, index: note_index, :amount);
-    let expected_new_notes = [enc_note].span();
-    assert_eq!(new_notes, expected_new_notes);
+    let storage_path_felt_nullifier = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
+    );
+    let storage_path_felt_note = map_entry_address(
+        map_selector: selector!("notes"), keys: [enc_note.id].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
+        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.enc_amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -98,21 +105,29 @@ fn test_transfer_one_to_many() {
     let note_1 = user_1.new_note(recipient: user_2, :token, amount: amount_1, index: note_index);
     let note_2 = user_1.new_note(recipient: user_3, :token, amount: amount_2, index: note_index);
 
-    let (nullifiers, new_notes) = user_1
+    let actions = user_1
         .transfer(notes_to_use: [note_path].span(), notes_to_create: [note_1, note_2].span());
-
-    // Test use_note output.
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
-    let expected_nullifiers = [expected_nullifier].span();
-    assert_eq!(nullifiers, expected_nullifiers);
-
-    // Test create_note output.
     let enc_note_1 = user_1
         .compute_enc_note(recipient: user_2, :token, index: note_index, amount: amount_1);
     let enc_note_2 = user_1
         .compute_enc_note(recipient: user_3, :token, index: note_index, amount: amount_2);
-    let expected_new_notes = [enc_note_1, enc_note_2].span();
-    assert_eq!(new_notes, expected_new_notes);
+    let storage_path_felt_nullifier = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
+    );
+    let storage_path_felt_note_1 = map_entry_address(
+        map_selector: selector!("notes"), keys: [enc_note_1.id].span(),
+    );
+    let storage_path_felt_note_2 = map_entry_address(
+        map_selector: selector!("notes"), keys: [enc_note_2.id].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
+        ServerAction::WriteIfZero((storage_path_felt_note_1, enc_note_1.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt_note_2, enc_note_2.enc_amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -140,20 +155,30 @@ fn test_transfer_many_to_one() {
     let amount = 2 * amount;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
 
-    let (nullifiers, new_notes) = user_1
+    let actions = user_1
         .transfer(notes_to_use: [note_path_1, note_path_2].span(), notes_to_create: [note].span());
 
     // Test use_note output.
     let expected_nullifier_1 = user_1.compute_nullifier(sender: user_2, :token, :note_index);
     let expected_nullifier_2 = user_1.compute_nullifier(sender: user_3, :token, :note_index);
     assert_ne!(expected_nullifier_1, expected_nullifier_2);
-    let expected_nullifiers = [expected_nullifier_1, expected_nullifier_2].span();
-    assert_eq!(nullifiers, expected_nullifiers);
-
-    // Test create_note output.
     let enc_note = user_1.compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
-    let expected_new_notes = [enc_note].span();
-    assert_eq!(new_notes, expected_new_notes);
+    let storage_path_felt_nullifier_1 = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
+    );
+    let storage_path_felt_nullifier_2 = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier_2].span(),
+    );
+    let storage_path_felt_note = map_entry_address(
+        map_selector: selector!("notes"), keys: [enc_note.id].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero((storage_path_felt_nullifier_1, true.into())),
+        ServerAction::WriteIfZero((storage_path_felt_nullifier_2, true.into())),
+        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.enc_amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -182,26 +207,39 @@ fn test_transfer_many_to_many() {
     let note_1 = user_3.new_note(recipient: user_1, :token, :amount, index: note_index);
     let note_2 = user_3.new_note(recipient: user_2, :token, :amount, index: note_index);
 
-    let (nullifiers, new_notes) = user_3
+    let actions = user_3
         .transfer(
             notes_to_use: [note_path_1, note_path_2].span(),
             notes_to_create: [note_1, note_2].span(),
         );
 
-    // Test use_note output.
     let expected_nullifier_1 = user_3.compute_nullifier(sender: user_1, :token, :note_index);
     let expected_nullifier_2 = user_3.compute_nullifier(sender: user_2, :token, :note_index);
     assert_ne!(expected_nullifier_1, expected_nullifier_2);
-    let expected_nullifiers = [expected_nullifier_1, expected_nullifier_2].span();
-    assert_eq!(nullifiers, expected_nullifiers);
-
-    // Test create_note output.
     let enc_note_1 = user_3.compute_enc_note(recipient: user_1, :token, index: note_index, :amount);
     let enc_note_2 = user_3.compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
     assert_ne!(enc_note_1.id, enc_note_2.id);
     assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
-    let expected_new_notes = [enc_note_1, enc_note_2].span();
-    assert_eq!(new_notes, expected_new_notes);
+    let storage_path_felt_nullifier_1 = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
+    );
+    let storage_path_felt_nullifier_2 = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier_2].span(),
+    );
+    let storage_path_felt_note_1 = map_entry_address(
+        map_selector: selector!("notes"), keys: [enc_note_1.id].span(),
+    );
+    let storage_path_felt_note_2 = map_entry_address(
+        map_selector: selector!("notes"), keys: [enc_note_2.id].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero((storage_path_felt_nullifier_1, true.into())),
+        ServerAction::WriteIfZero((storage_path_felt_nullifier_2, true.into())),
+        ServerAction::WriteIfZero((storage_path_felt_note_1, enc_note_1.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt_note_2, enc_note_2.enc_amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]

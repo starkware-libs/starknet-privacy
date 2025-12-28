@@ -53,7 +53,7 @@ struct User {
 pub(crate) impl UserImpl of UserTrait {
     fn transfer(
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
-    ) -> (Span<felt252>, Span<EncNote>) {
+    ) -> Span<ServerAction> {
         IClientDispatcher { contract_address: *self.privacy }
             .prepare_transfer(
                 owner_addr: *self.address,
@@ -66,7 +66,7 @@ pub(crate) impl UserImpl of UserTrait {
     #[feature("safe_dispatcher")]
     fn safe_transfer(
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
-    ) -> Result<(Span<felt252>, Span<EncNote>), Array<felt252>> {
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
         IClientSafeDispatcher { contract_address: *self.privacy }
             .prepare_transfer(
                 owner_addr: *self.address,
@@ -523,14 +523,34 @@ pub(crate) impl ServerCfgImpl of ServerCfgTrait {
     }
 
     fn transfer(self: @PrivacyCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>) {
-        IServerDispatcher { contract_address: *self.address }.transfer(:nullifiers, :new_notes)
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_transfer(
-        self: @PrivacyCfg, nullifiers: Span<felt252>, new_notes: Span<EncNote>,
-    ) -> Result<(), Array<felt252>> {
-        IServerSafeDispatcher { contract_address: *self.address }.transfer(:nullifiers, :new_notes)
+        let mut actions: Array<ServerAction> = array![];
+        for nullifier in nullifiers {
+            actions
+                .append(
+                    ServerAction::WriteIfZero(
+                        (
+                            map_entry_address(
+                                map_selector: selector!("nullifiers"), keys: [*nullifier].span(),
+                            ),
+                            true.into(),
+                        ),
+                    ),
+                );
+        }
+        for note in new_notes {
+            actions
+                .append(
+                    ServerAction::WriteIfZero(
+                        (
+                            map_entry_address(
+                                map_selector: selector!("notes"), keys: [*note.id].span(),
+                            ),
+                            *note.enc_amount,
+                        ),
+                    ),
+                );
+        }
+        self.execute_actions(actions.span());
     }
 
     fn execute_actions(self: @PrivacyCfg, actions: Span<ServerAction>) {
