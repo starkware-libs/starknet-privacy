@@ -431,7 +431,7 @@ pub trait IServer<T> {
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if `token` is zero.
     /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
     /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if `nullifier` is zero.
-    /// - [`NULLIFIER_ALREADY_EXISTS`](privacy::errors::NULLIFIER_ALREADY_EXISTS): Thrown if the
+    /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the
     /// nullifier already exists.
     ///
     /// #### Access Control
