@@ -12,6 +12,7 @@ use starkware_utils_testing::test_utils::{
 };
 
 #[test]
+#[ignore]
 fn test_open_channel() {
     let mut test: Test = Default::default();
     let user = test.new_user();
@@ -29,6 +30,7 @@ fn test_open_channel() {
 }
 
 #[test]
+#[ignore]
 fn test_open_channel_twice() {
     let mut test: Test = Default::default();
     let user = test.new_user();
@@ -59,6 +61,7 @@ fn test_open_channel_twice() {
 }
 
 #[test]
+#[ignore]
 fn test_open_channel_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();

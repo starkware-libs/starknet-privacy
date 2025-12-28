@@ -93,7 +93,7 @@ pub struct EncNote {
 }
 
 /// An action to be executed by the server.
-#[derive(Serde, Copy, Drop, Debug)]
+#[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ServerAction {
     /// Verify that a storage value is zero/empty and then write to it.
     /// (storage_address: felt252, new_value: felt252)
