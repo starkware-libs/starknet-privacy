@@ -1,4 +1,4 @@
-use core::num::traits::Zero;
+use core::num::traits::{Bounded, Zero};
 use privacy::errors;
 use privacy::objects::domain_separation::enc_channel_info;
 use privacy::objects::{NewNote, NotePath, ServerAction};
@@ -6,8 +6,8 @@ use privacy::tests::test_utils::{
     PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info, decrypt_subchannel_token,
 };
 use privacy::utils::{
-    compute_note_id, compute_nullifier, compute_subchannel_key, decrypt_note_amount,
-    encrypt_channel_info, is_canonical_key,
+    compute_enc_amount_hash, compute_note_id, compute_nullifier, compute_subchannel_key,
+    decrypt_note_amount, encrypt_channel_info, is_canonical_key,
 };
 use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
@@ -2129,4 +2129,38 @@ fn test_replace_public_key_assertions() {
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_replace_public_key();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+}
+
+#[test]
+fn test_decrypt_note_amount_wrap_around() {
+    let enc_note_value: u256 = 1;
+    let channel_key = 1;
+    let index = 0;
+    let max_u128: u256 = Bounded::<u128>::MAX.into();
+    let hash: u256 = compute_enc_amount_hash(:channel_key, :index).into() % max_u128;
+
+    // Assert wrap around scenario.
+    assert_lt!(enc_note_value, hash);
+    let decrypted_amount = decrypt_note_amount(
+        enc_note_value: enc_note_value.try_into().unwrap(), :channel_key, index: index,
+    );
+
+    assert_eq!(decrypted_amount.into(), enc_note_value + max_u128 - hash);
+}
+
+#[test]
+fn test_decrypt_note_amount_no_wrap_around() {
+    let enc_note_value: u256 = Bounded::<u128>::MAX.into();
+    let channel_key = 1;
+    let index = 0;
+    let max_u128: u256 = Bounded::<u128>::MAX.into();
+    let hash: u256 = compute_enc_amount_hash(:channel_key, :index).into() % max_u128;
+
+    // Assert no wrap around scenario.
+    assert_gt!(enc_note_value, hash);
+    let decrypted_amount = decrypt_note_amount(
+        enc_note_value: enc_note_value.try_into().unwrap(), :channel_key, index: index,
+    );
+
+    assert_eq!(decrypted_amount.into(), enc_note_value - hash);
 }
