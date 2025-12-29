@@ -877,9 +877,9 @@ fn test_create_note_twice_same_amount() {
     assert_ne!(enc_note_1.id, enc_note_2.id);
     assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
     let expected_note_1 = user_1
-        .compute_enc_note(recipient: user_2, :token, index: note_index_1, amount: amount);
+        .compute_enc_note(recipient: user_2, :token, index: note_index_1, :amount);
     let expected_note_2 = user_1
-        .compute_enc_note(recipient: user_2, :token, index: note_index_2, amount: amount);
+        .compute_enc_note(recipient: user_2, :token, index: note_index_2, :amount);
     assert_eq!(enc_note_1, expected_note_1);
     assert_eq!(enc_note_2, expected_note_2);
 }

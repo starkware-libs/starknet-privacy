@@ -138,7 +138,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn open_channel_e2e(ref self: User, recipient: User, token: ContractAddress) {
-        let (_, actions) = self.open_channel_with_generated_random(recipient: recipient, :token);
+        let (_, actions) = self.open_channel_with_generated_random(:recipient, :token);
         IServerDispatcher { contract_address: self.privacy }.execute_actions(:actions);
     }
 
