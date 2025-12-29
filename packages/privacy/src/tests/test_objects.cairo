@@ -1,5 +1,7 @@
 use core::num::traits::Zero;
-use privacy::objects::{EncChannelInfo, EncChannelInfoTrait};
+use privacy::objects::{
+    EncChannelInfo, EncChannelInfoTrait, EncSubchannelInfo, EncSubchannelInfoTrait,
+};
 
 #[test]
 fn test_enc_channel_info_is_non_zero() {
@@ -28,4 +30,34 @@ fn test_enc_channel_info_is_non_zero() {
         enc_sender_addr: Zero::zero(),
     };
     assert_eq!(enc_channel_info_zero.is_non_zero(), false);
+}
+
+#[test]
+fn test_enc_subchannel_info_is_zero() {
+    let mut enc_subchannel_info = EncSubchannelInfo {
+        random: 'RANDOM'.try_into().unwrap(), enc_token: 'ENC_TOKEN'.try_into().unwrap(),
+    };
+    assert_eq!(enc_subchannel_info.is_zero(), false);
+    enc_subchannel_info.random = Zero::zero();
+    assert_eq!(enc_subchannel_info.is_zero(), true);
+    enc_subchannel_info.random = 'RANDOM'.try_into().unwrap();
+    enc_subchannel_info.enc_token = Zero::zero();
+    assert_eq!(enc_subchannel_info.is_zero(), true);
+    enc_subchannel_info.random = Zero::zero();
+    assert_eq!(enc_subchannel_info.is_zero(), true);
+}
+
+#[test]
+fn test_enc_subchannel_info_is_non_zero() {
+    let mut enc_subchannel_info = EncSubchannelInfo {
+        random: 'RANDOM'.try_into().unwrap(), enc_token: 'ENC_TOKEN'.try_into().unwrap(),
+    };
+    assert_eq!(enc_subchannel_info.is_non_zero(), true);
+    enc_subchannel_info.random = Zero::zero();
+    assert_eq!(enc_subchannel_info.is_non_zero(), false);
+    enc_subchannel_info.random = 'RANDOM'.try_into().unwrap();
+    enc_subchannel_info.enc_token = Zero::zero();
+    assert_eq!(enc_subchannel_info.is_non_zero(), false);
+    enc_subchannel_info.random = Zero::zero();
+    assert_eq!(enc_subchannel_info.is_non_zero(), false);
 }
