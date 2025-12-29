@@ -2,10 +2,11 @@ use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
 use core::hash::{HashStateExTrait, HashStateTrait};
 use core::poseidon::{PoseidonTrait, poseidon_hash_span};
-use privacy::objects::EncChannelInfo;
 use privacy::objects::domain_separation::{
-    CHANNEL_ID_TAG, CHANNEL_KEY_TAG, NULLIFIER_TAG, enc_channel_info, enc_note,
+    CHANNEL_ID_TAG, CHANNEL_KEY_TAG, NULLIFIER_TAG, SUBCHANNEL_ID_TAG, SUBCHANNEL_KEY_TAG,
+    enc_channel_info, enc_note, enc_subchannel_info,
 };
+use privacy::objects::{EncChannelInfo, EncSubchannelInfo};
 use starknet::ContractAddress;
 use starknet::storage::{StorageAsPointer, StoragePath};
 
@@ -62,11 +63,55 @@ pub(crate) fn compute_channel_id(
     )
 }
 
+/// Computes the subchannel key given the channel key and index.
+/// Assumes all the inputs are not zero.
+///
+/// `subchannel_key = h(SUBCHANNEL_KEY_TAG, channel_key, index)`
+pub(crate) fn compute_subchannel_key(channel_key: felt252, index: usize) -> felt252 {
+    hash([SUBCHANNEL_KEY_TAG, channel_key, index.into()].span())
+}
+
+/// Computes the subchannel id given the channel key and token.
+/// Assumes all the inputs are not zero.
+///
+/// `subchannel_id = h(SUBCHANNEL_ID_TAG, channel_key, recipient_addr, recipient_public_key, token)`
+pub(crate) fn compute_subchannel_id(
+    channel_key: felt252,
+    recipient_addr: ContractAddress,
+    recipient_public_key: felt252,
+    token: ContractAddress,
+) -> felt252 {
+    hash(
+        [SUBCHANNEL_ID_TAG, channel_key, recipient_addr.into(), recipient_public_key, token.into()]
+            .span(),
+    )
+}
+
+/// Computes the hash used to encrypt the token in `EncSubchannelInfo`.
+///
+/// Returns `h(ENC_TOKEN_TAG, channel_key, random)`
+pub(crate) fn compute_subchannel_enc_token_hash(channel_key: felt252, random: felt252) -> felt252 {
+    hash([enc_subchannel_info::ENC_TOKEN_TAG, channel_key, random].span())
+}
+
+/// Encrypts the subchannel info.
+/// Assumes all the inputs are not zero.
+///
+/// `enc_subchannel_info = (random, enc_token)`.
+/// `enc_token = h(ENC_TOKEN_TAG, channel_key, random) + token`
+pub(crate) fn encrypt_subchannel_info(
+    channel_key: felt252, token: ContractAddress, random: felt252,
+) -> EncSubchannelInfo {
+    let enc_token = compute_subchannel_enc_token_hash(:channel_key, :random) + token.into();
+    EncSubchannelInfo { random, enc_token }
+}
+
 /// Computes the hash used to encrypt the channel key in `EncChannelInfo`.
 pub(crate) fn compute_enc_channel_key_hash(shared_x: felt252) -> felt252 {
     hash([enc_channel_info::ENC_CHANNEL_KEY_TAG, shared_x].span())
 }
 
+// TODO: Delete once delete token from EncChannelInfo.
 /// Computes the hash used to encrypt the token in `EncChannelInfo`.
 pub(crate) fn compute_enc_token_hash(shared_x: felt252) -> felt252 {
     hash([enc_channel_info::ENC_TOKEN_TAG, shared_x].span())
