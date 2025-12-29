@@ -11,6 +11,8 @@ use starkware_utils_testing::test_utils::{
     assert_panic_with_error, assert_panic_with_felt_error, generic_load,
 };
 
+// TODO: Different file for Views tests?
+
 #[test]
 fn test_channel_exists() {
     let mut test: Test = Default::default();
@@ -122,6 +124,39 @@ fn test_get_public_key() {
 }
 
 #[test]
+fn test_subchannel_exists() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.mock_new_token();
+    let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token);
+    assert_eq!(test.privacy.subchannel_exists(:subchannel_id), false);
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    assert_eq!(test.privacy.subchannel_exists(:subchannel_id), true);
+}
+
+#[test]
+fn test_get_subchannel_info() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.mock_new_token();
+    let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, :token, index: 0);
+    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let random = user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    let expected_subchannel_info = user_1
+        .compute_enc_subchannel_info(recipient: user_2, :token, :random);
+    assert!(expected_subchannel_info.is_non_zero());
+    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), expected_subchannel_info);
+}
+
+#[test]
 fn test_register_multiple_users() {
     let mut test: Test = Default::default();
     let user1 = test.new_user();
@@ -168,6 +203,7 @@ fn test_execute_write_if_zero() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let (_, channel_id) = test.mock_new_channel();
+    let (subchannel_id, _, _) = test.mock_new_subchannel();
 
     // Compute storage path felt using contract state.
     let storage_path_felt = map_entry_address(
@@ -182,6 +218,18 @@ fn test_execute_write_if_zero() {
 
     // Verify channel exists.
     assert!(test.privacy.channel_exists(:channel_id));
+
+    // Verify subchannel doesn't exist and write.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+    ];
+    test.privacy.execute_actions(actions.span());
+
+    // Verify subchannel exists.
+    assert!(test.privacy.subchannel_exists(:subchannel_id));
 
     // Verify user is not registered and write public key.
     let storage_path_felt = map_entry_address(
@@ -231,10 +279,26 @@ fn test_execute_write_if_zero() {
 fn test_execute_write_if_zero_assertions() {
     let mut test: Test = Default::default();
     let (_, channel_id) = test.mock_new_channel();
+    let (subchannel_id, _, _) = test.mock_new_subchannel();
 
-    // Catch NON_ZERO_VALUE
+    // Catch NON_ZERO_VALUE for channel exists.
     let storage_path_felt = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+    ];
+    test.privacy.execute_actions(actions.span());
+    let current_value: bool = generic_load(
+        target: test.privacy.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, true);
+    let result = test.privacy.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+
+    // Catch NON_ZERO_VALUE for subchannel_exists.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
@@ -338,6 +402,47 @@ fn test_execute_write_if_non_zero_assertions() {
     ];
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
+}
+
+#[test]
+fn test_execute_write_if_zero_subchannel() {
+    let mut test: Test = Default::default();
+    let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
+    assert!(enc_subchannel_info.is_non_zero());
+
+    // Verify subchannel doesn't exist and write.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZeroSubchannel((storage_path_felt, enc_subchannel_info)),
+    ];
+    test.privacy.execute_actions(actions.span());
+
+    // Verify subchannel exists.
+    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), enc_subchannel_info);
+}
+
+#[test]
+fn test_execute_write_if_zero_subchannel_assertions() {
+    let mut test: Test = Default::default();
+    let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
+    assert!(enc_subchannel_info.is_non_zero());
+
+    // Catch NON_ZERO_VALUE.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZeroSubchannel((storage_path_felt, enc_subchannel_info)),
+    ];
+    test.privacy.execute_actions(actions.span());
+    let current_value = generic_load(
+        target: test.privacy.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, enc_subchannel_info);
+    let result = test.privacy.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
