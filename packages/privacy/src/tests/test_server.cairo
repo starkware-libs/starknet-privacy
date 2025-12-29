@@ -84,13 +84,7 @@ fn test_get_channel_info_index_out_of_bounds() {
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 
     let (enc_channel_info, channel_id) = test.new_channel();
-    test
-        .cfg
-        .open_channel(
-            recipient_addr: user.address,
-            enc_channel_info: enc_channel_info,
-            channel_id: channel_id,
-        );
+    test.cfg.open_channel(recipient_addr: user.address, :enc_channel_info, :channel_id);
 
     let result = user.safe_get_channel_info(channel_index: 0);
     assert!(result.is_ok());
