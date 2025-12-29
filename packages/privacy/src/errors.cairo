@@ -24,7 +24,6 @@ pub const ZERO_NOTE_ID: felt252 = 'ZERO_NOTE_ID';
 pub const ZERO_ENC_NOTE_VALUE: felt252 = 'ZERO_ENC_NOTE_VALUE';
 pub const ZERO_NULLIFIER: felt252 = 'ZERO_NULLIFIER';
 pub const ZERO_PUBLIC_KEY: felt252 = 'ZERO_PUBLIC_KEY';
-pub const ZERO_USER_ADDR: felt252 = 'ZERO_USER_ADDR';
 pub const NON_ZERO_VALUE: felt252 = 'NON_ZERO_VALUE';
 pub const ZERO_VALUE: felt252 = 'ZERO_VALUE';
 // TODO: Move to internal errors?
