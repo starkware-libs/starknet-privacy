@@ -308,10 +308,10 @@ pub(crate) impl UserImpl of UserTrait {
             .get_public_key(user_addr: *self.address)
     }
 
-    fn replace_public_key(self: @User) {
+    fn replace_public_key(self: @User) -> Span<ServerAction> {
         cheat_caller_address_once(contract_address: *self.privacy, caller_address: *self.address);
-        IServerDispatcher { contract_address: *self.privacy }
-            .replace_public_key(public_key: *self.public_key);
+        IClientDispatcher { contract_address: *self.privacy }
+            .replace_public_key(public_key: *self.public_key)
     }
 
     // TODO: Generate valid private-public key pair.
@@ -321,10 +321,15 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_replace_public_key(self: @User) -> Result<(), Array<felt252>> {
+    fn safe_replace_public_key(self: @User) -> Result<Span<ServerAction>, Array<felt252>> {
         cheat_caller_address_once(contract_address: *self.privacy, caller_address: *self.address);
-        IServerSafeDispatcher { contract_address: *self.privacy }
+        IClientSafeDispatcher { contract_address: *self.privacy }
             .replace_public_key(public_key: *self.public_key)
+    }
+
+    fn replace_public_key_e2e(self: @User) {
+        let actions = self.replace_public_key();
+        IServerDispatcher { contract_address: *self.privacy }.execute_actions(:actions);
     }
 
     fn approve_server(self: @User, token: Token, amount: u256) {
