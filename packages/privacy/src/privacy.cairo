@@ -5,12 +5,14 @@ pub mod Privacy {
     use privacy::errors;
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        EncChannelInfo, EncChannelInfoTrait, EncNote, NewNote, NotePath, ServerAction,
+        EncChannelInfo, EncChannelInfoTrait, EncNote, EncSubchannelInfo, NewNote, NotePath,
+        ServerAction,
     };
     use privacy::utils::{
         StoragePathIntoFelt, compute_channel_id, compute_channel_key, compute_note_id,
-        compute_nullifier, decrypt_channel_info, decrypt_note_amount, derive_public_key,
-        encrypt_channel_info, encrypt_note_amount, is_canonical_key,
+        compute_nullifier, compute_subchannel_id, compute_subchannel_key, decrypt_channel_info,
+        decrypt_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
+        encrypt_subchannel_info, is_canonical_key,
     };
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
@@ -26,6 +28,10 @@ pub mod Privacy {
         /// Map of channel id to whether it exists.
         // TODO: Rename storage var / abi function to not have the same name?
         channel_exists: Map<felt252, bool>,
+        /// Map of subchannel keys to their encrypted tokens.
+        subchannel_tokens: Map<felt252, EncSubchannelInfo>,
+        /// Map of subchannel id to whether it exists.
+        subchannel_exists: Map<felt252, bool>,
         /// Map of note ids to their encrypted values.
         notes: Map<felt252, felt252>,
         /// Map of nullifier to whether it exists.
@@ -42,6 +48,7 @@ pub mod Privacy {
     #[constructor]
     fn constructor(ref self: ContractState) {}
 
+    // TODO: Use views to read values from storage?
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn prepare_open_channel(
@@ -100,6 +107,68 @@ pub mod Privacy {
                     (self.channel_exists.entry(channel_id).into(), true.into()),
                 ),
                 ServerAction::AppendToVec((recipient_addr, enc_channel_info)),
+            ]
+                .span()
+        }
+
+        fn open_subchannel(
+            self: @ContractState,
+            sender_addr: ContractAddress,
+            recipient_addr: ContractAddress,
+            channel_key: felt252,
+            index: usize,
+            token: ContractAddress,
+            random: felt252,
+        ) -> Span<ServerAction> {
+            // TODO: Consider generate random instead of passing it as an argument.
+            assert(sender_addr.is_non_zero(), errors::ZERO_SENDER_ADDR);
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+
+            // TODO: Verify sender signature on TX.
+
+            // TODO: Consider passing the recipient's public key as input and asserting it is the
+            // current public key of `recipient_addr`.
+            // Assert recipient is registered.
+            let recipient_public_key = self.get_public_key(user_addr: recipient_addr);
+            assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
+
+            // Assert channel key is valid for the given sender and recipient.
+            let channel_id = compute_channel_id(
+                :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
+            );
+            assert(self.channel_exists(:channel_id), errors::INVALID_CHANNEL);
+
+            // Assert index is sequential, i.e. the previous subchannel exists.
+            assert(
+                index.is_zero()
+                    || self
+                        .subchannel_tokens
+                        .read(compute_subchannel_key(:channel_key, index: index - 1))
+                        .is_non_zero(),
+                errors::INDEX_NOT_SEQUENTIAL,
+            );
+
+            // Compute subchannel values.
+            let subchannel_id = compute_subchannel_id(
+                :channel_key, :recipient_addr, :recipient_public_key, :token,
+            );
+            let subchannel_key = compute_subchannel_key(:channel_key, :index);
+            let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :token, :random);
+            assert(subchannel_id.is_non_zero(), errors::ZERO_SUBCHANNEL_ID);
+            assert(subchannel_key.is_non_zero(), errors::ZERO_SUBCHANNEL_KEY);
+            // TODO: Consider enc_subchannel_info.is_non_zero() instead.
+            assert(enc_subchannel_info.enc_token.is_non_zero(), errors::ZERO_ENC_SUBCHANNEL_TOKEN);
+
+            [
+                ServerAction::WriteIfZero(
+                    (self.subchannel_exists.entry(subchannel_id).into(), true.into()),
+                ),
+                ServerAction::WriteIfZeroSubchannel(
+                    (self.subchannel_tokens.entry(subchannel_key).into(), enc_subchannel_info),
+                ),
             ]
                 .span()
         }
@@ -346,7 +415,7 @@ pub mod Privacy {
                             ),
                         )
                         .is_non_zero(),
-                errors::NOTE_INDEX_NOT_SEQUENTIAL,
+                errors::INDEX_NOT_SEQUENTIAL,
             );
 
             // Compute note values.
@@ -373,6 +442,14 @@ pub mod Privacy {
                         storage_address, new_value,
                     )) => {
                         self._execute_write(:storage_address, :new_value, require_zero: true);
+                    },
+                    ServerAction::WriteIfZeroSubchannel((
+                        storage_address, new_value,
+                    )) => {
+                        self
+                            ._execute_write_subchannel(
+                                :storage_address, :new_value, require_zero: true,
+                            );
                     },
                     ServerAction::AppendToVec((
                         recipient_addr, enc_channel_info,
@@ -407,6 +484,27 @@ pub mod Privacy {
             require_zero: bool,
         ) {
             let mut target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
+            let current_value = target.read();
+            if require_zero {
+                assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
+            } else {
+                assert(current_value.is_non_zero(), errors::ZERO_VALUE);
+            }
+            target.write(new_value);
+        }
+
+        // TODO: Make generic and consider merging this with `_execute_write` function.
+        // TODO: Consider removing require_zero parameter - always require zero.
+        // TODO: Better naming for this function.
+        fn _execute_write_subchannel(
+            ref self: ContractState,
+            storage_address: felt252,
+            new_value: EncSubchannelInfo,
+            require_zero: bool,
+        ) {
+            let mut target = StorageBase::<
+                Mutable<EncSubchannelInfo>,
+            > { __base_address__: storage_address };
             let current_value = target.read();
             if require_zero {
                 assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
@@ -464,6 +562,14 @@ pub mod Privacy {
             // TODO: Consider defining custom error instead of using `at` (with "Index out of
             // bounds" error)?
             self.recipient_channels.entry(recipient_addr).at(channel_index).read()
+        }
+
+        fn subchannel_exists(self: @ContractState, subchannel_id: felt252) -> bool {
+            self.subchannel_exists.read(subchannel_id)
+        }
+
+        fn get_subchannel_info(self: @ContractState, subchannel_key: felt252) -> EncSubchannelInfo {
+            self.subchannel_tokens.read(subchannel_key)
         }
 
         fn get_note(self: @ContractState, note_id: felt252) -> felt252 {

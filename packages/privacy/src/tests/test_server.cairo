@@ -11,6 +11,8 @@ use starkware_utils_testing::test_utils::{
     assert_panic_with_error, assert_panic_with_felt_error, generic_load,
 };
 
+// TODO: Different file for Views tests?
+
 #[test]
 fn test_channel_exists() {
     let mut test: Test = Default::default();
@@ -119,6 +121,39 @@ fn test_get_public_key() {
     // Register the user.
     user.register_e2e();
     assert_eq!(user.get_public_key(), user.public_key);
+}
+
+#[test]
+fn test_subchannel_exists() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.new_token();
+    let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token);
+    assert_eq!(test.cfg.subchannel_exists(:subchannel_id), false);
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    assert_eq!(test.cfg.subchannel_exists(:subchannel_id), true);
+}
+
+#[test]
+fn test_get_subchannel_info() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.new_token();
+    let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, :token, index: 0);
+    assert_eq!(test.cfg.get_subchannel_info(:subchannel_key), Zero::zero());
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let random = user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    let expected_subchannel_info = user_1
+        .compute_enc_subchannel_info(recipient: user_2, :token, :random);
+    assert!(expected_subchannel_info.is_non_zero());
+    assert_eq!(test.cfg.get_subchannel_info(:subchannel_key), expected_subchannel_info);
 }
 
 #[test]
