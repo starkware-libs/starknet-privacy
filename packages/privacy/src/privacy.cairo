@@ -1,7 +1,7 @@
 #[starknet::contract]
 pub mod Privacy {
     use core::iter::Extend;
-    use core::num::traits::Zero;
+    use core::num::traits::{Pow, Zero};
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::errors;
     use privacy::interface::{IClient, IServer, IViews};
@@ -21,6 +21,10 @@ pub mod Privacy {
     };
     use starknet::{ContractAddress, get_contract_address};
     use starkware_utils::erc20::erc20_utils::CheckedIERC20DispatcherTrait;
+
+    // TODO: Consider constants file.
+    // TODO: Consider using hex value for optimization.
+    pub(crate) const MAX_RANDOM: u256 = 2_u256.pow(120) - 1;
 
     #[storage]
     struct Storage {
@@ -70,6 +74,7 @@ pub mod Privacy {
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            assert(random.into() <= MAX_RANDOM, errors::RANDOM_TOO_LARGE);
 
             // TODO: Verify sender signature on TX.
 
