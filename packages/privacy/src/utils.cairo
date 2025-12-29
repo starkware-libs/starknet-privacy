@@ -10,6 +10,8 @@ use starknet::ContractAddress;
 use starknet::storage::{StorageAsPointer, StoragePath};
 
 // TODO: Consider separate (common?) file for compute hashes functions.
+// TODO: Add doc for each hash function, for example, `channel_id = h(CHANNEL_ID_TAG, channel_key,
+// sender_addr, recipient_addr, recipient_public_key)`.
 
 // TODO: Move to a different file?
 /// Returns the generator point.
@@ -42,9 +44,22 @@ pub(crate) fn compute_channel_key(
 }
 
 /// Computes the channel id given the channel key.
-/// Assumes the channel key is not zero.
-pub(crate) fn compute_channel_id(channel_key: felt252) -> felt252 {
-    hash([CHANNEL_ID_TAG, channel_key].span())
+/// Assumes all the inputs are not zero.
+///
+/// `channel_id = h(CHANNEL_ID_TAG, channel_key, sender_addr, recipient_addr, recipient_public_key)`
+pub(crate) fn compute_channel_id(
+    channel_key: felt252,
+    sender_addr: ContractAddress,
+    recipient_addr: ContractAddress,
+    recipient_public_key: felt252,
+) -> felt252 {
+    hash(
+        [
+            CHANNEL_ID_TAG, channel_key, sender_addr.into(), recipient_addr.into(),
+            recipient_public_key,
+        ]
+            .span(),
+    )
 }
 
 /// Computes the hash used to encrypt the channel key in `EncChannelInfo`.

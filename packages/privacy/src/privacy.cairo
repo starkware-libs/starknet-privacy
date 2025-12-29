@@ -87,7 +87,9 @@ pub mod Privacy {
             let enc_channel_info = encrypt_channel_info(
                 ephemeral_secret: random, :recipient_public_key, :channel_key, :token, :sender_addr,
             );
-            let channel_id = compute_channel_id(:channel_key);
+            let channel_id = compute_channel_id(
+                :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
+            );
 
             assert(channel_id.is_non_zero(), errors::ZERO_CHANNEL_ID);
             assert(enc_channel_info.is_non_zero(), errors::ZERO_ENC_CHANNEL_INFO);
@@ -313,20 +315,23 @@ pub mod Privacy {
 
             // Read recipient public key from storage.
             // TODO: Consider using public key from input instead of reading from storage.
-            let recipient_public_key = self.get_public_key(user_addr: note.recipient_addr);
+            let recipient_addr = note.recipient_addr;
+            let recipient_public_key = self.get_public_key(user_addr: recipient_addr);
             assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
 
             // Compute channel key.
             let channel_key = compute_channel_key(
                 sender_addr: owner_addr,
                 sender_private_key: owner_private_key,
-                recipient_addr: note.recipient_addr,
+                :recipient_addr,
                 :recipient_public_key,
                 token: note.token,
             );
 
             // Assert channel exists.
-            let channel_id = compute_channel_id(:channel_key);
+            let channel_id = compute_channel_id(
+                :channel_key, sender_addr: owner_addr, :recipient_addr, :recipient_public_key,
+            );
             assert(self.channel_exists(:channel_id), errors::CHANNEL_NOT_FOUND);
 
             // Assert index is sequential, i.e. the previous note exists.

@@ -11,9 +11,9 @@ use privacy::objects::{EncChannelInfo, EncNote, NewNote, NotePath, ServerAction}
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::utils::{
-    compute_channel_key, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash, compute_note_id, compute_nullifier, derive_public_key,
-    encrypt_note_amount, hash, is_canonical_key,
+    compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
+    compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
+    derive_public_key, encrypt_note_amount, hash, is_canonical_key,
 };
 use snforge_std::{
     CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state,
@@ -194,6 +194,15 @@ pub(crate) impl UserImpl of UserTrait {
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             :token,
+        )
+    }
+
+    fn compute_channel_id(self: @User, recipient: User, token: ContractAddress) -> felt252 {
+        compute_channel_id(
+            channel_key: self.compute_channel_key(:recipient, :token),
+            sender_addr: *self.address,
+            recipient_addr: recipient.address,
+            recipient_public_key: recipient.public_key,
         )
     }
 

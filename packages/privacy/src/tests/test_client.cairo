@@ -4,8 +4,7 @@ use privacy::objects::domain_separation::enc_channel_info;
 use privacy::objects::{NewNote, NotePath, ServerAction};
 use privacy::tests::test_utils::{Test, TestTrait, UserTrait, decrypt_channel_info};
 use privacy::utils::{
-    compute_channel_id, compute_note_id, compute_nullifier, decrypt_note_amount,
-    encrypt_channel_info, is_canonical_key,
+    compute_note_id, compute_nullifier, decrypt_note_amount, encrypt_channel_info, is_canonical_key,
 };
 use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
@@ -405,7 +404,7 @@ fn test_open_channel() {
         :token,
         sender_addr: user_1.address,
     );
-    let expected_channel_id = compute_channel_id(:channel_key);
+    let expected_channel_id = user_1.compute_channel_id(recipient: user_2, :token);
     let storage_path_felt = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
     );
@@ -433,7 +432,7 @@ fn test_open_channel_self_channel() {
         :token,
         sender_addr: user.address,
     );
-    let expected_channel_id = compute_channel_id(:channel_key);
+    let expected_channel_id = user.compute_channel_id(recipient: user, :token);
     let storage_path_felt = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
     );
@@ -548,8 +547,8 @@ fn test_open_channel_multiple_channels_same_sender() {
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
-    let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
+    let expected_channel_id_1 = user_1.compute_channel_id(recipient: user_2, :token);
+    let expected_channel_id_2 = user_1.compute_channel_id(recipient: user_3, :token);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
     let storage_path_felt_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
@@ -616,8 +615,8 @@ fn test_open_channel_multiple_channels_same_recipient() {
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
-    let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
+    let expected_channel_id_1 = user_2.compute_channel_id(recipient: user_1, :token);
+    let expected_channel_id_2 = user_3.compute_channel_id(recipient: user_1, :token);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
     let storage_path_felt_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
@@ -680,8 +679,8 @@ fn test_open_channel_multiple_tokens() {
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
-    let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
+    let expected_channel_id_1 = user_1.compute_channel_id(recipient: user_2, token: token_1);
+    let expected_channel_id_2 = user_1.compute_channel_id(recipient: user_2, token: token_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
     let storage_path_felt_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
@@ -742,8 +741,8 @@ fn test_open_channel_self_channel_multiple_tokens() {
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    let expected_channel_id_1 = compute_channel_id(channel_key: channel_key_1);
-    let expected_channel_id_2 = compute_channel_id(channel_key: channel_key_2);
+    let expected_channel_id_1 = user.compute_channel_id(recipient: user, token: token_1);
+    let expected_channel_id_2 = user.compute_channel_id(recipient: user, token: token_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
     let storage_path_felt_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
