@@ -1,6 +1,7 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
 use core::hash::{HashStateExTrait, HashStateTrait};
+use core::num::traits::Bounded;
 use core::poseidon::{PoseidonTrait, poseidon_hash_span};
 use privacy::objects::EncChannelInfo;
 use privacy::objects::domain_separation::{
@@ -161,15 +162,29 @@ pub(crate) fn compute_enc_amount_hash(channel_key: felt252, index: usize) -> fel
 }
 
 /// Encrypts the note amount.
+/// Wraps the resulting hash to 128 bits.
 pub(crate) fn encrypt_note_amount(channel_key: felt252, index: usize, amount: u128) -> felt252 {
-    compute_enc_amount_hash(channel_key, index) + amount.into()
+    // No need to crop hash because we crop the result.
+    let sum: u256 = compute_enc_amount_hash(channel_key, index).into() + amount.into();
+    // Unwrap is safe because sum is less than MAX_U128.
+    (sum % Bounded::<u128>::MAX.into()).try_into().unwrap()
 }
 
 /// Decrypts the note amount from `EncNote`.
 pub(crate) fn decrypt_note_amount(
     enc_note_value: felt252, channel_key: felt252, index: usize,
 ) -> u128 {
-    (enc_note_value - compute_enc_amount_hash(:channel_key, :index)).try_into().unwrap()
+    let hash: u256 = compute_enc_amount_hash(:channel_key, :index).into();
+    let cropped_hash: u128 = (hash % Bounded::<u128>::MAX.into()).try_into().unwrap();
+    // TODO: Consider unwrapping instead of expecting an error.
+    // TODO: Consider internal errors file.
+    let enc_value: u128 = enc_note_value.try_into().expect('AMOUNT_DECRYPT_ERROR');
+    // Value is modulo MAX_U128, so we need to handle the wrap around.
+    if enc_value < cropped_hash {
+        enc_value + (Bounded::<u128>::MAX - cropped_hash)
+    } else {
+        enc_value - cropped_hash
+    }
 }
 
 /// Computes the nullifier.
