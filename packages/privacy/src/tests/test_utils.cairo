@@ -11,7 +11,9 @@ use privacy::objects::{
     ClientAction, EncChannelInfo, EncNote, EncSubchannelInfo, NewNote, NotePath, ServerAction,
 };
 use privacy::privacy::Privacy;
-use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
+use privacy::privacy::Privacy::{
+    ClientInternalTrait, MAX_RANDOM, deploy_for_test as deploy_privacy_for_test,
+};
 use privacy::utils::{
     compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
     compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
@@ -264,7 +266,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn get_random(ref self: User) -> felt252 {
         self.nonce += 1;
-        hash(['RANDOM', self.nonce.into()].span())
+        (hash(['RANDOM', self.nonce.into()].span()).into() % MAX_RANDOM).try_into().unwrap()
     }
 
     /// Internal function to create a note in the client side.

@@ -33,6 +33,7 @@ pub const ZERO_PUBLIC_KEY: felt252 = 'ZERO_PUBLIC_KEY';
 pub const NON_ZERO_VALUE: felt252 = 'NON_ZERO_VALUE';
 pub const ZERO_VALUE: felt252 = 'ZERO_VALUE';
 pub const ZERO_USER_ADDR: felt252 = 'ZERO_USER_ADDR';
+pub const RANDOM_TOO_LARGE: felt252 = 'RANDOM_TOO_LARGE';
 // TODO: Move to internal errors?
 pub const ACTIONS_LENGTH_MISMATCH: felt252 = 'ACTIONS_LENGTH_MISMATCH';
 pub const ZERO_CHANNEL_KEY: felt252 = 'ZERO_CHANNEL_KEY';

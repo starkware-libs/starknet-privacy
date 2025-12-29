@@ -2,6 +2,7 @@ use core::num::traits::{Bounded, Zero};
 use privacy::errors;
 use privacy::objects::domain_separation::enc_channel_info;
 use privacy::objects::{ClientAction, NewNote, NotePath, ServerAction};
+use privacy::privacy::Privacy::MAX_RANDOM;
 use privacy::tests::test_utils::{
     PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info, decrypt_subchannel_token,
 };
@@ -497,6 +498,11 @@ fn test_open_channel_assertions() {
     // Catch ZERO_RANDOM.
     let result = user_1.safe_open_channel(recipient: user_2, :token, random: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+
+    // Catch RANDOM_TOO_LARGE.
+    let result = user_1
+        .safe_open_channel(recipient: user_2, :token, random: MAX_RANDOM.try_into().unwrap() + 1);
+    assert_panic_with_felt_error(:result, expected_error: errors::RANDOM_TOO_LARGE);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
     let mut user_invalid_private_key = user_1;
