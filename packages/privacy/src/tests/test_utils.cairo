@@ -7,7 +7,9 @@ use privacy::interface::{
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
-use privacy::objects::{EncChannelInfo, EncNote, EncSubchannelInfo, NewNote, NotePath, ServerAction};
+use privacy::objects::{
+    ClientAction, EncChannelInfo, EncNote, EncSubchannelInfo, NewNote, NotePath, ServerAction,
+};
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::utils::{
@@ -59,6 +61,19 @@ struct User {
 // TODO: Consider renaming fn_name_server to server_fn_name.
 #[generate_trait]
 pub(crate) impl UserImpl of UserTrait {
+    fn compile_client_actions(
+        self: @User, client_actions: Span<ClientAction>,
+    ) -> Span<ServerAction> {
+        self.privacy.client.compile_client_actions(user_addr: *self.address, :client_actions)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_compile_client_actions(
+        self: @User, client_actions: Span<ClientAction>,
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
+        self.privacy.safe_client.compile_client_actions(user_addr: *self.address, :client_actions)
+    }
+
     fn replace_private_key(ref self: User, private_key: felt252) {
         self.private_key = private_key;
         self.public_key = derive_public_key(:private_key);
@@ -398,10 +413,10 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn register(self: @User) -> Span<ServerAction> {
-        cheat_caller_address_once(
-            contract_address: *self.privacy.address, caller_address: *self.address,
-        );
-        self.privacy.client.register(public_key: *self.public_key)
+        self
+            .compile_client_actions(
+                client_actions: [ClientAction::Register(*self.public_key)].span(),
+            )
     }
 
     fn register_e2e(self: @User) {
@@ -411,10 +426,10 @@ pub(crate) impl UserImpl of UserTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_register(self: @User) -> Result<Span<ServerAction>, Array<felt252>> {
-        cheat_caller_address_once(
-            contract_address: *self.privacy.address, caller_address: *self.address,
-        );
-        self.privacy.safe_client.register(public_key: *self.public_key)
+        self
+            .safe_compile_client_actions(
+                client_actions: [ClientAction::Register(*self.public_key)].span(),
+            )
     }
 
     fn get_public_key(self: @User) -> felt252 {
