@@ -9,6 +9,7 @@ use privacy::objects::domain_separation::{
 use privacy::objects::{EncChannelInfo, EncSubchannelInfo};
 use starknet::ContractAddress;
 use starknet::storage::{StorageAsPointer, StoragePath};
+use starkware_utils::constants::TWO_POW_128;
 
 // TODO: Consider separate (common?) file for compute hashes functions.
 // TODO: Add doc for each hash function, for example, `channel_id = h(CHANNEL_ID_TAG, channel_key,
@@ -179,22 +180,37 @@ pub(crate) fn compute_note_id(
 
 // TODO: Add random.
 /// Computes the hash used to encrypt the note amount in `EncNote`.
-pub(crate) fn compute_enc_amount_hash(channel_key: felt252) -> felt252 {
-    hash([enc_note::ENC_AMOUNT_TAG, channel_key].span())
+///
+/// Returns `h(ENC_AMOUNT_TAG, channel_key, random)`.
+pub(crate) fn compute_enc_amount_hash(channel_key: felt252, random: felt252) -> felt252 {
+    hash([enc_note::ENC_AMOUNT_TAG, channel_key, random].span())
 }
 
-// TODO: Refactor to (r, h(c,r) + amount).
-/// Encrypts the note amount.
+// TODO: Test this function with decrypt_note_amount.
+/// Encrypts the note amount. The result is packed into a single felt252 value.
+/// The first 120 bits are the random value, and the last 128 bits are the encrypted amount.
+/// The encrypted amount is computed modulo 2^128.
+/// Assumes all the inputs are not zero.
+///
+/// `enc_amount = (random, (h(ENC_AMOUNT_TAG, channel_key,random) + amount) % 2^128)`.
 pub(crate) fn encrypt_note_amount(channel_key: felt252, random: felt252, amount: u128) -> felt252 {
-    // TODO: Use the random.
-    compute_enc_amount_hash(channel_key) + amount.into()
+    let enc_amount = (compute_enc_amount_hash(:channel_key, :random) + amount.into())
+        .into() % TWO_POW_128;
+    // TODO: Handle bounds of random, enc_amount.
+    // TODO: expect instead of unwrap.
+    packing(value_1: random, value_2: enc_amount.try_into().unwrap())
 }
 
-// TODO: Refactor with encrypt_note_amount.
+// TODO: Test this function with encrypt_note_amount.
+// TODO: Test a note with max amount (MAX_U128).
 /// Decrypts the note amount from `EncNote`.
 /// This is the inverse of `encrypt_note_amount`.
 pub(crate) fn decrypt_note_amount(enc_note_value: felt252, channel_key: felt252) -> u128 {
-    (enc_note_value - compute_enc_amount_hash(:channel_key)).try_into().unwrap()
+    let (random, enc_amount) = unpacking(packed_value: enc_note_value);
+    let enc_amount_u256: u256 = enc_amount.into(); // already < 2^128 by construction
+    let pad: u256 = compute_enc_amount_hash(channel_key, random).into() % TWO_POW_128;
+    let amount: u256 = (enc_amount_u256 + TWO_POW_128 - pad) % TWO_POW_128;
+    amount.try_into().expect('AMOUNT_OVERFLOW')
 }
 
 /// Computes the nullifier.
@@ -212,4 +228,30 @@ pub(crate) impl StoragePathIntoFelt<
     fn into(self: StoragePath<T>) -> felt252 {
         self.as_ptr().__storage_pointer_address__.into()
     }
+}
+
+// TODO: Move to utils repo.
+// TODO: Reimplement.
+// TODO: Check bounds of value_1, value_2.
+// TODO: Test.
+/// Packing two felt252 values into a single felt252 value.
+/// Equivalent to (value_1 << 128) | value_2
+/// Assumes: value_1 is 120 bit, value_2 is 128 bit.
+pub(crate) fn packing(value_1: felt252, value_2: felt252) -> felt252 {
+    (value_1.into() * TWO_POW_128 + value_2.into()).try_into().expect('PACK_OVERFLOW')
+}
+
+
+// TODO: Move to utils repo.
+// TODO: Reimplement.
+// TODO: Test.
+/// Unpacking a single felt252 into two felt252 values (120 bits for value_1, 128 bits for value_2).
+/// Inverse of `packing`: `packed_value = value_1 * 2^128 + value_2`
+pub(crate) fn unpacking(packed_value: felt252) -> (felt252, felt252) {
+    let packed_u256: u256 = packed_value.into();
+    let value_1 = packed_u256 / TWO_POW_128;
+    let value_2 = packed_u256 % TWO_POW_128;
+    // TODO: Assert bounds?
+    // TODO: Assert value_1 is 120 bits.
+    (value_1.try_into().expect('UNPACK1_OVERFLOW'), value_2.try_into().expect('UNPACK2_OVERFLOW'))
 }

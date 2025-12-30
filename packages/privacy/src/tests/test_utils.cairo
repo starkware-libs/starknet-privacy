@@ -1,5 +1,5 @@
 use core::ec::EcPointTrait;
-use core::num::traits::Zero;
+use core::num::traits::{Pow, Zero};
 use core::traits::Neg;
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::interface::{
@@ -236,10 +236,14 @@ pub(crate) impl UserImpl of UserTrait {
         random
     }
 
-    /// TODO: Returns a random value of 120 bits.
+    /// Returns a random value of 120 bits.
+    // TODO: Use two_pow_120 as constant.
     fn get_random(ref self: User) -> felt252 {
         self.nonce += 1;
-        hash(['RANDOM', self.nonce.into()].span())
+        let two_pow_120: u256 = 2_u256.pow(120);
+        (hash(['RANDOM', self.nonce.into()].span()).into() % two_pow_120)
+            .try_into()
+            .expect('RANDOM_OVERFLOW')
     }
 
     /// Internal function to create a note in the client side.

@@ -102,7 +102,7 @@ pub struct EncNote {
     /// The note's id.
     pub id: felt252,
     /// The encrypted amount of the note.
-    // TODO: Doc how encrypted here ((h(..)+v)%2^128).
+    /// `enc_amount = packing(random, (h(ENC_AMOUNT_TAG, channel_key,random) + amount) % 2^128)`.
     pub enc_amount: felt252,
 }
 
