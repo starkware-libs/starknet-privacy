@@ -1377,7 +1377,7 @@ fn test_create_note_decrypt_amount() {
     let (channel_key, _, _) = decrypt_channel_info(
         :enc_channel_info, private_key: user_2.private_key,
     );
-    let note_id = compute_note_id(:channel_key, index: note_index, public_key: user_2.public_key);
+    let note_id = compute_note_id(:channel_key, :token, index: note_index);
     let enc_amount = user_2.privacy.get_note(:note_id);
     let decrypted_amount = decrypt_note_amount(
         enc_note_value: enc_amount, :channel_key, index: note_index,
@@ -1690,7 +1690,7 @@ fn test_use_note_find_nullifier() {
         :enc_channel_info, private_key: user_2.private_key,
     );
     let expected_nullifier = compute_nullifier(
-        :channel_key, index: note_index, owner_private_key: user_2.private_key,
+        :channel_key, :token, index: note_index, owner_private_key: user_2.private_key,
     );
     assert!(!user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
 
