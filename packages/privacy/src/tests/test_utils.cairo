@@ -19,6 +19,7 @@ use privacy::utils::{
     compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
     compute_subchannel_enc_token_hash, compute_subchannel_id, compute_subchannel_key,
     derive_public_key, encrypt_note_amount, encrypt_subchannel_info, hash, is_canonical_key,
+    pack_note,
 };
 use snforge_std::{
     CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state,
@@ -342,12 +343,18 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn compute_enc_note(
-        self: @User, recipient: User, token: ContractAddress, index: usize, amount: u128,
+        self: @User,
+        recipient: User,
+        token: ContractAddress,
+        index: usize,
+        amount: u128,
+        random: felt252,
     ) -> EncNote {
         let channel_key = self.compute_channel_key(:recipient, :token);
         let note_id = compute_note_id(:channel_key, :token, :index);
         let enc_amount = encrypt_note_amount(:channel_key, :index, :amount);
-        EncNote { id: note_id, enc_amount }
+        let packed_note = pack_note(:random, :enc_amount);
+        EncNote { id: note_id, packed_note }
     }
 
     /// Internal function to use a note in the client side.
@@ -377,9 +384,11 @@ pub(crate) impl UserImpl of UserTrait {
 
     // TODO: Remember index somewhere instead of passing it as an argument.
     fn new_note(
-        self: @User, recipient: User, token: ContractAddress, amount: u128, index: usize,
+        ref self: User, recipient: User, token: ContractAddress, amount: u128, index: usize,
     ) -> NewNote {
-        NewNote { recipient_addr: recipient.address, token, amount, index }
+        NewNote {
+            recipient_addr: recipient.address, token, amount, index, random: self.get_random(),
+        }
     }
 
     fn deposit(self: @User, new_note: NewNote) -> Span<ServerAction> {
@@ -489,7 +498,7 @@ pub(crate) impl UserImpl of UserTrait {
             ServerAction::WriteIfZero(
                 (
                     map_entry_address(map_selector: selector!("notes"), keys: [note.id].span()),
-                    note.enc_amount,
+                    note.packed_note,
                 ),
             ),
             ServerAction::TransferFrom((*self.address, token.contract_address(), amount)),
@@ -589,8 +598,15 @@ pub(crate) impl TestImpl of TestTrait {
     fn mock_new_note(ref self: Test, amount: u128) -> EncNote {
         self.nonce += 1;
         let id = ('NOTE_ID' + self.nonce.into()).try_into().unwrap();
-        let enc_amount = ('ENC_AMOUNT' + amount.into() + self.nonce.into()).try_into().unwrap();
-        EncNote { id, enc_amount }
+        let enc_amount = ('ENC' + amount.into() + self.nonce.into()).try_into().unwrap();
+        let random = self.get_random();
+        let packed_note = pack_note(:random, :enc_amount);
+        EncNote { id, packed_note }
+    }
+
+    fn get_random(ref self: Test) -> felt252 {
+        self.nonce += 1;
+        (hash(['RANDOM', self.nonce.into()].span()).into() % MAX_RANDOM).try_into().unwrap()
     }
 
     /// Mock function to generate a new nullifier.
@@ -679,7 +695,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self
             .server
             .execute_actions(
-                actions: array![ServerAction::WriteIfZero((storage_path_felt, note.enc_amount))]
+                actions: array![ServerAction::WriteIfZero((storage_path_felt, note.packed_note))]
                     .span(),
             )
     }

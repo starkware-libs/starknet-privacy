@@ -214,6 +214,23 @@ pub(crate) fn encrypt_note_amount(channel_key: felt252, index: usize, amount: u1
     (sum % Bounded::<u128>::MAX.into()).try_into().unwrap()
 }
 
+/// Packs the note amount and random number into a single felt.
+pub(crate) fn pack_note(random: felt252, enc_amount: felt252) -> felt252 {
+    enc_amount + random * (Bounded::<u128>::MAX.into() + 1)
+}
+
+/// Unpacks the note amount and random number from a single felt.
+pub(crate) fn unpack_note(packed_note: felt252) -> (felt252, felt252) {
+    let packed_value: u256 = packed_note.into();
+    let enc_amount: felt252 = (packed_value % (Bounded::<u128>::MAX.into() + 1))
+        .try_into()
+        .expect('ENC_AMOUNT_UNPACK_ERROR');
+    let random: felt252 = (packed_value / (Bounded::<u128>::MAX.into() + 1))
+        .try_into()
+        .expect('RANDOM_UNPACK_ERROR');
+    (random, enc_amount)
+}
+
 /// Decrypts the note amount from `EncNote`.
 pub(crate) fn decrypt_note_amount(
     enc_note_value: felt252, channel_key: felt252, index: usize,

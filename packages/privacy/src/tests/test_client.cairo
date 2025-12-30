@@ -8,7 +8,7 @@ use privacy::tests::test_utils::{
 };
 use privacy::utils::{
     compute_enc_amount_hash, compute_note_id, compute_nullifier, compute_subchannel_key,
-    decrypt_note_amount, encrypt_channel_info, is_canonical_key,
+    decrypt_note_amount, encrypt_channel_info, is_canonical_key, unpack_note,
 };
 use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
@@ -67,7 +67,10 @@ fn test_transfer() {
     let actions = user_1.transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
 
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
-    let enc_note = user_1.compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
+    let enc_note = user_1
+        .compute_enc_note(
+            recipient: user_2, :token, index: note_index, :amount, random: note.random,
+        );
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
@@ -76,7 +79,7 @@ fn test_transfer() {
     );
     let expected_actions = array![
         ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.packed_note)),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -102,7 +105,10 @@ fn test_transfer_to_self() {
 
     let actions = user_1.transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
     let expected_nullifier = user_1.compute_nullifier(sender: user_2, :token, :note_index);
-    let enc_note = user_1.compute_enc_note(recipient: user_1, :token, index: note_index, :amount);
+    let enc_note = user_1
+        .compute_enc_note(
+            recipient: user_1, :token, index: note_index, :amount, random: note.random,
+        );
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
@@ -111,7 +117,7 @@ fn test_transfer_to_self() {
     );
     let expected_actions = array![
         ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.packed_note)),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -145,9 +151,13 @@ fn test_transfer_one_to_many() {
         .transfer(notes_to_use: [note_path].span(), notes_to_create: [note_1, note_2].span());
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
     let enc_note_1 = user_1
-        .compute_enc_note(recipient: user_2, :token, index: note_index, amount: amount_1);
+        .compute_enc_note(
+            recipient: user_2, :token, index: note_index, amount: amount_1, random: note_1.random,
+        );
     let enc_note_2 = user_1
-        .compute_enc_note(recipient: user_3, :token, index: note_index, amount: amount_2);
+        .compute_enc_note(
+            recipient: user_3, :token, index: note_index, amount: amount_2, random: note_2.random,
+        );
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
@@ -159,8 +169,8 @@ fn test_transfer_one_to_many() {
     );
     let expected_actions = array![
         ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_note_1, enc_note_1.enc_amount)),
-        ServerAction::WriteIfZero((storage_path_felt_note_2, enc_note_2.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt_note_1, enc_note_1.packed_note)),
+        ServerAction::WriteIfZero((storage_path_felt_note_2, enc_note_2.packed_note)),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -198,7 +208,10 @@ fn test_transfer_many_to_one() {
     let expected_nullifier_1 = user_1.compute_nullifier(sender: user_2, :token, :note_index);
     let expected_nullifier_2 = user_1.compute_nullifier(sender: user_3, :token, :note_index);
     assert_ne!(expected_nullifier_1, expected_nullifier_2);
-    let enc_note = user_1.compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
+    let enc_note = user_1
+        .compute_enc_note(
+            recipient: user_2, :token, index: note_index, :amount, random: note.random,
+        );
     let storage_path_felt_nullifier_1 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
     );
@@ -211,7 +224,7 @@ fn test_transfer_many_to_one() {
     let expected_actions = array![
         ServerAction::WriteIfZero((storage_path_felt_nullifier_1, true.into())),
         ServerAction::WriteIfZero((storage_path_felt_nullifier_2, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.packed_note)),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -252,10 +265,16 @@ fn test_transfer_many_to_many() {
     let expected_nullifier_1 = user_3.compute_nullifier(sender: user_1, :token, :note_index);
     let expected_nullifier_2 = user_3.compute_nullifier(sender: user_2, :token, :note_index);
     assert_ne!(expected_nullifier_1, expected_nullifier_2);
-    let enc_note_1 = user_3.compute_enc_note(recipient: user_1, :token, index: note_index, :amount);
-    let enc_note_2 = user_3.compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
+    let enc_note_1 = user_3
+        .compute_enc_note(
+            recipient: user_1, :token, index: note_index, :amount, random: note_1.random,
+        );
+    let enc_note_2 = user_3
+        .compute_enc_note(
+            recipient: user_2, :token, index: note_index, :amount, random: note_2.random,
+        );
     assert_ne!(enc_note_1.id, enc_note_2.id);
-    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    assert_ne!(enc_note_1.packed_note, enc_note_2.packed_note);
     let storage_path_felt_nullifier_1 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
     );
@@ -271,8 +290,8 @@ fn test_transfer_many_to_many() {
     let expected_actions = array![
         ServerAction::WriteIfZero((storage_path_felt_nullifier_1, true.into())),
         ServerAction::WriteIfZero((storage_path_felt_nullifier_2, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_note_1, enc_note_1.enc_amount)),
-        ServerAction::WriteIfZero((storage_path_felt_note_2, enc_note_2.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt_note_1, enc_note_1.packed_note)),
+        ServerAction::WriteIfZero((storage_path_felt_note_2, enc_note_2.packed_note)),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -288,7 +307,9 @@ fn test_transfer_assertions() {
     let token = test.mock_new_token();
 
     let note_path = NotePath { channel_index: 0, token, note_index: 0 };
-    let new_note = NewNote { recipient_addr: user_3.address, token, amount: 1, index: 0 };
+    let new_note = NewNote {
+        recipient_addr: user_3.address, token, amount: 1, index: 0, random: user_1.get_random(),
+    };
 
     // Catch ZERO_OWNER_ADDR.
     let mut user_1_zero = user_1;
@@ -1321,7 +1342,9 @@ fn test_create_note() {
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
     let enc_note = user_1.create_note(:note);
     let expected_enc_note = user_1
-        .compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
+        .compute_enc_note(
+            recipient: user_2, :token, index: note_index, :amount, random: note.random,
+        );
     assert_eq!(enc_note, expected_enc_note);
 }
 
@@ -1337,7 +1360,7 @@ fn test_create_note_self_note() {
     let note = user.new_note(recipient: user, :token, :amount, index: note_index);
     let enc_note = user.create_note(:note);
     let expected_enc_note = user
-        .compute_enc_note(recipient: user, :token, index: note_index, :amount);
+        .compute_enc_note(recipient: user, :token, index: note_index, :amount, random: note.random);
     assert_eq!(enc_note, expected_enc_note);
 }
 
@@ -1360,11 +1383,15 @@ fn test_create_note_twice() {
     let note_2 = user_1.new_note(recipient: user_2, :token, amount: amount_2, index: note_index_2);
     let enc_note_2 = user_1.create_note(note: note_2);
     assert_ne!(enc_note_1.id, enc_note_2.id);
-    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    assert_ne!(enc_note_1.packed_note, enc_note_2.packed_note);
     let expected_note_1 = user_1
-        .compute_enc_note(recipient: user_2, :token, index: note_index_1, amount: amount_1);
+        .compute_enc_note(
+            recipient: user_2, :token, index: note_index_1, amount: amount_1, random: note_1.random,
+        );
     let expected_note_2 = user_1
-        .compute_enc_note(recipient: user_2, :token, index: note_index_2, amount: amount_2);
+        .compute_enc_note(
+            recipient: user_2, :token, index: note_index_2, amount: amount_2, random: note_2.random,
+        );
     assert_eq!(enc_note_1, expected_note_1);
     assert_eq!(enc_note_2, expected_note_2);
 }
@@ -1387,11 +1414,15 @@ fn test_create_note_twice_same_amount() {
     let note_2 = user_1.new_note(recipient: user_2, :token, :amount, index: note_index_2);
     let enc_note_2 = user_1.create_note(note: note_2);
     assert_ne!(enc_note_1.id, enc_note_2.id);
-    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    assert_ne!(enc_note_1.packed_note, enc_note_2.packed_note);
     let expected_note_1 = user_1
-        .compute_enc_note(recipient: user_2, :token, index: note_index_1, :amount);
+        .compute_enc_note(
+            recipient: user_2, :token, index: note_index_1, :amount, random: note_1.random,
+        );
     let expected_note_2 = user_1
-        .compute_enc_note(recipient: user_2, :token, index: note_index_2, :amount);
+        .compute_enc_note(
+            recipient: user_2, :token, index: note_index_2, :amount, random: note_2.random,
+        );
     assert_eq!(enc_note_1, expected_note_1);
     assert_eq!(enc_note_2, expected_note_2);
 }
@@ -1400,7 +1431,7 @@ fn test_create_note_twice_same_amount() {
 #[should_panic(expected: 'ZERO_RECIPIENT_ADDR')]
 fn test_create_note_zero_recipient_addr() {
     let mut test: Test = Default::default();
-    let user_1 = test.new_user();
+    let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token = test.mock_new_token();
     user_2.address = Zero::zero();
@@ -1412,7 +1443,7 @@ fn test_create_note_zero_recipient_addr() {
 #[should_panic(expected: 'ZERO_TOKEN')]
 fn test_create_note_zero_token() {
     let mut test: Test = Default::default();
-    let user_1 = test.new_user();
+    let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     let note = user_1.new_note(recipient: user_2, token: Zero::zero(), amount: 1, index: 0);
     user_1.create_note(:note);
@@ -1422,7 +1453,7 @@ fn test_create_note_zero_token() {
 #[should_panic(expected: 'ZERO_AMOUNT')]
 fn test_create_note_zero_amount() {
     let mut test: Test = Default::default();
-    let user_1 = test.new_user();
+    let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     let token = test.mock_new_token();
     let note = user_1.new_note(recipient: user_2, :token, amount: 0, index: 0);
@@ -1433,7 +1464,7 @@ fn test_create_note_zero_amount() {
 #[should_panic(expected: 'RECIPIENT_NOT_REGISTERED')]
 fn test_create_note_recipient_not_registered() {
     let mut test: Test = Default::default();
-    let user_1 = test.new_user();
+    let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     let token = test.mock_new_token();
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
@@ -1444,7 +1475,7 @@ fn test_create_note_recipient_not_registered() {
 #[should_panic(expected: 'INVALID_SUBCHANNEL')]
 fn test_create_note_invalid_subchannel_channel_doesnt_exist() {
     let mut test: Test = Default::default();
-    let user_1 = test.new_user();
+    let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     user_1.register_e2e();
     user_2.register_e2e();
@@ -1534,7 +1565,8 @@ fn test_create_note_decrypt_amount() {
         :enc_channel_info, private_key: user_2.private_key,
     );
     let note_id = compute_note_id(:channel_key, :token, index: note_index);
-    let enc_amount = user_2.privacy.get_note(:note_id);
+    let packed_note = user_2.privacy.get_note(:note_id);
+    let (_, enc_amount) = unpack_note(:packed_note);
     let decrypted_amount = decrypt_note_amount(
         enc_note_value: enc_amount, :channel_key, index: note_index,
     );
@@ -1556,12 +1588,13 @@ fn test_deposit() {
 
     // Deposit.
     let actions = user.deposit(new_note: note);
-    let enc_note_1 = user.compute_enc_note(recipient: user, :token, :index, :amount);
+    let enc_note_1 = user
+        .compute_enc_note(recipient: user, :token, :index, :amount, random: note.random);
     let storage_path_felt_note = map_entry_address(
         map_selector: selector!("notes"), keys: [enc_note_1.id].span(),
     );
     let expected_actions = [
-        ServerAction::WriteIfZero((storage_path_felt_note, enc_note_1.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt_note, enc_note_1.packed_note)),
         ServerAction::TransferFrom((user.address, token, amount)),
     ]
         .span();
@@ -1574,12 +1607,13 @@ fn test_deposit() {
     let index = 1;
     let note = NewNote { index, ..note };
     let actions = user.deposit(new_note: note);
-    let enc_note_2 = user.compute_enc_note(recipient: user, :token, :index, :amount);
+    let enc_note_2 = user
+        .compute_enc_note(recipient: user, :token, :index, :amount, random: note.random);
     let storage_path_felt_note = map_entry_address(
         map_selector: selector!("notes"), keys: [enc_note_2.id].span(),
     );
     let expected_actions = [
-        ServerAction::WriteIfZero((storage_path_felt_note, enc_note_2.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt_note, enc_note_2.packed_note)),
         ServerAction::TransferFrom((user.address, token, amount)),
     ]
         .span();
@@ -1587,7 +1621,7 @@ fn test_deposit() {
 
     // Assert enc_notes are different.
     assert_ne!(enc_note_1.id, enc_note_2.id);
-    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    assert_ne!(enc_note_1.packed_note, enc_note_2.packed_note);
 }
 
 #[test]

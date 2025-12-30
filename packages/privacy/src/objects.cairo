@@ -28,6 +28,8 @@ pub struct NewNote {
     pub amount: u128,
     /// The index of the note within the channel.
     pub index: usize,
+    /// The random number used to encrypt the note amount.
+    pub random: felt252,
 }
 
 // TODO: Move to a different file?
@@ -102,8 +104,8 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
 pub struct EncNote {
     /// The note's id.
     pub id: felt252,
-    /// The encrypted amount of the note.
-    pub enc_amount: felt252,
+    /// A packed felt containing the random number and the encrypted amount of the note.
+    pub packed_note: felt252,
 }
 
 /// An encrypted subchannel info, to be written to storage.

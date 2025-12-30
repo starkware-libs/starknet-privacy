@@ -118,7 +118,7 @@ fn test_get_note() {
     let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
     assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
     test.privacy.cheat_create_note(:note);
-    assert_eq!(test.privacy.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: note.id), note.packed_note);
 }
 
 #[test]
@@ -268,12 +268,12 @@ fn test_execute_write_if_zero() {
     );
     assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, note.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt, note.packed_note)),
     ];
     test.privacy.execute_actions(actions.span());
 
     // Verify note was written.
-    assert_eq!(test.privacy.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: note.id), note.packed_note);
 
     // Verify nullifier doesn't exist and write.
     let nullifier = test.mock_new_nullifier();
@@ -335,13 +335,13 @@ fn test_execute_write_if_zero_assertions() {
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, note.enc_amount)),
+        ServerAction::WriteIfZero((storage_path_felt, note.packed_note)),
     ];
     test.privacy.execute_actions(actions.span());
     let current_value: felt252 = generic_load(
         target: test.privacy.address, storage_address: storage_path_felt,
     );
-    assert_eq!(current_value, note.enc_amount);
+    assert_eq!(current_value, note.packed_note);
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
@@ -416,7 +416,7 @@ fn test_execute_write_if_non_zero_assertions() {
     );
     assert_eq!(current_value, Zero::zero());
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfNonZero((storage_path_felt, note.enc_amount)),
+        ServerAction::WriteIfNonZero((storage_path_felt, note.packed_note)),
     ];
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);

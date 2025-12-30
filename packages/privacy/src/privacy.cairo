@@ -13,7 +13,7 @@ pub mod Privacy {
         StoragePathIntoFelt, compute_channel_id, compute_channel_key, compute_note_id,
         compute_nullifier, compute_subchannel_id, compute_subchannel_key, decrypt_channel_key,
         decrypt_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
-        encrypt_subchannel_info, is_canonical_key,
+        encrypt_subchannel_info, is_canonical_key, pack_note, unpack_note,
     };
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
@@ -234,7 +234,7 @@ pub mod Privacy {
 
             [
                 ServerAction::WriteIfZero(
-                    (self.notes.entry(enc_note.id).into(), enc_note.enc_amount),
+                    (self.notes.entry(enc_note.id).into(), enc_note.packed_note),
                 ),
                 ServerAction::TransferFrom((owner_addr, new_note.token, new_note.amount)),
             ]
@@ -380,8 +380,9 @@ pub mod Privacy {
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
-            let enc_note_value = self.get_note(:note_id);
-            assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
+            let packed_note = self.get_note(:note_id);
+            assert(packed_note.is_non_zero(), errors::NOTE_NOT_FOUND);
+            let (_random, enc_note_value) = unpack_note(:packed_note);
 
             // Decrypt note amount.
             let note_amount = decrypt_note_amount(:enc_note_value, :channel_key, :index);
@@ -410,7 +411,7 @@ pub mod Privacy {
                 actions
                     .append(
                         ServerAction::WriteIfZero(
-                            (self.notes.entry(enc_note.id).into(), enc_note.enc_amount),
+                            (self.notes.entry(enc_note.id).into(), enc_note.packed_note),
                         ),
                     );
                 sum += (*note.amount).into();
@@ -432,6 +433,8 @@ pub mod Privacy {
             assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
             assert(note.amount.is_non_zero(), errors::ZERO_AMOUNT);
+            assert(note.random.is_non_zero(), errors::ZERO_RANDOM);
+            assert(note.random.into() <= MAX_RANDOM, errors::RANDOM_TOO_LARGE);
 
             // TODO: Consider impl helper function for common code.
 
@@ -474,7 +477,12 @@ pub mod Privacy {
             assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
             assert(enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
 
-            EncNote { id: note_id, enc_amount }
+            let packed_note = pack_note(random: note.random, :enc_amount);
+            // TODO: Consider removing, cannot be zero since both enc_amount and random are non
+            // zero.
+            assert(packed_note.is_non_zero(), errors::ZERO_PACKED_NOTE);
+
+            EncNote { id: note_id, packed_note }
         }
     }
 
