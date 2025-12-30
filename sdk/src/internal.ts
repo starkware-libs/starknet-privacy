@@ -1,20 +1,11 @@
-import { BigNumberish, BlockNumber, BlockIdentifier, Call } from "starknet";
+import { BigNumberish, BlockNumber, BlockIdentifier } from "starknet";
 import {
-  Amount,
   Blob,
-  CallAndProof,
   Channel,
   ChannelSerde,
-  Note,
-  PrivateRecipient,
-  PrivateTransfers,
-  PrivateTransfersBuilder,
   StarknetAddress,
-  TokenOperationsBuilder,
-  TransferOutput,
   Witness,
   WitnessSerde,
-  WithdrawOutput,
   channelBrand,
   witnessBrand,
 } from "./interfaces.js";

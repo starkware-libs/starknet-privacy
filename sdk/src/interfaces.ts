@@ -10,6 +10,14 @@ import type {
 
 export type Amount = bigint;
 
+/** Marker for "use all remaining input" */
+export type Open = { readonly __marker: 'open' };
+export const open: Open = { __marker: 'open' };
+
+/** Marker for "transfer to self" */
+export type Self = { readonly __marker: 'self' };
+export const self: Self = { __marker: 'self' };
+
 type BlobT = string | Uint8Array;
 
 export type Blob<B extends BlobT> = B & { readonly __blob: unique symbol };
@@ -35,13 +43,18 @@ export type Witness = {
 export type WitnessSerde<B extends BlobT = string> = Serde<Witness, B>;
 
 export type Note = {
-  readonly id: string;
+  readonly id: Note.Id;
   readonly amount: Amount;
   readonly created?: BlockNumber; // required to know maturity (10 blocks)
   readonly witness: Witness;
   readonly viewingKey?: ViewingKey; // in case the viewing key is different than the privacy pool's.
   readonly sender: StarknetAddress;
 };
+
+export namespace Note {
+  /** Unique identifier for a note, used for semi-transparent (preprepared) notes */
+  export type Id = BigNumberish;
+}
 
 export type Proof = {
   readonly data: Uint8Array;
@@ -90,7 +103,7 @@ export type PrivacyState = {
 
 export interface PrivateRecipient {
   address: StarknetAddress;
-  channel: Channel;
+  context: Channel | Note.Id; // note id is for semi-transparent (preprepared) notes.
 }
 
 
