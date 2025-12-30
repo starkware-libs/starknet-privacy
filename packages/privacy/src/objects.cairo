@@ -133,6 +133,14 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
     }
 }
 
+/// An action to be executed by the client.
+#[derive(Serde, Copy, Drop, Debug, PartialEq)]
+pub enum ClientAction {
+    /// Register a new user with a public key.
+    /// (user_public_key: felt252)
+    Register: felt252,
+}
+
 /// An action to be executed by the server.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ServerAction {

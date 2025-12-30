@@ -1,4 +1,6 @@
-use privacy::objects::{EncChannelInfo, EncSubchannelInfo, NewNote, NotePath, ServerAction};
+use privacy::objects::{
+    ClientAction, EncChannelInfo, EncSubchannelInfo, NewNote, NotePath, ServerAction,
+};
 use starknet::ContractAddress;
 
 // TODO: Use same naming convention for the functions. (owner/sender,
@@ -10,34 +12,45 @@ use starknet::ContractAddress;
 // TODO: Fix enum varients links in the documentation.
 #[starknet::interface]
 pub trait IClient<T> {
-    /// Registers the caller as a new user with the specified public viewing key.
+    /// Compiles client actions into server actions that can be executed by the server.
     ///
-    /// Returns a span containing an action to register the user:
-    /// 1. `WriteIfZero` - Verifies that the caller has not already registered a public key
-    ///    (storage value is zero) and writes the public key to storage.
+    /// This function processes a span of [`ClientAction`](privacy::objects::ClientAction) and
+    /// compiles each action into the corresponding
+    /// [`ServerAction`](privacy::objects::ServerAction)s that the server can execute. A single
+    /// client action may compile to multiple server actions.
+    ///
+    /// Returns a span containing server actions:
+    /// - For `Register`: [`WriteIfZero`](privacy::objects::ServerAction::WriteIfZero) - Verifies
+    ///   that the caller's public key is not already registered (storage value is zero) and writes
+    ///   the public key to storage.
     ///
     /// #### Parameters
-    /// - `public_key` (`felt252`): The public viewing key of the user. Must not be zero.
+    /// - `user_addr` (`ContractAddress`) - The address of the user executing the actions. Must not
+    /// be zero.
+    /// - `client_actions` (`Span<`[`ClientAction`](privacy::objects::ClientAction)`>`) - The list
+    ///   of client actions to compile.
     ///
     /// #### Returns
-    /// - (`Span<ServerAction>`) - A span containing the WriteIfZero action to register the user.
+    /// - (`Span<`[`ServerAction`](privacy::objects::ServerAction)`>`) - A span containing the
+    ///   server actions compiled from the input client actions.
     ///
     /// #### Preconditions
-    /// - `public_key` must not be zero.
-    /// - Caller must not have already registered a public key.
+    /// - `user_addr` must not be zero.
+    /// - For `Register` actions, the `public_key` must not be zero.
     ///
     /// #### Events Emitted
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is
-    /// zero.
-    /// - [`ZERO_USER_ADDR`](privacy::errors::ZERO_USER_ADDR): Thrown if the caller's address is
-    /// zero.
+    /// - [`ZERO_USER_ADDR`](privacy::errors::ZERO_USER_ADDR): Thrown if `user_addr` is zero.
+    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if a `Register` action
+    ///   contains a zero public key.
     ///
     /// #### Access Control
-    /// - Self-registration only.
-    fn register(self: @T, public_key: felt252) -> Span<ServerAction>;
+    /// - TODO
+    fn compile_client_actions(
+        self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+    ) -> Span<ServerAction>;
 
     /// Replaces the caller's public viewing key to a new value.
     ///
