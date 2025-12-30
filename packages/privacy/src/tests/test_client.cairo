@@ -416,11 +416,15 @@ fn test_open_channel() {
         sender_addr: user_1.address,
     );
     let expected_channel_id = user_1.compute_channel_id(recipient: user_2, :token);
-    let storage_path_felt = map_entry_address(
+    let public_key_storage_path = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
+    );
+    let channel_exists_storage_path = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::VerifyValue((public_key_storage_path, user_2.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path, true.into())),
         ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info)),
     ]
         .span();
@@ -444,11 +448,15 @@ fn test_open_channel_self_channel() {
         sender_addr: user.address,
     );
     let expected_channel_id = user.compute_channel_id(recipient: user, :token);
-    let storage_path_felt = map_entry_address(
+    let public_key_storage_path = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let channel_exists_storage_path = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::VerifyValue((public_key_storage_path, user.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path, true.into())),
         ServerAction::AppendToVec((user.address, user.public_key, expected_enc_channel_info)),
     ]
         .span();
@@ -561,19 +569,27 @@ fn test_open_channel_multiple_channels_same_sender() {
     let expected_channel_id_1 = user_1.compute_channel_id(recipient: user_2, :token);
     let expected_channel_id_2 = user_1.compute_channel_id(recipient: user_3, :token);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    let storage_path_felt_1 = map_entry_address(
+    let public_key_storage_path_1 = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
+    );
+    let public_key_storage_path_2 = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_3.address.into()].span(),
+    );
+    let channel_exists_storage_path_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
     );
-    let storage_path_felt_2 = map_entry_address(
+    let channel_exists_storage_path_2 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::VerifyValue((public_key_storage_path_1, user_2.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path_1, true.into())),
         ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::VerifyValue((public_key_storage_path_2, user_3.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path_2, true.into())),
         ServerAction::AppendToVec((user_3.address, user_3.public_key, expected_enc_channel_info_2)),
     ]
         .span();
@@ -629,19 +645,27 @@ fn test_open_channel_multiple_channels_same_recipient() {
     let expected_channel_id_1 = user_2.compute_channel_id(recipient: user_1, :token);
     let expected_channel_id_2 = user_3.compute_channel_id(recipient: user_1, :token);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    let storage_path_felt_1 = map_entry_address(
+    let public_key_storage_path_1 = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
+    );
+    let public_key_storage_path_2 = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
+    );
+    let channel_exists_storage_path_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
     );
-    let storage_path_felt_2 = map_entry_address(
+    let channel_exists_storage_path_2 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::VerifyValue((public_key_storage_path_1, user_1.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path_1, true.into())),
         ServerAction::AppendToVec((user_1.address, user_1.public_key, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::VerifyValue((public_key_storage_path_2, user_1.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path_2, true.into())),
         ServerAction::AppendToVec((user_1.address, user_1.public_key, expected_enc_channel_info_2)),
     ]
         .span();
@@ -693,19 +717,27 @@ fn test_open_channel_multiple_tokens() {
     let expected_channel_id_1 = user_1.compute_channel_id(recipient: user_2, token: token_1);
     let expected_channel_id_2 = user_1.compute_channel_id(recipient: user_2, token: token_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    let storage_path_felt_1 = map_entry_address(
+    let public_key_storage_path_1 = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
+    );
+    let public_key_storage_path_2 = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
+    );
+    let channel_exists_storage_path_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
     );
-    let storage_path_felt_2 = map_entry_address(
+    let channel_exists_storage_path_2 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::VerifyValue((public_key_storage_path_1, user_2.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path_1, true.into())),
         ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::VerifyValue((public_key_storage_path_2, user_2.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path_2, true.into())),
         ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info_2)),
     ]
         .span();
@@ -755,19 +787,27 @@ fn test_open_channel_self_channel_multiple_tokens() {
     let expected_channel_id_1 = user.compute_channel_id(recipient: user, token: token_1);
     let expected_channel_id_2 = user.compute_channel_id(recipient: user, token: token_2);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    let storage_path_felt_1 = map_entry_address(
+    let public_key_storage_path_1 = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let public_key_storage_path_2 = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let channel_exists_storage_path_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
     );
-    let storage_path_felt_2 = map_entry_address(
+    let channel_exists_storage_path_2 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
+        ServerAction::VerifyValue((public_key_storage_path_1, user.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path_1, true.into())),
         ServerAction::AppendToVec((user.address, user.public_key, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
+        ServerAction::VerifyValue((public_key_storage_path_2, user.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path_2, true.into())),
         ServerAction::AppendToVec((user.address, user.public_key, expected_enc_channel_info_2)),
     ]
         .span();

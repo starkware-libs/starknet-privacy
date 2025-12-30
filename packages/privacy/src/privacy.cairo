@@ -106,6 +106,9 @@ pub mod Privacy {
             // TODO: Consider removing since this is checked at the start of the function.
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             [
+                ServerAction::VerifyValue(
+                    (self.public_key.entry(recipient_addr).into(), recipient_public_key),
+                ),
                 ServerAction::WriteIfZero(
                     (self.channel_exists.entry(channel_id).into(), true.into()),
                 ),
@@ -465,6 +468,9 @@ pub mod Privacy {
                     ServerAction::TransferTo((
                         recipient, token, amount,
                     )) => { self._execute_transfer_to(:recipient, :token, :amount); },
+                    ServerAction::VerifyValue((
+                        storage_address, value,
+                    )) => { self._execute_verify_value(:storage_address, :value); },
                 };
             };
         }
@@ -527,6 +533,14 @@ pub mod Privacy {
         ) {
             IERC20Dispatcher { contract_address: token }
                 .checked_transfer(:recipient, amount: amount.into());
+        }
+
+        fn _execute_verify_value(
+            ref self: ContractState, storage_address: felt252, value: felt252,
+        ) {
+            let target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
+            let current_value = target.read();
+            assert(current_value == value, errors::VALUE_MISMATCH);
         }
     }
 

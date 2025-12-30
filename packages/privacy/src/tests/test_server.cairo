@@ -574,3 +574,44 @@ fn test_execute_transfer_to_assertions() {
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 }
+
+#[test]
+fn test_execute_verify_value() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+
+    // Write initial value.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let actions = array![ServerAction::WriteIfZero((storage_path_felt, user.public_key))];
+    test.privacy.execute_actions(actions.span());
+
+    // Verify value by loading from storage.
+    let current_value = generic_load(
+        target: test.privacy.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, user.public_key);
+
+    // Verify value by action.
+    let actions = array![ServerAction::VerifyValue((storage_path_felt, user.public_key))];
+    test.privacy.execute_actions(actions.span());
+}
+
+#[test]
+fn test_execute_verify_value_assertions() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+
+    // Catch VALUE_MISMATCH.
+    let current_value = generic_load(
+        target: test.privacy.address, storage_address: storage_path_felt,
+    );
+    assert_ne!(current_value, user.public_key);
+    let actions = array![ServerAction::VerifyValue((storage_path_felt, user.public_key))];
+    let result = test.privacy.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
+}
