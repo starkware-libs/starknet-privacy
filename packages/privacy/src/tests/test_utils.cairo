@@ -310,7 +310,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, recipient: User, token: ContractAddress, index: usize, amount: u128,
     ) -> EncNote {
         let channel_key = self.compute_channel_key(:recipient, :token);
-        let note_id = compute_note_id(:channel_key, :index, public_key: recipient.public_key);
+        let note_id = compute_note_id(:channel_key, :token, :index);
         let enc_amount = encrypt_note_amount(:channel_key, :index, :amount);
         EncNote { id: note_id, enc_amount }
     }
@@ -334,6 +334,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> felt252 {
         compute_nullifier(
             channel_key: sender.compute_channel_key(recipient: *self, :token),
+            :token,
             index: note_index,
             owner_private_key: *self.private_key,
         )
