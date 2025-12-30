@@ -1,12 +1,13 @@
 #[starknet::contract]
 pub mod Privacy {
+    use core::iter::Extend;
     use core::num::traits::Zero;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::errors;
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        EncChannelInfo, EncChannelInfoTrait, EncNote, EncSubchannelInfo, NewNote, NotePath,
-        ServerAction,
+        ClientAction, EncChannelInfo, EncChannelInfoTrait, EncNote, EncSubchannelInfo, NewNote,
+        NotePath, ServerAction,
     };
     use privacy::utils::{
         StoragePathIntoFelt, compute_channel_id, compute_channel_key, compute_note_id,
@@ -253,19 +254,6 @@ pub mod Privacy {
                 .span()
         }
 
-        fn register(self: @ContractState, public_key: felt252) -> Span<ServerAction> {
-            // TODO: Add compliance.
-            // TODO: Consider remove get_caller_address() and instead pass the user address.
-            let user_addr = get_caller_address();
-            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
-
-            // Assert that inputs are valid.
-            assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
-
-            [ServerAction::WriteIfZero((self.public_key.entry(user_addr).into(), public_key)),]
-                .span()
-        }
-
         fn replace_public_key(self: @ContractState, public_key: felt252) -> Span<ServerAction> {
             // TODO: Add compliance.
             // TODO: Consider remove get_caller_address() and instead pass the user address.
@@ -279,10 +267,41 @@ pub mod Privacy {
             [ServerAction::WriteIfNonZero((self.public_key.entry(user_addr).into(), public_key))]
                 .span()
         }
+
+        fn compile_client_actions(
+            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) -> Span<ServerAction> {
+            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            // TODO: Consider asserting that `client_actions` is not empty.
+            let mut server_actions: Array<ServerAction> = array![];
+            for client_action in client_actions {
+                let server_action_batch: Array<ServerAction> = match *client_action {
+                    ClientAction::Register(user_public_key) => {
+                        self.register(:user_addr, :user_public_key)
+                    },
+                };
+                server_actions.extend(server_action_batch);
+            }
+            server_actions.span()
+        }
     }
 
     #[generate_trait]
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
+        // `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        fn register(
+            self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
+        ) -> Array<ServerAction> {
+            // TODO: Add compliance.
+            assert(user_public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
+
+            array![
+                ServerAction::WriteIfZero(
+                    (self.public_key.entry(user_addr).into(), user_public_key),
+                ),
+            ]
+        }
+
         // TODO: Consider merging this with `use_note` function.
         fn use_notes(
             self: @ContractState,

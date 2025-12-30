@@ -1,7 +1,7 @@
 use core::num::traits::Zero;
 use privacy::errors;
 use privacy::objects::domain_separation::enc_channel_info;
-use privacy::objects::{NewNote, NotePath, ServerAction};
+use privacy::objects::{ClientAction, NewNote, NotePath, ServerAction};
 use privacy::tests::test_utils::{
     PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info, decrypt_subchannel_token,
 };
@@ -2128,5 +2128,36 @@ fn test_replace_public_key_assertions() {
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_replace_public_key();
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+}
+
+#[test]
+fn test_compile_client_actions() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+
+    // Empty actions.
+    let actions = user.compile_client_actions(client_actions: [].span());
+    assert_eq!(actions, [].span());
+
+    // Register action.
+    let actions = user
+        .compile_client_actions(client_actions: [ClientAction::Register(user.public_key)].span());
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let expected_actions = [ServerAction::WriteIfZero((storage_path_felt, user.public_key))].span();
+    assert_eq!(actions, expected_actions);
+}
+
+#[test]
+fn test_compile_client_actions_assertions() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+
+    // Catch ZERO_USER_ADDR.
+    let mut user_zero_addr = user;
+    user_zero_addr.address = Zero::zero();
+    let result = user_zero_addr.safe_compile_client_actions(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
