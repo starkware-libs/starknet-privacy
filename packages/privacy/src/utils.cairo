@@ -156,18 +156,6 @@ pub(crate) fn encrypt_channel_info(
     EncChannelInfo { ephemeral_pubkey: ephemeral_pub_x, enc_channel_key, enc_sender_addr }
 }
 
-/// Decrypts the channel key from `EncChannelInfo`.
-// TODO: Delete this function once remove j input from use_note.
-pub(crate) fn decrypt_channel_key(
-    enc_channel_info: EncChannelInfo, recipient_private_key: felt252,
-) -> felt252 {
-    let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_channel_info.ephemeral_pubkey)
-        .unwrap();
-    let shared_point = ephemeral_pubkey_point.mul(scalar: recipient_private_key);
-    let shared_x = shared_point.try_into().unwrap().x();
-    enc_channel_info.enc_channel_key - compute_enc_channel_key_hash(shared_x)
-}
-
 /// Derives the public key from the private key.
 /// Assumes the private key is not zero.
 pub(crate) fn derive_public_key(private_key: felt252) -> felt252 {
