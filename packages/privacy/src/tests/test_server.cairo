@@ -133,7 +133,7 @@ fn test_subchannel_exists() {
     assert_eq!(test.privacy.subchannel_exists(:subchannel_id), false);
     user_1.register_e2e();
     user_2.register_e2e();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_id), true);
 }
@@ -144,11 +144,11 @@ fn test_get_subchannel_info() {
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     let token = test.mock_new_token();
-    let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, :token, index: 0);
+    let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
     user_1.register_e2e();
     user_2.register_e2e();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     let random = user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let expected_subchannel_info = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token, :random);

@@ -54,8 +54,8 @@ fn test_transfer() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
-    user_1.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_channel_e2e(recipient: user_2);
+    user_1.open_channel_e2e(recipient: user_1);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     let amount = 1;
@@ -91,8 +91,8 @@ fn test_transfer_to_self() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_1, :token);
-    user_2.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_channel_e2e(recipient: user_1);
+    user_2.open_channel_e2e(recipient: user_1);
     user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     user_2.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     let amount = 1;
@@ -130,9 +130,9 @@ fn test_transfer_one_to_many() {
     user_2.register_e2e();
     user_3.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
-    user_1.open_channel_e2e(recipient: user_3, :token);
-    user_1.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_channel_e2e(recipient: user_2);
+    user_1.open_channel_e2e(recipient: user_3);
+    user_1.open_channel_e2e(recipient: user_1);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     user_1.open_subchannel_e2e(recipient: user_3, :token, index: 0);
     user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
@@ -182,9 +182,9 @@ fn test_transfer_many_to_one() {
     user_1.register_e2e();
     user_2.register_e2e();
     user_3.register_e2e();
-    user_1.open_channel_e2e(recipient: user_2, :token);
-    user_2.open_channel_e2e(recipient: user_1, :token);
-    user_3.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_channel_e2e(recipient: user_2);
+    user_2.open_channel_e2e(recipient: user_1);
+    user_3.open_channel_e2e(recipient: user_1);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     user_2.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     user_3.open_subchannel_e2e(recipient: user_1, :token, index: 0);
@@ -236,10 +236,10 @@ fn test_transfer_many_to_many() {
     user_1.register_e2e();
     user_2.register_e2e();
     user_3.register_e2e();
-    user_1.open_channel_e2e(recipient: user_3, :token);
-    user_2.open_channel_e2e(recipient: user_3, :token);
-    user_3.open_channel_e2e(recipient: user_1, :token);
-    user_3.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_3);
+    user_2.open_channel_e2e(recipient: user_3);
+    user_3.open_channel_e2e(recipient: user_1);
+    user_3.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_3, :token, index: 0);
     user_2.open_subchannel_e2e(recipient: user_3, :token, index: 0);
     user_3.open_subchannel_e2e(recipient: user_1, :token, index: 0);
@@ -343,7 +343,7 @@ fn test_transfer_assertions() {
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 
     user_1.register_e2e();
-    user_1.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_channel_e2e(recipient: user_1);
 
     // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
     let result = user_1
@@ -355,7 +355,7 @@ fn test_transfer_assertions() {
 
     // Catch INVALID_SUBCHANNEL - wrong address.
     user_2.register_e2e();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     let mut user_1_wrong_addr = user_1;
     user_1_wrong_addr.address = user_2.address;
     let result = user_1_wrong_addr
@@ -426,7 +426,7 @@ fn test_transfer_assertions() {
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
-    user_1.open_channel_e2e(recipient: user_3, :token);
+    user_1.open_channel_e2e(recipient: user_3);
 
     // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
     let result = user_1
@@ -475,20 +475,17 @@ fn test_open_channel() {
     let user_2 = test.new_user();
     user_1.register_e2e();
     user_2.register_e2e();
-    let token = test.mock_new_token();
 
-    let (random, channel_output) = user_1
-        .open_channel_with_generated_random(recipient: user_2, :token);
-    let channel_key = user_1.compute_channel_key(recipient: user_2, :token);
+    let (random, channel_output) = user_1.open_channel_with_generated_random(recipient: user_2);
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
     // TODO: Is it ok for tests to reuse the same util function as the contract?
     let expected_enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random,
         recipient_public_key: user_2.public_key,
         :channel_key,
-        :token,
         sender_addr: user_1.address,
     );
-    let expected_channel_id = user_1.compute_channel_id(recipient: user_2, :token);
+    let expected_channel_id = user_1.compute_channel_id(recipient: user_2);
     let storage_path_felt = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
     );
@@ -505,18 +502,16 @@ fn test_open_channel_self_channel() {
     let mut test = Default::default();
     let mut user = test.new_user();
     user.register_e2e();
-    let token = test.mock_new_token();
 
-    let (random, channel_output) = user.open_channel_with_generated_random(recipient: user, :token);
-    let channel_key = user.compute_channel_key(recipient: user, :token);
+    let (random, channel_output) = user.open_channel_with_generated_random(recipient: user);
+    let channel_key = user.compute_channel_key(recipient: user);
     let expected_enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random,
         recipient_public_key: user.public_key,
         :channel_key,
-        :token,
         sender_addr: user.address,
     );
-    let expected_channel_id = user.compute_channel_id(recipient: user, :token);
+    let expected_channel_id = user.compute_channel_id(recipient: user);
     let storage_path_felt = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
     );
@@ -534,43 +529,38 @@ fn test_open_channel_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    let token = test.mock_new_token();
     let random = user_1.get_random();
 
     // Catch ZERO_SENDER_ADDR.
     let mut user_zero_addr = user_1;
     user_zero_addr.address = Zero::zero();
-    let result = user_zero_addr.safe_open_channel(recipient: user_2, :token, :random);
+    let result = user_zero_addr.safe_open_channel(recipient: user_2, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SENDER_ADDR);
 
     // Catch ZERO_SENDER_PRIVATE_KEY.
     let mut user_zero_private_key = user_1;
     user_zero_private_key.private_key = Zero::zero();
-    let result = user_zero_private_key.safe_open_channel(recipient: user_2, :token, :random);
+    let result = user_zero_private_key.safe_open_channel(recipient: user_2, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SENDER_PRIVATE_KEY);
 
     // Catch ZERO_RECIPIENT_ADDR.
     let mut user_zero_addr = user_2;
     user_zero_addr.address = Zero::zero();
-    let result = user_1.safe_open_channel(recipient: user_zero_addr, :token, :random);
+    let result = user_1.safe_open_channel(recipient: user_zero_addr, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
-    // Catch ZERO_TOKEN.
-    let result = user_1.safe_open_channel(recipient: user_2, token: Zero::zero(), :random);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
-
     // Catch ZERO_RANDOM.
-    let result = user_1.safe_open_channel(recipient: user_2, :token, random: Zero::zero());
+    let result = user_1.safe_open_channel(recipient: user_2, random: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
     let mut user_invalid_private_key = user_1;
     user_invalid_private_key.private_key = Neg::neg(user_invalid_private_key.private_key);
-    let result = user_invalid_private_key.safe_open_channel(recipient: user_2, :token, :random);
+    let result = user_invalid_private_key.safe_open_channel(recipient: user_2, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch SENDER_NOT_REGISTERED.
-    let result = user_1.safe_open_channel(recipient: user_2, :token, :random);
+    let result = user_1.safe_open_channel(recipient: user_2, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_REGISTERED);
 
     // Catch SENDER_NOT_AUTHENTICATED.
@@ -580,12 +570,12 @@ fn test_open_channel_assertions() {
     if !is_canonical_key(key: user_1.private_key) {
         user_1.private_key = Neg::neg(user_1.private_key);
     }
-    let result = user_1.safe_open_channel(recipient: user_2, :token, :random);
+    let result = user_1.safe_open_channel(recipient: user_2, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
     user_1.private_key = user_1_private_key;
 
     // Catch RECIPIENT_NOT_REGISTERED - recipient not registered.
-    let result = user_1.safe_open_channel(recipient: user_2, :token, :random);
+    let result = user_1.safe_open_channel(recipient: user_2, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 }
 
@@ -598,27 +588,22 @@ fn test_open_channel_multiple_channels_same_sender() {
     user_1.register_e2e();
     user_2.register_e2e();
     user_3.register_e2e();
-    let token = test.mock_new_token();
 
-    let (random_1, c1_output) = user_1
-        .open_channel_with_generated_random(recipient: user_2, :token);
-    let (random_2, c2_output) = user_1
-        .open_channel_with_generated_random(recipient: user_3, :token);
-    let channel_key_1 = user_1.compute_channel_key(recipient: user_2, :token);
-    let channel_key_2 = user_1.compute_channel_key(recipient: user_3, :token);
+    let (random_1, c1_output) = user_1.open_channel_with_generated_random(recipient: user_2);
+    let (random_2, c2_output) = user_1.open_channel_with_generated_random(recipient: user_3);
+    let channel_key_1 = user_1.compute_channel_key(recipient: user_2);
+    let channel_key_2 = user_1.compute_channel_key(recipient: user_3);
     assert_ne!(channel_key_1, channel_key_2);
     let expected_enc_channel_info_1 = encrypt_channel_info(
         ephemeral_secret: random_1,
         recipient_public_key: user_2.public_key,
         channel_key: channel_key_1,
-        :token,
         sender_addr: user_1.address,
     );
     let expected_enc_channel_info_2 = encrypt_channel_info(
         ephemeral_secret: random_2,
         recipient_public_key: user_3.public_key,
         channel_key: channel_key_2,
-        :token,
         sender_addr: user_1.address,
     );
     assert_ne!(
@@ -627,12 +612,11 @@ fn test_open_channel_multiple_channels_same_sender() {
     assert_ne!(
         expected_enc_channel_info_1.enc_channel_key, expected_enc_channel_info_2.enc_channel_key,
     );
-    assert_ne!(expected_enc_channel_info_1.enc_token, expected_enc_channel_info_2.enc_token);
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    let expected_channel_id_1 = user_1.compute_channel_id(recipient: user_2, :token);
-    let expected_channel_id_2 = user_1.compute_channel_id(recipient: user_3, :token);
+    let expected_channel_id_1 = user_1.compute_channel_id(recipient: user_2);
+    let expected_channel_id_2 = user_1.compute_channel_id(recipient: user_3);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
     let storage_path_felt_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
@@ -664,27 +648,22 @@ fn test_open_channel_multiple_channels_same_recipient() {
     user_1.register_e2e();
     user_2.register_e2e();
     user_3.register_e2e();
-    let token = test.mock_new_token();
 
-    let (random_1, c1_output) = user_2
-        .open_channel_with_generated_random(recipient: user_1, :token);
-    let (random_2, c2_output) = user_3
-        .open_channel_with_generated_random(recipient: user_1, :token);
-    let channel_key_1 = user_2.compute_channel_key(recipient: user_1, :token);
-    let channel_key_2 = user_3.compute_channel_key(recipient: user_1, :token);
+    let (random_1, c1_output) = user_2.open_channel_with_generated_random(recipient: user_1);
+    let (random_2, c2_output) = user_3.open_channel_with_generated_random(recipient: user_1);
+    let channel_key_1 = user_2.compute_channel_key(recipient: user_1);
+    let channel_key_2 = user_3.compute_channel_key(recipient: user_1);
     assert_ne!(channel_key_1, channel_key_2);
     let expected_enc_channel_info_1 = encrypt_channel_info(
         ephemeral_secret: random_1,
         recipient_public_key: user_1.public_key,
         channel_key: channel_key_1,
-        :token,
         sender_addr: user_2.address,
     );
     let expected_enc_channel_info_2 = encrypt_channel_info(
         ephemeral_secret: random_2,
         recipient_public_key: user_1.public_key,
         channel_key: channel_key_2,
-        :token,
         sender_addr: user_3.address,
     );
     // The ephemeral public keys are identical (same recipient and both users use the same random).
@@ -694,13 +673,11 @@ fn test_open_channel_multiple_channels_same_recipient() {
     assert_ne!(
         expected_enc_channel_info_1.enc_channel_key, expected_enc_channel_info_2.enc_channel_key,
     );
-    // Encrypted tokens are identical (ephemeral public keys and tokens are the same).
-    assert_eq!(expected_enc_channel_info_1.enc_token, expected_enc_channel_info_2.enc_token);
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    let expected_channel_id_1 = user_2.compute_channel_id(recipient: user_1, :token);
-    let expected_channel_id_2 = user_3.compute_channel_id(recipient: user_1, :token);
+    let expected_channel_id_1 = user_2.compute_channel_id(recipient: user_1);
+    let expected_channel_id_2 = user_3.compute_channel_id(recipient: user_1);
     assert_ne!(expected_channel_id_1, expected_channel_id_2);
     let storage_path_felt_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
@@ -722,133 +699,6 @@ fn test_open_channel_multiple_channels_same_recipient() {
     assert_eq!(c2_output, expected_actions_2);
 }
 
-#[test]
-fn test_open_channel_multiple_tokens() {
-    let mut test = Default::default();
-    let mut user_1 = test.new_user();
-    let user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
-    let token_1 = test.mock_new_token();
-    let token_2 = test.mock_new_token();
-
-    let (random_1, c1_output) = user_1
-        .open_channel_with_generated_random(recipient: user_2, token: token_1);
-    let (random_2, c2_output) = user_1
-        .open_channel_with_generated_random(recipient: user_2, token: token_2);
-    let channel_key_1 = user_1.compute_channel_key(recipient: user_2, token: token_1);
-    let channel_key_2 = user_1.compute_channel_key(recipient: user_2, token: token_2);
-    assert_ne!(channel_key_1, channel_key_2);
-    let expected_enc_channel_info_1 = encrypt_channel_info(
-        ephemeral_secret: random_1,
-        recipient_public_key: user_2.public_key,
-        channel_key: channel_key_1,
-        token: token_1,
-        sender_addr: user_1.address,
-    );
-    let expected_enc_channel_info_2 = encrypt_channel_info(
-        ephemeral_secret: random_2,
-        recipient_public_key: user_2.public_key,
-        channel_key: channel_key_2,
-        token: token_2,
-        sender_addr: user_1.address,
-    );
-    assert_ne!(
-        expected_enc_channel_info_1.ephemeral_pubkey, expected_enc_channel_info_2.ephemeral_pubkey,
-    );
-    assert_ne!(
-        expected_enc_channel_info_1.enc_channel_key, expected_enc_channel_info_2.enc_channel_key,
-    );
-    assert_ne!(expected_enc_channel_info_1.enc_token, expected_enc_channel_info_2.enc_token);
-    assert_ne!(
-        expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
-    );
-    let expected_channel_id_1 = user_1.compute_channel_id(recipient: user_2, token: token_1);
-    let expected_channel_id_2 = user_1.compute_channel_id(recipient: user_2, token: token_2);
-    assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    let storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
-    );
-    let storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
-    );
-    let expected_actions_1 = array![
-        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
-        ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_1)),
-    ]
-        .span();
-    let expected_actions_2 = array![
-        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
-        ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_2)),
-    ]
-        .span();
-    assert_eq!(c1_output, expected_actions_1);
-    assert_eq!(c2_output, expected_actions_2);
-}
-
-#[test]
-fn test_open_channel_self_channel_multiple_tokens() {
-    let mut test = Default::default();
-    let mut user = test.new_user();
-    user.register_e2e();
-    let token_1 = test.mock_new_token();
-    let token_2 = test.mock_new_token();
-
-    let (random_1, c1_output) = user
-        .open_channel_with_generated_random(recipient: user, token: token_1);
-    let (random_2, c2_output) = user
-        .open_channel_with_generated_random(recipient: user, token: token_2);
-    let channel_key_1 = user.compute_channel_key(recipient: user, token: token_1);
-    let channel_key_2 = user.compute_channel_key(recipient: user, token: token_2);
-    assert_ne!(channel_key_1, channel_key_2);
-    let expected_enc_channel_info_1 = encrypt_channel_info(
-        ephemeral_secret: random_1,
-        recipient_public_key: user.public_key,
-        channel_key: channel_key_1,
-        token: token_1,
-        sender_addr: user.address,
-    );
-    let expected_enc_channel_info_2 = encrypt_channel_info(
-        ephemeral_secret: random_2,
-        recipient_public_key: user.public_key,
-        channel_key: channel_key_2,
-        token: token_2,
-        sender_addr: user.address,
-    );
-    assert_ne!(
-        expected_enc_channel_info_1.ephemeral_pubkey, expected_enc_channel_info_2.ephemeral_pubkey,
-    );
-    assert_ne!(
-        expected_enc_channel_info_1.enc_channel_key, expected_enc_channel_info_2.enc_channel_key,
-    );
-    assert_ne!(expected_enc_channel_info_1.enc_token, expected_enc_channel_info_2.enc_token);
-    assert_ne!(
-        expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
-    );
-    let expected_channel_id_1 = user.compute_channel_id(recipient: user, token: token_1);
-    let expected_channel_id_2 = user.compute_channel_id(recipient: user, token: token_2);
-    assert_ne!(expected_channel_id_1, expected_channel_id_2);
-    let storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
-    );
-    let storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
-    );
-    let expected_actions_1 = array![
-        ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
-        ServerAction::AppendToVec((user.address, expected_enc_channel_info_1)),
-    ]
-        .span();
-    let expected_actions_2 = array![
-        ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
-        ServerAction::AppendToVec((user.address, expected_enc_channel_info_2)),
-    ]
-        .span();
-    assert_eq!(c1_output, expected_actions_1);
-    assert_eq!(c2_output, expected_actions_2);
-}
-// TODO: Test open channels with same sender and same random.
-
 // TODO: Consider move this test to common test file.
 #[test]
 fn test_open_channel_decrypt_channel_info() {
@@ -857,22 +707,18 @@ fn test_open_channel_decrypt_channel_info() {
     let user_2 = test.new_user();
     user_1.register_e2e();
     user_2.register_e2e();
-    let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
 
     // User 2 should be able to decrypt the channel info.
     assert_eq!(user_2.get_num_of_channels(), 1);
     let enc_channel_info = user_2.get_channel_info(channel_index: 0);
-    let (decrypted_channel_key, decrypted_token, decrypted_sender_addr) = decrypt_channel_info(
+    let (decrypted_channel_key, decrypted_sender_addr) = decrypt_channel_info(
         :enc_channel_info, private_key: user_2.private_key,
     );
 
     // Verify decrypted channel key.
-    let expected_channel_key = user_1.compute_channel_key(recipient: user_2, :token);
+    let expected_channel_key = user_1.compute_channel_key(recipient: user_2);
     assert_eq!(decrypted_channel_key, expected_channel_key);
-
-    // Verify decrypted token.
-    assert_eq!(decrypted_token.try_into().unwrap(), token);
 
     // Verify decrypted sender address.
     assert_eq!(decrypted_sender_addr, user_1.address);
@@ -886,12 +732,11 @@ fn test_open_subchannel() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
 
     let (random, channel_output) = user_1
         .open_subchannel_with_generated_random(recipient: user_2, :token, index: 0);
-    let expected_subchannel_key = user_1
-        .compute_subchannel_key(recipient: user_2, :token, index: 0);
+    let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token, :random);
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token);
@@ -918,11 +763,11 @@ fn test_open_subchannel_self_channel() {
     let mut user = test.new_user();
     user.register_e2e();
     let token = test.mock_new_token();
-    user.open_channel_e2e(recipient: user, :token);
+    user.open_channel_e2e(recipient: user);
 
     let (random, channel_output) = user
         .open_subchannel_with_generated_random(recipient: user, :token, index: 0);
-    let expected_subchannel_key = user.compute_subchannel_key(recipient: user, :token, index: 0);
+    let expected_subchannel_key = user.compute_subchannel_key(recipient: user, index: 0);
     let expected_enc_subchannel_info = user
         .compute_enc_subchannel_info(recipient: user, :token, :random);
     let expected_subchannel_id = user.compute_subchannel_id(recipient: user, :token);
@@ -998,8 +843,8 @@ fn test_open_subchannel_assertions() {
     let result = user_1.safe_open_subchannel(recipient: user_2, :token, :index, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
-    user_1.open_channel_e2e(recipient: user_2, :token);
-    let channel_key = user_1.compute_channel_key(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
 
     // Catch INVALID_CHANNEL - wrong sender_addr.
     let mut user_1_wrong_addr = user_1;
@@ -1029,28 +874,25 @@ fn test_open_subchannel_assertions() {
     assert_eq!(result.is_ok(), true);
 }
 
-// TODO: Add this test once token is removed from channel.
 #[test]
-#[ignore]
 fn test_open_subchannel_multiple() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
     user_1.register_e2e();
     user_2.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2);
     let token_1 = test.mock_new_token();
     let token_2 = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, token: token_1);
 
     // Multiple subchannels with different tokens.
     let (random_1, c1_output) = user_1
         .open_subchannel_with_generated_random(recipient: user_2, token: token_1, index: 0);
+    test.privacy.execute_actions(actions: c1_output);
     let (random_2, c2_output) = user_1
         .open_subchannel_with_generated_random(recipient: user_2, token: token_2, index: 1);
-    let expected_subchannel_key_1 = user_1
-        .compute_subchannel_key(recipient: user_2, token: token_1, index: 0);
-    let expected_subchannel_key_2 = user_1
-        .compute_subchannel_key(recipient: user_2, token: token_2, index: 1);
+    let expected_subchannel_key_1 = user_1.compute_subchannel_key(recipient: user_2, index: 0);
+    let expected_subchannel_key_2 = user_1.compute_subchannel_key(recipient: user_2, index: 1);
     let expected_enc_subchannel_info_1 = user_1
         .compute_enc_subchannel_info(recipient: user_2, token: token_1, random: random_1);
     let expected_enc_subchannel_info_2 = user_1
@@ -1091,30 +933,30 @@ fn test_open_subchannel_multiple() {
     assert_eq!(c2_output, expected_actions_2);
 
     // Multiple subchannels with the same token (fails only on the server side).
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2);
     let token = test.mock_new_token();
     let (random_1, c1_output) = user_1
         .open_subchannel_with_generated_random(recipient: user_2, :token, index: 0);
+    test.privacy.execute_actions(actions: c1_output);
     let (random_2, c2_output) = user_1
         .open_subchannel_with_generated_random(recipient: user_2, :token, index: 1);
-    let expected_subchannel_key_1 = user_1
-        .compute_subchannel_key(recipient: user_2, :token, index: 0);
-    let expected_subchannel_key_2 = user_1
-        .compute_subchannel_key(recipient: user_2, :token, index: 1);
+    let expected_subchannel_key_1 = user_1.compute_subchannel_key(recipient: user_2, index: 0);
+    let expected_subchannel_key_2 = user_1.compute_subchannel_key(recipient: user_2, index: 1);
     let expected_enc_subchannel_info_1 = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token, random: random_1);
     let expected_enc_subchannel_info_2 = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token, random: random_2);
-    let expected_subchannel_id_1 = user_1.compute_subchannel_id(recipient: user_2, :token);
-    let expected_subchannel_id_2 = user_1.compute_subchannel_id(recipient: user_2, :token);
+    // Id will be the same since the token is the same.
+    let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token);
     assert_ne!(expected_subchannel_key_1, expected_subchannel_key_2);
     assert_ne!(expected_enc_subchannel_info_1.random, expected_enc_subchannel_info_2.random);
     assert_ne!(expected_enc_subchannel_info_1.enc_token, expected_enc_subchannel_info_2.enc_token);
-    assert_ne!(expected_subchannel_id_1, expected_subchannel_id_2);
-    let subchannel_exists_storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id_1].span(),
-    );
-    let subchannel_exists_storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id_2].span(),
+    let subchannel_exists_storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id].span(),
     );
     let subchannel_tokens_storage_path_felt_1 = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_1].span(),
@@ -1123,14 +965,14 @@ fn test_open_subchannel_multiple() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_2].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt_1, true.into())),
+        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt, true.into())),
         ServerAction::WriteIfZeroSubchannel(
             (subchannel_tokens_storage_path_felt_1, expected_enc_subchannel_info_1),
         ),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt_2, true.into())),
+        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt, true.into())),
         ServerAction::WriteIfZeroSubchannel(
             (subchannel_tokens_storage_path_felt_2, expected_enc_subchannel_info_2),
         ),
@@ -1140,21 +982,24 @@ fn test_open_subchannel_multiple() {
     assert_eq!(c2_output, expected_actions_2);
 
     // Multiple subchannels with the same index (fails only on the server side).
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2);
     let (random_1, c1_output) = user_1
         .open_subchannel_with_generated_random(recipient: user_2, token: token_1, index: 0);
+    test.privacy.execute_actions(actions: c1_output);
     let (random_2, c2_output) = user_1
         .open_subchannel_with_generated_random(recipient: user_2, token: token_2, index: 0);
-    let expected_subchannel_key_1 = user_1
-        .compute_subchannel_key(recipient: user_2, token: token_1, index: 0);
-    let expected_subchannel_key_2 = user_1
-        .compute_subchannel_key(recipient: user_2, token: token_2, index: 0);
+    // Key will be the same since the index is the same.
+    let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info_1 = user_1
         .compute_enc_subchannel_info(recipient: user_2, token: token_1, random: random_1);
     let expected_enc_subchannel_info_2 = user_1
         .compute_enc_subchannel_info(recipient: user_2, token: token_2, random: random_2);
     let expected_subchannel_id_1 = user_1.compute_subchannel_id(recipient: user_2, token: token_1);
     let expected_subchannel_id_2 = user_1.compute_subchannel_id(recipient: user_2, token: token_2);
-    assert_ne!(expected_subchannel_key_1, expected_subchannel_key_2);
     assert_ne!(expected_enc_subchannel_info_1.random, expected_enc_subchannel_info_2.random);
     assert_ne!(expected_enc_subchannel_info_1.enc_token, expected_enc_subchannel_info_2.enc_token);
     assert_ne!(expected_subchannel_id_1, expected_subchannel_id_2);
@@ -1164,23 +1009,20 @@ fn test_open_subchannel_multiple() {
     let subchannel_exists_storage_path_felt_2 = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id_2].span(),
     );
-    let subchannel_tokens_storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_1].span(),
-    );
-    let subchannel_tokens_storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_2].span(),
+    let subchannel_tokens_storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
     );
     let expected_actions_1 = array![
         ServerAction::WriteIfZero((subchannel_exists_storage_path_felt_1, true.into())),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt_1, expected_enc_subchannel_info_1),
+            (subchannel_tokens_storage_path_felt, expected_enc_subchannel_info_1),
         ),
     ]
         .span();
     let expected_actions_2 = array![
         ServerAction::WriteIfZero((subchannel_exists_storage_path_felt_2, true.into())),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt_2, expected_enc_subchannel_info_2),
+            (subchannel_tokens_storage_path_felt, expected_enc_subchannel_info_2),
         ),
     ]
         .span();
@@ -1188,26 +1030,23 @@ fn test_open_subchannel_multiple() {
     assert_eq!(c2_output, expected_actions_2);
 }
 
-// TODO: Add this test once token is removed from channel.
 #[test]
-#[ignore]
 fn test_open_subchannel_multiple_self_channel() {
     let mut test = Default::default();
     let mut user = test.new_user();
     user.register_e2e();
     let token_1 = test.mock_new_token();
     let token_2 = test.mock_new_token();
-    user.open_channel_e2e(recipient: user, token: token_1);
+    user.open_channel_e2e(recipient: user);
 
     // Multiple subchannels with different tokens.
     let (random_1, c1_output) = user
         .open_subchannel_with_generated_random(recipient: user, token: token_1, index: 0);
+    test.privacy.execute_actions(actions: c1_output);
     let (random_2, c2_output) = user
         .open_subchannel_with_generated_random(recipient: user, token: token_2, index: 1);
-    let expected_subchannel_key_1 = user
-        .compute_subchannel_key(recipient: user, token: token_1, index: 0);
-    let expected_subchannel_key_2 = user
-        .compute_subchannel_key(recipient: user, token: token_2, index: 1);
+    let expected_subchannel_key_1 = user.compute_subchannel_key(recipient: user, index: 0);
+    let expected_subchannel_key_2 = user.compute_subchannel_key(recipient: user, index: 1);
     let expected_enc_subchannel_info_1 = user
         .compute_enc_subchannel_info(recipient: user, token: token_1, random: random_1);
     let expected_enc_subchannel_info_2 = user
@@ -1257,13 +1096,13 @@ fn test_open_subchannel_decrypt_subchannel_info() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
 
     // User 2 should be able to decrypt the subchannel info (the token).
     // User 2 decrypts the channel_key.
     let enc_channel_info = user_2.get_channel_info(channel_index: 0);
-    let (decrypted_channel_key, _, _) = decrypt_channel_info(
+    let (decrypted_channel_key, _) = decrypt_channel_info(
         :enc_channel_info, private_key: user_2.private_key,
     );
     // User 2 decrypts the subchannel token.
@@ -1283,7 +1122,7 @@ fn test_create_note() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
@@ -1300,7 +1139,7 @@ fn test_create_note_self_note() {
     let mut user = test.new_user();
     user.register_e2e();
     let token = test.mock_new_token();
-    user.open_channel_e2e(recipient: user, :token);
+    user.open_channel_e2e(recipient: user);
     user.open_subchannel_e2e(recipient: user, :token, index: 0);
     let amount = 1;
     let note_index = 0;
@@ -1319,7 +1158,7 @@ fn test_create_note_twice() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount_1 = 1;
     let note_index_1 = 0;
@@ -1348,7 +1187,7 @@ fn test_create_note_twice_same_amount() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index_1 = 0;
@@ -1434,7 +1273,7 @@ fn test_create_note_invalid_subchannel_subchannel_doesnt_exist() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
     user_1.create_note(:note);
 }
@@ -1448,7 +1287,7 @@ fn test_create_note_invalid_subchannel_wrong_addr() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
     user_1.address = user_2.address;
@@ -1464,7 +1303,7 @@ fn test_create_note_invalid_subchannel_wrong_private_key() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
     user_1.private_key = user_1.public_key;
@@ -1479,7 +1318,7 @@ fn test_create_note_index_not_sequential() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: 1);
@@ -1495,7 +1334,7 @@ fn test_create_note_decrypt_amount() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
@@ -1506,9 +1345,7 @@ fn test_create_note_decrypt_amount() {
     // User 2 should be able to decrypt the amount.
     // Decrypt channel key.
     let enc_channel_info = user_2.get_channel_info(channel_index: 0);
-    let (channel_key, _, _) = decrypt_channel_info(
-        :enc_channel_info, private_key: user_2.private_key,
-    );
+    let (channel_key, _) = decrypt_channel_info(:enc_channel_info, private_key: user_2.private_key);
     let note_id = compute_note_id(:channel_key, :token, index: note_index);
     let enc_amount = user_2.privacy.get_note(:note_id);
     let decrypted_amount = decrypt_note_amount(
@@ -1526,7 +1363,7 @@ fn test_deposit() {
 
     // Setup user and note.
     user.register_e2e();
-    user.open_channel_e2e(recipient: user, :token);
+    user.open_channel_e2e(recipient: user);
     user.open_subchannel_e2e(recipient: user, :token, index: 0);
     let index = 0;
     let note = user.new_note(recipient: user, :token, :amount, :index);
@@ -1604,7 +1441,7 @@ fn test_deposit_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
-    user.open_channel_e2e(recipient: user, :token);
+    user.open_channel_e2e(recipient: user);
     let result = user.safe_deposit(new_note: note);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
@@ -1646,7 +1483,7 @@ fn test_use_note() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
@@ -1665,7 +1502,7 @@ fn test_use_note_self_note() {
     let mut user = test.new_user();
     user.register_e2e();
     let token = test.mock_new_token();
-    user.open_channel_e2e(recipient: user, :token);
+    user.open_channel_e2e(recipient: user);
     user.open_subchannel_e2e(recipient: user, :token, index: 0);
     let amount = 1;
     let note_index = 0;
@@ -1686,8 +1523,8 @@ fn test_use_note_multiple_notes() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_2.open_channel_e2e(recipient: user_2, :token);
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_2.open_channel_e2e(recipient: user_2);
+    user_1.open_channel_e2e(recipient: user_2);
     user_2.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount_1 = 1;
@@ -1726,7 +1563,7 @@ fn test_use_note_same_amount() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_1 = user_1.new_note(recipient: user_2, :token, :amount, index: 0);
@@ -1774,8 +1611,8 @@ fn test_use_note_wrong_owner_addr() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
-    user_2.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_channel_e2e(recipient: user_2);
+    user_2.open_channel_e2e(recipient: user_1);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
     user_1.cheat_create_note_e2e(:note);
@@ -1793,7 +1630,7 @@ fn test_use_note_wrong_owner_private_key() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
@@ -1813,7 +1650,7 @@ fn test_use_note_wrong_note_index() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
@@ -1832,8 +1669,8 @@ fn test_use_note_wrong_channel_index() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
-    user_2.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
+    user_2.open_channel_e2e(recipient: user_2);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
@@ -1851,7 +1688,7 @@ fn test_use_note_wrong_token() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
@@ -1870,7 +1707,7 @@ fn test_use_note_find_nullifier() {
     user_1.register_e2e();
     user_2.register_e2e();
     let token = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
@@ -1879,9 +1716,7 @@ fn test_use_note_find_nullifier() {
 
     // User 2 should be able to find the nullifier.
     let enc_channel_info = user_2.get_channel_info(channel_index: 0);
-    let (channel_key, _, _) = decrypt_channel_info(
-        :enc_channel_info, private_key: user_2.private_key,
-    );
+    let (channel_key, _) = decrypt_channel_info(:enc_channel_info, private_key: user_2.private_key);
     let expected_nullifier = compute_nullifier(
         :channel_key, :token, index: note_index, owner_private_key: user_2.private_key,
     );
@@ -1909,7 +1744,7 @@ fn test_withdraw() {
     user_1.register_e2e();
     let token = test.mock_new_token();
 
-    user_1.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_channel_e2e(recipient: user_1);
     user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     let amount = 1;
     let note_index = 0;
@@ -1942,7 +1777,7 @@ fn test_withdraw_different_targets() {
     let user_3 = test.new_user(); // Not registered.
     user_1.register_e2e();
     user_2.register_e2e();
-    user_1.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_channel_e2e(recipient: user_1);
     user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
 
     // Setup note.
@@ -1994,7 +1829,7 @@ fn test_withdraw_note_from_other_user() {
     let mut user_2 = test.new_user();
     user_1.register_e2e();
     user_2.register_e2e();
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
 
     let note_index = 0;
@@ -2062,9 +1897,9 @@ fn test_withdraw_assertions() {
     let user_3 = test.new_user();
     user_1.register_e2e();
     user_2.register_e2e();
-    user_1.open_channel_e2e(recipient: user_1, :token); // User 1 Channel 0
-    user_1.open_channel_e2e(recipient: user_2, :token); // User 2 Channel 0
-    user_2.open_channel_e2e(recipient: user_2, :token); // User 2 Channel 1
+    user_1.open_channel_e2e(recipient: user_1); // User 1 Channel 0
+    user_1.open_channel_e2e(recipient: user_2); // User 2 Channel 0
+    user_2.open_channel_e2e(recipient: user_2); // User 2 Channel 1
 
     // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
     let result = user_2.safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);

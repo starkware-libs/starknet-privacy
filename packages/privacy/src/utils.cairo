@@ -28,17 +28,19 @@ pub(crate) fn hash(data: Span<felt252>) -> felt252 {
 
 /// Computes the channel key.
 /// Assumes all the inputs are not zero.
+///
+/// `channel_key = h(CHANNEL_KEY_TAG, sender_addr, sender_private_key, recipient_addr,
+/// recipient_public_key)`
 pub(crate) fn compute_channel_key(
     sender_addr: ContractAddress,
     sender_private_key: felt252,
     recipient_addr: ContractAddress,
     recipient_public_key: felt252,
-    token: ContractAddress,
 ) -> felt252 {
     hash(
         [
             CHANNEL_KEY_TAG, sender_addr.into(), sender_private_key, recipient_addr.into(),
-            recipient_public_key, token.into(),
+            recipient_public_key,
         ]
             .span(),
     )
@@ -90,7 +92,7 @@ pub(crate) fn compute_subchannel_id(
 /// Computes the hash used to encrypt the token in `EncSubchannelInfo`.
 ///
 /// Returns `h(ENC_TOKEN_TAG, channel_key, random)`
-pub(crate) fn compute_subchannel_enc_token_hash(channel_key: felt252, random: felt252) -> felt252 {
+pub(crate) fn compute_enc_token_hash(channel_key: felt252, random: felt252) -> felt252 {
     hash([enc_subchannel_info::ENC_TOKEN_TAG, channel_key, random].span())
 }
 
@@ -102,19 +104,13 @@ pub(crate) fn compute_subchannel_enc_token_hash(channel_key: felt252, random: fe
 pub(crate) fn encrypt_subchannel_info(
     channel_key: felt252, token: ContractAddress, random: felt252,
 ) -> EncSubchannelInfo {
-    let enc_token = compute_subchannel_enc_token_hash(:channel_key, :random) + token.into();
+    let enc_token = compute_enc_token_hash(:channel_key, :random) + token.into();
     EncSubchannelInfo { random, enc_token }
 }
 
 /// Computes the hash used to encrypt the channel key in `EncChannelInfo`.
 pub(crate) fn compute_enc_channel_key_hash(shared_x: felt252) -> felt252 {
     hash([enc_channel_info::ENC_CHANNEL_KEY_TAG, shared_x].span())
-}
-
-// TODO: Delete once delete token from EncChannelInfo.
-/// Computes the hash used to encrypt the token in `EncChannelInfo`.
-pub(crate) fn compute_enc_token_hash(shared_x: felt252) -> felt252 {
-    hash([enc_channel_info::ENC_TOKEN_TAG, shared_x].span())
 }
 
 /// Computes the hash used to encrypt the sender address in `EncChannelInfo`.
@@ -135,7 +131,6 @@ pub(crate) fn compute_enc_sender_addr_hash(shared_x: felt252) -> felt252 {
 /// Specifically, we output:
 /// - `ephemeral_pubkey = (rG).x`
 /// - `enc_channel_key  = h( ENC_CHANNEL_KEY_TAG, (rK_recipient).x ) + channel_key`
-/// - `enc_token        = h( ENC_TOKEN_TAG, (rK_recipient).x ) + token`
 /// - `enc_sender_addr  = h( ENC_SENDER_ADDR_TAG, (rK_recipient).x ) + sender_addr`
 //
 /// Decryption (Recipient):
@@ -146,7 +141,6 @@ pub(crate) fn encrypt_channel_info(
     ephemeral_secret: felt252,
     recipient_public_key: felt252,
     channel_key: felt252,
-    token: ContractAddress,
     sender_addr: ContractAddress,
 ) -> EncChannelInfo {
     // Compute ephemeral public key.
@@ -158,11 +152,8 @@ pub(crate) fn encrypt_channel_info(
     let shared_x = shared_point.try_into().unwrap().x();
     // Encrypt channel information.
     let enc_channel_key = compute_enc_channel_key_hash(:shared_x) + channel_key;
-    let enc_token = compute_enc_token_hash(:shared_x) + token.into();
     let enc_sender_addr = compute_enc_sender_addr_hash(:shared_x) + sender_addr.into();
-    EncChannelInfo {
-        ephemeral_pubkey: ephemeral_pub_x, enc_channel_key, enc_token, enc_sender_addr,
-    }
+    EncChannelInfo { ephemeral_pubkey: ephemeral_pub_x, enc_channel_key, enc_sender_addr }
 }
 
 /// Decrypts the channel key from `EncChannelInfo`.
