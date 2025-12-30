@@ -185,11 +185,11 @@ export interface PrivateTransfers {
    *
    * v1: the recipient is the same as the account address or has setup a semi transparent note for the deposit.
    */
-  deposit(
-    recipient: PrivateRecipient,
-    token: StarknetAddress,
-    amount: Amount,
-  ): Promise<PrivateInvocationResult>;
+  deposit(params: {
+    token: StarknetAddress;
+    amount: Amount;
+    recipient?: PrivateRecipient;
+  }): Promise<PrivateInvocationResult>;
 
   /**
    * Withdraw tokens from the privacy pool
@@ -198,27 +198,27 @@ export interface PrivateTransfers {
    *
    * v1: the inputs size is 1 and the amount must match the output amount.
    */
-  withdraw(
-    recipient: StarknetAddress,
-    token: StarknetAddress,
-    inputs: Note[],
-    amount?: Amount,
-    selfChannel?: Channel
-  ): Promise<PrivateInvocationResult>;
+  withdraw(params: {
+    token: StarknetAddress;
+    inputs: Note[];
+    recipient?: StarknetAddress;
+    amount?: Amount;
+    selfChannel?: Channel;
+  }): Promise<PrivateInvocationResult>;
 
   /**
    * transfer tokens from the privacy pool to a single recipient. 
    * @param amount if not provided, the total amount of the notes is used. if provided and is lower than the total amount of notes, the remainder note is returned
-
+   *
    * Note: one can send notes with total that exceeds the amount ot transfer, that way a single note is returned as remainder that replaces them.
    */
-  transfer(
-    recipient: PrivateRecipient,
-    token: StarknetAddress,
-    inputs: Note[],
-    amount?: Amount,
-    selfChannel?: Channel
-  ): Promise<PrivateInvocationResult>;
+  transfer(params: {
+    token: StarknetAddress;
+    inputs: Note[];
+    recipient: PrivateRecipient | Self;
+    amount?: Amount | Open;
+    selfChannel?: Channel;
+  }): Promise<PrivateInvocationResult>;
 
   /**
    * A composite call supporting deposit, multiple transfers and withdrawals.
