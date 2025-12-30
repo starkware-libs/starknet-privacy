@@ -43,4 +43,4 @@ pub const ZERO_SUBCHANNEL_ID: felt252 = 'ZERO_SUBCHANNEL_ID';
 pub const ZERO_SUBCHANNEL_KEY: felt252 = 'ZERO_SUBCHANNEL_KEY';
 // TODO: Consider moving to internal errors?
 pub const ZERO_ENC_SUBCHANNEL_TOKEN: felt252 = 'ZERO_ENC_SUBCHANNEL_TOKEN';
-
+pub const VALUE_MISMATCH: felt252 = 'VALUE_MISMATCH';

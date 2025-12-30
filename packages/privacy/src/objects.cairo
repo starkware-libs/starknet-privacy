@@ -159,4 +159,7 @@ pub enum ServerAction {
     /// Transfer tokens from the contract to a recipient (ERC20 transfer).
     /// (recipient: ContractAddress, token: ContractAddress, amount: u128)
     TransferTo: (ContractAddress, ContractAddress, u128),
+    /// Verify that a storage value is equal to a given value.
+    /// (storage_address: felt252, value: felt252)
+    VerifyValue: (felt252, felt252),
 }
