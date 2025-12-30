@@ -18,7 +18,7 @@ use privacy::objects::{
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::utils::{
-    derive_public_key, encrypt_note_amount, encrypt_subchannel_info, is_canonical_key,
+    TWO_POW_120, derive_public_key, encrypt_note_amount, encrypt_subchannel_info, is_canonical_key,
 };
 use snforge_std::{
     CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state,
@@ -282,10 +282,12 @@ pub(crate) impl UserImpl of UserTrait {
         (random_channel, random_subchannel)
     }
 
-    /// TODO: Returns a random value of 120 bits.
+    /// Returns a random value of 120 bits.
     fn get_random(ref self: User) -> felt252 {
         self.nonce += 1;
-        hash(['RANDOM', self.nonce.into()].span())
+        (hash(['RANDOM', self.nonce.into()].span()).into() % TWO_POW_120)
+            .try_into()
+            .expect('RANDOM_OVERFLOW')
     }
 
     /// Internal function to create a note in the client side.

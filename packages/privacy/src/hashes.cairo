@@ -142,13 +142,12 @@ pub(crate) fn compute_note_id(
     hash([enc_note::NOTE_ID_TAG, channel_key, token.into(), index.into()].span())
 }
 
-// TODO: Add random.
 /// Computes the hash used to encrypt the note amount in `EncNote`.
 /// Assumes `channel_key` is not zero.
 ///
-/// Returns `h(ENC_AMOUNT_TAG, channel_key, index)`
-pub(crate) fn compute_enc_amount_hash(channel_key: felt252) -> felt252 {
-    hash([enc_note::ENC_AMOUNT_TAG, channel_key].span())
+/// Returns `h(ENC_AMOUNT_TAG, channel_key, random)`.
+pub(crate) fn compute_enc_amount_hash(channel_key: felt252, random: felt252) -> felt252 {
+    hash([enc_note::ENC_AMOUNT_TAG, channel_key, random].span())
 }
 
 /// Computes the nullifier.

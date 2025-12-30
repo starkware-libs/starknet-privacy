@@ -15,8 +15,8 @@ pub mod Privacy {
         NotePath, ServerAction,
     };
     use privacy::utils::{
-        StoragePathIntoFelt, decrypt_note_amount, derive_public_key, encrypt_channel_info,
-        encrypt_note_amount, encrypt_subchannel_info, is_canonical_key,
+        StoragePathIntoFelt, TWO_POW_120, decrypt_note_amount, derive_public_key,
+        encrypt_channel_info, encrypt_note_amount, encrypt_subchannel_info, is_canonical_key,
     };
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
@@ -427,7 +427,8 @@ pub mod Privacy {
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
             assert(note.amount.is_non_zero(), errors::ZERO_AMOUNT);
             assert(note.random.is_non_zero(), errors::ZERO_RANDOM);
-            // TODO: Assert random bounds.
+            // Assert random is 120 bits.
+            assert(note.random.into() < TWO_POW_120, errors::RANDOM_EXCEEDS_120_BITS);
 
             // TODO: Consider impl helper function for common code.
 

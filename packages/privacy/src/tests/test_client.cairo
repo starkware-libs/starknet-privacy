@@ -5,7 +5,7 @@ use privacy::objects::{ClientAction, NewNote, NotePath, ServerAction};
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info, decrypt_subchannel_token,
 };
-use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
+use privacy::utils::{TWO_POW_120, decrypt_note_amount, encrypt_channel_info, is_canonical_key};
 use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 
@@ -480,6 +480,15 @@ fn test_transfer_assertions() {
             notes_to_create: [NewNote { random: Zero::zero(), ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+
+    // Catch RANDOM_EXCEEDS_120_BITS.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [note_path].span(),
+            notes_to_create: [NewNote { random: TWO_POW_120.try_into().unwrap(), ..new_note }]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::RANDOM_EXCEEDS_120_BITS);
 
     user_3.register_e2e();
 
@@ -1325,8 +1334,7 @@ fn test_create_note_twice_same_amount() {
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index_2);
     let enc_note_2 = user_1.create_note(note: note_2);
     assert_ne!(enc_note_1.id, enc_note_2.id);
-    // TODO: Change to assert_ne once enc with random is implemented.
-    assert_eq!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
     let expected_note_1 = user_1
         .compute_enc_note(
             recipient: user_2, :token, index: note_index_1, :amount, random: note_1.random,
@@ -1386,6 +1394,20 @@ fn test_create_note_zero_random() {
     let token = test.mock_new_token();
     let note = user_1
         .new_note(recipient: user_2, :token, amount: 1, index: 0, random: Zero::zero());
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected: 'RANDOM_EXCEEDS_120_BITS')]
+fn test_create_note_random_exceeds_120_bits() {
+    let mut test: Test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.mock_new_token();
+    let note = user_1
+        .new_note(
+            recipient: user_2, :token, amount: 1, index: 0, random: TWO_POW_120.try_into().unwrap(),
+        );
     user_1.create_note(:note);
 }
 
@@ -1583,8 +1605,7 @@ fn test_deposit() {
 
     // Assert enc_notes are different.
     assert_ne!(enc_note_1.id, enc_note_2.id);
-    // TODO: Change to assert_ne once enc with random is implemented.
-    assert_eq!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
 }
 
 #[test]
@@ -1622,6 +1643,11 @@ fn test_deposit_assertions() {
     // Catch ZERO_RANDOM.
     let result = user.safe_deposit(new_note: NewNote { random: Zero::zero(), ..note });
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+
+    // Catch RANDOM_EXCEEDS_120_BITS.
+    let result = user
+        .safe_deposit(new_note: NewNote { random: TWO_POW_120.try_into().unwrap(), ..note });
+    assert_panic_with_felt_error(:result, expected_error: errors::RANDOM_EXCEEDS_120_BITS);
 
     // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     user.register_e2e();
