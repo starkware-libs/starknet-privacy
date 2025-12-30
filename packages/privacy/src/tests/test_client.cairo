@@ -421,7 +421,7 @@ fn test_open_channel() {
     );
     let expected_actions = array![
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
-        ServerAction::AppendToVec((user_2.address, expected_enc_channel_info)),
+        ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info)),
     ]
         .span();
     assert_eq!(channel_output, expected_actions);
@@ -449,7 +449,7 @@ fn test_open_channel_self_channel() {
     );
     let expected_actions = array![
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
-        ServerAction::AppendToVec((user.address, expected_enc_channel_info)),
+        ServerAction::AppendToVec((user.address, user.public_key, expected_enc_channel_info)),
     ]
         .span();
     assert_eq!(channel_output, expected_actions);
@@ -569,12 +569,12 @@ fn test_open_channel_multiple_channels_same_sender() {
     );
     let expected_actions_1 = array![
         ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
-        ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_1)),
+        ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
         ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
-        ServerAction::AppendToVec((user_3.address, expected_enc_channel_info_2)),
+        ServerAction::AppendToVec((user_3.address, user_3.public_key, expected_enc_channel_info_2)),
     ]
         .span();
     assert_eq!(c1_output, expected_actions_1);
@@ -637,12 +637,12 @@ fn test_open_channel_multiple_channels_same_recipient() {
     );
     let expected_actions_1 = array![
         ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
-        ServerAction::AppendToVec((user_1.address, expected_enc_channel_info_1)),
+        ServerAction::AppendToVec((user_1.address, user_1.public_key, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
         ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
-        ServerAction::AppendToVec((user_1.address, expected_enc_channel_info_2)),
+        ServerAction::AppendToVec((user_1.address, user_1.public_key, expected_enc_channel_info_2)),
     ]
         .span();
     assert_eq!(c1_output, expected_actions_1);
@@ -701,12 +701,12 @@ fn test_open_channel_multiple_tokens() {
     );
     let expected_actions_1 = array![
         ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
-        ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_1)),
+        ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
         ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
-        ServerAction::AppendToVec((user_2.address, expected_enc_channel_info_2)),
+        ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info_2)),
     ]
         .span();
     assert_eq!(c1_output, expected_actions_1);
@@ -763,12 +763,12 @@ fn test_open_channel_self_channel_multiple_tokens() {
     );
     let expected_actions_1 = array![
         ServerAction::WriteIfZero((storage_path_felt_1, true.into())),
-        ServerAction::AppendToVec((user.address, expected_enc_channel_info_1)),
+        ServerAction::AppendToVec((user.address, user.public_key, expected_enc_channel_info_1)),
     ]
         .span();
     let expected_actions_2 = array![
         ServerAction::WriteIfZero((storage_path_felt_2, true.into())),
-        ServerAction::AppendToVec((user.address, expected_enc_channel_info_2)),
+        ServerAction::AppendToVec((user.address, user.public_key, expected_enc_channel_info_2)),
     ]
         .span();
     assert_eq!(c1_output, expected_actions_1);
@@ -1616,11 +1616,12 @@ fn test_use_note_wrong_owner_addr() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
-    user_2.open_channel_e2e(recipient: user_1, :token);
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
     user_1.cheat_create_note_e2e(:note);
     let note_path = NotePath { channel_index: 0, token, note_index: 0 };
-    user_2.address = user_1.address;
+    user_2.address = test.new_user().address;
+    user_2.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2, :token);
     user_2.use_note(note: note_path);
 }
 
@@ -1639,7 +1640,9 @@ fn test_use_note_wrong_owner_private_key() {
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
     let note_path = NotePath { channel_index: 0, token, note_index };
-    user_2.private_key = user_1.private_key;
+    user_2.replace_private_key(private_key: test.new_private_key());
+    user_2.replace_public_key_e2e();
+    user_1.open_channel_e2e(recipient: user_2, :token);
     user_2.use_note(note: note_path);
 }
 
@@ -1887,11 +1890,30 @@ fn test_withdraw_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
-    // Catch Index out of bounds.
+    // Catch Index out of bounds (index too high).
     let result = user_1
         .safe_withdraw(
             withdrawal_target: user_2.address,
             note_to_withdraw: NotePath { channel_index: 1, ..note_to_withdraw },
+        );
+    assert_panic_with_error(:result, expected_error: "Index out of bounds");
+
+    // Catch Index out of bounds (wrong address).
+    let mut user_1_wrong_addr = user_1;
+    user_1_wrong_addr.address = test.new_user().address;
+    let result = user_1_wrong_addr
+        .safe_withdraw(
+            withdrawal_target: user_2.address,
+            note_to_withdraw: NotePath { channel_index: 0, token, note_index: 0 },
+        );
+    assert_panic_with_error(:result, expected_error: "Index out of bounds");
+
+    // Catch Index out of bounds (wrong private key).
+    user_1.replace_private_key(private_key: test.new_private_key());
+    let result = user_1
+        .safe_withdraw(
+            withdrawal_target: user_2.address,
+            note_to_withdraw: NotePath { channel_index: 0, token, note_index: 0 },
         );
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 }
@@ -1916,14 +1938,18 @@ fn test_withdraw_note_not_found() {
 
     // Catch NOTE_NOT_FOUND (wrong user address).
     let mut user_2_wrong_addr = user_2;
-    user_2_wrong_addr.address = user_1.address;
+    user_2_wrong_addr.address = test.new_user().address;
+    user_2_wrong_addr.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2_wrong_addr, :token);
     let result = user_2_wrong_addr
         .safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     // Catch NOTE_NOT_FOUND (wrong private key).
     let mut user_2_wrong_private_key = user_2;
-    user_2_wrong_private_key.private_key = user_1.private_key;
+    user_2_wrong_private_key.replace_private_key(private_key: test.new_user().private_key);
+    user_2_wrong_private_key.replace_public_key_e2e();
+    user_1.open_channel_e2e(recipient: user_2_wrong_private_key, :token);
     let result = user_2_wrong_private_key
         .safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);

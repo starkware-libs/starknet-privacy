@@ -150,8 +150,9 @@ pub enum ServerAction {
     WriteIfNonZero: (felt252, felt252),
     // TODO: Generalize to any vector.
     /// Append a value to a vector in storage.
-    /// (recipient_addr: ContractAddress, enc_channel_info: EncChannelInfo)
-    AppendToVec: (ContractAddress, EncChannelInfo),
+    /// (recipient_addr: ContractAddress, recipient_public_key: felt252, enc_channel_info:
+    /// EncChannelInfo)
+    AppendToVec: (ContractAddress, felt252, EncChannelInfo),
     /// Transfer tokens from a user to the contract (ERC20 transfer_from).
     /// (sender: ContractAddress, token: ContractAddress, amount: u128)
     TransferFrom: (ContractAddress, ContractAddress, u128),
