@@ -10,7 +10,7 @@ pub mod Privacy {
     };
     use privacy::utils::{
         StoragePathIntoFelt, compute_channel_id, compute_channel_key, compute_note_id,
-        compute_nullifier, compute_subchannel_id, compute_subchannel_key, decrypt_channel_info,
+        compute_nullifier, compute_subchannel_id, compute_subchannel_key, decrypt_channel_key,
         decrypt_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
         encrypt_subchannel_info, is_canonical_key,
     };
@@ -237,12 +237,12 @@ pub mod Privacy {
             assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
             assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
 
-            let (nullifier, token, amount) = self
+            let (nullifier, amount) = self
                 .use_note(:owner_addr, :owner_private_key, note: note_to_withdraw);
 
             [
                 ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into())),
-                ServerAction::TransferTo((withdrawal_target, token, amount)),
+                ServerAction::TransferTo((withdrawal_target, note_to_withdraw.token, amount)),
             ]
                 .span()
         }
@@ -288,7 +288,7 @@ pub mod Privacy {
             // TODO: Verify tokens match.
             let mut sum: u256 = Zero::zero();
             for note in notes_to_use {
-                let (nullifier, _token, amount) = self
+                let (nullifier, amount) = self
                     .use_note(:owner_addr, :owner_private_key, note: *note);
                 actions
                     .append(
@@ -301,26 +301,29 @@ pub mod Privacy {
             sum
         }
 
-        // Returns (nullifier, token, amount).
+        /// Returns (nullifier, amount).
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             note: NotePath,
-        ) -> (felt252, ContractAddress, u128) {
-            // TODO: Get channel key from input and assert its connected to (owner_addr,
-            // owner_public_key).
-            // Read and decrypt channel key and token from storage.
+        ) -> (felt252, u128) {
+            // TODO: Consider adding context to the errors (which note is causing the error).
+            assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
+
+            // TODO: Get channel key from input and assert subchannel exists and is connected to
+            // (owner_addr, owner_public_key).
+            // Read and decrypt channel key from storage.
             // TODO: Assert token matches.
             let enc_channel_info = self
                 .get_channel_info(recipient_addr: owner_addr, channel_index: note.channel_index);
-            let (channel_key, token) = decrypt_channel_info(
+            let channel_key = decrypt_channel_key(
                 :enc_channel_info, recipient_private_key: owner_private_key,
             );
-            // TODO: Sanity assert token is non zero?
 
             // Compute note id.
             let index = note.note_index;
+            let token = note.token;
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
@@ -336,8 +339,8 @@ pub mod Privacy {
 
             assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
 
-            // Return nullifier, token, and amount.
-            (nullifier, token, note_amount)
+            // Return nullifier, and amount.
+            (nullifier, note_amount)
         }
 
         // TODO: Consider merging this with `create_note` function.
