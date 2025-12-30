@@ -220,56 +220,14 @@ export interface PrivateTransfers {
     selfChannel?: Channel;
   }): Promise<PrivateInvocationResult>;
 
-  /**
-   * A composite call supporting deposit, multiple transfers and withdrawals.
-   * The total amount of notes in the input must sum, per token, the total amount of notes in the output.
-   * There can be on output note per recipient and token (may change in the future)
-   * If an output note has amount 0, it is a transparent note. It's details will be added to the calldata of the call parameter (if present)
-   * 
-   * Notes
-   *  - not all possible combinations of deposits and withdrawals are supported. 
-   *  - a deposit with amount of 0 creates a semi-transparent note for deposit later
-   * 
-   *
-   * Examples:
-   *  - transfer 10 STRK to Alice and 20 Eth to Bob using 3 notes:
-   *    composite([
-   *       {token: STRK, source: note1},
-   *       {token: Eth, source: note2},
-   *       {token: Eth, source: note3}],
-   *     [
-   *       {recipient: Alice, token: STRK, amount: 10n, channel: aliceChannel},
-   *       {recipient: Bob, token: Eth, amount: 20n, channel: bobChannel}
-   *     ])
-   *
-   *  - swap 10 STRK for BTC using a 20 STRK note
-   *    composite([
-   *       {token: STRK, source: note1}
-   *       {token: BTC, source: 0} // semi transparent note for the swap result. 
-   *     ],
-   *     [
-   *       {recipient: SwapHelper, token: STRK, amount: 10n, channel: "withdraw"},
-   *       {recipient: Self, token: STRK, amount: 10n, channel: selfChannel} // reminder
-   *     ],
-   *     call: {
-   *       contract_address: swapHelper,
-   *       entry_point: "swap_and_deposit",
-   *       calldata: [...] // calldata that will be used to swap the STRK and deposit the BTC
-   *     }
-   *   )
-   *
-   * @param call the call to do after the "server side" call.
-   */
-  composite(
-    inputs: { token: StarknetAddress; source: Note | Amount }[],
-    outputs: {
-      recipient: PrivateRecipient | StarknetAddress;
-      token: StarknetAddress;
-      amount: Amount;
-    }[],
-    call?: Call
-  ): Promise<CallAndProof>;
+ 
 
+  /**
+   * Create a builder to batch multiple operations into a single execution.
+   * See {@link PrivateTransfersBuilder} for detailed examples.
+   */
+  build(): PrivateTransfersBuilder;
+  
   /**
    * Discover unspent notes per token and recipient states
    *
@@ -284,6 +242,128 @@ export interface PrivateTransfers {
     known?: PrivacyState;
     recipient?: StarknetAddress;
   }): Promise<PrivacyState>;
+}
+
+// ============ Builder Types ============
+
+/**
+ * Output specification for transfer/withdraw operations
+ */
+export type TransferOutput = { recipient: PrivateRecipient | Self; amount: Amount | Open };
+export type WithdrawOutput = { recipient: StarknetAddress | Self; amount: Amount };
+
+/**
+ * Token-specific sub-builder for operations on a single token.
+ * All methods return the builder for chaining.
+ * 
+ * @example
+ * // Transfer 10 STRK to Alice and 20 STRK to Bob using 2 notes
+ * .with(STRK)
+ *   .inputs(note1, note2)
+ *   .transfer({ recipient: alice, amount: 10n }, { recipient: bob, amount: 20n })
+ */
+export interface TokenOperationsBuilder {
+  /** Setup this token in recipient's channel */
+  setup(recipient: PrivateRecipient): this;
+  
+  /** Specify input notes for this token */
+  inputs(...notes: Note[]): this;
+  
+  /** Deposit this token (to self by default, or to a recipient with an open note already prepared) */
+  deposit(amount: Amount, recipient?: PrivateRecipient | Self): this;
+  
+  /** Withdraw this token to one or more public addresses */
+  withdraw(...outputs: WithdrawOutput[]): this;
+  
+  /** Transfer this token privately to one or more recipients */
+  transfer(...outputs: TransferOutput[]): this;
+  
+  /** Switch to another token */
+  with(token: StarknetAddress): TokenOperationsBuilder;
+  
+  /** Return to main builder (for non-token operations like register) */
+  done(): PrivateTransfersBuilder;
+  
+  /** Execute all queued operations */
+  execute(): Promise<CallAndProof[]>;
+}
+
+/**
+ * Builder for batching multiple private transfer operations.
+ * 
+ * Use `.with(token)` to start token-specific operations.
+ * 
+ * @example Simple deposit
+ * ```ts
+ * await transfers.build()
+ *   .with(STRK)
+ *     .deposit(100n)
+ *   .execute();
+ * ```
+ * 
+ * @example Register and setup a new recipient
+ * ```ts
+ * await transfers.build()
+ *   .register()
+ *   .setup(alice)
+ *   .with(STRK)
+ *     .setup(alice)
+ *     .deposit(100n)
+ *   .execute();
+ * ```
+ * 
+ * @example Transfer to multiple recipients (adapted from composite)
+ * ```ts
+ * // Transfer 10 STRK to Alice and 20 ETH to Bob using 3 notes
+ * await transfers.build()
+ *   .with(STRK)
+ *     .inputs(strkNote)
+ *     .transfer({ recipient: alice, amount: 10n })
+ *   .with(ETH)
+ *     .inputs(ethNote1, ethNote2)
+ *     .transfer({ recipient: bob, amount: 20n })
+ *   .execute();
+ * ```
+ * 
+ * @example Partial withdrawal with remainder
+ * ```ts
+ * await transfers.build()
+ *   .with(STRK)
+ *     .inputs(note100Strk)
+ *     .withdraw({ recipient: self, amount: 50n })
+ *     .transfer({ recipient: self, amount: 25n })
+ *     .transfer({ recipient: self, amount: 25n })
+ *   .execute();
+ * ```
+ * 
+ * @example Swap 
+ * ```ts
+ * // Prepare for swap: withdraw STRK to swap helper, deposit result back
+ * await transfers.build()
+ *   .with(STRK)
+ *     .inputs(strkNote)
+ *     .withdraw({ recipient: swapHelper, amount: 10n }) // helper does the swap and deposits the result
+ *   .with(BTC)
+ *     .deposit(open) // semi-transparent note for swap result
+ *   .call({ contractAddress: swapHelper, entrypoint: "swap", calldata: [...] })
+ *   .execute();
+ * ```
+ */
+export interface PrivateTransfersBuilder {
+  /** Register the account in the privacy pool */
+  register(): this;
+  
+  /** Setup initial channel for a new recipient */
+  setup(recipient: StarknetAddress): this;
+  
+  /** Add an arbitrary Starknet call that will run on starknet after the private operations are executed */
+  call(call: Call): this;
+  
+  /** Start token-specific operations */
+  with(token: StarknetAddress): TokenOperationsBuilder;
+  
+  /** Execute all queued operations and return the results */
+  execute(): Promise<CallAndProof[]>;
 }
 
 ////// The following are more likely to change /////////
