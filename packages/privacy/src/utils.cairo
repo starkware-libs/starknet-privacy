@@ -79,15 +79,16 @@ pub(crate) fn is_canonical_key(key: felt252) -> bool {
 
 // TODO: Refactor to (r, h(c,r) + amount).
 /// Encrypts the note amount.
-pub(crate) fn encrypt_note_amount(channel_key: felt252, index: usize, amount: u128) -> felt252 {
-    compute_enc_amount_hash(channel_key, index) + amount.into()
+pub(crate) fn encrypt_note_amount(channel_key: felt252, random: felt252, amount: u128) -> felt252 {
+    // TODO: Use the random.
+    compute_enc_amount_hash(channel_key) + amount.into()
 }
 
+// TODO: Refactor with encrypt_note_amount.
 /// Decrypts the note amount from `EncNote`.
-pub(crate) fn decrypt_note_amount(
-    enc_note_value: felt252, channel_key: felt252, index: usize,
-) -> u128 {
-    (enc_note_value - compute_enc_amount_hash(:channel_key, :index)).try_into().unwrap()
+/// This is the inverse of `encrypt_note_amount`.
+pub(crate) fn decrypt_note_amount(enc_note_value: felt252, channel_key: felt252) -> u128 {
+    (enc_note_value - compute_enc_amount_hash(:channel_key)).try_into().unwrap()
 }
 
 pub(crate) impl StoragePathIntoFelt<
