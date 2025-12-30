@@ -884,7 +884,7 @@ fn test_create_note_twice_same_amount() {
 }
 
 #[test]
-#[should_panic(expected_error: errors::ZERO_RECIPIENT_ADDR)]
+#[should_panic(expected: 'ZERO_RECIPIENT_ADDR')]
 fn test_create_note_zero_recipient_addr() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
@@ -896,7 +896,7 @@ fn test_create_note_zero_recipient_addr() {
 }
 
 #[test]
-#[should_panic(expected_error: errors::ZERO_TOKEN)]
+#[should_panic(expected: 'ZERO_TOKEN')]
 fn test_create_note_zero_token() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
@@ -906,7 +906,7 @@ fn test_create_note_zero_token() {
 }
 
 #[test]
-#[should_panic(expected_error: errors::ZERO_TOKEN)]
+#[should_panic(expected: 'ZERO_AMOUNT')]
 fn test_create_note_zero_amount() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
@@ -917,7 +917,7 @@ fn test_create_note_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected_error: errors::RECIPIENT_NOT_REGISTERED)]
+#[should_panic(expected: 'RECIPIENT_NOT_REGISTERED')]
 fn test_create_note_recipient_not_registered() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
@@ -928,7 +928,7 @@ fn test_create_note_recipient_not_registered() {
 }
 
 #[test]
-#[should_panic(expected_error: errors::CHANNEL_NOT_FOUND)]
+#[should_panic(expected: 'CHANNEL_NOT_FOUND')]
 fn test_create_note_channel_not_found() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
@@ -941,7 +941,7 @@ fn test_create_note_channel_not_found() {
 }
 
 #[test]
-#[should_panic(expected_error: errors::NOTE_INDEX_NOT_SEQUENTIAL)]
+#[should_panic(expected: 'NOTE_INDEX_NOT_SEQUENTIAL')]
 fn test_create_note_note_index_not_sequential() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1187,7 +1187,7 @@ fn test_use_note_same_amount() {
 }
 
 #[test]
-#[should_panic(expected_error: "Index out of bounds")]
+#[should_panic(expected: "Index out of bounds")]
 fn test_use_note_index_out_of_bounds() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
@@ -1196,7 +1196,7 @@ fn test_use_note_index_out_of_bounds() {
 }
 
 #[test]
-#[should_panic(expected_error: errors::NOTE_NOT_FOUND)]
+#[should_panic(expected: 'NOTE_NOT_FOUND')]
 fn test_use_note_wrong_owner_addr() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1214,7 +1214,7 @@ fn test_use_note_wrong_owner_addr() {
 }
 
 #[test]
-#[should_panic(expected_error: errors::NOTE_NOT_FOUND)]
+#[should_panic(expected: 'NOTE_NOT_FOUND')]
 fn test_use_note_wrong_owner_private_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1233,7 +1233,7 @@ fn test_use_note_wrong_owner_private_key() {
 }
 
 #[test]
-#[should_panic(expected_error: errors::NOTE_NOT_FOUND)]
+#[should_panic(expected: 'NOTE_NOT_FOUND')]
 fn test_use_note_wrong_note_index() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1251,7 +1251,7 @@ fn test_use_note_wrong_note_index() {
 }
 
 #[test]
-#[should_panic(expected_error: errors::NOTE_NOT_FOUND)]
+#[should_panic(expected: 'NOTE_NOT_FOUND')]
 fn test_use_note_wrong_channel_index() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
