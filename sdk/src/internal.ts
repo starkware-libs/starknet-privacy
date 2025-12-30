@@ -1,49 +1,61 @@
-import { BigNumberish, BlockNumber, BlockIdentifier } from "starknet";
+import { BigNumberish, BlockNumber, BlockIdentifier, Call } from "starknet";
 import {
+  Amount,
   Blob,
+  CallAndProof,
   Channel,
   ChannelSerde,
+  Note,
+  PrivateRecipient,
+  PrivateTransfers,
+  PrivateTransfersBuilder,
   StarknetAddress,
+  TokenOperationsBuilder,
+  TransferOutput,
   Witness,
   WitnessSerde,
+  WithdrawOutput,
   channelBrand,
   witnessBrand,
 } from "./interfaces.js";
 
+/** Type guard for non-negative integers */
+function isUint(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+/** Assertion helper with type narrowing */
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
+
 // Base nonce class with shared logic and methods.
 class Nonce {
   created?: BlockNumber;
-  readonly nonce0: number;
-  readonly nonce1: number;
+  readonly slot: number;
+  readonly sequence: number;
 
-  protected constructor(nonce0: number, nonce1: number, max: number, created?: BlockNumber) {
-    if (
-      typeof nonce0 !== "number" ||
-      !Number.isInteger(nonce0) ||
-      nonce0 < 0 ||
-      nonce0 > max ||
-      typeof nonce1 !== "number"
-    ) {
-      throw new Error("Invalid nonce");
-    }
-    this.nonce0 = nonce0;
-    this.nonce1 = nonce1;
+  protected constructor(slot: number, sequence: number, max: number, created?: BlockNumber) {
+    assert(isUint(slot) && slot <= max, `Invalid nonce: slot must be a non-negative integer <= ${max}`);
+    assert(isUint(sequence), "Invalid nonce: sequence must be a non-negative integer");
+    this.slot = slot;
+    this.sequence = sequence;
     this.created = created;
   }
 
-  /** Returns a new instance of the same class with nonce1 incremented by 1. */
+  /** Returns a new instance of the same class with the sequence incremented by 1. */
   increment(): this {
-    const Ctor = this.constructor as new (nonce0: number, nonce1: number) => this;
-    return new Ctor(this.nonce0, this.nonce1 + 1);
+    const Ctor = this.constructor as new (slot: number, sequence: number) => this;
+    return new Ctor(this.slot, this.sequence + 1);
   }
 
   /**
    * Finds the nonce with the lowest `created` value (skipping those without one)
    * and returns its increment. Returns undefined if no nonces have `created`.
    */
-  static next<T extends Nonce>(this: { new (...args: unknown[]): T }, nonces: T[]): T | undefined {
+  static next<T extends Nonce>(nonces: T[]): T | undefined {
     const withCreated = nonces.filter((n): n is T & { created: BlockNumber } => n.created != null);
-    if (withCreated.length === 0) return undefined;
+    if (withCreated.length === 0) throw new Error("No nonces with created block number");
 
     const oldest = withCreated.reduce((min, n) => (n.created! < min.created! ? n : min));
     
@@ -58,8 +70,8 @@ function withMax<TMax extends number>(max: TMax) {
   return class extends Nonce {
     static readonly MAX: TMax = max;
 
-    constructor(nonce0: number, nonce1: number) {
-      super(nonce0, nonce1, max);
+    constructor(slot: number, sequence: number) {
+      super(slot, sequence, max);
     }
   };
 }
@@ -74,8 +86,8 @@ type ChannelKey = bigint;
 
 type InternalChannel = Channel & {
   key: ChannelKey;
-  nonces: ChannelNonce[]; // for new tokens. array of nonces (per nonce0) that have been used for the channel. 
-  tokens: Map<StarknetAddress, TokenNonce[]>; // for new notes. array of nonces (per nonce0) for each token. 
+  nonces: ChannelNonce[]; // for new tokens. array of nonces (per slot) that have been used for the channel.
+  tokens: Map<StarknetAddress, TokenNonce[]>; // for new notes. array of nonces (per slot) for each token. 
 };
 
 
@@ -157,22 +169,20 @@ function assertChannelNonce(value: unknown): ChannelNonce {
   if (value instanceof ChannelNonceClass) {
     return value;
   }
-  if (value === null || typeof value !== "object") {
-    throw new Error("Invalid nonce");
-  }
-  const { nonce0, nonce1 } = value as Record<string, unknown>;
-  return new ChannelNonceClass(nonce0 as number, nonce1 as number);
+  assert(value !== null && typeof value === "object", "Invalid nonce: expected object");
+  const { slot, sequence } = value as Record<string, unknown>;
+  assert(isUint(slot) && isUint(sequence), "Invalid nonce: slot and sequence must be non-negative integers");
+  return new ChannelNonceClass(slot, sequence);
 }
 
 function assertTokenNonce(value: unknown): TokenNonce {
   if (value instanceof TokenNonceClass) {
     return value;
   }
-  if (value === null || typeof value !== "object") {
-    throw new Error("Invalid nonce");
-  }
-  const { nonce0, nonce1 } = value as Record<string, unknown>;
-  return new TokenNonceClass(nonce0 as number, nonce1 as number);
+  assert(value !== null && typeof value === "object", "Invalid nonce: expected object");
+  const { slot, sequence } = value as Record<string, unknown>;
+  assert(isUint(slot) && isUint(sequence), "Invalid nonce: slot and sequence must be non-negative integers");
+  return new TokenNonceClass(slot, sequence);
 }
 
 function assertNonces(value: unknown): ChannelNonce[] {
