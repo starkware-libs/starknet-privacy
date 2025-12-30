@@ -59,6 +59,11 @@ struct User {
 // TODO: Consider renaming fn_name_server to server_fn_name.
 #[generate_trait]
 pub(crate) impl UserImpl of UserTrait {
+    fn replace_private_key(ref self: User, private_key: felt252) {
+        self.private_key = private_key;
+        self.public_key = derive_public_key(:private_key);
+    }
+
     fn transfer(
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
     ) -> Span<ServerAction> {
@@ -127,6 +132,7 @@ pub(crate) impl UserImpl of UserTrait {
                 sender_addr: *self.address,
                 sender_private_key: *self.private_key,
                 recipient_addr: recipient.address,
+                recipient_public_key: recipient.public_key,
                 :token,
                 :random,
             )
@@ -143,6 +149,7 @@ pub(crate) impl UserImpl of UserTrait {
                 sender_addr: *self.address,
                 sender_private_key: *self.private_key,
                 recipient_addr: recipient.address,
+                recipient_public_key: recipient.public_key,
                 :token,
                 :random,
             )
@@ -357,18 +364,37 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn get_num_of_channels(self: @User) -> u64 {
-        self.privacy.views.get_num_of_channels(recipient_addr: *self.address)
+        self
+            .privacy
+            .views
+            .get_num_of_channels(
+                recipient_addr: *self.address, recipient_public_key: *self.public_key,
+            )
     }
 
     fn get_channel_info(self: @User, channel_index: u64) -> EncChannelInfo {
-        self.privacy.views.get_channel_info(recipient_addr: *self.address, :channel_index)
+        self
+            .privacy
+            .views
+            .get_channel_info(
+                recipient_addr: *self.address,
+                recipient_public_key: *self.public_key,
+                :channel_index,
+            )
     }
 
     #[feature("safe_dispatcher")]
     fn safe_get_channel_info(
         self: @User, channel_index: u64,
     ) -> Result<EncChannelInfo, Array<felt252>> {
-        self.privacy.safe_views.get_channel_info(recipient_addr: *self.address, :channel_index)
+        self
+            .privacy
+            .safe_views
+            .get_channel_info(
+                recipient_addr: *self.address,
+                recipient_public_key: *self.public_key,
+                :channel_index,
+            )
     }
 
     fn register(self: @User) -> Span<ServerAction> {
@@ -476,12 +502,18 @@ pub(crate) struct Test {
 
 #[generate_trait]
 pub(crate) impl TestImpl of TestTrait {
-    fn new_user(ref self: Test) -> User {
+    fn new_private_key(ref self: Test) -> felt252 {
         self.nonce += 1;
         let mut private_key = ('PRIVATE_KEY' + self.nonce.into()).try_into().unwrap();
         if !is_canonical_key(key: private_key) {
             private_key = Neg::neg(private_key);
         }
+        private_key
+    }
+
+    fn new_user(ref self: Test) -> User {
+        self.nonce += 1;
+        let mut private_key = self.new_private_key();
         let public_key = derive_public_key(:private_key);
         User {
             address: ('USER_ADDRESS' + self.nonce.into()).try_into().unwrap(),
@@ -580,6 +612,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn cheat_open_channel(
         self: @PrivacyCfg,
         recipient_addr: ContractAddress,
+        recipient_public_key: felt252,
         enc_channel_info: EncChannelInfo,
         channel_id: felt252,
     ) {
@@ -592,7 +625,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                     true.into(),
                 ),
             ),
-            ServerAction::AppendToVec((recipient_addr, enc_channel_info)),
+            ServerAction::AppendToVec((recipient_addr, recipient_public_key, enc_channel_info)),
         ]
             .span();
         self.execute_actions(:actions);
