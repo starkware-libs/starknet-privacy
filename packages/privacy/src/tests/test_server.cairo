@@ -2,7 +2,7 @@ use core::num::traits::Zero;
 use privacy::errors;
 use privacy::objects::ServerAction;
 use privacy::tests::test_utils::{
-    PrivacyTokenTrait, ServerCfgTrait, Test, TestTrait, UserTrait, constants,
+    PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
 };
 use snforge_std::{TokenTrait, map_entry_address};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
@@ -16,12 +16,12 @@ fn test_channel_exists() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let recipient_addr = user.address;
-    let (enc_channel_info, channel_id) = test.new_channel();
-    assert_eq!(test.cfg.channel_exists(:channel_id), false);
-    test.cfg.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
-    assert_eq!(test.cfg.channel_exists(:channel_id), true);
-    let (_, channel_id) = test.new_channel();
-    assert_eq!(test.cfg.channel_exists(:channel_id), false);
+    let (enc_channel_info, channel_id) = test.mock_new_channel();
+    assert_eq!(test.privacy.channel_exists(:channel_id), false);
+    test.privacy.cheat_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    assert_eq!(test.privacy.channel_exists(:channel_id), true);
+    let (_, channel_id) = test.mock_new_channel();
+    assert_eq!(test.privacy.channel_exists(:channel_id), false);
 }
 
 #[test]
@@ -31,11 +31,11 @@ fn test_get_num_of_channels() {
     let recipient_addr = user.address;
     // TODO: Test before registeration and after registration.
     assert_eq!(user.get_num_of_channels(), 0);
-    let (enc_channel_info, channel_id) = test.new_channel();
-    test.cfg.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    let (enc_channel_info, channel_id) = test.mock_new_channel();
+    test.privacy.cheat_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
     assert_eq!(user.get_num_of_channels(), 1);
-    let (enc_channel_info, channel_id) = test.new_channel();
-    test.cfg.open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    let (enc_channel_info, channel_id) = test.mock_new_channel();
+    test.privacy.cheat_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
     assert_eq!(user.get_num_of_channels(), 2);
     let different_user = test.new_user();
     assert_eq!(different_user.get_num_of_channels(), 0);
@@ -46,26 +46,26 @@ fn test_get_channel_info() {
     let mut test = Default::default();
     let user_1 = test.new_user();
     let user_2 = test.new_user();
-    let (channel_1_user_1, channel_id_1_user_1) = test.new_channel();
-    let (channel_2_user_1, channel_id_2_user_1) = test.new_channel();
-    let (channel_1_user_2, channel_id_1_user_2) = test.new_channel();
+    let (channel_1_user_1, channel_id_1_user_1) = test.mock_new_channel();
+    let (channel_2_user_1, channel_id_2_user_1) = test.mock_new_channel();
+    let (channel_1_user_2, channel_id_1_user_2) = test.mock_new_channel();
     test
-        .cfg
-        .open_channel(
+        .privacy
+        .cheat_open_channel(
             recipient_addr: user_1.address,
             enc_channel_info: channel_1_user_1,
             channel_id: channel_id_1_user_1,
         );
     test
-        .cfg
-        .open_channel(
+        .privacy
+        .cheat_open_channel(
             recipient_addr: user_1.address,
             enc_channel_info: channel_2_user_1,
             channel_id: channel_id_2_user_1,
         );
     test
-        .cfg
-        .open_channel(
+        .privacy
+        .cheat_open_channel(
             recipient_addr: user_2.address,
             enc_channel_info: channel_1_user_2,
             channel_id: channel_id_1_user_2,
@@ -83,8 +83,8 @@ fn test_get_channel_info_index_out_of_bounds() {
     let result = user.safe_get_channel_info(channel_index: 0);
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 
-    let (enc_channel_info, channel_id) = test.new_channel();
-    test.cfg.open_channel(recipient_addr: user.address, :enc_channel_info, :channel_id);
+    let (enc_channel_info, channel_id) = test.mock_new_channel();
+    test.privacy.cheat_open_channel(recipient_addr: user.address, :enc_channel_info, :channel_id);
 
     let result = user.safe_get_channel_info(channel_index: 0);
     assert!(result.is_ok());
@@ -95,19 +95,19 @@ fn test_get_channel_info_index_out_of_bounds() {
 #[test]
 fn test_get_note() {
     let mut test: Test = Default::default();
-    let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
-    assert_eq!(test.cfg.get_note(note_id: note.id), Zero::zero());
-    test.cfg.create_note(:note);
-    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
+    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
+    test.privacy.cheat_create_note(:note);
+    assert_eq!(test.privacy.get_note(note_id: note.id), note.enc_amount);
 }
 
 #[test]
 fn test_nullifier_exists() {
     let mut test: Test = Default::default();
-    let nullifier = test.new_nullifier();
-    assert_eq!(test.cfg.nullifier_exists(:nullifier), false);
-    test.cfg.use_note(:nullifier);
-    assert_eq!(test.cfg.nullifier_exists(:nullifier), true);
+    let nullifier = test.mock_new_nullifier();
+    assert_eq!(test.privacy.nullifier_exists(:nullifier), false);
+    test.privacy.cheat_use_note(:nullifier);
+    assert_eq!(test.privacy.nullifier_exists(:nullifier), true);
 }
 
 #[test]
@@ -167,7 +167,7 @@ fn test_register_multiple_users_same_public_key() {
 fn test_execute_write_if_zero() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let (_, channel_id) = test.new_channel();
+    let (_, channel_id) = test.mock_new_channel();
 
     // Compute storage path felt using contract state.
     let storage_path_felt = map_entry_address(
@@ -178,10 +178,10 @@ fn test_execute_write_if_zero() {
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
 
     // Verify channel exists.
-    assert!(test.cfg.channel_exists(:channel_id));
+    assert!(test.privacy.channel_exists(:channel_id));
 
     // Verify user is not registered and write public key.
     let storage_path_felt = map_entry_address(
@@ -190,47 +190,47 @@ fn test_execute_write_if_zero() {
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, user.public_key)),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
 
     // Verify public key was written.
     assert_eq!(user.get_public_key(), user.public_key);
 
     // Verify note doesn't exist and write.
-    let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
+    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
     let storage_path_felt = map_entry_address(
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
-    assert_eq!(test.cfg.get_note(note_id: note.id), Zero::zero());
+    assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, note.enc_amount)),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
 
     // Verify note was written.
-    assert_eq!(test.cfg.get_note(note_id: note.id), note.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: note.id), note.enc_amount);
 
     // Verify nullifier doesn't exist and write.
-    let nullifier = test.new_nullifier();
+    let nullifier = test.mock_new_nullifier();
     let storage_path_felt = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     let current_value: bool = generic_load(
-        target: test.cfg.address, storage_address: storage_path_felt,
+        target: test.privacy.address, storage_address: storage_path_felt,
     );
     assert_eq!(current_value, false);
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
 
     // Verify nullifier was written.
-    assert_eq!(test.cfg.nullifier_exists(:nullifier), true);
+    assert_eq!(test.privacy.nullifier_exists(:nullifier), true);
 }
 
 #[test]
 fn test_execute_write_if_zero_assertions() {
     let mut test: Test = Default::default();
-    let (_, channel_id) = test.new_channel();
+    let (_, channel_id) = test.mock_new_channel();
 
     // Catch NON_ZERO_VALUE
     let storage_path_felt = map_entry_address(
@@ -239,44 +239,44 @@ fn test_execute_write_if_zero_assertions() {
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
     let current_value: bool = generic_load(
-        target: test.cfg.address, storage_address: storage_path_felt,
+        target: test.privacy.address, storage_address: storage_path_felt,
     );
     assert_eq!(current_value, true);
-    let result = test.cfg.safe_execute_actions(actions.span());
+    let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for notes.
-    let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
+    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
     let storage_path_felt = map_entry_address(
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, note.enc_amount)),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
     let current_value: felt252 = generic_load(
-        target: test.cfg.address, storage_address: storage_path_felt,
+        target: test.privacy.address, storage_address: storage_path_felt,
     );
     assert_eq!(current_value, note.enc_amount);
-    let result = test.cfg.safe_execute_actions(actions.span());
+    let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for nullifiers.
-    let nullifier = test.new_nullifier();
+    let nullifier = test.mock_new_nullifier();
     let storage_path_felt = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, true.into())),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
     let current_value: bool = generic_load(
-        target: test.cfg.address, storage_address: storage_path_felt,
+        target: test.privacy.address, storage_address: storage_path_felt,
     );
     assert_eq!(current_value, true);
-    let result = test.cfg.safe_execute_actions(actions.span());
+    let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -292,7 +292,7 @@ fn test_execute_write_if_non_zero() {
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero((storage_path_felt, user.public_key)),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_public_key(), user.public_key);
 
     // Change public key.
@@ -300,14 +300,14 @@ fn test_execute_write_if_non_zero() {
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfNonZero((storage_path_felt, user.public_key)),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_public_key(), user.public_key);
 
     // Change public key to zero.
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfNonZero((storage_path_felt, Zero::zero())),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_public_key(), Zero::zero());
 }
 
@@ -321,22 +321,22 @@ fn test_execute_write_if_non_zero_assertions() {
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfNonZero((storage_path_felt, user.public_key)),
     ];
-    let result = test.cfg.safe_execute_actions(actions.span());
+    let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
 
     // Catch ZERO_VALUE for notes.
-    let note = test.new_note_server(amount: constants::DEFAULT_AMOUNT);
+    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
     let storage_path_felt = map_entry_address(
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
     let current_value: felt252 = generic_load(
-        target: test.cfg.address, storage_address: storage_path_felt,
+        target: test.privacy.address, storage_address: storage_path_felt,
     );
     assert_eq!(current_value, Zero::zero());
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfNonZero((storage_path_felt, note.enc_amount)),
     ];
-    let result = test.cfg.safe_execute_actions(actions.span());
+    let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
 }
 
@@ -344,13 +344,13 @@ fn test_execute_write_if_non_zero_assertions() {
 fn test_execute_append_to_vector() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let (enc_channel_info, _) = test.new_channel();
+    let (enc_channel_info, _) = test.mock_new_channel();
 
     // Append channel to vector
     let actions: Array<ServerAction> = array![
         ServerAction::AppendToVec((user.address, enc_channel_info)),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
 
     // Verify channel was added
     assert_eq!(user.get_num_of_channels(), 1);
@@ -360,32 +360,32 @@ fn test_execute_append_to_vector() {
 #[test]
 fn test_execute_transfer_from() {
     let mut test: Test = Default::default();
-    let token = test.new_token_server();
+    let token = test.new_token();
     let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
 
     token.supply(:user, :amount);
-    user.approve_server(:token, amount: amount.into());
+    user.approve(:token, amount: amount.into());
 
     // Verify balances before transfer.
     assert_eq!(token.balance_of(address: user.address), amount.into());
-    assert_eq!(token.balance_of(address: test.cfg.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 
     // Test transfer_from.
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom((user.address, token.contract_address(), amount)),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
 
     // Verify balances after transfer.
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
-    assert_eq!(token.balance_of(address: test.cfg.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
 
 #[test]
 fn test_execute_transfer_from_assertions() {
     let mut test: Test = Default::default();
-    let token = test.new_token_server();
+    let token = test.new_token();
     let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
 
@@ -393,7 +393,7 @@ fn test_execute_transfer_from_assertions() {
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom((user.address, token.contract_address(), amount)),
     ];
-    let result = test.cfg.safe_execute_actions(actions.span());
+    let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 
     // Catch INSUFFICIENT_ALLOWANCE.
@@ -401,42 +401,42 @@ fn test_execute_transfer_from_assertions() {
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom((user.address, token.contract_address(), amount)),
     ];
-    let result = test.cfg.safe_execute_actions(actions.span());
+    let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
 }
 
 #[test]
 fn test_execute_transfer_to() {
     let mut test: Test = Default::default();
-    let token = test.new_token_server();
+    let token = test.new_token();
     let recipient = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
 
     // Supply tokens to the server (via deposit).
     let user = test.new_user();
-    let note = test.new_note_server(:amount);
+    let note = test.mock_new_note(:amount);
     token.supply(:user, :amount);
-    user.deposit_server(:token, :amount, :note);
+    user.cheat_deposit(:token, :amount, :note);
 
     // Verify balances before transfer.
-    assert_eq!(token.balance_of(address: test.cfg.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
     assert_eq!(token.balance_of(address: recipient.address), Zero::zero());
 
     // Test transfer_to.
     let actions: Array<ServerAction> = array![
         ServerAction::TransferTo((recipient.address, token.contract_address(), amount)),
     ];
-    test.cfg.execute_actions(actions.span());
+    test.privacy.execute_actions(actions.span());
 
     // Verify balances after transfer.
-    assert_eq!(token.balance_of(address: test.cfg.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
     assert_eq!(token.balance_of(address: recipient.address), amount.into());
 }
 
 #[test]
 fn test_execute_transfer_to_assertions() {
     let mut test: Test = Default::default();
-    let token = test.new_token_server();
+    let token = test.new_token();
     let recipient = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
 
@@ -444,7 +444,7 @@ fn test_execute_transfer_to_assertions() {
     let actions: Array<ServerAction> = array![
         ServerAction::TransferTo((recipient.address, token.contract_address(), amount)),
     ];
-    assert_lt!(token.balance_of(address: test.cfg.address), amount.into());
-    let result = test.cfg.safe_execute_actions(actions.span());
+    assert_lt!(token.balance_of(address: test.privacy.address), amount.into());
+    let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 }
