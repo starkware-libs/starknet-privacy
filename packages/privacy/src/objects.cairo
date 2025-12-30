@@ -2,11 +2,11 @@ use core::num::traits::Zero;
 use starknet::ContractAddress;
 
 /// The path of an existing note in the server storage.
+// TODO: Consider renaming.
 #[derive(Serde, Copy, Drop)]
 pub struct NotePath {
-    /// The index of the channel within the owner's channel vector.
-    // TODO: Replace with channel key.
-    pub channel_index: u64,
+    /// The channel key of the note's channel.
+    pub channel_key: felt252,
     /// The note's token address.
     pub token: ContractAddress,
     /// The index of the note within the channel.

@@ -10,7 +10,7 @@ use privacy::utils::{
     encrypt_channel_info, is_canonical_key,
 };
 use snforge_std::map_entry_address;
-use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
+use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 
 #[test]
 fn test_register() {
@@ -62,8 +62,9 @@ fn test_transfer() {
     let note_index = 0;
     let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
 
-    let note_path = NotePath { channel_index: 0, token, note_index };
+    let note_path = NotePath { channel_key, token, note_index };
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
     let actions = user_1.transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
 
@@ -99,8 +100,9 @@ fn test_transfer_to_self() {
     let note_index = 0;
     let note = user_2.new_note(recipient: user_1, :token, :amount, index: note_index);
     user_2.cheat_create_note_e2e(:note);
+    let channel_key = user_2.compute_channel_key(recipient: user_1);
 
-    let note_path = NotePath { channel_index: 1, token, note_index };
+    let note_path = NotePath { channel_key, token, note_index };
     let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
 
     let actions = user_1.transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
@@ -142,8 +144,9 @@ fn test_transfer_one_to_many() {
     let note = user_1
         .new_note(recipient: user_1, :token, amount: amount_1 + amount_2, index: note_index);
     user_1.cheat_create_note_e2e(:note);
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
 
-    let note_path = NotePath { channel_index: 0, token, note_index };
+    let note_path = NotePath { channel_key, token, note_index };
     let note_1 = user_1.new_note(recipient: user_2, :token, amount: amount_1, index: note_index);
     let note_2 = user_1.new_note(recipient: user_3, :token, amount: amount_2, index: note_index);
 
@@ -192,11 +195,13 @@ fn test_transfer_many_to_one() {
     let note_index = 0;
     let note = user_2.new_note(recipient: user_1, :token, :amount, index: note_index);
     user_2.cheat_create_note_e2e(:note);
+    let channel_key_1 = user_2.compute_channel_key(recipient: user_1);
     let note = user_3.new_note(recipient: user_1, :token, :amount, index: note_index);
     user_3.cheat_create_note_e2e(:note);
+    let channel_key_2 = user_3.compute_channel_key(recipient: user_1);
 
-    let note_path_1 = NotePath { channel_index: 0, token, note_index: 0 };
-    let note_path_2 = NotePath { channel_index: 1, token, note_index: 0 };
+    let note_path_1 = NotePath { channel_key: channel_key_1, token, note_index: 0 };
+    let note_path_2 = NotePath { channel_key: channel_key_2, token, note_index: 0 };
     let amount = 2 * amount;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
 
@@ -248,11 +253,13 @@ fn test_transfer_many_to_many() {
     let note_index = 0;
     let note = user_1.new_note(recipient: user_3, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
+    let channel_key_1 = user_1.compute_channel_key(recipient: user_3);
     let note = user_2.new_note(recipient: user_3, :token, :amount, index: note_index);
     user_2.cheat_create_note_e2e(:note);
+    let channel_key_2 = user_2.compute_channel_key(recipient: user_3);
 
-    let note_path_1 = NotePath { channel_index: 0, token, note_index: 0 };
-    let note_path_2 = NotePath { channel_index: 1, token, note_index: 0 };
+    let note_path_1 = NotePath { channel_key: channel_key_1, token, note_index: 0 };
+    let note_path_2 = NotePath { channel_key: channel_key_2, token, note_index: 0 };
     let note_1 = user_3.new_note(recipient: user_1, :token, :amount, index: note_index);
     let note_2 = user_3.new_note(recipient: user_2, :token, :amount, index: note_index);
 
@@ -299,8 +306,9 @@ fn test_transfer_assertions() {
     let user_2 = test.new_user();
     let user_3 = test.new_user();
     let token = test.mock_new_token();
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
 
-    let note_path = NotePath { channel_index: 0, token, note_index: 0 };
+    let note_path = NotePath { channel_key, token, note_index: 0 };
     let new_note = NewNote { recipient_addr: user_3.address, token, amount: 1, index: 0 };
 
     // Catch ZERO_OWNER_ADDR.
@@ -337,10 +345,18 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
-    // Catch INDEX_OUT_OF_BOUNDS ("Index out of bounds") - channel doesnt exist.
+    // Catch ZERO_CHANNEL_KEY.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [NotePath { channel_key: Zero::zero(), ..note_path }].span(),
+            notes_to_create: [new_note].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+
+    // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_error(:result, expected_error: "Index out of bounds");
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     user_1.register_e2e();
     user_1.open_channel_e2e(recipient: user_1);
@@ -350,8 +366,7 @@ fn test_transfer_assertions() {
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
-    // TODO: Catch INVALID_SUBCHANNEL with wrong channel key once raplacing j input with channel
-    // key.
+    user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
 
     // Catch INVALID_SUBCHANNEL - wrong address.
     user_2.register_e2e();
@@ -365,7 +380,7 @@ fn test_transfer_assertions() {
     // Catch INVALID_SUBCHANNEL - wrong private key.
     let mut user_1_wrong_private_key = user_1;
     user_1_wrong_private_key.private_key = user_1.public_key;
-    let result = user_1
+    let result = user_1_wrong_private_key
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
@@ -378,7 +393,15 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
-    user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
+    println!("6");
+    // Catch INVALID_SUBCHANNEL - wrong channel key.
+    let wrong_channel_key = user_1.compute_channel_key(recipient: user_2);
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [NotePath { channel_key: wrong_channel_key, ..note_path }].span(),
+            notes_to_create: [new_note].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch NOTE_NOT_FOUND.
     let result = user_1
@@ -1489,7 +1512,8 @@ fn test_use_note() {
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
-    let note_path = NotePath { channel_index: 0, token, note_index };
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
+    let note_path = NotePath { channel_key, token, note_index };
     let (nullifier, note_amount) = user_2.use_note(note: note_path);
     assert_eq!(note_amount, amount);
     let expected_nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
@@ -1508,7 +1532,8 @@ fn test_use_note_self_note() {
     let note_index = 0;
     let note = user.new_note(recipient: user, :token, :amount, index: note_index);
     user.cheat_create_note_e2e(:note);
-    let note_path = NotePath { channel_index: 0, token, note_index };
+    let channel_key = user.compute_channel_key(recipient: user);
+    let note_path = NotePath { channel_key, token, note_index };
     let (nullifier, note_amount) = user.use_note(note: note_path);
     assert_eq!(note_amount, amount);
     let expected_nullifier = user.compute_nullifier(sender: user, :token, :note_index);
@@ -1535,9 +1560,11 @@ fn test_use_note_multiple_notes() {
     user_1.cheat_create_note_e2e(note: note_1);
     user_1.cheat_create_note_e2e(note: note_2);
     user_2.cheat_create_note_e2e(note: note_3);
-    let note_1_path = NotePath { channel_index: 1, token, note_index: 0 };
-    let note_2_path = NotePath { channel_index: 1, token, note_index: 1 };
-    let note_3_path = NotePath { channel_index: 0, token, note_index: 0 };
+    let channel_key_1 = user_1.compute_channel_key(recipient: user_2);
+    let channel_key_2 = user_2.compute_channel_key(recipient: user_2);
+    let note_1_path = NotePath { channel_key: channel_key_1, token, note_index: 0 };
+    let note_2_path = NotePath { channel_key: channel_key_1, token, note_index: 1 };
+    let note_3_path = NotePath { channel_key: channel_key_2, token, note_index: 0 };
     let (nullifier_1, note_amount_1) = user_2.use_note(note: note_1_path);
     let (nullifier_2, note_amount_2) = user_2.use_note(note: note_2_path);
     let (nullifier_3, note_amount_3) = user_2.use_note(note: note_3_path);
@@ -1570,8 +1597,9 @@ fn test_use_note_same_amount() {
     let note_2 = user_1.new_note(recipient: user_2, :token, :amount, index: 1);
     user_1.cheat_create_note_e2e(note: note_1);
     user_1.cheat_create_note_e2e(note: note_2);
-    let note_path_1 = NotePath { channel_index: 0, token, note_index: 0 };
-    let note_path_2 = NotePath { channel_index: 0, token, note_index: 1 };
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
+    let note_path_1 = NotePath { channel_key, token, note_index: 0 };
+    let note_path_2 = NotePath { channel_key, token, note_index: 1 };
     let (nullifier_1, note_amount_1) = user_2.use_note(note: note_path_1);
     let (nullifier_2, note_amount_2) = user_2.use_note(note: note_path_2);
     assert_eq!(note_amount_1, amount);
@@ -1588,17 +1616,18 @@ fn test_use_note_same_amount() {
 fn test_use_note_zero_token() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
-    let note_path = NotePath { channel_index: 0, token: Zero::zero(), note_index: 0 };
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
+    let note_path = NotePath { channel_key, token: Zero::zero(), note_index: 0 };
     user_1.use_note(note: note_path);
 }
 
 #[test]
-#[should_panic(expected: "Index out of bounds")]
-fn test_use_note_index_out_of_bounds() {
+#[should_panic(expected: 'ZERO_CHANNEL_KEY')]
+fn test_use_note_zero_channel_key() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
     let token = test.mock_new_token();
-    let note_path = NotePath { channel_index: 0, token, note_index: 0 };
+    let note_path = NotePath { channel_key: Zero::zero(), token, note_index: 0 };
     user_1.use_note(note: note_path);
 }
 
@@ -1616,7 +1645,8 @@ fn test_use_note_wrong_owner_addr() {
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
     user_1.cheat_create_note_e2e(:note);
-    let note_path = NotePath { channel_index: 0, token, note_index: 0 };
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
+    let note_path = NotePath { channel_key, token, note_index: 0 };
     user_2.address = user_1.address;
     user_2.use_note(note: note_path);
 }
@@ -1636,7 +1666,8 @@ fn test_use_note_wrong_owner_private_key() {
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
-    let note_path = NotePath { channel_index: 0, token, note_index };
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
+    let note_path = NotePath { channel_key, token, note_index };
     user_2.private_key = user_1.private_key;
     user_2.use_note(note: note_path);
 }
@@ -1656,13 +1687,14 @@ fn test_use_note_wrong_note_index() {
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
-    let note_path = NotePath { channel_index: 0, token, note_index: note_index + 1 };
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
+    let note_path = NotePath { channel_key, token, note_index: note_index + 1 };
     user_2.use_note(note: note_path);
 }
 
 #[test]
 #[should_panic(expected: 'INVALID_SUBCHANNEL')]
-fn test_use_note_wrong_channel_index() {
+fn test_use_note_wrong_channel_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -1675,7 +1707,8 @@ fn test_use_note_wrong_channel_index() {
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
-    let note_path = NotePath { channel_index: 1, token, note_index };
+    let wrong_channel_key = user_1.compute_channel_key(recipient: user_1);
+    let note_path = NotePath { channel_key: wrong_channel_key, token, note_index };
     user_2.use_note(note: note_path);
 }
 
@@ -1693,8 +1726,9 @@ fn test_use_note_wrong_token() {
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
     let wrong_token = test.mock_new_token();
-    let note_path = NotePath { channel_index: 0, token: wrong_token, note_index };
+    let note_path = NotePath { channel_key, token: wrong_token, note_index };
     user_2.use_note(note: note_path);
 }
 
@@ -1723,7 +1757,7 @@ fn test_use_note_find_nullifier() {
     assert!(!user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
 
     // User 2 uses the note.
-    let note_path = NotePath { channel_index: 0, token, note_index };
+    let note_path = NotePath { channel_key, token, note_index };
     let (nullifier, note_amount) = user_2.use_note(note: note_path);
     assert_eq!(note_amount, amount);
     assert_eq!(nullifier, expected_nullifier);
@@ -1751,7 +1785,8 @@ fn test_withdraw() {
     let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
 
-    let note_to_withdraw = NotePath { channel_index: 0, token, note_index: 0 };
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
+    let note_to_withdraw = NotePath { channel_key, token, note_index: 0 };
     let actions = user_1.withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
     let storage_path_felt_nullifier = map_entry_address(
@@ -1784,7 +1819,8 @@ fn test_withdraw_different_targets() {
     let note_index = 0;
     let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
-    let note_to_withdraw = NotePath { channel_index: 0, token, note_index };
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
+    let note_to_withdraw = NotePath { channel_key, token, note_index };
     let nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
@@ -1837,11 +1873,12 @@ fn test_withdraw_note_from_other_user() {
         .cheat_create_note_e2e(
             user_1.new_note(recipient: user_2, :token, :amount, index: note_index),
         );
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
     let expected_nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
     let actions = user_2
         .withdraw(
             withdrawal_target: user_2.address,
-            note_to_withdraw: NotePath { channel_index: 0, token, note_index },
+            note_to_withdraw: NotePath { channel_key, token, note_index },
         );
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
@@ -1861,7 +1898,8 @@ fn test_withdraw_assertions() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token = test.mock_new_token();
-    let note_to_withdraw = NotePath { channel_index: 0, token, note_index: 0 };
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
+    let mut note_to_withdraw = NotePath { channel_key, token, note_index: 0 };
 
     // Catch ZERO_OWNER_ADDR.
     let mut user_1_zero = user_1;
@@ -1890,9 +1928,17 @@ fn test_withdraw_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
-    // Catch Index out of bounds - channel doesnt exist.
+    // Catch ZERO_CHANNEL_KEY.
+    let result = user_1
+        .safe_withdraw(
+            withdrawal_target: user_2.address,
+            note_to_withdraw: NotePath { channel_key: Zero::zero(), ..note_to_withdraw },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+
+    // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     let result = user_1.safe_withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-    assert_panic_with_error(:result, expected_error: "Index out of bounds");
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     let user_3 = test.new_user();
     user_1.register_e2e();
@@ -1900,6 +1946,8 @@ fn test_withdraw_assertions() {
     user_1.open_channel_e2e(recipient: user_1); // User 1 Channel 0
     user_1.open_channel_e2e(recipient: user_2); // User 2 Channel 0
     user_2.open_channel_e2e(recipient: user_2); // User 2 Channel 1
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
+    note_to_withdraw.channel_key = channel_key;
 
     // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
     let result = user_2.safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
@@ -1923,11 +1971,12 @@ fn test_withdraw_assertions() {
         .safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
-    // Catch INVALID_SUBCHANNEL (wrong channel index).
+    // Catch INVALID_SUBCHANNEL (wrong channel key).
+    let wrong_channel_key = user_2.compute_channel_key(recipient: user_2);
     let result = user_2
         .safe_withdraw(
             withdrawal_target: user_3.address,
-            note_to_withdraw: NotePath { channel_index: 1, ..note_to_withdraw },
+            note_to_withdraw: NotePath { channel_key: wrong_channel_key, ..note_to_withdraw },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 

@@ -207,7 +207,6 @@ pub trait IClient<T> {
         random: felt252,
     ) -> Span<ServerAction>;
 
-    // TODO: Add index out of bounds error?
     /// Validates `notes_to_create` are a valid redistribution of funds from `notes_to_use`.
     ///
     /// A transfer consists of nullifying existing notes owned by `owner_addr` and creating
@@ -239,7 +238,8 @@ pub trait IClient<T> {
     /// #### Preconditions
     /// - `owner_addr`, `owner_private_key` must not be zero.
     /// - `notes_to_use`, `notes_to_create` must not be empty.
-    /// - `notes_to_use` use valid channel and note indexes of the owner's existing notes.
+    /// - `notes_to_use` use valid channel keys, tokens, and note indexes of the owner's existing
+    /// notes.
     /// - `notes_to_create` have non-zero `recipient_addr`s, `token`s, and `amount`s.
     /// - Each recipient is registered in the server.
     /// - A channel exists from `owner_addr` to each recipient of the given token.
@@ -259,6 +259,8 @@ pub trait IClient<T> {
     /// - [`NO_NOTES_TO_USE`](privacy::errors::NO_NOTES_TO_USE): Thrown if `notes_to_use` is empty.
     /// - [`NO_NOTES_TO_CREATE`](privacy::errors::NO_NOTES_TO_CREATE): Thrown if `notes_to_create`
     /// is empty.
+    /// - [`ZERO_CHANNEL_KEY`](privacy::errors::ZERO_CHANNEL_KEY): Thrown if there's a note to be
+    /// used with zero as the channel key.
     /// - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if a note to be used is not
     /// found.
     /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if there's a note to
@@ -389,12 +391,13 @@ pub trait IClient<T> {
     /// `withdrawal_target` is zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the `note_to_withdraw.token` is
     /// zero.
+    /// - [`ZERO_CHANNEL_KEY`](privacy::errors::ZERO_CHANNEL_KEY): Thrown if the
+    /// `note_to_withdraw.channel_key` is zero.
     /// - [`INVALID_SUBCHANNEL`](privacy::errors::INVALID_SUBCHANNEL): Thrown if the
     /// derivedsubchannel is not found.
     /// - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if the note is not found.
     /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if a calculated nullifier is
     /// zero.
-    /// // TODO - Consider adding "Index out of bounds".
     ///
     /// #### Access Control
     /// - TODO

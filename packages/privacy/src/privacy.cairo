@@ -10,9 +10,9 @@ pub mod Privacy {
     };
     use privacy::utils::{
         StoragePathIntoFelt, compute_channel_id, compute_channel_key, compute_note_id,
-        compute_nullifier, compute_subchannel_id, compute_subchannel_key, decrypt_channel_key,
-        decrypt_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
-        encrypt_subchannel_info, is_canonical_key,
+        compute_nullifier, compute_subchannel_id, compute_subchannel_key, decrypt_note_amount,
+        derive_public_key, encrypt_channel_info, encrypt_note_amount, encrypt_subchannel_info,
+        is_canonical_key,
     };
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
@@ -316,17 +316,12 @@ pub mod Privacy {
             note: NotePath,
         ) -> (felt252, u128) {
             // TODO: Consider adding context to the errors (which note is causing the error).
+            assert(note.channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
-            // TODO: Get channel key from input instead of decrypting it from storage.
-            // Read and decrypt channel key from storage.
             // TODO: Assert token matches.
-            let enc_channel_info = self
-                .get_channel_info(recipient_addr: owner_addr, channel_index: note.channel_index);
-            let channel_key = decrypt_channel_key(
-                :enc_channel_info, recipient_private_key: owner_private_key,
-            );
 
             // Assert subchannel exists and is connected to owner's address and public key.
+            let channel_key = note.channel_key;
             let recipient_public_key = derive_public_key(private_key: owner_private_key);
             let token = note.token;
             let subchannel_id = compute_subchannel_id(
