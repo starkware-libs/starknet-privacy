@@ -339,7 +339,7 @@ pub mod Privacy {
             assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             // Decrypt note amount.
-            let note_amount = decrypt_note_amount(:enc_note_value, :channel_key, :index);
+            let note_amount = decrypt_note_amount(:enc_note_value, :channel_key);
             // TODO: Sanity assert amount is non zero?
 
             // Compute nullifier.
@@ -387,6 +387,8 @@ pub mod Privacy {
             assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
             assert(note.amount.is_non_zero(), errors::ZERO_AMOUNT);
+            assert(note.random.is_non_zero(), errors::ZERO_RANDOM);
+            // TODO: Assert random bounds.
 
             // TODO: Consider impl helper function for common code.
 
@@ -423,7 +425,9 @@ pub mod Privacy {
 
             // Compute note values.
             let note_id = compute_note_id(:channel_key, :token, :index);
-            let enc_amount = encrypt_note_amount(:channel_key, :index, amount: note.amount);
+            let enc_amount = encrypt_note_amount(
+                :channel_key, random: note.random, amount: note.amount,
+            );
 
             assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
             assert(enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
