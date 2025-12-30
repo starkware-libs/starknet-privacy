@@ -2130,3 +2130,15 @@ fn test_replace_public_key_assertions() {
     let result = user_zero_addr.safe_replace_public_key();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
+
+#[test]
+fn test_compile_client_actions_assertions() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+
+    // Catch ZERO_USER_ADDR.
+    let mut user_zero_addr = user;
+    user_zero_addr.address = Zero::zero();
+    let result = user_zero_addr.safe_compile_client_actions([].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+}
