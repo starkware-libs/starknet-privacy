@@ -316,7 +316,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     /// Internal function to use a note in the client side.
-    fn use_note(self: @User, note: NotePath) -> (felt252, ContractAddress, u128) {
+    fn use_note(self: @User, note: NotePath) -> (felt252, u128) {
         interact_with_state(
             *self.privacy.address,
             || {

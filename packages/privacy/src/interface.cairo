@@ -266,8 +266,8 @@ pub trait IClient<T> {
     /// found.
     /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if there's a note to
     /// be created with zero as the recipient.
-    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if there's a note to be created with
-    /// zero as the token.
+    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if there's a note to be used/created
+    /// with zero as the token.
     /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if there's a note to be created with
     /// zero as the amount.
     /// - [`RECIPIENT_NOT_REGISTERED`](privacy::errors::RECIPIENT_NOT_REGISTERED): Thrown if a
@@ -390,6 +390,8 @@ pub trait IClient<T> {
     /// `owner_private_key` is zero.
     /// - [`ZERO_WITHDRAWAL_TARGET`](privacy::errors::ZERO_WITHDRAWAL_TARGET): Thrown if
     /// `withdrawal_target` is zero.
+    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the `note_to_withdraw.token` is
+    /// zero.
     /// - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if the note is not found.
     /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if a calculated nullifier is
     /// zero.

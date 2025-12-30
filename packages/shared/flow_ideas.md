@@ -44,7 +44,7 @@
 2. Test transfer use and create note multi channels and multi amounts (also one with same channel and one with same amount).
 3. Use many notes form the same channel.
 4. Transfer many to many different partion of amounts.
-5. Catch NOTE_NOT_FOUND: wrong user addr, wrong private key, wrong channel index, and wrong note index.
+5. Catch NOTE_NOT_FOUND: wrong user addr, wrong private key, wrong channel index, and wrong note index, wrong token.
 
 ## Withdraw
 ### Client + Server
