@@ -1328,8 +1328,7 @@ fn test_create_note_twice_same_amount() {
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index_2);
     let enc_note_2 = user_1.create_note(note: note_2);
     assert_ne!(enc_note_1.id, enc_note_2.id);
-    // TODO: Change to assert_ne once enc with random is implemented.
-    assert_eq!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
     let expected_note_1 = user_1
         .compute_enc_note(
             recipient: user_2, :token, index: note_index_1, :amount, random: note_1.random,
@@ -1586,8 +1585,7 @@ fn test_deposit() {
 
     // Assert enc_notes are different.
     assert_ne!(enc_note_1.id, enc_note_2.id);
-    // TODO: Change to assert_ne once enc with random is implemented.
-    assert_eq!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
 }
 
 #[test]
