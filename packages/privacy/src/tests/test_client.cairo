@@ -56,6 +56,8 @@ fn test_transfer() {
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     user_1.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
@@ -91,6 +93,8 @@ fn test_transfer_to_self() {
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_1, :token);
     user_2.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
+    user_2.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_2.new_note(recipient: user_1, :token, :amount, index: note_index);
@@ -129,6 +133,9 @@ fn test_transfer_one_to_many() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     user_1.open_channel_e2e(recipient: user_3, :token);
     user_1.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_3, :token, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     let note_index = 0;
     let amount_1 = 1;
     let amount_2 = 8;
@@ -178,6 +185,9 @@ fn test_transfer_many_to_one() {
     user_1.open_channel_e2e(recipient: user_2, :token);
     user_2.open_channel_e2e(recipient: user_1, :token);
     user_3.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    user_2.open_subchannel_e2e(recipient: user_1, :token, index: 0);
+    user_3.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_2.new_note(recipient: user_1, :token, :amount, index: note_index);
@@ -230,6 +240,10 @@ fn test_transfer_many_to_many() {
     user_2.open_channel_e2e(recipient: user_3, :token);
     user_3.open_channel_e2e(recipient: user_1, :token);
     user_3.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_3, :token, index: 0);
+    user_2.open_subchannel_e2e(recipient: user_3, :token, index: 0);
+    user_3.open_subchannel_e2e(recipient: user_1, :token, index: 0);
+    user_3.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_3, :token, :amount, index: note_index);
@@ -283,10 +297,11 @@ fn test_transfer_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
+    let user_3 = test.new_user();
     let token = test.mock_new_token();
 
     let note_path = NotePath { channel_index: 0, token, note_index: 0 };
-    let new_note = NewNote { recipient_addr: user_2.address, token, amount: 1, index: 0 };
+    let new_note = NewNote { recipient_addr: user_3.address, token, amount: 1, index: 0 };
 
     // Catch ZERO_OWNER_ADDR.
     let mut user_1_zero = user_1;
@@ -301,6 +316,8 @@ fn test_transfer_assertions() {
     let result = user_1_zero_private_key
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
+
+    // TODO: Catch private key not canonical.
 
     // Catch NO_NOTES_TO_USE.
     let result = user_1.safe_transfer(notes_to_use: [].span(), notes_to_create: [new_note].span());
@@ -320,13 +337,48 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
-    // Catch INDEX_OUT_OF_BOUNDS ("Index out of bounds").
+    // Catch INDEX_OUT_OF_BOUNDS ("Index out of bounds") - channel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 
     user_1.register_e2e();
     user_1.open_channel_e2e(recipient: user_1, :token);
+
+    // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
+    let result = user_1
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // TODO: Catch INVALID_SUBCHANNEL with wrong channel key once raplacing j input with channel
+    // key.
+
+    // Catch INVALID_SUBCHANNEL - wrong address.
+    user_2.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let mut user_1_wrong_addr = user_1;
+    user_1_wrong_addr.address = user_2.address;
+    let result = user_1_wrong_addr
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // Catch INVALID_SUBCHANNEL - wrong private key.
+    let mut user_1_wrong_private_key = user_1;
+    user_1_wrong_private_key.private_key = user_1.public_key;
+    let result = user_1
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // Catch INVALID_SUBCHANNEL - wrong token.
+    let wrong_token = test.mock_new_token();
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [NotePath { token: wrong_token, ..note_path }].span(),
+            notes_to_create: [new_note].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
 
     // Catch NOTE_NOT_FOUND.
     let result = user_1
@@ -367,14 +419,35 @@ fn test_transfer_assertions() {
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 
-    user_2.register_e2e();
+    user_3.register_e2e();
 
-    // Catch CHANNEL_NOT_FOUND.
+    // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_NOT_FOUND);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
-    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_channel_e2e(recipient: user_3, :token);
+
+    // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
+    let result = user_1
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    user_1.open_subchannel_e2e(recipient: user_3, :token, index: 0);
+
+    // Catch INVALID_SUBCHANNEL - wrong address.
+    let mut user_1_wrong_addr = user_1;
+    user_1_wrong_addr.address = user_2.address;
+    let result = user_1_wrong_addr
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // Catch INVALID_SUBCHANNEL - wrong private key.
+    let mut user_1_wrong_private_key = user_1;
+    user_1_wrong_private_key.private_key = user_1.public_key;
+    let result = user_1_wrong_private_key
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INDEX_NOT_SEQUENTIAL.
     let result = user_1
@@ -1211,6 +1284,7 @@ fn test_create_note() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
@@ -1227,6 +1301,7 @@ fn test_create_note_self_note() {
     user.register_e2e();
     let token = test.mock_new_token();
     user.open_channel_e2e(recipient: user, :token);
+    user.open_subchannel_e2e(recipient: user, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user.new_note(recipient: user, :token, :amount, index: note_index);
@@ -1245,6 +1320,7 @@ fn test_create_note_twice() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount_1 = 1;
     let note_index_1 = 0;
     let note_1 = user_1.new_note(recipient: user_2, :token, amount: amount_1, index: note_index_1);
@@ -1273,6 +1349,7 @@ fn test_create_note_twice_same_amount() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index_1 = 0;
     let note_1 = user_1.new_note(recipient: user_2, :token, :amount, index: note_index_1);
@@ -1336,8 +1413,8 @@ fn test_create_note_recipient_not_registered() {
 }
 
 #[test]
-#[should_panic(expected: 'CHANNEL_NOT_FOUND')]
-fn test_create_note_channel_not_found() {
+#[should_panic(expected: 'INVALID_SUBCHANNEL')]
+fn test_create_note_invalid_subchannel_channel_doesnt_exist() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
     let user_2 = test.new_user();
@@ -1349,6 +1426,51 @@ fn test_create_note_channel_not_found() {
 }
 
 #[test]
+#[should_panic(expected: 'INVALID_SUBCHANNEL')]
+fn test_create_note_invalid_subchannel_subchannel_doesnt_exist() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    let token = test.mock_new_token();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_SUBCHANNEL')]
+fn test_create_note_invalid_subchannel_wrong_addr() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    let token = test.mock_new_token();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.address = user_2.address;
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_SUBCHANNEL')]
+fn test_create_note_invalid_subchannel_wrong_private_key() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    let token = test.mock_new_token();
+    user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.private_key = user_1.public_key;
+    user_1.create_note(:note);
+}
+
 #[should_panic(expected: 'INDEX_NOT_SEQUENTIAL')]
 fn test_create_note_index_not_sequential() {
     let mut test: Test = Default::default();
@@ -1358,6 +1480,7 @@ fn test_create_note_index_not_sequential() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: 1);
     user_1.create_note(:note);
@@ -1373,6 +1496,7 @@ fn test_create_note_decrypt_amount() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
@@ -1403,6 +1527,7 @@ fn test_deposit() {
     // Setup user and note.
     user.register_e2e();
     user.open_channel_e2e(recipient: user, :token);
+    user.open_subchannel_e2e(recipient: user, :token, index: 0);
     let index = 0;
     let note = user.new_note(recipient: user, :token, :amount, :index);
 
@@ -1473,15 +1598,44 @@ fn test_deposit_assertions() {
     let result = user.safe_deposit(new_note: note);
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 
-    // Catch CHANNEL_NOT_FOUND.
+    // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     user.register_e2e();
     let result = user.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: errors::CHANNEL_NOT_FOUND);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
+    user.open_channel_e2e(recipient: user, :token);
+    let result = user.safe_deposit(new_note: note);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // Catch INVALID_SUBCHANNEL - wrong address.
+    user.open_subchannel_e2e(recipient: user, :token, index: 0);
+    let different_user = test.new_user();
+    different_user.register_e2e();
+    let result = user
+        .safe_deposit(new_note: NewNote { recipient_addr: different_user.address, ..note });
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // Catch INVALID_SUBCHANNEL - wrong private key.
+    let mut user_wrong_private_key = user;
+    user_wrong_private_key.private_key = user.public_key;
+    let result = user_wrong_private_key.safe_deposit(new_note: note);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // Catch INVALID_SUBCHANNEL - wrong token.
+    let wrong_token = test.mock_new_token();
+    let result = user.safe_deposit(new_note: NewNote { token: wrong_token, ..note });
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // TODO: Catch private key not canonical.
 
     // Catch INDEX_NOT_SEQUENTIAL.
-    user.open_channel_e2e(recipient: user, :token);
     let result = user.safe_deposit(new_note: NewNote { index: 1, ..note });
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+
+    // Sanity check - should succeed.
+    let result = user.safe_deposit(new_note: note);
+    assert!(result.is_ok());
 }
 
 #[test]
@@ -1493,6 +1647,7 @@ fn test_use_note() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
@@ -1511,6 +1666,7 @@ fn test_use_note_self_note() {
     user.register_e2e();
     let token = test.mock_new_token();
     user.open_channel_e2e(recipient: user, :token);
+    user.open_subchannel_e2e(recipient: user, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user.new_note(recipient: user, :token, :amount, index: note_index);
@@ -1532,6 +1688,8 @@ fn test_use_note_multiple_notes() {
     let token = test.mock_new_token();
     user_2.open_channel_e2e(recipient: user_2, :token);
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_2.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount_1 = 1;
     let amount_2 = 2;
     let note_1 = user_1.new_note(recipient: user_2, :token, amount: amount_1, index: 0);
@@ -1569,6 +1727,7 @@ fn test_use_note_same_amount() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_1 = user_1.new_note(recipient: user_2, :token, :amount, index: 0);
     let note_2 = user_1.new_note(recipient: user_2, :token, :amount, index: 1);
@@ -1607,7 +1766,7 @@ fn test_use_note_index_out_of_bounds() {
 }
 
 #[test]
-#[should_panic(expected: 'NOTE_NOT_FOUND')]
+#[should_panic(expected: 'INVALID_SUBCHANNEL')]
 fn test_use_note_wrong_owner_addr() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1617,6 +1776,7 @@ fn test_use_note_wrong_owner_addr() {
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
     user_2.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
     user_1.cheat_create_note_e2e(:note);
     let note_path = NotePath { channel_index: 0, token, note_index: 0 };
@@ -1625,7 +1785,7 @@ fn test_use_note_wrong_owner_addr() {
 }
 
 #[test]
-#[should_panic(expected: 'NOTE_NOT_FOUND')]
+#[should_panic(expected: 'INVALID_SUBCHANNEL')]
 fn test_use_note_wrong_owner_private_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1634,6 +1794,7 @@ fn test_use_note_wrong_owner_private_key() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
@@ -1653,6 +1814,7 @@ fn test_use_note_wrong_note_index() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
@@ -1662,7 +1824,7 @@ fn test_use_note_wrong_note_index() {
 }
 
 #[test]
-#[should_panic(expected: 'NOTE_NOT_FOUND')]
+#[should_panic(expected: 'INVALID_SUBCHANNEL')]
 fn test_use_note_wrong_channel_index() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1681,7 +1843,7 @@ fn test_use_note_wrong_channel_index() {
 }
 
 #[test]
-#[should_panic(expected: 'NOTE_NOT_FOUND')]
+#[should_panic(expected: 'INVALID_SUBCHANNEL')]
 fn test_use_note_wrong_token() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1709,6 +1871,7 @@ fn test_use_note_find_nullifier() {
     user_2.register_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
@@ -1747,6 +1910,7 @@ fn test_withdraw() {
     let token = test.mock_new_token();
 
     user_1.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_1, :token, :amount, index: note_index);
@@ -1779,6 +1943,7 @@ fn test_withdraw_different_targets() {
     user_1.register_e2e();
     user_2.register_e2e();
     user_1.open_channel_e2e(recipient: user_1, :token);
+    user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
 
     // Setup note.
     let note_index = 0;
@@ -1830,6 +1995,7 @@ fn test_withdraw_note_from_other_user() {
     user_1.register_e2e();
     user_2.register_e2e();
     user_1.open_channel_e2e(recipient: user_2, :token);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
 
     let note_index = 0;
     user_1
@@ -1858,7 +2024,7 @@ fn test_withdraw_note_from_other_user() {
 fn test_withdraw_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
-    let user_2 = test.new_user();
+    let mut user_2 = test.new_user();
     let token = test.mock_new_token();
     let note_to_withdraw = NotePath { channel_index: 0, token, note_index: 0 };
 
@@ -1879,6 +2045,8 @@ fn test_withdraw_assertions() {
     let result = user_1.safe_withdraw(withdrawal_target: Zero::zero(), :note_to_withdraw);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_WITHDRAWAL_TARGET);
 
+    // TODO: Catch private key not canonical.
+
     // Catch ZERO_TOKEN.
     let result = user_1
         .safe_withdraw(
@@ -1887,69 +2055,61 @@ fn test_withdraw_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
-    // Catch Index out of bounds.
-    let result = user_1
-        .safe_withdraw(
-            withdrawal_target: user_2.address,
-            note_to_withdraw: NotePath { channel_index: 1, ..note_to_withdraw },
-        );
+    // Catch Index out of bounds - channel doesnt exist.
+    let result = user_1.safe_withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
-}
 
-#[test]
-#[feature("safe_dispatcher")]
-fn test_withdraw_note_not_found() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
     let user_3 = test.new_user();
-    let token = test.mock_new_token();
-
     user_1.register_e2e();
     user_2.register_e2e();
     user_1.open_channel_e2e(recipient: user_1, :token); // User 1 Channel 0
     user_1.open_channel_e2e(recipient: user_2, :token); // User 2 Channel 0
     user_2.open_channel_e2e(recipient: user_2, :token); // User 2 Channel 1
+
+    // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
+    let result = user_2.safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
     user_1.cheat_create_note_e2e(:note);
-    let note_to_withdraw = NotePath { channel_index: 0, token, note_index: 0 };
 
-    // Catch NOTE_NOT_FOUND (wrong user address).
+    // Catch INVALID_SUBCHANNEL (wrong user address).
     let mut user_2_wrong_addr = user_2;
     user_2_wrong_addr.address = user_1.address;
     let result = user_2_wrong_addr
         .safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
-    // Catch NOTE_NOT_FOUND (wrong private key).
+    // Catch INVALID_SUBCHANNEL (wrong private key).
     let mut user_2_wrong_private_key = user_2;
     user_2_wrong_private_key.private_key = user_1.private_key;
     let result = user_2_wrong_private_key
         .safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
-    // Catch NOTE_NOT_FOUND (wrong channel index).
+    // Catch INVALID_SUBCHANNEL (wrong channel index).
     let result = user_2
         .safe_withdraw(
             withdrawal_target: user_3.address,
             note_to_withdraw: NotePath { channel_index: 1, ..note_to_withdraw },
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // Catch INVALID_SUBCHANNEL (wrong token).
+    let wrong_token = test.mock_new_token();
+    let result = user_2
+        .safe_withdraw(
+            withdrawal_target: user_3.address,
+            note_to_withdraw: NotePath { token: wrong_token, ..note_to_withdraw },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch NOTE_NOT_FOUND (wrong note index).
     let result = user_2
         .safe_withdraw(
             withdrawal_target: user_3.address,
             note_to_withdraw: NotePath { note_index: 1, ..note_to_withdraw },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
-
-    // Catch NOTE_NOT_FOUND (wrong token).
-    let wrong_token = test.mock_new_token();
-    let result = user_2
-        .safe_withdraw(
-            withdrawal_target: user_3.address,
-            note_to_withdraw: NotePath { token: wrong_token, ..note_to_withdraw },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
@@ -2064,3 +2224,7 @@ fn test_replace_public_key_assertions() {
     let result = user_zero_addr.safe_replace_public_key();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
+// TODO: Test with the negative private key (not canonical but the right public key) - deposit,
+// withdraw, transfer.
+
+
