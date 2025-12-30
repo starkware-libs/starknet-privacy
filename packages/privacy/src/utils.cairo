@@ -165,21 +165,16 @@ pub(crate) fn encrypt_channel_info(
     }
 }
 
-/// Decrypts the channel key and token from `EncChannelInfo`.
-pub(crate) fn decrypt_channel_info(
+/// Decrypts the channel key from `EncChannelInfo`.
+// TODO: Delete this function once remove j input from use_note.
+pub(crate) fn decrypt_channel_key(
     enc_channel_info: EncChannelInfo, recipient_private_key: felt252,
-) -> (felt252, ContractAddress) {
+) -> felt252 {
     let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_channel_info.ephemeral_pubkey)
         .unwrap();
     let shared_point = ephemeral_pubkey_point.mul(scalar: recipient_private_key);
     let shared_x = shared_point.try_into().unwrap().x();
-    let channel_key = enc_channel_info.enc_channel_key - compute_enc_channel_key_hash(shared_x);
-    let token = (enc_channel_info.enc_token - compute_enc_token_hash(shared_x))
-        .try_into()
-        // TODO: Consider adding internal errors file.
-        .expect('TOKEN_DECRYPT_ERROR');
-
-    (channel_key, token)
+    enc_channel_info.enc_channel_key - compute_enc_channel_key_hash(shared_x)
 }
 
 /// Derives the public key from the private key.
