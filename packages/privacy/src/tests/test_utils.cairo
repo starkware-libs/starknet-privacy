@@ -280,6 +280,7 @@ pub(crate) impl UserImpl of UserTrait {
         (random_channel, random_subchannel)
     }
 
+    /// TODO: Returns a random value of 120 bits.
     fn get_random(ref self: User) -> felt252 {
         self.nonce += 1;
         hash(['RANDOM', self.nonce.into()].span())
@@ -344,11 +345,16 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn compute_enc_note(
-        self: @User, recipient: User, token: ContractAddress, index: usize, amount: u128,
+        self: @User,
+        recipient: User,
+        token: ContractAddress,
+        index: usize,
+        amount: u128,
+        random: felt252,
     ) -> EncNote {
         let channel_key = self.compute_channel_key(:recipient);
         let note_id = compute_note_id(:channel_key, :token, :index);
-        let enc_amount = encrypt_note_amount(:channel_key, :index, :amount);
+        let enc_amount = encrypt_note_amount(:channel_key, :random, :amount);
         EncNote { id: note_id, enc_amount }
     }
 
@@ -378,7 +384,12 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn new_note(
-        self: @User, recipient: User, token: ContractAddress, amount: u128, index: usize,
+        self: @User,
+        recipient: User,
+        token: ContractAddress,
+        amount: u128,
+        index: usize,
+        random: felt252,
     ) -> NewNote {
         NewNote {
             recipient_addr: recipient.address,
@@ -386,7 +397,15 @@ pub(crate) impl UserImpl of UserTrait {
             token,
             amount,
             index,
+            random,
         }
+    }
+
+    fn new_note_with_generated_random(
+        ref self: User, recipient: User, token: ContractAddress, amount: u128, index: usize,
+    ) -> NewNote {
+        let random = self.get_random();
+        self.new_note(:recipient, :token, :amount, :index, :random)
     }
 
     fn deposit(self: @User, new_note: NewNote) -> Span<ServerAction> {

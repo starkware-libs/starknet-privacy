@@ -177,22 +177,24 @@ pub(crate) fn compute_note_id(
     hash([enc_note::NOTE_ID_TAG, channel_key, token.into(), index.into()].span())
 }
 
+// TODO: Add random.
 /// Computes the hash used to encrypt the note amount in `EncNote`.
-pub(crate) fn compute_enc_amount_hash(channel_key: felt252, index: usize) -> felt252 {
-    hash([enc_note::ENC_AMOUNT_TAG, channel_key, index.into()].span())
+pub(crate) fn compute_enc_amount_hash(channel_key: felt252) -> felt252 {
+    hash([enc_note::ENC_AMOUNT_TAG, channel_key].span())
 }
 
 // TODO: Refactor to (r, h(c,r) + amount).
 /// Encrypts the note amount.
-pub(crate) fn encrypt_note_amount(channel_key: felt252, index: usize, amount: u128) -> felt252 {
-    compute_enc_amount_hash(channel_key, index) + amount.into()
+pub(crate) fn encrypt_note_amount(channel_key: felt252, random: felt252, amount: u128) -> felt252 {
+    // TODO: Use the random.
+    compute_enc_amount_hash(channel_key) + amount.into()
 }
 
+// TODO: Refactor with encrypt_note_amount.
 /// Decrypts the note amount from `EncNote`.
-pub(crate) fn decrypt_note_amount(
-    enc_note_value: felt252, channel_key: felt252, index: usize,
-) -> u128 {
-    (enc_note_value - compute_enc_amount_hash(:channel_key, :index)).try_into().unwrap()
+/// This is the inverse of `encrypt_note_amount`.
+pub(crate) fn decrypt_note_amount(enc_note_value: felt252, channel_key: felt252) -> u128 {
+    (enc_note_value - compute_enc_amount_hash(:channel_key)).try_into().unwrap()
 }
 
 /// Computes the nullifier.
