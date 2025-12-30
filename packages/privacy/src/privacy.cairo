@@ -185,6 +185,8 @@ pub mod Privacy {
             assert(!notes_to_use.is_empty(), errors::NO_NOTES_TO_USE);
             assert(!notes_to_create.is_empty(), errors::NO_NOTES_TO_CREATE);
 
+            // TODO: Assert owner_private_key is canonical.
+
             // TODO: Verify owner signature on TX.
 
             let mut actions: Array<ServerAction> = array![];
@@ -211,6 +213,8 @@ pub mod Privacy {
             // Assert input is valid.
             assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
 
+            // TODO: Assert owner_private_key is canonical.
+
             // TODO: Verify owner signature on TX.
 
             let owner_addr = new_note.recipient_addr;
@@ -236,6 +240,10 @@ pub mod Privacy {
             assert(owner_addr.is_non_zero(), errors::ZERO_OWNER_ADDR);
             assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
             assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
+
+            // TODO: Assert owner_private_key is canonical.
+
+            // TODO: Verify owner signature on TX.
 
             let (nullifier, amount) = self
                 .use_note(:owner_addr, :owner_private_key, note: note_to_withdraw);
@@ -302,6 +310,7 @@ pub mod Privacy {
         }
 
         /// Returns (nullifier, amount).
+        /// Assumes owner_private_key is canonical.
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
@@ -310,9 +319,7 @@ pub mod Privacy {
         ) -> (felt252, u128) {
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
-
-            // TODO: Get channel key from input and assert subchannel exists and is connected to
-            // (owner_addr, owner_public_key).
+            // TODO: Get channel key from input instead of decrypting it from storage.
             // Read and decrypt channel key from storage.
             // TODO: Assert token matches.
             let enc_channel_info = self
@@ -321,9 +328,16 @@ pub mod Privacy {
                 :enc_channel_info, recipient_private_key: owner_private_key,
             );
 
+            // Assert subchannel exists and is connected to owner's address and public key.
+            let recipient_public_key = derive_public_key(private_key: owner_private_key);
+            let token = note.token;
+            let subchannel_id = compute_subchannel_id(
+                :channel_key, recipient_addr: owner_addr, :recipient_public_key, :token,
+            );
+            assert(self.subchannel_exists.read(subchannel_id), errors::INVALID_SUBCHANNEL);
+
             // Compute note id.
             let index = note.note_index;
-            let token = note.token;
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
@@ -366,7 +380,8 @@ pub mod Privacy {
             sum
         }
 
-        /// Returns the encrypted note and the amount of the given new note if it is valid.
+        /// Returns the encrypted note.
+        /// Assumes owner_private_key is canonical.
         fn create_note(
             self: @ContractState,
             owner_addr: ContractAddress,
@@ -397,11 +412,11 @@ pub mod Privacy {
                 :token,
             );
 
-            // Assert channel exists.
-            let channel_id = compute_channel_id(
-                :channel_key, sender_addr: owner_addr, :recipient_addr, :recipient_public_key,
+            // Assert subchannel exists.
+            let subchannel_id = compute_subchannel_id(
+                :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
-            assert(self.channel_exists(:channel_id), errors::CHANNEL_NOT_FOUND);
+            assert(self.subchannel_exists.read(subchannel_id), errors::INVALID_SUBCHANNEL);
 
             // Assert index is sequential, i.e. the previous note exists.
             let index = note.index;
