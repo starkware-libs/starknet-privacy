@@ -18,9 +18,12 @@ fn test_channel_exists() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let recipient_addr = user.address;
+    let recipient_public_key = user.public_key;
     let (enc_channel_info, channel_id) = test.mock_new_channel();
     assert_eq!(test.privacy.channel_exists(:channel_id), false);
-    test.privacy.cheat_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    test
+        .privacy
+        .cheat_open_channel(:recipient_addr, :recipient_public_key, :enc_channel_info, :channel_id);
     assert_eq!(test.privacy.channel_exists(:channel_id), true);
     let (_, channel_id) = test.mock_new_channel();
     assert_eq!(test.privacy.channel_exists(:channel_id), false);
@@ -31,13 +34,18 @@ fn test_get_num_of_channels() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let recipient_addr = user.address;
+    let recipient_public_key = user.public_key;
     // TODO: Test before registeration and after registration.
     assert_eq!(user.get_num_of_channels(), 0);
     let (enc_channel_info, channel_id) = test.mock_new_channel();
-    test.privacy.cheat_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    test
+        .privacy
+        .cheat_open_channel(:recipient_addr, :recipient_public_key, :enc_channel_info, :channel_id);
     assert_eq!(user.get_num_of_channels(), 1);
     let (enc_channel_info, channel_id) = test.mock_new_channel();
-    test.privacy.cheat_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
+    test
+        .privacy
+        .cheat_open_channel(:recipient_addr, :recipient_public_key, :enc_channel_info, :channel_id);
     assert_eq!(user.get_num_of_channels(), 2);
     let different_user = test.new_user();
     assert_eq!(different_user.get_num_of_channels(), 0);
@@ -55,6 +63,7 @@ fn test_get_channel_info() {
         .privacy
         .cheat_open_channel(
             recipient_addr: user_1.address,
+            recipient_public_key: user_1.public_key,
             enc_channel_info: channel_1_user_1,
             channel_id: channel_id_1_user_1,
         );
@@ -62,6 +71,7 @@ fn test_get_channel_info() {
         .privacy
         .cheat_open_channel(
             recipient_addr: user_1.address,
+            recipient_public_key: user_1.public_key,
             enc_channel_info: channel_2_user_1,
             channel_id: channel_id_2_user_1,
         );
@@ -69,6 +79,7 @@ fn test_get_channel_info() {
         .privacy
         .cheat_open_channel(
             recipient_addr: user_2.address,
+            recipient_public_key: user_2.public_key,
             enc_channel_info: channel_1_user_2,
             channel_id: channel_id_1_user_2,
         );
@@ -86,7 +97,14 @@ fn test_get_channel_info_index_out_of_bounds() {
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 
     let (enc_channel_info, channel_id) = test.mock_new_channel();
-    test.privacy.cheat_open_channel(recipient_addr: user.address, :enc_channel_info, :channel_id);
+    test
+        .privacy
+        .cheat_open_channel(
+            recipient_addr: user.address,
+            recipient_public_key: user.public_key,
+            :enc_channel_info,
+            :channel_id,
+        );
 
     let result = user.safe_get_channel_info(channel_index: 0);
     assert!(result.is_ok());
@@ -456,7 +474,7 @@ fn test_execute_append_to_vector() {
 
     // Append channel to vector
     let actions: Array<ServerAction> = array![
-        ServerAction::AppendToVec((user.address, enc_channel_info)),
+        ServerAction::AppendToVec((user.address, user.public_key, enc_channel_info)),
     ];
     test.privacy.execute_actions(actions.span());
 
