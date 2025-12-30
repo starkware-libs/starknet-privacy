@@ -70,7 +70,7 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .privacy
             .client
-            .prepare_transfer(
+            .transfer(
                 owner_addr: *self.address,
                 owner_private_key: *self.private_key,
                 :notes_to_use,
@@ -85,7 +85,7 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .privacy
             .safe_client
-            .prepare_transfer(
+            .transfer(
                 owner_addr: *self.address,
                 owner_private_key: *self.private_key,
                 :notes_to_use,
@@ -99,7 +99,7 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .privacy
             .client
-            .prepare_withdraw(
+            .withdraw(
                 owner_addr: *self.address,
                 owner_private_key: *self.private_key,
                 :withdrawal_target,
@@ -114,7 +114,7 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .privacy
             .safe_client
-            .prepare_withdraw(
+            .withdraw(
                 owner_addr: *self.address,
                 owner_private_key: *self.private_key,
                 :withdrawal_target,
@@ -128,7 +128,7 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .privacy
             .client
-            .prepare_open_channel(
+            .open_channel(
                 sender_addr: *self.address,
                 sender_private_key: *self.private_key,
                 recipient_addr: recipient.address,
@@ -145,7 +145,7 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .privacy
             .safe_client
-            .prepare_open_channel(
+            .open_channel(
                 sender_addr: *self.address,
                 sender_private_key: *self.private_key,
                 recipient_addr: recipient.address,
@@ -355,12 +355,12 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn deposit(self: @User, new_note: NewNote) -> Span<ServerAction> {
-        self.privacy.client.prepare_deposit(owner_private_key: *self.private_key, :new_note)
+        self.privacy.client.deposit(owner_private_key: *self.private_key, :new_note)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_deposit(self: @User, new_note: NewNote) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.privacy.safe_client.prepare_deposit(owner_private_key: *self.private_key, :new_note)
+        self.privacy.safe_client.deposit(owner_private_key: *self.private_key, :new_note)
     }
 
     fn get_num_of_channels(self: @User) -> u64 {
