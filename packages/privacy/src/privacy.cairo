@@ -24,7 +24,7 @@ pub mod Privacy {
     #[storage]
     struct Storage {
         /// Map of recipient addresses to a list of their encrypted channels.
-        recipient_channels: Map<ContractAddress, Vec<EncChannelInfo>>,
+        recipient_channels: Map<(ContractAddress, felt252), Vec<EncChannelInfo>>,
         /// Map of channel id to whether it exists.
         // TODO: Rename storage var / abi function to not have the same name?
         channel_exists: Map<felt252, bool>,
@@ -106,7 +106,7 @@ pub mod Privacy {
                 ServerAction::WriteIfZero(
                     (self.channel_exists.entry(channel_id).into(), true.into()),
                 ),
-                ServerAction::AppendToVec((recipient_addr, enc_channel_info)),
+                ServerAction::AppendToVec((recipient_addr, recipient_public_key, enc_channel_info)),
             ]
                 .span()
         }
@@ -310,8 +310,11 @@ pub mod Privacy {
         ) -> (felt252, ContractAddress, u128) {
             // Read and decrypt channel key and token from storage.
             // TODO: Assert token matches.
+            let public_key = derive_public_key(private_key: owner_private_key);
             let enc_channel_info = self
-                .get_channel_info(recipient_addr: owner_addr, channel_index: note.channel_index);
+                .get_channel_info(
+                    recipient_addr: owner_addr, :public_key, channel_index: note.channel_index,
+                );
             let (channel_key, token) = decrypt_channel_info(
                 :enc_channel_info, recipient_private_key: owner_private_key,
             );
@@ -447,11 +450,11 @@ pub mod Privacy {
                         storage_address, new_value,
                     )) => { self._execute_write_subchannel(:storage_address, :new_value); },
                     ServerAction::AppendToVec((
-                        recipient_addr, enc_channel_info,
+                        recipient_addr, public_key, enc_channel_info,
                     )) => {
                         self
                             ._execute_append_to_vector(
-                                key: recipient_addr, value: enc_channel_info,
+                                key: (recipient_addr, public_key), value: enc_channel_info,
                             );
                     },
                     ServerAction::WriteIfNonZero((
@@ -505,7 +508,7 @@ pub mod Privacy {
 
         // TODO: Make generic.
         fn _execute_append_to_vector(
-            ref self: ContractState, key: ContractAddress, value: EncChannelInfo,
+            ref self: ContractState, key: (ContractAddress, felt252), value: EncChannelInfo,
         ) {
             self.recipient_channels.entry(key).push(value);
         }
@@ -537,20 +540,25 @@ pub mod Privacy {
             self.channel_exists.read(channel_id)
         }
 
-        fn get_num_of_channels(self: @ContractState, recipient_addr: ContractAddress) -> u64 {
+        fn get_num_of_channels(
+            self: @ContractState, recipient_addr: ContractAddress, public_key: felt252,
+        ) -> u64 {
             // TODO: Restrict access to `recipient_addr`?
             // TODO: Assert `recipient_addr` is registered?
-            self.recipient_channels.entry(recipient_addr).len()
+            self.recipient_channels.entry((recipient_addr, public_key)).len()
         }
 
         fn get_channel_info(
-            self: @ContractState, recipient_addr: ContractAddress, channel_index: u64,
+            self: @ContractState,
+            recipient_addr: ContractAddress,
+            public_key: felt252,
+            channel_index: u64,
         ) -> EncChannelInfo {
             // TODO: Restrict access to `recipient_addr` and client contract?
             // TODO: Assert `recipient_addr` is registered?
             // TODO: Consider defining custom error instead of using `at` (with "Index out of
             // bounds" error)?
-            self.recipient_channels.entry(recipient_addr).at(channel_index).read()
+            self.recipient_channels.entry((recipient_addr, public_key)).at(channel_index).read()
         }
 
         fn subchannel_exists(self: @ContractState, subchannel_id: felt252) -> bool {

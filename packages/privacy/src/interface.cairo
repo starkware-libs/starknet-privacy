@@ -75,7 +75,8 @@ pub trait IClient<T> {
 
     // TODO: Remove token.
     // TODO: Access control.
-    /// Opens a new channel from `sender_addr` to `recipient_addr`.
+    /// Opens a new channel from `sender_addr` to `recipient_addr` for the recipient's registered
+    /// public key.
     ///
     /// A channel allows a sender to open subchannels (per token) and then transfer funds to a
     /// recipient. It is one-directional. Only the sender can open a channel.
@@ -460,10 +461,11 @@ pub trait IViews<T> {
     /// - Any address can call this function.
     fn channel_exists(self: @T, channel_id: felt252) -> bool;
 
-    /// Returns the number of open channels for a given recipient.
+    /// Returns the number of open channels for a given recipient with a specific public key.
     ///
     /// #### Parameters
     /// - `recipient_addr` (`ContractAddress`): The address of the recipient of the channels.
+    /// - `public_key` (`felt252`): The public key to search channels for.
     ///
     /// #### Returns
     /// (`u64`): The number of the open channels for the recipient.
@@ -479,13 +481,14 @@ pub trait IViews<T> {
     ///
     /// #### Access Control
     /// - Any address can call this function.
-    fn get_num_of_channels(self: @T, recipient_addr: ContractAddress) -> u64;
+    fn get_num_of_channels(self: @T, recipient_addr: ContractAddress, public_key: felt252) -> u64;
 
     // TODO: add "Index out of bounds" in reverts?
     /// Returns the encrepted channel information for a given recipient and channel index.
     ///
     /// #### Parameters
     /// - `recipient_addr` (`ContractAddress`): The address of the recipient.
+    /// - `public_key` (`felt252`): The public key to search channels for.
     /// - `channel_index` (`u64`): The index of the channel within the recipient's channel vector.
     ///
     /// #### Returns
@@ -503,7 +506,7 @@ pub trait IViews<T> {
     /// #### Access Control
     /// - Any address can call this function.
     fn get_channel_info(
-        self: @T, recipient_addr: ContractAddress, channel_index: u64,
+        self: @T, recipient_addr: ContractAddress, public_key: felt252, channel_index: u64,
     ) -> EncChannelInfo;
 
     /// Checks if a subchannel exists.
