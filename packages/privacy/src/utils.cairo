@@ -195,9 +195,12 @@ pub(crate) fn is_canonical_key(key: felt252) -> bool {
 }
 
 /// Computes the note id.
-// TODO: Remove public_key from note_id?
-pub(crate) fn compute_note_id(channel_key: felt252, index: usize, public_key: felt252) -> felt252 {
-    hash([enc_note::NOTE_ID_TAG, channel_key, index.into(), public_key].span())
+///
+/// `note_id = h(NOTE_ID_TAG, channel_key, token, index)`
+pub(crate) fn compute_note_id(
+    channel_key: felt252, token: ContractAddress, index: usize,
+) -> felt252 {
+    hash([enc_note::NOTE_ID_TAG, channel_key, token.into(), index.into()].span())
 }
 
 /// Computes the hash used to encrypt the note amount in `EncNote`.
@@ -205,6 +208,7 @@ pub(crate) fn compute_enc_amount_hash(channel_key: felt252, index: usize) -> fel
     hash([enc_note::ENC_AMOUNT_TAG, channel_key, index.into()].span())
 }
 
+// TODO: Refactor to (r, h(c,r) + amount).
 /// Encrypts the note amount.
 pub(crate) fn encrypt_note_amount(channel_key: felt252, index: usize, amount: u128) -> felt252 {
     compute_enc_amount_hash(channel_key, index) + amount.into()
@@ -218,10 +222,12 @@ pub(crate) fn decrypt_note_amount(
 }
 
 /// Computes the nullifier.
+///
+/// `nullifier = h(NULLIFIER_TAG, channel_key, token, index, owner_private_key)`
 pub(crate) fn compute_nullifier(
-    channel_key: felt252, index: usize, owner_private_key: felt252,
+    channel_key: felt252, token: ContractAddress, index: usize, owner_private_key: felt252,
 ) -> felt252 {
-    hash([NULLIFIER_TAG, channel_key, index.into(), owner_private_key].span())
+    hash([NULLIFIER_TAG, channel_key, token.into(), index.into(), owner_private_key].span())
 }
 
 pub(crate) impl StoragePathIntoFelt<

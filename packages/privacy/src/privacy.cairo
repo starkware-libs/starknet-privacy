@@ -308,6 +308,8 @@ pub mod Privacy {
             owner_private_key: felt252,
             note: NotePath,
         ) -> (felt252, ContractAddress, u128) {
+            // TODO: Get channel key from input and assert its connected to (owner_addr,
+            // owner_public_key).
             // Read and decrypt channel key and token from storage.
             // TODO: Assert token matches.
             let enc_channel_info = self
@@ -318,25 +320,19 @@ pub mod Privacy {
             // TODO: Sanity assert token is non zero?
 
             // Compute note id.
-            let owner_public_key = derive_public_key(private_key: owner_private_key);
-            let note_id = compute_note_id(
-                :channel_key, index: note.note_index, public_key: owner_public_key,
-            );
+            let index = note.note_index;
+            let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
             let enc_note_value = self.get_note(:note_id);
             assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             // Decrypt note amount.
-            let note_amount = decrypt_note_amount(
-                :enc_note_value, :channel_key, index: note.note_index,
-            );
+            let note_amount = decrypt_note_amount(:enc_note_value, :channel_key, :index);
             // TODO: Sanity assert amount is non zero?
 
             // Compute nullifier.
-            let nullifier = compute_nullifier(
-                :channel_key, index: note.note_index, :owner_private_key,
-            );
+            let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
 
             assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
 
@@ -389,12 +385,13 @@ pub mod Privacy {
             assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
 
             // Compute channel key.
+            let token = note.token;
             let channel_key = compute_channel_key(
                 sender_addr: owner_addr,
                 sender_private_key: owner_private_key,
                 :recipient_addr,
                 :recipient_public_key,
-                token: note.token,
+                :token,
             );
 
             // Assert channel exists.
@@ -404,27 +401,18 @@ pub mod Privacy {
             assert(self.channel_exists(:channel_id), errors::CHANNEL_NOT_FOUND);
 
             // Assert index is sequential, i.e. the previous note exists.
+            let index = note.index;
             assert(
-                note.index.is_zero()
+                index.is_zero()
                     || self
-                        .get_note(
-                            note_id: compute_note_id(
-                                :channel_key,
-                                index: note.index - 1,
-                                public_key: recipient_public_key,
-                            ),
-                        )
+                        .get_note(note_id: compute_note_id(:channel_key, :token, index: index - 1))
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
             );
 
             // Compute note values.
-            let note_id = compute_note_id(
-                :channel_key, index: note.index, public_key: recipient_public_key,
-            );
-            let enc_amount = encrypt_note_amount(
-                :channel_key, index: note.index, amount: note.amount,
-            );
+            let note_id = compute_note_id(:channel_key, :token, :index);
+            let enc_amount = encrypt_note_amount(:channel_key, :index, amount: note.amount);
 
             assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
             assert(enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
