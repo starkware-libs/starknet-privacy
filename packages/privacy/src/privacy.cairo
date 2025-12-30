@@ -59,7 +59,6 @@ pub mod Privacy {
             sender_private_key: felt252,
             recipient_addr: ContractAddress,
             recipient_public_key: felt252,
-            token: ContractAddress,
             random: felt252,
         ) -> Span<ServerAction> {
             // TODO: Remove assert not zero for sender_addr, recipient_addr?
@@ -68,7 +67,6 @@ pub mod Privacy {
             assert(sender_addr.is_non_zero(), errors::ZERO_SENDER_ADDR);
             assert(sender_private_key.is_non_zero(), errors::ZERO_SENDER_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
 
             // TODO: Verify sender signature on TX.
@@ -93,10 +91,10 @@ pub mod Privacy {
 
             // Compute the output values.
             let channel_key = compute_channel_key(
-                :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key, :token,
+                :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key,
             );
             let enc_channel_info = encrypt_channel_info(
-                ephemeral_secret: random, :recipient_public_key, :channel_key, :token, :sender_addr,
+                ephemeral_secret: random, :recipient_public_key, :channel_key, :sender_addr,
             );
             let channel_id = compute_channel_id(
                 :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
@@ -371,6 +369,7 @@ pub mod Privacy {
             assert(self.subchannel_exists.read(subchannel_id), errors::INVALID_SUBCHANNEL);
 
             // Compute note id.
+            let token = note.token;
             let index = note.note_index;
             let note_id = compute_note_id(:channel_key, :token, :index);
 
@@ -437,16 +436,15 @@ pub mod Privacy {
             assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
 
             // Compute channel key.
-            let token = note.token;
             let channel_key = compute_channel_key(
                 sender_addr: owner_addr,
                 sender_private_key: owner_private_key,
                 :recipient_addr,
                 :recipient_public_key,
-                :token,
             );
 
             // Assert subchannel exists.
+            let token = note.token;
             let subchannel_id = compute_subchannel_id(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );

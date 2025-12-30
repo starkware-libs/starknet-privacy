@@ -2,6 +2,15 @@
 ## Open Channel
 ### Client + Server
 1. Open 2 channels in succession.
+2. Open same channel twice, should fail in the second.
+3. open channel end-to-end.
+
+## Open Subchannel
+### Client + Server
+1. open subchannel twice same index same token
+2. open subchannel twice same index different token
+3. open subchannel twice different index same token
+4. open subchannel end-to-end.
 
 ## Deposit
 ### Client + Server

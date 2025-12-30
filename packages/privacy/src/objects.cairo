@@ -52,8 +52,6 @@ pub mod domain_separation {
     // TODO: Now using "channel_info" instead of "enc_channel_info" to fit in a single felt.
     pub mod enc_channel_info {
         pub const ENC_CHANNEL_KEY_TAG: felt252 = 'channel_info:enc_channel_key:v1';
-        // TODO: delete once delete token from EncChannelInfo.
-        pub const ENC_TOKEN_TAG: felt252 = 'channel_info:enc_token:v1';
         pub const ENC_SENDER_ADDR_TAG: felt252 = 'channel_info:enc_sender_addr:v1';
     }
     /// Tags for the `EncNote` struct.
@@ -73,13 +71,11 @@ pub mod domain_separation {
 pub struct EncChannelInfo {
     /// Ephemeral ECDH public key x-coordinate (rG.x). Used by the recipient to derive rK.
     pub ephemeral_pubkey: felt252,
-    /// Encrypted channel key: h(domain_separation::enc_channel::CHANNEL_KEY_TAG, rK.x) +
-    /// channel_key.
+    /// Encrypted channel key.
+    /// `enc_channel_key = h(CHANNEL_KEY_TAG, rK.x) + channel_key`
     pub enc_channel_key: felt252,
-    /// Encrypted token address: h(domain_separation::enc_channel::TOKEN_TAG, rK.x) + token_addr.
-    pub enc_token: felt252,
-    /// Encrypted sender address: h(domain_separation::enc_channel::SENDER_ADDR_TAG, rK.x) +
-    /// sender_addr.
+    /// Encrypted sender address.
+    /// `enc_sender_addr = h(SENDER_ADDR_TAG, rK.x) + sender_addr`
     pub enc_sender_addr: felt252,
 }
 
@@ -91,7 +87,6 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
     fn is_non_zero(self: @EncChannelInfo) -> bool {
         return self.ephemeral_pubkey.is_non_zero()
             && self.enc_channel_key.is_non_zero()
-            && self.enc_token.is_non_zero()
             && self.enc_sender_addr.is_non_zero();
     }
 }
