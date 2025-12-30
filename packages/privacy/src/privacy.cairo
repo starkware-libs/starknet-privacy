@@ -52,7 +52,7 @@ pub mod Privacy {
     // TODO: Use direct storage access instead of using views.
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
-        fn prepare_open_channel(
+        fn open_channel(
             self: @ContractState,
             sender_addr: ContractAddress,
             sender_private_key: felt252,
@@ -176,7 +176,7 @@ pub mod Privacy {
                 .span()
         }
 
-        fn prepare_transfer(
+        fn transfer(
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
@@ -208,7 +208,7 @@ pub mod Privacy {
             actions.span()
         }
 
-        fn prepare_deposit(
+        fn deposit(
             self: @ContractState, owner_private_key: felt252, new_note: NewNote,
         ) -> Span<ServerAction> {
             // Assert input is valid.
@@ -228,7 +228,7 @@ pub mod Privacy {
                 .span()
         }
 
-        fn prepare_withdraw(
+        fn withdraw(
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
