@@ -27,6 +27,7 @@
 11. User A deposit multiple notes, transfer them to one note for user B, user B withdraw it.
 12. User A deposit one note, transfer to users B and C, users B and C withdraw the notes.
 13. User A deposit one note, transfer to users B and C with leftover for themselves, all users withdraw.
+14. User deposit same token and amount twice - assert enc_amount and id are different.
 
 ## Transfer
 ### Client + Server

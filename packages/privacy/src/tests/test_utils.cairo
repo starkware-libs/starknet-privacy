@@ -13,7 +13,7 @@ use privacy::interface::{
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
-    ClientAction, EncChannelInfo, EncNote, EncSubchannelInfo, NewNote, NotePath, ServerAction,
+    ClientAction, EncChannelInfo, EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
@@ -37,6 +37,25 @@ pub(crate) mod constants {
     pub const TOKEN_SUPPLY: u256 = 10_u256.pow(12 + DECIMALS.into());
     pub const TOKEN_OWNER: ContractAddress = 'TOKEN_OWNER'.try_into().unwrap();
     pub const DEFAULT_AMOUNT: u128 = 10_u128.pow(DECIMALS.into());
+}
+
+/// An encrypted note, to be written to storage.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct EncNote {
+    /// The note's id.
+    pub id: felt252,
+    /// The encrypted amount of the note.
+    pub enc_amount: felt252,
+}
+
+#[generate_trait]
+pub(crate) impl EncNoteImpl of EncNoteTrait {
+    fn compile(self: @EncNote) -> Span<ServerAction> {
+        let storage_path = map_entry_address(
+            map_selector: selector!("notes"), keys: [*self.id].span(),
+        );
+        [ServerAction::WriteIfZero((storage_path, *self.enc_amount)),].span()
+    }
 }
 
 #[derive(Copy, Drop)]
@@ -72,6 +91,18 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self.privacy.safe_client.compile_client_actions(user_addr: *self.address, :client_actions)
+    }
+
+    fn internal_compile_client_actions(
+        self: @User, client_actions: Span<ClientAction>,
+    ) -> (Span<ServerAction>, TokenBalances) {
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                state._compile_client_actions(user_addr: *self.address, :client_actions)
+            },
+        )
     }
 
     fn replace_private_key(ref self: User, private_key: felt252) {
@@ -288,22 +319,16 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     /// Internal function to create a note in the client side.
-    fn create_note(self: @User, note: NewNote) -> EncNote {
-        interact_with_state(
-            *self.privacy.address,
-            || {
-                let mut state = Privacy::contract_state_for_testing();
-                state
-                    .create_note(
-                        owner_addr: *self.address, owner_private_key: *self.private_key, :note,
-                    )
-            },
-        )
+    fn create_note(self: @User, note: NewNote) -> Span<ServerAction> {
+        let (actions, _) = self
+            .internal_compile_client_actions(
+                client_actions: [ClientAction::CreateNote((*self.private_key, note))].span(),
+            );
+        actions
     }
 
     fn cheat_create_note_e2e(self: @User, note: NewNote) {
-        let enc_note = self.create_note(:note);
-        self.privacy.cheat_create_note(note: enc_note);
+        self.privacy.server.execute_actions(actions: self.create_note(:note));
     }
 
     fn compute_channel_key(self: @User, recipient: User) -> felt252 {
@@ -391,13 +416,22 @@ pub(crate) impl UserImpl of UserTrait {
         }
     }
 
-    fn deposit(self: @User, new_note: NewNote) -> Span<ServerAction> {
-        self.privacy.client.deposit(owner_private_key: *self.private_key, :new_note)
+    fn deposit(self: @User, token: ContractAddress, amount: u128) -> Span<ServerAction> {
+        let (actions, _) = self
+            .internal_compile_client_actions(
+                client_actions: [ClientAction::Deposit((token, amount)),].span(),
+            );
+        actions
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_deposit(self: @User, new_note: NewNote) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.privacy.safe_client.deposit(owner_private_key: *self.private_key, :new_note)
+    fn safe_deposit(
+        self: @User, token: ContractAddress, amount: u128,
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
+        self
+            .safe_compile_client_actions(
+                client_actions: [ClientAction::Deposit((token, amount)),].span(),
+            )
     }
 
     fn get_num_of_channels(self: @User) -> u64 {

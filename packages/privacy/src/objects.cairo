@@ -1,5 +1,63 @@
+use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
 use starknet::ContractAddress;
+
+// TODO: Optimize.
+#[derive(Drop)]
+pub(crate) struct TokenBalances {
+    /// A list of tuples indicating balance changes.
+    /// Each tuple contains:
+    /// - The token's address.
+    /// - A boolean indicating if the balance change is an addition (true) or subtraction (false).
+    /// - The balance change.
+    // TODO: Consider refactoring to a struct instead of a tuple.
+    balances: Array<(ContractAddress, bool, u128)>,
+}
+
+impl DefaultTokenBalances of Default<TokenBalances> {
+    fn default() -> TokenBalances {
+        TokenBalances { balances: array![] }
+    }
+}
+
+#[generate_trait]
+pub impl TokenBalancesImpl of TokenBalancesTrait {
+    fn add_balance(ref self: TokenBalances, token: ContractAddress, balance_change: u128) {
+        self.balances.append((token, true, balance_change));
+    }
+
+    fn subtract_balance(ref self: TokenBalances, token: ContractAddress, balance_change: u128) {
+        self.balances.append((token, false, balance_change));
+    }
+
+    fn is_valid(self: @TokenBalances) -> bool {
+        // TODO: Consider splitting to total_additions and total_subtractions, to avoid underflows.
+        let mut final_balances: Felt252Dict<u128> = Default::default();
+
+        // Sum all balance changes per token in the dictionary.
+        for (token, is_addition, balance) in self.balances {
+            let token_felt: felt252 = (*token).into();
+            let current_balance = final_balances[token_felt];
+            let new_balance = if *is_addition {
+                current_balance + *balance
+            } else {
+                current_balance - *balance
+            };
+            final_balances.insert(token_felt, new_balance);
+        }
+
+        // Squash the dicitionary to enable iterating over the entries.
+        let balances_entries = final_balances.squash().into_entries();
+
+        // Iterate over the entries and check if any balance is non-zero.
+        for (_, _, last_balance) in balances_entries {
+            if last_balance.is_non_zero() {
+                return false;
+            }
+        }
+        true
+    }
+}
 
 /// The path of an existing note in the server storage.
 // TODO: Consider renaming.
@@ -15,7 +73,7 @@ pub struct NotePath {
 }
 
 /// A note that is created by the owner and sent to a recipient.
-#[derive(Serde, Copy, Drop)]
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct NewNote {
     /// The recipient's address.
     pub recipient_addr: ContractAddress,
@@ -53,15 +111,6 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
             && self.enc_channel_key.is_non_zero()
             && self.enc_sender_addr.is_non_zero();
     }
-}
-
-/// An encrypted note, to be written to storage.
-#[derive(Serde, Copy, Drop, PartialEq, Debug, starknet::Store)]
-pub struct EncNote {
-    /// The note's id.
-    pub id: felt252,
-    /// The encrypted amount of the note.
-    pub enc_amount: felt252,
 }
 
 /// An encrypted subchannel info, to be written to storage.
@@ -108,6 +157,12 @@ pub enum ClientAction {
     /// (recipient_addr: ContractAddress, recipient_public_key: felt252, channel_key: felt252,
     /// index: usize, token: ContractAddress, random: felt252)
     OpenSubchannel: (ContractAddress, felt252, felt252, usize, ContractAddress, felt252),
+    /// Creates a new note based on the specified `NewNote`.
+    /// (user_private_key: felt252, new_note: NewNote)
+    CreateNote: (felt252, NewNote),
+    /// Deposit funds into the contract.
+    /// (token: ContractAddress, amount: u128)
+    Deposit: (ContractAddress, u128),
 }
 
 /// An action to be executed by the server.
