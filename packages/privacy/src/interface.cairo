@@ -36,7 +36,7 @@ pub trait IClient<T> {
     ///
     /// #### Preconditions
     /// - `user_addr` must not be zero.
-    /// - For `Register` actions, the `public_key` must not be zero.
+    /// - For `Register` actions, the `user_public_key` must not be zero.
     ///
     /// #### Events Emitted
     /// None
