@@ -979,11 +979,11 @@ fn test_open_subchannel_assertions() {
     let random = user_1.get_random();
     let index = 0;
 
-    // Catch ZERO_SENDER_ADDR.
+    // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user_1;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_open_subchannel(recipient: user_2, :token, :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SENDER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_RECIPIENT_ADDR.
     let mut user_zero_addr = user_2;
@@ -2324,6 +2324,37 @@ fn test_compile_client_actions() {
         ServerAction::VerifyValue((recipient_public_key_storage_path, user_2.public_key)),
         ServerAction::WriteIfZero((channel_exists_storage_path, true.into())),
         ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
+
+    // Open subchannel action.
+    let random = user_1.open_channel_e2e(recipient: user_2, :token);
+    let actions = user_1
+        .compile_client_actions(
+            client_actions: [
+                ClientAction::OpenSubchannel(
+                    (user_2.address, expected_channel_key, 0, token, random),
+                ),
+            ]
+                .span(),
+        );
+    let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token);
+    let expected_subchannel_key = user_1
+        .compute_subchannel_key(recipient: user_2, :token, index: 0);
+    let expected_enc_subchannel_info = user_1
+        .compute_enc_subchannel_info(recipient: user_2, :token, :random);
+    let subchannel_exists_storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id].span(),
+    );
+    let subchannel_tokens_storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt, true.into())),
+        ServerAction::WriteIfZeroSubchannel(
+            (subchannel_tokens_storage_path_felt, expected_enc_subchannel_info),
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);

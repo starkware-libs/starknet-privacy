@@ -53,68 +53,6 @@ pub mod Privacy {
     // TODO: Use direct storage access instead of using views.
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
-        fn open_subchannel(
-            self: @ContractState,
-            sender_addr: ContractAddress,
-            recipient_addr: ContractAddress,
-            channel_key: felt252,
-            index: usize,
-            token: ContractAddress,
-            random: felt252,
-        ) -> Span<ServerAction> {
-            // TODO: Consider generate random instead of passing it as an argument.
-            assert(sender_addr.is_non_zero(), errors::ZERO_SENDER_ADDR);
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
-
-            // TODO: Verify sender signature on TX.
-
-            // TODO: Consider passing the recipient's public key as input and asserting it is the
-            // current public key of `recipient_addr`.
-            // Assert recipient is registered.
-            let recipient_public_key = self.get_public_key(user_addr: recipient_addr);
-            assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
-
-            // Assert channel key is valid for the given sender and recipient.
-            let channel_id = compute_channel_id(
-                :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
-            );
-            assert(self.channel_exists.read(channel_id), errors::INVALID_CHANNEL);
-
-            // Assert index is sequential, i.e. the previous subchannel exists.
-            assert(
-                index.is_zero()
-                    || self
-                        .subchannel_tokens
-                        .read(compute_subchannel_key(:channel_key, index: index - 1))
-                        .is_non_zero(),
-                errors::INDEX_NOT_SEQUENTIAL,
-            );
-
-            // Compute subchannel values.
-            let subchannel_id = compute_subchannel_id(
-                :channel_key, :recipient_addr, :recipient_public_key, :token,
-            );
-            let subchannel_key = compute_subchannel_key(:channel_key, :index);
-            let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :token, :random);
-            assert(subchannel_id.is_non_zero(), errors::ZERO_SUBCHANNEL_ID);
-            assert(subchannel_key.is_non_zero(), errors::ZERO_SUBCHANNEL_KEY);
-            // TODO: Consider enc_subchannel_info.is_non_zero() instead.
-            assert(enc_subchannel_info.enc_token.is_non_zero(), errors::ZERO_ENC_SUBCHANNEL_TOKEN);
-
-            [
-                ServerAction::WriteIfZero(
-                    (self.subchannel_exists.entry(subchannel_id).into(), true.into()),
-                ),
-                ServerAction::WriteIfZeroSubchannel(
-                    (self.subchannel_tokens.entry(subchannel_key).into(), enc_subchannel_info),
-                ),
-            ]
-                .span()
-        }
-
         fn transfer(
             self: @ContractState,
             owner_addr: ContractAddress,
@@ -224,6 +162,19 @@ pub mod Privacy {
                                 :random,
                             )
                     },
+                    ClientAction::OpenSubchannel((
+                        recipient_addr, channel_key, index, token, random,
+                    )) => {
+                        self
+                            .open_subchannel(
+                                sender_addr: user_addr,
+                                :recipient_addr,
+                                :channel_key,
+                                :index,
+                                :token,
+                                :random,
+                            )
+                    },
                 };
                 server_actions.extend(server_action_batch);
             }
@@ -323,6 +274,68 @@ pub mod Privacy {
                     (self.channel_exists.entry(channel_id).into(), true.into()),
                 ),
                 ServerAction::AppendToVec((recipient_addr, recipient_public_key, enc_channel_info)),
+            ]
+        }
+
+        // `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        fn open_subchannel(
+            self: @ContractState,
+            sender_addr: ContractAddress,
+            recipient_addr: ContractAddress,
+            channel_key: felt252,
+            index: usize,
+            token: ContractAddress,
+            random: felt252,
+        ) -> Array<ServerAction> {
+            // TODO: Consider generate random instead of passing it as an argument.
+            assert(sender_addr.is_non_zero(), errors::ZERO_SENDER_ADDR);
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+
+            // TODO: Verify sender signature on TX.
+
+            // TODO: Consider passing the recipient's public key as input and asserting it is the
+            // current public key of `recipient_addr`.
+            // Assert recipient is registered.
+            let recipient_public_key = self.get_public_key(user_addr: recipient_addr);
+            assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
+
+            // Assert channel key is valid for the given sender and recipient.
+            let channel_id = compute_channel_id(
+                :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
+            );
+            assert(self.channel_exists.read(channel_id), errors::INVALID_CHANNEL);
+
+            // Assert index is sequential, i.e. the previous subchannel exists.
+            assert(
+                index.is_zero()
+                    || self
+                        .subchannel_tokens
+                        .read(compute_subchannel_key(:channel_key, index: index - 1))
+                        .is_non_zero(),
+                errors::INDEX_NOT_SEQUENTIAL,
+            );
+
+            // Compute subchannel values.
+            let subchannel_id = compute_subchannel_id(
+                :channel_key, :recipient_addr, :recipient_public_key, :token,
+            );
+            let subchannel_key = compute_subchannel_key(:channel_key, :index);
+            let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :token, :random);
+            assert(subchannel_id.is_non_zero(), errors::ZERO_SUBCHANNEL_ID);
+            assert(subchannel_key.is_non_zero(), errors::ZERO_SUBCHANNEL_KEY);
+            // TODO: Consider enc_subchannel_info.is_non_zero() instead.
+            assert(enc_subchannel_info.enc_token.is_non_zero(), errors::ZERO_ENC_SUBCHANNEL_TOKEN);
+
+            array![
+                ServerAction::WriteIfZero(
+                    (self.subchannel_exists.entry(subchannel_id).into(), true.into()),
+                ),
+                ServerAction::WriteIfZeroSubchannel(
+                    (self.subchannel_tokens.entry(subchannel_key).into(), enc_subchannel_info),
+                ),
             ]
         }
 
