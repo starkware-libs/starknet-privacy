@@ -17,7 +17,7 @@ pub struct NotePath {
 // TODO: Consider adding recipient public key.
 // TODO: Remove token from input if transfer isnt possible for multiple tokens.
 /// A note that is created by the owner and sent to a recipient.
-#[derive(Serde, Copy, Drop)]
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct NewNote {
     /// The recipient's address.
     pub recipient_addr: ContractAddress,
@@ -96,16 +96,6 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
     }
 }
 
-/// An encrypted note, to be written to storage.
-// TODO: Consider moving to interface.
-#[derive(Serde, Copy, Drop, PartialEq, Debug, starknet::Store)]
-pub struct EncNote {
-    /// The note's id.
-    pub id: felt252,
-    /// The encrypted amount of the note.
-    pub enc_amount: felt252,
-}
-
 /// An encrypted subchannel info, to be written to storage.
 // TODO: Explain in doc why the random is needed.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
@@ -150,6 +140,9 @@ pub enum ClientAction {
     /// (recipient_addr: ContractAddress, channel_key: felt252,
     /// index: usize, token: ContractAddress, random: felt252)
     OpenSubchannel: (ContractAddress, felt252, usize, ContractAddress, felt252),
+    /// Creates a new note based on the specified `NewNote`.
+    /// (user_private_key: felt252, new_note: NewNote)
+    CreateNote: (felt252, NewNote),
 }
 
 /// An action to be executed by the server.
