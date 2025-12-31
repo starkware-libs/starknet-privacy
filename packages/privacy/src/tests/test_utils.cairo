@@ -437,10 +437,10 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn replace_public_key(self: @User) -> Span<ServerAction> {
-        cheat_caller_address_once(
-            contract_address: *self.privacy.address, caller_address: *self.address,
-        );
-        self.privacy.client.replace_public_key(public_key: *self.public_key)
+        self
+            .compile_client_actions(
+                client_actions: [ClientAction::ReplacePublicKey(*self.public_key)].span(),
+            )
     }
 
     // TODO: Generate valid private-public key pair.
@@ -451,10 +451,10 @@ pub(crate) impl UserImpl of UserTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_replace_public_key(self: @User) -> Result<Span<ServerAction>, Array<felt252>> {
-        cheat_caller_address_once(
-            contract_address: *self.privacy.address, caller_address: *self.address,
-        );
-        self.privacy.safe_client.replace_public_key(public_key: *self.public_key)
+        self
+            .safe_compile_client_actions(
+                client_actions: [ClientAction::ReplacePublicKey(*self.public_key)].span(),
+            )
     }
 
     fn replace_public_key_e2e(self: @User) {
