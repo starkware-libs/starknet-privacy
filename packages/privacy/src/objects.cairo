@@ -15,7 +15,7 @@ pub struct NotePath {
 }
 
 /// A note that is created by the owner and sent to a recipient.
-#[derive(Serde, Copy, Drop)]
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct NewNote {
     /// The recipient's address.
     pub recipient_addr: ContractAddress,
@@ -53,15 +53,6 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
             && self.enc_channel_key.is_non_zero()
             && self.enc_sender_addr.is_non_zero();
     }
-}
-
-/// An encrypted note, to be written to storage.
-#[derive(Serde, Copy, Drop, PartialEq, Debug, starknet::Store)]
-pub struct EncNote {
-    /// The note's id.
-    pub id: felt252,
-    /// The encrypted amount of the note.
-    pub enc_amount: felt252,
 }
 
 /// An encrypted subchannel info, to be written to storage.
@@ -108,6 +99,12 @@ pub enum ClientAction {
     /// (recipient_addr: ContractAddress, recipient_public_key: felt252, channel_key: felt252,
     /// index: usize, token: ContractAddress, random: felt252)
     OpenSubchannel: (ContractAddress, felt252, felt252, usize, ContractAddress, felt252),
+    /// Creates a new note based on the specified `NewNote`.
+    /// (user_private_key: felt252, new_note: NewNote)
+    CreateNote: (felt252, NewNote),
+    /// Deposit funds into the contract.
+    /// (token: ContractAddress, amount: u128)
+    Deposit: (ContractAddress, u128),
 }
 
 /// An action to be executed by the server.
