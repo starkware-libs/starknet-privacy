@@ -1,4 +1,5 @@
 // TODO: Consider merging errors between different functions.
+// TODO: Separate errors between client and server.
 pub const ZERO_RECIPIENT_ADDR: felt252 = 'ZERO_RECIPIENT_ADDR';
 pub const ZERO_TOKEN: felt252 = 'ZERO_TOKEN';
 pub const ZERO_SENDER_ADDR: felt252 = 'ZERO_SENDER_ADDR';
@@ -14,8 +15,8 @@ pub const NO_NOTES_TO_USE: felt252 = 'NO_NOTES_TO_USE';
 pub const NO_NOTES_TO_CREATE: felt252 = 'NO_NOTES_TO_CREATE';
 pub const NOTE_SUM_MISMATCH: felt252 = 'NOTE_SUM_MISMATCH';
 pub const ZERO_AMOUNT: felt252 = 'ZERO_AMOUNT';
-// TODO: Use INVALID_CHANNEL instead CHANNEL_NOT_FOUND?
-pub const CHANNEL_NOT_FOUND: felt252 = 'CHANNEL_NOT_FOUND';
+// TODO: Consider renaming to SUBCHANNEL_NOT_FOUND.
+pub const INVALID_SUBCHANNEL: felt252 = 'INVALID_SUBCHANNEL';
 pub const INDEX_NOT_SEQUENTIAL: felt252 = 'INDEX_NOT_SEQUENTIAL';
 pub const NOTE_NOT_FOUND: felt252 = 'NOTE_NOT_FOUND';
 pub const ZERO_WITHDRAWAL_TARGET: felt252 = 'ZERO_WITHDRAWAL_TARGET';

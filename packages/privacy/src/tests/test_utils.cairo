@@ -262,6 +262,17 @@ pub(crate) impl UserImpl of UserTrait {
         random
     }
 
+    /// Open a channel and a subchannel with the given token.
+    /// Returns (random_generated_for_channel, random_generated_for_subchannel).
+    fn open_channel_with_token_e2e(
+        ref self: User, recipient: User, token: ContractAddress, subchannel_index: usize,
+    ) -> (felt252, felt252) {
+        let random_channel = self.open_channel_e2e(:recipient, :token);
+        let random_subchannel = self
+            .open_subchannel_e2e(:recipient, :token, index: subchannel_index);
+        (random_channel, random_subchannel)
+    }
+
     fn get_random(ref self: User) -> felt252 {
         self.nonce += 1;
         hash(['RANDOM', self.nonce.into()].span())
