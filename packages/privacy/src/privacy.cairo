@@ -53,71 +53,6 @@ pub mod Privacy {
     // TODO: Use direct storage access instead of using views.
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
-        fn open_channel(
-            self: @ContractState,
-            sender_addr: ContractAddress,
-            sender_private_key: felt252,
-            recipient_addr: ContractAddress,
-            recipient_public_key: felt252,
-            token: ContractAddress,
-            random: felt252,
-        ) -> Span<ServerAction> {
-            // TODO: Remove assert not zero for sender_addr, recipient_addr?
-            // (will fail in the registration check).
-            // TODO: Consider generate random instead of passing it as an argument.
-            assert(sender_addr.is_non_zero(), errors::ZERO_SENDER_ADDR);
-            assert(sender_private_key.is_non_zero(), errors::ZERO_SENDER_PRIVATE_KEY);
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
-
-            // TODO: Verify sender signature on TX.
-
-            // Assert sender private key is canonical.
-            assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
-
-            // Assert sender is registered with the given private key.
-            let sender_public_key = self.get_public_key(user_addr: sender_addr);
-            assert(sender_public_key.is_non_zero(), errors::SENDER_NOT_REGISTERED);
-            assert(
-                sender_public_key == derive_public_key(private_key: sender_private_key),
-                errors::SENDER_NOT_AUTHENTICATED,
-            );
-
-            // TODO: Consider removing this check after we check public key in the server.
-            // Assert recipient is registered.
-            assert(
-                self.get_public_key(user_addr: recipient_addr).is_non_zero(),
-                errors::RECIPIENT_NOT_REGISTERED,
-            );
-
-            // Compute the output values.
-            let channel_key = compute_channel_key(
-                :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key, :token,
-            );
-            let enc_channel_info = encrypt_channel_info(
-                ephemeral_secret: random, :recipient_public_key, :channel_key, :token, :sender_addr,
-            );
-            let channel_id = compute_channel_id(
-                :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
-            );
-
-            assert(channel_id.is_non_zero(), errors::ZERO_CHANNEL_ID);
-            assert(enc_channel_info.is_non_zero(), errors::ZERO_ENC_CHANNEL_INFO);
-            // TODO: Consider removing since this is checked at the start of the function.
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            [
-                ServerAction::VerifyValue(
-                    (self.public_key.entry(recipient_addr).into(), recipient_public_key),
-                ),
-                ServerAction::WriteIfZero(
-                    (self.channel_exists.entry(channel_id).into(), true.into()),
-                ),
-                ServerAction::AppendToVec((recipient_addr, recipient_public_key, enc_channel_info)),
-            ]
-                .span()
-        }
-
         fn open_subchannel(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -276,6 +211,19 @@ pub mod Privacy {
                     ClientAction::ReplacePublicKey(user_public_key) => {
                         self.replace_public_key(:user_addr, :user_public_key)
                     },
+                    ClientAction::OpenChannel((
+                        user_private_key, recipient_addr, recipient_public_key, token, random,
+                    )) => {
+                        self
+                            .open_channel(
+                                sender_addr: user_addr,
+                                sender_private_key: user_private_key,
+                                :recipient_addr,
+                                :recipient_public_key,
+                                :token,
+                                :random,
+                            )
+                    },
                 };
                 server_actions.extend(server_action_batch);
             }
@@ -311,6 +259,70 @@ pub mod Privacy {
                 ServerAction::WriteIfNonZero(
                     (self.public_key.entry(user_addr).into(), user_public_key),
                 ),
+            ]
+        }
+
+        // `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        fn open_channel(
+            self: @ContractState,
+            sender_addr: ContractAddress,
+            sender_private_key: felt252,
+            recipient_addr: ContractAddress,
+            recipient_public_key: felt252,
+            token: ContractAddress,
+            random: felt252,
+        ) -> Array<ServerAction> {
+            // TODO: Remove assert not zero for sender_addr, recipient_addr?
+            // (will fail in the registration check).
+            // TODO: Consider generate random instead of passing it as an argument.
+            assert(sender_private_key.is_non_zero(), errors::ZERO_SENDER_PRIVATE_KEY);
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+
+            // TODO: Verify sender signature on TX.
+
+            // Assert sender private key is canonical.
+            assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+
+            // Assert sender is registered with the given private key.
+            let sender_public_key = self.get_public_key(user_addr: sender_addr);
+            assert(sender_public_key.is_non_zero(), errors::SENDER_NOT_REGISTERED);
+            assert(
+                sender_public_key == derive_public_key(private_key: sender_private_key),
+                errors::SENDER_NOT_AUTHENTICATED,
+            );
+
+            // TODO: Consider removing this check after we check public key in the server.
+            // Assert recipient is registered.
+            assert(
+                self.get_public_key(user_addr: recipient_addr).is_non_zero(),
+                errors::RECIPIENT_NOT_REGISTERED,
+            );
+
+            // Compute the output values.
+            let channel_key = compute_channel_key(
+                :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key, :token,
+            );
+            let enc_channel_info = encrypt_channel_info(
+                ephemeral_secret: random, :recipient_public_key, :channel_key, :token, :sender_addr,
+            );
+            let channel_id = compute_channel_id(
+                :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
+            );
+
+            assert(channel_id.is_non_zero(), errors::ZERO_CHANNEL_ID);
+            assert(enc_channel_info.is_non_zero(), errors::ZERO_ENC_CHANNEL_INFO);
+            // TODO: Consider removing since this is checked at the start of the function.
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            array![
+                ServerAction::VerifyValue(
+                    (self.public_key.entry(recipient_addr).into(), recipient_public_key),
+                ),
+                ServerAction::WriteIfZero(
+                    (self.channel_exists.entry(channel_id).into(), true.into()),
+                ),
+                ServerAction::AppendToVec((recipient_addr, recipient_public_key, enc_channel_info)),
             ]
         }
 
