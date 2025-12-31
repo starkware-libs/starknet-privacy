@@ -19,7 +19,7 @@ pub mod Privacy {
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
-    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use starknet::{ContractAddress, get_contract_address};
     use starkware_utils::erc20::erc20_utils::CheckedIERC20DispatcherTrait;
 
     #[storage]
@@ -254,20 +254,6 @@ pub mod Privacy {
                 .span()
         }
 
-        fn replace_public_key(self: @ContractState, public_key: felt252) -> Span<ServerAction> {
-            // TODO: Add compliance.
-            // TODO: Consider remove get_caller_address() and instead pass the user address.
-            // TODO: Enforce cooldown between key replacements? (track last update time).
-            let user_addr = get_caller_address();
-            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
-
-            // Assert that input is valid.
-            assert(public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
-
-            [ServerAction::WriteIfNonZero((self.public_key.entry(user_addr).into(), public_key))]
-                .span()
-        }
-
         fn compile_client_actions(
             self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) -> Span<ServerAction> {
@@ -278,6 +264,9 @@ pub mod Privacy {
                 let server_action_batch: Array<ServerAction> = match *client_action {
                     ClientAction::Register(user_public_key) => {
                         self.register(:user_addr, :user_public_key)
+                    },
+                    ClientAction::ReplacePublicKey(user_public_key) => {
+                        self.replace_public_key(:user_addr, :user_public_key)
                     },
                 };
                 server_actions.extend(server_action_batch);
@@ -297,6 +286,21 @@ pub mod Privacy {
 
             array![
                 ServerAction::WriteIfZero(
+                    (self.public_key.entry(user_addr).into(), user_public_key),
+                ),
+            ]
+        }
+
+        // `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        fn replace_public_key(
+            self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
+        ) -> Array<ServerAction> {
+            // TODO: Add compliance.
+            // TODO: Enforce cooldown between key replacements? (track last update time).
+            assert(user_public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
+
+            array![
+                ServerAction::WriteIfNonZero(
                     (self.public_key.entry(user_addr).into(), user_public_key),
                 ),
             ]
