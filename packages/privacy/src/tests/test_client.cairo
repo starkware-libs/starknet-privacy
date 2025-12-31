@@ -3,7 +3,8 @@ use privacy::errors;
 use privacy::objects::domain_separation::enc_channel_info;
 use privacy::objects::{ClientAction, NewNote, NotePath, ServerAction};
 use privacy::tests::test_utils::{
-    PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info, decrypt_subchannel_token,
+    EncNoteTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info,
+    decrypt_subchannel_token,
 };
 use privacy::utils::{
     compute_note_id, compute_nullifier, compute_subchannel_key, decrypt_note_amount,
@@ -1150,24 +1151,6 @@ fn test_open_subchannel_decrypt_subchannel_info() {
 }
 
 #[test]
-fn test_create_note() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
-    let token = test.mock_new_token();
-    user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
-    let amount = 1;
-    let note_index = 0;
-    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
-    let enc_note = user_1.create_note(:note);
-    let expected_enc_note = user_1
-        .compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
-    assert_eq!(enc_note, expected_enc_note);
-}
-
-#[test]
 fn test_create_note_self_note() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
@@ -1177,10 +1160,10 @@ fn test_create_note_self_note() {
     let amount = 1;
     let note_index = 0;
     let note = user.new_note(recipient: user, :token, :amount, index: note_index);
-    let enc_note = user.create_note(:note);
+    let actions = user.create_note(:note);
     let expected_enc_note = user
         .compute_enc_note(recipient: user, :token, index: note_index, :amount);
-    assert_eq!(enc_note, expected_enc_note);
+    assert_eq!(actions, expected_enc_note.compile());
 }
 
 #[test]
@@ -1195,20 +1178,20 @@ fn test_create_note_twice() {
     let amount_1 = 1;
     let note_index_1 = 0;
     let note_1 = user_1.new_note(recipient: user_2, :token, amount: amount_1, index: note_index_1);
-    let enc_note_1 = user_1.create_note(note: note_1);
+    let create_note_1_actions = user_1.create_note(note: note_1);
     let amount_2 = amount_1 + 1;
     let note_index_2 = note_index_1 + 1;
-    user_1.privacy.cheat_create_note(note: enc_note_1);
+    user_1.privacy.execute_actions(actions: create_note_1_actions);
     let note_2 = user_1.new_note(recipient: user_2, :token, amount: amount_2, index: note_index_2);
-    let enc_note_2 = user_1.create_note(note: note_2);
-    assert_ne!(enc_note_1.id, enc_note_2.id);
-    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
-    let expected_note_1 = user_1
+    let create_note_2_actions = user_1.create_note(note: note_2);
+    let expected_enc_note_1 = user_1
         .compute_enc_note(recipient: user_2, :token, index: note_index_1, amount: amount_1);
-    let expected_note_2 = user_1
+    let expected_enc_note_2 = user_1
         .compute_enc_note(recipient: user_2, :token, index: note_index_2, amount: amount_2);
-    assert_eq!(enc_note_1, expected_note_1);
-    assert_eq!(enc_note_2, expected_note_2);
+    assert_ne!(expected_enc_note_1.id, expected_enc_note_2.id);
+    assert_ne!(expected_enc_note_1.enc_amount, expected_enc_note_2.enc_amount);
+    assert_eq!(create_note_1_actions, expected_enc_note_1.compile());
+    assert_eq!(create_note_2_actions, expected_enc_note_2.compile());
 }
 
 #[test]
@@ -1223,19 +1206,19 @@ fn test_create_note_twice_same_amount() {
     let amount = 1;
     let note_index_1 = 0;
     let note_1 = user_1.new_note(recipient: user_2, :token, :amount, index: note_index_1);
-    let enc_note_1 = user_1.create_note(note: note_1);
+    let create_note_1_actions = user_1.create_note(note: note_1);
     let note_index_2 = note_index_1 + 1;
-    user_1.privacy.cheat_create_note(note: enc_note_1);
+    user_1.privacy.execute_actions(actions: create_note_1_actions);
     let note_2 = user_1.new_note(recipient: user_2, :token, :amount, index: note_index_2);
-    let enc_note_2 = user_1.create_note(note: note_2);
-    assert_ne!(enc_note_1.id, enc_note_2.id);
-    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
-    let expected_note_1 = user_1
+    let create_note_2_actions = user_1.create_note(note: note_2);
+    let expected_enc_note_1 = user_1
         .compute_enc_note(recipient: user_2, :token, index: note_index_1, :amount);
-    let expected_note_2 = user_1
+    let expected_enc_note_2 = user_1
         .compute_enc_note(recipient: user_2, :token, index: note_index_2, :amount);
-    assert_eq!(enc_note_1, expected_note_1);
-    assert_eq!(enc_note_2, expected_note_2);
+    assert_ne!(expected_enc_note_1.id, expected_enc_note_2.id);
+    assert_ne!(expected_enc_note_1.enc_amount, expected_enc_note_2.enc_amount);
+    assert_eq!(create_note_1_actions, expected_enc_note_1.compile());
+    assert_eq!(create_note_2_actions, expected_enc_note_2.compile());
 }
 
 #[test]
@@ -1366,8 +1349,8 @@ fn test_create_note_decrypt_amount() {
     let amount = 1;
     let note_index = 0;
     let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
-    let enc_note = user_1.create_note(:note);
-    user_1.privacy.cheat_create_note(note: enc_note);
+    let create_note_actions = user_1.create_note(:note);
+    user_1.privacy.execute_actions(actions: create_note_actions);
 
     // User 2 should be able to decrypt the amount.
     // Decrypt channel key.
@@ -2201,6 +2184,17 @@ fn test_compile_client_actions() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+
+    // Create note action.
+    let amount = 1;
+    let note_index = 0;
+    let subchannel_index = 0;
+    let note = user_1.new_note(recipient: user_2, :token, :amount, index: note_index);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: subchannel_index);
+    let actions = user_1.create_note(:note);
+    let expected_enc_note = user_1
+        .compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
+    assert_eq!(actions, expected_enc_note.compile());
 }
 
 #[test]
