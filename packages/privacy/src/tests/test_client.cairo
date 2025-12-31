@@ -531,11 +531,11 @@ fn test_open_channel_assertions() {
     let token = test.mock_new_token();
     let random = user_1.get_random();
 
-    // Catch ZERO_SENDER_ADDR.
+    // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user_1;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_open_channel(recipient: user_2, :token, :random);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SENDER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_SENDER_PRIVATE_KEY.
     let mut user_zero_private_key = user_1;
@@ -979,11 +979,11 @@ fn test_open_subchannel_assertions() {
     let random = user_1.get_random();
     let index = 0;
 
-    // Catch ZERO_SENDER_ADDR.
+    // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user_1;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_open_subchannel(recipient: user_2, :token, :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SENDER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_RECIPIENT_ADDR.
     let mut user_zero_addr = user_2;
@@ -2261,30 +2261,101 @@ fn test_replace_public_key_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
 
+// TODO: Consider splitting to test per action.
 #[test]
 fn test_compile_client_actions() {
     let mut test: Test = Default::default();
-    let user = test.new_user();
+    let mut user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.mock_new_token();
 
     // Empty actions.
-    let actions = user.compile_client_actions(client_actions: [].span());
+    let actions = user_1.compile_client_actions(client_actions: [].span());
     assert_eq!(actions, [].span());
 
     // Register action.
-    let actions = user
-        .compile_client_actions(client_actions: [ClientAction::Register(user.public_key)].span());
+    let actions = user_1
+        .compile_client_actions(client_actions: [ClientAction::Register(user_1.public_key)].span());
     let storage_path_felt = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+        map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
     );
-    let expected_actions = [ServerAction::WriteIfZero((storage_path_felt, user.public_key))].span();
+    let expected_actions = [ServerAction::WriteIfZero((storage_path_felt, user_1.public_key))]
+        .span();
     assert_eq!(actions, expected_actions);
 
     // Replace public key action.
-    let actions = user
+    let actions = user_1
         .compile_client_actions(
-            client_actions: [ClientAction::ReplacePublicKey(user.public_key)].span(),
+            client_actions: [ClientAction::ReplacePublicKey(user_1.public_key)].span(),
         );
-    let expected_actions = [ServerAction::WriteIfNonZero((storage_path_felt, user.public_key))]
+    let expected_actions = [ServerAction::WriteIfNonZero((storage_path_felt, user_1.public_key))]
+        .span();
+    assert_eq!(actions, expected_actions);
+
+    // Open channel action.
+    user_1.register_e2e();
+    user_2.register_e2e();
+    let random = user_1.get_random();
+    let actions = user_1
+        .compile_client_actions(
+            client_actions: [
+                ClientAction::OpenChannel(
+                    (user_1.private_key, user_2.address, user_2.public_key, token, random),
+                )
+            ]
+                .span(),
+        );
+    let expected_channel_id = user_1.compute_channel_id(recipient: user_2, :token);
+    let expected_channel_key = user_1.compute_channel_key(recipient: user_2, :token);
+    let expected_enc_channel_info = encrypt_channel_info(
+        ephemeral_secret: random,
+        recipient_public_key: user_2.public_key,
+        channel_key: expected_channel_key,
+        :token,
+        sender_addr: user_1.address,
+    );
+    let recipient_public_key_storage_path = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
+    );
+    let channel_exists_storage_path = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
+    );
+    let expected_actions = array![
+        ServerAction::VerifyValue((recipient_public_key_storage_path, user_2.public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path, true.into())),
+        ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
+
+    // Open subchannel action.
+    let random = user_1.open_channel_e2e(recipient: user_2, :token);
+    let actions = user_1
+        .compile_client_actions(
+            client_actions: [
+                ClientAction::OpenSubchannel(
+                    (user_2.address, expected_channel_key, 0, token, random),
+                ),
+            ]
+                .span(),
+        );
+    let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token);
+    let expected_subchannel_key = user_1
+        .compute_subchannel_key(recipient: user_2, :token, index: 0);
+    let expected_enc_subchannel_info = user_1
+        .compute_enc_subchannel_info(recipient: user_2, :token, :random);
+    let subchannel_exists_storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id].span(),
+    );
+    let subchannel_tokens_storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt, true.into())),
+        ServerAction::WriteIfZeroSubchannel(
+            (subchannel_tokens_storage_path_felt, expected_enc_subchannel_info),
+        ),
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 }

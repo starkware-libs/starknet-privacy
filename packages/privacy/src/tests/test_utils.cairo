@@ -141,15 +141,13 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, recipient: User, token: ContractAddress, random: felt252,
     ) -> Span<ServerAction> {
         self
-            .privacy
-            .client
-            .open_channel(
-                sender_addr: *self.address,
-                sender_private_key: *self.private_key,
-                recipient_addr: recipient.address,
-                recipient_public_key: recipient.public_key,
-                :token,
-                :random,
+            .compile_client_actions(
+                client_actions: [
+                    ClientAction::OpenChannel(
+                        (*self.private_key, recipient.address, recipient.public_key, token, random),
+                    )
+                ]
+                    .span(),
             )
     }
 
@@ -158,15 +156,13 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, recipient: User, token: ContractAddress, random: felt252,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self
-            .privacy
-            .safe_client
-            .open_channel(
-                sender_addr: *self.address,
-                sender_private_key: *self.private_key,
-                recipient_addr: recipient.address,
-                recipient_public_key: recipient.public_key,
-                :token,
-                :random,
+            .safe_compile_client_actions(
+                client_actions: [
+                    ClientAction::OpenChannel(
+                        (*self.private_key, recipient.address, recipient.public_key, token, random),
+                    )
+                ]
+                    .span(),
             )
     }
 
@@ -191,15 +187,13 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> Span<ServerAction> {
         let channel_key = self.compute_channel_key(:recipient, :token);
         self
-            .privacy
-            .client
-            .open_subchannel(
-                sender_addr: *self.address,
-                recipient_addr: recipient.address,
-                :channel_key,
-                :index,
-                :token,
-                :random,
+            .compile_client_actions(
+                client_actions: [
+                    ClientAction::OpenSubchannel(
+                        (recipient.address, channel_key, index, token, random),
+                    ),
+                ]
+                    .span(),
             )
     }
 
@@ -209,15 +203,13 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         let channel_key = self.compute_channel_key(:recipient, :token);
         self
-            .privacy
-            .safe_client
-            .open_subchannel(
-                sender_addr: *self.address,
-                recipient_addr: recipient.address,
-                :channel_key,
-                :index,
-                :token,
-                :random,
+            .safe_compile_client_actions(
+                client_actions: [
+                    ClientAction::OpenSubchannel(
+                        (recipient.address, channel_key, index, token, random),
+                    ),
+                ]
+                    .span(),
             )
     }
 
@@ -231,15 +223,13 @@ pub(crate) impl UserImpl of UserTrait {
         channel_key: felt252,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self
-            .privacy
-            .safe_client
-            .open_subchannel(
-                sender_addr: *self.address,
-                recipient_addr: recipient.address,
-                :channel_key,
-                :index,
-                :token,
-                :random,
+            .safe_compile_client_actions(
+                client_actions: [
+                    ClientAction::OpenSubchannel(
+                        (recipient.address, channel_key, index, token, random),
+                    ),
+                ]
+                    .span(),
             )
     }
 
