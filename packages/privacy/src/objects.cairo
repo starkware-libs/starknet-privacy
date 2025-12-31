@@ -146,6 +146,10 @@ pub enum ClientAction {
     /// (user_private_key: felt252, recipient_addr: ContractAddress, recipient_public_key: felt252,
     /// token: ContractAddress, random: felt252)
     OpenChannel: (felt252, ContractAddress, felt252, ContractAddress, felt252),
+    /// Open a new subchannel from the user to a recipient.
+    /// (recipient_addr: ContractAddress, channel_key: felt252,
+    /// index: usize, token: ContractAddress, random: felt252)
+    OpenSubchannel: (ContractAddress, felt252, usize, ContractAddress, felt252),
 }
 
 /// An action to be executed by the server.
