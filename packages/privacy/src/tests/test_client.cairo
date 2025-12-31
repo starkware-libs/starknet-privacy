@@ -9,7 +9,7 @@ use privacy::utils::{
     compute_note_id, compute_nullifier, compute_subchannel_key, decrypt_note_amount,
     encrypt_channel_info, is_canonical_key,
 };
-use snforge_std::{TokenTrait, map_entry_address};
+use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
 #[test]
@@ -2267,7 +2267,7 @@ fn test_compile_client_actions() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    let token = test.new_token();
+    let token = test.mock_new_token();
 
     // Empty actions.
     let actions = user_1.compile_client_actions(client_actions: [].span());
@@ -2300,26 +2300,18 @@ fn test_compile_client_actions() {
         .compile_client_actions(
             client_actions: [
                 ClientAction::OpenChannel(
-                    (
-                        user_1.private_key,
-                        user_2.address,
-                        user_2.public_key,
-                        token.contract_address(),
-                        random,
-                    ),
+                    (user_1.private_key, user_2.address, user_2.public_key, token, random),
                 )
             ]
                 .span(),
         );
-    let expected_channel_id = user_1
-        .compute_channel_id(recipient: user_2, token: token.contract_address());
-    let expected_channel_key = user_1
-        .compute_channel_key(recipient: user_2, token: token.contract_address());
+    let expected_channel_id = user_1.compute_channel_id(recipient: user_2, :token);
+    let expected_channel_key = user_1.compute_channel_key(recipient: user_2, :token);
     let expected_enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random,
         recipient_public_key: user_2.public_key,
         channel_key: expected_channel_key,
-        token: token.contract_address(),
+        :token,
         sender_addr: user_1.address,
     );
     let recipient_public_key_storage_path = map_entry_address(
