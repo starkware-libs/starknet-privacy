@@ -1,5 +1,48 @@
+use core::dict::{Felt252Dict, Felt252DictTrait, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
 use starknet::ContractAddress;
+
+// TODO: Optimize.
+#[derive(Drop)]
+pub(crate) struct TokenBalances {
+    balances: Array<(ContractAddress, bool, u128)>,
+}
+
+impl DefaultTokenBalances of Default<TokenBalances> {
+    fn default() -> TokenBalances {
+        TokenBalances { balances: array![] }
+    }
+}
+
+#[generate_trait]
+pub impl TokenBalancesImpl of TokenBalancesTrait {
+    fn add_balance(ref self: TokenBalances, token: ContractAddress, balance_change: u128) {
+        self.balances.append((token, true, balance_change));
+    }
+
+    fn subtract_balance(ref self: TokenBalances, token: ContractAddress, balance_change: u128) {
+        self.balances.append((token, false, balance_change));
+    }
+
+    fn is_valid(self: @TokenBalances) -> bool {
+        let mut final_balances: Felt252Dict<u128> = Default::default();
+        for (token, is_addition, balance) in self.balances {
+            let token_felt: felt252 = (*token).into();
+            if *is_addition {
+                final_balances.insert(token_felt, final_balances[token_felt] + *balance);
+            } else {
+                final_balances.insert(token_felt, final_balances[token_felt] - *balance);
+            }
+        }
+        let balances_entries = final_balances.squash().into_entries();
+        for (_, _, last_balance) in balances_entries {
+            if last_balance.is_non_zero() {
+                return false;
+            }
+        }
+        true
+    }
+}
 
 /// The path of an existing note in the server storage.
 // TODO: Consider renaming.
@@ -15,7 +58,7 @@ pub struct NotePath {
 }
 
 /// A note that is created by the owner and sent to a recipient.
-#[derive(Serde, Copy, Drop)]
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct NewNote {
     /// The recipient's address.
     pub recipient_addr: ContractAddress,
@@ -91,15 +134,6 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
     }
 }
 
-/// An encrypted note, to be written to storage.
-#[derive(Serde, Copy, Drop, PartialEq, Debug, starknet::Store)]
-pub struct EncNote {
-    /// The note's id.
-    pub id: felt252,
-    /// The encrypted amount of the note.
-    pub enc_amount: felt252,
-}
-
 /// An encrypted subchannel info, to be written to storage.
 // TODO: Explain in doc why the random is needed.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
@@ -144,6 +178,9 @@ pub enum ClientAction {
     /// (recipient_addr: ContractAddress, recipient_public_key: felt252, channel_key: felt252,
     /// index: usize, token: ContractAddress, random: felt252)
     OpenSubchannel: (ContractAddress, felt252, felt252, usize, ContractAddress, felt252),
+    /// Creates a new note based on the specified `NewNote`.
+    /// (user_private_key: felt252, new_note: NewNote)
+    CreateNote: (felt252, NewNote),
 }
 
 /// An action to be executed by the server.
