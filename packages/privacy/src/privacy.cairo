@@ -7,8 +7,8 @@ pub mod Privacy {
     use privacy::errors::internal_errors;
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        ClientAction, EncChannelInfo, EncChannelInfoTrait, EncNote, EncSubchannelInfo, NewNote,
-        NotePath, ServerAction,
+        ClientAction, EncChannelInfo, EncChannelInfoTrait, EncSubchannelInfo, NewNote, NotePath,
+        ServerAction, TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::{
         StoragePathIntoFelt, compute_channel_id, compute_channel_key, compute_note_id,
@@ -82,31 +82,9 @@ pub mod Privacy {
             );
 
             // TODO: Verify sums per token. (Now tokens are not verified at all.)
-            assert(consumed_sum == created_sum, errors::NOTE_SUM_MISMATCH);
+            assert(consumed_sum == created_sum.into(), errors::NOTE_SUM_MISMATCH);
 
             actions.span()
-        }
-
-        fn deposit(
-            self: @ContractState, owner_private_key: felt252, new_note: NewNote,
-        ) -> Span<ServerAction> {
-            // Assert input is valid.
-            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
-
-            // TODO: Assert owner_private_key is canonical.
-
-            // TODO: Verify owner signature on TX.
-
-            let owner_addr = new_note.recipient_addr;
-            let enc_note = self.create_note(:owner_addr, :owner_private_key, note: new_note);
-
-            [
-                ServerAction::WriteIfZero(
-                    (self.notes.entry(enc_note.id).into(), enc_note.enc_amount),
-                ),
-                ServerAction::TransferFrom((owner_addr, new_note.token, new_note.amount)),
-            ]
-                .span()
         }
 
         fn withdraw(
@@ -138,9 +116,23 @@ pub mod Privacy {
         fn compile_client_actions(
             self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) -> Span<ServerAction> {
+            let (server_actions, token_balances) = self
+                ._compile_client_actions(:user_addr, :client_actions);
+
+            assert(token_balances.is_valid(), errors::TOKEN_BALANCES_MISMATCH);
+            server_actions
+        }
+    }
+
+    #[generate_trait]
+    pub(crate) impl ClientInternalImpl of ClientInternalTrait {
+        fn _compile_client_actions(
+            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) -> (Span<ServerAction>, TokenBalances) {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Consider asserting that `client_actions` is not empty.
             let mut server_actions: Array<ServerAction> = array![];
+            let mut token_balances: TokenBalances = Default::default();
             for client_action in client_actions {
                 match *client_action {
                     ClientAction::Register(user_public_key) => {
@@ -182,14 +174,32 @@ pub mod Privacy {
                                     ),
                             );
                     },
+                    ClientAction::CreateNote((
+                        user_private_key, new_note,
+                    )) => {
+                        // TODO: Consider using new_note.amount instead of balance_change.
+                        let (server_action, balance_change) = self
+                            .create_note(
+                                owner_addr: user_addr,
+                                owner_private_key: user_private_key,
+                                note: new_note,
+                            );
+                        token_balances.subtract_balance(token: new_note.token, :balance_change);
+                        server_actions.append(server_action);
+                    },
+                    ClientAction::Deposit((
+                        token, amount,
+                    )) => {
+                        let (server_action, balance_change) = self
+                            .deposit(:user_addr, :token, :amount);
+                        token_balances.add_balance(:token, :balance_change);
+                        server_actions.append(server_action);
+                    },
                 }
             }
-            server_actions.span()
+            (server_actions.span(), token_balances)
         }
-    }
 
-    #[generate_trait]
-    pub(crate) impl ClientInternalImpl of ClientInternalTrait {
         /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
         fn register(
             self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
@@ -320,6 +330,16 @@ pub mod Privacy {
             ]
         }
 
+        fn deposit(
+            self: @ContractState, user_addr: ContractAddress, token: ContractAddress, amount: u128,
+        ) -> (ServerAction, u128) {
+            // Assert input is valid.
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+
+            (ServerAction::TransferFrom((user_addr, token, amount)), amount)
+        }
+
         /// Returns the sum of the amounts of the notes to use.
         fn use_notes(
             self: @ContractState,
@@ -388,37 +408,33 @@ pub mod Privacy {
         }
 
         /// Returns the sum of the amounts of the notes to create.
+        // TODO: Remove with `transfer` function.
         fn create_notes(
             self: @ContractState,
             ref actions: Array<ServerAction>,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             notes_to_create: Span<NewNote>,
-        ) -> u256 {
-            let mut sum: u256 = Zero::zero();
+        ) -> u128 {
+            let mut sum: u128 = Zero::zero();
             for note in notes_to_create {
-                let enc_note = self.create_note(:owner_addr, :owner_private_key, note: *note);
-                actions
-                    .append(
-                        ServerAction::WriteIfZero(
-                            (self.notes.entry(enc_note.id).into(), enc_note.enc_amount),
-                        ),
-                    );
-                sum += (*note.amount).into();
+                let (create_note_action, amount) = self
+                    .create_note(:owner_addr, :owner_private_key, note: *note);
+                actions.append(create_note_action);
+                sum += amount.into();
                 // TODO: Assert amount per token.
             }
             sum
         }
 
-        /// Returns the encrypted note.
+        /// Returns (action, amount).
         /// Assumes `owner_private_key` is canonical.
         fn create_note(
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             note: NewNote,
-        ) -> EncNote {
-            // TODO: Assert amount per token.
+        ) -> (ServerAction, u128) {
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(note.recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
@@ -461,7 +477,10 @@ pub mod Privacy {
             assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
             assert(enc_amount.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
 
-            EncNote { id: note_id, enc_amount }
+            (
+                ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount)),
+                note.amount.into(),
+            )
         }
     }
 
