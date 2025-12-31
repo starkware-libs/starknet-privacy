@@ -142,7 +142,7 @@ pub trait IClient<T> {
     // TODO: Access control.
     // TODO: Add recipient's public key to input?
     // TODO: Consider changing index type to u64?
-    // TODO: Add sender_private_key to input?
+    // TODO: Add sender_private_key to input? If so, assert it is canonical.
     /// Opens a new subchannel from `sender_addr` to `recipient_addr` of `token`.
     ///
     /// A subchannel allows a sender to transfer funds to a recipient. It is one-directional and
@@ -272,8 +272,8 @@ pub trait IClient<T> {
     /// zero as the amount.
     /// - [`RECIPIENT_NOT_REGISTERED`](privacy::errors::RECIPIENT_NOT_REGISTERED): Thrown if a
     /// recipient is not registered in the server.
-    /// - [`CHANNEL_NOT_FOUND`](privacy::errors::CHANNEL_NOT_FOUND): Thrown if a channel is not
-    /// found for one of the `notes_to_create`.
+    /// - [`INVALID_SUBCHANNEL`](privacy::errors::INVALID_SUBCHANNEL): Thrown if there is no valid
+    /// subchannel for a note to be used/created.
     /// - [`INDEX_NOT_SEQUENTIAL`](privacy::errors::INDEX_NOT_SEQUENTIAL): Thrown if a
     /// note index is not sequential for one of the `notes_to_create`.
     /// - [`NOTE_SUM_MISMATCH`](privacy::errors::NOTE_SUM_MISMATCH): Thrown if there's a mismatch
@@ -337,7 +337,7 @@ pub trait IClient<T> {
     /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `new_note.amount` is zero.
     /// - [`RECIPIENT_NOT_REGISTERED`](privacy::errors::RECIPIENT_NOT_REGISTERED): Thrown if
     /// `new_note.recipient_addr` is not registered in the server.
-    /// - [`CHANNEL_NOT_FOUND`](privacy::errors::CHANNEL_NOT_FOUND): Thrown if a self-channel for
+    /// - [`INVALID_SUBCHANNEL`](privacy::errors::INVALID_SUBCHANNEL): Thrown if a self-channel for
     /// `new_note.recipient_addr` with `new_note.token` doesn't exist with the given
     /// `owner_private_key`.
     /// - [`INDEX_NOT_SEQUENTIAL`](privacy::errors::INDEX_NOT_SEQUENTIAL): Thrown if
@@ -392,11 +392,11 @@ pub trait IClient<T> {
     /// `withdrawal_target` is zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the `note_to_withdraw.token` is
     /// zero.
+    /// - [`INVALID_SUBCHANNEL`](privacy::errors::INVALID_SUBCHANNEL): Thrown if the derived
+    /// subchannel is not found.
     /// - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if the note is not found.
     /// - [`ZERO_NULLIFIER`](privacy::errors::ZERO_NULLIFIER): Thrown if a calculated nullifier is
     /// zero.
-    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
-    /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if the withdrawal amount is zero.
     /// // TODO - Consider adding "Index out of bounds".
     ///
     /// #### Access Control
@@ -412,6 +412,7 @@ pub trait IClient<T> {
 
 #[starknet::interface]
 pub trait IServer<T> {
+    // TODO: Add ZERO_VALUE in reverts.
     /// Executes a list of actions atomically.
     ///
     /// #### Parameters
