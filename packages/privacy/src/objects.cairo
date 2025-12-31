@@ -139,6 +139,9 @@ pub enum ClientAction {
     /// Register a new user with a public key.
     /// (user_public_key: felt252)
     Register: felt252,
+    /// Replace the user's public key with a new value.
+    /// (new_public_key: felt252)
+    ReplacePublicKey: felt252,
 }
 
 /// An action to be executed by the server.

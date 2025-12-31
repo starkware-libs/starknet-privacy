@@ -20,9 +20,12 @@ pub trait IClient<T> {
     /// client action may compile to multiple server actions.
     ///
     /// Returns a span containing server actions:
-    /// - For `Register`: [`WriteIfZero`](privacy::objects::ServerAction::WriteIfZero) - Verifies
+    /// - For `Register`: [`WriteIfZero`](privacy::objects::ServerAction::WriteIfZero) verifies
     ///   that the caller's public key is not already registered (storage value is zero) and writes
     ///   the public key to storage.
+    /// - For `ReplacePublicKey`: [`WriteIfNonZero`](privacy::objects::ServerAction::WriteIfNonZero)
+    ///   verifies that the caller has already registered a public key (storage value is non-zero)
+    ///   and writes the new public key to storage.
     ///
     /// #### Parameters
     /// - `user_addr` (`ContractAddress`) - The address of the user executing the actions. Must not
@@ -36,55 +39,25 @@ pub trait IClient<T> {
     ///
     /// #### Preconditions
     /// - `user_addr` must not be zero.
-    /// - For `Register` actions, the `user_public_key` must not be zero.
+    /// - `Register`:
+    ///   - The `user_public_key` must not be zero.
+    /// - `ReplacePublicKey`:
+    ///   - The `new_public_key` must not be zero.
+    ///   - The caller must have already registered a public key.
     ///
     /// #### Events Emitted
     /// None
     ///
     /// #### Reverts
     /// - [`ZERO_USER_ADDR`](privacy::errors::ZERO_USER_ADDR): Thrown if `user_addr` is zero.
-    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if a `Register` action
-    ///   contains a zero public key.
+    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if a `Register` or
+    /// `ReplacePublicKey` action contains a zero public key.
     ///
     /// #### Access Control
     /// - TODO
     fn compile_client_actions(
         self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> Span<ServerAction>;
-
-    /// Replaces the caller's public viewing key to a new value.
-    ///
-    /// **Notes that were created before updating your public key remain encrypted with the old key
-    /// and are not automatically re-encrypted or migrated. These notes can only be accessed using
-    /// the private key that was previously associated with your account. To use your new public
-    /// key, the sender must open new channels with you.**
-    ///
-    /// Returns a span containing an action to replace the public key:
-    /// 1. `WriteIfNonZero` - Verifies that the caller has already registered a public key
-    ///    (storage value is non-zero) and writes the new public key to storage.
-    ///
-    /// #### Parameters
-    /// - `public_key` (`felt252`): The new public viewing key. Must not be zero.
-    ///
-    /// #### Returns
-    /// - (`Span<ServerAction>`) - A span containing the WriteIfNonZero action to replace the public
-    /// key.
-    ///
-    /// #### Preconditions
-    /// - `public_key` must not be zero.
-    /// - Caller must have already registered a public key.
-    ///
-    /// #### Events Emitted
-    /// None
-    ///
-    /// #### Reverts
-    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if `public_key` is zero.
-    /// - [`ZERO_USER_ADDR`](privacy::errors::ZERO_USER_ADDR): Thrown if the caller's address is
-    /// zero.
-    ///
-    /// #### Access Control
-    /// - Self-service only. The caller can only replace their own public key.
-    fn replace_public_key(self: @T, public_key: felt252) -> Span<ServerAction>;
 
     // TODO: Remove token.
     // TODO: Access control.

@@ -2148,6 +2148,15 @@ fn test_compile_client_actions() {
     );
     let expected_actions = [ServerAction::WriteIfZero((storage_path_felt, user.public_key))].span();
     assert_eq!(actions, expected_actions);
+
+    // Replace public key action.
+    let actions = user
+        .compile_client_actions(
+            client_actions: [ClientAction::ReplacePublicKey(user.public_key)].span(),
+        );
+    let expected_actions = [ServerAction::WriteIfNonZero((storage_path_felt, user.public_key))]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
