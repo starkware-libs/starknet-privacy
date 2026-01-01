@@ -36,6 +36,11 @@ pub mod domain_separation {
     pub mod enc_subchannel_info {
         pub const ENC_TOKEN_TAG: felt252 = 'subchannel_info:enc_token:v1';
     }
+    /// Tags for the `EncPrivateKey` struct.
+    // TODO: Now using "private_key" instead of "enc_private_key" to fit in a single felt.
+    pub mod enc_private_key {
+        pub const ENC_PRIVATE_KEY_TAG: felt252 = 'private_key:enc_private_key:v1';
+    }
 }
 
 
@@ -45,6 +50,12 @@ pub(crate) fn hash(data: Span<felt252>) -> felt252 {
     PoseidonTrait::new().update_with(poseidon_hash_span(data)).finalize()
 }
 
+/// Computes the hash used to encrypt the private key in `EncPrivateKey`.
+///
+/// Returns `h(ENC_PRIVATE_KEY_TAG, shared_x)`
+pub(crate) fn compute_enc_private_key_hash(shared_x: felt252) -> felt252 {
+    hash([enc_private_key::ENC_PRIVATE_KEY_TAG, shared_x].span())
+}
 
 /// Computes the hash used to encrypt the token in `EncSubchannelInfo`.
 ///

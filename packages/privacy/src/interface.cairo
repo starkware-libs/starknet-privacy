@@ -1,5 +1,5 @@
 use privacy::objects::{
-    ClientAction, EncChannelInfo, EncSubchannelInfo, NewNote, NotePath, ServerAction,
+    ClientAction, EncChannelInfo, EncPrivateKey, EncSubchannelInfo, NewNote, NotePath, ServerAction,
 };
 use starknet::ContractAddress;
 
@@ -485,4 +485,10 @@ pub trait IViews<T> {
     /// #### Access Control
     /// - Any address can call this function.
     fn get_public_key(self: @T, user_addr: ContractAddress) -> felt252;
+
+    // TODO: Not return span, split to get_num_of and get_at.
+    fn get_enc_private_keys_history(self: @T, user_addr: ContractAddress) -> Span<EncPrivateKey>;
+
+    // TODO: Do we need this function?
+    fn get_compliance_public_key(self: @T) -> felt252;
 }
