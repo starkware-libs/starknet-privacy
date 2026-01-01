@@ -3,7 +3,7 @@ pub mod Privacy {
     use core::iter::Extend;
     use core::num::traits::Zero;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
-    use privacy::errors::{client_errors, server_errors};
+    use privacy::errors;
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::internal::errors as internal_errors;
     use privacy::objects::{
@@ -61,10 +61,10 @@ pub mod Privacy {
             notes_to_use: Span<NotePath>,
             notes_to_create: Span<NewNote>,
         ) -> Span<ServerAction> {
-            assert(owner_addr.is_non_zero(), client_errors::ZERO_OWNER_ADDR);
-            assert(owner_private_key.is_non_zero(), client_errors::ZERO_OWNER_PRIVATE_KEY);
-            assert(!notes_to_use.is_empty(), client_errors::NO_NOTES_TO_USE);
-            assert(!notes_to_create.is_empty(), client_errors::NO_NOTES_TO_CREATE);
+            assert(owner_addr.is_non_zero(), errors::ZERO_OWNER_ADDR);
+            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
+            assert(!notes_to_use.is_empty(), errors::NO_NOTES_TO_USE);
+            assert(!notes_to_create.is_empty(), errors::NO_NOTES_TO_CREATE);
 
             // TODO: Assert owner_private_key is canonical.
 
@@ -83,7 +83,7 @@ pub mod Privacy {
 
             // TODO: Consider multi-token support (sum per token).
             // TODO: Verify the tokens match in all notes.
-            assert(consumed_sum == created_sum, client_errors::NOTE_SUM_MISMATCH);
+            assert(consumed_sum == created_sum, errors::NOTE_SUM_MISMATCH);
 
             actions.span()
         }
@@ -92,7 +92,7 @@ pub mod Privacy {
             self: @ContractState, owner_private_key: felt252, new_note: NewNote,
         ) -> Span<ServerAction> {
             // Assert input is valid.
-            assert(owner_private_key.is_non_zero(), client_errors::ZERO_OWNER_PRIVATE_KEY);
+            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
 
             // TODO: Assert owner_private_key is canonical.
 
@@ -118,9 +118,9 @@ pub mod Privacy {
             note_to_withdraw: NotePath,
         ) -> Span<ServerAction> {
             // Assert valid input.
-            assert(owner_addr.is_non_zero(), client_errors::ZERO_OWNER_ADDR);
-            assert(owner_private_key.is_non_zero(), client_errors::ZERO_OWNER_PRIVATE_KEY);
-            assert(withdrawal_target.is_non_zero(), client_errors::ZERO_WITHDRAWAL_TARGET);
+            assert(owner_addr.is_non_zero(), errors::ZERO_OWNER_ADDR);
+            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
+            assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
 
             // TODO: Assert owner_private_key is canonical.
 
@@ -139,7 +139,7 @@ pub mod Privacy {
         fn compile_client_actions(
             self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) -> Span<ServerAction> {
-            assert(user_addr.is_non_zero(), client_errors::ZERO_USER_ADDR);
+            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Consider asserting that `client_actions` is not empty.
             let mut server_actions: Array<ServerAction> = array![];
             for client_action in client_actions {
@@ -189,7 +189,7 @@ pub mod Privacy {
             self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
         ) -> Array<ServerAction> {
             // TODO: Add compliance.
-            assert(user_public_key.is_non_zero(), client_errors::ZERO_PUBLIC_KEY);
+            assert(user_public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
 
             array![
                 ServerAction::WriteIfZero(
@@ -204,7 +204,7 @@ pub mod Privacy {
         ) -> Array<ServerAction> {
             // TODO: Add compliance.
             // TODO: Enforce cooldown between key replacements? (track last update time).
-            assert(user_public_key.is_non_zero(), client_errors::ZERO_PUBLIC_KEY);
+            assert(user_public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
 
             array![
                 ServerAction::WriteIfNonZero(
@@ -225,30 +225,28 @@ pub mod Privacy {
             // TODO: Remove assert not zero for sender_addr, recipient_addr?
             // (will fail in the registration check).
             // TODO: Consider generate random instead of passing it as an argument.
-            assert(sender_private_key.is_non_zero(), client_errors::ZERO_SENDER_PRIVATE_KEY);
-            assert(recipient_addr.is_non_zero(), client_errors::ZERO_RECIPIENT_ADDR);
-            assert(random.is_non_zero(), client_errors::ZERO_RANDOM);
+            assert(sender_private_key.is_non_zero(), errors::ZERO_SENDER_PRIVATE_KEY);
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
 
             // TODO: Verify sender signature on TX.
 
             // Assert sender private key is canonical.
-            assert(
-                is_canonical_key(key: sender_private_key), client_errors::PRIVATE_KEY_NOT_CANONICAL,
-            );
+            assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
 
             // Assert sender is registered with the given private key.
             let sender_public_key = self.get_public_key(user_addr: sender_addr);
-            assert(sender_public_key.is_non_zero(), client_errors::SENDER_NOT_REGISTERED);
+            assert(sender_public_key.is_non_zero(), errors::SENDER_NOT_REGISTERED);
             assert(
                 sender_public_key == derive_public_key(private_key: sender_private_key),
-                client_errors::SENDER_NOT_AUTHENTICATED,
+                errors::SENDER_NOT_AUTHENTICATED,
             );
 
             // TODO: Consider removing this check after we check public key in the server.
             // Assert recipient is registered.
             assert(
                 self.get_public_key(user_addr: recipient_addr).is_non_zero(),
-                client_errors::RECIPIENT_NOT_REGISTERED,
+                errors::RECIPIENT_NOT_REGISTERED,
             );
 
             // Compute the output values.
@@ -265,7 +263,7 @@ pub mod Privacy {
             assert(channel_id.is_non_zero(), internal_errors::ZERO_CHANNEL_ID);
             assert(enc_channel_info.is_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
             // TODO: Consider removing since this is checked at the start of the function.
-            assert(recipient_addr.is_non_zero(), client_errors::ZERO_RECIPIENT_ADDR);
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             array![
                 ServerAction::VerifyValue(
                     (self.public_key.entry(recipient_addr).into(), recipient_public_key),
@@ -288,11 +286,11 @@ pub mod Privacy {
             random: felt252,
         ) -> Array<ServerAction> {
             // TODO: Consider generate random instead of passing it as an argument.
-            assert(sender_addr.is_non_zero(), client_errors::ZERO_SENDER_ADDR);
-            assert(recipient_addr.is_non_zero(), client_errors::ZERO_RECIPIENT_ADDR);
-            assert(channel_key.is_non_zero(), client_errors::ZERO_CHANNEL_KEY);
-            assert(token.is_non_zero(), client_errors::ZERO_TOKEN);
-            assert(random.is_non_zero(), client_errors::ZERO_RANDOM);
+            assert(sender_addr.is_non_zero(), errors::ZERO_SENDER_ADDR);
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
 
             // TODO: Verify sender signature on TX.
 
@@ -300,13 +298,13 @@ pub mod Privacy {
             // current public key of `recipient_addr`.
             // Assert recipient is registered.
             let recipient_public_key = self.get_public_key(user_addr: recipient_addr);
-            assert(recipient_public_key.is_non_zero(), client_errors::RECIPIENT_NOT_REGISTERED);
+            assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
 
             // Assert channel key is valid for the given sender and recipient.
             let channel_id = compute_channel_id(
                 :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
             );
-            assert(self.channel_exists.read(channel_id), client_errors::INVALID_CHANNEL);
+            assert(self.channel_exists.read(channel_id), errors::INVALID_CHANNEL);
 
             // Assert index is sequential, i.e. the previous subchannel exists.
             assert(
@@ -315,7 +313,7 @@ pub mod Privacy {
                         .subchannel_tokens
                         .read(compute_subchannel_key(:channel_key, index: index - 1))
                         .is_non_zero(),
-                client_errors::INDEX_NOT_SEQUENTIAL,
+                errors::INDEX_NOT_SEQUENTIAL,
             );
 
             // Compute subchannel values.
@@ -375,8 +373,8 @@ pub mod Privacy {
             note: NotePath,
         ) -> (felt252, u128) {
             // TODO: Consider adding context to the errors (which note is causing the error).
-            assert(note.channel_key.is_non_zero(), client_errors::ZERO_CHANNEL_KEY);
-            assert(note.token.is_non_zero(), client_errors::ZERO_TOKEN);
+            assert(note.channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
+            assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
             // TODO: Assert token matches.
 
             // Assert subchannel exists and is connected to owner's address and public key.
@@ -386,7 +384,7 @@ pub mod Privacy {
             let subchannel_id = compute_subchannel_id(
                 :channel_key, recipient_addr: owner_addr, :recipient_public_key, :token,
             );
-            assert(self.subchannel_exists.read(subchannel_id), client_errors::INVALID_SUBCHANNEL);
+            assert(self.subchannel_exists.read(subchannel_id), errors::INVALID_SUBCHANNEL);
 
             // Compute note id.
             let index = note.note_index;
@@ -394,7 +392,7 @@ pub mod Privacy {
 
             // Read note from storage and assert it exists.
             let enc_note_value = self.get_note(:note_id);
-            assert(enc_note_value.is_non_zero(), client_errors::NOTE_NOT_FOUND);
+            assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             // Decrypt note amount.
             let note_amount = decrypt_note_amount(:enc_note_value, :channel_key, :index);
@@ -442,9 +440,9 @@ pub mod Privacy {
         ) -> EncNote {
             // TODO: Verify tokens match.
             // TODO: Consider adding context to the errors (which note is causing the error).
-            assert(note.recipient_addr.is_non_zero(), client_errors::ZERO_RECIPIENT_ADDR);
-            assert(note.token.is_non_zero(), client_errors::ZERO_TOKEN);
-            assert(note.amount.is_non_zero(), client_errors::ZERO_AMOUNT);
+            assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(note.amount.is_non_zero(), errors::ZERO_AMOUNT);
 
             // TODO: Consider impl helper function for common code.
 
@@ -452,7 +450,7 @@ pub mod Privacy {
             // TODO: Consider using public key from input instead of reading from storage.
             let recipient_addr = note.recipient_addr;
             let recipient_public_key = self.get_public_key(user_addr: recipient_addr);
-            assert(recipient_public_key.is_non_zero(), client_errors::RECIPIENT_NOT_REGISTERED);
+            assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
 
             // Compute channel key.
             let channel_key = compute_channel_key(
@@ -467,7 +465,7 @@ pub mod Privacy {
             let subchannel_id = compute_subchannel_id(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
-            assert(self.subchannel_exists.read(subchannel_id), client_errors::INVALID_SUBCHANNEL);
+            assert(self.subchannel_exists.read(subchannel_id), errors::INVALID_SUBCHANNEL);
 
             // Assert index is sequential, i.e. the previous note exists.
             let index = note.index;
@@ -476,7 +474,7 @@ pub mod Privacy {
                     || self
                         .get_note(note_id: compute_note_id(:channel_key, :token, index: index - 1))
                         .is_non_zero(),
-                client_errors::INDEX_NOT_SEQUENTIAL,
+                errors::INDEX_NOT_SEQUENTIAL,
             );
 
             // Compute note values.
@@ -542,9 +540,9 @@ pub mod Privacy {
             let mut target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
             let current_value = target.read();
             if require_zero {
-                assert(current_value.is_zero(), server_errors::NON_ZERO_VALUE);
+                assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
             } else {
-                assert(current_value.is_non_zero(), server_errors::ZERO_VALUE);
+                assert(current_value.is_non_zero(), errors::ZERO_VALUE);
             }
             target.write(new_value);
         }
@@ -560,7 +558,7 @@ pub mod Privacy {
             let current_value = target.read();
             // TODO: Require zero as param?
             // Require zero.
-            assert(current_value.is_zero(), server_errors::NON_ZERO_VALUE);
+            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
             target.write(new_value);
         }
 
@@ -595,7 +593,7 @@ pub mod Privacy {
         ) {
             let target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
             let current_value = target.read();
-            assert(current_value == value, server_errors::VALUE_MISMATCH);
+            assert(current_value == value, errors::VALUE_MISMATCH);
         }
     }
 

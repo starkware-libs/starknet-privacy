@@ -10,7 +10,7 @@ use starknet::ContractAddress;
 // TODO: Move return values to the Returns section and add links to ServerAction enum and actions
 // variants.
 // TODO: Fix enum varients links in the documentation.
-// TODO: Fix error links and remove internal errors from the documentation.
+// TODO: Remove internal errors from the documentation.
 #[starknet::interface]
 pub trait IClient<T> {
     /// Compiles client actions into server actions that can be executed by the server.
