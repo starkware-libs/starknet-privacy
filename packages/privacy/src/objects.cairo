@@ -14,12 +14,13 @@ pub struct NotePath {
     pub note_index: usize,
 }
 
-// TODO: Consider adding recipient public key.
 /// A note that is created by the owner and sent to a recipient.
 #[derive(Serde, Copy, Drop)]
 pub struct NewNote {
     /// The recipient's address.
     pub recipient_addr: ContractAddress,
+    /// The recipient's public key.
+    pub recipient_public_key: felt252,
     /// The token's address.
     pub token: ContractAddress,
     /// The amount the note represents.
