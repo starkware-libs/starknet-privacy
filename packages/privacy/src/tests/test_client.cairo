@@ -1,14 +1,11 @@
 use core::num::traits::Zero;
 use privacy::errors;
-use privacy::objects::domain_separation::enc_channel_info;
+use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
 use privacy::objects::{ClientAction, NewNote, NotePath, ServerAction};
 use privacy::tests::test_utils::{
     PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info, decrypt_subchannel_token,
 };
-use privacy::utils::{
-    compute_note_id, compute_nullifier, compute_subchannel_key, decrypt_note_amount,
-    encrypt_channel_info, is_canonical_key,
-};
+use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
 use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 

@@ -2,6 +2,11 @@ use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+use privacy::hashes::{
+    compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
+    compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
+    compute_subchannel_id, compute_subchannel_key, hash,
+};
 use privacy::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
@@ -13,10 +18,7 @@ use privacy::objects::{
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::utils::{
-    compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
-    compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
-    compute_subchannel_id, compute_subchannel_key, derive_public_key, encrypt_note_amount,
-    encrypt_subchannel_info, hash, is_canonical_key,
+    derive_public_key, encrypt_note_amount, encrypt_subchannel_info, is_canonical_key,
 };
 use snforge_std::{
     CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state,
