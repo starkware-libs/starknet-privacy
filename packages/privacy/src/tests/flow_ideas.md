@@ -65,6 +65,7 @@
 5. User withdraw a note from a non-existent channel (channel index).
 6. User withdraw a note from a non-existent note (note index).
 7. User withdraw multiple notes in a row.
+8. User 1 attempt to withdraw User 2's note.
 
 ### Server
 1. User withdraw a note that doesn't belong to him (someone else's nullifier).
