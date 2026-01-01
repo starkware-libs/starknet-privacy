@@ -186,7 +186,14 @@ pub(crate) impl UserImpl of UserTrait {
             .compile_client_actions(
                 client_actions: [
                     ClientAction::OpenSubchannel(
-                        (recipient.address, channel_key, index, token, random),
+                        (
+                            recipient.address,
+                            recipient.public_key,
+                            channel_key,
+                            index,
+                            token,
+                            random,
+                        ),
                     ),
                 ]
                     .span(),
@@ -202,7 +209,14 @@ pub(crate) impl UserImpl of UserTrait {
             .safe_compile_client_actions(
                 client_actions: [
                     ClientAction::OpenSubchannel(
-                        (recipient.address, channel_key, index, token, random),
+                        (
+                            recipient.address,
+                            recipient.public_key,
+                            channel_key,
+                            index,
+                            token,
+                            random,
+                        ),
                     ),
                 ]
                     .span(),
@@ -222,7 +236,14 @@ pub(crate) impl UserImpl of UserTrait {
             .safe_compile_client_actions(
                 client_actions: [
                     ClientAction::OpenSubchannel(
-                        (recipient.address, channel_key, index, token, random),
+                        (
+                            recipient.address,
+                            recipient.public_key,
+                            channel_key,
+                            index,
+                            token,
+                            random,
+                        ),
                     ),
                 ]
                     .span(),
