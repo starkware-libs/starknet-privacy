@@ -13,8 +13,8 @@ use starknet::storage::{StorageAsPointer, StoragePath};
 // TODO: Consider separate (common?) file for compute hashes functions.
 // TODO: Add doc for each hash function, for example, `channel_id = h(CHANNEL_ID_TAG, channel_key,
 // sender_addr, recipient_addr, recipient_public_key)`.
+// TODO: Test the util and hash functions.
 
-// TODO: Move to a different file?
 /// Returns the generator point.
 pub fn GEN_P() -> EcPoint {
     EcPointTrait::new(x: GEN_X, y: GEN_Y).unwrap()

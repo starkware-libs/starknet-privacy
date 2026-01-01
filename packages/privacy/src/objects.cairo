@@ -15,7 +15,6 @@ pub struct NotePath {
 }
 
 // TODO: Consider adding recipient public key.
-// TODO: Remove token from input if transfer isnt possible for multiple tokens.
 /// A note that is created by the owner and sent to a recipient.
 #[derive(Serde, Copy, Drop)]
 pub struct NewNote {
@@ -83,7 +82,7 @@ pub struct EncChannelInfo {
 // TODO: Consider implementing is_non_zero() using the Zero trait.
 #[generate_trait]
 pub impl EncChannelInfoImpl of EncChannelInfoTrait {
-    /// Check if the `EncChannel`'s fields are non-zero.
+    /// Check if all the `EncChannelInfo`'s fields are non-zero.
     fn is_non_zero(self: @EncChannelInfo) -> bool {
         return self.ephemeral_pubkey.is_non_zero()
             && self.enc_channel_key.is_non_zero()
@@ -92,7 +91,6 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
 }
 
 /// An encrypted note, to be written to storage.
-// TODO: Consider moving to interface.
 #[derive(Serde, Copy, Drop, PartialEq, Debug, starknet::Store)]
 pub struct EncNote {
     /// The note's id.
@@ -113,7 +111,6 @@ pub struct EncSubchannelInfo {
 }
 
 // TODO: Move to a different file.
-// TODO: Consider implementing as our own trait.
 pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
     fn zero() -> EncSubchannelInfo {
         EncSubchannelInfo { random: Zero::zero(), enc_token: Zero::zero() }

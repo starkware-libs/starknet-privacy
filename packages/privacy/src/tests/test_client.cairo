@@ -487,7 +487,6 @@ fn test_open_channel() {
 
     let (random, channel_output) = user_1.open_channel_with_generated_random(recipient: user_2);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    // TODO: Is it ok for tests to reuse the same util function as the contract?
     let expected_enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random,
         recipient_public_key: user_2.public_key,
@@ -734,7 +733,6 @@ fn test_open_channel_multiple_channels_same_recipient() {
 
 // TODO: Test actions with same random.
 
-// TODO: Consider move this test to common test file.
 #[test]
 fn test_open_channel_decrypt_channel_info() {
     let mut test = Default::default();
@@ -1121,7 +1119,6 @@ fn test_open_subchannel_multiple_self_channel() {
     assert_eq!(c1_output, expected_actions_1);
     assert_eq!(c2_output, expected_actions_2);
 }
-// TODO: Test open subchannels with same random.
 
 #[test]
 fn test_open_subchannel_decrypt_subchannel_info() {
@@ -1353,7 +1350,6 @@ fn test_create_note_index_not_sequential() {
     user_1.create_note(:note);
 }
 
-// TODO: Consider move this test to common test file.
 #[test]
 fn test_create_note_decrypt_amount() {
     let mut test: Test = Default::default();
@@ -1729,7 +1725,6 @@ fn test_use_note_wrong_token() {
     user_2.use_note(note: note_path);
 }
 
-// TODO: Consider move this test to common test file.
 #[test]
 fn test_use_note_find_nullifier() {
     let mut test: Test = Default::default();
@@ -1765,6 +1760,7 @@ fn test_use_note_find_nullifier() {
 // nullifier are different.
 // TODO: Test create note with all fields of note same but one field different, for each field -
 // test note_ids (and maybe enc_amount) are different.
+// TODO: Same for subchannels, channels, etc.
 
 #[test]
 fn test_withdraw() {
@@ -2010,7 +2006,7 @@ fn test_replace_public_key() {
     assert_eq!(user.get_public_key(), original_public_key);
 
     // Replace the public key.
-    user.new_public_key();
+    user.new_key();
     let actions = user.replace_public_key();
     let storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
@@ -2031,12 +2027,12 @@ fn test_replace_public_key_sanity() {
     assert_eq!(user.get_public_key(), original_public_key);
 
     // Replace the public key first time.
-    user.new_public_key();
+    user.new_key();
     user.replace_public_key_e2e();
     assert_eq!(user.get_public_key(), user.public_key);
 
     // Replace the public key second time.
-    user.new_public_key();
+    user.new_key();
     user.replace_public_key_e2e();
     assert_eq!(user.get_public_key(), user.public_key);
 
