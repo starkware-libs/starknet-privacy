@@ -591,6 +591,12 @@ fn test_open_channel_assertions() {
     let result = user_1.safe_open_channel(recipient: user_zero_addr, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
+    // Catch ZERO_RECIPIENT_PUBLIC_KEY.
+    let mut user_zero_public_key = user_2;
+    user_zero_public_key.public_key = Zero::zero();
+    let result = user_1.safe_open_channel(recipient: user_zero_public_key, :random);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
+
     // Catch ZERO_RANDOM.
     let result = user_1.safe_open_channel(recipient: user_2, random: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
@@ -615,10 +621,6 @@ fn test_open_channel_assertions() {
     let result = user_1.safe_open_channel(recipient: user_2, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
     user_1.private_key = user_1_private_key;
-
-    // Catch RECIPIENT_NOT_REGISTERED - recipient not registered.
-    let result = user_1.safe_open_channel(recipient: user_2, :random);
-    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 }
 
 #[test]
