@@ -225,6 +225,7 @@ pub mod Privacy {
             // TODO: Consider generate random instead of passing it as an argument.
             assert(sender_private_key.is_non_zero(), errors::ZERO_SENDER_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
 
             // TODO: Verify sender signature on TX.
@@ -238,13 +239,6 @@ pub mod Privacy {
             assert(
                 sender_public_key == derive_public_key(private_key: sender_private_key),
                 errors::SENDER_NOT_AUTHENTICATED,
-            );
-
-            // TODO: Consider removing this check after we check public key in the server.
-            // Assert recipient is registered.
-            assert(
-                self.get_public_key(user_addr: recipient_addr).is_non_zero(),
-                errors::RECIPIENT_NOT_REGISTERED,
             );
 
             // Compute the output values.
