@@ -1,99 +1,18 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
-use core::hash::{HashStateExTrait, HashStateTrait};
-use core::poseidon::{PoseidonTrait, poseidon_hash_span};
-use privacy::objects::domain_separation::{
-    CHANNEL_ID_TAG, CHANNEL_KEY_TAG, NULLIFIER_TAG, SUBCHANNEL_ID_TAG, SUBCHANNEL_KEY_TAG,
-    enc_channel_info, enc_note, enc_subchannel_info,
+use privacy::hashes::{
+    compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
+    compute_enc_token_hash,
 };
 use privacy::objects::{EncChannelInfo, EncSubchannelInfo};
 use starknet::ContractAddress;
 use starknet::storage::{StorageAsPointer, StoragePath};
 
-// TODO: Consider separate (common?) file for compute hashes functions.
-// TODO: Add doc for each hash function, for example, `channel_id = h(CHANNEL_ID_TAG, channel_key,
-// sender_addr, recipient_addr, recipient_public_key)`.
 // TODO: Test the util and hash functions.
 
 /// Returns the generator point.
 pub fn GEN_P() -> EcPoint {
     EcPointTrait::new(x: GEN_X, y: GEN_Y).unwrap()
-}
-
-/// Hashes a span of felt252 values.
-pub(crate) fn hash(data: Span<felt252>) -> felt252 {
-    // TODO: Replace the hash function.
-    PoseidonTrait::new().update_with(poseidon_hash_span(data)).finalize()
-}
-
-/// Computes the channel key.
-/// Assumes all the inputs are not zero.
-///
-/// `channel_key = h(CHANNEL_KEY_TAG, sender_addr, sender_private_key, recipient_addr,
-/// recipient_public_key)`
-pub(crate) fn compute_channel_key(
-    sender_addr: ContractAddress,
-    sender_private_key: felt252,
-    recipient_addr: ContractAddress,
-    recipient_public_key: felt252,
-) -> felt252 {
-    hash(
-        [
-            CHANNEL_KEY_TAG, sender_addr.into(), sender_private_key, recipient_addr.into(),
-            recipient_public_key,
-        ]
-            .span(),
-    )
-}
-
-/// Computes the channel id given the channel key.
-/// Assumes all the inputs are not zero.
-///
-/// `channel_id = h(CHANNEL_ID_TAG, channel_key, sender_addr, recipient_addr, recipient_public_key)`
-pub(crate) fn compute_channel_id(
-    channel_key: felt252,
-    sender_addr: ContractAddress,
-    recipient_addr: ContractAddress,
-    recipient_public_key: felt252,
-) -> felt252 {
-    hash(
-        [
-            CHANNEL_ID_TAG, channel_key, sender_addr.into(), recipient_addr.into(),
-            recipient_public_key,
-        ]
-            .span(),
-    )
-}
-
-/// Computes the subchannel key given the channel key and index.
-/// Assumes all the inputs are not zero.
-///
-/// `subchannel_key = h(SUBCHANNEL_KEY_TAG, channel_key, index)`
-pub(crate) fn compute_subchannel_key(channel_key: felt252, index: usize) -> felt252 {
-    hash([SUBCHANNEL_KEY_TAG, channel_key, index.into()].span())
-}
-
-/// Computes the subchannel id given the channel key and token.
-/// Assumes all the inputs are not zero.
-///
-/// `subchannel_id = h(SUBCHANNEL_ID_TAG, channel_key, recipient_addr, recipient_public_key, token)`
-pub(crate) fn compute_subchannel_id(
-    channel_key: felt252,
-    recipient_addr: ContractAddress,
-    recipient_public_key: felt252,
-    token: ContractAddress,
-) -> felt252 {
-    hash(
-        [SUBCHANNEL_ID_TAG, channel_key, recipient_addr.into(), recipient_public_key, token.into()]
-            .span(),
-    )
-}
-
-/// Computes the hash used to encrypt the token in `EncSubchannelInfo`.
-///
-/// Returns `h(ENC_TOKEN_TAG, channel_key, random)`
-pub(crate) fn compute_enc_token_hash(channel_key: felt252, random: felt252) -> felt252 {
-    hash([enc_subchannel_info::ENC_TOKEN_TAG, channel_key, random].span())
 }
 
 /// Encrypts the subchannel info.
@@ -106,16 +25,6 @@ pub(crate) fn encrypt_subchannel_info(
 ) -> EncSubchannelInfo {
     let enc_token = compute_enc_token_hash(:channel_key, :random) + token.into();
     EncSubchannelInfo { random, enc_token }
-}
-
-/// Computes the hash used to encrypt the channel key in `EncChannelInfo`.
-pub(crate) fn compute_enc_channel_key_hash(shared_x: felt252) -> felt252 {
-    hash([enc_channel_info::ENC_CHANNEL_KEY_TAG, shared_x].span())
-}
-
-/// Computes the hash used to encrypt the sender address in `EncChannelInfo`.
-pub(crate) fn compute_enc_sender_addr_hash(shared_x: felt252) -> felt252 {
-    hash([enc_channel_info::ENC_SENDER_ADDR_TAG, shared_x].span())
 }
 
 /// Encrypts channel info using ECDH.
@@ -168,20 +77,6 @@ pub(crate) fn is_canonical_key(key: felt252) -> bool {
     key.into() < (ORDER.into() / 2_u256)
 }
 
-/// Computes the note id.
-///
-/// `note_id = h(NOTE_ID_TAG, channel_key, token, index)`
-pub(crate) fn compute_note_id(
-    channel_key: felt252, token: ContractAddress, index: usize,
-) -> felt252 {
-    hash([enc_note::NOTE_ID_TAG, channel_key, token.into(), index.into()].span())
-}
-
-/// Computes the hash used to encrypt the note amount in `EncNote`.
-pub(crate) fn compute_enc_amount_hash(channel_key: felt252, index: usize) -> felt252 {
-    hash([enc_note::ENC_AMOUNT_TAG, channel_key, index.into()].span())
-}
-
 // TODO: Refactor to (r, h(c,r) + amount).
 /// Encrypts the note amount.
 pub(crate) fn encrypt_note_amount(channel_key: felt252, index: usize, amount: u128) -> felt252 {
@@ -193,15 +88,6 @@ pub(crate) fn decrypt_note_amount(
     enc_note_value: felt252, channel_key: felt252, index: usize,
 ) -> u128 {
     (enc_note_value - compute_enc_amount_hash(:channel_key, :index)).try_into().unwrap()
-}
-
-/// Computes the nullifier.
-///
-/// `nullifier = h(NULLIFIER_TAG, channel_key, token, index, owner_private_key)`
-pub(crate) fn compute_nullifier(
-    channel_key: felt252, token: ContractAddress, index: usize, owner_private_key: felt252,
-) -> felt252 {
-    hash([NULLIFIER_TAG, channel_key, token.into(), index.into(), owner_private_key].span())
 }
 
 pub(crate) impl StoragePathIntoFelt<
