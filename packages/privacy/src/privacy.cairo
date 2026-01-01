@@ -242,13 +242,6 @@ pub mod Privacy {
                 errors::SENDER_NOT_AUTHENTICATED,
             );
 
-            // TODO: Consider removing this check after we check public key in the server.
-            // Assert recipient is registered.
-            assert(
-                self.get_public_key(user_addr: recipient_addr).is_non_zero(),
-                errors::RECIPIENT_NOT_REGISTERED,
-            );
-
             // Compute the output values.
             let channel_key = compute_channel_key(
                 :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key,

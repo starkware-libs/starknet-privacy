@@ -616,10 +616,6 @@ fn test_open_channel_assertions() {
     let result = user_1.safe_open_channel(recipient: user_2, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
     user_1.private_key = user_1_private_key;
-
-    // Catch RECIPIENT_NOT_REGISTERED - recipient not registered.
-    let result = user_1.safe_open_channel(recipient: user_2, :random);
-    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 }
 
 #[test]
