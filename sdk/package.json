@@ -17,11 +17,25 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && vitest run",
+    "lint": "eslint src tests",
+    "lint:fix": "eslint src tests --fix",
+    "format": "prettier --write src tests",
+    "format:check": "prettier --check src tests",
+    "test": "npm run typecheck && npm run lint && npm run format:check && vitest run",
     "test:watch": "vitest watch",
     "check": "npm run test && npm run build",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run check"
+    "prepublishOnly": "npm run check",
+    "prepare": "cd .. && git config core.hooksPath .husky || true"
+  },
+  "lint-staged": {
+    "*.{ts,js}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
   },
   "keywords": [
     "starknet",
@@ -34,8 +48,16 @@
     "starknet": "^9.2.1"
   },
   "devDependencies": {
+    "@commitlint/cli": "^20.2.0",
+    "@commitlint/config-conventional": "^20.2.0",
+    "@eslint/js": "^9.39.2",
     "@types/node": "^24.10.1",
+    "eslint": "^9.39.2",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.7.4",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.51.0",
     "vitest": "^4.0.15"
   }
 }
