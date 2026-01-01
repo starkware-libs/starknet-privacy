@@ -1,4 +1,4 @@
-import { BigNumberish, BlockNumber, BlockIdentifier } from "starknet";
+import { BlockNumber } from "starknet";
 import {
   Blob,
   Channel,
@@ -25,7 +25,10 @@ class Nonce {
   readonly sequence: number;
 
   protected constructor(slot: number, sequence: number, max: number, created?: BlockNumber) {
-    assert(isUint(slot) && slot <= max, `Invalid nonce: slot must be a non-negative integer <= ${max}`);
+    assert(
+      isUint(slot) && slot <= max,
+      `Invalid nonce: slot must be a non-negative integer <= ${max}`
+    );
     assert(isUint(sequence), "Invalid nonce: sequence must be a non-negative integer");
     this.slot = slot;
     this.sequence = sequence;
@@ -47,7 +50,7 @@ class Nonce {
     if (withCreated.length === 0) throw new Error("No nonces with created block number");
 
     const oldest = withCreated.reduce((min, n) => (n.created! < min.created! ? n : min));
-    
+
     // TODO: add a check the oldest is old enough (at least 10 blocks old)
 
     return oldest.increment() as T;
@@ -84,7 +87,6 @@ export class InternalChannel extends Channel {
     super();
   }
 }
-
 
 export const channelSerde: ChannelSerde = {
   encode(channel) {
@@ -159,7 +161,10 @@ function assertChannelNonce(value: unknown): ChannelNonce {
   }
   assert(value !== null && typeof value === "object", "Invalid nonce: expected object");
   const { slot, sequence } = value as Record<string, unknown>;
-  assert(isUint(slot) && isUint(sequence), "Invalid nonce: slot and sequence must be non-negative integers");
+  assert(
+    isUint(slot) && isUint(sequence),
+    "Invalid nonce: slot and sequence must be non-negative integers"
+  );
   return new ChannelNonce(slot, sequence);
 }
 
@@ -169,7 +174,10 @@ function assertTokenNonce(value: unknown): TokenNonce {
   }
   assert(value !== null && typeof value === "object", "Invalid nonce: expected object");
   const { slot, sequence } = value as Record<string, unknown>;
-  assert(isUint(slot) && isUint(sequence), "Invalid nonce: slot and sequence must be non-negative integers");
+  assert(
+    isUint(slot) && isUint(sequence),
+    "Invalid nonce: slot and sequence must be non-negative integers"
+  );
   return new TokenNonce(slot, sequence);
 }
 

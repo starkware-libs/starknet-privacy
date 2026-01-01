@@ -25,7 +25,6 @@ describe("channelSerde", () => {
     expect(decoded).toEqual(original);
   });
 
-  
   it("throws on invalid payload", () => {
     expect(() => channelSerde.decode("null" as ReturnType<typeof channelSerde.encode>)).toThrow(
       "Invalid channel payload"

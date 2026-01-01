@@ -11,12 +11,12 @@ import type {
 export type Amount = bigint;
 
 /** Marker for "use all remaining input" */
-export type Open = { readonly __marker: 'open' };
-export const open: Open = { __marker: 'open' };
+export type Open = { readonly __marker: "open" };
+export const open: Open = { __marker: "open" };
 
 /** Marker for "transfer to self" */
-export type Self = { readonly __marker: 'self' };
-export const self: Self = { __marker: 'self' };
+export type Self = { readonly __marker: "self" };
+export const self: Self = { __marker: "self" };
 
 type BlobT = string | Uint8Array;
 
@@ -106,7 +106,6 @@ export interface PrivateRecipient {
   context: Channel | Note.Id; // note id is for semi-transparent (preprepared) notes.
 }
 
-
 /**
  * it is expected that the implementing object will receive an account signer instance to sign the invocation
  */
@@ -144,7 +143,6 @@ export interface PrivateTransfers {
   readonly pool: StarknetAddress;
   readonly user: StarknetAddress;
   */
-
 
   isRegistered(): Promise<boolean>;
 
@@ -207,7 +205,7 @@ export interface PrivateTransfers {
   }): Promise<PrivateInvocationResult>;
 
   /**
-   * transfer tokens from the privacy pool to a single recipient. 
+   * transfer tokens from the privacy pool to a single recipient.
    * @param amount if not provided, the total amount of the notes is used. if provided and is lower than the total amount of notes, the remainder note is returned
    *
    * Note: one can send notes with total that exceeds the amount ot transfer, that way a single note is returned as remainder that replaces them.
@@ -220,14 +218,12 @@ export interface PrivateTransfers {
     selfChannel?: Channel;
   }): Promise<PrivateInvocationResult>;
 
- 
-
   /**
    * Create a builder to batch multiple operations into a single execution.
    * See {@link PrivateTransfersBuilder} for detailed examples.
    */
   build(): PrivateTransfersBuilder;
-  
+
   /**
    * Discover unspent notes per token and recipient states
    *
@@ -255,7 +251,7 @@ export type WithdrawOutput = { recipient: StarknetAddress | Self; amount: Amount
 /**
  * Token-specific sub-builder for operations on a single token.
  * All methods return the builder for chaining.
- * 
+ *
  * @example
  * // Transfer 10 STRK to Alice and 20 STRK to Bob using 2 notes
  * .with(STRK)
@@ -265,34 +261,34 @@ export type WithdrawOutput = { recipient: StarknetAddress | Self; amount: Amount
 export interface TokenOperationsBuilder {
   /** Setup this token in recipient's channel */
   setup(recipient: PrivateRecipient): this;
-  
+
   /** Specify input notes for this token */
   inputs(...notes: Note[]): this;
-  
+
   /** Deposit this token (to self by default, or to a recipient with an open note already prepared) */
   deposit(amount: Amount, recipient?: PrivateRecipient | Self): this;
-  
+
   /** Withdraw this token to one or more public addresses */
   withdraw(...outputs: WithdrawOutput[]): this;
-  
+
   /** Transfer this token privately to one or more recipients */
   transfer(...outputs: TransferOutput[]): this;
-  
+
   /** Switch to another token */
   with(token: StarknetAddress): TokenOperationsBuilder;
-  
+
   /** Return to main builder (for non-token operations like register) */
   done(): PrivateTransfersBuilder;
-  
+
   /** Execute all queued operations */
   execute(): Promise<CallAndProof[]>;
 }
 
 /**
  * Builder for batching multiple private transfer operations.
- * 
+ *
  * Use `.with(token)` to start token-specific operations.
- * 
+ *
  * @example Simple deposit
  * ```ts
  * await transfers.build()
@@ -300,7 +296,7 @@ export interface TokenOperationsBuilder {
  *     .deposit(100n)
  *   .execute();
  * ```
- * 
+ *
  * @example Register and setup a new recipient
  * ```ts
  * await transfers.build()
@@ -311,7 +307,7 @@ export interface TokenOperationsBuilder {
  *     .deposit(100n)
  *   .execute();
  * ```
- * 
+ *
  * @example Transfer to multiple recipients (adapted from composite)
  * ```ts
  * // Transfer 10 STRK to Alice and 20 ETH to Bob using 3 notes
@@ -324,7 +320,7 @@ export interface TokenOperationsBuilder {
  *     .transfer({ recipient: bob, amount: 20n })
  *   .execute();
  * ```
- * 
+ *
  * @example Partial withdrawal with remainder
  * ```ts
  * await transfers.build()
@@ -335,8 +331,8 @@ export interface TokenOperationsBuilder {
  *     .transfer({ recipient: self, amount: 25n })
  *   .execute();
  * ```
- * 
- * @example Swap 
+ *
+ * @example Swap
  * ```ts
  * // Prepare for swap: withdraw STRK to swap helper, deposit result back
  * await transfers.build()
@@ -352,16 +348,16 @@ export interface TokenOperationsBuilder {
 export interface PrivateTransfersBuilder {
   /** Register the account in the privacy pool */
   register(): this;
-  
+
   /** Setup initial channel for a new recipient */
   setup(recipient: StarknetAddress): this;
-  
+
   /** Add an arbitrary Starknet call that will run on starknet after the private operations are executed */
   call(call: Call): this;
-  
+
   /** Start token-specific operations */
   with(token: StarknetAddress): TokenOperationsBuilder;
-  
+
   /** Execute all queued operations and return the results */
   execute(): Promise<CallAndProof[]>;
 }
