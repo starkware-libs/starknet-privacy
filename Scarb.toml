@@ -1,8 +1,10 @@
 [workspace]
 members = [
     "packages/privacy",
+    "packages/swap_executor",
 ]
 
+# TODO: Consider if swap_executor should remain in its own package or be merged with privacy as a single package.
 
 [workspace.package]
 version = "0.1.0"
