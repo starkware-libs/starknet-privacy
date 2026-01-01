@@ -1,85 +1,85 @@
-import { describe, expectTypeOf, it } from "vitest";
-import type {
-  AccountInvocationsFactory,
-  CallAndProof,
-  Note,
-  NotesStore,
-  PrivacyPool,
-  PrivacyPoolConfig,
-  PrivateInvocationResult,
-  ProviderInterface,
-  ProviderOptions
-} from "../src/index.js";
-import type { Account, AccountInterface, Call, StarknetAddress } from "starknet";
+import { describe, expect, it } from "vitest";
+import {
+  channelSerde,
+  witnessSerde,
+  ChannelNonce,
+  TokenNonce,
+  Nonce,
+  InternalChannel,
+  InternalWitness,
+} from "../src/internal.js";
 
-describe("Privacy pool interface contracts", () => {
-  it("allows constructing a typed privacy pool config", async () => {
-    const provider: ProviderInterface = {
-      prove: async () => ({
-        data: new Uint8Array([1, 2, 3]),
-        output: new Uint8Array([4, 5, 6])
-      })
-    };
+describe("channelSerde", () => {
+  it("encodes and decodes a channel round-trip", () => {
+    const original = new InternalChannel(
+      12345n,
+      [new ChannelNonce(0, 1), new ChannelNonce(1, 2)],
+      new Map([
+        ["0xabc", [new TokenNonce(0, 10), new TokenNonce(1, 20)]],
+        ["0xdef", [new TokenNonce(2, 30)]],
+      ])
+    );
 
-    const noteStore: NotesStore = {
-      load: async () => [],
-      persist: async () => undefined
-    };
+    const decoded = channelSerde.decode(channelSerde.encode(original));
 
-    const factory: AccountInvocationsFactory = {
-      buildInvocation: async (account, callAndProof) => ({
-        account,
-        call: callAndProof.call,
-        proof: callAndProof.proof,
-        metadata: { strategy: "private-transfer" }
-      })
-    };
-
-    const config: PrivacyPoolConfig = {
-      account: {} as Account,
-      viewingSigner: "0xdeadbeef",
-      provingProvider: provider,
-      existingNotes: [{ channel: 0n, index: 0, amount: 1n }],
-      noteStore,
-      noteSelector: ({ available }) => available.slice(0, 1),
-      accountInvocationsFactory: factory
-    };
-
-    expectTypeOf(config.provingProvider).toMatchTypeOf<ProviderOptions | ProviderInterface>();
-    expectTypeOf(config.existingNotes?.[0]).toMatchTypeOf<Note>();
+    expect(decoded).toEqual(original);
   });
 
-  it("describes the privacy pool surface area", async () => {
-    const proof = { data: new Uint8Array([0]), output: new Uint8Array([1]) };
-    const callAndProof: CallAndProof = { call: {} as Call, proof };
+  
+  it("throws on invalid payload", () => {
+    expect(() => channelSerde.decode("null" as ReturnType<typeof channelSerde.encode>)).toThrow(
+      "Invalid channel payload"
+    );
+  });
+});
 
-    const invocationResult: PrivateInvocationResult = {
-      invocationData: callAndProof,
-      remainder: { channel: 1n, index: 1, amount: 1n }
-    };
+describe("witnessSerde", () => {
+  it("encodes and decodes a witness round-trip", () => {
+    const original = new InternalWitness(42n, new TokenNonce(3, 7));
 
-    const provider: ProviderInterface = {
-      prove: async () => proof
-    };
+    const decoded = witnessSerde.decode(witnessSerde.encode(original));
 
-    const pool: PrivacyPool = {
-      account: {} as AccountInterface,
-      viewingSigner: 1n,
-      provingProvider: provider,
-      notes: [],
-      noteSelector: ({ available }) => available,
-      isRegistered: async () => true,
-      register: async () => callAndProof,
-      transfer: async () => invocationResult,
-      deposit: async () => invocationResult,
-      withdraw: async () => invocationResult,
-      discoverNotes: async () => [],
-      getPrivateCall: async () => callAndProof
-    };
+    expect(decoded).toEqual(original);
+  });
 
-    expectTypeOf(await pool.register()).toMatchTypeOf<CallAndProof>();
-    expectTypeOf(await pool.transfer("0x0" as StarknetAddress, [], "0x1" as StarknetAddress, 1n)).toMatchTypeOf<
-      PrivateInvocationResult
-    >();
+  it("throws on invalid payload", () => {
+    expect(() => witnessSerde.decode("null" as ReturnType<typeof witnessSerde.encode>)).toThrow(
+      "Invalid witness payload"
+    );
+  });
+});
+
+describe("Nonce.next", () => {
+  it("returns the oldest nonce incremented", () => {
+    const nonces = [
+      Object.assign(new ChannelNonce(0, 5), { created: 100 }),
+      Object.assign(new ChannelNonce(1, 3), { created: 50 }), // oldest
+      Object.assign(new ChannelNonce(2, 8), { created: 200 }),
+    ];
+
+    const next = Nonce.next(nonces);
+
+    expect(next).toBeDefined();
+    expect(next!.slot).toBe(1);
+    expect(next!.sequence).toBe(4); // 3 + 1
+  });
+
+  it("throws when no nonces have created block number", () => {
+    const nonces = [new ChannelNonce(0, 5), new ChannelNonce(1, 3)];
+
+    expect(() => Nonce.next(nonces)).toThrow("No nonces with created block number");
+  });
+
+  it("works with TokenNonce as well", () => {
+    const nonces = [
+      Object.assign(new TokenNonce(10, 2), { created: 300 }),
+      Object.assign(new TokenNonce(20, 1), { created: 100 }), // oldest
+    ];
+
+    const next = Nonce.next(nonces);
+
+    expect(next).toBeDefined();
+    expect(next!.slot).toBe(20);
+    expect(next!.sequence).toBe(2); // 1 + 1
   });
 });
