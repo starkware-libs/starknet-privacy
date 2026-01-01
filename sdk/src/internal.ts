@@ -6,8 +6,6 @@ import {
   StarknetAddress,
   Witness,
   WitnessSerde,
-  channelBrand,
-  witnessBrand,
 } from "./interfaces.js";
 
 /** Type guard for non-negative integers */
@@ -67,19 +65,25 @@ function withMax<TMax extends number>(max: TMax) {
   };
 }
 
-const ChannelNonceClass = withMax(10);
-const TokenNonceClass = withMax(100);
+export const ChannelNonce = withMax(10);
+export const TokenNonce = withMax(100);
 
-type ChannelNonce = InstanceType<typeof ChannelNonceClass>;
-type TokenNonce = InstanceType<typeof TokenNonceClass>;
+export type ChannelNonce = InstanceType<typeof ChannelNonce>;
+export type TokenNonce = InstanceType<typeof TokenNonce>;
+
+export { Nonce };
 
 type ChannelKey = bigint;
 
-type InternalChannel = Channel & {
-  key: ChannelKey;
-  nonces: ChannelNonce[]; // for new tokens. array of nonces (per slot) that have been used for the channel.
-  tokens: Map<StarknetAddress, TokenNonce[]>; // for new notes. array of nonces (per slot) for each token. 
-};
+export class InternalChannel extends Channel {
+  constructor(
+    readonly key: ChannelKey,
+    readonly nonces: ChannelNonce[], // for new tokens. array of nonces (per slot) that have been used for the channel.
+    readonly tokens: Map<StarknetAddress, TokenNonce[]> // for new notes. array of nonces (per slot) for each token.
+  ) {
+    super();
+  }
+}
 
 
 export const channelSerde: ChannelSerde = {
@@ -87,7 +91,7 @@ export const channelSerde: ChannelSerde = {
     const internal = channel as InternalChannel;
     const json = JSON.stringify({
       v: 1,
-      key: internal.key,
+      key: internal.key.toString(),
       nonces: internal.nonces,
       tokens: Array.from(internal.tokens.entries()),
     });
@@ -103,27 +107,25 @@ export const channelSerde: ChannelSerde = {
     const decodedNonces = assertNonces(nonces);
     const decodedTokens = assertTokenEntries(tokens);
 
-    const channel: InternalChannel = {
-      key: decodedKey,
-      nonces: decodedNonces,
-      tokens: decodedTokens,
-      [channelBrand]: true,
-    };
-    return channel;
+    return new InternalChannel(decodedKey, decodedNonces, decodedTokens);
   },
 };
 
-type InternalWitness = Witness & {
-  channelKey: ChannelKey;
-  nonce: TokenNonce;
-};
+export class InternalWitness extends Witness {
+  constructor(
+    readonly channelKey: ChannelKey,
+    readonly nonce: TokenNonce
+  ) {
+    super();
+  }
+}
 
 export const witnessSerde: WitnessSerde = {
   encode(ctx) {
     const internal = ctx as InternalWitness;
     const json = JSON.stringify({
       v: 1,
-      channelKey: internal.channelKey,
+      channelKey: internal.channelKey.toString(),
       nonce: internal.nonce,
     });
     return json as Blob<string>;
@@ -137,12 +139,7 @@ export const witnessSerde: WitnessSerde = {
     const decodedChannelKey = assertChannelKey(channelKey);
     const decodedNonce = assertChannelNonce(nonce);
 
-    const ctx: InternalWitness = {
-      channelKey: decodedChannelKey,
-      nonce: decodedNonce,
-      [witnessBrand]: true,
-    };
-    return ctx;
+    return new InternalWitness(decodedChannelKey, decodedNonce);
   },
 };
 
@@ -157,23 +154,23 @@ function assertChannelKey(value: unknown): ChannelKey {
 }
 
 function assertChannelNonce(value: unknown): ChannelNonce {
-  if (value instanceof ChannelNonceClass) {
+  if (value instanceof ChannelNonce) {
     return value;
   }
   assert(value !== null && typeof value === "object", "Invalid nonce: expected object");
   const { slot, sequence } = value as Record<string, unknown>;
   assert(isUint(slot) && isUint(sequence), "Invalid nonce: slot and sequence must be non-negative integers");
-  return new ChannelNonceClass(slot, sequence);
+  return new ChannelNonce(slot, sequence);
 }
 
 function assertTokenNonce(value: unknown): TokenNonce {
-  if (value instanceof TokenNonceClass) {
+  if (value instanceof TokenNonce) {
     return value;
   }
   assert(value !== null && typeof value === "object", "Invalid nonce: expected object");
   const { slot, sequence } = value as Record<string, unknown>;
   assert(isUint(slot) && isUint(sequence), "Invalid nonce: slot and sequence must be non-negative integers");
-  return new TokenNonceClass(slot, sequence);
+  return new TokenNonce(slot, sequence);
 }
 
 function assertNonces(value: unknown): ChannelNonce[] {

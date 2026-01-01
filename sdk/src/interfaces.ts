@@ -34,11 +34,11 @@ export type ViewingKey = BigNumberish;
 
 export type StarknetAddress = BigNumberish;
 
-export const witnessBrand: unique symbol = Symbol("witness");
-
-export type Witness = {
-  readonly [witnessBrand]: true;
-};
+/** Base class for witness objects. Provides nominal typing. */
+export abstract class Witness {
+  /** @internal */
+  protected readonly _witnessMarker = undefined;
+}
 
 export type WitnessSerde<B extends BlobT = string> = Serde<Witness, B>;
 
@@ -83,11 +83,11 @@ export type PrivateTransfersConfig = {
   pool: StarknetAddress;
 };
 
-export const channelBrand: unique symbol = Symbol("channel");
-
-export type Channel = {
-  readonly [channelBrand]: true;
-};
+/** Base class for channel objects. Provides nominal typing. */
+export abstract class Channel {
+  /** @internal */
+  protected readonly _channelMarker = undefined;
+}
 
 export type ChannelSerde<B extends BlobT = string> = Serde<Channel, B>;
 
