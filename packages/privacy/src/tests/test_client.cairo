@@ -379,6 +379,7 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
+    println!("6");
     // Catch INVALID_SUBCHANNEL - wrong channel key.
     let wrong_channel_key = user_1.compute_channel_key(recipient: user_2);
     let result = user_1

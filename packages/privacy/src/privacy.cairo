@@ -4,8 +4,8 @@ pub mod Privacy {
     use core::num::traits::Zero;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::errors;
+    use privacy::errors::internal_errors;
     use privacy::interface::{IClient, IServer, IViews};
-    use privacy::internal::errors as internal_errors;
     use privacy::objects::{
         ClientAction, EncChannelInfo, EncChannelInfoTrait, EncNote, EncSubchannelInfo, NewNote,
         NotePath, ServerAction,
