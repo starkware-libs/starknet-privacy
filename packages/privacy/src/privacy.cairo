@@ -162,12 +162,13 @@ pub mod Privacy {
                             )
                     },
                     ClientAction::OpenSubchannel((
-                        recipient_addr, channel_key, index, token, random,
+                        recipient_addr, recipient_public_key, channel_key, index, token, random,
                     )) => {
                         self
                             .open_subchannel(
                                 sender_addr: user_addr,
                                 :recipient_addr,
+                                :recipient_public_key,
                                 :channel_key,
                                 :index,
                                 :token,
@@ -276,6 +277,7 @@ pub mod Privacy {
             self: @ContractState,
             sender_addr: ContractAddress,
             recipient_addr: ContractAddress,
+            recipient_public_key: felt252,
             channel_key: felt252,
             index: usize,
             token: ContractAddress,
@@ -283,17 +285,12 @@ pub mod Privacy {
         ) -> Array<ServerAction> {
             // TODO: Consider generate random instead of passing it as an argument.
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
 
             // TODO: Verify sender signature on TX.
-
-            // TODO: Consider passing the recipient's public key as input and asserting it is the
-            // current public key of `recipient_addr`.
-            // Assert recipient is registered.
-            let recipient_public_key = self.get_public_key(user_addr: recipient_addr);
-            assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
 
             // Assert channel key is valid for the given sender and recipient.
             let channel_id = compute_channel_id(
