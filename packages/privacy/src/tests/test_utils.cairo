@@ -8,7 +8,7 @@ use privacy::interface::{
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
-    ClientAction, EncChannelInfo, EncSubchannelInfo, NewNote, NotePath, ServerAction,
+    ClientAction, EncChannelInfo, EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
@@ -89,6 +89,18 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self.privacy.safe_client.compile_client_actions(user_addr: *self.address, :client_actions)
+    }
+
+    fn internal_compile_client_actions(
+        self: @User, client_actions: Span<ClientAction>,
+    ) -> (Span<ServerAction>, TokenBalances) {
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                state._compile_client_actions(user_addr: *self.address, :client_actions)
+            },
+        )
     }
 
     fn replace_private_key(ref self: User, private_key: felt252) {
@@ -306,10 +318,11 @@ pub(crate) impl UserImpl of UserTrait {
 
     /// Internal function to create a note in the client side.
     fn create_note(self: @User, note: NewNote) -> Span<ServerAction> {
-        self
-            .compile_client_actions(
+        let (actions, _) = self
+            .internal_compile_client_actions(
                 client_actions: [ClientAction::CreateNote((*self.private_key, note))].span(),
-            )
+            );
+        actions
     }
 
     fn cheat_create_note_e2e(self: @User, note: NewNote) {
@@ -401,13 +414,22 @@ pub(crate) impl UserImpl of UserTrait {
         }
     }
 
-    fn deposit(self: @User, new_note: NewNote) -> Span<ServerAction> {
-        self.privacy.client.deposit(owner_private_key: *self.private_key, :new_note)
+    fn deposit(self: @User, token: ContractAddress, amount: u128) -> Span<ServerAction> {
+        let (actions, _) = self
+            .internal_compile_client_actions(
+                client_actions: [ClientAction::Deposit((token, amount)),].span(),
+            );
+        actions
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_deposit(self: @User, new_note: NewNote) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.privacy.safe_client.deposit(owner_private_key: *self.private_key, :new_note)
+    fn safe_deposit(
+        self: @User, token: ContractAddress, amount: u128,
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
+        self
+            .safe_compile_client_actions(
+                client_actions: [ClientAction::Deposit((token, amount)),].span(),
+            )
     }
 
     fn get_num_of_channels(self: @User) -> u64 {

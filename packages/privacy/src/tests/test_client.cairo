@@ -1,7 +1,9 @@
 use core::num::traits::Zero;
 use privacy::errors;
 use privacy::objects::domain_separation::enc_channel_info;
-use privacy::objects::{ClientAction, NewNote, NotePath, ServerAction};
+use privacy::objects::{
+    ClientAction, NewNote, NotePath, ServerAction, TokenBalances, TokenBalancesTrait,
+};
 use privacy::tests::test_utils::{
     EncNoteTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info,
     decrypt_subchannel_token,
@@ -1428,131 +1430,20 @@ fn test_create_note_decrypt_amount() {
 }
 
 #[test]
-fn test_deposit() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    let token = test.mock_new_token();
-    let amount = 100;
-
-    // Setup user and note.
-    user.register_e2e();
-    user.open_channel_with_token_e2e(recipient: user, :token, subchannel_index: 0);
-    let index = 0;
-    let note = user.new_note(recipient: user, :token, :amount, :index);
-
-    // Deposit.
-    let actions = user.deposit(new_note: note);
-    let enc_note_1 = user.compute_enc_note(recipient: user, :token, :index, :amount);
-    let storage_path_felt_note = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note_1.id].span(),
-    );
-    let expected_actions = [
-        ServerAction::WriteIfZero((storage_path_felt_note, enc_note_1.enc_amount)),
-        ServerAction::TransferFrom((user.address, token, amount)),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
-
-    // Cheat server deposit.
-    user.privacy.cheat_create_note(note: enc_note_1);
-
-    // Deposit again (same token and amount).
-    let index = 1;
-    let note = NewNote { index, ..note };
-    let actions = user.deposit(new_note: note);
-    let enc_note_2 = user.compute_enc_note(recipient: user, :token, :index, :amount);
-    let storage_path_felt_note = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note_2.id].span(),
-    );
-    let expected_actions = [
-        ServerAction::WriteIfZero((storage_path_felt_note, enc_note_2.enc_amount)),
-        ServerAction::TransferFrom((user.address, token, amount)),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
-
-    // Assert enc_notes are different.
-    assert_ne!(enc_note_1.id, enc_note_2.id);
-    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
-}
-
-#[test]
 #[feature("safe_dispatcher")]
 fn test_deposit_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token = test.mock_new_token();
     let amount = 100;
-    let note = user.new_note(recipient: user, :token, :amount, index: 0);
-
-    // Catch ZERO_OWNER_PRIVATE_KEY.
-    let mut user_zero_key = user;
-    user_zero_key.private_key = Zero::zero();
-    let result = user_zero_key.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
-
-    // Catch ZERO_RECIPIENT_ADDR.
-    let result = user.safe_deposit(new_note: NewNote { recipient_addr: Zero::zero(), ..note });
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_TOKEN.
-    let result = user.safe_deposit(new_note: NewNote { token: Zero::zero(), ..note });
+    let result = user.safe_deposit(token: Zero::zero(), :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT.
-    let result = user.safe_deposit(new_note: NewNote { amount: Zero::zero(), ..note });
+    let result = user.safe_deposit(:token, amount: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
-
-    // Catch ZERO_RECIPIENT_PUBLIC_KEY.
-    let result = user
-        .safe_deposit(new_note: NewNote { recipient_public_key: Zero::zero(), ..note });
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
-
-    // Catch INVALID_SUBCHANNEL - channel doesnt exist.
-    user.register_e2e();
-    let result = user.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
-    user.open_channel_e2e(recipient: user);
-    let result = user.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    // Catch INVALID_SUBCHANNEL - wrong address.
-    user.open_subchannel_e2e(recipient: user, :token, index: 0);
-    let different_user = test.new_user();
-    different_user.register_e2e();
-    let result = user
-        .safe_deposit(new_note: NewNote { recipient_addr: different_user.address, ..note });
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    // Catch INVALID_SUBCHANNEL - wrong private key.
-    let mut user_wrong_private_key = user;
-    user_wrong_private_key.private_key = user.public_key;
-    let result = user_wrong_private_key.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    // Catch INVALID_SUBCHANNEL - wrong token.
-    let wrong_token = test.mock_new_token();
-    let result = user.safe_deposit(new_note: NewNote { token: wrong_token, ..note });
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    // Catch INVALID_SUBCHANNEL - wrong public key.
-    let result = user
-        .safe_deposit(
-            new_note: NewNote { recipient_public_key: different_user.public_key, ..note },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    // TODO: Catch private key not canonical.
-
-    // Catch INDEX_NOT_SEQUENTIAL.
-    let result = user.safe_deposit(new_note: NewNote { index: 1, ..note });
-    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
-
-    // Sanity check - should succeed.
-    let result = user.safe_deposit(new_note: note);
-    assert!(result.is_ok());
 }
 
 #[test]
@@ -2266,6 +2157,11 @@ fn test_compile_client_actions() {
     let expected_enc_note = user_1
         .compute_enc_note(recipient: user_2, :token, index: note_index, :amount);
     assert_eq!(actions, expected_enc_note.compile());
+
+    // Deposit action.
+    let actions = user_1.deposit(:token, :amount);
+    let expected_actions = [ServerAction::TransferFrom((user_1.address, token, amount))].span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -2282,4 +2178,46 @@ fn test_compile_client_actions_assertions() {
 // TODO: Test with the negative private key (not canonical but the right public key) - deposit,
 // withdraw, transfer.
 
+#[test]
+fn test_token_balances_only_positives() {
+    let mut test: Test = Default::default();
+    let mut token_balances: TokenBalances = Default::default();
+    let token_1 = test.mock_new_token();
+    let token_2 = test.mock_new_token();
+    let balance_change = 100;
 
+    assert!(token_balances.is_valid());
+
+    token_balances.add_balance(token: token_1, :balance_change);
+    assert!(!token_balances.is_valid());
+
+    token_balances.subtract_balance(token: token_1, :balance_change);
+    assert!(token_balances.is_valid());
+
+    token_balances.add_balance(token: token_2, :balance_change);
+    assert!(!token_balances.is_valid());
+
+    token_balances.add_balance(token: token_1, :balance_change);
+    assert!(!token_balances.is_valid());
+
+    token_balances.subtract_balance(token: token_2, :balance_change);
+    assert!(!token_balances.is_valid());
+
+    token_balances.subtract_balance(token: token_1, balance_change: balance_change / 2);
+    assert!(!token_balances.is_valid());
+
+    token_balances.subtract_balance(token: token_1, balance_change: balance_change / 2);
+    assert!(token_balances.is_valid());
+}
+
+#[test]
+#[should_panic(expected_error: "u128_sub Overflow")]
+fn test_token_balances_negative_balance() {
+    let mut test: Test = Default::default();
+    let mut token_balances: TokenBalances = Default::default();
+    let token = test.mock_new_token();
+    let balance_change = 100;
+
+    token_balances.subtract_balance(:token, :balance_change);
+    token_balances.is_valid();
+}

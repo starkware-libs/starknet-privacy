@@ -5,6 +5,12 @@ use starknet::ContractAddress;
 // TODO: Optimize.
 #[derive(Drop)]
 pub(crate) struct TokenBalances {
+    /// A list of tuples indicating balance changes.
+    /// Each tuple contains:
+    /// - The token's address.
+    /// - A boolean indicating if the balance change is an addition (true) or subtraction (false).
+    /// - The balance change.
+    // TODO: Consider refactoring to a struct instead of a tuple.
     balances: Array<(ContractAddress, bool, u128)>,
 }
 
@@ -25,16 +31,25 @@ pub impl TokenBalancesImpl of TokenBalancesTrait {
     }
 
     fn is_valid(self: @TokenBalances) -> bool {
+        // TODO: Consider splitting to total_additions and total_subtractions, to avoid underflows.
         let mut final_balances: Felt252Dict<u128> = Default::default();
+
+        // Sum all balance changes per token in the dictionary.
         for (token, is_addition, balance) in self.balances {
             let token_felt: felt252 = (*token).into();
-            if *is_addition {
-                final_balances.insert(token_felt, final_balances[token_felt] + *balance);
+            let current_balance = final_balances[token_felt];
+            let new_balance = if *is_addition {
+                current_balance + *balance
             } else {
-                final_balances.insert(token_felt, final_balances[token_felt] - *balance);
-            }
+                current_balance - *balance
+            };
+            final_balances.insert(token_felt, new_balance);
         }
+
+        // Squash the dicitionary to enable iterating over the entries.
         let balances_entries = final_balances.squash().into_entries();
+
+        // Iterate over the entries and check if any balance is non-zero.
         for (_, _, last_balance) in balances_entries {
             if last_balance.is_non_zero() {
                 return false;
@@ -181,6 +196,9 @@ pub enum ClientAction {
     /// Creates a new note based on the specified `NewNote`.
     /// (user_private_key: felt252, new_note: NewNote)
     CreateNote: (felt252, NewNote),
+    /// Deposit funds into the contract.
+    /// (token: ContractAddress, amount: u128)
+    Deposit: (ContractAddress, u128),
 }
 
 /// An action to be executed by the server.
