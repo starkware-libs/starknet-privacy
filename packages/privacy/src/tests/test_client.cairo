@@ -1,5 +1,5 @@
 use core::num::traits::Zero;
-use privacy::errors::client_errors;
+use privacy::errors;
 use privacy::objects::domain_separation::enc_channel_info;
 use privacy::objects::{ClientAction, NewNote, NotePath, ServerAction};
 use privacy::tests::test_utils::{
@@ -37,13 +37,13 @@ fn test_register_assertions() {
     let mut user_zero_public_key = user;
     user_zero_public_key.public_key = Zero::zero();
     let result = user_zero_public_key.safe_register();
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_PUBLIC_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_register();
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_USER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
 
 #[test]
@@ -302,24 +302,24 @@ fn test_transfer_assertions() {
     user_1_zero.address = Zero::zero();
     let result = user_1_zero
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_OWNER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_ADDR);
 
     // Catch ZERO_OWNER_PRIVATE_KEY.
     let mut user_1_zero_private_key = user_1;
     user_1_zero_private_key.private_key = Zero::zero();
     let result = user_1_zero_private_key
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_OWNER_PRIVATE_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
 
     // TODO: Catch private key not canonical.
 
     // Catch NO_NOTES_TO_USE.
     let result = user_1.safe_transfer(notes_to_use: [].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::NO_NOTES_TO_USE);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_USE);
 
     // Catch NO_NOTES_TO_CREATE.
     let result = user_1.safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::NO_NOTES_TO_CREATE);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_CREATE);
 
     // Use note errors.
 
@@ -329,7 +329,7 @@ fn test_transfer_assertions() {
             notes_to_use: [NotePath { token: Zero::zero(), ..note_path }].span(),
             notes_to_create: [new_note].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_CHANNEL_KEY.
     let result = user_1
@@ -337,12 +337,12 @@ fn test_transfer_assertions() {
             notes_to_use: [NotePath { channel_key: Zero::zero(), ..note_path }].span(),
             notes_to_create: [new_note].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_CHANNEL_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
 
     // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     user_1.register_e2e();
     user_1.open_channel_e2e(recipient: user_1);
@@ -350,7 +350,7 @@ fn test_transfer_assertions() {
     // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
 
@@ -361,14 +361,14 @@ fn test_transfer_assertions() {
     user_1_wrong_addr.address = user_2.address;
     let result = user_1_wrong_addr
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL - wrong private key.
     let mut user_1_wrong_private_key = user_1;
     user_1_wrong_private_key.private_key = user_1.public_key;
     let result = user_1_wrong_private_key
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL - wrong token.
     let wrong_token = test.mock_new_token();
@@ -377,7 +377,7 @@ fn test_transfer_assertions() {
             notes_to_use: [NotePath { token: wrong_token, ..note_path }].span(),
             notes_to_create: [new_note].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL - wrong channel key.
     let wrong_channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -386,12 +386,12 @@ fn test_transfer_assertions() {
             notes_to_use: [NotePath { channel_key: wrong_channel_key, ..note_path }].span(),
             notes_to_create: [new_note].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch NOTE_NOT_FOUND.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::NOTE_NOT_FOUND);
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     let note = user_1.new_note(recipient: user_1, :token, amount: 1, index: 0);
     user_1.cheat_create_note_e2e(:note);
@@ -404,7 +404,7 @@ fn test_transfer_assertions() {
             notes_to_use: [note_path].span(),
             notes_to_create: [NewNote { recipient_addr: Zero::zero(), ..new_note }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_RECIPIENT_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_TOKEN.
     let result = user_1
@@ -412,7 +412,7 @@ fn test_transfer_assertions() {
             notes_to_use: [note_path].span(),
             notes_to_create: [NewNote { token: Zero::zero(), ..new_note }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT.
     let result = user_1
@@ -420,26 +420,26 @@ fn test_transfer_assertions() {
             notes_to_use: [note_path].span(),
             notes_to_create: [NewNote { amount: Zero::zero(), ..new_note }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_AMOUNT);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch RECIPIENT_NOT_REGISTERED.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::RECIPIENT_NOT_REGISTERED);
+    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 
     user_3.register_e2e();
 
     // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     user_1.open_channel_e2e(recipient: user_3);
 
     // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     user_1.open_subchannel_e2e(recipient: user_3, :token, index: 0);
 
@@ -448,14 +448,14 @@ fn test_transfer_assertions() {
     user_1_wrong_addr.address = user_2.address;
     let result = user_1_wrong_addr
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL - wrong private key.
     let mut user_1_wrong_private_key = user_1;
     user_1_wrong_private_key.private_key = user_1.public_key;
     let result = user_1_wrong_private_key
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INDEX_NOT_SEQUENTIAL.
     let result = user_1
@@ -463,7 +463,7 @@ fn test_transfer_assertions() {
             notes_to_use: [note_path].span(),
             notes_to_create: [NewNote { index: 1, ..new_note }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INDEX_NOT_SEQUENTIAL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
 
     // Transfer errors.
 
@@ -473,7 +473,7 @@ fn test_transfer_assertions() {
             notes_to_use: [note_path].span(),
             notes_to_create: [NewNote { amount: 2, ..new_note }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::NOTE_SUM_MISMATCH);
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_SUM_MISMATCH);
 }
 
 #[test]
@@ -550,33 +550,33 @@ fn test_open_channel_assertions() {
     let mut user_zero_addr = user_1;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_open_channel(recipient: user_2, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_USER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_SENDER_PRIVATE_KEY.
     let mut user_zero_private_key = user_1;
     user_zero_private_key.private_key = Zero::zero();
     let result = user_zero_private_key.safe_open_channel(recipient: user_2, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_SENDER_PRIVATE_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SENDER_PRIVATE_KEY);
 
     // Catch ZERO_RECIPIENT_ADDR.
     let mut user_zero_addr = user_2;
     user_zero_addr.address = Zero::zero();
     let result = user_1.safe_open_channel(recipient: user_zero_addr, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_RECIPIENT_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_RANDOM.
     let result = user_1.safe_open_channel(recipient: user_2, random: Zero::zero());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_RANDOM);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
     let mut user_invalid_private_key = user_1;
     user_invalid_private_key.private_key = Neg::neg(user_invalid_private_key.private_key);
     let result = user_invalid_private_key.safe_open_channel(recipient: user_2, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::PRIVATE_KEY_NOT_CANONICAL);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch SENDER_NOT_REGISTERED.
     let result = user_1.safe_open_channel(recipient: user_2, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::SENDER_NOT_REGISTERED);
+    assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_REGISTERED);
 
     // Catch SENDER_NOT_AUTHENTICATED.
     user_1.register_e2e();
@@ -586,12 +586,12 @@ fn test_open_channel_assertions() {
         user_1.private_key = Neg::neg(user_1.private_key);
     }
     let result = user_1.safe_open_channel(recipient: user_2, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::SENDER_NOT_AUTHENTICATED);
+    assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
     user_1.private_key = user_1_private_key;
 
     // Catch RECIPIENT_NOT_REGISTERED - recipient not registered.
     let result = user_1.safe_open_channel(recipient: user_2, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::RECIPIENT_NOT_REGISTERED);
+    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 }
 
 #[test]
@@ -834,46 +834,46 @@ fn test_open_subchannel_assertions() {
     let mut user_zero_addr = user_1;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_open_subchannel(recipient: user_2, :token, :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_USER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_RECIPIENT_ADDR.
     let mut user_zero_addr = user_2;
     user_zero_addr.address = Zero::zero();
     let result = user_1.safe_open_subchannel(recipient: user_zero_addr, :token, :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_RECIPIENT_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_CHANNEL_KEY.
     let result = user_1
         .safe_open_subchannel_with_channel_key(
             recipient: user_2, :token, :index, :random, channel_key: Zero::zero(),
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_CHANNEL_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
 
     // Catch ZERO_TOKEN.
     let result = user_1
         .safe_open_subchannel(recipient: user_2, token: Zero::zero(), :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_RANDOM.
     let result = user_1
         .safe_open_subchannel(recipient: user_2, :token, :index, random: Zero::zero());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_RANDOM);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch RECIPIENT_NOT_REGISTERED.
     let result = user_1.safe_open_subchannel(recipient: user_2, :token, :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::RECIPIENT_NOT_REGISTERED);
+    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 
     user_2.register_e2e();
 
     // Catch INVALID_CHANNEL - sender is not registered.
     let result = user_1.safe_open_subchannel(recipient: user_2, :token, :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_CHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     user_1.register_e2e();
 
     // Catch INVALID_CHANNEL - no channel exists for the given sender and recipient.
     let result = user_1.safe_open_subchannel(recipient: user_2, :token, :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_CHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     user_1.open_channel_e2e(recipient: user_2);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -882,24 +882,24 @@ fn test_open_subchannel_assertions() {
     let mut user_1_wrong_addr = user_1;
     user_1_wrong_addr.address = user_2.address;
     let result = user_1_wrong_addr.safe_open_subchannel(recipient: user_2, :token, :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_CHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INVALID_CHANNEL - wrong recipient_addr.
     let mut user_2_wrong_addr = user_2;
     user_2_wrong_addr.address = user_1.address;
     let result = user_1.safe_open_subchannel(recipient: user_2_wrong_addr, :token, :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_CHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INVALID_CHANNEL - wrong channel key.
     let result = user_1
         .safe_open_subchannel_with_channel_key(
             recipient: user_2, :token, :index, :random, channel_key: channel_key + 1,
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_CHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INDEX_NOT_SEQUENTIAL.
     let result = user_1.safe_open_subchannel(recipient: user_2, :token, index: index + 1, :random);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INDEX_NOT_SEQUENTIAL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
 
     // Sanity check - should succeed.
     let result = user_1.safe_open_subchannel(recipient: user_2, :token, :index, :random);
@@ -1438,33 +1438,33 @@ fn test_deposit_assertions() {
     let mut user_zero_key = user;
     user_zero_key.private_key = Zero::zero();
     let result = user_zero_key.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_OWNER_PRIVATE_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
 
     // Catch ZERO_RECIPIENT_ADDR.
     let result = user.safe_deposit(new_note: NewNote { recipient_addr: Zero::zero(), ..note });
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_RECIPIENT_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_TOKEN.
     let result = user.safe_deposit(new_note: NewNote { token: Zero::zero(), ..note });
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT.
     let result = user.safe_deposit(new_note: NewNote { amount: Zero::zero(), ..note });
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_AMOUNT);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch RECIPIENT_NOT_REGISTERED.
     let result = user.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::RECIPIENT_NOT_REGISTERED);
+    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 
     // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     user.register_e2e();
     let result = user.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
     user.open_channel_e2e(recipient: user);
     let result = user.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL - wrong address.
     user.open_subchannel_e2e(recipient: user, :token, index: 0);
@@ -1472,24 +1472,24 @@ fn test_deposit_assertions() {
     different_user.register_e2e();
     let result = user
         .safe_deposit(new_note: NewNote { recipient_addr: different_user.address, ..note });
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL - wrong private key.
     let mut user_wrong_private_key = user;
     user_wrong_private_key.private_key = user.public_key;
     let result = user_wrong_private_key.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL - wrong token.
     let wrong_token = test.mock_new_token();
     let result = user.safe_deposit(new_note: NewNote { token: wrong_token, ..note });
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // TODO: Catch private key not canonical.
 
     // Catch INDEX_NOT_SEQUENTIAL.
     let result = user.safe_deposit(new_note: NewNote { index: 1, ..note });
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INDEX_NOT_SEQUENTIAL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
 
     // Sanity check - should succeed.
     let result = user.safe_deposit(new_note: note);
@@ -1893,18 +1893,18 @@ fn test_withdraw_assertions() {
     let mut user_1_zero = user_1;
     user_1_zero.address = Zero::zero();
     let result = user_1_zero.safe_withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_OWNER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_ADDR);
 
     // Catch ZERO_OWNER_PRIVATE_KEY.
     let mut user_1_zero_private_key = user_1;
     user_1_zero_private_key.private_key = Zero::zero();
     let result = user_1_zero_private_key
         .safe_withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_OWNER_PRIVATE_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
 
     // Catch ZERO_WITHDRAWAL_TARGET.
     let result = user_1.safe_withdraw(withdrawal_target: Zero::zero(), :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_WITHDRAWAL_TARGET);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_WITHDRAWAL_TARGET);
 
     // TODO: Catch private key not canonical.
 
@@ -1914,7 +1914,7 @@ fn test_withdraw_assertions() {
             withdrawal_target: user_2.address,
             note_to_withdraw: NotePath { token: Zero::zero(), ..note_to_withdraw },
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_CHANNEL_KEY.
     let result = user_1
@@ -1922,11 +1922,11 @@ fn test_withdraw_assertions() {
             withdrawal_target: user_2.address,
             note_to_withdraw: NotePath { channel_key: Zero::zero(), ..note_to_withdraw },
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_CHANNEL_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
 
     // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     let result = user_1.safe_withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     let user_3 = test.new_user();
     user_1.register_e2e();
@@ -1939,7 +1939,7 @@ fn test_withdraw_assertions() {
 
     // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
     let result = user_2.safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
@@ -1952,7 +1952,7 @@ fn test_withdraw_assertions() {
     user_1.open_channel_e2e(recipient: user_2_wrong_addr);
     let result = user_2_wrong_addr
         .safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL (wrong private key).
     let mut user_2_wrong_private_key = user_2;
@@ -1961,7 +1961,7 @@ fn test_withdraw_assertions() {
     user_1.open_channel_e2e(recipient: user_2_wrong_private_key);
     let result = user_2_wrong_private_key
         .safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL (wrong channel key).
     let wrong_channel_key = user_2.compute_channel_key(recipient: user_2);
@@ -1970,7 +1970,7 @@ fn test_withdraw_assertions() {
             withdrawal_target: user_3.address,
             note_to_withdraw: NotePath { channel_key: wrong_channel_key, ..note_to_withdraw },
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INVALID_SUBCHANNEL (wrong token).
     let wrong_token = test.mock_new_token();
@@ -1979,7 +1979,7 @@ fn test_withdraw_assertions() {
             withdrawal_target: user_3.address,
             note_to_withdraw: NotePath { token: wrong_token, ..note_to_withdraw },
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch NOTE_NOT_FOUND (wrong note index).
     let result = user_2
@@ -1987,7 +1987,7 @@ fn test_withdraw_assertions() {
             withdrawal_target: user_3.address,
             note_to_withdraw: NotePath { note_index: 1, ..note_to_withdraw },
         );
-    assert_panic_with_felt_error(:result, expected_error: client_errors::NOTE_NOT_FOUND);
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     // Sanity check - should succeed.
     let result = user_2.safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
@@ -2092,13 +2092,13 @@ fn test_replace_public_key_assertions() {
     let mut user_zero_public_key = user;
     user_zero_public_key.public_key = Zero::zero();
     let result = user_zero_public_key.safe_replace_public_key();
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_PUBLIC_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_replace_public_key();
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_USER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
 
 // TODO: Consider splitting to test per action.
@@ -2207,7 +2207,7 @@ fn test_compile_client_actions_assertions() {
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_compile_client_actions(client_actions: [].span());
-    assert_panic_with_felt_error(:result, expected_error: client_errors::ZERO_USER_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
 // TODO: Test with the negative private key (not canonical but the right public key) - deposit,
 // withdraw, transfer.
