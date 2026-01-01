@@ -79,8 +79,11 @@ pub mod Privacy {
                         server_actions
                             .extend(self.register(:user_addr, :user_private_key, :random));
                     },
-                    ClientAction::ReplaceKey(user_public_key) => {
-                        server_actions.append(self.replace_key(:user_addr, :user_public_key));
+                    ClientAction::ReplaceKey((
+                        user_private_key, random,
+                    )) => {
+                        server_actions
+                            .extend(self.replace_key(:user_addr, :user_private_key, :random));
                     },
                     ClientAction::OpenChannel((
                         user_private_key, recipient_addr, recipient_public_key, random,
@@ -163,17 +166,9 @@ pub mod Privacy {
             user_private_key: felt252,
             random: felt252,
         ) -> Array<ServerAction> {
-            assert(user_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
-            assert(is_canonical_key(key: user_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
-            let user_public_key = derive_public_key(private_key: user_private_key);
-            assert(user_public_key.is_non_zero(), internal_errors::ZERO_DERIVED_PUBLIC_KEY);
-            let enc_private_key = encrypt_private_key(
-                ephemeral_secret: random,
-                compliance_public_key: self.compliance_public_key.read(),
-                private_key: user_private_key,
-            );
-            assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
+            // TODO: Move assertions to _private_key_to_server_values.
+            let (user_public_key, enc_private_key) = self
+                ._private_key_to_server_values(:user_private_key, :random);
 
             array![
                 ServerAction::WriteIfZero(
@@ -187,13 +182,47 @@ pub mod Privacy {
 
         /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
         fn replace_key(
-            self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
-        ) -> ServerAction {
-            // TODO: Add compliance.
+            self: @ContractState,
+            user_addr: ContractAddress,
+            user_private_key: felt252,
+            random: felt252,
+        ) -> Array<ServerAction> {
             // TODO: Enforce cooldown between key replacements? (track last update time).
-            assert(user_public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
+            let (user_public_key, enc_private_key) = self
+                ._private_key_to_server_values(:user_private_key, :random);
 
-            ServerAction::WriteIfNonZero((self.public_key.entry(user_addr).into(), user_public_key))
+            array![
+                ServerAction::WriteIfNonZero(
+                    (self.public_key.entry(user_addr).into(), user_public_key),
+                ),
+                ServerAction::WriteIfNonZeroPrivateKey(
+                    (self.enc_private_key.entry(user_addr).into(), enc_private_key),
+                ),
+            ]
+        }
+
+        // TODO: Consider return common actions here?
+        /// Asserts the input is valid and returns (user_public_key, enc_private_key), non zero
+        /// values.
+        fn _private_key_to_server_values(
+            self: @ContractState, user_private_key: felt252, random: felt252,
+        ) -> (felt252, EncPrivateKey) {
+            assert(user_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            assert(is_canonical_key(key: user_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+            // Derive the public key from the private key.
+            let user_public_key = derive_public_key(private_key: user_private_key);
+            assert(user_public_key.is_non_zero(), internal_errors::ZERO_DERIVED_PUBLIC_KEY);
+
+            // Encrypt the private key for the compliance.
+            let enc_private_key = encrypt_private_key(
+                ephemeral_secret: random,
+                compliance_public_key: self.compliance_public_key.read(),
+                private_key: user_private_key,
+            );
+            assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
+
+            (user_public_key, enc_private_key)
         }
 
         /// `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
@@ -473,6 +502,14 @@ pub mod Privacy {
                         storage_address, new_value,
                     )) => {
                         self._execute_write(:storage_address, :new_value, require_zero: false);
+                    },
+                    ServerAction::WriteIfNonZeroPrivateKey((
+                        storage_address, new_value,
+                    )) => {
+                        self
+                            ._execute_write_private_key(
+                                :storage_address, :new_value, require_zero: false,
+                            );
                     },
                     ServerAction::TransferFrom((
                         sender, token, amount,

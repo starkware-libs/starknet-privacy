@@ -119,9 +119,10 @@ pub enum ClientAction {
     /// The random is used to encrypt the private key.
     /// (user_private_key: felt252, random: felt252)
     Register: (felt252, felt252),
-    /// Replace the user's viewing key with a new value.
-    /// (user_public_key: felt252)
-    ReplaceKey: felt252,
+    // TODO: Rename user_private_key to private_key here.
+    /// Replace the user's viewing key with a new key.
+    /// (user_private_key: felt252, random: felt252)
+    ReplaceKey: (felt252, felt252),
     /// Open a new channel from the user to a recipient.
     /// (user_private_key: felt252, recipient_addr: ContractAddress, recipient_public_key: felt252,
     /// random: felt252)
@@ -164,6 +165,10 @@ pub enum ServerAction {
     /// Verify that a storage value is non-zero and then write to it.
     /// (storage_address: felt252, new_value: felt252)
     WriteIfNonZero: (felt252, felt252),
+    // TODO: Generalize to any type, Merge with WriteIfNonZero.
+    /// Verify that a storage value is non-zero and then write to it.
+    /// (storage_address: felt252, new_value: EncPrivateKey)
+    WriteIfNonZeroPrivateKey: (felt252, EncPrivateKey),
     // TODO: Generalize to any vector.
     /// Append a `EncChannelInfo` value to (`recipient_addr`, `recipient_public_key`)'s vector in
     /// storage.
