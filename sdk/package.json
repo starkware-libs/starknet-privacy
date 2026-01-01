@@ -17,9 +17,11 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "npm run typecheck && vitest run",
     "test:watch": "vitest watch",
-    "clean": "rm -rf dist"
+    "check": "npm run test && npm run build",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run check"
   },
   "keywords": [
     "starknet",
