@@ -55,6 +55,27 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
     }
 }
 
+/// Ciphertext for an ECDH-based encryption of private key.
+/// Used for compliance to be able to decrypt the private key.
+#[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
+pub(crate) struct EncPrivateKey {
+    /// Ephemeral ECDH public key x-coordinate (rG.x). Used by the compliance to derive rK.
+    pub ephemeral_pubkey: felt252,
+    /// Encrypted private key.
+    /// `enc_private_key = h(ENC_PRIVATE_KEY_TAG, rK.x) + private_key`
+    pub enc_private_key: felt252,
+}
+
+// TODO: Move to a different file.
+// TODO: Consider implementing is_non_zero() using the Zero trait.
+#[generate_trait]
+pub impl EncPrivateKeyImpl of EncPrivateKeyTrait {
+    /// Check if all the `EncPrivateKey`'s fields are non-zero.
+    fn is_non_zero(self: @EncPrivateKey) -> bool {
+        return self.ephemeral_pubkey.is_non_zero() && self.enc_private_key.is_non_zero();
+    }
+}
+
 /// An encrypted note, to be written to storage.
 #[derive(Serde, Copy, Drop, PartialEq, Debug, starknet::Store)]
 pub struct EncNote {
@@ -94,9 +115,11 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ClientAction {
-    /// Register a new user with a public key.
-    /// (user_public_key: felt252)
-    Register: felt252,
+    // TODO: Rename user_private_key to private_key here.
+    /// Register a new user with a viewing key.
+    /// The random is used to encrypt the private key.
+    /// (user_private_key: felt252, random: felt252)
+    Register: (felt252, felt252),
     /// Replace the user's public key with a new value.
     /// (user_public_key: felt252)
     ReplacePublicKey: felt252,
@@ -126,10 +149,15 @@ pub enum ServerAction {
     /// (storage_address: felt252, new_value: felt252)
     WriteIfNonZero: (felt252, felt252),
     // TODO: Generalize to any vector.
-    /// Append a value to a vector in storage.
+    /// Append a `EncChannelInfo` value to (`recipient_addr`, `recipient_public_key`)'s vector in
+    /// storage.
     /// (recipient_addr: ContractAddress, recipient_public_key: felt252, enc_channel_info:
     /// EncChannelInfo)
-    AppendToVec: (ContractAddress, felt252, EncChannelInfo),
+    AppendToVecChannel: (ContractAddress, felt252, EncChannelInfo),
+    // TODO: Generalize to any vector.
+    /// Append a `EncPrivateKey` value to `user_addr`'s vector in storage.
+    /// (user_addr: ContractAddress, enc_private_key: EncPrivateKey)
+    AppendToVecPrivateKey: (ContractAddress, EncPrivateKey),
     /// Transfer tokens from a user to the contract (ERC20 transfer_from).
     /// (sender: ContractAddress, token: ContractAddress, amount: u128)
     TransferFrom: (ContractAddress, ContractAddress, u128),

@@ -14,6 +14,12 @@ use starkware_utils_testing::test_utils::{
 // TODO: Different file for Views tests?
 
 #[test]
+fn test_get_compliance_public_key() {
+    let mut test: Test = Default::default();
+    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance_public_key);
+}
+
+#[test]
 fn test_channel_exists() {
     let mut test: Test = Default::default();
     let user = test.new_user();
@@ -131,7 +137,7 @@ fn test_nullifier_exists() {
 #[test]
 fn test_get_public_key() {
     let mut test: Test = Default::default();
-    let user = test.new_user();
+    let mut user = test.new_user();
     // Don't register the user.
     assert_eq!(user.get_public_key(), Zero::zero());
     // Register the user.
@@ -143,7 +149,7 @@ fn test_get_public_key() {
 fn test_subchannel_exists() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
-    let user_2 = test.new_user();
+    let mut user_2 = test.new_user();
     let token = test.mock_new_token();
     let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_id), false);
@@ -158,7 +164,7 @@ fn test_subchannel_exists() {
 fn test_get_subchannel_info() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
-    let user_2 = test.new_user();
+    let mut user_2 = test.new_user();
     let token = test.mock_new_token();
     let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
@@ -173,10 +179,23 @@ fn test_get_subchannel_info() {
 }
 
 #[test]
+fn test_get_enc_private_keys_history() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    // Before registration.
+    assert_eq!(user.get_enc_private_keys_history(), [].span());
+    // After registration.
+    let random = user.register_e2e();
+    let expected_enc_private_key = user.compute_enc_private_key(:random);
+    assert_eq!(user.get_enc_private_keys_history(), [expected_enc_private_key].span());
+    // TODO: Test again after replacing the key.
+}
+
+#[test]
 fn test_register_multiple_users() {
     let mut test: Test = Default::default();
-    let user1 = test.new_user();
-    let user2 = test.new_user();
+    let mut user1 = test.new_user();
+    let mut user2 = test.new_user();
     let user3 = test.new_user();
     let public_key1 = user1.public_key;
     let public_key2 = user2.public_key;
@@ -198,20 +217,19 @@ fn test_register_multiple_users() {
 #[test]
 fn test_register_multiple_users_same_public_key() {
     let mut test: Test = Default::default();
-    let user1 = test.new_user();
+    let mut user1 = test.new_user();
     let mut user2 = test.new_user();
 
-    // Set the same public key for both users.
-    let shared_public_key = user1.public_key;
-    user2.public_key = shared_public_key;
+    // Set the same key for both users.
+    user2.private_key = user1.private_key;
 
     // Register both users.
     user1.register_e2e();
     user2.register_e2e();
 
     // Both should be able to fetch the shared public key.
-    assert_eq!(user1.get_public_key(), shared_public_key);
-    assert_eq!(user2.get_public_key(), shared_public_key);
+    assert_eq!(user1.get_public_key(), user1.public_key);
+    assert_eq!(user2.get_public_key(), user1.public_key);
 }
 
 #[test]
@@ -465,20 +483,49 @@ fn test_execute_write_if_zero_subchannel_assertions() {
 }
 
 #[test]
-fn test_execute_append_to_vector() {
+fn test_execute_append_to_vec_channel() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let (enc_channel_info, _) = test.mock_new_channel();
 
     // Append channel to vector
     let actions: Array<ServerAction> = array![
-        ServerAction::AppendToVec((user.address, user.public_key, enc_channel_info)),
+        ServerAction::AppendToVecChannel((user.address, user.public_key, enc_channel_info)),
     ];
     test.privacy.execute_actions(actions.span());
 
     // Verify channel was added
     assert_eq!(user.get_num_of_channels(), 1);
     assert_eq!(user.get_channel_info(channel_index: 0), enc_channel_info);
+}
+
+#[test]
+fn test_execute_append_to_vec_private_key() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let enc_private_key = test.mock_new_enc_private_key();
+
+    // Verify no private keys were added yet.
+    assert_eq!(user.get_enc_private_keys_history(), [].span());
+
+    // Append private key to vector
+    let actions: Array<ServerAction> = array![
+        ServerAction::AppendToVecPrivateKey((user.address, enc_private_key)),
+    ];
+    test.privacy.execute_actions(actions.span());
+
+    // Verify enc private key was added.
+    assert_eq!(user.get_enc_private_keys_history(), [enc_private_key].span());
+
+    // Append another private key to vector.
+    let enc_private_key_2 = test.mock_new_enc_private_key();
+    let actions: Array<ServerAction> = array![
+        ServerAction::AppendToVecPrivateKey((user.address, enc_private_key_2)),
+    ];
+    test.privacy.execute_actions(actions.span());
+
+    // Verify enc private keys were added.
+    assert_eq!(user.get_enc_private_keys_history(), [enc_private_key, enc_private_key_2].span());
 }
 
 #[test]
