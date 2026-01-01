@@ -1,5 +1,5 @@
 use core::num::traits::Zero;
-use privacy::errors;
+use privacy::errors::server_errors;
 use privacy::objects::ServerAction;
 use privacy::tests::test_utils::{
     PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
@@ -312,7 +312,7 @@ fn test_execute_write_if_zero_assertions() {
     );
     assert_eq!(current_value, true);
     let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    assert_panic_with_felt_error(:result, expected_error: server_errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for subchannel_exists.
     let storage_path_felt = map_entry_address(
@@ -327,7 +327,7 @@ fn test_execute_write_if_zero_assertions() {
     );
     assert_eq!(current_value, true);
     let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    assert_panic_with_felt_error(:result, expected_error: server_errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for notes.
     let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
@@ -343,7 +343,7 @@ fn test_execute_write_if_zero_assertions() {
     );
     assert_eq!(current_value, note.enc_amount);
     let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    assert_panic_with_felt_error(:result, expected_error: server_errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for nullifiers.
     let nullifier = test.mock_new_nullifier();
@@ -359,7 +359,7 @@ fn test_execute_write_if_zero_assertions() {
     );
     assert_eq!(current_value, true);
     let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    assert_panic_with_felt_error(:result, expected_error: server_errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -404,7 +404,7 @@ fn test_execute_write_if_non_zero_assertions() {
         ServerAction::WriteIfNonZero((storage_path_felt, user.public_key)),
     ];
     let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
+    assert_panic_with_felt_error(:result, expected_error: server_errors::ZERO_VALUE);
 
     // Catch ZERO_VALUE for notes.
     let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
@@ -419,7 +419,7 @@ fn test_execute_write_if_non_zero_assertions() {
         ServerAction::WriteIfNonZero((storage_path_felt, note.enc_amount)),
     ];
     let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
+    assert_panic_with_felt_error(:result, expected_error: server_errors::ZERO_VALUE);
 }
 
 #[test]
@@ -463,7 +463,7 @@ fn test_execute_write_if_zero_subchannel_assertions() {
     );
     assert_eq!(current_value, enc_subchannel_info);
     let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    assert_panic_with_felt_error(:result, expected_error: server_errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -613,5 +613,5 @@ fn test_execute_verify_value_assertions() {
     assert_ne!(current_value, user.public_key);
     let actions = array![ServerAction::VerifyValue((storage_path_felt, user.public_key))];
     let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
+    assert_panic_with_felt_error(:result, expected_error: server_errors::VALUE_MISMATCH);
 }
