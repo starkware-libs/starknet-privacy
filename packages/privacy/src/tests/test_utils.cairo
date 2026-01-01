@@ -37,7 +37,6 @@ pub(crate) mod constants {
     pub const DEFAULT_AMOUNT: u128 = 10_u128.pow(DECIMALS.into());
 }
 
-// TODO: Consider removing the safe dispatchers.
 #[derive(Copy, Drop)]
 pub(crate) struct PrivacyCfg {
     pub address: ContractAddress,
@@ -58,7 +57,6 @@ struct User {
     nonce: usize,
 }
 
-// TODO: Consider renaming fn_name_server to server_fn_name.
 #[generate_trait]
 pub(crate) impl UserImpl of UserTrait {
     fn compile_client_actions(
@@ -358,7 +356,6 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    // TODO: Remember index somewhere instead of passing it as an argument.
     fn new_note(
         self: @User, recipient: User, token: ContractAddress, amount: u128, index: usize,
     ) -> NewNote {
@@ -439,10 +436,14 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
-    // TODO: Generate valid private-public key pair.
-    /// Generate a new public key.
-    fn new_public_key(ref self: User) {
-        self.public_key = self.public_key * 2;
+    /// Generate a new private and public key.
+    fn new_key(ref self: User) {
+        let mut private_key = self.private_key * 2;
+        if !is_canonical_key(key: private_key) {
+            private_key = Neg::neg(private_key);
+        }
+        self.private_key = private_key;
+        self.public_key = derive_public_key(:private_key);
     }
 
     #[feature("safe_dispatcher")]

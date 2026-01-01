@@ -80,8 +80,7 @@ pub mod Privacy {
                 errors::ACTIONS_LENGTH_MISMATCH,
             );
 
-            // TODO: Consider multi-token support (sum per token).
-            // TODO: Verify the tokens match in all notes.
+            // TODO: Verify sums per token. (Now tokens are not verified at all.)
             assert(consumed_sum == created_sum, errors::NOTE_SUM_MISMATCH);
 
             actions.span()
@@ -183,7 +182,7 @@ pub mod Privacy {
 
     #[generate_trait]
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
-        // `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
         fn register(
             self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
         ) -> Array<ServerAction> {
@@ -197,7 +196,7 @@ pub mod Privacy {
             ]
         }
 
-        // `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
         fn replace_public_key(
             self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
         ) -> Array<ServerAction> {
@@ -212,7 +211,7 @@ pub mod Privacy {
             ]
         }
 
-        // `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
         fn open_channel(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -221,8 +220,6 @@ pub mod Privacy {
             recipient_public_key: felt252,
             random: felt252,
         ) -> Array<ServerAction> {
-            // TODO: Remove assert not zero for sender_addr, recipient_addr?
-            // (will fail in the registration check).
             // TODO: Consider generate random instead of passing it as an argument.
             assert(sender_private_key.is_non_zero(), errors::ZERO_SENDER_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
@@ -261,8 +258,7 @@ pub mod Privacy {
 
             assert(channel_id.is_non_zero(), errors::ZERO_CHANNEL_ID);
             assert(enc_channel_info.is_non_zero(), errors::ZERO_ENC_CHANNEL_INFO);
-            // TODO: Consider removing since this is checked at the start of the function.
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+
             array![
                 ServerAction::VerifyValue(
                     (self.public_key.entry(recipient_addr).into(), recipient_public_key),
@@ -274,7 +270,7 @@ pub mod Privacy {
             ]
         }
 
-        // `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
         fn open_subchannel(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -285,7 +281,6 @@ pub mod Privacy {
             random: felt252,
         ) -> Array<ServerAction> {
             // TODO: Consider generate random instead of passing it as an argument.
-            assert(sender_addr.is_non_zero(), errors::ZERO_SENDER_ADDR);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
@@ -323,8 +318,7 @@ pub mod Privacy {
             let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :token, :random);
             assert(subchannel_id.is_non_zero(), errors::ZERO_SUBCHANNEL_ID);
             assert(subchannel_key.is_non_zero(), errors::ZERO_SUBCHANNEL_KEY);
-            // TODO: Consider enc_subchannel_info.is_non_zero() instead.
-            assert(enc_subchannel_info.enc_token.is_non_zero(), errors::ZERO_ENC_SUBCHANNEL_TOKEN);
+            assert(enc_subchannel_info.is_non_zero(), errors::ZERO_ENC_SUBCHANNEL_TOKEN);
 
             array![
                 ServerAction::WriteIfZero(
@@ -336,7 +330,7 @@ pub mod Privacy {
             ]
         }
 
-        // TODO: Consider merging this with `use_note` function.
+        /// Returns the sum of the amounts of the notes to use.
         fn use_notes(
             self: @ContractState,
             ref actions: Array<ServerAction>,
@@ -344,7 +338,7 @@ pub mod Privacy {
             owner_private_key: felt252,
             notes_to_use: Span<NotePath>,
         ) -> u256 {
-            // TODO: Verify tokens match.
+            // TODO: Verify sums per token. (Now tokens are not verified at all.)
             let mut sum: u256 = Zero::zero();
             for note in notes_to_use {
                 let (nullifier, amount) = self
@@ -361,7 +355,7 @@ pub mod Privacy {
         }
 
         /// Returns (nullifier, amount).
-        /// Assumes owner_private_key is canonical.
+        /// Assumes `owner_private_key` is canonical.
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
@@ -371,7 +365,7 @@ pub mod Privacy {
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(note.channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
-            // TODO: Assert token matches.
+            // TODO: Assert amount per token.
 
             // Assert subchannel exists and is connected to owner's address and public key.
             let channel_key = note.channel_key;
@@ -403,7 +397,7 @@ pub mod Privacy {
             (nullifier, note_amount)
         }
 
-        // TODO: Consider merging this with `create_note` function.
+        /// Returns the sum of the amounts of the notes to create.
         fn create_notes(
             self: @ContractState,
             ref actions: Array<ServerAction>,
@@ -421,20 +415,20 @@ pub mod Privacy {
                         ),
                     );
                 sum += (*note.amount).into();
-                // TODO: Verify tokens match.
+                // TODO: Assert amount per token.
             }
             sum
         }
 
         /// Returns the encrypted note.
-        /// Assumes owner_private_key is canonical.
+        /// Assumes `owner_private_key` is canonical.
         fn create_note(
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             note: NewNote,
         ) -> EncNote {
-            // TODO: Verify tokens match.
+            // TODO: Assert amount per token.
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
@@ -596,7 +590,6 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ViewsImpl of IViews<ContractState> {
         fn channel_exists(self: @ContractState, channel_id: felt252) -> bool {
-            // TODO: Restrict access?
             self.channel_exists.read(channel_id)
         }
 
@@ -614,7 +607,7 @@ pub mod Privacy {
             recipient_public_key: felt252,
             channel_index: u64,
         ) -> EncChannelInfo {
-            // TODO: Restrict access to `recipient_addr` and client contract?
+            // TODO: Restrict access to `recipient_addr`?
             // TODO: Assert `recipient_addr` is registered?
             // TODO: Consider defining custom error instead of using `at` (with "Index out of
             // bounds" error)?

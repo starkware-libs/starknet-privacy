@@ -32,22 +32,20 @@ fn test_channel_exists() {
 #[test]
 fn test_get_num_of_channels() {
     let mut test: Test = Default::default();
-    let user = test.new_user();
-    let recipient_addr = user.address;
-    let recipient_public_key = user.public_key;
-    // TODO: Test before registeration and after registration.
+    let mut user = test.new_user();
+    // Before registration.
     assert_eq!(user.get_num_of_channels(), 0);
-    let (enc_channel_info, channel_id) = test.mock_new_channel();
-    test
-        .privacy
-        .cheat_open_channel(:recipient_addr, :recipient_public_key, :enc_channel_info, :channel_id);
+    // After registration.
+    user.register_e2e();
+    assert_eq!(user.get_num_of_channels(), 0);
+    // After opening a channel.
+    user.open_channel_e2e(recipient: user);
     assert_eq!(user.get_num_of_channels(), 1);
-    let (enc_channel_info, channel_id) = test.mock_new_channel();
-    test
-        .privacy
-        .cheat_open_channel(:recipient_addr, :recipient_public_key, :enc_channel_info, :channel_id);
+    // After opening a second channel.
+    let mut different_user = test.new_user();
+    different_user.register_e2e();
+    different_user.open_channel_e2e(recipient: user);
     assert_eq!(user.get_num_of_channels(), 2);
-    let different_user = test.new_user();
     assert_eq!(different_user.get_num_of_channels(), 0);
 }
 
@@ -378,7 +376,7 @@ fn test_execute_write_if_non_zero() {
     assert_eq!(user.get_public_key(), user.public_key);
 
     // Change public key.
-    user.new_public_key();
+    user.new_key();
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfNonZero((storage_path_felt, user.public_key)),
     ];
