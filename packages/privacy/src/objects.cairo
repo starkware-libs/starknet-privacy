@@ -129,6 +129,7 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
     }
 }
 
+// TODO: Consider refactoring tuples to named structs in ClientAction and ServerAction.
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ClientAction {
@@ -143,9 +144,9 @@ pub enum ClientAction {
     /// random: felt252)
     OpenChannel: (felt252, ContractAddress, felt252, felt252),
     /// Open a new subchannel from the user to a recipient.
-    /// (recipient_addr: ContractAddress, channel_key: felt252,
+    /// (recipient_addr: ContractAddress, recipient_public_key: felt252, channel_key: felt252,
     /// index: usize, token: ContractAddress, random: felt252)
-    OpenSubchannel: (ContractAddress, felt252, usize, ContractAddress, felt252),
+    OpenSubchannel: (ContractAddress, felt252, felt252, usize, ContractAddress, felt252),
 }
 
 /// An action to be executed by the server.

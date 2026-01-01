@@ -888,9 +888,12 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_2, :token, :index, random: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
-    // Catch RECIPIENT_NOT_REGISTERED.
-    let result = user_1.safe_open_subchannel(recipient: user_2, :token, :index, :random);
-    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
+    // Catch ZERO_RECIPIENT_PUBLIC_KEY.
+    let mut user_zero_public_key = user_2;
+    user_zero_public_key.public_key = Zero::zero();
+    let result = user_1
+        .safe_open_subchannel(recipient: user_zero_public_key, :token, :index, :random);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
     user_2.register_e2e();
 
@@ -917,6 +920,13 @@ fn test_open_subchannel_assertions() {
     let mut user_2_wrong_addr = user_2;
     user_2_wrong_addr.address = user_1.address;
     let result = user_1.safe_open_subchannel(recipient: user_2_wrong_addr, :token, :index, :random);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+
+    // Catch INVALID_CHANNEL - wrong recipient_public_key.
+    let mut user_2_wrong_public_key = user_2;
+    user_2_wrong_public_key.public_key = user_1.public_key;
+    let result = user_1
+        .safe_open_subchannel(recipient: user_2_wrong_public_key, :token, :index, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INVALID_CHANNEL - wrong channel key.
@@ -2243,7 +2253,7 @@ fn test_compile_client_actions() {
         .compile_client_actions(
             client_actions: [
                 ClientAction::OpenSubchannel(
-                    (user_2.address, expected_channel_key, 0, token, random),
+                    (user_2.address, user_2.public_key, expected_channel_key, 0, token, random),
                 ),
             ]
                 .span(),
