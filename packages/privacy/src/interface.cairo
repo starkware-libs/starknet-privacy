@@ -10,7 +10,7 @@ use starknet::ContractAddress;
 // TODO: Move return values to the Returns section and add links to ServerAction enum and actions
 // variants.
 // TODO: Fix enum varients links in the documentation.
-// TODO: Fix error links and remove internal errors from the documentation.
+// TODO: Remove internal errors from the documentation.
 #[starknet::interface]
 pub trait IClient<T> {
     /// Compiles client actions into server actions that can be executed by the server.
@@ -60,9 +60,9 @@ pub trait IClient<T> {
     /// None
     ///
     /// #### Reverts
-    /// - [`ZERO_USER_ADDR`](privacy::errors::client_errors::ZERO_USER_ADDR): Thrown if `user_addr`
+    /// - [`ZERO_USER_ADDR`](privacy::errors::ZERO_USER_ADDR): Thrown if `user_addr`
     /// is zero.
-    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::client_errors::ZERO_PUBLIC_KEY): Thrown if a
+    /// - [`ZERO_PUBLIC_KEY`](privacy::errors::ZERO_PUBLIC_KEY): Thrown if a
     /// `Register` or `ReplacePublicKey` action contains a zero public key.
     ///
     /// #### Access Control
