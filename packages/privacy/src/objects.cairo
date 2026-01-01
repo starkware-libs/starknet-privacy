@@ -3,7 +3,7 @@ use starknet::ContractAddress;
 
 /// The path of an existing note in the server storage.
 // TODO: Consider renaming.
-#[derive(Serde, Copy, Drop)]
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct NotePath {
     /// The channel key of the note's channel.
     pub channel_key: felt252,
@@ -108,6 +108,12 @@ pub enum ClientAction {
     /// Deposit funds into the contract.
     /// (token: ContractAddress, amount: u128)
     Deposit: (ContractAddress, u128),
+    /// Uses up a note (creates a nullifier for it) based on the specified `NotePath`.
+    /// (user_private_key: felt252, note_to_withdraw: NotePath)
+    UseNote: (felt252, NotePath),
+    /// Withdraw funds from the contract.
+    /// (withdrawal_target: ContractAddress, token: ContractAddress, amount: u128)
+    Withdraw: (ContractAddress, ContractAddress, u128),
 }
 
 /// An action to be executed by the server.
