@@ -362,7 +362,13 @@ pub(crate) impl UserImpl of UserTrait {
     fn new_note(
         self: @User, recipient: User, token: ContractAddress, amount: u128, index: usize,
     ) -> NewNote {
-        NewNote { recipient_addr: recipient.address, token, amount, index }
+        NewNote {
+            recipient_addr: recipient.address,
+            recipient_public_key: recipient.public_key,
+            token,
+            amount,
+            index,
+        }
     }
 
     fn deposit(self: @User, new_note: NewNote) -> Span<ServerAction> {

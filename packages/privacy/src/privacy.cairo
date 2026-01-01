@@ -437,18 +437,15 @@ pub mod Privacy {
             // TODO: Verify tokens match.
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(note.recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
             assert(note.amount.is_non_zero(), errors::ZERO_AMOUNT);
 
             // TODO: Consider impl helper function for common code.
 
-            // Read recipient public key from storage.
-            // TODO: Consider using public key from input instead of reading from storage.
-            let recipient_addr = note.recipient_addr;
-            let recipient_public_key = self.get_public_key(user_addr: recipient_addr);
-            assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
-
             // Compute channel key.
+            let recipient_addr = note.recipient_addr;
+            let recipient_public_key = note.recipient_public_key;
             let channel_key = compute_channel_key(
                 sender_addr: owner_addr,
                 sender_private_key: owner_private_key,

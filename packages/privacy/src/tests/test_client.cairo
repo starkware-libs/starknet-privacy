@@ -295,7 +295,13 @@ fn test_transfer_assertions() {
     let channel_key = user_1.compute_channel_key(recipient: user_1);
 
     let note_path = NotePath { channel_key, token, note_index: 0 };
-    let new_note = NewNote { recipient_addr: user_3.address, token, amount: 1, index: 0 };
+    let new_note = NewNote {
+        recipient_addr: user_3.address,
+        recipient_public_key: user_3.public_key,
+        token,
+        amount: 1,
+        index: 0,
+    };
 
     // Catch ZERO_OWNER_ADDR.
     let mut user_1_zero = user_1;
@@ -379,7 +385,6 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
-    println!("6");
     // Catch INVALID_SUBCHANNEL - wrong channel key.
     let wrong_channel_key = user_1.compute_channel_key(recipient: user_2);
     let result = user_1
@@ -423,10 +428,13 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
-    // Catch RECIPIENT_NOT_REGISTERED.
+    // Catch ZERO_RECIPIENT_PUBLIC_KEY.
     let result = user_1
-        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
+        .safe_transfer(
+            notes_to_use: [note_path].span(),
+            notes_to_create: [NewNote { recipient_public_key: Zero::zero(), ..new_note }].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
     user_3.register_e2e();
 
@@ -444,6 +452,15 @@ fn test_transfer_assertions() {
 
     user_1.open_subchannel_e2e(recipient: user_3, :token, index: 0);
 
+    // Catch INVALID_SUBCHANNEL - wrong public key.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [note_path].span(),
+            notes_to_create: [NewNote { recipient_public_key: user_1.public_key, ..new_note }]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
     // Catch INVALID_SUBCHANNEL - wrong address.
     let mut user_1_wrong_addr = user_1;
     user_1_wrong_addr.address = user_2.address;
@@ -456,6 +473,15 @@ fn test_transfer_assertions() {
     user_1_wrong_private_key.private_key = user_1.public_key;
     let result = user_1_wrong_private_key
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // Catch INVALID_SUBCHANNEL - wrong token.
+    let wrong_token = test.mock_new_token();
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [note_path].span(),
+            notes_to_create: [NewNote { token: wrong_token, ..new_note }].span(),
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // Catch INDEX_NOT_SEQUENTIAL.
@@ -1272,13 +1298,14 @@ fn test_create_note_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected: 'RECIPIENT_NOT_REGISTERED')]
-fn test_create_note_recipient_not_registered() {
+#[should_panic(expected: 'ZERO_RECIPIENT_PUBLIC_KEY')]
+fn test_create_note_zero_recipient_public_key() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
     let user_2 = test.new_user();
     let token = test.mock_new_token();
-    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
+    let mut note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
+    note.recipient_public_key = Zero::zero();
     user_1.create_note(:note);
 }
 
@@ -1336,6 +1363,36 @@ fn test_create_note_invalid_subchannel_wrong_private_key() {
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
     user_1.private_key = user_1.public_key;
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_SUBCHANNEL')]
+fn test_create_note_invalid_subchannel_wrong_public_key() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    let token = test.mock_new_token();
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
+    user_2.public_key = user_1.public_key;
+    let note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_SUBCHANNEL')]
+fn test_create_note_invalid_subchannel_wrong_token() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    let token = test.mock_new_token();
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
+    let mut note = user_1.new_note(recipient: user_2, :token, amount: 1, index: 0);
+    note.token = test.mock_new_token();
     user_1.create_note(:note);
 }
 
@@ -1457,9 +1514,10 @@ fn test_deposit_assertions() {
     let result = user.safe_deposit(new_note: NewNote { amount: Zero::zero(), ..note });
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
-    // Catch RECIPIENT_NOT_REGISTERED.
-    let result = user.safe_deposit(new_note: note);
-    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
+    // Catch ZERO_RECIPIENT_PUBLIC_KEY.
+    let result = user
+        .safe_deposit(new_note: NewNote { recipient_public_key: Zero::zero(), ..note });
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
     // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     user.register_e2e();
@@ -1488,6 +1546,13 @@ fn test_deposit_assertions() {
     // Catch INVALID_SUBCHANNEL - wrong token.
     let wrong_token = test.mock_new_token();
     let result = user.safe_deposit(new_note: NewNote { token: wrong_token, ..note });
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+
+    // Catch INVALID_SUBCHANNEL - wrong public key.
+    let result = user
+        .safe_deposit(
+            new_note: NewNote { recipient_public_key: different_user.public_key, ..note },
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
     // TODO: Catch private key not canonical.
