@@ -4,6 +4,7 @@ pub mod Privacy {
     use core::num::traits::Zero;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::errors;
+    use privacy::errors::internal_errors;
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
         ClientAction, EncChannelInfo, EncChannelInfoTrait, EncNote, EncSubchannelInfo, NewNote,
@@ -72,12 +73,12 @@ pub mod Privacy {
             let mut actions: Array<ServerAction> = array![];
             let consumed_sum = self
                 .use_notes(ref :actions, :owner_addr, :owner_private_key, :notes_to_use);
-            assert(actions.len() == notes_to_use.len(), errors::ACTIONS_LENGTH_MISMATCH);
+            assert(actions.len() == notes_to_use.len(), internal_errors::ACTIONS_LENGTH_MISMATCH);
             let created_sum = self
                 .create_notes(ref :actions, :owner_addr, :owner_private_key, :notes_to_create);
             assert(
                 actions.len() == notes_to_use.len() + notes_to_create.len(),
-                errors::ACTIONS_LENGTH_MISMATCH,
+                internal_errors::ACTIONS_LENGTH_MISMATCH,
             );
 
             // TODO: Verify sums per token. (Now tokens are not verified at all.)
@@ -256,8 +257,8 @@ pub mod Privacy {
                 :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
             );
 
-            assert(channel_id.is_non_zero(), errors::ZERO_CHANNEL_ID);
-            assert(enc_channel_info.is_non_zero(), errors::ZERO_ENC_CHANNEL_INFO);
+            assert(channel_id.is_non_zero(), internal_errors::ZERO_CHANNEL_ID);
+            assert(enc_channel_info.is_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
 
             array![
                 ServerAction::VerifyValue(
@@ -316,9 +317,9 @@ pub mod Privacy {
             );
             let subchannel_key = compute_subchannel_key(:channel_key, :index);
             let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :token, :random);
-            assert(subchannel_id.is_non_zero(), errors::ZERO_SUBCHANNEL_ID);
-            assert(subchannel_key.is_non_zero(), errors::ZERO_SUBCHANNEL_KEY);
-            assert(enc_subchannel_info.is_non_zero(), errors::ZERO_ENC_SUBCHANNEL_TOKEN);
+            assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
+            assert(subchannel_key.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_KEY);
+            assert(enc_subchannel_info.is_non_zero(), internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN);
 
             array![
                 ServerAction::WriteIfZero(
@@ -391,7 +392,7 @@ pub mod Privacy {
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
 
-            assert(nullifier.is_non_zero(), errors::ZERO_NULLIFIER);
+            assert(nullifier.is_non_zero(), internal_errors::ZERO_NULLIFIER);
 
             // Return nullifier, and amount.
             (nullifier, note_amount)
@@ -471,8 +472,8 @@ pub mod Privacy {
             let note_id = compute_note_id(:channel_key, :token, :index);
             let enc_amount = encrypt_note_amount(:channel_key, :index, amount: note.amount);
 
-            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
-            assert(enc_amount.is_non_zero(), errors::ZERO_ENC_NOTE_VALUE);
+            assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
+            assert(enc_amount.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
 
             EncNote { id: note_id, enc_amount }
         }
