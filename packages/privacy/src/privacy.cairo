@@ -144,41 +144,47 @@ pub mod Privacy {
             // TODO: Consider asserting that `client_actions` is not empty.
             let mut server_actions: Array<ServerAction> = array![];
             for client_action in client_actions {
-                let server_action_batch: Array<ServerAction> = match *client_action {
+                match *client_action {
                     ClientAction::Register(user_public_key) => {
-                        self.register(:user_addr, :user_public_key)
+                        server_actions.append(self.register(:user_addr, :user_public_key));
                     },
                     ClientAction::ReplacePublicKey(user_public_key) => {
-                        self.replace_public_key(:user_addr, :user_public_key)
+                        server_actions
+                            .append(self.replace_public_key(:user_addr, :user_public_key));
                     },
                     ClientAction::OpenChannel((
                         user_private_key, recipient_addr, recipient_public_key, random,
                     )) => {
-                        self
-                            .open_channel(
-                                sender_addr: user_addr,
-                                sender_private_key: user_private_key,
-                                :recipient_addr,
-                                :recipient_public_key,
-                                :random,
-                            )
+                        server_actions
+                            .extend(
+                                self
+                                    .open_channel(
+                                        sender_addr: user_addr,
+                                        sender_private_key: user_private_key,
+                                        :recipient_addr,
+                                        :recipient_public_key,
+                                        :random,
+                                    ),
+                            );
                     },
                     ClientAction::OpenSubchannel((
                         recipient_addr, recipient_public_key, channel_key, index, token, random,
                     )) => {
-                        self
-                            .open_subchannel(
-                                sender_addr: user_addr,
-                                :recipient_addr,
-                                :recipient_public_key,
-                                :channel_key,
-                                :index,
-                                :token,
-                                :random,
-                            )
+                        server_actions
+                            .extend(
+                                self
+                                    .open_subchannel(
+                                        sender_addr: user_addr,
+                                        :recipient_addr,
+                                        :recipient_public_key,
+                                        :channel_key,
+                                        :index,
+                                        :token,
+                                        :random,
+                                    ),
+                            );
                     },
-                };
-                server_actions.extend(server_action_batch);
+                }
             }
             server_actions.span()
         }
@@ -189,30 +195,22 @@ pub mod Privacy {
         /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
         fn register(
             self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
-        ) -> Array<ServerAction> {
+        ) -> ServerAction {
             // TODO: Add compliance.
             assert(user_public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
 
-            array![
-                ServerAction::WriteIfZero(
-                    (self.public_key.entry(user_addr).into(), user_public_key),
-                ),
-            ]
+            ServerAction::WriteIfZero((self.public_key.entry(user_addr).into(), user_public_key))
         }
 
         /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
         fn replace_public_key(
             self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
-        ) -> Array<ServerAction> {
+        ) -> ServerAction {
             // TODO: Add compliance.
             // TODO: Enforce cooldown between key replacements? (track last update time).
             assert(user_public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
 
-            array![
-                ServerAction::WriteIfNonZero(
-                    (self.public_key.entry(user_addr).into(), user_public_key),
-                ),
-            ]
+            ServerAction::WriteIfNonZero((self.public_key.entry(user_addr).into(), user_public_key))
         }
 
         /// `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
@@ -227,6 +225,7 @@ pub mod Privacy {
             // TODO: Consider generate random instead of passing it as an argument.
             assert(sender_private_key.is_non_zero(), errors::ZERO_SENDER_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
 
             // TODO: Verify sender signature on TX.
@@ -240,13 +239,6 @@ pub mod Privacy {
             assert(
                 sender_public_key == derive_public_key(private_key: sender_private_key),
                 errors::SENDER_NOT_AUTHENTICATED,
-            );
-
-            // TODO: Consider removing this check after we check public key in the server.
-            // Assert recipient is registered.
-            assert(
-                self.get_public_key(user_addr: recipient_addr).is_non_zero(),
-                errors::RECIPIENT_NOT_REGISTERED,
             );
 
             // Compute the output values.
