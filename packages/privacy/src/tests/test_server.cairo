@@ -188,7 +188,13 @@ fn test_get_enc_private_keys_history() {
     let random = user.register_e2e();
     let expected_enc_private_key = user.compute_enc_private_key(:random);
     assert_eq!(user.get_enc_private_keys_history(), [expected_enc_private_key].span());
-    // TODO: Test again after replacing the key.
+    user.new_key();
+    let random = user.replace_key_e2e();
+    let expected_enc_private_key_2 = user.compute_enc_private_key(:random);
+    assert_eq!(
+        user.get_enc_private_keys_history(),
+        [expected_enc_private_key, expected_enc_private_key_2].span(),
+    );
 }
 
 #[test]

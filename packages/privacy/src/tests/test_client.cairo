@@ -1773,7 +1773,7 @@ fn test_use_note_wrong_owner_private_key() {
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let note_path = NotePath { channel_key, token, note_index };
     user_2.replace_private_key(private_key: test.new_private_key());
-    user_2.replace_public_key_e2e();
+    user_2.replace_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     user_2.use_note(note: note_path);
 }
@@ -2070,7 +2070,7 @@ fn test_withdraw_assertions() {
     // Catch INVALID_SUBCHANNEL (wrong private key).
     let mut user_2_wrong_private_key = user_2;
     user_2_wrong_private_key.replace_private_key(private_key: test.new_user().private_key);
-    user_2_wrong_private_key.replace_public_key_e2e();
+    user_2_wrong_private_key.replace_key_e2e();
     user_1.open_channel_e2e(recipient: user_2_wrong_private_key);
     let result = user_2_wrong_private_key
         .safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
@@ -2108,7 +2108,7 @@ fn test_withdraw_assertions() {
 }
 
 #[test]
-fn test_replace_public_key() {
+fn test_replace_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let original_public_key = user.public_key;
@@ -2119,58 +2119,99 @@ fn test_replace_public_key() {
 
     // Replace the public key.
     user.new_key();
-    let actions = user.replace_public_key();
+    let (random, actions) = user.replace_key_with_generated_random();
     let storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
-    let expected_actions = [ServerAction::WriteIfNonZero((storage_path_felt, user.public_key))]
+    let expected_enc_private_key = user.compute_enc_private_key(:random);
+    let expected_actions = [
+        ServerAction::WriteIfNonZero((storage_path_felt, user.public_key)),
+        ServerAction::AppendToVecPrivateKey((user.address, expected_enc_private_key)),
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 }
 
 #[test]
-fn test_replace_public_key_sanity() {
+fn test_replace_key_sanity() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
+    let original_private_key = user.private_key;
     let original_public_key = user.public_key;
 
     // Register the user first.
-    user.register_e2e();
+    let random = user.register_e2e();
     assert_eq!(user.get_public_key(), original_public_key);
+    let enc_private_key_1 = user.compute_enc_private_key(:random);
+    assert_eq!(user.get_enc_private_keys_history(), [enc_private_key_1].span());
 
     // Replace the public key first time.
     user.new_key();
-    user.replace_public_key_e2e();
+    let random = user.replace_key_e2e();
+    let enc_private_key_2 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_public_key(), user.public_key);
+    assert_eq!(user.get_enc_private_keys_history(), [enc_private_key_1, enc_private_key_2].span());
 
     // Replace the public key second time.
     user.new_key();
-    user.replace_public_key_e2e();
+    let random = user.replace_key_e2e();
+    let enc_private_key_3 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_public_key(), user.public_key);
+    assert_eq!(
+        user.get_enc_private_keys_history(),
+        [enc_private_key_1, enc_private_key_2, enc_private_key_3].span(),
+    );
 
     // Replace back to original public key.
-    user.public_key = original_public_key;
-    user.replace_public_key_e2e();
+    user.private_key = original_private_key;
+    let random = user.replace_key_e2e();
+    let enc_private_key_4 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_public_key(), original_public_key);
+    assert_eq!(
+        user.get_enc_private_keys_history(),
+        [enc_private_key_1, enc_private_key_2, enc_private_key_3, enc_private_key_4].span(),
+    );
 }
 
 #[test]
-fn test_replace_public_key_same_key() {
+fn test_replace_key_same_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let original_public_key = user.public_key;
 
     // Register the user first.
-    user.register_e2e();
+    let register_random = user.register_e2e();
     assert_eq!(user.get_public_key(), original_public_key);
+    let enc_private_key_1 = user.compute_enc_private_key(random: register_random);
+    assert_eq!(user.get_enc_private_keys_history(), [enc_private_key_1].span());
 
-    // Replace with the same public key.
-    user.replace_public_key_e2e();
+    // Replace with the same key.
+    let random = user.replace_key_e2e();
+    let enc_private_key_2 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_public_key(), original_public_key);
+    assert_eq!(user.get_enc_private_keys_history(), [enc_private_key_1, enc_private_key_2].span());
+
+    // Replace with the same key and same random.
+    let actions = user.replace_key(:random);
+    user.privacy.execute_actions(:actions);
+    assert_eq!(user.get_public_key(), original_public_key);
+    assert_eq!(
+        user.get_enc_private_keys_history(),
+        [enc_private_key_1, enc_private_key_2, enc_private_key_2].span(),
+    );
+
+    // Replace with the same key and same random from registeration.
+    let actions = user.replace_key(random: register_random);
+    user.privacy.execute_actions(:actions);
+    assert_eq!(user.get_public_key(), original_public_key);
+    assert_eq!(
+        user.get_enc_private_keys_history(),
+        [enc_private_key_1, enc_private_key_2, enc_private_key_2, enc_private_key_1].span(),
+    );
 }
 
 #[test]
-fn test_replace_public_key_to_other_user_key() {
+fn test_replace_key_to_other_user_key() {
     let mut test: Test = Default::default();
     let mut user1 = test.new_user();
     let mut user2 = test.new_user();
@@ -2186,8 +2227,8 @@ fn test_replace_public_key_to_other_user_key() {
     assert_eq!(user2.get_public_key(), user2_public_key);
 
     // User1 replaces their public key to user2's public key.
-    user1.public_key = user2_public_key;
-    user1.replace_public_key_e2e();
+    user1.private_key = user2.private_key;
+    user1.replace_key_e2e();
 
     // Verify user1 now has user2's public key.
     assert_eq!(user1.get_public_key(), user2_public_key);
@@ -2197,21 +2238,44 @@ fn test_replace_public_key_to_other_user_key() {
 
 #[test]
 #[feature("safe_dispatcher")]
-fn test_replace_public_key_assertions() {
+fn test_replace_key_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
+    let random = user.get_random();
 
-    // Catch ZERO_PUBLIC_KEY.
-    let mut user_zero_public_key = user;
-    user_zero_public_key.public_key = Zero::zero();
-    let result = user_zero_public_key.safe_replace_public_key();
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
+    // Catch ZERO_PRIVATE_KEY.
+    let mut user_zero_private_key = user;
+    user_zero_private_key.private_key = Zero::zero();
+    let result = user_zero_private_key.safe_replace_key(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+
+    // Catch ZERO_RANDOM.
+    let result = user.safe_replace_key(random: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
-    let result = user_zero_addr.safe_replace_public_key();
+    let result = user_zero_addr.safe_replace_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+}
+
+#[test]
+fn test_replace_key_decrypt_private_key() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    user.register_e2e();
+    user.new_key();
+    user.replace_key_e2e();
+
+    // Compliance should be able to decrypt the private key.
+    let enc_private_keys_history = user.get_enc_private_keys_history();
+    assert!(enc_private_keys_history.len() == 2);
+    let enc_private_key = *enc_private_keys_history[1];
+    let decrypted_private_key = decrypt_private_key(
+        :enc_private_key, compliance_private_key: test.compliance_private_key,
+    );
+    assert_eq!(decrypted_private_key, user.private_key);
 }
 
 // TODO: Consider splitting to test per action.
@@ -2246,9 +2310,12 @@ fn test_compile_client_actions() {
     // Replace public key action.
     let actions = user_1
         .compile_client_actions(
-            client_actions: [ClientAction::ReplacePublicKey(user_1.public_key)].span(),
+            client_actions: [ClientAction::ReplaceKey((user_1.private_key, random))].span(),
         );
-    let expected_actions = [ServerAction::WriteIfNonZero((storage_path_felt, user_1.public_key))]
+    let expected_actions = [
+        ServerAction::WriteIfNonZero((storage_path_felt, user_1.public_key)),
+        ServerAction::AppendToVecPrivateKey((user_1.address, enc_private_key)),
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 

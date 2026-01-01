@@ -120,9 +120,10 @@ pub enum ClientAction {
     /// The random is used to encrypt the private key.
     /// (user_private_key: felt252, random: felt252)
     Register: (felt252, felt252),
-    /// Replace the user's public key with a new value.
-    /// (user_public_key: felt252)
-    ReplacePublicKey: felt252,
+    // TODO: Rename user_private_key to private_key here.
+    /// Replace the user's viewing key with a new key.
+    /// (user_private_key: felt252, random: felt252)
+    ReplaceKey: (felt252, felt252),
     /// Open a new channel from the user to a recipient.
     /// (user_private_key: felt252, recipient_addr: ContractAddress, recipient_public_key: felt252,
     /// random: felt252)
