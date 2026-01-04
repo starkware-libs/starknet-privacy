@@ -18,15 +18,6 @@ export const open: Open = { __marker: "open" };
 export type Self = { readonly __marker: "self" };
 export const self: Self = { __marker: "self" };
 
-type BlobT = string | Uint8Array;
-
-export type Blob<B extends BlobT> = B & { readonly __blob: unique symbol };
-
-export type Serde<T, B extends BlobT> = {
-  encode(from: T): Blob<B>;
-  decode(from: Blob<B>): T;
-};
-
 /**
  * Union that allows both the concrete Account class as well as the lighter AccountInterface.
  */
@@ -34,13 +25,9 @@ export type ViewingKey = BigNumberish;
 
 export type StarknetAddress = BigNumberish;
 
-/** Base class for witness objects. Provides nominal typing. */
-export abstract class Witness {
-  /** @internal */
-  protected readonly _witnessMarker = undefined;
-}
-
-export type WitnessSerde<B extends BlobT = string> = Serde<Witness, B>;
+// Import and re-export Witness class from internal.ts
+import { Witness, Channel } from "./internal.js";
+export { Witness, Channel };
 
 export type Note = {
   readonly id: Note.Id;
@@ -82,14 +69,6 @@ export type PrivateTransfersConfig = {
   discoveryProvider: DiscoveryProviderInterface;
   pool: StarknetAddress;
 };
-
-/** Base class for channel objects. Provides nominal typing. */
-export abstract class Channel {
-  /** @internal */
-  protected readonly _channelMarker = undefined;
-}
-
-export type ChannelSerde<B extends BlobT = string> = Serde<Channel, B>;
 
 export type PrivacyState = {
   timestamp: BlockIdentifier;
@@ -394,3 +373,14 @@ export interface DiscoveryProviderInterface {
 
   globalViewingKey(): ViewingKey;
 }
+
+type BlobT = string | Uint8Array;
+
+export type Blob<B extends BlobT> = B & { readonly __blob: unique symbol };
+
+export type Serde<T, B extends BlobT> = {
+  encode(from: T): Blob<B>;
+  decode(from: Blob<B>): T;
+};
+export type WitnessSerde<B extends BlobT = string> = Serde<Witness, B>;
+export type ChannelSerde<B extends BlobT = string> = Serde<Channel, B>;

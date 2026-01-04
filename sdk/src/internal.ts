@@ -1,12 +1,7 @@
 import { BlockNumber } from "starknet";
-import {
-  Blob,
-  Channel,
-  ChannelSerde,
-  StarknetAddress,
-  Witness,
-  WitnessSerde,
-} from "./interfaces.js";
+
+// Import types only to avoid circular dependency (classes are defined here and re-exported from interfaces.ts)
+import type { Blob, ChannelSerde, StarknetAddress, WitnessSerde } from "./interfaces.js";
 
 /** Type guard for non-negative integers */
 function isUint(value: unknown): value is number {
@@ -78,24 +73,26 @@ export { Nonce };
 
 type ChannelKey = bigint;
 
-export class InternalChannel extends Channel {
-  constructor(
-    readonly key: ChannelKey,
-    readonly nonces: ChannelNonce[], // for new tokens. array of nonces (per slot) that have been used for the channel.
-    readonly tokens: Map<StarknetAddress, TokenNonce[]> // for new notes. array of nonces (per slot) for each token.
-  ) {
-    super();
+/** Channel containing nonces for token and note creation. */
+export class Channel {
+  /** @internal */ readonly key: ChannelKey;
+  /** @internal */ readonly nonces: ChannelNonce[];
+  /** @internal */ readonly tokens: Map<StarknetAddress, TokenNonce[]>;
+
+  constructor(key: ChannelKey, nonces: ChannelNonce[], tokens: Map<StarknetAddress, TokenNonce[]>) {
+    this.key = key;
+    this.nonces = nonces;
+    this.tokens = tokens;
   }
 }
 
 export const channelSerde: ChannelSerde = {
   encode(channel) {
-    const internal = channel as InternalChannel;
     const json = JSON.stringify({
       v: 1,
-      key: internal.key.toString(),
-      nonces: internal.nonces,
-      tokens: Array.from(internal.tokens.entries()),
+      key: channel.key.toString(),
+      nonces: channel.nonces,
+      tokens: Array.from(channel.tokens.entries()),
     });
     return json as Blob<string>;
   },
@@ -109,26 +106,27 @@ export const channelSerde: ChannelSerde = {
     const decodedNonces = assertNonces(nonces);
     const decodedTokens = assertTokenEntries(tokens);
 
-    return new InternalChannel(decodedKey, decodedNonces, decodedTokens);
+    return new Channel(decodedKey, decodedNonces, decodedTokens);
   },
 };
 
-export class InternalWitness extends Witness {
-  constructor(
-    readonly channelKey: ChannelKey,
-    readonly nonce: TokenNonce
-  ) {
-    super();
+/** Witness for a note, containing channel key and nonce. */
+export class Witness {
+  /** @internal */ readonly channelKey: ChannelKey;
+  /** @internal */ readonly nonce: TokenNonce;
+
+  constructor(channelKey: ChannelKey, nonce: TokenNonce) {
+    this.channelKey = channelKey;
+    this.nonce = nonce;
   }
 }
 
 export const witnessSerde: WitnessSerde = {
-  encode(ctx) {
-    const internal = ctx as InternalWitness;
+  encode(witness) {
     const json = JSON.stringify({
       v: 1,
-      channelKey: internal.channelKey.toString(),
-      nonce: internal.nonce,
+      channelKey: witness.channelKey.toString(),
+      nonce: witness.nonce,
     });
     return json as Blob<string>;
   },
@@ -141,7 +139,7 @@ export const witnessSerde: WitnessSerde = {
     const decodedChannelKey = assertChannelKey(channelKey);
     const decodedNonce = assertChannelNonce(nonce);
 
-    return new InternalWitness(decodedChannelKey, decodedNonce);
+    return new Witness(decodedChannelKey, decodedNonce);
   },
 };
 

@@ -5,13 +5,13 @@ import {
   ChannelNonce,
   TokenNonce,
   Nonce,
-  InternalChannel,
-  InternalWitness,
+  Channel,
+  Witness,
 } from "../src/internal.js";
 
 describe("channelSerde", () => {
   it("encodes and decodes a channel round-trip", () => {
-    const original = new InternalChannel(
+    const original = new Channel(
       12345n,
       [new ChannelNonce(0, 1), new ChannelNonce(1, 2)],
       new Map([
@@ -34,7 +34,7 @@ describe("channelSerde", () => {
 
 describe("witnessSerde", () => {
   it("encodes and decodes a witness round-trip", () => {
-    const original = new InternalWitness(42n, new TokenNonce(3, 7));
+    const original = new Witness(42n, new TokenNonce(3, 7));
 
     const decoded = witnessSerde.decode(witnessSerde.encode(original));
 
