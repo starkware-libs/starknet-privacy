@@ -70,16 +70,6 @@ export type PrivateTransfersConfig = {
   pool: StarknetAddress;
 };
 
-export type PrivacyState = {
-  timestamp: BlockIdentifier;
-
-  // token -> notes
-  notes: Map<StarknetAddress, Note[]>;
-
-  // recipient -> channel
-  recipients: Map<StarknetAddress, Channel>;
-};
-
 export interface PrivateRecipient {
   address: StarknetAddress;
   context: Channel | Note.Id; // note id is for semi-transparent (preprepared) notes.
@@ -204,19 +194,21 @@ export interface PrivateTransfers {
   build(): PrivateTransfersBuilder;
 
   /**
-   * Discover unspent notes per token and recipient states
+   * Discover unspent notes per token
    *
-   * @recipient discover a specific recipient's state
    */
-  discover({
-    since,
-    known,
-    recipient,
-  }: {
-    since?: BlockIdentifier;
-    known?: PrivacyState;
-    recipient?: StarknetAddress;
-  }): Promise<PrivacyState>;
+  discoverNotes(params: { since?: BlockIdentifier; known?: Map<StarknetAddress, Note[]> }): {
+    timestamp: BlockIdentifier;
+    notes: Map<StarknetAddress, Note[]>;
+  };
+
+  /**
+   * Discover channels for one or more recipients
+   */
+  discoverChannels(...recipients: (StarknetAddress | PrivateRecipient)[]): {
+    timestamp: BlockIdentifier;
+    channels: Map<StarknetAddress, Channel>;
+  };
 }
 
 // ============ Builder Types ============
@@ -355,22 +347,33 @@ export interface ProofProviderInterface {
 
 export interface DiscoveryProviderInterface {
   /**
-   * Discover currently owned notes and state of past recipients.
+   * Discover unspent notes per token
+   *
    */
-  discover(
+  discoverNotes(
     address: StarknetAddress,
     viewingKey: ViewingKey,
-    {
-      since,
-      known,
-      recipient,
-    }: {
-      since?: BlockIdentifier;
-      known?: PrivacyState;
-      recipient?: StarknetAddress;
-    }
-  ): Promise<PrivacyState>;
+    params: { since?: BlockIdentifier; known?: Map<StarknetAddress, Note[]> }
+  ): {
+    timestamp: BlockIdentifier;
+    notes: Map<StarknetAddress, Note[]>;
+  };
 
+  /**
+   * Discover channels for one or more recipients
+   */
+  discoverChannels(
+    address: StarknetAddress,
+    viewingKey: ViewingKey,
+    ...recipients: (StarknetAddress | PrivateRecipient)[]
+  ): {
+    timestamp: BlockIdentifier;
+    channels: Map<StarknetAddress, Channel>;
+  };
+
+  /**
+   * Viewing key of the compliance council for registration
+   */
   globalViewingKey(): ViewingKey;
 }
 
