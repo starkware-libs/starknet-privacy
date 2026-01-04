@@ -15,14 +15,12 @@ use privacy::interface::{
 use privacy::objects::{
     ClientAction, EncChannelInfo, EncSubchannelInfo, NewNote, NotePath, ServerAction,
 };
-use privacy::privacy::Privacy;
-use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
+use privacy::privacy::Privacy::deploy_for_test as deploy_privacy_for_test;
 use privacy::utils::{
     derive_public_key, encrypt_note_amount, encrypt_subchannel_info, is_canonical_key,
 };
 use snforge_std::{
-    CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state,
-    map_entry_address, set_balance,
+    CustomToken, DeclareResultTrait, Token, TokenTrait, declare, map_entry_address, set_balance,
 };
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
@@ -102,58 +100,48 @@ pub(crate) impl UserImpl of UserTrait {
     fn transfer(
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
     ) -> Span<ServerAction> {
-        self
-            .privacy
-            .client
-            .transfer(
-                owner_addr: *self.address,
-                owner_private_key: *self.private_key,
-                :notes_to_use,
-                :notes_to_create,
-            )
+        let mut client_actions: Array<ClientAction> = array![];
+        for note in notes_to_use {
+            client_actions.append(ClientAction::UseNote((*self.private_key, *note)));
+        }
+        for note in notes_to_create {
+            client_actions.append(ClientAction::CreateNote((*self.private_key, *note)));
+        }
+
+        self.compile_client_actions(client_actions: client_actions.span())
     }
 
     #[feature("safe_dispatcher")]
     fn safe_transfer(
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self
-            .privacy
-            .safe_client
-            .transfer(
-                owner_addr: *self.address,
-                owner_private_key: *self.private_key,
-                :notes_to_use,
-                :notes_to_create,
-            )
+        let mut client_actions: Array<ClientAction> = array![];
+        for note in notes_to_use {
+            client_actions.append(ClientAction::UseNote((*self.private_key, *note)));
+        }
+        for note in notes_to_create {
+            client_actions.append(ClientAction::CreateNote((*self.private_key, *note)));
+        }
+
+        self.safe_compile_client_actions(client_actions: client_actions.span())
     }
 
     fn withdraw(
-        self: @User, withdrawal_target: ContractAddress, note_to_withdraw: NotePath,
+        self: @User, withdrawal_target: ContractAddress, token: ContractAddress, amount: u128,
     ) -> Span<ServerAction> {
         self
-            .privacy
-            .client
-            .withdraw(
-                owner_addr: *self.address,
-                owner_private_key: *self.private_key,
-                :withdrawal_target,
-                :note_to_withdraw,
+            .compile_client_actions(
+                client_actions: [ClientAction::Withdraw((withdrawal_target, token, amount))].span(),
             )
     }
 
     #[feature("safe_dispatcher")]
     fn safe_withdraw(
-        self: @User, withdrawal_target: ContractAddress, note_to_withdraw: NotePath,
+        self: @User, withdrawal_target: ContractAddress, token: ContractAddress, amount: u128,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self
-            .privacy
-            .safe_client
-            .withdraw(
-                owner_addr: *self.address,
-                owner_private_key: *self.private_key,
-                :withdrawal_target,
-                :note_to_withdraw,
+            .safe_compile_client_actions(
+                client_actions: [ClientAction::Withdraw((withdrawal_target, token, amount))].span(),
             )
     }
 
@@ -370,17 +358,11 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     /// Internal function to use a note in the client side.
-    fn use_note(self: @User, note: NotePath) -> (felt252, u128) {
-        interact_with_state(
-            *self.privacy.address,
-            || {
-                let mut state = Privacy::contract_state_for_testing();
-                state
-                    .use_note(
-                        owner_addr: *self.address, owner_private_key: *self.private_key, :note,
-                    )
-            },
-        )
+    fn use_note(self: @User, note: NotePath) -> Span<ServerAction> {
+        self
+            .compile_client_actions(
+                client_actions: [ClientAction::UseNote((*self.private_key, note))].span(),
+            )
     }
 
     fn compute_nullifier(

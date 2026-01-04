@@ -56,65 +56,6 @@ pub mod Privacy {
     // TODO: Use direct storage access instead of using views.
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
-        fn transfer(
-            self: @ContractState,
-            owner_addr: ContractAddress,
-            owner_private_key: felt252,
-            notes_to_use: Span<NotePath>,
-            notes_to_create: Span<NewNote>,
-        ) -> Span<ServerAction> {
-            assert(owner_addr.is_non_zero(), errors::ZERO_OWNER_ADDR);
-            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
-            assert(!notes_to_use.is_empty(), errors::NO_NOTES_TO_USE);
-            assert(!notes_to_create.is_empty(), errors::NO_NOTES_TO_CREATE);
-
-            // TODO: Assert owner_private_key is canonical.
-
-            // TODO: Verify owner signature on TX.
-
-            let mut actions: Array<ServerAction> = array![];
-            let consumed_sum = self
-                .use_notes(ref :actions, :owner_addr, :owner_private_key, :notes_to_use);
-            assert(actions.len() == notes_to_use.len(), internal_errors::ACTIONS_LENGTH_MISMATCH);
-            let created_sum = self
-                .create_notes(ref :actions, :owner_addr, :owner_private_key, :notes_to_create);
-            assert(
-                actions.len() == notes_to_use.len() + notes_to_create.len(),
-                internal_errors::ACTIONS_LENGTH_MISMATCH,
-            );
-
-            // TODO: Verify sums per token. (Now tokens are not verified at all.)
-            assert(consumed_sum == created_sum.into(), errors::NOTE_SUM_MISMATCH);
-
-            actions.span()
-        }
-
-        fn withdraw(
-            self: @ContractState,
-            owner_addr: ContractAddress,
-            owner_private_key: felt252,
-            withdrawal_target: ContractAddress,
-            note_to_withdraw: NotePath,
-        ) -> Span<ServerAction> {
-            // Assert valid input.
-            assert(owner_addr.is_non_zero(), errors::ZERO_OWNER_ADDR);
-            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
-            assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
-
-            // TODO: Assert owner_private_key is canonical.
-
-            // TODO: Verify owner signature on TX.
-
-            let (nullifier, amount) = self
-                .use_note(:owner_addr, :owner_private_key, note: note_to_withdraw);
-
-            [
-                ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into())),
-                ServerAction::TransferTo((withdrawal_target, note_to_withdraw.token, amount)),
-            ]
-                .span()
-        }
-
         fn compile_client_actions(
             self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) -> Span<ServerAction> {
@@ -179,7 +120,25 @@ pub mod Privacy {
                     ClientAction::Deposit((
                         token, amount,
                     )) => { server_actions.append(self.deposit(:user_addr, :token, :amount)); },
-                }
+                    ClientAction::UseNote((
+                        user_private_key, note_to_withdraw,
+                    )) => {
+                        server_actions
+                            .append(
+                                self
+                                    .use_note(
+                                        owner_addr: user_addr,
+                                        owner_private_key: user_private_key,
+                                        note: note_to_withdraw,
+                                    ),
+                            );
+                    },
+                    ClientAction::Withdraw((
+                        withdrawal_target, token, amount,
+                    )) => {
+                        server_actions.append(self.withdraw(:withdrawal_target, :token, :amount));
+                    },
+                };
             }
             server_actions.span()
         }
@@ -328,38 +287,30 @@ pub mod Privacy {
             ServerAction::TransferFrom((user_addr, token, amount))
         }
 
-        /// Returns the sum of the amounts of the notes to use.
-        fn use_notes(
+        fn withdraw(
             self: @ContractState,
-            ref actions: Array<ServerAction>,
-            owner_addr: ContractAddress,
-            owner_private_key: felt252,
-            notes_to_use: Span<NotePath>,
-        ) -> u256 {
-            // TODO: Verify sums per token. (Now tokens are not verified at all.)
-            let mut sum: u256 = Zero::zero();
-            for note in notes_to_use {
-                let (nullifier, amount) = self
-                    .use_note(:owner_addr, :owner_private_key, note: *note);
-                actions
-                    .append(
-                        ServerAction::WriteIfZero(
-                            (self.nullifiers.entry(nullifier).into(), true.into()),
-                        ),
-                    );
-                sum += amount.into();
-            }
-            sum
+            withdrawal_target: ContractAddress,
+            token: ContractAddress,
+            amount: u128,
+        ) -> ServerAction {
+            // Assert valid input.
+            assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+
+            // TODO: Keep track of token balances.
+
+            ServerAction::TransferTo((withdrawal_target, token, amount))
         }
 
-        /// Returns (nullifier, amount).
+        /// Returns the server action to use a note.
         /// Assumes `owner_private_key` is canonical.
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             note: NotePath,
-        ) -> (felt252, u128) {
+        ) -> ServerAction {
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(note.channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
@@ -383,36 +334,16 @@ pub mod Privacy {
             assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             // Decrypt note amount.
-            let note_amount = decrypt_note_amount(:enc_note_value, :channel_key);
+            let _note_amount = decrypt_note_amount(:enc_note_value, :channel_key);
             // TODO: Sanity assert amount is non zero?
+            // TODO: Keep track of token balances.
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
 
             assert(nullifier.is_non_zero(), internal_errors::ZERO_NULLIFIER);
 
-            // Return nullifier, and amount.
-            (nullifier, note_amount)
-        }
-
-        /// Returns the sum of the amounts of the notes to create.
-        // TODO: Remove with `transfer` function.
-        fn create_notes(
-            self: @ContractState,
-            ref actions: Array<ServerAction>,
-            owner_addr: ContractAddress,
-            owner_private_key: felt252,
-            notes_to_create: Span<NewNote>,
-        ) -> u128 {
-            let mut sum: u128 = Zero::zero();
-            for note in notes_to_create {
-                let create_note_action = self
-                    .create_note(:owner_addr, :owner_private_key, note: *note);
-                actions.append(create_note_action);
-                sum += *note.amount;
-                // TODO: Assert amount per token.
-            }
-            sum
+            ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into()))
         }
 
         /// Returns the server action to create a note.
