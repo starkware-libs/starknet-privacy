@@ -13,14 +13,16 @@ use privacy::interface::{
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
-    ClientAction, EncChannelInfo, EncSubchannelInfo, NewNote, NotePath, ServerAction,
+    ClientAction, EncChannelInfo, EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances,
 };
-use privacy::privacy::Privacy::deploy_for_test as deploy_privacy_for_test;
+use privacy::privacy::Privacy;
+use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::utils::{
     derive_public_key, encrypt_note_amount, encrypt_subchannel_info, is_canonical_key,
 };
 use snforge_std::{
-    CustomToken, DeclareResultTrait, Token, TokenTrait, declare, map_entry_address, set_balance,
+    CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state,
+    map_entry_address, set_balance,
 };
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
@@ -133,6 +135,22 @@ pub(crate) impl UserImpl of UserTrait {
             .compile_client_actions(
                 client_actions: [ClientAction::Withdraw((withdrawal_target, token, amount))].span(),
             )
+    }
+
+    fn internal_withdraw(
+        self: @User, withdrawal_target: ContractAddress, token: ContractAddress, amount: u128,
+    ) -> Span<ServerAction> {
+        [
+            interact_with_state(
+                *self.privacy.address,
+                || {
+                    let mut state = Privacy::contract_state_for_testing();
+                    let mut token_balances: TokenBalances = Default::default();
+                    state.withdraw(:withdrawal_target, :token, :amount, ref :token_balances)
+                },
+            )
+        ]
+            .span()
     }
 
     #[feature("safe_dispatcher")]
@@ -300,8 +318,28 @@ pub(crate) impl UserImpl of UserTrait {
         self.compile_client_actions([ClientAction::CreateNote((*self.private_key, note)),].span())
     }
 
+    fn internal_create_note(self: @User, note: NewNote) -> Span<ServerAction> {
+        [
+            interact_with_state(
+                *self.privacy.address,
+                || {
+                    let mut state = Privacy::contract_state_for_testing();
+                    let mut token_balances: TokenBalances = Default::default();
+                    state
+                        .create_note(
+                            owner_addr: *self.address,
+                            owner_private_key: *self.private_key,
+                            :note,
+                            ref :token_balances,
+                        )
+                },
+            )
+        ]
+            .span()
+    }
+
     fn cheat_create_note_e2e(self: @User, note: NewNote) {
-        self.privacy.server.execute_actions(actions: self.create_note(:note));
+        self.privacy.server.execute_actions(actions: self.internal_create_note(:note));
     }
 
     fn compute_channel_key(self: @User, recipient: User) -> felt252 {
@@ -365,6 +403,26 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
+    fn internal_use_note(self: @User, note: NotePath) -> Span<ServerAction> {
+        [
+            interact_with_state(
+                *self.privacy.address,
+                || {
+                    let mut state = Privacy::contract_state_for_testing();
+                    let mut token_balances: TokenBalances = Default::default();
+                    state
+                        .use_note(
+                            owner_addr: *self.address,
+                            owner_private_key: *self.private_key,
+                            :note,
+                            ref :token_balances,
+                        )
+                },
+            )
+        ]
+            .span()
+    }
+
     fn compute_nullifier(
         self: @User, sender: User, token: ContractAddress, note_index: usize,
     ) -> felt252 {
@@ -403,6 +461,20 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn deposit(self: @User, token: ContractAddress, amount: u128) -> Span<ServerAction> {
         self.compile_client_actions([ClientAction::Deposit((token, amount)),].span())
+    }
+
+    fn internal_deposit(self: @User, token: ContractAddress, amount: u128) -> Span<ServerAction> {
+        [
+            interact_with_state(
+                *self.privacy.address,
+                || {
+                    let mut state = Privacy::contract_state_for_testing();
+                    let mut token_balances: TokenBalances = Default::default();
+                    state.deposit(user_addr: *self.address, :token, :amount, ref :token_balances)
+                },
+            )
+        ]
+            .span()
     }
 
     #[feature("safe_dispatcher")]
