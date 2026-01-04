@@ -2,7 +2,7 @@ use core::num::traits::Zero;
 use privacy::errors;
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
 use privacy::objects::{ClientAction, NewNote, NotePath, ServerAction};
-use privacy::tests::test_utils::{
+use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info, decrypt_subchannel_token,
 };
 use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
