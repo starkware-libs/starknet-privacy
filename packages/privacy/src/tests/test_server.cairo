@@ -1,7 +1,7 @@
 use core::num::traits::Zero;
 use privacy::errors;
 use privacy::objects::ServerAction;
-use privacy::tests::test_utils::{
+use privacy::tests::test_common::{
     PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
 };
 use snforge_std::{TokenTrait, map_entry_address};
