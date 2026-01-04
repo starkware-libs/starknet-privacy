@@ -5,16 +5,18 @@ pub mod Privacy {
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::errors;
     use privacy::errors::internal_errors;
+    use privacy::hashes::{
+        compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
+        compute_subchannel_id, compute_subchannel_key,
+    };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
         ClientAction, EncChannelInfo, EncChannelInfoTrait, EncNote, EncSubchannelInfo, NewNote,
         NotePath, ServerAction,
     };
     use privacy::utils::{
-        StoragePathIntoFelt, compute_channel_id, compute_channel_key, compute_note_id,
-        compute_nullifier, compute_subchannel_id, compute_subchannel_key, decrypt_note_amount,
-        derive_public_key, encrypt_channel_info, encrypt_note_amount, encrypt_subchannel_info,
-        is_canonical_key,
+        StoragePathIntoFelt, decrypt_note_amount, derive_public_key, encrypt_channel_info,
+        encrypt_note_amount, encrypt_subchannel_info, is_canonical_key,
     };
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
