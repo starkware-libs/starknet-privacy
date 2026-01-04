@@ -187,7 +187,7 @@ pub mod Privacy {
 
     #[generate_trait]
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
-        /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
         fn register(
             self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
         ) -> ServerAction {
@@ -197,7 +197,7 @@ pub mod Privacy {
             ServerAction::WriteIfZero((self.public_key.entry(user_addr).into(), user_public_key))
         }
 
-        /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
         fn replace_public_key(
             self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
         ) -> ServerAction {
@@ -208,7 +208,7 @@ pub mod Privacy {
             ServerAction::WriteIfNonZero((self.public_key.entry(user_addr).into(), user_public_key))
         }
 
-        /// `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
         fn open_channel(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -261,7 +261,7 @@ pub mod Privacy {
             ]
         }
 
-        /// `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
         fn open_subchannel(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -317,7 +317,7 @@ pub mod Privacy {
             ]
         }
 
-        /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
         fn deposit(
             self: @ContractState, user_addr: ContractAddress, token: ContractAddress, amount: u128,
         ) -> ServerAction {
