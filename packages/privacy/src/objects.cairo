@@ -24,7 +24,6 @@ pub struct NewNote {
     /// The token's address.
     pub token: ContractAddress,
     /// The amount the note represents.
-    // TODO: Consider using different type.
     pub amount: u128,
     /// The index of the note within the channel.
     pub index: usize,
