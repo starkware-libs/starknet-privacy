@@ -304,7 +304,7 @@ pub mod Privacy {
         }
 
         /// Returns the server action to use a note.
-        /// Assumes `owner_private_key` is canonical.
+        /// Assumes `owner_addr` is non-zero (checked in `compile_client_actions`).
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
@@ -312,8 +312,10 @@ pub mod Privacy {
             note: NotePath,
         ) -> ServerAction {
             // TODO: Consider adding context to the errors (which note is causing the error).
+            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
             assert(note.channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(is_canonical_key(key: owner_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
             // TODO: Assert amount per token.
 
             // Assert subchannel exists and is connected to owner's address and public key.
@@ -347,7 +349,7 @@ pub mod Privacy {
         }
 
         /// Returns the server action to create a note.
-        /// Assumes `owner_private_key` is canonical.
+        /// Assumes `owner_addr` is non-zero (checked in `compile_client_actions`).
         fn create_note(
             self: @ContractState,
             owner_addr: ContractAddress,
@@ -355,11 +357,13 @@ pub mod Privacy {
             note: NewNote,
         ) -> ServerAction {
             // TODO: Consider adding context to the errors (which note is causing the error).
+            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
             assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(note.recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
             assert(note.amount.is_non_zero(), errors::ZERO_AMOUNT);
             assert(note.random.is_non_zero(), errors::ZERO_RANDOM);
+            assert(is_canonical_key(key: owner_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
             // TODO: Assert random bounds.
 
             // TODO: Consider impl helper function for common code.
