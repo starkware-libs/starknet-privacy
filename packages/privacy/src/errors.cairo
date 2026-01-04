@@ -26,6 +26,7 @@ pub const NON_ZERO_VALUE: felt252 = 'NON_ZERO_VALUE';
 pub const ZERO_VALUE: felt252 = 'ZERO_VALUE';
 pub const VALUE_MISMATCH: felt252 = 'VALUE_MISMATCH';
 pub const ZERO_RECIPIENT_PUBLIC_KEY: felt252 = 'ZERO_RECIPIENT_PUBLIC_KEY';
+pub const TOKEN_BALANCES_MISMATCH: felt252 = 'TOKEN_BALANCES_MISMATCH';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';
