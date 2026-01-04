@@ -347,10 +347,6 @@ fn test_transfer_assertions() {
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
-    // TODO: Catch ZERO_OWNER_PRIVATE_KEY.
-
-    // TODO: Catch private key not canonical.
-
     // Use note errors.
 
     // Catch ZERO_TOKEN.
@@ -368,6 +364,21 @@ fn test_transfer_assertions() {
             notes_to_create: [new_note].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+
+    // Catch ZERO_OWNER_PRIVATE_KEY.
+    let mut user_1_zero_owner_private_key = user_1;
+    user_1_zero_owner_private_key.private_key = Zero::zero();
+    let result = user_1_zero_owner_private_key
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
+
+    // Catch PRIVATE_KEY_NOT_CANONICAL.
+    let mut user_1_private_key_not_canonical = user_1;
+    user_1_private_key_not_canonical
+        .private_key = Neg::neg(user_1_private_key_not_canonical.private_key);
+    let result = user_1_private_key_not_canonical
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     let result = user_1
@@ -468,6 +479,9 @@ fn test_transfer_assertions() {
             notes_to_create: [NewNote { random: Zero::zero(), ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+
+    // Note: ZERO_OWNER_PRIVATE_KEY is already caught in use_note.
+    // Note: PRIVATE_KEY_NOT_CANONICAL is already caught in use_note.
 
     user_3.register_e2e();
 
@@ -1350,6 +1364,32 @@ fn test_create_note_zero_random() {
 }
 
 #[test]
+#[should_panic(expected: 'ZERO_OWNER_PRIVATE_KEY')]
+fn test_create_note_zero_owner_private_key() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    user_1.private_key = Zero::zero();
+    let user_2 = test.new_user();
+    let token = test.mock_new_token();
+    let note = user_1
+        .new_note_with_generated_random(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected: 'PRIVATE_KEY_NOT_CANONICAL')]
+fn test_create_note_private_key_not_canonical() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    user_1.private_key = Neg::neg(user_1.private_key);
+    let user_2 = test.new_user();
+    let token = test.mock_new_token();
+    let note = user_1
+        .new_note_with_generated_random(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
 #[should_panic(expected: 'ZERO_RECIPIENT_PUBLIC_KEY')]
 fn test_create_note_zero_recipient_public_key() {
     let mut test: Test = Default::default();
@@ -1672,6 +1712,30 @@ fn test_use_note_zero_channel_key() {
 }
 
 #[test]
+#[should_panic(expected: 'ZERO_OWNER_PRIVATE_KEY')]
+fn test_use_note_zero_owner_private_key() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    user_1.private_key = Zero::zero();
+    let token = test.mock_new_token();
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
+    let note_path = NotePath { channel_key, token, note_index: 0 };
+    user_1.use_note(note: note_path);
+}
+
+#[test]
+#[should_panic(expected: 'PRIVATE_KEY_NOT_CANONICAL')]
+fn test_use_note_private_key_not_canonical() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    user_1.private_key = Neg::neg(user_1.private_key);
+    let token = test.mock_new_token();
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
+    let note_path = NotePath { channel_key, token, note_index: 0 };
+    user_1.use_note(note: note_path);
+}
+
+#[test]
 #[should_panic(expected: 'INVALID_SUBCHANNEL')]
 fn test_use_note_wrong_owner_addr() {
     let mut test: Test = Default::default();
@@ -1857,13 +1921,9 @@ fn test_withdraw_assertions() {
     let token = test.mock_new_token();
     let amount = 100;
 
-    // TODO: Catch ZERO_OWNER_PRIVATE_KEY.
-
     // Catch ZERO_WITHDRAWAL_TARGET.
     let result = user_1.safe_withdraw(withdrawal_target: Zero::zero(), :token, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_WITHDRAWAL_TARGET);
-
-    // TODO: Catch private key not canonical.
 
     // Catch ZERO_TOKEN.
     let result = user_1
@@ -2128,7 +2188,6 @@ fn test_compile_client_actions_assertions() {
     let result = user_zero_addr.safe_compile_client_actions(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
-// TODO: Test with the negative private key (not canonical but the right public key) - deposit,
-// withdraw, transfer.
-
+// TODO: Test with the negative private key (not canonical but the right public key) for each action
+// that gets a private key as an input.
 
