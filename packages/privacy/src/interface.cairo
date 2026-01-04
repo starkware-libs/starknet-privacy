@@ -1,4 +1,6 @@
-use privacy::objects::{ClientAction, EncChannelInfo, EncSubchannelInfo, ServerAction};
+use privacy::objects::{
+    ClientAction, EncChannelInfo, EncPrivateKey, EncSubchannelInfo, ServerAction,
+};
 use starknet::ContractAddress;
 
 // TODO: Use same naming convention for the functions. (owner/sender,
@@ -283,4 +285,9 @@ pub trait IViews<T> {
     /// #### Access Control
     /// - Any address can call this function.
     fn get_public_key(self: @T, user_addr: ContractAddress) -> felt252;
+
+    fn get_enc_private_key(self: @T, user_addr: ContractAddress) -> EncPrivateKey;
+
+    // TODO: Do we need this function?
+    fn get_compliance_public_key(self: @T) -> felt252;
 }
