@@ -1267,7 +1267,7 @@ fn test_create_note_self_note() {
     let note_index = 0;
     let note = user
         .new_note_with_generated_random(recipient: user, :token, :amount, index: note_index);
-    let actions = user.create_note(:note);
+    let actions = user.internal_create_note(:note);
     let expected_enc_note = user
         .compute_enc_note(recipient: user, :token, index: note_index, :amount, random: note.random);
     assert_eq!(actions, expected_enc_note.to_server_actions());
@@ -1288,7 +1288,7 @@ fn test_create_note_twice() {
         .new_note_with_generated_random(
             recipient: user_2, :token, amount: amount_1, index: note_index_1,
         );
-    let create_note_1_actions = user_1.create_note(note: note_1);
+    let create_note_1_actions = user_1.internal_create_note(note: note_1);
     let amount_2 = amount_1 + 1;
     let note_index_2 = note_index_1 + 1;
     user_1.privacy.execute_actions(actions: create_note_1_actions);
@@ -1296,7 +1296,7 @@ fn test_create_note_twice() {
         .new_note_with_generated_random(
             recipient: user_2, :token, amount: amount_2, index: note_index_2,
         );
-    let create_note_2_actions = user_1.create_note(note: note_2);
+    let create_note_2_actions = user_1.internal_create_note(note: note_2);
     let expected_note_1 = user_1
         .compute_enc_note(
             recipient: user_2, :token, index: note_index_1, amount: amount_1, random: note_1.random,
@@ -1324,12 +1324,12 @@ fn test_create_note_twice_same_amount() {
     let note_index_1 = 0;
     let note_1 = user_1
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index_1);
-    let create_note_1_actions = user_1.create_note(note: note_1);
+    let create_note_1_actions = user_1.internal_create_note(note: note_1);
     let note_index_2 = note_index_1 + 1;
     test.privacy.execute_actions(actions: create_note_1_actions);
     let note_2 = user_1
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index_2);
-    let create_note_2_actions = user_1.create_note(note: note_2);
+    let create_note_2_actions = user_1.internal_create_note(note: note_2);
     let expected_enc_note_1 = user_1
         .compute_enc_note(
             recipient: user_2, :token, index: note_index_1, :amount, random: note_1.random,
@@ -1554,7 +1554,7 @@ fn test_create_note_decrypt_amount() {
     let note_index = 0;
     let note = user_1
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index);
-    let create_note_actions = user_1.create_note(:note);
+    let create_note_actions = user_1.internal_create_note(:note);
     user_1.privacy.execute_actions(actions: create_note_actions);
 
     // User 2 should be able to decrypt the amount.
@@ -1600,7 +1600,7 @@ fn test_use_note() {
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let note_path = NotePath { channel_key, token, note_index };
-    let actions = user_2.use_note(note: note_path);
+    let actions = user_2.internal_use_note(note: note_path);
     let nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
@@ -1624,7 +1624,7 @@ fn test_use_note_self_note() {
     user.cheat_create_note_e2e(:note);
     let channel_key = user.compute_channel_key(recipient: user);
     let note_path = NotePath { channel_key, token, note_index };
-    let actions = user.use_note(note: note_path);
+    let actions = user.internal_use_note(note: note_path);
     let nullifier = user.compute_nullifier(sender: user, :token, :note_index);
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
@@ -1660,9 +1660,9 @@ fn test_use_note_multiple_notes() {
     let note_1_path = NotePath { channel_key: channel_key_1, token, note_index: 0 };
     let note_2_path = NotePath { channel_key: channel_key_1, token, note_index: 1 };
     let note_3_path = NotePath { channel_key: channel_key_2, token, note_index: 0 };
-    let actions_1 = user_2.use_note(note: note_1_path);
-    let actions_2 = user_2.use_note(note: note_2_path);
-    let actions_3 = user_2.use_note(note: note_3_path);
+    let actions_1 = user_2.internal_use_note(note: note_1_path);
+    let actions_2 = user_2.internal_use_note(note: note_2_path);
+    let actions_3 = user_2.internal_use_note(note: note_3_path);
     let expected_nullifier_1 = user_2.compute_nullifier(sender: user_1, :token, note_index: 0);
     let expected_nullifier_2 = user_2.compute_nullifier(sender: user_1, :token, note_index: 1);
     let expected_nullifier_3 = user_2.compute_nullifier(sender: user_2, :token, note_index: 0);
@@ -1705,8 +1705,8 @@ fn test_use_note_same_amount() {
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let note_path_1 = NotePath { channel_key, token, note_index: 0 };
     let note_path_2 = NotePath { channel_key, token, note_index: 1 };
-    let actions_1 = user_2.use_note(note: note_path_1);
-    let actions_2 = user_2.use_note(note: note_path_2);
+    let actions_1 = user_2.internal_use_note(note: note_path_1);
+    let actions_2 = user_2.internal_use_note(note: note_path_2);
     let expected_nullifier_1 = user_2.compute_nullifier(sender: user_1, :token, note_index: 0);
     let expected_nullifier_2 = user_2.compute_nullifier(sender: user_1, :token, note_index: 1);
     let nullifier_storage_path_1 = map_entry_address(
@@ -1897,7 +1897,7 @@ fn test_use_note_find_nullifier() {
 
     // User 2 uses the note.
     let note_path = NotePath { channel_key, token, note_index };
-    let actions = user_2.use_note(note: note_path);
+    let actions = user_2.internal_use_note(note: note_path);
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
@@ -1929,17 +1929,17 @@ fn test_withdraw_different_targets() {
     user_1.open_channel_with_token_e2e(recipient: user_1, :token, subchannel_index: 0);
 
     // Withdraw note to self.
-    let actions = user_1.withdraw(withdrawal_target: user_1.address, :token, :amount);
+    let actions = user_1.internal_withdraw(withdrawal_target: user_1.address, :token, :amount);
     let expected_actions = [ServerAction::TransferTo((user_1.address, token, amount)),].span();
     assert_eq!(actions, expected_actions);
 
     // Withdraw note to other registered user.
-    let actions = user_1.withdraw(withdrawal_target: user_2.address, :token, :amount);
+    let actions = user_1.internal_withdraw(withdrawal_target: user_2.address, :token, :amount);
     let expected_actions = [ServerAction::TransferTo((user_2.address, token, amount)),].span();
     assert_eq!(actions, expected_actions);
 
     // Withdraw note to not registered user.
-    let actions = user_1.withdraw(withdrawal_target: user_3.address, :token, :amount);
+    let actions = user_1.internal_withdraw(withdrawal_target: user_3.address, :token, :amount);
     let expected_actions = [ServerAction::TransferTo((user_3.address, token, amount)),].span();
     assert_eq!(actions, expected_actions);
 }
@@ -2183,6 +2183,65 @@ fn test_compile_client_actions() {
         .span();
     assert_eq!(actions, expected_actions);
 
+    // Deposit + create note actions.
+    let amount = 100;
+    let note = user_1.new_note_with_generated_random(recipient: user_2, :token, :amount, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    let actions = user_1
+        .compile_client_actions(
+            client_actions: [
+                ClientAction::Deposit((token, amount)),
+                ClientAction::CreateNote((user_1.private_key, note)),
+            ]
+                .span(),
+        );
+    let expected_enc_note = user_1
+        .compute_enc_note(recipient: user_2, :token, index: 0, :amount, random: note.random);
+    let note_storage_path = map_entry_address(
+        map_selector: selector!("notes"), keys: [expected_enc_note.id].span(),
+    );
+    let expected_actions = array![
+        ServerAction::TransferFrom((user_1.address, token, amount)),
+        ServerAction::WriteIfZero((note_storage_path, expected_enc_note.enc_amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
+
+    // Use note + withdraw actions.
+    user_1.cheat_create_note_e2e(:note);
+    let nullifier = user_2.compute_nullifier(sender: user_1, :token, note_index: 0);
+    let note_path = NotePath {
+        channel_key: user_1.compute_channel_key(recipient: user_2), token, note_index: 0,
+    };
+    let actions = user_2
+        .compile_client_actions(
+            client_actions: [
+                ClientAction::UseNote((user_2.private_key, note_path)),
+                ClientAction::Withdraw((user_1.address, token, amount)),
+            ]
+                .span(),
+        );
+    let nullifier_path = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero((nullifier_path, true.into())),
+        ServerAction::TransferTo((user_1.address, token, amount)),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
+}
+
+#[test]
+fn test_internal_actions() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token = test.mock_new_token();
+    user_1.register_e2e();
+    user_2.register_e2e();
+    user_1.open_channel_e2e(recipient: user_2);
+
     // Create note action.
     let amount = 1;
     let note_index = 0;
@@ -2190,7 +2249,7 @@ fn test_compile_client_actions() {
     let note = user_1
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: subchannel_index);
-    let actions = user_1.create_note(:note);
+    let actions = user_1.internal_create_note(:note);
     let expected_enc_note = user_1
         .compute_enc_note(
             recipient: user_2, :token, index: note_index, :amount, random: note.random,
@@ -2198,7 +2257,7 @@ fn test_compile_client_actions() {
     assert_eq!(actions, expected_enc_note.to_server_actions());
 
     // Deposit action.
-    let actions = user_1.deposit(:token, :amount);
+    let actions = user_1.internal_deposit(:token, :amount);
     let expected_actions = [ServerAction::TransferFrom((user_1.address, token, amount))].span();
     assert_eq!(actions, expected_actions);
 
@@ -2207,7 +2266,7 @@ fn test_compile_client_actions() {
     let nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let note_path = NotePath { channel_key, token, note_index };
-    let actions = user_2.use_note(note: note_path);
+    let actions = user_2.internal_use_note(note: note_path);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
@@ -2216,7 +2275,7 @@ fn test_compile_client_actions() {
     assert_eq!(actions, expected_actions);
 
     // Withdraw action.
-    let actions = user_2.withdraw(withdrawal_target: user_1.address, :token, :amount);
+    let actions = user_2.internal_withdraw(withdrawal_target: user_1.address, :token, :amount);
     let expected_actions = [ServerAction::TransferTo((user_1.address, token, amount))].span();
     assert_eq!(actions, expected_actions);
 }
@@ -2224,13 +2283,52 @@ fn test_compile_client_actions() {
 #[test]
 fn test_compile_client_actions_assertions() {
     let mut test: Test = Default::default();
-    let user = test.new_user();
+    let mut user = test.new_user();
+    let token = test.mock_new_token();
+    let amount = 100;
+    user.register_e2e();
+    user.open_channel_e2e(recipient: user);
+    user.open_subchannel_e2e(recipient: user, :token, index: 0);
+    let note_1 = user.new_note_with_generated_random(recipient: user, :token, :amount, index: 0);
+    user.cheat_create_note_e2e(note: note_1);
+    let note_1_path = NotePath {
+        channel_key: user.compute_channel_key(recipient: user), token, note_index: 0,
+    };
+    let note_2 = NewNote { index: 1, ..note_1 };
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_compile_client_actions(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+
+    // Catch TOKEN_BALANCES_MISMATCH (deposit).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [ClientAction::Deposit((token, amount)),].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_BALANCES_MISMATCH);
+
+    // Catch TOKEN_BALANCES_MISMATCH (use note).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [ClientAction::UseNote((user.private_key, note_1_path)),].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_BALANCES_MISMATCH);
+
+    // Catch u128_sub Overflow (withdraw).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [ClientAction::Withdraw((user.address, token, amount)),].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'u128_sub Overflow');
+
+    // Catch u128_sub Overflow (create note).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [ClientAction::CreateNote((user.private_key, note_2)),].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'u128_sub Overflow');
 }
 // TODO: Test with the negative private key (not canonical but the right public key) for each action
 // that gets a private key as an input.

@@ -12,7 +12,7 @@ pub mod Privacy {
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
         ClientAction, EncChannelInfo, EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo,
-        NewNote, NotePath, ServerAction,
+        NewNote, NotePath, ServerAction, TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::{
         StoragePathIntoFelt, decrypt_note_amount, derive_public_key, encrypt_channel_info,
@@ -71,6 +71,7 @@ pub mod Privacy {
             // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
             let mut server_actions: Array<ServerAction> = array![];
+            let mut token_balances: TokenBalances = Default::default();
             for client_action in client_actions {
                 match *client_action {
                     ClientAction::Register((
@@ -124,12 +125,16 @@ pub mod Privacy {
                                         owner_addr: user_addr,
                                         owner_private_key: user_private_key,
                                         note: new_note,
+                                        ref :token_balances,
                                     ),
                             );
                     },
                     ClientAction::Deposit((
                         token, amount,
-                    )) => { server_actions.append(self.deposit(:user_addr, :token, :amount)); },
+                    )) => {
+                        server_actions
+                            .append(self.deposit(:user_addr, :token, :amount, ref :token_balances));
+                    },
                     ClientAction::UseNote((
                         user_private_key, note_to_withdraw,
                     )) => {
@@ -140,16 +145,24 @@ pub mod Privacy {
                                         owner_addr: user_addr,
                                         owner_private_key: user_private_key,
                                         note: note_to_withdraw,
+                                        ref :token_balances,
                                     ),
                             );
                     },
                     ClientAction::Withdraw((
                         withdrawal_target, token, amount,
                     )) => {
-                        server_actions.append(self.withdraw(:withdrawal_target, :token, :amount));
+                        server_actions
+                            .append(
+                                self
+                                    .withdraw(
+                                        :withdrawal_target, :token, :amount, ref :token_balances,
+                                    ),
+                            );
                     },
                 };
             }
+            assert(token_balances.is_valid(), errors::TOKEN_BALANCES_MISMATCH);
             server_actions.span()
         }
     }
@@ -307,11 +320,17 @@ pub mod Privacy {
 
         /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
         fn deposit(
-            self: @ContractState, user_addr: ContractAddress, token: ContractAddress, amount: u128,
+            self: @ContractState,
+            user_addr: ContractAddress,
+            token: ContractAddress,
+            amount: u128,
+            ref token_balances: TokenBalances,
         ) -> ServerAction {
             // Assert input is valid.
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+
+            token_balances.modify_balance(:token, is_addition: true, :amount);
 
             ServerAction::TransferFrom((user_addr, token, amount))
         }
@@ -321,13 +340,14 @@ pub mod Privacy {
             withdrawal_target: ContractAddress,
             token: ContractAddress,
             amount: u128,
+            ref token_balances: TokenBalances,
         ) -> ServerAction {
             // Assert valid input.
             assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
 
-            // TODO: Keep track of token balances.
+            token_balances.modify_balance(:token, is_addition: false, :amount);
 
             ServerAction::TransferTo((withdrawal_target, token, amount))
         }
@@ -339,13 +359,13 @@ pub mod Privacy {
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             note: NotePath,
+            ref token_balances: TokenBalances,
         ) -> ServerAction {
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
             assert(note.channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
             assert(is_canonical_key(key: owner_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
-            // TODO: Assert amount per token.
 
             // Assert subchannel exists and is connected to owner's address and public key.
             let channel_key = note.channel_key;
@@ -365,9 +385,9 @@ pub mod Privacy {
             assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             // Decrypt note amount.
-            let _note_amount = decrypt_note_amount(:enc_note_value, :channel_key);
+            let amount = decrypt_note_amount(:enc_note_value, :channel_key);
             // TODO: Sanity assert amount is non zero?
-            // TODO: Keep track of token balances.
+            token_balances.modify_balance(:token, is_addition: true, :amount);
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
@@ -384,6 +404,7 @@ pub mod Privacy {
             owner_addr: ContractAddress,
             owner_private_key: felt252,
             note: NewNote,
+            ref token_balances: TokenBalances,
         ) -> ServerAction {
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
@@ -433,7 +454,7 @@ pub mod Privacy {
             assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
             assert(enc_amount.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
 
-            // TODO: Keep track of token balances.
+            token_balances.modify_balance(:token, is_addition: false, amount: note.amount);
 
             ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount))
         }

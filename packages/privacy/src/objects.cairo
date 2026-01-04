@@ -1,5 +1,50 @@
+use core::dict::{Felt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
 use starknet::ContractAddress;
+
+// TODO: Optimize.
+#[derive(Drop, Debug)]
+pub(crate) struct TokenBalances {
+    balance_changes: Array<(ContractAddress, bool, u128)>,
+}
+
+pub(crate) impl DefaultTokenBalances of Default<TokenBalances> {
+    fn default() -> TokenBalances {
+        TokenBalances { balance_changes: array![] }
+    }
+}
+
+#[generate_trait]
+pub(crate) impl TokenBalancesImpl of TokenBalancesTrait {
+    fn modify_balance(
+        ref self: TokenBalances, token: ContractAddress, is_addition: bool, amount: u128,
+    ) {
+        self.balance_changes.append((token, is_addition, amount));
+    }
+
+    fn is_valid(self: @TokenBalances) -> bool {
+        let mut final_balances: Felt252Dict<u128> = Default::default();
+
+        for (token, is_addition, amount) in self.balance_changes {
+            let token_felt: felt252 = (*token).into();
+            let current_balance = final_balances.get(key: token_felt);
+            let new_balance = if *is_addition {
+                current_balance + *amount
+            } else {
+                current_balance - *amount
+            };
+            final_balances.insert(key: token_felt, value: new_balance);
+        }
+
+        let balance_entries = final_balances.squash().into_entries();
+        for (_, _, final_balance) in balance_entries {
+            if final_balance.is_non_zero() {
+                return false;
+            }
+        }
+        true
+    }
+}
 
 /// The path of an existing note in the server storage.
 // TODO: Consider renaming.
