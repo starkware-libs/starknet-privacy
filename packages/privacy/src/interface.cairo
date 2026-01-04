@@ -132,6 +132,8 @@ pub trait IClient<T> {
     /// with zero as the token.
     /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if there's a note to be created with
     /// zero as the amount.
+    /// - [`ZERO_RANDOM`](privacy::errors::ZERO_RANDOM): Thrown if there's a note to be created with
+    /// zero as the random value.
     /// - [`RECIPIENT_NOT_REGISTERED`](privacy::errors::RECIPIENT_NOT_REGISTERED): Thrown if a
     /// recipient is not registered in the server.
     /// - [`INVALID_SUBCHANNEL`](privacy::errors::INVALID_SUBCHANNEL): Thrown if there is no valid
@@ -197,6 +199,7 @@ pub trait IClient<T> {
     /// `new_note.recipient_addr` is zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if `new_note.token` is zero.
     /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `new_note.amount` is zero.
+    /// - [`ZERO_RANDOM`](privacy::errors::ZERO_RANDOM): Thrown if `new_note.random` is zero.
     /// - [`RECIPIENT_NOT_REGISTERED`](privacy::errors::RECIPIENT_NOT_REGISTERED): Thrown if
     /// `new_note.recipient_addr` is not registered in the server.
     /// - [`INVALID_SUBCHANNEL`](privacy::errors::INVALID_SUBCHANNEL): Thrown if a self-channel for
