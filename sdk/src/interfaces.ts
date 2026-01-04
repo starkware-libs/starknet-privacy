@@ -30,7 +30,7 @@ import { Witness, Channel } from "./internal.js";
 export { Witness, Channel };
 
 export type Note = {
-  readonly id: Note.Id;
+  readonly id: NoteId;
   readonly amount: Amount;
   readonly created?: BlockNumber; // required to know maturity (10 blocks)
   readonly witness: Witness;
@@ -38,10 +38,8 @@ export type Note = {
   readonly sender: StarknetAddress;
 };
 
-export namespace Note {
-  /** Unique identifier for a note, used for semi-transparent (preprepared) notes */
-  export type Id = BigNumberish;
-}
+/** Unique identifier for a note, used for semi-transparent (preprepared) notes */
+export type NoteId = BigNumberish;
 
 export type Proof = {
   readonly data: Uint8Array;
@@ -72,7 +70,7 @@ export type PrivateTransfersConfig = {
 
 export interface PrivateRecipient {
   address: StarknetAddress;
-  context: Channel | Note.Id; // note id is for semi-transparent (preprepared) notes.
+  context: Channel | NoteId; // note id is for semi-transparent (preprepared) notes.
 }
 
 /**
