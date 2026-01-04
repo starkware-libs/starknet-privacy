@@ -373,6 +373,18 @@ export interface DiscoveryProviderInterface {
    * Viewing key of the compliance council for registration
    */
   globalViewingKey(): ViewingKey;
+
+  /**
+   * Check the setup requirements for a recipient.
+   *
+   * @param recipient - The recipient to check the setup requirements for. if self, check for 'address'
+   */
+  setupRequirement(
+    address: StarknetAddress,
+    viewingKey: ViewingKey,
+    recipient: PrivateRecipient | Self,
+    token: StarknetAddress
+  ): Promise<{ register: boolean; initial: boolean; token: boolean }>;
 }
 
 type BlobT = string | Uint8Array;
