@@ -58,6 +58,32 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
     }
 }
 
+/// Ciphertext for an ECDH-based encryption of private key.
+/// Used for compliance to be able to decrypt the private key.
+#[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
+pub(crate) struct EncPrivateKey {
+    /// Ephemeral ECDH public key x-coordinate (rG.x). Used by the compliance to derive rK.
+    pub ephemeral_pubkey: felt252,
+    /// Encrypted private key.
+    /// `enc_private_key = h(ENC_PRIVATE_KEY_TAG, rK.x) + private_key`
+    pub enc_private_key: felt252,
+}
+
+// TODO: Move to a different file.
+pub impl EncPrivateKeyZero of Zero<EncPrivateKey> {
+    fn zero() -> EncPrivateKey {
+        EncPrivateKey { ephemeral_pubkey: Zero::zero(), enc_private_key: Zero::zero() }
+    }
+    /// Check if one of the `EncPrivateKey`'s fields is zero.
+    fn is_zero(self: @EncPrivateKey) -> bool {
+        return self.ephemeral_pubkey.is_zero() || self.enc_private_key.is_zero();
+    }
+    /// Check if all the `EncPrivateKey`'s fields are non-zero.
+    fn is_non_zero(self: @EncPrivateKey) -> bool {
+        !self.is_zero()
+    }
+}
+
 /// An encrypted subchannel info, to be written to storage.
 // TODO: Explain in doc why the random is needed.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
@@ -88,9 +114,11 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ClientAction {
-    /// Register a new user with a public key.
-    /// (user_public_key: felt252)
-    Register: felt252,
+    // TODO: Rename user_private_key to private_key here.
+    /// Register a new user with a viewing key.
+    /// The random is used to encrypt the private key.
+    /// (user_private_key: felt252, random: felt252)
+    Register: (felt252, felt252),
     /// Replace the user's public key with a new value.
     /// (user_public_key: felt252)
     ReplacePublicKey: felt252,
@@ -127,12 +155,18 @@ pub enum ServerAction {
     /// Verify that a storage value is zero/empty and then write to it.
     /// (storage_address: felt252, new_value: EncSubchannelInfo)
     WriteIfZeroSubchannel: (felt252, EncSubchannelInfo),
+    // TODO: Generalize with WriteIfZeroSubchannel - both structs are similar.
+    // TODO: Better naming for this action.
+    // Verify that a storage value is zero/empty and then write to it.
+    /// (storage_address: felt252, new_value: EncPrivateKey)
+    WriteIfZeroPrivateKey: (felt252, EncPrivateKey),
     // TODO: Consider merging with WriteIfZero.
     /// Verify that a storage value is non-zero and then write to it.
     /// (storage_address: felt252, new_value: felt252)
     WriteIfNonZero: (felt252, felt252),
     // TODO: Generalize to any vector.
-    /// Append a value to a vector in storage.
+    /// Append a `EncChannelInfo` value to (`recipient_addr`, `recipient_public_key`)'s vector in
+    /// storage.
     /// (recipient_addr: ContractAddress, recipient_public_key: felt252, enc_channel_info:
     /// EncChannelInfo)
     AppendToVec: (ContractAddress, felt252, EncChannelInfo),
