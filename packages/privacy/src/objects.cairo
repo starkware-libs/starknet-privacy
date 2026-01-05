@@ -170,7 +170,7 @@ pub enum ClientAccountAction {
 }
 
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
-pub enum ClientAction {
+pub enum ClientChannelAction {
     /// Open a new channel from the user to a recipient.
     /// (user_private_key: felt252, recipient_addr: ContractAddress, recipient_public_key: felt252,
     /// random: felt252)
@@ -179,6 +179,10 @@ pub enum ClientAction {
     /// (recipient_addr: ContractAddress, recipient_public_key: felt252, channel_key: felt252,
     /// index: usize, token: ContractAddress, random: felt252)
     OpenSubchannel: (ContractAddress, felt252, felt252, usize, ContractAddress, felt252),
+}
+
+#[derive(Serde, Copy, Drop, Debug, PartialEq)]
+pub enum ClientFundAction {
     /// Creates a new note based on the specified `NewNote`.
     /// (user_private_key: felt252, new_note: NewNote)
     CreateNote: (felt252, NewNote),

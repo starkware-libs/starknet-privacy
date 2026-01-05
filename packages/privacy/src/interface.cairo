@@ -1,6 +1,6 @@
 use privacy::objects::{
-    ClientAccountAction, ClientAction, EncChannelInfo, EncPrivateKey, EncSubchannelInfo,
-    ServerAction,
+    ClientAccountAction, ClientChannelAction, ClientFundAction, EncChannelInfo, EncPrivateKey,
+    EncSubchannelInfo, ServerAction,
 };
 use starknet::ContractAddress;
 
@@ -71,7 +71,8 @@ pub trait IClient<T> {
         self: @T,
         user_addr: ContractAddress,
         admin_actions: Span<ClientAccountAction>,
-        client_actions: Span<ClientAction>,
+        channel_actions: Span<ClientChannelAction>,
+        transfer_actions: Span<ClientFundAction>,
     ) -> Span<ServerAction>;
 }
 

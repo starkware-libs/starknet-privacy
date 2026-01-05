@@ -11,8 +11,9 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        ClientAccountAction, ClientAction, EncChannelInfo, EncChannelInfoTrait, EncPrivateKey,
-        EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances, TokenBalancesTrait,
+        ClientAccountAction, ClientChannelAction, ClientFundAction, EncChannelInfo,
+        EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo, NewNote, NotePath, ServerAction,
+        TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::{
         StoragePathIntoFelt, decrypt_note_amount, derive_public_key, encrypt_channel_info,
@@ -68,10 +69,10 @@ pub mod Privacy {
             self: @ContractState,
             user_addr: ContractAddress,
             admin_actions: Span<ClientAccountAction>,
-            client_actions: Span<ClientAction>,
+            channel_actions: Span<ClientChannelAction>,
+            transfer_actions: Span<ClientFundAction>,
         ) -> Span<ServerAction> {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
-            // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
             let mut server_actions: Array<ServerAction> = array![];
             assert(admin_actions.len() <= 1, errors::INVALID_ADMIN_ACTIONS_LEN);
@@ -89,10 +90,9 @@ pub mod Privacy {
                 }
             }
 
-            let mut token_balances = Default::default();
-            for client_action in client_actions {
-                match *client_action {
-                    ClientAction::OpenChannel((
+            for channel_action in channel_actions {
+                match *channel_action {
+                    ClientChannelAction::OpenChannel((
                         user_private_key, recipient_addr, recipient_public_key, random,
                     )) => {
                         server_actions
@@ -107,7 +107,7 @@ pub mod Privacy {
                                     ),
                             );
                     },
-                    ClientAction::OpenSubchannel((
+                    ClientChannelAction::OpenSubchannel((
                         recipient_addr, recipient_public_key, channel_key, index, token, random,
                     )) => {
                         server_actions
@@ -124,7 +124,13 @@ pub mod Privacy {
                                     ),
                             );
                     },
-                    ClientAction::CreateNote((
+                }
+            }
+
+            let mut token_balances: TokenBalances = Default::default();
+            for transfer_action in transfer_actions {
+                match *transfer_action {
+                    ClientFundAction::CreateNote((
                         user_private_key, new_note,
                     )) => {
                         server_actions
@@ -138,13 +144,13 @@ pub mod Privacy {
                                     ),
                             );
                     },
-                    ClientAction::Deposit((
+                    ClientFundAction::Deposit((
                         token, amount,
                     )) => {
                         server_actions
                             .append(self.deposit(:user_addr, :token, :amount, ref :token_balances));
                     },
-                    ClientAction::UseNote((
+                    ClientFundAction::UseNote((
                         user_private_key, note_to_withdraw,
                     )) => {
                         server_actions
@@ -158,7 +164,7 @@ pub mod Privacy {
                                     ),
                             );
                     },
-                    ClientAction::Withdraw((
+                    ClientFundAction::Withdraw((
                         withdrawal_target, token, amount,
                     )) => {
                         server_actions
@@ -171,6 +177,7 @@ pub mod Privacy {
                     },
                 };
             }
+
             assert(token_balances.is_valid(), errors::TOKEN_BALANCES_MISMATCH);
             server_actions.span()
         }

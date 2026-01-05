@@ -13,8 +13,8 @@ use privacy::interface::{
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
-    ClientAccountAction, ClientAction, EncChannelInfo, EncPrivateKey, EncSubchannelInfo, NewNote,
-    NotePath, ServerAction, TokenBalances,
+    ClientAccountAction, ClientChannelAction, ClientFundAction, EncChannelInfo, EncPrivateKey,
+    EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
@@ -84,22 +84,32 @@ struct User {
 #[generate_trait]
 pub(crate) impl UserImpl of UserTrait {
     fn compile_client_actions(
-        self: @User, admin_actions: Span<ClientAccountAction>, client_actions: Span<ClientAction>,
+        self: @User,
+        admin_actions: Span<ClientAccountAction>,
+        channel_actions: Span<ClientChannelAction>,
+        transfer_actions: Span<ClientFundAction>,
     ) -> Span<ServerAction> {
         self
             .privacy
             .client
-            .compile_client_actions(user_addr: *self.address, :admin_actions, :client_actions)
+            .compile_client_actions(
+                user_addr: *self.address, :admin_actions, :channel_actions, :transfer_actions,
+            )
     }
 
     #[feature("safe_dispatcher")]
     fn safe_compile_client_actions(
-        self: @User, admin_actions: Span<ClientAccountAction>, client_actions: Span<ClientAction>,
+        self: @User,
+        admin_actions: Span<ClientAccountAction>,
+        channel_actions: Span<ClientChannelAction>,
+        transfer_actions: Span<ClientFundAction>,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self
             .privacy
             .safe_client
-            .compile_client_actions(user_addr: *self.address, :admin_actions, :client_actions)
+            .compile_client_actions(
+                user_addr: *self.address, :admin_actions, :channel_actions, :transfer_actions,
+            )
     }
 
     fn replace_private_key(ref self: User, private_key: felt252) {
@@ -110,32 +120,39 @@ pub(crate) impl UserImpl of UserTrait {
     fn transfer(
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
     ) -> Span<ServerAction> {
-        let mut client_actions: Array<ClientAction> = array![];
+        let mut actions: Array<ClientFundAction> = array![];
         for note in notes_to_use {
-            client_actions.append(ClientAction::UseNote((*self.private_key, *note)));
+            actions.append(ClientFundAction::UseNote((*self.private_key, *note)));
         }
         for note in notes_to_create {
-            client_actions.append(ClientAction::CreateNote((*self.private_key, *note)));
+            actions.append(ClientFundAction::CreateNote((*self.private_key, *note)));
         }
 
-        self.compile_client_actions(admin_actions: [].span(), client_actions: client_actions.span())
+        self
+            .compile_client_actions(
+                admin_actions: [].span(),
+                channel_actions: [].span(),
+                transfer_actions: actions.span(),
+            )
     }
 
     #[feature("safe_dispatcher")]
     fn safe_transfer(
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
-        let mut client_actions: Array<ClientAction> = array![];
+        let mut actions: Array<ClientFundAction> = array![];
         for note in notes_to_use {
-            client_actions.append(ClientAction::UseNote((*self.private_key, *note)));
+            actions.append(ClientFundAction::UseNote((*self.private_key, *note)));
         }
         for note in notes_to_create {
-            client_actions.append(ClientAction::CreateNote((*self.private_key, *note)));
+            actions.append(ClientFundAction::CreateNote((*self.private_key, *note)));
         }
 
         self
             .safe_compile_client_actions(
-                admin_actions: [].span(), client_actions: client_actions.span(),
+                admin_actions: [].span(),
+                channel_actions: [].span(),
+                transfer_actions: actions.span(),
             )
     }
 
@@ -145,7 +162,9 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [ClientAction::Withdraw((withdrawal_target, token, amount))].span(),
+                channel_actions: [].span(),
+                transfer_actions: [ClientFundAction::Withdraw((withdrawal_target, token, amount))]
+                    .span(),
             )
     }
 
@@ -172,7 +191,9 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .safe_compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [ClientAction::Withdraw((withdrawal_target, token, amount))].span(),
+                channel_actions: [].span(),
+                transfer_actions: [ClientFundAction::Withdraw((withdrawal_target, token, amount))]
+                    .span(),
             )
     }
 
@@ -180,12 +201,13 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [
-                    ClientAction::OpenChannel(
+                channel_actions: [
+                    ClientChannelAction::OpenChannel(
                         (*self.private_key, recipient.address, recipient.public_key, random),
                     )
                 ]
                     .span(),
+                transfer_actions: [].span(),
             )
     }
 
@@ -196,12 +218,13 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .safe_compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [
-                    ClientAction::OpenChannel(
+                channel_actions: [
+                    ClientChannelAction::OpenChannel(
                         (*self.private_key, recipient.address, recipient.public_key, random),
                     )
                 ]
                     .span(),
+                transfer_actions: [].span(),
             )
     }
 
@@ -228,8 +251,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [
-                    ClientAction::OpenSubchannel(
+                channel_actions: [
+                    ClientChannelAction::OpenSubchannel(
                         (
                             recipient.address,
                             recipient.public_key,
@@ -241,6 +264,7 @@ pub(crate) impl UserImpl of UserTrait {
                     ),
                 ]
                     .span(),
+                transfer_actions: [].span(),
             )
     }
 
@@ -252,8 +276,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .safe_compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [
-                    ClientAction::OpenSubchannel(
+                channel_actions: [
+                    ClientChannelAction::OpenSubchannel(
                         (
                             recipient.address,
                             recipient.public_key,
@@ -265,6 +289,7 @@ pub(crate) impl UserImpl of UserTrait {
                     ),
                 ]
                     .span(),
+                transfer_actions: [].span(),
             )
     }
 
@@ -280,8 +305,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .safe_compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [
-                    ClientAction::OpenSubchannel(
+                channel_actions: [
+                    ClientChannelAction::OpenSubchannel(
                         (
                             recipient.address,
                             recipient.public_key,
@@ -293,6 +318,7 @@ pub(crate) impl UserImpl of UserTrait {
                     ),
                 ]
                     .span(),
+                transfer_actions: [].span(),
             )
     }
 
@@ -336,7 +362,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [ClientAction::CreateNote((*self.private_key, note)),].span(),
+                channel_actions: [].span(),
+                transfer_actions: [ClientFundAction::CreateNote((*self.private_key, note)),].span(),
             )
     }
 
@@ -421,7 +448,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [ClientAction::UseNote((*self.private_key, note))].span(),
+                channel_actions: [].span(),
+                transfer_actions: [ClientFundAction::UseNote((*self.private_key, note)),].span(),
             )
     }
 
@@ -485,7 +513,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [ClientAction::Deposit((token, amount))].span(),
+                channel_actions: [].span(),
+                transfer_actions: [ClientFundAction::Deposit((token, amount))].span(),
             )
     }
 
@@ -510,7 +539,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .safe_compile_client_actions(
                 admin_actions: [].span(),
-                client_actions: [ClientAction::Deposit((token, amount)),].span(),
+                channel_actions: [].span(),
+                transfer_actions: [ClientFundAction::Deposit((token, amount))].span(),
             )
     }
 
@@ -552,7 +582,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .compile_client_actions(
                 admin_actions: [ClientAccountAction::Register((*self.private_key, random))].span(),
-                client_actions: [].span(),
+                channel_actions: [].span(),
+                transfer_actions: [].span(),
             )
     }
 
@@ -575,7 +606,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .safe_compile_client_actions(
                 admin_actions: [ClientAccountAction::Register((*self.private_key, random))].span(),
-                client_actions: [].span(),
+                channel_actions: [].span(),
+                transfer_actions: [].span(),
             )
     }
 
@@ -599,7 +631,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .compile_client_actions(
                 admin_actions: [ClientAccountAction::ReplaceKey(*self.public_key)].span(),
-                client_actions: [].span(),
+                channel_actions: [].span(),
+                transfer_actions: [].span(),
             )
     }
 
@@ -618,7 +651,8 @@ pub(crate) impl UserImpl of UserTrait {
         self
             .safe_compile_client_actions(
                 admin_actions: [ClientAccountAction::ReplaceKey(*self.public_key)].span(),
-                client_actions: [].span(),
+                channel_actions: [].span(),
+                transfer_actions: [].span(),
             )
     }
 

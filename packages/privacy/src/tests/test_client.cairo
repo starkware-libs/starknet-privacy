@@ -1,7 +1,9 @@
 use core::num::traits::Zero;
 use privacy::errors;
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
-use privacy::objects::{ClientAccountAction, ClientAction, NewNote, NotePath, ServerAction};
+use privacy::objects::{
+    ClientAccountAction, ClientChannelAction, ClientFundAction, NewNote, NotePath, ServerAction,
+};
 use privacy::tests::utils_for_tests::{
     EncNoteTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info,
     decrypt_private_key, decrypt_subchannel_token,
@@ -2085,7 +2087,9 @@ fn test_compile_client_actions() {
 
     // Empty actions.
     let actions = user_1
-        .compile_client_actions(admin_actions: [].span(), client_actions: [].span());
+        .compile_client_actions(
+            admin_actions: [].span(), channel_actions: [].span(), transfer_actions: [].span(),
+        );
     assert_eq!(actions, [].span());
 
     // Register action.
@@ -2093,7 +2097,8 @@ fn test_compile_client_actions() {
     let actions = user_1
         .compile_client_actions(
             admin_actions: [ClientAccountAction::Register((user_1.private_key, random))].span(),
-            client_actions: [].span(),
+            channel_actions: [].span(),
+            transfer_actions: [].span(),
         );
     let enc_private_key = user_1.compute_enc_private_key(:random);
     let public_key_storage_path_felt = map_entry_address(
@@ -2113,7 +2118,8 @@ fn test_compile_client_actions() {
     let actions = user_1
         .compile_client_actions(
             admin_actions: [ClientAccountAction::ReplaceKey(user_1.public_key)].span(),
-            client_actions: [].span(),
+            channel_actions: [].span(),
+            transfer_actions: [].span(),
         );
     let expected_actions = [
         ServerAction::WriteIfNonZero((public_key_storage_path_felt, user_1.public_key))
@@ -2128,12 +2134,13 @@ fn test_compile_client_actions() {
     let actions = user_1
         .compile_client_actions(
             admin_actions: [].span(),
-            client_actions: [
-                ClientAction::OpenChannel(
+            channel_actions: [
+                ClientChannelAction::OpenChannel(
                     (user_1.private_key, user_2.address, user_2.public_key, random),
                 )
             ]
                 .span(),
+            transfer_actions: [].span(),
         );
     let expected_channel_id = user_1.compute_channel_id(recipient: user_2);
     let expected_channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -2162,12 +2169,13 @@ fn test_compile_client_actions() {
     let actions = user_1
         .compile_client_actions(
             admin_actions: [].span(),
-            client_actions: [
-                ClientAction::OpenSubchannel(
+            channel_actions: [
+                ClientChannelAction::OpenSubchannel(
                     (user_2.address, user_2.public_key, expected_channel_key, 0, token, random),
                 ),
             ]
                 .span(),
+            transfer_actions: [].span(),
         );
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token);
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
@@ -2195,9 +2203,10 @@ fn test_compile_client_actions() {
     let actions = user_1
         .compile_client_actions(
             admin_actions: [].span(),
-            client_actions: [
-                ClientAction::Deposit((token, amount)),
-                ClientAction::CreateNote((user_1.private_key, note)),
+            channel_actions: [].span(),
+            transfer_actions: [
+                ClientFundAction::Deposit((token, amount)),
+                ClientFundAction::CreateNote((user_1.private_key, note)),
             ]
                 .span(),
         );
@@ -2222,9 +2231,10 @@ fn test_compile_client_actions() {
     let actions = user_2
         .compile_client_actions(
             admin_actions: [].span(),
-            client_actions: [
-                ClientAction::UseNote((user_2.private_key, note_path)),
-                ClientAction::Withdraw((user_1.address, token, amount)),
+            channel_actions: [].span(),
+            transfer_actions: [
+                ClientFundAction::UseNote((user_2.private_key, note_path)),
+                ClientFundAction::Withdraw((user_1.address, token, amount)),
             ]
                 .span(),
         );
@@ -2307,7 +2317,9 @@ fn test_compile_client_actions_assertions() {
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr
-        .safe_compile_client_actions(admin_actions: [].span(), client_actions: [].span());
+        .safe_compile_client_actions(
+            admin_actions: [].span(), channel_actions: [].span(), transfer_actions: [].span(),
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch INVALID_ADMIN_ACTIONS_LEN.
@@ -2315,11 +2327,12 @@ fn test_compile_client_actions_assertions() {
     let result = user
         .safe_compile_client_actions(
             admin_actions: [
-                ClientAccountAction::Register((user.public_key, random)),
+                ClientAccountAction::Register((user.private_key, random)),
                 ClientAccountAction::ReplaceKey(user.public_key),
             ]
                 .span(),
-            client_actions: [].span(),
+            channel_actions: [].span(),
+            transfer_actions: [].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_ADMIN_ACTIONS_LEN);
 
@@ -2327,7 +2340,8 @@ fn test_compile_client_actions_assertions() {
     let result = user
         .safe_compile_client_actions(
             admin_actions: [].span(),
-            client_actions: [ClientAction::Deposit((token, amount)),].span(),
+            channel_actions: [].span(),
+            transfer_actions: [ClientFundAction::Deposit((token, amount)),].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_BALANCES_MISMATCH);
 
@@ -2335,7 +2349,8 @@ fn test_compile_client_actions_assertions() {
     let result = user
         .safe_compile_client_actions(
             admin_actions: [].span(),
-            client_actions: [ClientAction::UseNote((user.private_key, note_1_path)),].span(),
+            channel_actions: [].span(),
+            transfer_actions: [ClientFundAction::UseNote((user.private_key, note_1_path)),].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_BALANCES_MISMATCH);
 
@@ -2343,7 +2358,8 @@ fn test_compile_client_actions_assertions() {
     let result = user
         .safe_compile_client_actions(
             admin_actions: [].span(),
-            client_actions: [ClientAction::Withdraw((user.address, token, amount)),].span(),
+            channel_actions: [].span(),
+            transfer_actions: [ClientFundAction::Withdraw((user.address, token, amount)),].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'u128_sub Overflow');
 
@@ -2351,7 +2367,8 @@ fn test_compile_client_actions_assertions() {
     let result = user
         .safe_compile_client_actions(
             admin_actions: [].span(),
-            client_actions: [ClientAction::CreateNote((user.private_key, note_2)),].span(),
+            channel_actions: [].span(),
+            transfer_actions: [ClientFundAction::CreateNote((user.private_key, note_2)),].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'u128_sub Overflow');
 }
