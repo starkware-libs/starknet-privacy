@@ -14,10 +14,6 @@ export type Amount = bigint;
 export type Open = { readonly __marker: "open" };
 export const open: Open = { __marker: "open" };
 
-/** Marker for "transfer to self" */
-export type Self = { readonly __marker: "self" };
-export const self: Self = { __marker: "self" };
-
 /**
  * Union that allows both the concrete Account class as well as the lighter AccountInterface.
  */
@@ -153,7 +149,7 @@ export interface PrivateTransfers {
   deposit(params: {
     token: StarknetAddress;
     amount: Amount;
-    recipient?: PrivateRecipient;
+    recipient: PrivateRecipient;
   }): Promise<PrivateInvocationResult>;
 
   /**
@@ -180,7 +176,7 @@ export interface PrivateTransfers {
   transfer(params: {
     token: StarknetAddress;
     inputs: Note[];
-    recipient: PrivateRecipient | Self;
+    recipient: PrivateRecipient;
     amount?: Amount | Open;
     selfChannel?: Channel;
   }): Promise<PrivateInvocationResult>;
@@ -214,8 +210,8 @@ export interface PrivateTransfers {
 /**
  * Output specification for transfer/withdraw operations
  */
-export type TransferOutput = { recipient: PrivateRecipient | Self; amount: Amount | Open };
-export type WithdrawOutput = { recipient: StarknetAddress | Self; amount: Amount };
+export type TransferOutput = { recipient: PrivateRecipient; amount: Amount | Open };
+export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
 
 /**
  * Token-specific sub-builder for operations on a single token.
@@ -235,7 +231,7 @@ export interface TokenOperationsBuilder {
   inputs(...notes: Note[]): this;
 
   /** Deposit this token (to self by default, or to a recipient with an open note already prepared) */
-  deposit(amount: Amount, recipient?: PrivateRecipient | Self): this;
+  deposit(amount: Amount, recipient: PrivateRecipient): this;
 
   /** Withdraw this token to one or more public addresses */
   withdraw(...outputs: WithdrawOutput[]): this;
@@ -382,7 +378,7 @@ export interface DiscoveryProviderInterface {
   setupRequirement(
     address: StarknetAddress,
     viewingKey: ViewingKey,
-    recipient: PrivateRecipient | Self,
+    recipient: PrivateRecipient,
     token: StarknetAddress
   ): Promise<{ register: boolean; initial: boolean; token: boolean }>;
 }
