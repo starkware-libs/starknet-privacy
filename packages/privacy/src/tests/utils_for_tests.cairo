@@ -178,7 +178,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn open_channel_with_generated_random(
         ref self: User, recipient: User,
     ) -> (felt252, Span<ServerAction>) {
-        let random = self.get_random();
+        let random = self.get_random().into();
         let output = self.open_channel(:recipient, :random);
         (random, output)
     }
@@ -266,7 +266,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn open_subchannel_with_generated_random(
         ref self: User, recipient: User, token: ContractAddress, index: usize,
     ) -> (felt252, Span<ServerAction>) {
-        let random = self.get_random();
+        let random = self.get_random().into();
         let output = self.open_subchannel(:recipient, :token, :index, :random);
         (random, output)
     }
@@ -293,11 +293,10 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     /// Returns a random value of 120 bits.
-    fn get_random(ref self: User) -> felt252 {
+    fn get_random(ref self: User) -> u128 {
         self.nonce += 1;
-        (hash(['RANDOM', self.nonce.into()].span()).into() % TWO_POW_120)
-            .try_into()
-            .expect('RANDOM_OVERFLOW')
+        let hash_u256: u256 = hash(['RANDOM', self.nonce.into()].span()).into();
+        (hash_u256 % TWO_POW_120.into()).try_into().expect('RANDOM_OVERFLOW')
     }
 
     fn create_note(self: @User, note: NewNote) -> Span<ServerAction> {
@@ -353,7 +352,7 @@ pub(crate) impl UserImpl of UserTrait {
         token: ContractAddress,
         index: usize,
         amount: u128,
-        random: felt252,
+        random: u128,
     ) -> EncNote {
         let channel_key = self.compute_channel_key(:recipient);
         let note_id = compute_note_id(:channel_key, :token, :index);
@@ -386,7 +385,7 @@ pub(crate) impl UserImpl of UserTrait {
         token: ContractAddress,
         amount: u128,
         index: usize,
-        random: felt252,
+        random: u128,
     ) -> NewNote {
         NewNote {
             recipient_addr: recipient.address,
@@ -462,7 +461,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     /// Returns (random, output) where output is the output of `register`.
     fn register_with_generated_random(ref self: User) -> (felt252, Span<ServerAction>) {
-        let random = self.get_random();
+        let random = self.get_random().into();
         let actions = self.register(:random);
         (random, actions)
     }
@@ -507,7 +506,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     /// Returns (random, output) where output is the output of `replace_key`.
     fn replace_key_with_generated_random(ref self: User) -> (felt252, Span<ServerAction>) {
-        let random = self.get_random();
+        let random = self.get_random().into();
         let actions = self.replace_key(:random);
         (random, actions)
     }
