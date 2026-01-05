@@ -76,17 +76,11 @@ pub mod Privacy {
             let mut token_balances: TokenBalances = Default::default();
             for client_action in client_actions {
                 match *client_action {
-                    ClientAction::Register((
+                    ClientAction::SetViewingKey((
                         user_private_key, random,
                     )) => {
                         server_actions
-                            .extend(self.register(:user_addr, :user_private_key, :random));
-                    },
-                    ClientAction::ReplaceKey((
-                        user_private_key, random,
-                    )) => {
-                        server_actions
-                            .extend(self.replace_key(:user_addr, :user_private_key, :random));
+                            .extend(self.set_viewing_key(:user_addr, :user_private_key, :random));
                     },
                     ClientAction::OpenChannel((
                         user_private_key, recipient_addr, recipient_public_key, random,
@@ -175,56 +169,16 @@ pub mod Privacy {
     #[generate_trait]
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
         /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
-        fn register(
+        fn set_viewing_key(
             self: @ContractState,
             user_addr: ContractAddress,
             user_private_key: felt252,
             random: felt252,
         ) -> Array<ServerAction> {
-            let (user_public_key, enc_private_key) = self
-                ._private_key_to_server_values(:user_private_key, :random);
-
-            array![
-                ServerAction::WriteIfZero(
-                    (self.public_key.entry(user_addr).into(), user_public_key),
-                ),
-                ServerAction::WriteIfZeroPrivateKey(
-                    (self.enc_private_key.entry(user_addr).into(), enc_private_key),
-                ),
-            ]
-        }
-
-        // TODO: Consider merge register and replace key actions.
-        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
-        fn replace_key(
-            self: @ContractState,
-            user_addr: ContractAddress,
-            user_private_key: felt252,
-            random: felt252,
-        ) -> Array<ServerAction> {
-            // TODO: Enforce cooldown between key replacements? (track last update time).
-            let (user_public_key, enc_private_key) = self
-                ._private_key_to_server_values(:user_private_key, :random);
-
-            array![
-                ServerAction::WriteIfNonZero(
-                    (self.public_key.entry(user_addr).into(), user_public_key),
-                ),
-                ServerAction::WriteIfNonZeroPrivateKey(
-                    (self.enc_private_key.entry(user_addr).into(), enc_private_key),
-                ),
-            ]
-        }
-
-        // TODO: Consider return common actions here?
-        /// Asserts the input is valid and returns (user_public_key, enc_private_key), non zero
-        /// values.
-        fn _private_key_to_server_values(
-            self: @ContractState, user_private_key: felt252, random: felt252,
-        ) -> (felt252, EncPrivateKey) {
             assert(user_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
             assert(is_canonical_key(key: user_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+
             // Derive the public key from the private key.
             let user_public_key = derive_public_key(private_key: user_private_key);
             assert(user_public_key.is_non_zero(), internal_errors::ZERO_DERIVED_PUBLIC_KEY);
@@ -237,7 +191,12 @@ pub mod Privacy {
             );
             assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
-            (user_public_key, enc_private_key)
+            array![
+                ServerAction::Write((self.public_key.entry(user_addr).into(), user_public_key)),
+                ServerAction::WritePrivateKey(
+                    (self.enc_private_key.entry(user_addr).into(), enc_private_key),
+                ),
+            ]
         }
 
         /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
@@ -505,14 +464,14 @@ pub mod Privacy {
                     ServerAction::WriteIfZeroSubchannel((
                         storage_address, new_value,
                     )) => { self._execute_write_subchannel(:storage_address, :new_value); },
-                    ServerAction::WriteIfZeroPrivateKey((
+                    ServerAction::Write((
                         storage_address, new_value,
                     )) => {
-                        self
-                            ._execute_write_private_key(
-                                :storage_address, :new_value, require_zero: true,
-                            );
+                        self._execute_write(:storage_address, :new_value, require_zero: false);
                     },
+                    ServerAction::WritePrivateKey((
+                        storage_address, new_value,
+                    )) => { self._execute_write_private_key(:storage_address, :new_value); },
                     ServerAction::AppendToVec((
                         recipient_addr, recipient_public_key, enc_channel_info,
                     )) => {
@@ -520,19 +479,6 @@ pub mod Privacy {
                             ._execute_append_to_vector(
                                 key: (recipient_addr, recipient_public_key),
                                 value: enc_channel_info,
-                            );
-                    },
-                    ServerAction::WriteIfNonZero((
-                        storage_address, new_value,
-                    )) => {
-                        self._execute_write(:storage_address, :new_value, require_zero: false);
-                    },
-                    ServerAction::WriteIfNonZeroPrivateKey((
-                        storage_address, new_value,
-                    )) => {
-                        self
-                            ._execute_write_private_key(
-                                :storage_address, :new_value, require_zero: false,
                             );
                     },
                     ServerAction::TransferFrom((
@@ -558,11 +504,8 @@ pub mod Privacy {
             require_zero: bool,
         ) {
             let mut target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
-            let current_value = target.read();
             if require_zero {
-                assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
-            } else {
-                assert(current_value.is_non_zero(), errors::ZERO_VALUE);
+                assert(target.read().is_zero(), errors::NON_ZERO_VALUE);
             }
             target.write(new_value);
         }
@@ -585,20 +528,11 @@ pub mod Privacy {
         // TODO: Make generic and consider merging this with `_execute_write` function.
         // TODO: Better naming for this function.
         fn _execute_write_private_key(
-            ref self: ContractState,
-            storage_address: felt252,
-            new_value: EncPrivateKey,
-            require_zero: bool,
+            ref self: ContractState, storage_address: felt252, new_value: EncPrivateKey,
         ) {
             let mut target = StorageBase::<
                 Mutable<EncPrivateKey>,
             > { __base_address__: storage_address };
-            let current_value = target.read();
-            if require_zero {
-                assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
-            } else {
-                assert(current_value.is_non_zero(), errors::ZERO_VALUE);
-            }
             target.write(new_value);
         }
 
