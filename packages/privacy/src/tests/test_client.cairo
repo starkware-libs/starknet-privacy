@@ -340,29 +340,12 @@ fn test_transfer_assertions() {
         random: user_1.get_random(),
     };
 
-    // Catch ZERO_OWNER_ADDR.
+    // Catch ZERO_USER_ADDR.
     let mut user_1_zero = user_1;
     user_1_zero.address = Zero::zero();
     let result = user_1_zero
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_ADDR);
-
-    // Catch ZERO_OWNER_PRIVATE_KEY.
-    let mut user_1_zero_private_key = user_1;
-    user_1_zero_private_key.private_key = Zero::zero();
-    let result = user_1_zero_private_key
-        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
-
-    // TODO: Catch private key not canonical.
-
-    // Catch NO_NOTES_TO_USE.
-    let result = user_1.safe_transfer(notes_to_use: [].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_USE);
-
-    // Catch NO_NOTES_TO_CREATE.
-    let result = user_1.safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_NOTES_TO_CREATE);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Use note errors.
 
@@ -381,6 +364,21 @@ fn test_transfer_assertions() {
             notes_to_create: [new_note].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+
+    // Catch ZERO_OWNER_PRIVATE_KEY.
+    let mut user_1_zero_owner_private_key = user_1;
+    user_1_zero_owner_private_key.private_key = Zero::zero();
+    let result = user_1_zero_owner_private_key
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
+
+    // Catch PRIVATE_KEY_NOT_CANONICAL.
+    let mut user_1_private_key_not_canonical = user_1;
+    user_1_private_key_not_canonical
+        .private_key = Neg::neg(user_1_private_key_not_canonical.private_key);
+    let result = user_1_private_key_not_canonical
+        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     let result = user_1
@@ -482,6 +480,9 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
+    // Note: ZERO_OWNER_PRIVATE_KEY is already caught in use_note.
+    // Note: PRIVATE_KEY_NOT_CANONICAL is already caught in use_note.
+
     user_3.register_e2e();
 
     // Catch INVALID_SUBCHANNEL - channel doesnt exist.
@@ -537,16 +538,9 @@ fn test_transfer_assertions() {
             notes_to_create: [NewNote { index: 1, ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
-
     // Transfer errors.
 
-    // Catch NOTE_SUM_MISMATCH.
-    let result = user_1
-        .safe_transfer(
-            notes_to_use: [note_path].span(),
-            notes_to_create: [NewNote { amount: 2, ..new_note }].span(),
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_SUM_MISMATCH);
+    // TODO: Catch token balances error.
 }
 
 #[test]
@@ -1370,6 +1364,32 @@ fn test_create_note_zero_random() {
 }
 
 #[test]
+#[should_panic(expected: 'ZERO_OWNER_PRIVATE_KEY')]
+fn test_create_note_zero_owner_private_key() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    user_1.private_key = Zero::zero();
+    let user_2 = test.new_user();
+    let token = test.mock_new_token();
+    let note = user_1
+        .new_note_with_generated_random(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected: 'PRIVATE_KEY_NOT_CANONICAL')]
+fn test_create_note_private_key_not_canonical() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    user_1.private_key = Neg::neg(user_1.private_key);
+    let user_2 = test.new_user();
+    let token = test.mock_new_token();
+    let note = user_1
+        .new_note_with_generated_random(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
 #[should_panic(expected: 'ZERO_RECIPIENT_PUBLIC_KEY')]
 fn test_create_note_zero_recipient_public_key() {
     let mut test: Test = Default::default();
@@ -1548,10 +1568,14 @@ fn test_use_note() {
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let note_path = NotePath { channel_key, token, note_index };
-    let (nullifier, note_amount) = user_2.use_note(note: note_path);
-    assert_eq!(note_amount, amount);
-    let expected_nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
-    assert_eq!(nullifier, expected_nullifier);
+    let actions = user_2.use_note(note: note_path);
+    let nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
+    let nullifier_storage_path = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+    );
+    let expected_actions = [ServerAction::WriteIfZero((nullifier_storage_path, true.into()))]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -1568,10 +1592,14 @@ fn test_use_note_self_note() {
     user.cheat_create_note_e2e(:note);
     let channel_key = user.compute_channel_key(recipient: user);
     let note_path = NotePath { channel_key, token, note_index };
-    let (nullifier, note_amount) = user.use_note(note: note_path);
-    assert_eq!(note_amount, amount);
-    let expected_nullifier = user.compute_nullifier(sender: user, :token, :note_index);
-    assert_eq!(nullifier, expected_nullifier);
+    let actions = user.use_note(note: note_path);
+    let nullifier = user.compute_nullifier(sender: user, :token, :note_index);
+    let nullifier_storage_path = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+    );
+    let expected_actions = [ServerAction::WriteIfZero((nullifier_storage_path, true.into()))]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -1600,21 +1628,30 @@ fn test_use_note_multiple_notes() {
     let note_1_path = NotePath { channel_key: channel_key_1, token, note_index: 0 };
     let note_2_path = NotePath { channel_key: channel_key_1, token, note_index: 1 };
     let note_3_path = NotePath { channel_key: channel_key_2, token, note_index: 0 };
-    let (nullifier_1, note_amount_1) = user_2.use_note(note: note_1_path);
-    let (nullifier_2, note_amount_2) = user_2.use_note(note: note_2_path);
-    let (nullifier_3, note_amount_3) = user_2.use_note(note: note_3_path);
-    assert_eq!(note_amount_1, amount_1);
-    assert_eq!(note_amount_2, amount_2);
-    assert_eq!(note_amount_3, amount_1);
-    assert_ne!(nullifier_1, nullifier_2);
-    assert_ne!(nullifier_1, nullifier_3);
-    assert_ne!(nullifier_2, nullifier_3);
+    let actions_1 = user_2.use_note(note: note_1_path);
+    let actions_2 = user_2.use_note(note: note_2_path);
+    let actions_3 = user_2.use_note(note: note_3_path);
     let expected_nullifier_1 = user_2.compute_nullifier(sender: user_1, :token, note_index: 0);
     let expected_nullifier_2 = user_2.compute_nullifier(sender: user_1, :token, note_index: 1);
-    assert_eq!(nullifier_1, expected_nullifier_1);
-    assert_eq!(nullifier_2, expected_nullifier_2);
     let expected_nullifier_3 = user_2.compute_nullifier(sender: user_2, :token, note_index: 0);
-    assert_eq!(nullifier_3, expected_nullifier_3);
+    let nullifier_storage_path_1 = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
+    );
+    let nullifier_storage_path_2 = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier_2].span(),
+    );
+    let nullifier_storage_path_3 = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier_3].span(),
+    );
+    let expected_actions_1 = [ServerAction::WriteIfZero((nullifier_storage_path_1, true.into()))]
+        .span();
+    let expected_actions_2 = [ServerAction::WriteIfZero((nullifier_storage_path_2, true.into()))]
+        .span();
+    let expected_actions_3 = [ServerAction::WriteIfZero((nullifier_storage_path_3, true.into()))]
+        .span();
+    assert_eq!(actions_1, expected_actions_1);
+    assert_eq!(actions_2, expected_actions_2);
+    assert_eq!(actions_3, expected_actions_3);
 }
 
 #[test]
@@ -1636,15 +1673,22 @@ fn test_use_note_same_amount() {
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let note_path_1 = NotePath { channel_key, token, note_index: 0 };
     let note_path_2 = NotePath { channel_key, token, note_index: 1 };
-    let (nullifier_1, note_amount_1) = user_2.use_note(note: note_path_1);
-    let (nullifier_2, note_amount_2) = user_2.use_note(note: note_path_2);
-    assert_eq!(note_amount_1, amount);
-    assert_eq!(note_amount_2, amount);
-    assert_ne!(nullifier_1, nullifier_2);
+    let actions_1 = user_2.use_note(note: note_path_1);
+    let actions_2 = user_2.use_note(note: note_path_2);
     let expected_nullifier_1 = user_2.compute_nullifier(sender: user_1, :token, note_index: 0);
     let expected_nullifier_2 = user_2.compute_nullifier(sender: user_1, :token, note_index: 1);
-    assert_eq!(nullifier_1, expected_nullifier_1);
-    assert_eq!(nullifier_2, expected_nullifier_2);
+    let nullifier_storage_path_1 = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
+    );
+    let nullifier_storage_path_2 = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier_2].span(),
+    );
+    let expected_actions_1 = [ServerAction::WriteIfZero((nullifier_storage_path_1, true.into()))]
+        .span();
+    let expected_actions_2 = [ServerAction::WriteIfZero((nullifier_storage_path_2, true.into()))]
+        .span();
+    assert_eq!(actions_1, expected_actions_1);
+    assert_eq!(actions_2, expected_actions_2);
 }
 
 #[test]
@@ -1664,6 +1708,30 @@ fn test_use_note_zero_channel_key() {
     let user_1 = test.new_user();
     let token = test.mock_new_token();
     let note_path = NotePath { channel_key: Zero::zero(), token, note_index: 0 };
+    user_1.use_note(note: note_path);
+}
+
+#[test]
+#[should_panic(expected: 'ZERO_OWNER_PRIVATE_KEY')]
+fn test_use_note_zero_owner_private_key() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    user_1.private_key = Zero::zero();
+    let token = test.mock_new_token();
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
+    let note_path = NotePath { channel_key, token, note_index: 0 };
+    user_1.use_note(note: note_path);
+}
+
+#[test]
+#[should_panic(expected: 'PRIVATE_KEY_NOT_CANONICAL')]
+fn test_use_note_private_key_not_canonical() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    user_1.private_key = Neg::neg(user_1.private_key);
+    let token = test.mock_new_token();
+    let channel_key = user_1.compute_channel_key(recipient: user_1);
+    let note_path = NotePath { channel_key, token, note_index: 0 };
     user_1.use_note(note: note_path);
 }
 
@@ -1797,9 +1865,13 @@ fn test_use_note_find_nullifier() {
 
     // User 2 uses the note.
     let note_path = NotePath { channel_key, token, note_index };
-    let (nullifier, note_amount) = user_2.use_note(note: note_path);
-    assert_eq!(note_amount, amount);
-    assert_eq!(nullifier, expected_nullifier);
+    let actions = user_2.use_note(note: note_path);
+    let nullifier_storage_path = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
+    );
+    let expected_actions = [ServerAction::WriteIfZero((nullifier_storage_path, true.into()))]
+        .span();
+    assert_eq!(actions, expected_actions);
     user_2.privacy.cheat_use_note(nullifier: expected_nullifier);
 
     assert!(user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
@@ -1809,36 +1881,6 @@ fn test_use_note_find_nullifier() {
 // TODO: Test create note with all fields of note same but one field different, for each field -
 // test note_ids (and maybe enc_amount) are different.
 // TODO: Same for subchannels, channels, etc.
-
-#[test]
-fn test_withdraw() {
-    let mut test = Default::default();
-    let mut user_1 = test.new_user();
-    let user_2 = test.new_user();
-    user_1.register_e2e();
-    let token = test.mock_new_token();
-
-    user_1.open_channel_with_token_e2e(recipient: user_1, :token, subchannel_index: 0);
-    let amount = 1;
-    let note_index = 0;
-    let note = user_1
-        .new_note_with_generated_random(recipient: user_1, :token, :amount, index: note_index);
-    user_1.cheat_create_note_e2e(:note);
-
-    let channel_key = user_1.compute_channel_key(recipient: user_1);
-    let note_to_withdraw = NotePath { channel_key, token, note_index: 0 };
-    let actions = user_1.withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-    let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
-    let storage_path_felt_nullifier = map_entry_address(
-        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
-    );
-    let expected_actions = [
-        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::TransferTo((user_2.address, token, amount)),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
-}
 
 #[test]
 fn test_withdraw_different_targets() {
@@ -1854,82 +1896,19 @@ fn test_withdraw_different_targets() {
     user_2.register_e2e();
     user_1.open_channel_with_token_e2e(recipient: user_1, :token, subchannel_index: 0);
 
-    // Setup note.
-    let note_index = 0;
-    let note = user_1
-        .new_note_with_generated_random(recipient: user_1, :token, :amount, index: note_index);
-    user_1.cheat_create_note_e2e(:note);
-    let channel_key = user_1.compute_channel_key(recipient: user_1);
-    let note_to_withdraw = NotePath { channel_key, token, note_index };
-    let nullifier = user_1.compute_nullifier(sender: user_1, :token, :note_index);
-    let storage_path_felt_nullifier = map_entry_address(
-        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
-    );
-
     // Withdraw note to self.
-    let actions = user_1.withdraw(withdrawal_target: user_1.address, :note_to_withdraw);
-    let expected_actions = [
-        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::TransferTo((user_1.address, token, amount)),
-    ]
-        .span();
+    let actions = user_1.withdraw(withdrawal_target: user_1.address, :token, :amount);
+    let expected_actions = [ServerAction::TransferTo((user_1.address, token, amount)),].span();
     assert_eq!(actions, expected_actions);
 
     // Withdraw note to other registered user.
-    let actions = user_1.withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-    let expected_actions = [
-        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::TransferTo((user_2.address, token, amount)),
-    ]
-        .span();
+    let actions = user_1.withdraw(withdrawal_target: user_2.address, :token, :amount);
+    let expected_actions = [ServerAction::TransferTo((user_2.address, token, amount)),].span();
     assert_eq!(actions, expected_actions);
 
     // Withdraw note to not registered user.
-    let actions = user_1.withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    let expected_actions = [
-        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::TransferTo((user_3.address, token, amount)),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
-}
-
-#[test]
-fn test_withdraw_note_from_other_user() {
-    let mut test = Default::default();
-    let token = test.mock_new_token();
-    let amount = 100;
-
-    // Setup users.
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
-    user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
-
-    let note_index = 0;
-    user_1
-        .cheat_create_note_e2e(
-            user_1
-                .new_note_with_generated_random(
-                    recipient: user_2, :token, :amount, index: note_index,
-                ),
-        );
-    let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let expected_nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
-    let actions = user_2
-        .withdraw(
-            withdrawal_target: user_2.address,
-            note_to_withdraw: NotePath { channel_key, token, note_index },
-        );
-    let storage_path_felt_nullifier = map_entry_address(
-        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
-    );
-    let expected_actions = [
-        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::TransferTo((user_2.address, token, amount)),
-    ]
-        .span();
+    let actions = user_1.withdraw(withdrawal_target: user_3.address, :token, :amount);
+    let expected_actions = [ServerAction::TransferTo((user_3.address, token, amount)),].span();
     assert_eq!(actions, expected_actions);
 }
 
@@ -1940,113 +1919,21 @@ fn test_withdraw_assertions() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token = test.mock_new_token();
-    let channel_key = user_1.compute_channel_key(recipient: user_1);
-    let mut note_to_withdraw = NotePath { channel_key, token, note_index: 0 };
-
-    // Catch ZERO_OWNER_ADDR.
-    let mut user_1_zero = user_1;
-    user_1_zero.address = Zero::zero();
-    let result = user_1_zero.safe_withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_ADDR);
-
-    // Catch ZERO_OWNER_PRIVATE_KEY.
-    let mut user_1_zero_private_key = user_1;
-    user_1_zero_private_key.private_key = Zero::zero();
-    let result = user_1_zero_private_key
-        .safe_withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
+    let amount = 100;
 
     // Catch ZERO_WITHDRAWAL_TARGET.
-    let result = user_1.safe_withdraw(withdrawal_target: Zero::zero(), :note_to_withdraw);
+    let result = user_1.safe_withdraw(withdrawal_target: Zero::zero(), :token, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_WITHDRAWAL_TARGET);
-
-    // TODO: Catch private key not canonical.
 
     // Catch ZERO_TOKEN.
     let result = user_1
-        .safe_withdraw(
-            withdrawal_target: user_2.address,
-            note_to_withdraw: NotePath { token: Zero::zero(), ..note_to_withdraw },
-        );
+        .safe_withdraw(withdrawal_target: user_2.address, token: Zero::zero(), :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
-    // Catch ZERO_CHANNEL_KEY.
+    // Catch ZERO_AMOUNT.
     let result = user_1
-        .safe_withdraw(
-            withdrawal_target: user_2.address,
-            note_to_withdraw: NotePath { channel_key: Zero::zero(), ..note_to_withdraw },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
-
-    // Catch INVALID_SUBCHANNEL - channel doesnt exist.
-    let result = user_1.safe_withdraw(withdrawal_target: user_2.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    let user_3 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
-    user_1.open_channel_e2e(recipient: user_1); // User 1 Channel 0
-    user_1.open_channel_e2e(recipient: user_2); // User 2 Channel 0
-    user_2.open_channel_e2e(recipient: user_2); // User 2 Channel 1
-    let channel_key = user_1.compute_channel_key(recipient: user_2);
-    note_to_withdraw.channel_key = channel_key;
-
-    // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
-    let result = user_2.safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
-    let note = user_1
-        .new_note_with_generated_random(recipient: user_2, :token, amount: 1, index: 0);
-    user_1.cheat_create_note_e2e(:note);
-
-    // Catch INVALID_SUBCHANNEL (wrong user address).
-    let mut user_2_wrong_addr = user_2;
-    user_2_wrong_addr.address = test.new_user().address;
-    user_2_wrong_addr.register_e2e();
-    user_1.open_channel_e2e(recipient: user_2_wrong_addr);
-    let result = user_2_wrong_addr
-        .safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    // Catch INVALID_SUBCHANNEL (wrong private key).
-    let mut user_2_wrong_private_key = user_2;
-    user_2_wrong_private_key.replace_private_key(private_key: test.new_user().private_key);
-    user_2_wrong_private_key.replace_public_key_e2e();
-    user_1.open_channel_e2e(recipient: user_2_wrong_private_key);
-    let result = user_2_wrong_private_key
-        .safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    // Catch INVALID_SUBCHANNEL (wrong channel key).
-    let wrong_channel_key = user_2.compute_channel_key(recipient: user_2);
-    let result = user_2
-        .safe_withdraw(
-            withdrawal_target: user_3.address,
-            note_to_withdraw: NotePath { channel_key: wrong_channel_key, ..note_to_withdraw },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    // Catch INVALID_SUBCHANNEL (wrong token).
-    let wrong_token = test.mock_new_token();
-    let result = user_2
-        .safe_withdraw(
-            withdrawal_target: user_3.address,
-            note_to_withdraw: NotePath { token: wrong_token, ..note_to_withdraw },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
-
-    // Catch NOTE_NOT_FOUND (wrong note index).
-    let result = user_2
-        .safe_withdraw(
-            withdrawal_target: user_3.address,
-            note_to_withdraw: NotePath { note_index: 1, ..note_to_withdraw },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
-
-    // Sanity check - should succeed.
-    let result = user_2.safe_withdraw(withdrawal_target: user_3.address, :note_to_withdraw);
-    assert_eq!(result.is_ok(), true);
+        .safe_withdraw(withdrawal_target: user_2.address, :token, amount: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 }
 
 #[test]
@@ -2270,6 +2157,24 @@ fn test_compile_client_actions() {
     let actions = user_1.deposit(:token, :amount);
     let expected_actions = [ServerAction::TransferFrom((user_1.address, token, amount))].span();
     assert_eq!(actions, expected_actions);
+
+    // Use note action.
+    user_1.cheat_create_note_e2e(:note);
+    let nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
+    let note_path = NotePath { channel_key, token, note_index };
+    let actions = user_2.use_note(note: note_path);
+    let storage_path_felt_nullifier = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+    );
+    let expected_actions = [ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into()))]
+        .span();
+    assert_eq!(actions, expected_actions);
+
+    // Withdraw action.
+    let actions = user_2.withdraw(withdrawal_target: user_1.address, :token, :amount);
+    let expected_actions = [ServerAction::TransferTo((user_1.address, token, amount))].span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -2283,7 +2188,7 @@ fn test_compile_client_actions_assertions() {
     let result = user_zero_addr.safe_compile_client_actions(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
-// TODO: Test with the negative private key (not canonical but the right public key) - deposit,
-// withdraw, transfer.
+// TODO: Test with the negative private key (not canonical but the right public key) for each action
+// that gets a private key as an input.
 
 
