@@ -37,7 +37,7 @@ fn test_register() {
 fn test_register_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    let random = user.get_random();
+    let random = user.get_random().into();
 
     // Catch ZERO_PRIVATE_KEY.
     let mut user_zero_public_key = user;
@@ -652,7 +652,7 @@ fn test_open_channel_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let user_2 = test.new_user();
-    let random = user_1.get_random();
+    let random = user_1.get_random().into();
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user_1;
@@ -937,7 +937,7 @@ fn test_open_subchannel_assertions() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token = test.mock_new_token();
-    let random = user_1.get_random();
+    let random = user_1.get_random().into();
     let index = 0;
 
     // Catch ZERO_USER_ADDR.
@@ -2118,7 +2118,7 @@ fn test_replace_key_to_other_user_key() {
 fn test_replace_key_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    let random = user.get_random();
+    let random = user.get_random().into();
 
     // Catch ZERO_PRIVATE_KEY.
     let mut user_zero_private_key = user;
@@ -2172,7 +2172,7 @@ fn test_compile_client_actions() {
     assert_eq!(actions, [].span());
 
     // Register action.
-    let random = user_1.get_random();
+    let random = user_1.get_random().into();
     let actions = user_1
         .compile_client_actions(
             client_actions: [ClientAction::Register((user_1.private_key, random))].span(),
@@ -2208,7 +2208,7 @@ fn test_compile_client_actions() {
     // Open channel action.
     user_1.register_e2e();
     user_2.register_e2e();
-    let random = user_1.get_random();
+    let random = user_1.get_random().into();
     let actions = user_1
         .compile_client_actions(
             client_actions: [

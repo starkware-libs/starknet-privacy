@@ -13,7 +13,7 @@ use starknet::storage::{StorageAsPointer, StoragePath};
 // TODO: Different file?
 // TODO: Define mod constants?
 // TODO: pub instead of pub(crate)?
-pub(crate) const TWO_POW_120: u256 = 2_u256.pow(120);
+pub(crate) const TWO_POW_120: u128 = 2_u128.pow(120);
 
 // TODO: Test the util and hash functions.
 
@@ -119,7 +119,8 @@ pub(crate) fn is_canonical_key(key: felt252) -> bool {
 
 // TODO: Refactor to (r, h(c,r) + amount).
 /// Encrypts the note amount.
-pub(crate) fn encrypt_note_amount(channel_key: felt252, random: felt252, amount: u128) -> felt252 {
+/// Assumes `random` is 120 bits.
+pub(crate) fn encrypt_note_amount(channel_key: felt252, random: u128, amount: u128) -> felt252 {
     // TODO: Use the random.
     compute_enc_amount_hash(channel_key) + amount.into()
 }

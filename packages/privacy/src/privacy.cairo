@@ -63,6 +63,7 @@ pub mod Privacy {
     }
 
     // TODO: Use direct storage access instead of using views.
+    // TODO: Consider all randoms to be u128/120 bits.
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn compile_client_actions(
@@ -424,7 +425,7 @@ pub mod Privacy {
             assert(note.random.is_non_zero(), errors::ZERO_RANDOM);
             assert(is_canonical_key(key: owner_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
             // Assert random is 120 bits.
-            assert(note.random.into() < TWO_POW_120, errors::RANDOM_EXCEEDS_120_BITS);
+            assert(note.random < TWO_POW_120, errors::RANDOM_EXCEEDS_120_BITS);
 
             // TODO: Consider impl helper function for common code.
 
