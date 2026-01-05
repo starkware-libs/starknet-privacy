@@ -1,0 +1,2 @@
+cd sdk && npx commitlint --edit "$1"
+
