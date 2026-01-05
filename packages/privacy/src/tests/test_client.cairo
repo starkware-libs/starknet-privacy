@@ -1828,7 +1828,7 @@ fn test_use_note_wrong_owner_private_key() {
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let note_path = NotePath { channel_key, token, note_index };
     user_2.replace_private_key(private_key: test.new_private_key());
-    user_2.replace_public_key_e2e();
+    user_2.replace_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     user_2.use_note(note: note_path);
 }
@@ -1992,7 +1992,7 @@ fn test_withdraw_assertions() {
 }
 
 #[test]
-fn test_replace_public_key() {
+fn test_replace_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let original_public_key = user.public_key;
@@ -2003,7 +2003,7 @@ fn test_replace_public_key() {
 
     // Replace the public key.
     user.new_key();
-    let actions = user.replace_public_key();
+    let actions = user.replace_key();
     let storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
@@ -2013,7 +2013,7 @@ fn test_replace_public_key() {
 }
 
 #[test]
-fn test_replace_public_key_sanity() {
+fn test_replace_key_sanity() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let original_public_key = user.public_key;
@@ -2024,22 +2024,22 @@ fn test_replace_public_key_sanity() {
 
     // Replace the public key first time.
     user.new_key();
-    user.replace_public_key_e2e();
+    user.replace_key_e2e();
     assert_eq!(user.get_public_key(), user.public_key);
 
     // Replace the public key second time.
     user.new_key();
-    user.replace_public_key_e2e();
+    user.replace_key_e2e();
     assert_eq!(user.get_public_key(), user.public_key);
 
     // Replace back to original public key.
     user.public_key = original_public_key;
-    user.replace_public_key_e2e();
+    user.replace_key_e2e();
     assert_eq!(user.get_public_key(), original_public_key);
 }
 
 #[test]
-fn test_replace_public_key_same_key() {
+fn test_replace_key_same_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let original_public_key = user.public_key;
@@ -2049,12 +2049,12 @@ fn test_replace_public_key_same_key() {
     assert_eq!(user.get_public_key(), original_public_key);
 
     // Replace with the same public key.
-    user.replace_public_key_e2e();
+    user.replace_key_e2e();
     assert_eq!(user.get_public_key(), original_public_key);
 }
 
 #[test]
-fn test_replace_public_key_to_other_user_key() {
+fn test_replace_key_to_other_user_key() {
     let mut test: Test = Default::default();
     let mut user1 = test.new_user();
     let mut user2 = test.new_user();
@@ -2071,7 +2071,7 @@ fn test_replace_public_key_to_other_user_key() {
 
     // User1 replaces their public key to user2's public key.
     user1.public_key = user2_public_key;
-    user1.replace_public_key_e2e();
+    user1.replace_key_e2e();
 
     // Verify user1 now has user2's public key.
     assert_eq!(user1.get_public_key(), user2_public_key);
@@ -2081,20 +2081,20 @@ fn test_replace_public_key_to_other_user_key() {
 
 #[test]
 #[feature("safe_dispatcher")]
-fn test_replace_public_key_assertions() {
+fn test_replace_key_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
     // Catch ZERO_PUBLIC_KEY.
     let mut user_zero_public_key = user;
     user_zero_public_key.public_key = Zero::zero();
-    let result = user_zero_public_key.safe_replace_public_key();
+    let result = user_zero_public_key.safe_replace_key();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PUBLIC_KEY);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
-    let result = user_zero_addr.safe_replace_public_key();
+    let result = user_zero_addr.safe_replace_key();
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
 
@@ -2130,10 +2130,10 @@ fn test_compile_client_actions() {
         .span();
     assert_eq!(actions, expected_actions);
 
-    // Replace public key action.
+    // Replace key action.
     let actions = user_1
         .compile_client_actions(
-            client_actions: [ClientAction::ReplacePublicKey(user_1.public_key)].span(),
+            client_actions: [ClientAction::ReplaceKey(user_1.public_key)].span(),
         );
     let expected_actions = [
         ServerAction::WriteIfNonZero((public_key_storage_path_felt, user_1.public_key))
