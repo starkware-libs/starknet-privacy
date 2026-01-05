@@ -495,10 +495,10 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    fn replace_public_key(self: @User) -> Span<ServerAction> {
+    fn replace_key(self: @User) -> Span<ServerAction> {
         self
             .compile_client_actions(
-                client_actions: [ClientAction::ReplacePublicKey(*self.public_key)].span(),
+                client_actions: [ClientAction::ReplaceKey(*self.public_key)].span(),
             )
     }
 
@@ -513,15 +513,15 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_replace_public_key(self: @User) -> Result<Span<ServerAction>, Array<felt252>> {
+    fn safe_replace_key(self: @User) -> Result<Span<ServerAction>, Array<felt252>> {
         self
             .safe_compile_client_actions(
-                client_actions: [ClientAction::ReplacePublicKey(*self.public_key)].span(),
+                client_actions: [ClientAction::ReplaceKey(*self.public_key)].span(),
             )
     }
 
-    fn replace_public_key_e2e(self: @User) {
-        let actions = self.replace_public_key();
+    fn replace_key_e2e(self: @User) {
+        let actions = self.replace_key();
         self.privacy.server.execute_actions(:actions);
     }
 
