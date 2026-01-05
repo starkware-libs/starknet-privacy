@@ -11,12 +11,12 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        ClientAction, EncChannelInfo, EncChannelInfoTrait, EncSubchannelInfo, NewNote, NotePath,
-        ServerAction,
+        ClientAction, EncChannelInfo, EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo,
+        NewNote, NotePath, ServerAction,
     };
     use privacy::utils::{
         StoragePathIntoFelt, decrypt_note_amount, derive_public_key, encrypt_channel_info,
-        encrypt_note_amount, encrypt_subchannel_info, is_canonical_key,
+        encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info, is_canonical_key,
     };
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
@@ -43,6 +43,12 @@ pub mod Privacy {
         nullifiers: Map<felt252, bool>,
         /// Map of user addresses to their public viewing keys.
         public_key: Map<ContractAddress, felt252>,
+        /// Map of user addresses to their encrypted private key.
+        // TODO: Consider vector with the history?
+        enc_private_key: Map<ContractAddress, EncPrivateKey>,
+        // TODO: Do we need setter for this?
+        /// Public key of the compliance used for private key encryptions.
+        compliance_public_key: felt252,
     }
 
     #[event]
@@ -51,7 +57,9 @@ pub mod Privacy {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState) {}
+    fn constructor(ref self: ContractState, compliance_public_key: felt252) {
+        self.compliance_public_key.write(compliance_public_key);
+    }
 
     // TODO: Use direct storage access instead of using views.
     #[abi(embed_v0)]
@@ -65,8 +73,11 @@ pub mod Privacy {
             let mut server_actions: Array<ServerAction> = array![];
             for client_action in client_actions {
                 match *client_action {
-                    ClientAction::Register(user_public_key) => {
-                        server_actions.append(self.register(:user_addr, :user_public_key));
+                    ClientAction::Register((
+                        user_private_key, random,
+                    )) => {
+                        server_actions
+                            .extend(self.register(:user_addr, :user_private_key, :random));
                     },
                     ClientAction::ReplacePublicKey(user_public_key) => {
                         server_actions
@@ -148,12 +159,31 @@ pub mod Privacy {
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
         /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
         fn register(
-            self: @ContractState, user_addr: ContractAddress, user_public_key: felt252,
-        ) -> ServerAction {
-            // TODO: Add compliance.
-            assert(user_public_key.is_non_zero(), errors::ZERO_PUBLIC_KEY);
+            self: @ContractState,
+            user_addr: ContractAddress,
+            user_private_key: felt252,
+            random: felt252,
+        ) -> Array<ServerAction> {
+            assert(user_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            assert(is_canonical_key(key: user_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+            let user_public_key = derive_public_key(private_key: user_private_key);
+            assert(user_public_key.is_non_zero(), internal_errors::ZERO_DERIVED_PUBLIC_KEY);
+            let enc_private_key = encrypt_private_key(
+                ephemeral_secret: random,
+                compliance_public_key: self.compliance_public_key.read(),
+                private_key: user_private_key,
+            );
+            assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
-            ServerAction::WriteIfZero((self.public_key.entry(user_addr).into(), user_public_key))
+            array![
+                ServerAction::WriteIfZero(
+                    (self.public_key.entry(user_addr).into(), user_public_key),
+                ),
+                ServerAction::WriteIfZeroPrivateKey(
+                    (self.enc_private_key.entry(user_addr).into(), enc_private_key),
+                ),
+            ]
         }
 
         /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
@@ -423,6 +453,14 @@ pub mod Privacy {
                     ServerAction::WriteIfZeroSubchannel((
                         storage_address, new_value,
                     )) => { self._execute_write_subchannel(:storage_address, :new_value); },
+                    ServerAction::WriteIfZeroPrivateKey((
+                        storage_address, new_value,
+                    )) => {
+                        self
+                            ._execute_write_private_key(
+                                :storage_address, :new_value, require_zero: true,
+                            );
+                    },
                     ServerAction::AppendToVec((
                         recipient_addr, recipient_public_key, enc_channel_info,
                     )) => {
@@ -481,6 +519,26 @@ pub mod Privacy {
             // TODO: Require zero as param?
             // Require zero.
             assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
+            target.write(new_value);
+        }
+
+        // TODO: Make generic and consider merging this with `_execute_write` function.
+        // TODO: Better naming for this function.
+        fn _execute_write_private_key(
+            ref self: ContractState,
+            storage_address: felt252,
+            new_value: EncPrivateKey,
+            require_zero: bool,
+        ) {
+            let mut target = StorageBase::<
+                Mutable<EncPrivateKey>,
+            > { __base_address__: storage_address };
+            let current_value = target.read();
+            if require_zero {
+                assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
+            } else {
+                assert(current_value.is_non_zero(), errors::ZERO_VALUE);
+            }
             target.write(new_value);
         }
 
@@ -568,6 +626,16 @@ pub mod Privacy {
 
         fn get_public_key(self: @ContractState, user_addr: ContractAddress) -> felt252 {
             self.public_key.read(user_addr)
+        }
+
+        fn get_enc_private_key(self: @ContractState, user_addr: ContractAddress) -> EncPrivateKey {
+            // TODO: Restrict access to compliance?
+            // TODO: Assert `user_addr` is registered?
+            self.enc_private_key.read(user_addr)
+        }
+
+        fn get_compliance_public_key(self: @ContractState) -> felt252 {
+            self.compliance_public_key.read()
         }
     }
 }
