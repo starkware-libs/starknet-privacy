@@ -158,7 +158,7 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
 // TODO: Consider refactoring tuples to named structs in ClientAction and ServerAction.
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
-pub enum ClientAction {
+pub enum ClientAccountAction {
     // TODO: Rename user_private_key to private_key here.
     /// Register a new user with a viewing key.
     /// The random is used to encrypt the private key.
@@ -167,6 +167,10 @@ pub enum ClientAction {
     /// Replace the user's viewing key with a new value.
     /// (user_public_key: felt252)
     ReplaceKey: felt252,
+}
+
+#[derive(Serde, Copy, Drop, Debug, PartialEq)]
+pub enum ClientAction {
     /// Open a new channel from the user to a recipient.
     /// (user_private_key: felt252, recipient_addr: ContractAddress, recipient_public_key: felt252,
     /// random: felt252)

@@ -13,8 +13,8 @@ use privacy::interface::{
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
-    ClientAction, EncChannelInfo, EncPrivateKey, EncSubchannelInfo, NewNote, NotePath, ServerAction,
-    TokenBalances,
+    ClientAccountAction, ClientAction, EncChannelInfo, EncPrivateKey, EncSubchannelInfo, NewNote,
+    NotePath, ServerAction, TokenBalances,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
@@ -84,16 +84,22 @@ struct User {
 #[generate_trait]
 pub(crate) impl UserImpl of UserTrait {
     fn compile_client_actions(
-        self: @User, client_actions: Span<ClientAction>,
+        self: @User, admin_actions: Span<ClientAccountAction>, client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
-        self.privacy.client.compile_client_actions(user_addr: *self.address, :client_actions)
+        self
+            .privacy
+            .client
+            .compile_client_actions(user_addr: *self.address, :admin_actions, :client_actions)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_compile_client_actions(
-        self: @User, client_actions: Span<ClientAction>,
+        self: @User, admin_actions: Span<ClientAccountAction>, client_actions: Span<ClientAction>,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.privacy.safe_client.compile_client_actions(user_addr: *self.address, :client_actions)
+        self
+            .privacy
+            .safe_client
+            .compile_client_actions(user_addr: *self.address, :admin_actions, :client_actions)
     }
 
     fn replace_private_key(ref self: User, private_key: felt252) {
@@ -112,7 +118,7 @@ pub(crate) impl UserImpl of UserTrait {
             client_actions.append(ClientAction::CreateNote((*self.private_key, *note)));
         }
 
-        self.compile_client_actions(client_actions: client_actions.span())
+        self.compile_client_actions(admin_actions: [].span(), client_actions: client_actions.span())
     }
 
     #[feature("safe_dispatcher")]
@@ -127,7 +133,10 @@ pub(crate) impl UserImpl of UserTrait {
             client_actions.append(ClientAction::CreateNote((*self.private_key, *note)));
         }
 
-        self.safe_compile_client_actions(client_actions: client_actions.span())
+        self
+            .safe_compile_client_actions(
+                admin_actions: [].span(), client_actions: client_actions.span(),
+            )
     }
 
     fn withdraw(
@@ -135,6 +144,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> Span<ServerAction> {
         self
             .compile_client_actions(
+                admin_actions: [].span(),
                 client_actions: [ClientAction::Withdraw((withdrawal_target, token, amount))].span(),
             )
     }
@@ -161,6 +171,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self
             .safe_compile_client_actions(
+                admin_actions: [].span(),
                 client_actions: [ClientAction::Withdraw((withdrawal_target, token, amount))].span(),
             )
     }
@@ -168,6 +179,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn open_channel(self: @User, recipient: User, random: felt252) -> Span<ServerAction> {
         self
             .compile_client_actions(
+                admin_actions: [].span(),
                 client_actions: [
                     ClientAction::OpenChannel(
                         (*self.private_key, recipient.address, recipient.public_key, random),
@@ -183,6 +195,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self
             .safe_compile_client_actions(
+                admin_actions: [].span(),
                 client_actions: [
                     ClientAction::OpenChannel(
                         (*self.private_key, recipient.address, recipient.public_key, random),
@@ -214,6 +227,7 @@ pub(crate) impl UserImpl of UserTrait {
         let channel_key = self.compute_channel_key(:recipient);
         self
             .compile_client_actions(
+                admin_actions: [].span(),
                 client_actions: [
                     ClientAction::OpenSubchannel(
                         (
@@ -237,6 +251,7 @@ pub(crate) impl UserImpl of UserTrait {
         let channel_key = self.compute_channel_key(:recipient);
         self
             .safe_compile_client_actions(
+                admin_actions: [].span(),
                 client_actions: [
                     ClientAction::OpenSubchannel(
                         (
@@ -264,6 +279,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self
             .safe_compile_client_actions(
+                admin_actions: [].span(),
                 client_actions: [
                     ClientAction::OpenSubchannel(
                         (
@@ -317,7 +333,11 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn create_note(self: @User, note: NewNote) -> Span<ServerAction> {
-        self.compile_client_actions([ClientAction::CreateNote((*self.private_key, note)),].span())
+        self
+            .compile_client_actions(
+                admin_actions: [].span(),
+                client_actions: [ClientAction::CreateNote((*self.private_key, note)),].span(),
+            )
     }
 
     fn internal_create_note(self: @User, note: NewNote) -> Span<ServerAction> {
@@ -400,6 +420,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn use_note(self: @User, note: NotePath) -> Span<ServerAction> {
         self
             .compile_client_actions(
+                admin_actions: [].span(),
                 client_actions: [ClientAction::UseNote((*self.private_key, note))].span(),
             )
     }
@@ -461,7 +482,11 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn deposit(self: @User, token: ContractAddress, amount: u128) -> Span<ServerAction> {
-        self.compile_client_actions([ClientAction::Deposit((token, amount)),].span())
+        self
+            .compile_client_actions(
+                admin_actions: [].span(),
+                client_actions: [ClientAction::Deposit((token, amount))].span(),
+            )
     }
 
     fn internal_deposit(self: @User, token: ContractAddress, amount: u128) -> Span<ServerAction> {
@@ -484,6 +509,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self
             .safe_compile_client_actions(
+                admin_actions: [].span(),
                 client_actions: [ClientAction::Deposit((token, amount)),].span(),
             )
     }
@@ -525,7 +551,8 @@ pub(crate) impl UserImpl of UserTrait {
     fn register(self: @User, random: felt252) -> Span<ServerAction> {
         self
             .compile_client_actions(
-                client_actions: [ClientAction::Register((*self.private_key, random))].span(),
+                admin_actions: [ClientAccountAction::Register((*self.private_key, random))].span(),
+                client_actions: [].span(),
             )
     }
 
@@ -547,7 +574,8 @@ pub(crate) impl UserImpl of UserTrait {
     fn safe_register(self: @User, random: felt252) -> Result<Span<ServerAction>, Array<felt252>> {
         self
             .safe_compile_client_actions(
-                client_actions: [ClientAction::Register((*self.private_key, random))].span(),
+                admin_actions: [ClientAccountAction::Register((*self.private_key, random))].span(),
+                client_actions: [].span(),
             )
     }
 
@@ -570,7 +598,8 @@ pub(crate) impl UserImpl of UserTrait {
     fn replace_key(self: @User) -> Span<ServerAction> {
         self
             .compile_client_actions(
-                client_actions: [ClientAction::ReplaceKey(*self.public_key)].span(),
+                admin_actions: [ClientAccountAction::ReplaceKey(*self.public_key)].span(),
+                client_actions: [].span(),
             )
     }
 
@@ -588,7 +617,8 @@ pub(crate) impl UserImpl of UserTrait {
     fn safe_replace_key(self: @User) -> Result<Span<ServerAction>, Array<felt252>> {
         self
             .safe_compile_client_actions(
-                client_actions: [ClientAction::ReplaceKey(*self.public_key)].span(),
+                admin_actions: [ClientAccountAction::ReplaceKey(*self.public_key)].span(),
+                client_actions: [].span(),
             )
     }
 

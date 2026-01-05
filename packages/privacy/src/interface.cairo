@@ -1,5 +1,6 @@
 use privacy::objects::{
-    ClientAction, EncChannelInfo, EncPrivateKey, EncSubchannelInfo, ServerAction,
+    ClientAccountAction, ClientAction, EncChannelInfo, EncPrivateKey, EncSubchannelInfo,
+    ServerAction,
 };
 use starknet::ContractAddress;
 
@@ -67,7 +68,10 @@ pub trait IClient<T> {
     /// #### Access Control
     /// - TODO
     fn compile_client_actions(
-        self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @T,
+        user_addr: ContractAddress,
+        admin_actions: Span<ClientAccountAction>,
+        client_actions: Span<ClientAction>,
     ) -> Span<ServerAction>;
 }
 

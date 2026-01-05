@@ -11,8 +11,8 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        ClientAction, EncChannelInfo, EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo,
-        NewNote, NotePath, ServerAction, TokenBalances, TokenBalancesTrait,
+        ClientAccountAction, ClientAction, EncChannelInfo, EncChannelInfoTrait, EncPrivateKey,
+        EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::{
         StoragePathIntoFelt, decrypt_note_amount, derive_public_key, encrypt_channel_info,
@@ -65,24 +65,33 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn compile_client_actions(
-            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+            self: @ContractState,
+            user_addr: ContractAddress,
+            admin_actions: Span<ClientAccountAction>,
+            client_actions: Span<ClientAction>,
         ) -> Span<ServerAction> {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
             let mut server_actions: Array<ServerAction> = array![];
-            let mut token_balances: TokenBalances = Default::default();
-            for client_action in client_actions {
-                match *client_action {
-                    ClientAction::Register((
+            assert(admin_actions.len() <= 1, errors::INVALID_ADMIN_ACTIONS_LEN);
+            for admin_action in admin_actions {
+                match *admin_action {
+                    ClientAccountAction::Register((
                         user_private_key, random,
                     )) => {
                         server_actions
                             .extend(self.register(:user_addr, :user_private_key, :random));
                     },
-                    ClientAction::ReplaceKey(user_public_key) => {
+                    ClientAccountAction::ReplaceKey(user_public_key) => {
                         server_actions.append(self.replace_key(:user_addr, :user_public_key));
                     },
+                }
+            }
+
+            let mut token_balances = Default::default();
+            for client_action in client_actions {
+                match *client_action {
                     ClientAction::OpenChannel((
                         user_private_key, recipient_addr, recipient_public_key, random,
                     )) => {
