@@ -13,7 +13,7 @@ use starknet::storage::{StorageAsPointer, StoragePath};
 // TODO: Different file?
 // TODO: Define mod constants?
 // TODO: pub instead of pub(crate)?
-pub(crate) const TWO_POW_120: u256 = 2_u256.pow(120);
+pub(crate) const TWO_POW_120: u128 = 2_u128.pow(120);
 
 // TODO: Test the util and hash functions.
 

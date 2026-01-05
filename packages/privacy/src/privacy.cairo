@@ -423,8 +423,9 @@ pub mod Privacy {
             assert(note.amount.is_non_zero(), errors::ZERO_AMOUNT);
             assert(note.random.is_non_zero(), errors::ZERO_RANDOM);
             assert(is_canonical_key(key: owner_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+            let random_u256: u256 = note.random.into();
             // Assert random is 120 bits.
-            assert(note.random.into() < TWO_POW_120, errors::RANDOM_EXCEEDS_120_BITS);
+            assert(random_u256 < TWO_POW_120.into(), errors::RANDOM_EXCEEDS_120_BITS);
 
             // TODO: Consider impl helper function for common code.
 

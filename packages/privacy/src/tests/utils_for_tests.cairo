@@ -295,9 +295,8 @@ pub(crate) impl UserImpl of UserTrait {
     /// Returns a random value of 120 bits.
     fn get_random(ref self: User) -> felt252 {
         self.nonce += 1;
-        (hash(['RANDOM', self.nonce.into()].span()).into() % TWO_POW_120)
-            .try_into()
-            .expect('RANDOM_OVERFLOW')
+        let hash_u256: u256 = hash(['RANDOM', self.nonce.into()].span()).into();
+        (hash_u256 % TWO_POW_120.into()).try_into().expect('RANDOM_OVERFLOW')
     }
 
     fn create_note(self: @User, note: NewNote) -> Span<ServerAction> {
