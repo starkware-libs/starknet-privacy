@@ -1,0 +1,29 @@
+{
+  "folders": [
+    {
+      "name": "root",
+      "path": "."
+    },
+    {
+      "name": "sdk (npm)",
+      "path": "sdk"
+    },
+    {
+      "name": "client (cairo)",
+      "path": "packages/client"
+    },
+    {
+      "name": "server (cairo)",
+      "path": "packages/server"
+    }
+  ],
+  "settings": {
+    "typescript.preferences.importModuleSpecifier": "relative",
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    }
+  }
+}
+
