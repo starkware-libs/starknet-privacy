@@ -159,14 +159,13 @@ pub mod Privacy {
 
     #[generate_trait]
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
-        /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
         fn register(
             self: @ContractState,
             user_addr: ContractAddress,
             user_private_key: felt252,
             random: felt252,
         ) -> Array<ServerAction> {
-            // TODO: Move assertions to _private_key_to_server_values.
             let (user_public_key, enc_private_key) = self
                 ._private_key_to_server_values(:user_private_key, :random);
 
@@ -180,7 +179,8 @@ pub mod Privacy {
             ]
         }
 
-        /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        // TODO: Consider merge register and replace key actions.
+        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
         fn replace_key(
             self: @ContractState,
             user_addr: ContractAddress,
@@ -225,7 +225,7 @@ pub mod Privacy {
             (user_public_key, enc_private_key)
         }
 
-        /// `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
         fn open_channel(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -278,7 +278,7 @@ pub mod Privacy {
             ]
         }
 
-        /// `sender_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
         fn open_subchannel(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -334,7 +334,7 @@ pub mod Privacy {
             ]
         }
 
-        /// `user_addr` is assumed to be non-zero (checked in `compile_client_actions`).
+        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
         fn deposit(
             self: @ContractState, user_addr: ContractAddress, token: ContractAddress, amount: u128,
         ) -> ServerAction {
