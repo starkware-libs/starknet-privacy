@@ -6,7 +6,7 @@ use privacy::tests::utils_for_tests::{
     EncNoteTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info,
     decrypt_private_key, decrypt_subchannel_token,
 };
-use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
+use privacy::utils::{TWO_POW_120, decrypt_note_amount, encrypt_channel_info, is_canonical_key};
 use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 
@@ -511,6 +511,15 @@ fn test_transfer_assertions() {
             notes_to_create: [NewNote { random: Zero::zero(), ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+
+    // Catch RANDOM_EXCEEDS_120_BITS.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [note_path].span(),
+            notes_to_create: [NewNote { random: TWO_POW_120.try_into().unwrap(), ..new_note }]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::RANDOM_EXCEEDS_120_BITS);
 
     // Note: ZERO_OWNER_PRIVATE_KEY is already caught in use_note.
     // Note: PRIVATE_KEY_NOT_CANONICAL is already caught in use_note.
@@ -1418,6 +1427,20 @@ fn test_create_note_private_key_not_canonical() {
     let token = test.mock_new_token();
     let note = user_1
         .new_note_with_generated_random(recipient: user_2, :token, amount: 1, index: 0);
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected: 'RANDOM_EXCEEDS_120_BITS')]
+fn test_create_note_random_exceeds_120_bits() {
+    let mut test: Test = Default::default();
+    let user_1 = test.new_user();
+    let user_2 = test.new_user();
+    let token = test.mock_new_token();
+    let note = user_1
+        .new_note(
+            recipient: user_2, :token, amount: 1, index: 0, random: TWO_POW_120.try_into().unwrap(),
+        );
     user_1.create_note(:note);
 }
 
