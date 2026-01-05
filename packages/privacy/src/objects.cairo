@@ -114,15 +114,12 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ClientAction {
+    // TODO: Consider renaming to SetKey.
     // TODO: Rename user_private_key to private_key here.
-    /// Register a new user with a viewing key.
+    /// Register a user with a viewing key, or replace the user's viewing key if already registered.
     /// The random is used to encrypt the private key.
     /// (user_private_key: felt252, random: felt252)
-    Register: (felt252, felt252),
-    // TODO: Rename user_private_key to private_key here.
-    /// Replace the user's viewing key with a new key.
-    /// (user_private_key: felt252, random: felt252)
-    ReplaceKey: (felt252, felt252),
+    SetViewingKey: (felt252, felt252),
     /// Open a new channel from the user to a recipient.
     /// (user_private_key: felt252, recipient_addr: ContractAddress, recipient_public_key: felt252,
     /// random: felt252)
@@ -156,19 +153,14 @@ pub enum ServerAction {
     /// Verify that a storage value is zero/empty and then write to it.
     /// (storage_address: felt252, new_value: EncSubchannelInfo)
     WriteIfZeroSubchannel: (felt252, EncSubchannelInfo),
-    // TODO: Generalize with WriteIfZeroSubchannel - both structs are similar.
-    // TODO: Better naming for this action.
-    // Verify that a storage value is zero/empty and then write to it.
-    /// (storage_address: felt252, new_value: EncPrivateKey)
-    WriteIfZeroPrivateKey: (felt252, EncPrivateKey),
-    // TODO: Consider merging with WriteIfZero.
-    /// Verify that a storage value is non-zero and then write to it.
+    /// Write a value to storage.
     /// (storage_address: felt252, new_value: felt252)
-    WriteIfNonZero: (felt252, felt252),
-    // TODO: Generalize to any type, Merge with WriteIfNonZero.
-    /// Verify that a storage value is non-zero and then write to it.
+    Write: (felt252, felt252),
+    // TODO: Generalize to any type, Merge with Write.
+    // TODO: Better naming for this action.
+    /// Write an `EncPrivateKey` value to storage.
     /// (storage_address: felt252, new_value: EncPrivateKey)
-    WriteIfNonZeroPrivateKey: (felt252, EncPrivateKey),
+    WritePrivateKey: (felt252, EncPrivateKey),
     // TODO: Generalize to any vector.
     /// Append a `EncChannelInfo` value to (`recipient_addr`, `recipient_public_key`)'s vector in
     /// storage.
