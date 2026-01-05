@@ -37,49 +37,84 @@ class Nonce {
   }
 
   /**
-   * Finds the nonce with the lowest `created` value (skipping those without one)
-   * and returns its increment. Returns undefined if no nonces have `created`.
+   * Increments the nonce array in-place. Finds the nonce with the lowest `created`
+   * value (skipping those without one) and replaces it with an incremented version.
+   * If no nonces have `created` and there's room for a new slot, appends a new nonce.
+   *
+   * @param nonces - Array of nonces, assumed to have slots incrementing by 1
+   * @param maxSlots - Maximum number of slots allowed
+   * @param Ctor - Constructor for creating new nonces
+   * @returns The index of the changed nonce and the previous value (undefined if new slot)
    */
-  static next<T extends Nonce>(nonces: T[]): T | undefined {
+  protected static _increment<T extends Nonce>(
+    nonces: T[],
+    maxSlots: number,
+    Ctor: new (slot: number, sequence: number) => T
+  ): { index: number; previous: T | undefined } {
+    // Verify slots increment by 1
+    for (let i = 0; i < nonces.length; i++) {
+      assert(
+        nonces[i].slot === i,
+        `Invalid nonce array: expected slot ${i}, got ${nonces[i].slot}`
+      );
+    }
+
     const withCreated = nonces.filter((n): n is T & { created: BlockNumber } => n.created != null);
-    if (withCreated.length === 0) throw new Error("No nonces with created block number");
+
+    if (withCreated.length === 0) {
+      // No nonces have been created yet - add a new slot if room available
+      assert(nonces.length < maxSlots, `Cannot add new slot: already at max slots (${maxSlots})`);
+      const index = nonces.length;
+      nonces.push(new Ctor(index, 0));
+      return { index, previous: undefined };
+    }
 
     const oldest = withCreated.reduce((min, n) => (n.created! < min.created! ? n : min));
+    const index = oldest.slot;
+    const previous = nonces[index];
 
     // TODO: add a check the oldest is old enough (at least 10 blocks old)
 
-    return oldest.increment() as T;
+    nonces[index] = oldest.increment() as T;
+    return { index, previous };
   }
 }
 
-// Factory that creates a subclass of Nonce with a specific static MAX.
-function withMax<TMax extends number>(max: TMax) {
-  return class extends Nonce {
-    static readonly MAX: TMax = max;
+export class TokenNonce extends Nonce {
+  static readonly MAX_SLOTS = 10;
 
-    constructor(slot: number, sequence: number) {
-      super(slot, sequence, max);
-    }
-  };
+  constructor(slot: number, sequence: number, created?: BlockNumber) {
+    super(slot, sequence, TokenNonce.MAX_SLOTS, created);
+  }
+
+  /** Increments the nonce array in-place, returns the changed index and previous value. */
+  static increment(nonces: TokenNonce[]): { index: number; previous: TokenNonce | undefined } {
+    return Nonce._increment(nonces, TokenNonce.MAX_SLOTS, TokenNonce);
+  }
 }
 
-export const ChannelNonce = withMax(10);
-export const TokenNonce = withMax(100);
+export class NoteNonce extends Nonce {
+  static readonly MAX_SLOTS = 100;
 
-export type ChannelNonce = InstanceType<typeof ChannelNonce>;
-export type TokenNonce = InstanceType<typeof TokenNonce>;
+  constructor(slot: number, sequence: number, created?: BlockNumber) {
+    super(slot, sequence, NoteNonce.MAX_SLOTS, created);
+  }
 
-export { Nonce };
+  /** Increments the nonce array in-place, returns the changed index and previous value. */
+  static increment(nonces: NoteNonce[]): { index: number; previous: NoteNonce | undefined } {
+    return Nonce._increment(nonces, NoteNonce.MAX_SLOTS, NoteNonce);
+  }
+}
 
 type ChannelKey = bigint;
 
 /** Channel containing nonces for token and note creation. */
 export class Channel {
   /** @internal */ readonly key: ChannelKey;
-  /** @internal */ readonly nonces: ChannelNonce[];
-  /** @internal */ readonly tokens: Map<StarknetAddress, TokenNonce[]>;
+  /** @internal */ readonly nonces: TokenNonce[];
+  /** @internal */ readonly tokens: Map<StarknetAddress, NoteNonce[]>;
 
-  constructor(key: ChannelKey, nonces: ChannelNonce[], tokens: Map<StarknetAddress, TokenNonce[]>) {
+  constructor(key: ChannelKey, nonces: TokenNonce[], tokens: Map<StarknetAddress, NoteNonce[]>) {
     this.key = key;
     this.nonces = nonces;
     this.tokens = tokens;
@@ -113,9 +148,9 @@ export const channelSerde: ChannelSerde = {
 /** Witness for a note, containing channel key and nonce. */
 export class Witness {
   /** @internal */ readonly channelKey: ChannelKey;
-  /** @internal */ readonly nonce: TokenNonce;
+  /** @internal */ readonly nonce: NoteNonce;
 
-  constructor(channelKey: ChannelKey, nonce: TokenNonce) {
+  constructor(channelKey: ChannelKey, nonce: NoteNonce) {
     this.channelKey = channelKey;
     this.nonce = nonce;
   }
@@ -153,20 +188,7 @@ function assertChannelKey(value: unknown): ChannelKey {
   throw new Error("Invalid channel key");
 }
 
-function assertChannelNonce(value: unknown): ChannelNonce {
-  if (value instanceof ChannelNonce) {
-    return value;
-  }
-  assert(value !== null && typeof value === "object", "Invalid nonce: expected object");
-  const { slot, sequence } = value as Record<string, unknown>;
-  assert(
-    isUint(slot) && isUint(sequence),
-    "Invalid nonce: slot and sequence must be non-negative integers"
-  );
-  return new ChannelNonce(slot, sequence);
-}
-
-function assertTokenNonce(value: unknown): TokenNonce {
+function assertChannelNonce(value: unknown): TokenNonce {
   if (value instanceof TokenNonce) {
     return value;
   }
@@ -179,18 +201,31 @@ function assertTokenNonce(value: unknown): TokenNonce {
   return new TokenNonce(slot, sequence);
 }
 
-function assertNonces(value: unknown): ChannelNonce[] {
+function assertTokenNonce(value: unknown): NoteNonce {
+  if (value instanceof NoteNonce) {
+    return value;
+  }
+  assert(value !== null && typeof value === "object", "Invalid nonce: expected object");
+  const { slot, sequence } = value as Record<string, unknown>;
+  assert(
+    isUint(slot) && isUint(sequence),
+    "Invalid nonce: slot and sequence must be non-negative integers"
+  );
+  return new NoteNonce(slot, sequence);
+}
+
+function assertNonces(value: unknown): TokenNonce[] {
   if (Array.isArray(value)) {
     return value.map((n) => assertChannelNonce(n));
   }
   return [assertChannelNonce(value)];
 }
 
-function assertTokenEntries(value: unknown): Map<StarknetAddress, TokenNonce[]> {
+function assertTokenEntries(value: unknown): Map<StarknetAddress, NoteNonce[]> {
   if (!Array.isArray(value)) {
     throw new Error("Invalid tokens");
   }
-  const entries: [StarknetAddress, TokenNonce[]][] = value.map((entry) => {
+  const entries: [StarknetAddress, NoteNonce[]][] = value.map((entry) => {
     if (!Array.isArray(entry) || entry.length !== 2) {
       throw new Error("Invalid token entry");
     }
