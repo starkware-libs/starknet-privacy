@@ -132,13 +132,17 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
 // TODO: Consider refactoring tuples to named structs in ClientAction and ServerAction.
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
-pub enum ClientAction {
+pub enum ClientAdminAction {
     /// Register a new user with a public key.
     /// (user_public_key: felt252)
     Register: felt252,
     /// Replace the user's public key with a new value.
     /// (user_public_key: felt252)
     ReplacePublicKey: felt252,
+}
+
+#[derive(Serde, Copy, Drop, Debug, PartialEq)]
+pub enum ClientChannelAction {
     /// Open a new channel from the user to a recipient.
     /// (user_private_key: felt252, recipient_addr: ContractAddress, recipient_public_key: felt252,
     /// random: felt252)
@@ -147,6 +151,10 @@ pub enum ClientAction {
     /// (recipient_addr: ContractAddress, recipient_public_key: felt252, channel_key: felt252,
     /// index: usize, token: ContractAddress, random: felt252)
     OpenSubchannel: (ContractAddress, felt252, felt252, usize, ContractAddress, felt252),
+}
+
+#[derive(Serde, Copy, Drop, Debug, PartialEq)]
+pub enum ClientTransferAction {
     /// Creates a new note based on the specified `NewNote`.
     /// (user_private_key: felt252, new_note: NewNote)
     CreateNote: (felt252, NewNote),

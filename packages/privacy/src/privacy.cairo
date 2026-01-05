@@ -11,8 +11,9 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        ClientAction, EncChannelInfo, EncChannelInfoTrait, EncSubchannelInfo, NewNote, NotePath,
-        ServerAction, TokenBalances, TokenBalancesTrait,
+        ClientAdminAction, ClientChannelAction, ClientTransferAction, EncChannelInfo,
+        EncChannelInfoTrait, EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances,
+        TokenBalancesTrait,
     };
     use privacy::utils::{
         StoragePathIntoFelt, decrypt_note_amount, derive_public_key, encrypt_channel_info,
@@ -57,23 +58,31 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn compile_client_actions(
-            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+            self: @ContractState,
+            user_addr: ContractAddress,
+            admin_actions: Span<ClientAdminAction>,
+            channel_actions: Span<ClientChannelAction>,
+            transfer_actions: Span<ClientTransferAction>,
         ) -> Span<ServerAction> {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
-            // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
             let mut server_actions: Array<ServerAction> = array![];
-            let mut token_balances: TokenBalances = Default::default();
-            for client_action in client_actions {
-                match *client_action {
-                    ClientAction::Register(user_public_key) => {
+            assert(admin_actions.len() <= 1, errors::INVALID_ADMIN_ACTIONS_LEN);
+            for admin_action in admin_actions {
+                match *admin_action {
+                    ClientAdminAction::Register(user_public_key) => {
                         server_actions.append(self.register(:user_addr, :user_public_key));
                     },
-                    ClientAction::ReplacePublicKey(user_public_key) => {
+                    ClientAdminAction::ReplacePublicKey(user_public_key) => {
                         server_actions
                             .append(self.replace_public_key(:user_addr, :user_public_key));
                     },
-                    ClientAction::OpenChannel((
+                }
+            }
+
+            for channel_action in channel_actions {
+                match *channel_action {
+                    ClientChannelAction::OpenChannel((
                         user_private_key, recipient_addr, recipient_public_key, random,
                     )) => {
                         server_actions
@@ -88,7 +97,7 @@ pub mod Privacy {
                                     ),
                             );
                     },
-                    ClientAction::OpenSubchannel((
+                    ClientChannelAction::OpenSubchannel((
                         recipient_addr, recipient_public_key, channel_key, index, token, random,
                     )) => {
                         server_actions
@@ -105,7 +114,13 @@ pub mod Privacy {
                                     ),
                             );
                     },
-                    ClientAction::CreateNote((
+                }
+            }
+
+            let mut token_balances: TokenBalances = Default::default();
+            for transfer_action in transfer_actions {
+                match *transfer_action {
+                    ClientTransferAction::CreateNote((
                         user_private_key, new_note,
                     )) => {
                         server_actions
@@ -119,13 +134,13 @@ pub mod Privacy {
                                     ),
                             );
                     },
-                    ClientAction::Deposit((
+                    ClientTransferAction::Deposit((
                         token, amount,
                     )) => {
                         server_actions
                             .append(self.deposit(:user_addr, :token, :amount, ref :token_balances));
                     },
-                    ClientAction::UseNote((
+                    ClientTransferAction::UseNote((
                         user_private_key, note_to_withdraw,
                     )) => {
                         server_actions
@@ -139,7 +154,7 @@ pub mod Privacy {
                                     ),
                             );
                     },
-                    ClientAction::Withdraw((
+                    ClientTransferAction::Withdraw((
                         withdrawal_target, token, amount,
                     )) => {
                         server_actions
@@ -152,6 +167,7 @@ pub mod Privacy {
                     },
                 };
             }
+
             assert(token_balances.is_valid(), errors::TOKEN_BALANCES_MISMATCH);
             server_actions.span()
         }

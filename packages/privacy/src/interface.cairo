@@ -1,4 +1,7 @@
-use privacy::objects::{ClientAction, EncChannelInfo, EncSubchannelInfo, ServerAction};
+use privacy::objects::{
+    ClientAdminAction, ClientChannelAction, ClientTransferAction, EncChannelInfo, EncSubchannelInfo,
+    ServerAction,
+};
 use starknet::ContractAddress;
 
 // TODO: Use same naming convention for the functions. (owner/sender,
@@ -65,7 +68,11 @@ pub trait IClient<T> {
     /// #### Access Control
     /// - TODO
     fn compile_client_actions(
-        self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @T,
+        user_addr: ContractAddress,
+        admin_actions: Span<ClientAdminAction>,
+        channel_actions: Span<ClientChannelAction>,
+        transfer_actions: Span<ClientTransferAction>,
     ) -> Span<ServerAction>;
 }
 
