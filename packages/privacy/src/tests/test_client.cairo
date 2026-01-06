@@ -1,7 +1,10 @@
 use core::num::traits::Zero;
 use privacy::errors;
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
-use privacy::objects::{ClientAction, NewNote, NotePath, ServerAction};
+use privacy::objects::{
+    ClientAction, CreateNoteInput, DepositInput, OpenChannelInput, OpenSubchannelInput,
+    ServerAction, SetViewingKeyInput, UseNoteInput, WithdrawInput,
+};
 use privacy::tests::utils_for_tests::{
     EncNoteTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info,
     decrypt_private_key, decrypt_subchannel_token,
@@ -107,7 +110,9 @@ fn test_transfer() {
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_1);
 
-    let note_path = NotePath { channel_key, token, note_index };
+    let note_path = UseNoteInput {
+        owner_private_key: user_1.private_key, channel_key, token, note_index,
+    };
     let note = user_1
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index);
     let actions = user_1.transfer(notes_to_use: [note_path].span(), notes_to_create: [note].span());
@@ -148,7 +153,9 @@ fn test_transfer_to_self() {
     user_2.cheat_create_note_e2e(:note);
     let channel_key = user_2.compute_channel_key(recipient: user_1);
 
-    let note_path = NotePath { channel_key, token, note_index };
+    let note_path = UseNoteInput {
+        owner_private_key: user_1.private_key, channel_key, token, note_index,
+    };
     let note = user_1
         .new_note_with_generated_random(recipient: user_1, :token, :amount, index: note_index);
 
@@ -195,7 +202,9 @@ fn test_transfer_one_to_many() {
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_1);
 
-    let note_path = NotePath { channel_key, token, note_index };
+    let note_path = UseNoteInput {
+        owner_private_key: user_1.private_key, channel_key, token, note_index,
+    };
     let note_1 = user_1
         .new_note_with_generated_random(
             recipient: user_2, :token, amount: amount_1, index: note_index,
@@ -258,8 +267,12 @@ fn test_transfer_many_to_one() {
     user_3.cheat_create_note_e2e(:note);
     let channel_key_2 = user_3.compute_channel_key(recipient: user_1);
 
-    let note_path_1 = NotePath { channel_key: channel_key_1, token, note_index: 0 };
-    let note_path_2 = NotePath { channel_key: channel_key_2, token, note_index: 0 };
+    let note_path_1 = UseNoteInput {
+        owner_private_key: user_1.private_key, channel_key: channel_key_1, token, note_index: 0,
+    };
+    let note_path_2 = UseNoteInput {
+        owner_private_key: user_1.private_key, channel_key: channel_key_2, token, note_index: 0,
+    };
     let amount = 2 * amount;
     let note = user_1
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index);
@@ -318,8 +331,12 @@ fn test_transfer_many_to_many() {
     user_2.cheat_create_note_e2e(:note);
     let channel_key_2 = user_2.compute_channel_key(recipient: user_3);
 
-    let note_path_1 = NotePath { channel_key: channel_key_1, token, note_index: 0 };
-    let note_path_2 = NotePath { channel_key: channel_key_2, token, note_index: 0 };
+    let note_path_1 = UseNoteInput {
+        owner_private_key: user_3.private_key, channel_key: channel_key_1, token, note_index: 0,
+    };
+    let note_path_2 = UseNoteInput {
+        owner_private_key: user_3.private_key, channel_key: channel_key_2, token, note_index: 0,
+    };
     let note_1 = user_3
         .new_note_with_generated_random(recipient: user_1, :token, :amount, index: note_index);
     let note_2 = user_3
@@ -376,8 +393,11 @@ fn test_transfer_assertions() {
     let token = test.mock_new_token();
     let channel_key = user_1.compute_channel_key(recipient: user_1);
 
-    let note_path = NotePath { channel_key, token, note_index: 0 };
-    let new_note = NewNote {
+    let note_path = UseNoteInput {
+        owner_private_key: user_1.private_key, channel_key, token, note_index: 0,
+    };
+    let new_note = CreateNoteInput {
+        sender_private_key: user_1.private_key,
         recipient_addr: user_3.address,
         recipient_public_key: user_3.public_key,
         token,
@@ -398,7 +418,7 @@ fn test_transfer_assertions() {
     // Catch ZERO_TOKEN.
     let result = user_1
         .safe_transfer(
-            notes_to_use: [NotePath { token: Zero::zero(), ..note_path }].span(),
+            notes_to_use: [UseNoteInput { token: Zero::zero(), ..note_path }].span(),
             notes_to_create: [new_note].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
@@ -406,24 +426,30 @@ fn test_transfer_assertions() {
     // Catch ZERO_CHANNEL_KEY.
     let result = user_1
         .safe_transfer(
-            notes_to_use: [NotePath { channel_key: Zero::zero(), ..note_path }].span(),
+            notes_to_use: [UseNoteInput { channel_key: Zero::zero(), ..note_path }].span(),
             notes_to_create: [new_note].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
 
     // Catch ZERO_PRIVATE_KEY.
-    let mut user_1_zero_owner_private_key = user_1;
-    user_1_zero_owner_private_key.private_key = Zero::zero();
-    let result = user_1_zero_owner_private_key
-        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [UseNoteInput { owner_private_key: Zero::zero(), ..note_path }].span(),
+            notes_to_create: [new_note].span(),
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
-    let mut user_1_private_key_not_canonical = user_1;
-    user_1_private_key_not_canonical
-        .private_key = Neg::neg(user_1_private_key_not_canonical.private_key);
-    let result = user_1_private_key_not_canonical
-        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [
+                UseNoteInput {
+                    owner_private_key: Neg::neg(note_path.owner_private_key), ..note_path,
+                }
+            ]
+                .span(),
+            notes_to_create: [new_note].span(),
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch SUBCHANNEL_NOT_FOUND - channel doesnt exist.
@@ -451,17 +477,19 @@ fn test_transfer_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Catch SUBCHANNEL_NOT_FOUND - wrong private key.
-    let mut user_1_wrong_private_key = user_1;
-    user_1_wrong_private_key.private_key = user_2.private_key;
-    let result = user_1_wrong_private_key
-        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [UseNoteInput { owner_private_key: user_2.private_key, ..note_path }]
+                .span(),
+            notes_to_create: [new_note].span(),
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Catch SUBCHANNEL_NOT_FOUND - wrong token.
     let wrong_token = test.mock_new_token();
     let result = user_1
         .safe_transfer(
-            notes_to_use: [NotePath { token: wrong_token, ..note_path }].span(),
+            notes_to_use: [UseNoteInput { token: wrong_token, ..note_path }].span(),
             notes_to_create: [new_note].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -470,7 +498,7 @@ fn test_transfer_assertions() {
     let wrong_channel_key = user_1.compute_channel_key(recipient: user_2);
     let result = user_1
         .safe_transfer(
-            notes_to_use: [NotePath { channel_key: wrong_channel_key, ..note_path }].span(),
+            notes_to_use: [UseNoteInput { channel_key: wrong_channel_key, ..note_path }].span(),
             notes_to_create: [new_note].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -490,7 +518,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
-            notes_to_create: [NewNote { recipient_addr: Zero::zero(), ..new_note }].span(),
+            notes_to_create: [CreateNoteInput { recipient_addr: Zero::zero(), ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
@@ -498,7 +526,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
-            notes_to_create: [NewNote { token: Zero::zero(), ..new_note }].span(),
+            notes_to_create: [CreateNoteInput { token: Zero::zero(), ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
@@ -506,7 +534,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
-            notes_to_create: [NewNote { amount: Zero::zero(), ..new_note }].span(),
+            notes_to_create: [CreateNoteInput { amount: Zero::zero(), ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
@@ -514,7 +542,8 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
-            notes_to_create: [NewNote { recipient_public_key: Zero::zero(), ..new_note }].span(),
+            notes_to_create: [CreateNoteInput { recipient_public_key: Zero::zero(), ..new_note }]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
@@ -522,7 +551,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
-            notes_to_create: [NewNote { random: Zero::zero(), ..new_note }].span(),
+            notes_to_create: [CreateNoteInput { random: Zero::zero(), ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
@@ -530,12 +559,14 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
-            notes_to_create: [NewNote { random: TWO_POW_120.try_into().unwrap(), ..new_note }]
+            notes_to_create: [
+                CreateNoteInput { random: TWO_POW_120.try_into().unwrap(), ..new_note }
+            ]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::RANDOM_EXCEEDS_120_BITS);
 
-    // Note: ZERO_OWNER_PRIVATE_KEY is already caught in use_note.
+    // Note: ZERO_SENDER_PRIVATE_KEY is already caught in use_note.
     // Note: PRIVATE_KEY_NOT_CANONICAL is already caught in use_note.
 
     user_3.set_viewing_key_e2e();
@@ -558,7 +589,9 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
-            notes_to_create: [NewNote { recipient_public_key: user_1.public_key, ..new_note }]
+            notes_to_create: [
+                CreateNoteInput { recipient_public_key: user_1.public_key, ..new_note }
+            ]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -571,10 +604,14 @@ fn test_transfer_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Catch SUBCHANNEL_NOT_FOUND - wrong private key.
-    let mut user_1_wrong_private_key = user_1;
-    user_1_wrong_private_key.private_key = user_2.private_key;
-    let result = user_1_wrong_private_key
-        .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [note_path].span(),
+            notes_to_create: [
+                CreateNoteInput { sender_private_key: user_2.private_key, ..new_note }
+            ]
+                .span(),
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Catch SUBCHANNEL_NOT_FOUND - wrong token.
@@ -582,7 +619,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
-            notes_to_create: [NewNote { token: wrong_token, ..new_note }].span(),
+            notes_to_create: [CreateNoteInput { token: wrong_token, ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
@@ -590,7 +627,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
-            notes_to_create: [NewNote { index: 1, ..new_note }].span(),
+            notes_to_create: [CreateNoteInput { index: 1, ..new_note }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     // Transfer errors.
@@ -1636,7 +1673,9 @@ fn test_use_note() {
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let note_path = NotePath { channel_key, token, note_index };
+    let note_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key, token, note_index,
+    };
     let actions = user_2.internal_use_note(note: note_path);
     let nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
     let nullifier_storage_path = map_entry_address(
@@ -1660,7 +1699,9 @@ fn test_use_note_self_note() {
         .new_note_with_generated_random(recipient: user, :token, :amount, index: note_index);
     user.cheat_create_note_e2e(:note);
     let channel_key = user.compute_channel_key(recipient: user);
-    let note_path = NotePath { channel_key, token, note_index };
+    let note_path = UseNoteInput {
+        owner_private_key: user.private_key, channel_key, token, note_index,
+    };
     let actions = user.internal_use_note(note: note_path);
     let nullifier = user.compute_nullifier(sender: user, :token, :note_index);
     let nullifier_storage_path = map_entry_address(
@@ -1694,9 +1735,15 @@ fn test_use_note_multiple_notes() {
     user_2.cheat_create_note_e2e(note: note_3);
     let channel_key_1 = user_1.compute_channel_key(recipient: user_2);
     let channel_key_2 = user_2.compute_channel_key(recipient: user_2);
-    let note_1_path = NotePath { channel_key: channel_key_1, token, note_index: 0 };
-    let note_2_path = NotePath { channel_key: channel_key_1, token, note_index: 1 };
-    let note_3_path = NotePath { channel_key: channel_key_2, token, note_index: 0 };
+    let note_1_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key: channel_key_1, token, note_index: 0,
+    };
+    let note_2_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key: channel_key_1, token, note_index: 1,
+    };
+    let note_3_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key: channel_key_2, token, note_index: 0,
+    };
     let actions_1 = user_2.internal_use_note(note: note_1_path);
     let actions_2 = user_2.internal_use_note(note: note_2_path);
     let actions_3 = user_2.internal_use_note(note: note_3_path);
@@ -1740,8 +1787,12 @@ fn test_use_note_same_amount() {
     user_1.cheat_create_note_e2e(note: note_1);
     user_1.cheat_create_note_e2e(note: note_2);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let note_path_1 = NotePath { channel_key, token, note_index: 0 };
-    let note_path_2 = NotePath { channel_key, token, note_index: 1 };
+    let note_path_1 = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key, token, note_index: 0,
+    };
+    let note_path_2 = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key, token, note_index: 1,
+    };
     let actions_1 = user_2.internal_use_note(note: note_path_1);
     let actions_2 = user_2.internal_use_note(note: note_path_2);
     let expected_nullifier_1 = user_2.compute_nullifier(sender: user_1, :token, note_index: 0);
@@ -1766,7 +1817,9 @@ fn test_use_note_zero_token() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
     let channel_key = user_1.compute_channel_key(recipient: user_1);
-    let note_path = NotePath { channel_key, token: Zero::zero(), note_index: 0 };
+    let note_path = UseNoteInput {
+        owner_private_key: user_1.private_key, channel_key, token: Zero::zero(), note_index: 0,
+    };
     user_1.use_note(note: note_path);
 }
 
@@ -1776,7 +1829,9 @@ fn test_use_note_zero_channel_key() {
     let mut test: Test = Default::default();
     let user_1 = test.new_user();
     let token = test.mock_new_token();
-    let note_path = NotePath { channel_key: Zero::zero(), token, note_index: 0 };
+    let note_path = UseNoteInput {
+        owner_private_key: user_1.private_key, channel_key: Zero::zero(), token, note_index: 0,
+    };
     user_1.use_note(note: note_path);
 }
 
@@ -1784,11 +1839,12 @@ fn test_use_note_zero_channel_key() {
 #[should_panic(expected: 'ZERO_PRIVATE_KEY')]
 fn test_use_note_zero_private_key() {
     let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    user_1.private_key = Zero::zero();
+    let user_1 = test.new_user();
     let token = test.mock_new_token();
     let channel_key = user_1.compute_channel_key(recipient: user_1);
-    let note_path = NotePath { channel_key, token, note_index: 0 };
+    let note_path = UseNoteInput {
+        owner_private_key: Zero::zero(), channel_key, token, note_index: 0,
+    };
     user_1.use_note(note: note_path);
 }
 
@@ -1796,11 +1852,12 @@ fn test_use_note_zero_private_key() {
 #[should_panic(expected: 'PRIVATE_KEY_NOT_CANONICAL')]
 fn test_use_note_private_key_not_canonical() {
     let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    user_1.private_key = Neg::neg(user_1.private_key);
+    let user_1 = test.new_user();
     let token = test.mock_new_token();
     let channel_key = user_1.compute_channel_key(recipient: user_1);
-    let note_path = NotePath { channel_key, token, note_index: 0 };
+    let note_path = UseNoteInput {
+        owner_private_key: Neg::neg(user_1.private_key), channel_key, token, note_index: 0,
+    };
     user_1.use_note(note: note_path);
 }
 
@@ -1819,7 +1876,9 @@ fn test_use_note_wrong_owner_addr() {
         .new_note_with_generated_random(recipient: user_2, :token, amount: 1, index: 0);
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let note_path = NotePath { channel_key, token, note_index: 0 };
+    let note_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key, token, note_index: 0,
+    };
     user_2.address = user_1.address;
     user_2.use_note(note: note_path);
 }
@@ -1840,10 +1899,12 @@ fn test_use_note_wrong_owner_private_key() {
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let note_path = NotePath { channel_key, token, note_index };
     user_2.new_key();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
+    let note_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key, token, note_index,
+    };
     user_2.use_note(note: note_path);
 }
 
@@ -1863,7 +1924,9 @@ fn test_use_note_wrong_note_index() {
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let note_path = NotePath { channel_key, token, note_index: note_index + 1 };
+    let note_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key, token, note_index: note_index + 1,
+    };
     user_2.use_note(note: note_path);
 }
 
@@ -1884,7 +1947,9 @@ fn test_use_note_wrong_channel_key() {
         .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index);
     user_1.cheat_create_note_e2e(:note);
     let wrong_channel_key = user_1.compute_channel_key(recipient: user_1);
-    let note_path = NotePath { channel_key: wrong_channel_key, token, note_index };
+    let note_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key: wrong_channel_key, token, note_index,
+    };
     user_2.use_note(note: note_path);
 }
 
@@ -1905,7 +1970,9 @@ fn test_use_note_wrong_token() {
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let wrong_token = test.mock_new_token();
-    let note_path = NotePath { channel_key, token: wrong_token, note_index };
+    let note_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key, token: wrong_token, note_index,
+    };
     user_2.use_note(note: note_path);
 }
 
@@ -1933,7 +2000,9 @@ fn test_use_note_find_nullifier() {
     assert!(!user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
 
     // User 2 uses the note.
-    let note_path = NotePath { channel_key, token, note_index };
+    let note_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key, token, note_index,
+    };
     let actions = user_2.internal_use_note(note: note_path);
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
@@ -2139,7 +2208,12 @@ fn test_compile_client_actions() {
     let random = user_1.get_random().into();
     let actions = user_1
         .compile_client_actions(
-            client_actions: [ClientAction::SetViewingKey((user_1.private_key, random))].span(),
+            client_actions: [
+                ClientAction::SetViewingKey(
+                    SetViewingKeyInput { private_key: user_1.private_key, random },
+                )
+            ]
+                .span(),
         );
     let enc_private_key = user_1.compute_enc_private_key(:random);
     let public_key_storage_path_felt = map_entry_address(
@@ -2163,7 +2237,12 @@ fn test_compile_client_actions() {
         .compile_client_actions(
             client_actions: [
                 ClientAction::OpenChannel(
-                    (user_1.private_key, user_2.address, user_2.public_key, random),
+                    OpenChannelInput {
+                        sender_private_key: user_1.private_key,
+                        recipient_addr: user_2.address,
+                        recipient_public_key: user_2.public_key,
+                        random,
+                    },
                 )
             ]
                 .span(),
@@ -2196,7 +2275,14 @@ fn test_compile_client_actions() {
         .compile_client_actions(
             client_actions: [
                 ClientAction::OpenSubchannel(
-                    (user_2.address, user_2.public_key, expected_channel_key, 0, token, random),
+                    OpenSubchannelInput {
+                        recipient_addr: user_2.address,
+                        recipient_public_key: user_2.public_key,
+                        channel_key: expected_channel_key,
+                        index: 0,
+                        token,
+                        random,
+                    },
                 ),
             ]
                 .span(),
@@ -2227,8 +2313,8 @@ fn test_compile_client_actions() {
     let actions = user_1
         .compile_client_actions(
             client_actions: [
-                ClientAction::Deposit((token, amount)),
-                ClientAction::CreateNote((user_1.private_key, note)),
+                ClientAction::Deposit(DepositInput { token, amount }),
+                ClientAction::CreateNote(note),
             ]
                 .span(),
         );
@@ -2248,8 +2334,10 @@ fn test_compile_client_actions() {
     let actions = user_1
         .compile_client_actions(
             client_actions: [
-                ClientAction::Deposit((token, amount)),
-                ClientAction::Withdraw((user_2.address, token, amount)),
+                ClientAction::Deposit(DepositInput { token, amount }),
+                ClientAction::Withdraw(
+                    WithdrawInput { withdrawal_target: user_2.address, token, amount },
+                ),
             ]
                 .span(),
         );
@@ -2262,8 +2350,11 @@ fn test_compile_client_actions() {
 
     // Use note + create note actions.
     user_1.cheat_create_note_e2e(:note);
-    let note_path = NotePath {
-        channel_key: user_1.compute_channel_key(recipient: user_2), token, note_index: note.index,
+    let note_path = UseNoteInput {
+        owner_private_key: user_2.private_key,
+        channel_key: user_1.compute_channel_key(recipient: user_2),
+        token,
+        note_index: note.index,
     };
     let new_note = user_2
         .new_note_with_generated_random(recipient: user_1, :token, :amount, index: 0);
@@ -2271,10 +2362,7 @@ fn test_compile_client_actions() {
     user_2.open_subchannel_e2e(recipient: user_1, :token, index: 0);
     let actions = user_2
         .compile_client_actions(
-            client_actions: [
-                ClientAction::UseNote((user_2.private_key, note_path)),
-                ClientAction::CreateNote((user_2.private_key, new_note)),
-            ]
+            client_actions: [ClientAction::UseNote(note_path), ClientAction::CreateNote(new_note)]
                 .span(),
         );
     let expected_enc_note = user_2
@@ -2299,8 +2387,10 @@ fn test_compile_client_actions() {
     let actions = user_2
         .compile_client_actions(
             client_actions: [
-                ClientAction::UseNote((user_2.private_key, note_path)),
-                ClientAction::Withdraw((user_1.address, token, amount)),
+                ClientAction::UseNote(note_path),
+                ClientAction::Withdraw(
+                    WithdrawInput { withdrawal_target: user_1.address, token, amount },
+                ),
             ]
                 .span(),
         );
@@ -2348,7 +2438,9 @@ fn test_internal_actions() {
     user_1.cheat_create_note_e2e(:note);
     let nullifier = user_2.compute_nullifier(sender: user_1, :token, :note_index);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let note_path = NotePath { channel_key, token, note_index };
+    let note_path = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key, token, note_index,
+    };
     let actions = user_2.internal_use_note(note: note_path);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
@@ -2374,10 +2466,13 @@ fn test_compile_client_actions_assertions() {
     user.open_subchannel_e2e(recipient: user, :token, index: 0);
     let note_1 = user.new_note_with_generated_random(recipient: user, :token, :amount, index: 0);
     user.cheat_create_note_e2e(note: note_1);
-    let note_1_path = NotePath {
-        channel_key: user.compute_channel_key(recipient: user), token, note_index: 0,
+    let note_1_path = UseNoteInput {
+        owner_private_key: user.private_key,
+        channel_key: user.compute_channel_key(recipient: user),
+        token,
+        note_index: 0,
     };
-    let note_2 = NewNote { index: 1, ..note_1 };
+    let note_2 = CreateNoteInput { index: 1, ..note_1 };
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
@@ -2388,29 +2483,30 @@ fn test_compile_client_actions_assertions() {
     // Catch TOKEN_BALANCES_MISMATCH (deposit).
     let result = user
         .safe_compile_client_actions(
-            client_actions: [ClientAction::Deposit((token, amount)),].span(),
+            client_actions: [ClientAction::Deposit(DepositInput { token, amount }),].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_BALANCES_MISMATCH);
 
     // Catch TOKEN_BALANCES_MISMATCH (use note).
     let result = user
-        .safe_compile_client_actions(
-            client_actions: [ClientAction::UseNote((user.private_key, note_1_path)),].span(),
-        );
+        .safe_compile_client_actions(client_actions: [ClientAction::UseNote(note_1_path),].span());
     assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_BALANCES_MISMATCH);
 
     // Catch u128_sub Overflow (withdraw).
     let result = user
         .safe_compile_client_actions(
-            client_actions: [ClientAction::Withdraw((user.address, token, amount)),].span(),
+            client_actions: [
+                ClientAction::Withdraw(
+                    WithdrawInput { withdrawal_target: user.address, token, amount },
+                ),
+            ]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'u128_sub Overflow');
 
     // Catch u128_sub Overflow (create note).
     let result = user
-        .safe_compile_client_actions(
-            client_actions: [ClientAction::CreateNote((user.private_key, note_2)),].span(),
-        );
+        .safe_compile_client_actions(client_actions: [ClientAction::CreateNote(note_2),].span());
     assert_panic_with_felt_error(:result, expected_error: 'u128_sub Overflow');
 }
 // TODO: Test with the negative private key (not canonical but the right public key) for each action
