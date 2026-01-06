@@ -1,7 +1,9 @@
 import { BlockNumber } from "starknet";
 
 // Import types only to avoid circular dependency (classes are defined here and re-exported from interfaces.ts)
-import type { Blob, ChannelSerde, StarknetAddress, WitnessSerde } from "./interfaces.js";
+import type { Blob, ChannelSerde, StarknetAddress, WitnessSerde } from "../interfaces.js";
+import { AddressMap } from "../utils/maps.js";
+import { jsonStringify, jsonParse } from "../utils/json.js";
 
 /** Type guard for non-negative integers */
 function isUint(value: unknown): value is number {
@@ -36,6 +38,12 @@ class Nonce {
     return new Ctor(this.slot, this.sequence + 1);
   }
 
+  decrement(): this {
+    assert(this.sequence >= 0, "Invalid nonce: sequence must be non negative");
+    const Ctor = this.constructor as new (slot: number, sequence: number) => this;
+    return new Ctor(this.slot, this.sequence - 1);
+  }
+
   /**
    * Increments the nonce array in-place. Finds the nonce with the lowest `created`
    * value (skipping those without one) and replaces it with an incremented version.
@@ -50,7 +58,7 @@ class Nonce {
     nonces: T[],
     maxSlots: number,
     Ctor: new (slot: number, sequence: number) => T
-  ): { index: number; previous: T | undefined } {
+  ): { nonce: T; index: number; previous: T | undefined } {
     // Verify slots increment by 1
     for (let i = 0; i < nonces.length; i++) {
       assert(
@@ -65,8 +73,9 @@ class Nonce {
       // No nonces have been created yet - add a new slot if room available
       assert(nonces.length < maxSlots, `Cannot add new slot: already at max slots (${maxSlots})`);
       const index = nonces.length;
-      nonces.push(new Ctor(index, 0));
-      return { index, previous: undefined };
+      const nonce = new Ctor(index, 0);
+      nonces.push(nonce);
+      return { nonce, index, previous: undefined };
     }
 
     const oldest = withCreated.reduce((min, n) => (n.created! < min.created! ? n : min));
@@ -76,7 +85,7 @@ class Nonce {
     // TODO: add a check the oldest is old enough (at least 10 blocks old)
 
     nonces[index] = oldest.increment() as T;
-    return { index, previous };
+    return { nonce: nonces[index], index, previous };
   }
 }
 
@@ -88,7 +97,11 @@ export class TokenNonce extends Nonce {
   }
 
   /** Increments the nonce array in-place, returns the changed index and previous value. */
-  static increment(nonces: TokenNonce[]): { index: number; previous: TokenNonce | undefined } {
+  static increment(nonces: TokenNonce[]): {
+    nonce: TokenNonce;
+    index: number;
+    previous: TokenNonce | undefined;
+  } {
     return Nonce._increment(nonces, TokenNonce.MAX_SLOTS, TokenNonce);
   }
 }
@@ -101,7 +114,11 @@ export class NoteNonce extends Nonce {
   }
 
   /** Increments the nonce array in-place, returns the changed index and previous value. */
-  static increment(nonces: NoteNonce[]): { index: number; previous: NoteNonce | undefined } {
+  static increment(nonces: NoteNonce[]): {
+    nonce: NoteNonce;
+    index: number;
+    previous: NoteNonce | undefined;
+  } {
     return Nonce._increment(nonces, NoteNonce.MAX_SLOTS, NoteNonce);
   }
 }
@@ -112,27 +129,49 @@ type ChannelKey = bigint;
 export class Channel {
   /** @internal */ readonly key: ChannelKey;
   /** @internal */ readonly nonces: TokenNonce[];
-  /** @internal */ readonly tokens: Map<StarknetAddress, NoteNonce[]>;
+  /** @internal */ readonly tokens: AddressMap<NoteNonce[]>;
 
-  constructor(key: ChannelKey, nonces: TokenNonce[], tokens: Map<StarknetAddress, NoteNonce[]>) {
+  constructor(
+    key: ChannelKey,
+    nonces?: TokenNonce[],
+    tokens?: Iterable<[StarknetAddress, NoteNonce[]]>
+  ) {
     this.key = key;
-    this.nonces = nonces;
-    this.tokens = tokens;
+    this.nonces = nonces ?? [];
+    this.tokens = new AddressMap<NoteNonce[]>(() => []);
+    if (tokens) {
+      for (const [k, v] of tokens) {
+        this.tokens.set(k, v);
+      }
+    }
+  }
+
+  incrementTokenNonce(): TokenNonce {
+    const { nonce } = TokenNonce.increment(this.nonces);
+    return nonce;
+  }
+
+  incrementNoteNonce(token: StarknetAddress): NoteNonce {
+    const nonces = this.tokens.get(token)!;
+    const { nonce } = NoteNonce.increment(nonces);
+    return nonce;
   }
 }
 
 export const channelSerde: ChannelSerde = {
   encode(channel) {
-    const json = JSON.stringify({
+    // jsonStringify handles bigint keys automatically
+    const json = jsonStringify({
       v: 1,
-      key: channel.key.toString(),
+      key: channel.key,
       nonces: channel.nonces,
       tokens: Array.from(channel.tokens.entries()),
     });
     return json as Blob<string>;
   },
   decode(blob) {
-    const parsed = JSON.parse(blob as string) as unknown;
+    // jsonParse restores bigints automatically
+    const parsed = jsonParse(blob as string);
     if (parsed === null || typeof parsed !== "object") {
       throw new Error("Invalid channel payload");
     }
@@ -158,15 +197,15 @@ export class Witness {
 
 export const witnessSerde: WitnessSerde = {
   encode(witness) {
-    const json = JSON.stringify({
+    const json = jsonStringify({
       v: 1,
-      channelKey: witness.channelKey.toString(),
+      channelKey: witness.channelKey,
       nonce: witness.nonce,
     });
     return json as Blob<string>;
   },
   decode(blob) {
-    const parsed = JSON.parse(blob as string) as unknown;
+    const parsed = jsonParse(blob as string);
     if (parsed === null || typeof parsed !== "object") {
       throw new Error("Invalid witness payload");
     }
