@@ -1,57 +1,30 @@
-use core::dict::{Felt252Dict, SquashedFelt252DictTrait};
+use core::dict::{Felt252Dict, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
 use privacy::errors;
 use starknet::ContractAddress;
 
-#[derive(Drop, Debug)]
-pub(crate) enum BalanceOp {
-    ADDITION,
-    SUBTRACTION,
-}
+pub(crate) type TokenBalances = Felt252Dict<u128>;
+pub(crate) type SquashedTokenBalances = SquashedFelt252Dict<u128>;
 
-// TODO: Optimize.
-#[derive(Drop, Debug)]
-pub(crate) struct TokenBalances {
-    balance_changes: Array<(ContractAddress, BalanceOp, u128)>,
-}
-
-pub(crate) impl DefaultTokenBalances of Default<TokenBalances> {
-    fn default() -> TokenBalances {
-        TokenBalances { balance_changes: array![] }
-    }
-}
-
+// TODO: Move file.
 #[generate_trait]
 pub(crate) impl TokenBalancesImpl of TokenBalancesTrait {
-    fn modify_balance(
-        ref self: TokenBalances, token: ContractAddress, op: BalanceOp, amount: u128,
-    ) {
-        self.balance_changes.append((token, op, amount));
+    fn add_balance(ref self: TokenBalances, token: ContractAddress, amount: u128) {
+        let key = token.into();
+        let current_balance = self.get(:key);
+        self.insert(:key, value: current_balance + amount);
     }
-
-    fn is_valid(self: @TokenBalances) -> bool {
-        let mut final_balances: Felt252Dict<u128> = Default::default();
-
-        for (token, op, amount) in self.balance_changes {
-            let token_felt: felt252 = (*token).into();
-            let current_balance = final_balances.get(key: token_felt);
-            match op {
-                BalanceOp::ADDITION => {
-                    final_balances.insert(key: token_felt, value: current_balance + *amount);
-                },
-                BalanceOp::SUBTRACTION => {
-                    final_balances.insert(key: token_felt, value: current_balance - *amount);
-                },
-            };
+    fn subtract_balance(ref self: TokenBalances, token: ContractAddress, amount: u128) {
+        let key = token.into();
+        let current_balance = self.get(:key);
+        assert(current_balance >= amount, errors::NEGATIVE_INTERMEDIATE_BALANCE);
+        self.insert(:key, value: current_balance - amount);
+    }
+    fn assert_valid(self: SquashedTokenBalances) {
+        for (_token, _, balance) in self.into_entries() {
+            // TODO: Add context (token) to the error.
+            assert(balance.is_zero(), errors::FINAL_BALANCE_MUST_BE_ZERO);
         }
-
-        let balance_entries = final_balances.squash().into_entries();
-        for (_, _, final_balance) in balance_entries {
-            if final_balance.is_non_zero() {
-                return false;
-            }
-        }
-        true
     }
 }
 
