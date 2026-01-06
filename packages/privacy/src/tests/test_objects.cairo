@@ -1,7 +1,6 @@
 use core::num::traits::Zero;
 use privacy::objects::{
-    BalanceOp, EncChannelInfo, EncChannelInfoTrait, EncSubchannelInfo, TokenBalances,
-    TokenBalancesTrait,
+    EncChannelInfo, EncChannelInfoTrait, EncSubchannelInfo, TokenBalances, TokenBalancesTrait,
 };
 use starknet::ContractAddress;
 
@@ -75,43 +74,56 @@ fn test_token_balances() {
     let token_1: ContractAddress = 'TOKEN_1'.try_into().unwrap();
     let token_2: ContractAddress = 'TOKEN_2'.try_into().unwrap();
     let mut token_balances: TokenBalances = Default::default();
-    // (0, 0)
-    assert_eq!(token_balances.is_valid(), true);
 
-    // (1, 0)
-    token_balances.modify_balance(token: token_1, op: BalanceOp::ADDITION, amount: 1);
-    assert_eq!(token_balances.is_valid(), false);
+    // Add balance.
+    token_balances.add_balance(token: token_1, amount: 1);
+    token_balances.add_balance(token: token_2, amount: 2);
 
-    // (0, 0)
-    token_balances.modify_balance(token: token_1, op: BalanceOp::SUBTRACTION, amount: 1);
-    assert_eq!(token_balances.is_valid(), true);
+    // Subtract balance.
+    token_balances.subtract_balance(token: token_1, amount: 1);
+    token_balances.subtract_balance(token: token_2, amount: 2);
 
-    // (0, 2)
-    token_balances.modify_balance(token: token_2, op: BalanceOp::ADDITION, amount: 2);
-    assert_eq!(token_balances.is_valid(), false);
-
-    // (1, 2)
-    token_balances.modify_balance(token: token_1, op: BalanceOp::ADDITION, amount: 1);
-    assert_eq!(token_balances.is_valid(), false);
-
-    // (1, 1)
-    token_balances.modify_balance(token: token_2, op: BalanceOp::SUBTRACTION, amount: 1);
-    assert_eq!(token_balances.is_valid(), false);
-
-    // (0, 1)
-    token_balances.modify_balance(token: token_1, op: BalanceOp::SUBTRACTION, amount: 1);
-    assert_eq!(token_balances.is_valid(), false);
-
-    // (0, 0)
-    token_balances.modify_balance(token: token_2, op: BalanceOp::SUBTRACTION, amount: 1);
-    assert_eq!(token_balances.is_valid(), true);
+    // Assert valid.
+    token_balances.squash().assert_valid();
 }
 
 #[test]
-#[should_panic(expected_error: 'u128_sub Overflow')]
-fn test_token_balances_underflow() {
+fn test_token_balances_assert_valid_empty() {
+    let token_balances: TokenBalances = Default::default();
+    token_balances.squash().assert_valid();
+}
+
+#[test]
+#[should_panic(expected_error: 'NEGATIVE_INTERMEDIATE_BALANCE')]
+fn test_token_balances_negative_intermediate_balance_from_zero() {
     let token = 'TOKEN'.try_into().unwrap();
     let mut token_balances: TokenBalances = Default::default();
-    token_balances.modify_balance(:token, op: BalanceOp::SUBTRACTION, amount: 1);
-    token_balances.is_valid();
+    token_balances.subtract_balance(token: token, amount: 1);
+}
+
+#[test]
+#[should_panic(expected_error: 'NEGATIVE_INTERMEDIATE_BALANCE')]
+fn test_token_balances_negative_intermediate_balance() {
+    let token = 'TOKEN'.try_into().unwrap();
+    let mut token_balances: TokenBalances = Default::default();
+    token_balances.add_balance(token: token, amount: 1);
+    token_balances.subtract_balance(token: token, amount: 2);
+}
+
+#[test]
+#[should_panic(expected_error: 'FINAL_BALANCE_MUST_BE_ZERO')]
+fn test_token_balances_final_balance_must_be_zero() {
+    let token_1: ContractAddress = 'TOKEN_1'.try_into().unwrap();
+    let token_2: ContractAddress = 'TOKEN_2'.try_into().unwrap();
+    let mut token_balances: TokenBalances = Default::default();
+
+    // Add balance.
+    token_balances.add_balance(token: token_1, amount: 1);
+    token_balances.add_balance(token: token_2, amount: 2);
+
+    // Subtract balance.
+    token_balances.subtract_balance(token: token_1, amount: 1);
+    token_balances.subtract_balance(token: token_2, amount: 1);
+
+    token_balances.squash().assert_valid();
 }
