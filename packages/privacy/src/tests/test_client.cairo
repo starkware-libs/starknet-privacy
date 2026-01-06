@@ -11,11 +11,11 @@ use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 
 #[test]
-fn test_register() {
+fn test_set_viewing_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let public_key = user.public_key;
-    let (random, actions) = user.register_with_generated_random();
+    let (random, actions) = user.set_viewing_key_with_generated_random();
     let enc_private_key = user.compute_enc_private_key(:random);
 
     let public_key_storage_path_felt = map_entry_address(
@@ -25,8 +25,8 @@ fn test_register() {
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
     let expected_actions = [
-        ServerAction::WriteIfZero((public_key_storage_path_felt, public_key)),
-        ServerAction::WriteIfZeroPrivateKey((enc_private_key_storage_path_felt, enc_private_key)),
+        ServerAction::Write((public_key_storage_path_felt, public_key)),
+        ServerAction::WritePrivateKey((enc_private_key_storage_path_felt, enc_private_key)),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -34,7 +34,7 @@ fn test_register() {
 
 #[test]
 #[feature("safe_dispatcher")]
-fn test_register_assertions() {
+fn test_set_viewing_key_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let random = user.get_random().into();
@@ -42,31 +42,44 @@ fn test_register_assertions() {
     // Catch ZERO_PRIVATE_KEY.
     let mut user_zero_public_key = user;
     user_zero_public_key.private_key = Zero::zero();
-    let result = user_zero_public_key.safe_register(:random);
+    let result = user_zero_public_key.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch ZERO_RANDOM.
-    let result = user.safe_register(random: Zero::zero());
+    let result = user.safe_set_viewing_key(random: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
     let mut user_key_not_canonical = user;
     user_key_not_canonical.private_key = Neg::neg(user.private_key);
-    let result = user_key_not_canonical.safe_register(:random);
+    let result = user_key_not_canonical.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
-    let result = user_zero_addr.safe_register(:random);
+    let result = user_zero_addr.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 }
 
 #[test]
-fn test_register_decrypt_private_key() {
+fn test_set_viewing_key_decrypt_private_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    user.register_e2e();
+    user.set_viewing_key_e2e();
+
+    // Compliance should be able to decrypt the private key.
+    let enc_private_key = user.get_enc_private_key();
+    let decrypted_private_key = decrypt_private_key(
+        :enc_private_key, compliance_private_key: test.compliance_private_key,
+    );
+    assert_eq!(decrypted_private_key, user.private_key);
+
+    // Set again to a different value.
+    let key_before = user.private_key;
+    user.new_key();
+    assert_ne!(user.private_key, key_before);
+    user.set_viewing_key_e2e();
 
     // Compliance should be able to decrypt the private key.
     let enc_private_key = user.get_enc_private_key();
@@ -81,8 +94,8 @@ fn test_transfer() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     user_1.open_channel_with_token_e2e(recipient: user_1, :token, subchannel_index: 0);
@@ -122,8 +135,8 @@ fn test_transfer_to_self() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_1, :token, subchannel_index: 0);
     user_2.open_channel_with_token_e2e(recipient: user_1, :token, subchannel_index: 0);
@@ -164,9 +177,9 @@ fn test_transfer_one_to_many() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
-    user_3.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_3.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     user_1.open_channel_with_token_e2e(recipient: user_3, :token, subchannel_index: 0);
@@ -227,9 +240,9 @@ fn test_transfer_many_to_one() {
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
     let token = test.mock_new_token();
-    user_1.register_e2e();
-    user_2.register_e2e();
-    user_3.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_3.set_viewing_key_e2e();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     user_2.open_channel_with_token_e2e(recipient: user_1, :token, subchannel_index: 0);
     user_3.open_channel_with_token_e2e(recipient: user_1, :token, subchannel_index: 0);
@@ -286,9 +299,9 @@ fn test_transfer_many_to_many() {
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
     let token = test.mock_new_token();
-    user_1.register_e2e();
-    user_2.register_e2e();
-    user_3.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_3.set_viewing_key_e2e();
     user_1.open_channel_with_token_e2e(recipient: user_3, :token, subchannel_index: 0);
     user_2.open_channel_with_token_e2e(recipient: user_3, :token, subchannel_index: 0);
     user_3.open_channel_with_token_e2e(recipient: user_1, :token, subchannel_index: 0);
@@ -417,7 +430,7 @@ fn test_transfer_assertions() {
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
 
-    user_1.register_e2e();
+    user_1.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_1);
 
     // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
@@ -428,7 +441,7 @@ fn test_transfer_assertions() {
     user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
 
     // Catch INVALID_SUBCHANNEL - wrong address.
-    user_2.register_e2e();
+    user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     let mut user_1_wrong_addr = user_1;
     user_1_wrong_addr.address = user_2.address;
@@ -524,7 +537,7 @@ fn test_transfer_assertions() {
     // Note: ZERO_OWNER_PRIVATE_KEY is already caught in use_note.
     // Note: PRIVATE_KEY_NOT_CANONICAL is already caught in use_note.
 
-    user_3.register_e2e();
+    user_3.set_viewing_key_e2e();
 
     // Catch INVALID_SUBCHANNEL - channel doesnt exist.
     let result = user_1
@@ -589,8 +602,8 @@ fn test_open_channel() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
 
     let (random, channel_output) = user_1.open_channel_with_generated_random(recipient: user_2);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -620,7 +633,7 @@ fn test_open_channel() {
 fn test_open_channel_self_channel() {
     let mut test = Default::default();
     let mut user = test.new_user();
-    user.register_e2e();
+    user.set_viewing_key_e2e();
 
     let (random, channel_output) = user.open_channel_with_generated_random(recipient: user);
     let channel_key = user.compute_channel_key(recipient: user);
@@ -693,7 +706,7 @@ fn test_open_channel_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_REGISTERED);
 
     // Catch SENDER_NOT_AUTHENTICATED.
-    user_1.register_e2e();
+    user_1.set_viewing_key_e2e();
     let user_1_private_key = user_1.private_key;
     user_1.private_key = user_1.public_key;
     if !is_canonical_key(key: user_1.private_key) {
@@ -710,9 +723,9 @@ fn test_open_channel_multiple_channels_same_sender() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
-    user_3.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_3.set_viewing_key_e2e();
 
     let (random_1, c1_output) = user_1.open_channel_with_generated_random(recipient: user_2);
     let (random_2, c2_output) = user_1.open_channel_with_generated_random(recipient: user_3);
@@ -778,9 +791,9 @@ fn test_open_channel_multiple_channels_same_recipient() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
-    user_3.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_3.set_viewing_key_e2e();
 
     let (random_1, c1_output) = user_2.open_channel_with_generated_random(recipient: user_1);
     let (random_2, c2_output) = user_3.open_channel_with_generated_random(recipient: user_1);
@@ -847,8 +860,8 @@ fn test_open_channel_decrypt_channel_info() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
 
     // User 2 should be able to decrypt the channel info.
@@ -871,8 +884,8 @@ fn test_open_subchannel() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2);
 
@@ -903,7 +916,7 @@ fn test_open_subchannel() {
 fn test_open_subchannel_self_channel() {
     let mut test = Default::default();
     let mut user = test.new_user();
-    user.register_e2e();
+    user.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user.open_channel_e2e(recipient: user);
 
@@ -976,13 +989,13 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_zero_public_key, :token, :index, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
-    user_2.register_e2e();
+    user_2.set_viewing_key_e2e();
 
     // Catch INVALID_CHANNEL - sender is not registered.
     let result = user_1.safe_open_subchannel(recipient: user_2, :token, :index, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
-    user_1.register_e2e();
+    user_1.set_viewing_key_e2e();
 
     // Catch INVALID_CHANNEL - no channel exists for the given sender and recipient.
     let result = user_1.safe_open_subchannel(recipient: user_2, :token, :index, :random);
@@ -1031,8 +1044,8 @@ fn test_open_subchannel_multiple() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     let token_1 = test.mock_new_token();
     let token_2 = test.mock_new_token();
@@ -1087,8 +1100,8 @@ fn test_open_subchannel_multiple() {
     // Multiple subchannels with the same token (fails only on the server side).
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     let token = test.mock_new_token();
     let (random_1, c1_output) = user_1
@@ -1136,8 +1149,8 @@ fn test_open_subchannel_multiple() {
     // Multiple subchannels with the same index (fails only on the server side).
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     let (random_1, c1_output) = user_1
         .open_subchannel_with_generated_random(recipient: user_2, token: token_1, index: 0);
@@ -1186,7 +1199,7 @@ fn test_open_subchannel_multiple() {
 fn test_open_subchannel_multiple_self_channel() {
     let mut test = Default::default();
     let mut user = test.new_user();
-    user.register_e2e();
+    user.set_viewing_key_e2e();
     let token_1 = test.mock_new_token();
     let token_2 = test.mock_new_token();
     user.open_channel_e2e(recipient: user);
@@ -1244,8 +1257,8 @@ fn test_open_subchannel_decrypt_subchannel_info() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
@@ -1269,7 +1282,7 @@ fn test_open_subchannel_decrypt_subchannel_info() {
 fn test_create_note_self_note() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    user.register_e2e();
+    user.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user.open_channel_with_token_e2e(recipient: user, :token, subchannel_index: 0);
     let amount = 1;
@@ -1287,8 +1300,8 @@ fn test_create_note_twice() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let amount_1 = 1;
@@ -1325,8 +1338,8 @@ fn test_create_note_twice_same_amount() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let amount = 1;
@@ -1462,8 +1475,8 @@ fn test_create_note_invalid_subchannel_channel_doesnt_exist() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     let note = user_1
         .new_note_with_generated_random(recipient: user_2, :token, amount: 1, index: 0);
@@ -1476,8 +1489,8 @@ fn test_create_note_invalid_subchannel_subchannel_doesnt_exist() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2);
     let note = user_1
@@ -1491,8 +1504,8 @@ fn test_create_note_invalid_subchannel_wrong_addr() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let note = user_1
@@ -1507,8 +1520,8 @@ fn test_create_note_invalid_subchannel_wrong_private_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let note = user_1
@@ -1523,8 +1536,8 @@ fn test_create_note_invalid_subchannel_wrong_public_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     user_2.public_key = user_1.public_key;
@@ -1539,8 +1552,8 @@ fn test_create_note_invalid_subchannel_wrong_token() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let mut note = user_1
@@ -1554,8 +1567,8 @@ fn test_create_note_index_not_sequential() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let amount = 1;
@@ -1568,8 +1581,8 @@ fn test_create_note_decrypt_amount() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let amount = 1;
@@ -1611,8 +1624,8 @@ fn test_use_note() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let amount = 1;
@@ -1636,7 +1649,7 @@ fn test_use_note() {
 fn test_use_note_self_note() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    user.register_e2e();
+    user.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user.open_channel_with_token_e2e(recipient: user, :token, subchannel_index: 0);
     let amount = 1;
@@ -1661,8 +1674,8 @@ fn test_use_note_multiple_notes() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_2.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
@@ -1713,8 +1726,8 @@ fn test_use_note_same_amount() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let amount = 1;
@@ -1795,8 +1808,8 @@ fn test_use_note_wrong_owner_addr() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     user_2.open_channel_e2e(recipient: user_1);
@@ -1815,8 +1828,8 @@ fn test_use_note_wrong_owner_private_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let amount = 1;
@@ -1827,7 +1840,7 @@ fn test_use_note_wrong_owner_private_key() {
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let note_path = NotePath { channel_key, token, note_index };
     user_2.replace_private_key(private_key: test.new_private_key());
-    user_2.replace_key_e2e();
+    user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     user_2.use_note(note: note_path);
 }
@@ -1838,8 +1851,8 @@ fn test_use_note_wrong_note_index() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let amount = 1;
@@ -1858,8 +1871,8 @@ fn test_use_note_wrong_channel_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2);
     user_2.open_channel_e2e(recipient: user_2);
@@ -1879,8 +1892,8 @@ fn test_use_note_wrong_token() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2);
     let amount = 1;
@@ -1899,8 +1912,8 @@ fn test_use_note_find_nullifier() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
     let amount = 1;
@@ -1946,8 +1959,8 @@ fn test_withdraw_different_targets() {
     let mut user_1 = test.new_user(); // Owner.
     let mut user_2 = test.new_user(); // Registered user.
     let user_3 = test.new_user(); // Not registered.
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     user_1.open_channel_with_token_e2e(recipient: user_1, :token, subchannel_index: 0);
 
     // Withdraw note to self.
@@ -1991,18 +2004,14 @@ fn test_withdraw_assertions() {
 }
 
 #[test]
-fn test_replace_key() {
+fn test_set_viewing_key_multiple_times() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    let original_public_key = user.public_key;
+    user.set_viewing_key_e2e();
 
-    // Register the user first.
-    user.register_e2e();
-    assert_eq!(user.get_public_key(), original_public_key);
-
-    // Replace the public key.
+    // Set again to a different value.
     user.new_key();
-    let (random, actions) = user.replace_key_with_generated_random();
+    let (random, actions) = user.set_viewing_key_with_generated_random();
     let public_key_storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
@@ -2011,8 +2020,8 @@ fn test_replace_key() {
     );
     let expected_enc_private_key = user.compute_enc_private_key(:random);
     let expected_actions = [
-        ServerAction::WriteIfNonZero((public_key_storage_path_felt, user.public_key)),
-        ServerAction::WriteIfNonZeroPrivateKey(
+        ServerAction::Write((public_key_storage_path_felt, user.public_key)),
+        ServerAction::WritePrivateKey(
             (enc_private_key_storage_path_felt, expected_enc_private_key),
         ),
     ]
@@ -2021,73 +2030,73 @@ fn test_replace_key() {
 }
 
 #[test]
-fn test_replace_key_sanity() {
+fn test_set_viewing_key_sanity() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let original_private_key = user.private_key;
     let original_public_key = user.public_key;
 
     // Register the user first.
-    let random = user.register_e2e();
+    let random = user.set_viewing_key_e2e();
     assert_eq!(user.get_public_key(), original_public_key);
     let enc_private_key_1 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_enc_private_key(), enc_private_key_1);
 
     // Replace the public key first time.
     user.new_key();
-    let random = user.replace_key_e2e();
+    let random = user.set_viewing_key_e2e();
     let enc_private_key_2 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_public_key(), user.public_key);
     assert_eq!(user.get_enc_private_key(), enc_private_key_2);
 
     // Replace the public key second time.
     user.new_key();
-    let random = user.replace_key_e2e();
+    let random = user.set_viewing_key_e2e();
     let enc_private_key_3 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_public_key(), user.public_key);
     assert_eq!(user.get_enc_private_key(), enc_private_key_3);
 
     // Replace back to original public key.
     user.private_key = original_private_key;
-    let random = user.replace_key_e2e();
+    let random = user.set_viewing_key_e2e();
     let enc_private_key_4 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_public_key(), original_public_key);
     assert_eq!(user.get_enc_private_key(), enc_private_key_4);
 }
 
 #[test]
-fn test_replace_key_same_key() {
+fn test_set_viewing_key_same_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let original_public_key = user.public_key;
 
     // Register the user first.
-    let register_random = user.register_e2e();
+    let register_random = user.set_viewing_key_e2e();
     assert_eq!(user.get_public_key(), original_public_key);
     let enc_private_key_1 = user.compute_enc_private_key(random: register_random);
     assert_eq!(user.get_enc_private_key(), enc_private_key_1);
 
     // Replace with the same key.
-    let random = user.replace_key_e2e();
+    let random = user.set_viewing_key_e2e();
     let enc_private_key_2 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_public_key(), original_public_key);
     assert_eq!(user.get_enc_private_key(), enc_private_key_2);
 
     // Replace with the same key and same random.
-    let actions = user.replace_key(:random);
+    let actions = user.set_viewing_key(:random);
     user.privacy.execute_actions(:actions);
     assert_eq!(user.get_public_key(), original_public_key);
     assert_eq!(user.get_enc_private_key(), enc_private_key_2);
 
     // Replace with the same key and same random from registeration.
-    let actions = user.replace_key(random: register_random);
+    let actions = user.set_viewing_key(random: register_random);
     user.privacy.execute_actions(:actions);
     assert_eq!(user.get_public_key(), original_public_key);
     assert_eq!(user.get_enc_private_key(), enc_private_key_1);
 }
 
 #[test]
-fn test_replace_key_to_other_user_key() {
+fn test_set_viewing_key_to_other_user_key() {
     let mut test: Test = Default::default();
     let mut user1 = test.new_user();
     let mut user2 = test.new_user();
@@ -2095,8 +2104,8 @@ fn test_replace_key_to_other_user_key() {
     let user2_public_key = user2.public_key;
 
     // Register both users.
-    user1.register_e2e();
-    user2.register_e2e();
+    user1.set_viewing_key_e2e();
+    user2.set_viewing_key_e2e();
 
     // Verify initial keys.
     assert_eq!(user1.get_public_key(), user1_original_key);
@@ -2104,58 +2113,12 @@ fn test_replace_key_to_other_user_key() {
 
     // User1 replaces their public key to user2's public key.
     user1.private_key = user2.private_key;
-    user1.replace_key_e2e();
+    user1.set_viewing_key_e2e();
 
     // Verify user1 now has user2's public key.
     assert_eq!(user1.get_public_key(), user2_public_key);
     // Verify user2's key is unchanged.
     assert_eq!(user2.get_public_key(), user2_public_key);
-}
-
-#[test]
-#[feature("safe_dispatcher")]
-fn test_replace_key_assertions() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    let random = user.get_random().into();
-
-    // Catch ZERO_PRIVATE_KEY.
-    let mut user_zero_private_key = user;
-    user_zero_private_key.private_key = Zero::zero();
-    let result = user_zero_private_key.safe_replace_key(:random);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-
-    // Catch ZERO_RANDOM.
-    let result = user.safe_replace_key(random: Zero::zero());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
-
-    // Catch PRIVATE_KEY_NOT_CANONICAL.
-    let mut user_key_not_canonical = user;
-    user_key_not_canonical.private_key = Neg::neg(user.private_key);
-    let result = user_key_not_canonical.safe_replace_key(:random);
-    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
-
-    // Catch ZERO_USER_ADDR.
-    let mut user_zero_addr = user;
-    user_zero_addr.address = Zero::zero();
-    let result = user_zero_addr.safe_replace_key(:random);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-}
-
-#[test]
-fn test_replace_key_decrypt_private_key() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    user.register_e2e();
-    user.new_key();
-    user.replace_key_e2e();
-
-    // Compliance should be able to decrypt the private key.
-    let enc_private_key = user.get_enc_private_key();
-    let decrypted_private_key = decrypt_private_key(
-        :enc_private_key, compliance_private_key: test.compliance_private_key,
-    );
-    assert_eq!(decrypted_private_key, user.private_key);
 }
 
 // TODO: Consider splitting to test per action.
@@ -2174,7 +2137,7 @@ fn test_compile_client_actions() {
     let random = user_1.get_random().into();
     let actions = user_1
         .compile_client_actions(
-            client_actions: [ClientAction::Register((user_1.private_key, random))].span(),
+            client_actions: [ClientAction::SetViewingKey((user_1.private_key, random))].span(),
         );
     let enc_private_key = user_1.compute_enc_private_key(:random);
     let public_key_storage_path_felt = map_entry_address(
@@ -2184,29 +2147,15 @@ fn test_compile_client_actions() {
         map_selector: selector!("enc_private_key"), keys: [user_1.address.into()].span(),
     );
     let expected_actions = [
-        ServerAction::WriteIfZero((public_key_storage_path_felt, user_1.public_key)),
-        ServerAction::WriteIfZeroPrivateKey((enc_private_key_storage_path_felt, enc_private_key)),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
-
-    // Replace key action.
-    let actions = user_1
-        .compile_client_actions(
-            client_actions: [ClientAction::ReplaceKey((user_1.private_key, random))].span(),
-        );
-    let expected_actions = [
-        ServerAction::WriteIfNonZero((public_key_storage_path_felt, user_1.public_key)),
-        ServerAction::WriteIfNonZeroPrivateKey(
-            (enc_private_key_storage_path_felt, enc_private_key),
-        ),
+        ServerAction::Write((public_key_storage_path_felt, user_1.public_key)),
+        ServerAction::WritePrivateKey((enc_private_key_storage_path_felt, enc_private_key)),
     ]
         .span();
     assert_eq!(actions, expected_actions);
 
     // Open channel action.
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let random = user_1.get_random().into();
     let actions = user_1
         .compile_client_actions(
@@ -2370,8 +2319,8 @@ fn test_internal_actions() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token = test.mock_new_token();
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
 
     // Create note action.
@@ -2418,7 +2367,7 @@ fn test_compile_client_actions_assertions() {
     let mut user = test.new_user();
     let token = test.mock_new_token();
     let amount = 100;
-    user.register_e2e();
+    user.set_viewing_key_e2e();
     user.open_channel_e2e(recipient: user);
     user.open_subchannel_e2e(recipient: user, :token, index: 0);
     let note_1 = user.new_note_with_generated_random(recipient: user, :token, :amount, index: 0);

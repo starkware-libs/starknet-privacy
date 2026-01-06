@@ -42,14 +42,14 @@ fn test_get_num_of_channels() {
     // Before registration.
     assert_eq!(user.get_num_of_channels(), 0);
     // After registration.
-    user.register_e2e();
+    user.set_viewing_key_e2e();
     assert_eq!(user.get_num_of_channels(), 0);
     // After opening a channel.
     user.open_channel_e2e(recipient: user);
     assert_eq!(user.get_num_of_channels(), 1);
     // After opening a second channel.
     let mut different_user = test.new_user();
-    different_user.register_e2e();
+    different_user.set_viewing_key_e2e();
     different_user.open_channel_e2e(recipient: user);
     assert_eq!(user.get_num_of_channels(), 2);
     assert_eq!(different_user.get_num_of_channels(), 0);
@@ -141,7 +141,7 @@ fn test_get_public_key() {
     // Don't register the user.
     assert_eq!(user.get_public_key(), Zero::zero());
     // Register the user.
-    user.register_e2e();
+    user.set_viewing_key_e2e();
     assert_eq!(user.get_public_key(), user.public_key);
 }
 
@@ -153,8 +153,8 @@ fn test_subchannel_exists() {
     let token = test.mock_new_token();
     let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_id), false);
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_id), true);
@@ -168,8 +168,8 @@ fn test_get_subchannel_info() {
     let token = test.mock_new_token();
     let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
-    user_1.register_e2e();
-    user_2.register_e2e();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     let random = user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
     let expected_subchannel_info = user_1
@@ -185,19 +185,19 @@ fn test_get_enc_private_key() {
     // Before registration.
     assert_eq!(user.get_enc_private_key(), Zero::zero());
     // After registration.
-    let random = user.register_e2e();
+    let random = user.set_viewing_key_e2e();
     let expected_enc_private_key_1 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_enc_private_key(), expected_enc_private_key_1);
     // After replacing the key.
     user.new_key();
-    let random = user.replace_key_e2e();
+    let random = user.set_viewing_key_e2e();
     let expected_enc_private_key_2 = user.compute_enc_private_key(:random);
     assert_ne!(expected_enc_private_key_1, expected_enc_private_key_2);
     assert_eq!(user.get_enc_private_key(), expected_enc_private_key_2);
 }
 
 #[test]
-fn test_register_multiple_users() {
+fn test_set_viewing_key_multiple_users() {
     let mut test: Test = Default::default();
     let mut user1 = test.new_user();
     let mut user2 = test.new_user();
@@ -207,10 +207,10 @@ fn test_register_multiple_users() {
     assert_ne!(public_key1, public_key2, "Public keys should be different.");
 
     // Register user1.
-    user1.register_e2e();
+    user1.set_viewing_key_e2e();
 
     // Register user2.
-    user2.register_e2e();
+    user2.set_viewing_key_e2e();
 
     // Verify both public keys are stored correctly.
     assert_eq!(user1.get_public_key(), public_key1);
@@ -220,7 +220,7 @@ fn test_register_multiple_users() {
 }
 
 #[test]
-fn test_register_multiple_users_same_public_key() {
+fn test_set_viewing_key_multiple_users_same_public_key() {
     let mut test: Test = Default::default();
     let mut user1 = test.new_user();
     let mut user2 = test.new_user();
@@ -229,8 +229,8 @@ fn test_register_multiple_users_same_public_key() {
     user2.private_key = user1.private_key;
 
     // Register both users.
-    user1.register_e2e();
-    user2.register_e2e();
+    user1.set_viewing_key_e2e();
+    user2.set_viewing_key_e2e();
 
     // Both should be able to fetch the shared public key.
     assert_eq!(user1.get_public_key(), user1.public_key);
@@ -384,16 +384,19 @@ fn test_execute_write_if_zero_assertions() {
 }
 
 #[test]
-fn test_execute_write_if_non_zero() {
+fn test_execute_write() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
+
+    // Verify public key is zero before writing.
+    assert_eq!(user.get_public_key(), Zero::zero());
 
     // Set initial public key.
     let storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, user.public_key)),
+        ServerAction::Write((storage_path_felt, user.public_key)),
     ];
     test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_public_key(), user.public_key);
@@ -401,46 +404,17 @@ fn test_execute_write_if_non_zero() {
     // Change public key.
     user.new_key();
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfNonZero((storage_path_felt, user.public_key)),
+        ServerAction::Write((storage_path_felt, user.public_key)),
     ];
     test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_public_key(), user.public_key);
 
     // Change public key to zero.
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfNonZero((storage_path_felt, Zero::zero())),
+        ServerAction::Write((storage_path_felt, Zero::zero())),
     ];
     test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_public_key(), Zero::zero());
-}
-
-#[test]
-fn test_execute_write_if_non_zero_assertions() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
-    );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfNonZero((storage_path_felt, user.public_key)),
-    ];
-    let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
-
-    // Catch ZERO_VALUE for notes.
-    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("notes"), keys: [note.id].span(),
-    );
-    let current_value: felt252 = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, Zero::zero());
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfNonZero((storage_path_felt, note.enc_amount)),
-    ];
-    let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_VALUE);
 }
 
 #[test]
@@ -488,7 +462,7 @@ fn test_execute_write_if_zero_subchannel_assertions() {
 }
 
 #[test]
-fn test_execute_write_if_zero_private_key() {
+fn test_execute_write_private_key() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let enc_private_key = test.mock_new_enc_private_key();
@@ -502,35 +476,28 @@ fn test_execute_write_if_zero_private_key() {
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroPrivateKey((storage_path_felt, enc_private_key)),
+        ServerAction::WritePrivateKey((storage_path_felt, enc_private_key)),
     ];
     test.privacy.execute_actions(actions.span());
 
     // Verify private key exists.
     assert_eq!(user.get_enc_private_key(), enc_private_key);
-}
 
-#[test]
-fn test_execute_write_if_zero_private_key_assertions() {
-    let mut test: Test = Default::default();
-    let user = test.new_user();
-    let enc_private_key = test.mock_new_enc_private_key();
-    assert!(enc_private_key.is_non_zero());
-
-    // Catch NON_ZERO_VALUE.
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
-    );
+    // Write again.
+    let new_enc_private_key = test.mock_new_enc_private_key();
+    assert!(new_enc_private_key.is_non_zero());
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroPrivateKey((storage_path_felt, enc_private_key)),
+        ServerAction::WritePrivateKey((storage_path_felt, new_enc_private_key)),
     ];
     test.privacy.execute_actions(actions.span());
-    let current_value = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, enc_private_key);
-    let result = test.privacy.safe_execute_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    assert_eq!(user.get_enc_private_key(), new_enc_private_key);
+
+    // Write zero.
+    let actions: Array<ServerAction> = array![
+        ServerAction::WritePrivateKey((storage_path_felt, Zero::zero())),
+    ];
+    test.privacy.execute_actions(actions.span());
+    assert_eq!(user.get_enc_private_key(), Zero::zero());
 }
 
 #[test]
