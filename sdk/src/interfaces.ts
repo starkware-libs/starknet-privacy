@@ -33,7 +33,7 @@ export type StarknetAddress = BigNumberish;
 export type StarknetAddressBigint = bigint;
 
 // Import and re-export Witness class from internal.ts
-import { Witness, Channel } from "./internal.js";
+import { Witness, Channel } from "./internal/index.js";
 export { Witness, Channel };
 
 export type Note = {
