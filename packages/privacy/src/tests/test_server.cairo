@@ -5,6 +5,10 @@ use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
 };
 use snforge_std::{TokenTrait, map_entry_address};
+use starkware_utils::components::replaceability::interface::{
+    IReplaceableDispatcher, IReplaceableDispatcherTrait,
+};
+use starkware_utils::components::roles::interface::{IRolesDispatcher, IRolesDispatcherTrait};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{
@@ -12,6 +16,23 @@ use starkware_utils_testing::test_utils::{
 };
 
 // TODO: Different file for Views tests?
+
+#[test]
+fn test_constructor() {
+    let mut test: Test = Default::default();
+    // Test compliance public key.
+    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance_public_key);
+    // Test roles.
+    let contract_roles = IRolesDispatcher { contract_address: test.privacy.address };
+    assert!(contract_roles.is_governance_admin(account: test.privacy.governance_admin));
+    assert!(contract_roles.is_security_admin(account: test.privacy.governance_admin));
+    let user = test.new_user();
+    assert!(!contract_roles.is_governance_admin(account: user.address));
+    assert!(!contract_roles.is_security_admin(account: user.address));
+    // Test replaceability.
+    let contract_replaceability = IReplaceableDispatcher { contract_address: test.privacy.address };
+    assert_eq!(contract_replaceability.get_upgrade_delay(), Zero::zero());
+}
 
 #[test]
 fn test_get_compliance_public_key() {

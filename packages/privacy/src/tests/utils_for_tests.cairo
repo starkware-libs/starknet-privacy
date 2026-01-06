@@ -64,6 +64,7 @@ pub(crate) impl EncNoteImpl of EncNoteTrait {
 #[derive(Copy, Drop)]
 pub(crate) struct PrivacyCfg {
     pub address: ContractAddress,
+    pub governance_admin: ContractAddress,
     server: IServerDispatcher,
     safe_server: IServerSafeDispatcher,
     client: IClientDispatcher,
@@ -839,22 +840,29 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
 impl DefaultTestImpl of Default<Test> {
     fn default() -> Test {
+        let governance_admin = 'GOVERNANCE_ADMIN'.try_into().unwrap();
         let compliance_private_key = 'COMPLIANCE_PRIVATE_KEY';
         let compliance_public_key = derive_public_key(private_key: compliance_private_key);
-        let privacy = deploy_privacy(:compliance_public_key);
+        let privacy = deploy_privacy(:governance_admin, :compliance_public_key);
         Test { privacy, nonce: Zero::zero(), compliance_private_key, compliance_public_key }
     }
 }
 
-pub(crate) fn deploy_privacy(compliance_public_key: felt252) -> PrivacyCfg {
+pub(crate) fn deploy_privacy(
+    governance_admin: ContractAddress, compliance_public_key: felt252,
+) -> PrivacyCfg {
     let contract_class_hash = declare(contract: "Privacy").unwrap().contract_class().class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
     let (contract_address, _) = deploy_privacy_for_test(
-        class_hash: *contract_class_hash, :deployment_params, :compliance_public_key,
+        class_hash: *contract_class_hash,
+        :deployment_params,
+        :governance_admin,
+        :compliance_public_key,
     )
         .expect('Privacy deployment failed');
     PrivacyCfg {
         address: contract_address,
+        governance_admin,
         server: IServerDispatcher { contract_address },
         safe_server: IServerSafeDispatcher { contract_address },
         client: IClientDispatcher { contract_address },
