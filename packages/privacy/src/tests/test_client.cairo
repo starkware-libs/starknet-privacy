@@ -6,7 +6,8 @@ use privacy::tests::utils_for_tests::{
     EncNoteTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info,
     decrypt_private_key, decrypt_subchannel_token,
 };
-use privacy::utils::{TWO_POW_120, decrypt_note_amount, encrypt_channel_info, is_canonical_key};
+use privacy::utils::constants::TWO_POW_120;
+use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
 use snforge_std::map_entry_address;
 use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 
@@ -410,12 +411,12 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
 
-    // Catch ZERO_OWNER_PRIVATE_KEY.
+    // Catch ZERO_PRIVATE_KEY.
     let mut user_1_zero_owner_private_key = user_1;
     user_1_zero_owner_private_key.private_key = Zero::zero();
     let result = user_1_zero_owner_private_key
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OWNER_PRIVATE_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
     let mut user_1_private_key_not_canonical = user_1;
@@ -425,54 +426,54 @@ fn test_transfer_assertions() {
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
-    // Catch INVALID_SUBCHANNEL - channel doesnt exist.
+    // Catch SUBCHANNEL_NOT_FOUND - channel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     user_1.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_1);
 
-    // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
+    // Catch SUBCHANNEL_NOT_FOUND - subchannel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     user_1.open_subchannel_e2e(recipient: user_1, :token, index: 0);
 
-    // Catch INVALID_SUBCHANNEL - wrong address.
+    // Catch SUBCHANNEL_NOT_FOUND - wrong address.
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     let mut user_1_wrong_addr = user_1;
     user_1_wrong_addr.address = user_2.address;
     let result = user_1_wrong_addr
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    // Catch INVALID_SUBCHANNEL - wrong private key.
+    // Catch SUBCHANNEL_NOT_FOUND - wrong private key.
     let mut user_1_wrong_private_key = user_1;
-    user_1_wrong_private_key.private_key = user_1.public_key;
+    user_1_wrong_private_key.private_key = user_2.private_key;
     let result = user_1_wrong_private_key
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    // Catch INVALID_SUBCHANNEL - wrong token.
+    // Catch SUBCHANNEL_NOT_FOUND - wrong token.
     let wrong_token = test.mock_new_token();
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { token: wrong_token, ..note_path }].span(),
             notes_to_create: [new_note].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    // Catch INVALID_SUBCHANNEL - wrong channel key.
+    // Catch SUBCHANNEL_NOT_FOUND - wrong channel key.
     let wrong_channel_key = user_1.compute_channel_key(recipient: user_2);
     let result = user_1
         .safe_transfer(
             notes_to_use: [NotePath { channel_key: wrong_channel_key, ..note_path }].span(),
             notes_to_create: [new_note].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Catch NOTE_NOT_FOUND.
     let result = user_1
@@ -539,51 +540,51 @@ fn test_transfer_assertions() {
 
     user_3.set_viewing_key_e2e();
 
-    // Catch INVALID_SUBCHANNEL - channel doesnt exist.
+    // Catch SUBCHANNEL_NOT_FOUND - channel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     user_1.open_channel_e2e(recipient: user_3);
 
-    // Catch INVALID_SUBCHANNEL - subchannel doesnt exist.
+    // Catch SUBCHANNEL_NOT_FOUND - subchannel doesnt exist.
     let result = user_1
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     user_1.open_subchannel_e2e(recipient: user_3, :token, index: 0);
 
-    // Catch INVALID_SUBCHANNEL - wrong public key.
+    // Catch SUBCHANNEL_NOT_FOUND - wrong public key.
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
             notes_to_create: [NewNote { recipient_public_key: user_1.public_key, ..new_note }]
                 .span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    // Catch INVALID_SUBCHANNEL - wrong address.
+    // Catch SUBCHANNEL_NOT_FOUND - wrong address.
     let mut user_1_wrong_addr = user_1;
     user_1_wrong_addr.address = user_2.address;
     let result = user_1_wrong_addr
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    // Catch INVALID_SUBCHANNEL - wrong private key.
+    // Catch SUBCHANNEL_NOT_FOUND - wrong private key.
     let mut user_1_wrong_private_key = user_1;
-    user_1_wrong_private_key.private_key = user_1.public_key;
+    user_1_wrong_private_key.private_key = user_2.private_key;
     let result = user_1_wrong_private_key
         .safe_transfer(notes_to_use: [note_path].span(), notes_to_create: [new_note].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    // Catch INVALID_SUBCHANNEL - wrong token.
+    // Catch SUBCHANNEL_NOT_FOUND - wrong token.
     let wrong_token = test.mock_new_token();
     let result = user_1
         .safe_transfer(
             notes_to_use: [note_path].span(),
             notes_to_create: [NewNote { token: wrong_token, ..new_note }].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SUBCHANNEL);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Catch INDEX_NOT_SEQUENTIAL.
     let result = user_1
@@ -673,11 +674,11 @@ fn test_open_channel_assertions() {
     let result = user_zero_addr.safe_open_channel(recipient: user_2, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
-    // Catch ZERO_SENDER_PRIVATE_KEY.
+    // Catch ZERO_PRIVATE_KEY.
     let mut user_zero_private_key = user_1;
     user_zero_private_key.private_key = Zero::zero();
     let result = user_zero_private_key.safe_open_channel(recipient: user_2, :random);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SENDER_PRIVATE_KEY);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch ZERO_RECIPIENT_ADDR.
     let mut user_zero_addr = user_2;
@@ -1418,8 +1419,8 @@ fn test_create_note_zero_random() {
 }
 
 #[test]
-#[should_panic(expected: 'ZERO_OWNER_PRIVATE_KEY')]
-fn test_create_note_zero_owner_private_key() {
+#[should_panic(expected: 'ZERO_PRIVATE_KEY')]
+fn test_create_note_zero_private_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     user_1.private_key = Zero::zero();
@@ -1471,8 +1472,8 @@ fn test_create_note_zero_recipient_public_key() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_SUBCHANNEL')]
-fn test_create_note_invalid_subchannel_channel_doesnt_exist() {
+#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
+fn test_create_note_subchannel_not_found_channel_doesnt_exist() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -1485,8 +1486,8 @@ fn test_create_note_invalid_subchannel_channel_doesnt_exist() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_SUBCHANNEL')]
-fn test_create_note_invalid_subchannel_subchannel_doesnt_exist() {
+#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
+fn test_create_note_subchannel_not_found_subchannel_doesnt_exist() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -1500,8 +1501,8 @@ fn test_create_note_invalid_subchannel_subchannel_doesnt_exist() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_SUBCHANNEL')]
-fn test_create_note_invalid_subchannel_wrong_addr() {
+#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
+fn test_create_note_subchannel_not_found_wrong_addr() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -1516,8 +1517,8 @@ fn test_create_note_invalid_subchannel_wrong_addr() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_SUBCHANNEL')]
-fn test_create_note_invalid_subchannel_wrong_private_key() {
+#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
+fn test_create_note_subchannel_not_found_wrong_private_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -1525,15 +1526,15 @@ fn test_create_note_invalid_subchannel_wrong_private_key() {
     user_2.set_viewing_key_e2e();
     let token = test.mock_new_token();
     user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
+    user_1.new_key();
     let note = user_1
         .new_note_with_generated_random(recipient: user_2, :token, amount: 1, index: 0);
-    user_1.private_key = user_1.public_key;
     user_1.create_note(:note);
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_SUBCHANNEL')]
-fn test_create_note_invalid_subchannel_wrong_public_key() {
+#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
+fn test_create_note_subchannel_not_found_wrong_public_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -1548,8 +1549,8 @@ fn test_create_note_invalid_subchannel_wrong_public_key() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_SUBCHANNEL')]
-fn test_create_note_invalid_subchannel_wrong_token() {
+#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
+fn test_create_note_subchannel_not_found_wrong_token() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -1780,8 +1781,8 @@ fn test_use_note_zero_channel_key() {
 }
 
 #[test]
-#[should_panic(expected: 'ZERO_OWNER_PRIVATE_KEY')]
-fn test_use_note_zero_owner_private_key() {
+#[should_panic(expected: 'ZERO_PRIVATE_KEY')]
+fn test_use_note_zero_private_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     user_1.private_key = Zero::zero();
@@ -1804,7 +1805,7 @@ fn test_use_note_private_key_not_canonical() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_SUBCHANNEL')]
+#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
 fn test_use_note_wrong_owner_addr() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1824,7 +1825,7 @@ fn test_use_note_wrong_owner_addr() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_SUBCHANNEL')]
+#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
 fn test_use_note_wrong_owner_private_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1840,7 +1841,7 @@ fn test_use_note_wrong_owner_private_key() {
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let note_path = NotePath { channel_key, token, note_index };
-    user_2.replace_private_key(private_key: test.new_private_key());
+    user_2.new_key();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     user_2.use_note(note: note_path);
@@ -1867,7 +1868,7 @@ fn test_use_note_wrong_note_index() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_SUBCHANNEL')]
+#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
 fn test_use_note_wrong_channel_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -1888,7 +1889,7 @@ fn test_use_note_wrong_channel_key() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_SUBCHANNEL')]
+#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
 fn test_use_note_wrong_token() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
