@@ -1,5 +1,6 @@
 use core::dict::{Felt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
+use privacy::errors;
 use starknet::ContractAddress;
 
 #[derive(Drop, Debug)]
@@ -197,6 +198,45 @@ pub enum ClientAction {
     /// Withdraw funds from the contract.
     /// (withdrawal_target: ContractAddress, token: ContractAddress, amount: u128)
     Withdraw: (ContractAddress, ContractAddress, u128),
+}
+
+// TODO: Consider enum? or mod?
+pub(crate) const ACCOUNT_PHASE: u8 = 0;
+pub(crate) const CHANNEL_PHASE: u8 = 1;
+pub(crate) const SUBCHANNEL_PHASE: u8 = 2;
+pub(crate) const DEPOSIT_PHASE: u8 = 3;
+pub(crate) const NOTES_PHASE: u8 = 4;
+pub(crate) const WITHDRAW_PHASE: u8 = 5;
+
+#[generate_trait]
+pub(crate) impl ClientActionImpl of ClientActionTrait {
+    /// Returns the phase that the action is intended for.
+    fn intended_phase(self: @ClientAction) -> u8 {
+        match self {
+            ClientAction::Register(_) => ACCOUNT_PHASE,
+            ClientAction::ReplaceKey(_) => ACCOUNT_PHASE,
+            ClientAction::OpenChannel(_) => CHANNEL_PHASE,
+            ClientAction::OpenSubchannel(_) => SUBCHANNEL_PHASE,
+            ClientAction::Deposit(_) => DEPOSIT_PHASE,
+            ClientAction::CreateNote(_) => NOTES_PHASE,
+            ClientAction::UseNote(_) => NOTES_PHASE,
+            ClientAction::Withdraw(_) => WITHDRAW_PHASE,
+        }
+    }
+
+    /// Asserts that the action is valid for the current phase and updates the phase.
+    fn assert_and_set_phase(self: @ClientAction, ref current_phase: u8) {
+        let intended_phase = self.intended_phase();
+        assert(current_phase <= intended_phase, errors::ACTIONS_OUT_OF_ORDER);
+
+        // Account phase is only allowed 1 action.
+        if intended_phase == ACCOUNT_PHASE {
+            // TODO: Change to current_phase += 1?
+            current_phase = CHANNEL_PHASE;
+        } else {
+            current_phase = intended_phase;
+        }
+    }
 }
 
 /// An action to be executed by the server.
