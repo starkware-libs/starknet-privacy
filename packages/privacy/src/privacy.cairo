@@ -11,8 +11,9 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        BalanceOp, ClientAction, EncChannelInfo, EncChannelInfoTrait, EncPrivateKey,
-        EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances, TokenBalancesTrait,
+        BalanceOp, ClientAction, ClientActionTrait, EncChannelInfo, EncChannelInfoTrait,
+        EncPrivateKey, EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances,
+        TokenBalancesTrait,
     };
     use privacy::utils::{
         StoragePathIntoFelt, TWO_POW_120, decrypt_note_amount, derive_public_key,
@@ -73,8 +74,10 @@ pub mod Privacy {
             // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
             let mut server_actions: Array<ServerAction> = array![];
+            let mut current_phase = ClientActionTrait::ACCOUNT_PHASE;
             let mut token_balances: TokenBalances = Default::default();
             for client_action in client_actions {
+                client_action.assert_and_set_phase(ref :current_phase);
                 match *client_action {
                     ClientAction::Register((
                         user_private_key, random,
@@ -120,6 +123,12 @@ pub mod Privacy {
                                     ),
                             );
                     },
+                    ClientAction::Deposit((
+                        token, amount,
+                    )) => {
+                        server_actions
+                            .append(self.deposit(:user_addr, :token, :amount, ref :token_balances));
+                    },
                     ClientAction::CreateNote((
                         user_private_key, new_note,
                     )) => {
@@ -133,12 +142,6 @@ pub mod Privacy {
                                         ref :token_balances,
                                     ),
                             );
-                    },
-                    ClientAction::Deposit((
-                        token, amount,
-                    )) => {
-                        server_actions
-                            .append(self.deposit(:user_addr, :token, :amount, ref :token_balances));
                     },
                     ClientAction::UseNote((
                         user_private_key, note_to_withdraw,
