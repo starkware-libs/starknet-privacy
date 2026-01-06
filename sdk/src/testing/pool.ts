@@ -2,7 +2,14 @@
  * Mock PrivacyPool implementation for testing.
  */
 
-import type { Amount, Note, StarknetAddress, StarknetAddressBigint } from "../interfaces.js";
+import type {
+  Amount,
+  Note,
+  NoteId,
+  Open,
+  StarknetAddress,
+  StarknetAddressBigint,
+} from "../interfaces.js";
 import { Witness } from "../interfaces.js";
 import { BigNumberish } from "starknet";
 import { NoteNonce } from "../internal/index.js";
@@ -22,7 +29,28 @@ import {
 import { AdvancedMap, AddressMap } from "../utils/maps.js";
 import { assert } from "console";
 import type { ERC20s } from "./erc20.js";
-import { hashes } from "./helpers.js";
+import { hashes, Withdrawal } from "./helpers.js";
+import { isOpen } from "../utils/validation.js";
+
+/** Input type for composite operation: a token and either a Witness (to spend) or an Amount (deposit) */
+export type CompositeInput = {
+  token: StarknetAddress;
+  witnessOrAmount: Witness | Amount;
+};
+
+/** Output type for composite operation */
+export type CompositeOutput = {
+  token: StarknetAddress;
+  recipient: StarknetAddress;
+  context: NoteNonce | typeof Withdrawal | NoteId;
+  amount: Amount | Open;
+};
+
+type OpenNote = {
+  r: bigint;
+  amount: Amount;
+  token: StarknetAddressBigint;
+};
 
 export class PrivacyPool {
   private publicKeys = new AddressMap<PublicKey>();
@@ -37,7 +65,7 @@ export class PrivacyPool {
   private channelExists = new Set<Hash>();
   private tokens = new Map<Hash, SymmetricEncryption>();
   private tokenExists = new Set<Hash>();
-  private notes = new Map<Hash, SymmetricEncryption>();
+  private notes = new Map<Hash, SymmetricEncryption | OpenNote>();
   private nullifiers = new Set<Hash>();
 
   constructor(
@@ -140,7 +168,12 @@ export class PrivacyPool {
       `Token ${token} does not exist`
     );
     const noteId = hashes.noteId(witness, token);
-    const amount = decryptSymmetric(this.notes.get(noteId)!, witness.channelKey);
+    const note = this.notes.get(noteId)!;
+    if (note.r == 1n) {
+      // note is open, get amount as is
+      return (note as OpenNote).amount;
+    }
+    const amount = decryptSymmetric(note as SymmetricEncryption, witness.channelKey);
     assert(amount == amount, `Note amount does not match`);
 
     const nullifier = hashes.nullifier(witness, token, ownerPrivateKey);
@@ -157,7 +190,7 @@ export class PrivacyPool {
     to: StarknetAddress,
     token: StarknetAddress,
     nonce: NoteNonce,
-    amount: Amount
+    amount: Amount | Open
   ): Note {
     const channelKey = hashes.channelKey(from, fromPrivateKey, to, this.getPublicKey(to));
     const tokenKey = hashes.tokenExists(channelKey, to, this.getPublicKey(to), token);
@@ -172,31 +205,28 @@ export class PrivacyPool {
     const noteId = hashes.noteId(witness, token);
 
     assert(!this.notes.has(noteId), `Note ${noteId} already exists`);
-    this.notes.set(noteId, encryptSymmetric(channelKey, amount));
+    const note = isOpen(amount)
+      ? { r: 1n, amount: 0n, token: toBigInt(token) }
+      : encryptSymmetric(channelKey, amount);
+
+    this.notes.set(noteId, note);
 
     return {
       id: noteId,
-      amount: amount,
+      amount: isOpen(amount) ? 0n : amount,
       witness,
       sender: from,
+      open: isOpen(amount),
     };
   }
-
-  // Symbol used as a type marker for withdrawal operations
-  static readonly Withdrawal = Symbol("Withdrawal");
 
   composite(
     from: StarknetAddress,
     fromPrivateKey: PrivateKey,
-    inputs: { token: StarknetAddress; witnessOrAmount: Witness | Amount }[],
-    outputs: {
-      token: StarknetAddress;
-      recipient: StarknetAddress;
-      nonceOrWithdrawal: NoteNonce | symbol;
-      amount: Amount;
-    }[]
+    inputs: CompositeInput[],
+    outputs: CompositeOutput[]
   ) {
-    const total = new Map<StarknetAddress, Amount>();
+    const total = new AddressMap<Amount>(() => 0n);
 
     for (const input of inputs) {
       let amount = 0n;
@@ -206,22 +236,43 @@ export class PrivacyPool {
         this.erc20s.get(input.token).transfer(from, this.poolAddress, input.witnessOrAmount);
         amount = input.witnessOrAmount;
       }
-      total.set(input.token, (total.get(input.token) ?? 0n) + amount);
+      total.set(input.token, total.get(input.token)! + amount);
     }
 
     for (const output of outputs) {
-      total.set(output.token, (total.get(output.token) ?? 0n) - output.amount);
-      if (output.nonceOrWithdrawal instanceof NoteNonce) {
+      assert(
+        !isOpen(output.amount) || output.context !== Withdrawal,
+        `Can't create an open note and a withdrawal at the same time`
+      );
+      const amountNum = isOpen(output.amount) ? 0n : output.amount;
+      total.set(output.token, total.get(output.token)! - amountNum);
+      if (output.context instanceof NoteNonce) {
         this.createNote(
           from,
           fromPrivateKey,
           output.recipient,
           output.token,
-          output.nonceOrWithdrawal,
+          output.context,
           output.amount
         );
+      } else if (output.context === Withdrawal) {
+        this.erc20s
+          .get(output.token)
+          .transfer(this.poolAddress, output.recipient, output.amount as Amount);
       } else {
-        this.erc20s.get(output.token).transfer(this.poolAddress, output.recipient, output.amount);
+        assert(
+          !isOpen(output.amount),
+          `Can't create an open note and a deposit to one note at the same time`
+        );
+        const note = this.notes.get(toBigInt(output.context))! as OpenNote;
+        assert(note, `Note ${output.context} does not exist`);
+        assert(note.r == 1n, `Note ${output.context} is not open`);
+        assert(
+          note.token == toBigInt(output.token),
+          `Note ${output.context} is not for token ${output.token}`
+        );
+        assert(note.amount == 0n, `Note ${output.context} has already been filled`);
+        note.amount = output.amount as Amount;
       }
     }
 
@@ -230,10 +281,17 @@ export class PrivacyPool {
     }
   }
 
-  getNote(witness: Witness, token: StarknetAddress): Amount | false {
+  getNote(witness: Witness, token: StarknetAddress): { amount: Amount; open: boolean } | false {
     const noteId = hashes.noteId(new Witness(witness.channelKey, witness.nonce), token);
-    const encrypted = this.notes.get(noteId);
-    return encrypted ? decryptSymmetric(encrypted, witness.channelKey) : false;
+    const note = this.notes.get(noteId);
+    if (note === undefined) return false;
+    if (note.r == 1n) {
+      return { amount: (note as OpenNote).amount, open: true };
+    }
+    return {
+      amount: decryptSymmetric(note as SymmetricEncryption, witness.channelKey),
+      open: false,
+    };
   }
 
   getNullifier(witness: Witness, token: StarknetAddress, ownerPrivateKey: PrivateKey): boolean {

@@ -43,6 +43,7 @@ export type Note = {
   readonly witness: Witness;
   readonly viewingKey?: ViewingKey; // in case the viewing key is different than the privacy pool's.
   readonly sender: StarknetAddress;
+  readonly open?: boolean;
 };
 
 /** Unique identifier for a note, used for semi-transparent (preprepared) notes */
@@ -77,7 +78,7 @@ export type PrivateTransfersConfig = {
 
 export interface PrivateRecipient {
   address: StarknetAddress;
-  context: Channel | NoteId; // note id is for semi-transparent (preprepared) notes.
+  context: Channel;
 }
 
 /**
@@ -160,7 +161,7 @@ export interface PrivateTransfers {
   deposit(params: {
     token: StarknetAddress;
     amount: Amount;
-    recipient: PrivateRecipient;
+    recipient: PrivateRecipient | NoteId; // note id is for open notes.
   }): Promise<PrivateInvocationResult>;
 
   /**
@@ -241,8 +242,10 @@ export interface TokenOperationsBuilder {
   /** Specify input notes for this token */
   inputs(...notes: Note[]): this;
 
-  /** Deposit this token (to self by default, or to a recipient with an open note already prepared) */
-  deposit(amount: Amount, recipient: PrivateRecipient): this;
+  /** Deposit this token (to self by default, or to a recipient with an open note already prepared)
+   * @param recipient can be a recipient or a note id for an open note.
+   */
+  deposit(amount: Amount, recipient: PrivateRecipient | NoteId): this;
 
   /** Withdraw this token to one or more public addresses */
   withdraw(...outputs: WithdrawOutput[]): this;

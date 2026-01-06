@@ -3,7 +3,7 @@
 export { jsonStringify, jsonParse } from "./json.js";
 export { withLogging, consoleLogCallback, type LogCallback } from "./logging.js";
 export { AdvancedMap, AddressMap } from "./maps.js";
-export { assertViewingKey, assertRecipientAddress } from "./validation.js";
+export { assertViewingKey, assertRecipientAddress, isOpen } from "./validation.js";
 export {
   hash,
   encryptChannelInfo,

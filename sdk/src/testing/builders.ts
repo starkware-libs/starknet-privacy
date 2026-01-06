@@ -6,6 +6,7 @@ import type {
   Amount,
   CallAndProof,
   Note,
+  NoteId,
   PrivateRecipient,
   PrivateTransfersBuilder,
   StarknetAddress,
@@ -15,10 +16,11 @@ import type {
 } from "../interfaces.js";
 import { Channel } from "../interfaces.js";
 import type { Call } from "starknet";
-import { NoteNonce, TokenNonce } from "../internal/index.js";
+import { TokenNonce } from "../internal/index.js";
 import { derivePublicKey, type PrivateKey } from "../utils/crypto.js";
-import type { PrivacyPool } from "./pool.js";
-import { createMockCallAndProof, Withdrawal } from "./helpers.js";
+import type { CompositeInput, CompositeOutput, PrivacyPool } from "./pool.js";
+import { createMockCallAndProof } from "./helpers.js";
+import { Withdrawal } from "./index.js";
 
 // ============ Mock Token Operations Builder ============
 
@@ -26,7 +28,7 @@ export class MockTokenOperationsBuilder implements TokenOperationsBuilder {
   // Queued operations
   public setupCalls: PrivateRecipient[] = [];
   public inputNotes: Note[] = [];
-  public depositCalls: Array<{ amount: Amount; recipient: PrivateRecipient }> = [];
+  public depositCalls: Array<{ amount: Amount; recipient: PrivateRecipient | NoteId }> = [];
   public withdrawCalls: WithdrawOutput[] = [];
   public transferCalls: TransferOutput[] = [];
 
@@ -45,7 +47,7 @@ export class MockTokenOperationsBuilder implements TokenOperationsBuilder {
     return this;
   }
 
-  deposit(amount: Amount, recipient: PrivateRecipient): this {
+  deposit(amount: Amount, recipient: PrivateRecipient | NoteId): this {
     this.depositCalls.push({ amount, recipient });
     return this;
   }
@@ -133,9 +135,8 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
         this.userPrivateKey,
         recipient.address
       );
-      // Only overwrite context if it's not already the same channel (preserves nonces/tokens)
-      const existingChannel = recipient.context instanceof Channel ? recipient.context : null;
-      if (!existingChannel || existingChannel.key !== channelKey) {
+      // Only overwrite context if undefined or key differs (preserves nonces/tokens)
+      if (!recipient.context || recipient.context.key !== channelKey) {
         recipient.context = new Channel(channelKey);
       }
       results.push(createMockCallAndProof());
@@ -144,7 +145,7 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
     // 3. Setup tokens for recipients (from all token builders)
     for (const tokenBuilder of this.tokenBuilders.values()) {
       for (const recipient of tokenBuilder.setupCalls) {
-        const channel = recipient.context as Channel;
+        const channel = recipient.context;
         const { index } = TokenNonce.increment(channel.nonces);
         const nonce = channel.nonces[index];
         this.pool.setToken(
@@ -159,16 +160,8 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
     }
 
     // 4. Gather all inputs and outputs from all token builders
-    const allInputs: {
-      token: StarknetAddress;
-      witnessOrAmount: import("../interfaces.js").Witness | Amount;
-    }[] = [];
-    const allOutputs: {
-      token: StarknetAddress;
-      recipient: StarknetAddress;
-      nonceOrWithdrawal: NoteNonce | typeof Withdrawal;
-      amount: Amount;
-    }[] = [];
+    const allInputs: CompositeInput[] = [];
+    const allOutputs: CompositeOutput[] = [];
 
     for (const tokenBuilder of this.tokenBuilders.values()) {
       const token = tokenBuilder.token;
@@ -178,16 +171,29 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
         allInputs.push({ token, witnessOrAmount: note.witness });
       }
 
+      function isPrivateRecipient(value: unknown): value is PrivateRecipient {
+        return (
+          typeof value === "object" && value !== null && "address" in value && "context" in value
+        );
+      }
+
       // Deposits (amount as input)
       for (const { amount, recipient } of tokenBuilder.depositCalls) {
-        const channel = recipient.context as Channel;
-        allInputs.push({ token, witnessOrAmount: amount });
-        allOutputs.push({
-          token,
-          recipient: recipient.address,
-          nonceOrWithdrawal: channel.incrementNoteNonce(token),
-          amount,
-        });
+        const nonceOrId = isPrivateRecipient(recipient)
+          ? recipient.context.incrementNoteNonce(token)
+          : recipient;
+        if (isPrivateRecipient(recipient)) {
+          allInputs.push({ token, witnessOrAmount: amount });
+          allOutputs.push({
+            token,
+            recipient: recipient.address,
+            context: nonceOrId,
+            amount,
+          });
+        } else {
+          allInputs.push({ token, witnessOrAmount: amount });
+          allOutputs.push({ token, recipient: recipient, context: nonceOrId, amount });
+        }
       }
 
       // Withdrawals
@@ -195,19 +201,19 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
         allOutputs.push({
           token,
           recipient: output.recipient ?? this.userAddress,
-          nonceOrWithdrawal: Withdrawal,
+          context: Withdrawal,
           amount: output.amount,
         });
       }
 
       // Transfers
       for (const output of tokenBuilder.transferCalls) {
-        const channel = output.recipient.context as Channel;
+        const channel = output.recipient.context;
         allOutputs.push({
           token,
           recipient: output.recipient.address,
-          nonceOrWithdrawal: channel.incrementNoteNonce(token),
-          amount: output.amount as Amount,
+          context: channel.incrementNoteNonce(token),
+          amount: output.amount,
         });
       }
     }
