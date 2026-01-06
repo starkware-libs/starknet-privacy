@@ -7,8 +7,16 @@ import type {
   Call,
   Invocation,
 } from "starknet";
+import { ec } from "starknet";
+import { AddressMap } from "./utils/index.js";
 
 export type Amount = bigint;
+
+/**
+ * Maximum valid viewing key value (half the STARK curve order).
+ * Private keys must be in range [1, MAX_VIEWING_KEY].
+ */
+export const MAX_VIEWING_KEY = ec.starkCurve.CURVE.n / 2n;
 
 /** Marker for creating an open note (a note whose amount is open and can be filled later with a deposit) */
 export type Open = { readonly __marker: "open" };
@@ -20,6 +28,9 @@ export const open: Open = { __marker: "open" };
 export type ViewingKey = BigNumberish;
 
 export type StarknetAddress = BigNumberish;
+
+/** A Starknet address normalized to bigint (for use as Map keys, etc.) */
+export type StarknetAddressBigint = bigint;
 
 // Import and re-export Witness class from internal.ts
 import { Witness, Channel } from "./internal.js";
@@ -191,9 +202,9 @@ export interface PrivateTransfers {
    * Discover unspent notes per token
    *
    */
-  discoverNotes(params: { since?: BlockIdentifier; known?: Map<StarknetAddress, Note[]> }): {
+  discoverNotes(params?: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): {
     timestamp: BlockIdentifier;
-    notes: Map<StarknetAddress, Note[]>;
+    notes: AddressMap<Note[]>;
   };
 
   /**
@@ -201,7 +212,7 @@ export interface PrivateTransfers {
    */
   discoverChannels(...recipients: (StarknetAddress | PrivateRecipient)[]): {
     timestamp: BlockIdentifier;
-    channels: Map<StarknetAddress, Channel>;
+    channels: AddressMap<Channel>;
   };
 }
 
@@ -264,12 +275,13 @@ export interface TokenOperationsBuilder {
  *
  * @example Register and setup a new recipient
  * ```ts
+ * const alice: PrivateRecipient = { address: ALICE_ADDRESS, context: undefined! };
  * await transfers.build()
  *   .register()
- *   .setup(alice)
+ *   .setup(alice)  // alice.context will be populated with the Channel
  *   .with(STRK)
  *     .setup(alice)
- *     .deposit(100n)
+ *     .deposit(100n, alice)
  *   .execute();
  * ```
  *
@@ -314,8 +326,11 @@ export interface PrivateTransfersBuilder {
   /** Register the account in the privacy pool */
   register(): this;
 
-  /** Setup initial channel for a new recipient */
-  setup(recipient: StarknetAddress): this;
+  /**
+   * Setup initial channel for a new recipient.
+   * The recipient's context will be populated with the Channel during execute().
+   */
+  setup(recipient: PrivateRecipient): this;
 
   /** Add an arbitrary Starknet call that will run on starknet after the private operations are executed */
   call(call: Call): this;
@@ -347,10 +362,10 @@ export interface DiscoveryProviderInterface {
   discoverNotes(
     address: StarknetAddress,
     viewingKey: ViewingKey,
-    params: { since?: BlockIdentifier; known?: Map<StarknetAddress, Note[]> }
+    params?: { since?: BlockIdentifier; known?: AddressMap<Note[]> }
   ): {
     timestamp: BlockIdentifier;
-    notes: Map<StarknetAddress, Note[]>;
+    notes: AddressMap<Note[]>;
   };
 
   /**
@@ -362,19 +377,15 @@ export interface DiscoveryProviderInterface {
     ...recipients: (StarknetAddress | PrivateRecipient)[]
   ): {
     timestamp: BlockIdentifier;
-    channels: Map<StarknetAddress, Channel>;
+    channels: AddressMap<Channel>;
   };
-
-  /**
-   * Viewing key of the compliance council for registration
-   */
-  globalViewingKey(): ViewingKey;
 
   /**
    * Check the setup requirements for a recipient.
    *
    * @param recipient - The recipient to check the setup requirements for. if self, check for 'address'
    */
+  // TODO: fix to return an enum
   setupRequirement(
     address: StarknetAddress,
     viewingKey: ViewingKey,
