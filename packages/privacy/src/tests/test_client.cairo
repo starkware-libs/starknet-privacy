@@ -2369,10 +2369,7 @@ fn test_compile_client_actions_assertions() {
     let token = test.mock_new_token();
     let amount = 100;
     user.set_viewing_key_e2e();
-    user.open_channel_e2e(recipient: user);
-    user.open_subchannel_e2e(recipient: user, :token, index: 0);
     let note_1 = user.new_note_with_generated_random(recipient: user, :token, :amount, index: 0);
-    user.cheat_create_note_e2e(note: note_1);
     let note_1_path = NotePath {
         channel_key: user.compute_channel_key(recipient: user), token, note_index: 0,
     };
@@ -2383,6 +2380,266 @@ fn test_compile_client_actions_assertions() {
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_compile_client_actions(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+
+    // Catch ACTIONS_OUT_OF_ORDER (open channel -> set viewing key).
+    let random = user.get_random().into();
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::OpenChannel(
+                    (user.private_key, user.address, user.public_key, random),
+                ),
+                ClientAction::SetViewingKey((user.private_key, random)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (open subchannel -> set viewing key).
+    user.open_channel_e2e(recipient: user);
+    let channel_key = user.compute_channel_key(recipient: user);
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::OpenSubchannel(
+                    (user.address, user.public_key, channel_key, 0, token, random),
+                ),
+                ClientAction::SetViewingKey((user.private_key, random)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (open subchannel -> open channel).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::OpenSubchannel(
+                    (user.address, user.public_key, channel_key, 0, token, random),
+                ),
+                ClientAction::OpenChannel(
+                    (user.private_key, user.address, user.public_key, random),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (deposit -> set viewing key).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::Deposit((token, amount)),
+                ClientAction::SetViewingKey((user.private_key, random)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (deposit -> open channel).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::Deposit((token, amount)),
+                ClientAction::OpenChannel(
+                    (user.private_key, user.address, user.public_key, random),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (deposit -> open subchannel).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::Deposit((token, amount)),
+                ClientAction::OpenSubchannel(
+                    (user.address, user.public_key, channel_key, 0, token, random),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (use note -> set viewing key).
+    user.open_subchannel_e2e(recipient: user, :token, index: 0);
+    user.cheat_create_note_e2e(note: note_1);
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::UseNote((user.private_key, note_1_path)),
+                ClientAction::SetViewingKey((user.private_key, random)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (use note -> open channel).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::UseNote((user.private_key, note_1_path)),
+                ClientAction::OpenChannel(
+                    (user.private_key, user.address, user.public_key, random),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (use note -> open subchannel).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::UseNote((user.private_key, note_1_path)),
+                ClientAction::OpenSubchannel(
+                    (user.address, user.public_key, channel_key, 0, token, random),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (use note -> deposit).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::UseNote((user.private_key, note_1_path)),
+                ClientAction::Deposit((token, amount)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (create note -> set viewing key).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::CreateNote((user.private_key, note_2)),
+                ClientAction::SetViewingKey((user.private_key, random)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (create note -> open channel).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::CreateNote((user.private_key, note_2)),
+                ClientAction::OpenChannel(
+                    (user.private_key, user.address, user.public_key, random),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (create note -> open subchannel).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::CreateNote((user.private_key, note_2)),
+                ClientAction::OpenSubchannel(
+                    (user.address, user.public_key, channel_key, 0, token, random),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (create note -> deposit).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::CreateNote((user.private_key, note_2)),
+                ClientAction::Deposit((token, amount)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (create note -> use note).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::CreateNote((user.private_key, note_2)),
+                ClientAction::UseNote((user.private_key, note_1_path)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (withdraw -> set viewing key).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::Withdraw((user.address, token, amount)),
+                ClientAction::SetViewingKey((user.private_key, random)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open channel).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::Withdraw((user.address, token, amount)),
+                ClientAction::OpenChannel(
+                    (user.private_key, user.address, user.public_key, random),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open subchannel).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::Withdraw((user.address, token, amount)),
+                ClientAction::OpenSubchannel(
+                    (user.address, user.public_key, channel_key, 0, token, random),
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (withdraw -> deposit).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::Withdraw((user.address, token, amount)),
+                ClientAction::Deposit((token, amount)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (withdraw -> use note).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::Withdraw((user.address, token, amount)),
+                ClientAction::UseNote((user.private_key, note_1_path)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create note).
+    let result = user
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::Withdraw((user.address, token, amount)),
+                ClientAction::CreateNote((user.private_key, note_2)),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch TOKEN_BALANCES_MISMATCH (deposit).
     let result = user
