@@ -6,6 +6,7 @@ import type {
   Amount,
   CallAndProof,
   Note,
+  NoteId,
   Open,
   PrivateInvocationResult,
   PrivateRecipient,
@@ -42,7 +43,7 @@ export class MockPrivateTransfers implements PrivateTransfers {
       await this.discoveryProvider.setupRequirement(
         this.userAddress,
         this.userPrivateKey,
-        { address: this.userAddress, context: 0 },
+        { address: this.userAddress, context: undefined! },
         0x0
       )
     ).register;
@@ -70,14 +71,14 @@ export class MockPrivateTransfers implements PrivateTransfers {
   ): Promise<{ invocationData: CallAndProof; channel: Channel }> {
     const privateRecipient: PrivateRecipient = { address: recipient, context: undefined! };
     const results = await this.build().setup(privateRecipient).execute();
-    return { invocationData: results[0], channel: privateRecipient.context as Channel };
+    return { invocationData: results[0], channel: privateRecipient.context };
   }
 
   async setupToken(
     recipient: PrivateRecipient,
     token: StarknetAddress
   ): Promise<{ invocationData: CallAndProof; channel: Channel }> {
-    const channel = recipient.context as Channel;
+    const channel = recipient.context;
     const results = await this.build().with(token).setup(recipient).execute();
     return { invocationData: results[0], channel };
   }
@@ -85,7 +86,7 @@ export class MockPrivateTransfers implements PrivateTransfers {
   async deposit(params: {
     token: StarknetAddress;
     amount: Amount;
-    recipient: PrivateRecipient;
+    recipient: PrivateRecipient | NoteId;
   }): Promise<PrivateInvocationResult> {
     const results = await this.build()
       .with(params.token)

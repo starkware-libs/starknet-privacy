@@ -45,18 +45,20 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
         let token: StarknetAddressBigint | false;
         while ((token = this.pool.getToken(key, new NoteNonce(slot, sequence++))) !== false) {
           for (let noteSlot = 0; noteSlot < NoteNonce.MAX_SLOTS; noteSlot++) {
-            let amount: Amount | false;
+            let note: { amount: Amount; open: boolean } | false;
             let nonce = new NoteNonce(noteSlot, 0);
-            while ((amount = this.pool.getNote(new Witness(key, nonce), token)) !== false) {
+            while ((note = this.pool.getNote(new Witness(key, nonce), token)) !== false) {
               if (this.pool.getNullifier(new Witness(key, nonce), token, viewingKey) !== false) {
                 nonce = nonce.increment();
                 continue;
               }
+
               result.get(token)!.push({
                 id: hashes.noteId(new Witness(key, nonce), token),
-                amount: amount,
+                amount: note.amount,
                 witness: new Witness(key, nonce),
                 sender: channel.sender,
+                open: note.open,
               });
               nonce = nonce.increment();
             }
@@ -121,7 +123,7 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
   async setupRequirement(
     address: StarknetAddress,
     viewingKey: ViewingKey,
-    recipient: PrivateRecipient,
+    recipient: PrivateRecipient, // TODO: change to StarknetAddress
     token: StarknetAddress
   ): Promise<{ register: boolean; initial: boolean; token: boolean }> {
     assertViewingKey(viewingKey);

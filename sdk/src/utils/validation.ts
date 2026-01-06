@@ -1,5 +1,5 @@
 import { num } from "starknet";
-import type { PrivateRecipient, StarknetAddress, ViewingKey } from "../interfaces.js";
+import type { Amount, Open, PrivateRecipient, StarknetAddress, ViewingKey } from "../interfaces.js";
 import { MAX_VIEWING_KEY } from "../interfaces.js";
 
 // ============ Validation Utilities ============
@@ -27,4 +27,13 @@ export function assertRecipientAddress(
     throw new Error("recipient must not be null");
   }
   return typeof recipient === "object" && "address" in recipient ? recipient.address : recipient;
+}
+
+/**
+ * Type guard to check if a value is an Open marker (for open notes).
+ * @param value - The value to check (Amount or Open)
+ * @returns true if the value is an Open marker, false if it's an Amount
+ */
+export function isOpen(value: Amount | Open): value is Open {
+  return typeof value !== "bigint";
 }

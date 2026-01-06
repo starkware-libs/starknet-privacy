@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach } from "vitest";
 import { ERC20s, PrivacyPool, MockPrivateTransfers } from "../../src/testing/index.js";
 import { withLogging, consoleLogCallback } from "../../src/utils/index.js";
 import type { PrivateRecipient, Channel } from "../../src/interfaces.js";
+import { open } from "../../src/interfaces.js";
 
 // Test addresses and keys (must be valid hex addresses convertible to BigInt)
 const POOL_ADDRESS = "0x1";
@@ -283,6 +284,62 @@ describe("MockPrivateTransfers", () => {
       // Verify channel was set up by discovering it
       const channels = alice.discoverChannels(BOB_ADDRESS);
       expect(channels.channels.has(BOB_ADDRESS)).toBe(true);
+    });
+
+    it("open notes: Bob creates open note, Alice deposits into it", async () => {
+      // Both users register and set up channels
+      const bobSelf: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
+      const aliceToBob: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
+
+      // prettier-ignore
+      await bob
+        .build()
+        .register()
+        .setup(bobSelf) // channel to self
+        .with(STRK)
+          .setup(bobSelf)
+        .execute();
+
+      // prettier-ignore
+      await alice
+        .build()
+        .register()
+        .setup(aliceToBob) // channel to Bob
+        .with(STRK)
+          .setup(aliceToBob)
+        .execute();
+
+      // Step 1: Bob creates an open note for himself
+      // prettier-ignore
+      await bob
+        .build()
+        .with(STRK)
+          .transfer({ recipient: bobSelf, amount: open })
+        .execute();
+
+      // Bob discovers his open note
+      const bobNotes = bob.discoverNotes();
+      console.log("Bob notes", bobNotes, STRK, bobNotes.notes.get(STRK));
+      const openNotes = (bobNotes.notes.get(STRK) ?? []).filter((n) => n.open);
+      expect(openNotes.length).toBe(1);
+      expect(openNotes[0].open).toBe(true);
+
+      const openNoteId = openNotes[0].id;
+
+      // Step 2: Alice deposits into Bob's open note
+      erc20s.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
+
+      // prettier-ignore
+      await alice
+        .build()
+        .with(STRK)
+          .deposit(100n, openNoteId) // deposit into the open note by ID
+        .execute();
+
+      // Bob should now have a filled note with the deposited amount
+      const bobNotesAfter = bob.discoverNotes();
+      const filledNotes = (bobNotesAfter.notes.get(STRK) ?? []).filter((n) => n.open);
+      expect(filledNotes[0].amount).toBe(100n);
     });
   });
 });
