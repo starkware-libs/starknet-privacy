@@ -1,5 +1,9 @@
 use core::num::traits::Zero;
-use privacy::objects::{EncChannelInfo, EncChannelInfoTrait, EncSubchannelInfo};
+use privacy::objects::{
+    BalanceOp, EncChannelInfo, EncChannelInfoTrait, EncSubchannelInfo, TokenBalances,
+    TokenBalancesTrait,
+};
+use starknet::ContractAddress;
 
 #[test]
 fn test_enc_channel_info_is_non_zero() {
@@ -64,4 +68,50 @@ fn test_enc_subchannel_info_is_non_zero() {
     assert_eq!(enc_subchannel_info.is_non_zero(), false);
     enc_subchannel_info.random = Zero::zero();
     assert_eq!(enc_subchannel_info.is_non_zero(), false);
+}
+
+#[test]
+fn test_token_balances() {
+    let token_1: ContractAddress = 'TOKEN_1'.try_into().unwrap();
+    let token_2: ContractAddress = 'TOKEN_2'.try_into().unwrap();
+    let mut token_balances: TokenBalances = Default::default();
+    // (0, 0)
+    assert_eq!(token_balances.is_valid(), true);
+
+    // (1, 0)
+    token_balances.modify_balance(token: token_1, op: BalanceOp::ADDITION, amount: 1);
+    assert_eq!(token_balances.is_valid(), false);
+
+    // (0, 0)
+    token_balances.modify_balance(token: token_1, op: BalanceOp::SUBTRACTION, amount: 1);
+    assert_eq!(token_balances.is_valid(), true);
+
+    // (0, 2)
+    token_balances.modify_balance(token: token_2, op: BalanceOp::ADDITION, amount: 2);
+    assert_eq!(token_balances.is_valid(), false);
+
+    // (1, 2)
+    token_balances.modify_balance(token: token_1, op: BalanceOp::ADDITION, amount: 1);
+    assert_eq!(token_balances.is_valid(), false);
+
+    // (1, 1)
+    token_balances.modify_balance(token: token_2, op: BalanceOp::SUBTRACTION, amount: 1);
+    assert_eq!(token_balances.is_valid(), false);
+
+    // (0, 1)
+    token_balances.modify_balance(token: token_1, op: BalanceOp::SUBTRACTION, amount: 1);
+    assert_eq!(token_balances.is_valid(), false);
+
+    // (0, 0)
+    token_balances.modify_balance(token: token_2, op: BalanceOp::SUBTRACTION, amount: 1);
+    assert_eq!(token_balances.is_valid(), true);
+}
+
+#[test]
+#[should_panic(expected_error: 'u128_sub Overflow')]
+fn test_token_balances_underflow() {
+    let token = 'TOKEN'.try_into().unwrap();
+    let mut token_balances: TokenBalances = Default::default();
+    token_balances.modify_balance(:token, op: BalanceOp::SUBTRACTION, amount: 1);
+    token_balances.is_valid();
 }
