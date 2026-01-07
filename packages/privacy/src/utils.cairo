@@ -1,6 +1,5 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
-use core::num::traits::Pow;
 use privacy::hashes::{
     compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_private_key_hash,
     compute_enc_sender_addr_hash, compute_enc_token_hash,
@@ -9,11 +8,11 @@ use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use starknet::ContractAddress;
 use starknet::storage::{StorageAsPointer, StoragePath};
 
+pub mod constants {
+    use core::num::traits::Pow;
 
-// TODO: Different file?
-// TODO: Define mod constants?
-// TODO: pub instead of pub(crate)?
-pub(crate) const TWO_POW_120: u128 = 2_u128.pow(120);
+    pub const TWO_POW_120: u128 = 2_u128.pow(120);
+}
 
 // TODO: Test the util and hash functions.
 

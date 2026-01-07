@@ -18,9 +18,10 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
+use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{
-    TWO_POW_120, derive_public_key, encrypt_note_amount, encrypt_private_key,
-    encrypt_subchannel_info, is_canonical_key,
+    derive_public_key, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
+    is_canonical_key,
 };
 use snforge_std::{
     CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state,
@@ -64,6 +65,7 @@ pub(crate) impl EncNoteImpl of EncNoteTrait {
 #[derive(Copy, Drop)]
 pub(crate) struct PrivacyCfg {
     pub address: ContractAddress,
+    pub governance_admin: ContractAddress,
     server: IServerDispatcher,
     safe_server: IServerSafeDispatcher,
     client: IClientDispatcher,
@@ -94,12 +96,6 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self.privacy.safe_client.compile_client_actions(user_addr: *self.address, :client_actions)
-    }
-
-    // TODO: Can use new_key() instead? Consider removing this function.
-    fn replace_private_key(ref self: User, private_key: felt252) {
-        self.private_key = private_key;
-        self.public_key = derive_public_key(:private_key);
     }
 
     fn transfer(
@@ -641,18 +637,12 @@ pub(crate) struct Test {
 
 #[generate_trait]
 pub(crate) impl TestImpl of TestTrait {
-    fn new_private_key(ref self: Test) -> felt252 {
+    fn new_user(ref self: Test) -> User {
         self.nonce += 1;
         let mut private_key = ('PRIVATE_KEY' + self.nonce.into()).try_into().unwrap();
         if !is_canonical_key(key: private_key) {
             private_key = Neg::neg(private_key);
         }
-        private_key
-    }
-
-    fn new_user(ref self: Test) -> User {
-        self.nonce += 1;
-        let mut private_key = self.new_private_key();
         let public_key = derive_public_key(:private_key);
         User {
             address: ('USER_ADDRESS' + self.nonce.into()).try_into().unwrap(),
@@ -841,22 +831,29 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
 impl DefaultTestImpl of Default<Test> {
     fn default() -> Test {
+        let governance_admin = 'GOVERNANCE_ADMIN'.try_into().unwrap();
         let compliance_private_key = 'COMPLIANCE_PRIVATE_KEY';
         let compliance_public_key = derive_public_key(private_key: compliance_private_key);
-        let privacy = deploy_privacy(:compliance_public_key);
+        let privacy = deploy_privacy(:governance_admin, :compliance_public_key);
         Test { privacy, nonce: Zero::zero(), compliance_private_key, compliance_public_key }
     }
 }
 
-pub(crate) fn deploy_privacy(compliance_public_key: felt252) -> PrivacyCfg {
+pub(crate) fn deploy_privacy(
+    governance_admin: ContractAddress, compliance_public_key: felt252,
+) -> PrivacyCfg {
     let contract_class_hash = declare(contract: "Privacy").unwrap().contract_class().class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
     let (contract_address, _) = deploy_privacy_for_test(
-        class_hash: *contract_class_hash, :deployment_params, :compliance_public_key,
+        class_hash: *contract_class_hash,
+        :deployment_params,
+        :governance_admin,
+        :compliance_public_key,
     )
         .expect('Privacy deployment failed');
     PrivacyCfg {
         address: contract_address,
+        governance_admin,
         server: IServerDispatcher { contract_address },
         safe_server: IServerSafeDispatcher { contract_address },
         client: IClientDispatcher { contract_address },
