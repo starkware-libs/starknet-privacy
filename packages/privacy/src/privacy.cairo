@@ -116,7 +116,7 @@ pub mod Privacy {
         // TODO: Gets a single random and generate from it new randoms for each action that needs a
         // random.
         fn compile_client_actions(
-            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Verify sender signature on TX.
@@ -131,40 +131,39 @@ pub mod Privacy {
                     ClientAction::SetViewingKey((
                         user_private_key, random,
                     )) => {
-                        server_actions
-                            .extend(self.set_viewing_key(:user_addr, :user_private_key, :random));
+                        let actions = self.set_viewing_key(:user_addr, :user_private_key, :random);
+                        self.execute_actions(actions.span());
+                        server_actions.extend(actions);
                     },
                     ClientAction::OpenChannel((
                         user_private_key, recipient_addr, recipient_public_key, random,
                     )) => {
-                        server_actions
-                            .extend(
-                                self
-                                    .open_channel(
-                                        sender_addr: user_addr,
-                                        sender_private_key: user_private_key,
-                                        :recipient_addr,
-                                        :recipient_public_key,
-                                        :random,
-                                    ),
+                        let actions = self
+                            .open_channel(
+                                sender_addr: user_addr,
+                                sender_private_key: user_private_key,
+                                :recipient_addr,
+                                :recipient_public_key,
+                                :random,
                             );
+                        self.execute_actions(actions.span());
+                        server_actions.extend(actions);
                     },
                     ClientAction::OpenSubchannel((
                         recipient_addr, recipient_public_key, channel_key, index, token, random,
                     )) => {
-                        server_actions
-                            .extend(
-                                self
-                                    .open_subchannel(
-                                        sender_addr: user_addr,
-                                        :recipient_addr,
-                                        :recipient_public_key,
-                                        :channel_key,
-                                        :index,
-                                        :token,
-                                        :random,
-                                    ),
+                        let actions = self
+                            .open_subchannel(
+                                sender_addr: user_addr,
+                                :recipient_addr,
+                                :recipient_public_key,
+                                :channel_key,
+                                :index,
+                                :token,
+                                :random,
                             );
+                        self.execute_actions(actions.span());
+                        server_actions.extend(actions);
                     },
                     ClientAction::Deposit((
                         token, amount,
@@ -175,30 +174,28 @@ pub mod Privacy {
                     ClientAction::CreateNote((
                         user_private_key, new_note,
                     )) => {
-                        server_actions
-                            .append(
-                                self
-                                    .create_note(
-                                        owner_addr: user_addr,
-                                        owner_private_key: user_private_key,
-                                        note: new_note,
-                                        ref :token_balances,
-                                    ),
+                        let actions = self
+                            .create_note(
+                                owner_addr: user_addr,
+                                owner_private_key: user_private_key,
+                                note: new_note,
+                                ref :token_balances,
                             );
+                        self.execute_actions(actions.span());
+                        server_actions.extend(actions);
                     },
                     ClientAction::UseNote((
                         user_private_key, note_to_withdraw,
                     )) => {
-                        server_actions
-                            .append(
-                                self
-                                    .use_note(
-                                        owner_addr: user_addr,
-                                        owner_private_key: user_private_key,
-                                        note: note_to_withdraw,
-                                        ref :token_balances,
-                                    ),
+                        let actions = self
+                            .use_note(
+                                owner_addr: user_addr,
+                                owner_private_key: user_private_key,
+                                note: note_to_withdraw,
+                                ref :token_balances,
                             );
+                        self.execute_actions(actions.span());
+                        server_actions.extend(actions);
                     },
                     ClientAction::Withdraw((
                         withdrawal_target, token, amount,
@@ -396,7 +393,7 @@ pub mod Privacy {
             owner_private_key: felt252,
             note: NotePath,
             ref token_balances: TokenBalances,
-        ) -> ServerAction {
+        ) -> Array<ServerAction> {
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(note.channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
@@ -430,7 +427,9 @@ pub mod Privacy {
 
             assert(nullifier.is_non_zero(), internal_errors::ZERO_NULLIFIER);
 
-            ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into()))
+            array![
+                ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into())),
+            ]
         }
 
         /// Returns the server action to create a note.
@@ -441,7 +440,7 @@ pub mod Privacy {
             owner_private_key: felt252,
             note: NewNote,
             ref token_balances: TokenBalances,
-        ) -> ServerAction {
+        ) -> Array<ServerAction> {
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
@@ -494,7 +493,7 @@ pub mod Privacy {
 
             token_balances.modify_balance(:token, op: BalanceOp::SUBTRACTION, amount: note.amount);
 
-            ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount))
+            array![ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount))]
         }
 
         fn _send_message_to_server(self: @ContractState, server_actions: Span<ServerAction>) {

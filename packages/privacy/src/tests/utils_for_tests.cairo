@@ -26,6 +26,7 @@ use privacy::utils::{
 use snforge_std::{
     CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait, Token,
     TokenTrait, declare, interact_with_state, map_entry_address, set_balance, spy_messages_to_l1,
+    store,
 };
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
@@ -34,7 +35,7 @@ use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
 use starkware_utils_testing::test_utils::{
-    Deployable, TokenConfig, cheat_caller_address_once, set_account_as_security_agent,
+    Deployable, TokenConfig, cheat_caller_address_once, generic_load, set_account_as_security_agent,
 };
 
 pub(crate) mod constants {
@@ -225,6 +226,7 @@ pub(crate) impl UserImpl of UserTrait {
         let mut spy = spy_messages_to_l1();
         self.open_channel(:recipient, :random);
         let actions = spy_messages_to_server_actions(ref :spy);
+        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
         random
     }
@@ -341,6 +343,7 @@ pub(crate) impl UserImpl of UserTrait {
         let mut spy = spy_messages_to_l1();
         self.open_subchannel(:recipient, :token, :index, :random);
         let actions = spy_messages_to_server_actions(ref :spy);
+        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
         random
     }
@@ -369,22 +372,20 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn internal_create_note(self: @User, note: NewNote) -> Span<ServerAction> {
-        [
-            interact_with_state(
-                *self.privacy.address,
-                || {
-                    let mut state = Privacy::contract_state_for_testing();
-                    let mut token_balances: TokenBalances = Default::default();
-                    state
-                        .create_note(
-                            owner_addr: *self.address,
-                            owner_private_key: *self.private_key,
-                            :note,
-                            ref :token_balances,
-                        )
-                },
-            )
-        ]
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                let mut token_balances: TokenBalances = Default::default();
+                state
+                    .create_note(
+                        owner_addr: *self.address,
+                        owner_private_key: *self.private_key,
+                        :note,
+                        ref :token_balances,
+                    )
+            },
+        )
             .span()
     }
 
@@ -454,22 +455,20 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn internal_use_note(self: @User, note: NotePath) -> Span<ServerAction> {
-        [
-            interact_with_state(
-                *self.privacy.address,
-                || {
-                    let mut state = Privacy::contract_state_for_testing();
-                    let mut token_balances: TokenBalances = Default::default();
-                    state
-                        .use_note(
-                            owner_addr: *self.address,
-                            owner_private_key: *self.private_key,
-                            :note,
-                            ref :token_balances,
-                        )
-                },
-            )
-        ]
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                let mut token_balances: TokenBalances = Default::default();
+                state
+                    .use_note(
+                        owner_addr: *self.address,
+                        owner_private_key: *self.private_key,
+                        :note,
+                        ref :token_balances,
+                    )
+            },
+        )
             .span()
     }
 
@@ -612,6 +611,7 @@ pub(crate) impl UserImpl of UserTrait {
         let mut spy = spy_messages_to_l1();
         self.set_viewing_key(:random);
         let actions = spy_messages_to_server_actions(ref :spy);
+        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
     }
 
@@ -912,6 +912,54 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             contract_address: *self.address, caller_address: *self.governance_admin,
         );
         IPausableDispatcher { contract_address: *self.address }.pause();
+    }
+
+    fn revert_actions_for_testing(self: @PrivacyCfg, actions: Span<ServerAction>) {
+        for action in actions {
+            match *action {
+                ServerAction::WriteIfZero((
+                    storage_address, _new_value,
+                )) => { self.store_zero(:storage_address); },
+                ServerAction::WriteIfZeroSubchannel((
+                    storage_address, _new_value,
+                )) => {
+                    self.store_zero(:storage_address);
+                    self.store_zero(storage_address: storage_address + 1);
+                },
+                ServerAction::AppendToVec((
+                    recipient_addr, recipient_public_key, _,
+                )) => { self.pop_from_vec(:recipient_addr, :recipient_public_key); },
+                _ => {},
+            }
+        }
+    }
+
+    fn store_zero(self: @PrivacyCfg, storage_address: felt252) {
+        store(target: *self.address, :storage_address, serialized_value: [Zero::zero()].span());
+    }
+
+    fn pop_from_vec(
+        self: @PrivacyCfg, recipient_addr: ContractAddress, recipient_public_key: felt252,
+    ) {
+        let target = *self.address;
+        let vector_storage_address = map_entry_address(
+            map_selector: selector!("recipient_channels"),
+            keys: [recipient_addr.into(), recipient_public_key].span(),
+        );
+        let length: u64 = generic_load(:target, storage_address: vector_storage_address);
+        let new_length = length - 1;
+        // Store new length.
+        store(
+            :target,
+            storage_address: vector_storage_address,
+            serialized_value: [new_length.into()].span(),
+        );
+        // Store Zero.
+        let storage_address = map_entry_address(
+            map_selector: vector_storage_address, keys: [new_length.into()].span(),
+        );
+        self.store_zero(:storage_address);
+        self.store_zero(storage_address: storage_address + 1);
     }
 }
 
