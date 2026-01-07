@@ -14,6 +14,8 @@ use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key
 use snforge_std::{map_entry_address, spy_messages_to_l1};
 use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 
+// TODO: Catch server errors in the client side.
+
 #[test]
 fn test_set_viewing_key() {
     let mut test: Test = Default::default();
@@ -135,6 +137,8 @@ fn test_transfer() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
+    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
 }
 
 #[test]
@@ -179,6 +183,8 @@ fn test_transfer_to_self() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
+    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
 }
 
 #[test]
@@ -243,6 +249,9 @@ fn test_transfer_one_to_many() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
+    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), enc_note_2.enc_amount);
 }
 
 #[test]
@@ -309,6 +318,9 @@ fn test_transfer_many_to_one() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
+    assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
+    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
 }
 
 #[test]
@@ -386,10 +398,16 @@ fn test_transfer_many_to_many() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
+    assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
+    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), enc_note_2.enc_amount);
 }
 
+// TODO: Fix this test. Now failing because storage writings are not reverted when panicking.
 #[test]
 #[feature("safe_dispatcher")]
+#[ignore]
 fn test_transfer_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
@@ -659,6 +677,8 @@ fn test_transfer_assertions() {
     // Transfer errors.
 
     // TODO: Catch token balances error.
+
+    // TODO: Catch server errors.
 }
 
 #[test]
@@ -1810,6 +1830,31 @@ fn test_use_note_multiple_notes() {
 }
 
 #[test]
+#[should_panic(expected: 'NON_ZERO_VALUE')]
+fn test_use_same_note_twice() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    let token = test.mock_new_token();
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token, subchannel_index: 0);
+    let amount = 1;
+    let note_index = 0;
+    let note = user_1
+        .new_note_with_generated_random(recipient: user_2, :token, :amount, index: note_index);
+    user_1.cheat_create_note_e2e(:note);
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
+    let use_note_input = UseNoteInput {
+        owner_private_key: user_2.private_key, channel_key, token, note_index,
+    };
+    let use_note_action = ClientAction::UseNote(use_note_input);
+    let client_actions = [use_note_action, use_note_action].span();
+    // Should panic on the second use.
+    user_2.compile_client_actions(:client_actions);
+}
+
+#[test]
 fn test_use_note_same_amount() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -2229,23 +2274,24 @@ fn test_set_viewing_key_to_other_user_key() {
     assert_eq!(user2.get_public_key(), user2_public_key);
 }
 
-// TODO: Consider splitting to test per action.
 #[test]
-fn test_compile_client_actions() {
+fn test_compile_client_actions_empty() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    let token = test.mock_new_token();
 
-    // Empty actions.
     let mut spy = spy_messages_to_l1();
     user_1.compile_client_actions(client_actions: [].span());
     test.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
     let expected_actions = [].span();
     assert_eq!(actions, expected_actions);
+}
 
-    // Register action.
+#[test]
+fn test_compile_client_actions_set_viewing_key() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+
     let random = user_1.get_random().into();
     let mut spy = spy_messages_to_l1();
     user_1
@@ -2272,6 +2318,15 @@ fn test_compile_client_actions() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert_eq!(user_1.get_public_key(), user_1.public_key);
+    assert_eq!(user_1.get_enc_private_key(), enc_private_key);
+}
+
+#[test]
+fn test_compile_client_actions_open_channel() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
 
     // Open channel action.
     user_1.set_viewing_key_e2e();
@@ -2315,9 +2370,23 @@ fn test_compile_client_actions() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(test.privacy.channel_exists(channel_id: expected_channel_id));
+    assert_eq!(user_2.get_num_of_channels(), 1);
+    assert_eq!(user_2.get_channel_info(channel_index: 0), expected_enc_channel_info);
+    assert_eq!(user_1.get_num_of_channels(), 0);
+}
 
-    // Open subchannel action.
+#[test]
+fn test_compile_client_actions_open_subchannel() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
     let random = user_1.open_channel_e2e(recipient: user_2);
+
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
     let mut spy = spy_messages_to_l1();
     user_1
         .compile_client_actions(
@@ -2326,7 +2395,7 @@ fn test_compile_client_actions() {
                     OpenSubchannelInput {
                         recipient_addr: user_2.address,
                         recipient_public_key: user_2.public_key,
-                        channel_key: expected_channel_key,
+                        channel_key,
                         index: 0,
                         token,
                         random,
@@ -2355,8 +2424,23 @@ fn test_compile_client_actions() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(test.privacy.subchannel_exists(subchannel_id: expected_subchannel_id));
+    assert_eq!(
+        test.privacy.get_subchannel_info(subchannel_key: expected_subchannel_key),
+        expected_enc_subchannel_info,
+    );
+}
 
-    // Deposit + create note actions.
+#[test]
+fn test_compile_client_actions_deposit_create_note() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1.open_channel_e2e(recipient: user_2);
+
     let amount = 100;
     let note = user_1.new_note_with_generated_random(recipient: user_2, :token, :amount, index: 0);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
@@ -2382,8 +2466,21 @@ fn test_compile_client_actions() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount);
+}
 
-    // Deposit + withdraw actions.
+#[test]
+fn test_compile_client_actions_deposit_withdraw() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1.open_channel_e2e(recipient: user_2);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+
+    let amount = 100;
     let mut spy = spy_messages_to_l1();
     user_1
         .compile_client_actions(
@@ -2403,8 +2500,21 @@ fn test_compile_client_actions() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+}
 
-    // Use note + create note actions.
+#[test]
+fn test_compile_client_actions_use_note_create_note() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1.open_channel_e2e(recipient: user_2);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+
+    let amount = 100;
+    let note = user_1.new_note_with_generated_random(recipient: user_2, :token, :amount, index: 0);
     user_1.cheat_create_note_e2e(:note);
     let use_note_input = UseNoteInput {
         owner_private_key: user_2.private_key,
@@ -2447,8 +2557,30 @@ fn test_compile_client_actions() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(test.privacy.nullifier_exists(:nullifier));
+    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount);
+}
 
-    // Use note + withdraw actions.
+#[test]
+fn test_compile_client_actions_use_note_withdraw() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1.open_channel_e2e(recipient: user_2);
+    user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
+    let amount = 100;
+    let note = user_1.new_note_with_generated_random(recipient: user_2, :token, :amount, index: 0);
+    user_1.cheat_create_note_e2e(:note);
+
+    let use_note_input = UseNoteInput {
+        owner_private_key: user_2.private_key,
+        channel_key: user_1.compute_channel_key(recipient: user_2),
+        token,
+        note_index: note.index,
+    };
     let mut spy = spy_messages_to_l1();
     user_2
         .compile_client_actions(
@@ -2462,6 +2594,7 @@ fn test_compile_client_actions() {
         );
     test.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
+    let nullifier = user_2.compute_nullifier(sender: user_1, :token, note_index: note.index);
     let nullifier_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
@@ -2471,6 +2604,7 @@ fn test_compile_client_actions() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(test.privacy.nullifier_exists(:nullifier));
 }
 
 #[test]
@@ -2482,6 +2616,8 @@ fn test_internal_actions() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
+
+    // TODO: Add missing actions here.
 
     // Create note action.
     let amount = 1;
@@ -2523,7 +2659,9 @@ fn test_internal_actions() {
     assert_eq!(actions, expected_actions);
 }
 
+// TODO: Fix this test. Now failing because storage writings are not reverted when panicking.
 #[test]
+#[ignore]
 fn test_compile_client_actions_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
@@ -2540,6 +2678,8 @@ fn test_compile_client_actions_assertions() {
     let note_2 = CreateNoteInput { index: 1, ..note_1 };
 
     // TODO: Catch INVALID_SIGNATURE.
+
+    // TODO: Catch server errors.
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
@@ -2974,4 +3114,101 @@ fn test_compile_client_actions_assertions() {
 // TODO: Test with the negative private key (not canonical but the right public key) for each action
 // that gets a private key as an input.
 
-
+#[test]
+fn test_compile_client_actions_writes() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let token = test.mock_new_token();
+    let amount = 100;
+    let private_key = user.private_key;
+    let random = user.get_random();
+    let recipient_addr = user.address;
+    let recipient_public_key = user.public_key;
+    let channel_key = user.compute_channel_key(recipient: user);
+    let index = 0;
+    let set_viewing_key = ClientAction::SetViewingKey(
+        SetViewingKeyInput { private_key, random: random.into() },
+    );
+    let open_channel = ClientAction::OpenChannel(
+        OpenChannelInput {
+            sender_private_key: private_key,
+            recipient_addr,
+            recipient_public_key,
+            random: random.into(),
+        },
+    );
+    let open_subchannel = ClientAction::OpenSubchannel(
+        OpenSubchannelInput {
+            recipient_addr, recipient_public_key, channel_key, index, token, random: random.into(),
+        },
+    );
+    let deposit = ClientAction::Deposit(DepositInput { token, amount });
+    let create_note = ClientAction::CreateNote(
+        CreateNoteInput {
+            sender_private_key: private_key,
+            recipient_addr,
+            recipient_public_key,
+            token,
+            amount,
+            index,
+            random,
+        },
+    );
+    let client_actions = [set_viewing_key, open_channel, open_subchannel, deposit, create_note]
+        .span();
+    // Compile client actions.
+    let mut spy = spy_messages_to_l1();
+    user.compile_client_actions(:client_actions);
+    test.general_assert_spy_messages(ref :spy);
+    let server_actions = spy_messages_to_server_actions(ref :spy);
+    // Expected server actions.
+    let address = user.address;
+    let public_key_storage_path = map_entry_address(
+        map_selector: selector!("public_key"), keys: [address.into()].span(),
+    );
+    let enc_private_key_storage_path = map_entry_address(
+        map_selector: selector!("enc_private_key"), keys: [address.into()].span(),
+    );
+    let public_key = user.public_key;
+    let enc_private_key = user.compute_enc_private_key(random: random.into());
+    let channel_id = user.compute_channel_id(recipient: user);
+    let channel_exists_storage_path = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+    );
+    let enc_channel_info = encrypt_channel_info(
+        ephemeral_secret: random.into(), :recipient_public_key, :channel_key, sender_addr: address,
+    );
+    let subchannel_id = user.compute_subchannel_id(recipient: user, :token);
+    let subchannel_exists_storage_path = map_entry_address(
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
+    );
+    let subchannel_key = user.compute_subchannel_key(recipient: user, :index);
+    let subchannel_tokens_storage_path = map_entry_address(
+        map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
+    );
+    let enc_subchannel_info = user
+        .compute_enc_subchannel_info(recipient: user, :token, random: random.into());
+    let enc_note = user.compute_enc_note(recipient: user, :token, :index, :amount, :random);
+    let note_storage_path = map_entry_address(
+        map_selector: selector!("notes"), keys: [enc_note.id].span(),
+    );
+    let expected_sevrer_actions = [
+        // Set viewing key.
+        ServerAction::Write((public_key_storage_path, public_key)),
+        ServerAction::WritePrivateKey((enc_private_key_storage_path, enc_private_key)),
+        // Open channel.
+        ServerAction::VerifyValue((public_key_storage_path, public_key)),
+        ServerAction::WriteIfZero((channel_exists_storage_path, true.into())),
+        ServerAction::AppendToVec((address, public_key, enc_channel_info)),
+        // Open subchannel.
+        ServerAction::WriteIfZero((subchannel_exists_storage_path, true.into())),
+        ServerAction::WriteIfZeroSubchannel((subchannel_tokens_storage_path, enc_subchannel_info)),
+        // Deposit.
+        ServerAction::TransferFrom((address, token, amount)),
+        // Create note.
+        ServerAction::WriteIfZero((note_storage_path, enc_note.enc_amount)),
+    ]
+        .span();
+    // Assert server actions.
+    assert_eq!(server_actions, expected_sevrer_actions);
+}

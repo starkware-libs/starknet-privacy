@@ -117,7 +117,7 @@ pub mod Privacy {
         // TODO: Gets a single random and generate from it new randoms for each action that needs a
         // random.
         fn compile_client_actions(
-            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Consider asserting that `client_actions` is not empty.
@@ -129,32 +129,35 @@ pub mod Privacy {
                 client_action.assert_and_set_phase(ref :current_phase);
                 match *client_action {
                     ClientAction::SetViewingKey(input) => {
-                        server_actions.extend(self.set_viewing_key(:user_addr, :input));
+                        let actions = self.set_viewing_key(:user_addr, :input);
+                        self.execute_actions(actions.span());
+                        server_actions.extend(actions);
                     },
                     ClientAction::OpenChannel(input) => {
-                        server_actions.extend(self.open_channel(sender_addr: user_addr, :input));
+                        let actions = self.open_channel(sender_addr: user_addr, :input);
+                        self.execute_actions(actions.span());
+                        server_actions.extend(actions);
                     },
                     ClientAction::OpenSubchannel(input) => {
-                        server_actions.extend(self.open_subchannel(sender_addr: user_addr, :input));
+                        let actions = self.open_subchannel(sender_addr: user_addr, :input);
+                        self.execute_actions(actions.span());
+                        server_actions.extend(actions);
                     },
                     ClientAction::Deposit(input) => {
                         server_actions
                             .append(self.deposit(:user_addr, :input, ref :token_balances));
                     },
                     ClientAction::CreateNote(input) => {
-                        server_actions
-                            .append(
-                                self
-                                    .create_note(
-                                        owner_addr: user_addr, :input, ref :token_balances,
-                                    ),
-                            );
+                        let actions = self
+                            .create_note(owner_addr: user_addr, :input, ref :token_balances);
+                        self.execute_actions(actions.span());
+                        server_actions.extend(actions);
                     },
                     ClientAction::UseNote(input) => {
-                        server_actions
-                            .append(
-                                self.use_note(owner_addr: user_addr, :input, ref :token_balances),
-                            );
+                        let actions = self
+                            .use_note(owner_addr: user_addr, :input, ref :token_balances);
+                        self.execute_actions(actions.span());
+                        server_actions.extend(actions);
                     },
                     ClientAction::Withdraw(input) => {
                         server_actions.append(self.withdraw(:input, ref :token_balances));
@@ -341,7 +344,7 @@ pub mod Privacy {
             owner_addr: ContractAddress,
             input: UseNoteInput,
             ref token_balances: TokenBalances,
-        ) -> ServerAction {
+        ) -> Array<ServerAction> {
             let owner_private_key = input.owner_private_key;
             let channel_key = input.channel_key;
             let token = input.token;
@@ -377,7 +380,9 @@ pub mod Privacy {
 
             token_balances.add_balance(:token, :amount);
 
-            ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into()))
+            array![
+                ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into())),
+            ]
         }
 
         /// Returns the server action to create a note.
@@ -387,7 +392,7 @@ pub mod Privacy {
             owner_addr: ContractAddress,
             input: CreateNoteInput,
             ref token_balances: TokenBalances,
-        ) -> ServerAction {
+        ) -> Array<ServerAction> {
             let sender_private_key = input.sender_private_key;
             let recipient_addr = input.recipient_addr;
             let recipient_public_key = input.recipient_public_key;
@@ -441,7 +446,7 @@ pub mod Privacy {
 
             token_balances.subtract_balance(:token, :amount);
 
-            ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount))
+            array![ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount))]
         }
     }
 
