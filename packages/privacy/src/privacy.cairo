@@ -2,6 +2,8 @@
 pub mod Privacy {
     use core::iter::Extend;
     use core::num::traits::Zero;
+    use openzeppelin::access::accesscontrol::AccessControlComponent;
+    use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::errors;
     use privacy::errors::internal_errors;
@@ -24,10 +26,31 @@ pub mod Privacy {
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::{ContractAddress, get_contract_address};
+    use starkware_utils::components::pausable::PausableComponent;
+    use starkware_utils::components::replaceability::ReplaceabilityComponent;
+    use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
+    use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternalTrait;
     use starkware_utils::erc20::erc20_utils::CheckedIERC20DispatcherTrait;
+
+    component!(path: PausableComponent, storage: pausable, event: PausableEvent);
+    component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
+    component!(path: RolesComponent, storage: roles, event: RolesEvent);
+    component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
+    component!(path: SRC5Component, storage: src5, event: SRC5Event);
 
     #[storage]
     struct Storage {
+        #[substorage(v0)]
+        pausable: PausableComponent::Storage,
+        #[substorage(v0)]
+        replaceability: ReplaceabilityComponent::Storage,
+        #[substorage(v0)]
+        roles: RolesComponent::Storage,
+        #[substorage(v0)]
+        accesscontrol: AccessControlComponent::Storage,
+        #[substorage(v0)]
+        src5: SRC5Component::Storage,
         /// Map of (recipient_addr, recipient_public_key) to a list of their encrypted channels.
         // TODO: Consider refactoring the tuple to a struct.
         recipient_channels: Map<(ContractAddress, felt252), Vec<EncChannelInfo>>,
@@ -54,13 +77,35 @@ pub mod Privacy {
 
     #[event]
     #[derive(Drop, starknet::Event)]
-    pub enum Event { //event variables
+    pub enum Event {
+        #[flat]
+        PausableEvent: PausableComponent::Event,
+        #[flat]
+        ReplaceabilityEvent: ReplaceabilityComponent::Event,
+        #[flat]
+        RolesEvent: RolesComponent::Event,
+        #[flat]
+        AccessControlEvent: AccessControlComponent::Event,
+        #[flat]
+        SRC5Event: SRC5Component::Event,
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, compliance_public_key: felt252) {
+    fn constructor(
+        ref self: ContractState, governance_admin: ContractAddress, compliance_public_key: felt252,
+    ) {
+        self.roles.initialize(:governance_admin);
+        self.replaceability.initialize(upgrade_delay: Zero::zero());
         self.compliance_public_key.write(compliance_public_key);
     }
+
+    #[abi(embed_v0)]
+    impl PausableImpl = PausableComponent::PausableImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl ReplaceabilityImpl =
+        ReplaceabilityComponent::ReplaceabilityImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl RolesImpl = RolesComponent::RolesImpl<ContractState>;
 
     // TODO: Use direct storage access instead of using views.
     // TODO: Consider all randoms to be u128/120 bits.
