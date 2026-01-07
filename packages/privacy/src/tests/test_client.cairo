@@ -1399,8 +1399,7 @@ fn test_create_note_twice_same_amount() {
             recipient: user_2, :token, index: note_index_2, :amount, random: note_2.random,
         );
     assert_ne!(expected_enc_note_1.id, expected_enc_note_2.id);
-    // TODO: Change to assert_ne once enc with random is implemented.
-    assert_eq!(expected_enc_note_1.enc_amount, expected_enc_note_2.enc_amount);
+    assert_ne!(expected_enc_note_1.enc_amount, expected_enc_note_2.enc_amount);
     assert_eq!(create_note_1_actions, expected_enc_note_1.to_server_actions());
     assert_eq!(create_note_2_actions, expected_enc_note_2.to_server_actions());
 }
