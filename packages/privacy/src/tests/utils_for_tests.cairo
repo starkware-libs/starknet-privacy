@@ -31,7 +31,12 @@ use snforge_std::{
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
-use starkware_utils_testing::test_utils::{Deployable, TokenConfig, cheat_caller_address_once};
+use starkware_utils::components::pausable::interface::{
+    IPausableDispatcher, IPausableDispatcherTrait,
+};
+use starkware_utils_testing::test_utils::{
+    Deployable, TokenConfig, cheat_caller_address_once, set_account_as_security_agent,
+};
 
 pub(crate) mod constants {
     use core::num::traits::Pow;
@@ -789,6 +794,13 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     ) -> Result<(), Array<felt252>> {
         self.safe_server.execute_actions(:actions)
     }
+
+    fn pause(self: @PrivacyCfg) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.governance_admin,
+        );
+        IPausableDispatcher { contract_address: *self.address }.pause();
+    }
 }
 
 impl DefaultTestImpl of Default<Test> {
@@ -813,6 +825,10 @@ pub(crate) fn deploy_privacy(
         :compliance_public_key,
     )
         .expect('Privacy deployment failed');
+    // TODO: Use different address for different roles?
+    set_account_as_security_agent(
+        contract: contract_address, account: governance_admin, security_admin: governance_admin,
+    );
     PrivacyCfg {
         address: contract_address,
         governance_admin,

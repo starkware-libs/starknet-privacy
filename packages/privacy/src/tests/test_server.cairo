@@ -5,6 +5,7 @@ use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
 };
 use snforge_std::{TokenTrait, map_entry_address};
+use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
 use starkware_utils::components::replaceability::interface::{
     IReplaceableDispatcher, IReplaceableDispatcherTrait,
 };
@@ -669,4 +670,12 @@ fn test_execute_verify_value_assertions() {
     let actions = array![ServerAction::VerifyValue((storage_path_felt, user.public_key))];
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
+}
+
+#[test]
+fn test_execute_actions_paused() {
+    let mut test: Test = Default::default();
+    test.privacy.pause();
+    let result = test.privacy.safe_execute_actions([].span());
+    assert_panic_with_felt_error(:result, expected_error: PausableErrors::PAUSED);
 }
