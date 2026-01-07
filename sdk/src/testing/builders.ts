@@ -17,7 +17,7 @@ import type {
 import { Channel } from "../interfaces.js";
 import type { Call } from "starknet";
 import { TokenNonce } from "../internal/index.js";
-import { derivePublicKey, type PrivateKey } from "../utils/crypto.js";
+import { type PrivateKey } from "../utils/crypto.js";
 import type { CompositeInput, CompositeOutput, PrivacyPool } from "./pool.js";
 import { createMockCallAndProof } from "./helpers.js";
 import { Withdrawal } from "./index.js";
@@ -124,7 +124,7 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
 
     // 1. Register user if requested
     if (this.registerCalled) {
-      this.pool.setPublicKey(this.userAddress, derivePublicKey(this.userPrivateKey));
+      this.pool.register(this.userAddress, this.userPrivateKey);
       results.push(createMockCallAndProof());
     }
 

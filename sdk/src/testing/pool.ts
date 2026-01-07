@@ -25,6 +25,7 @@ import {
   type PrivateKey,
   type PublicKey,
   type SymmetricEncryption,
+  derivePublicKey,
 } from "../utils/crypto.js";
 import { AdvancedMap, AddressMap } from "../utils/maps.js";
 import { assert } from "console";
@@ -89,8 +90,8 @@ export class PrivacyPool {
   }
 
   // TODO: use 'register' with private key to simulate how it'll actually be.
-  setPublicKey(address: StarknetAddress, publicKey: PublicKey): void {
-    this.publicKeys.set(address, publicKey);
+  register(address: StarknetAddress, privateKey: PrivateKey): void {
+    this.publicKeys.set(address, derivePublicKey(privateKey));
   }
 
   setChannel(from: StarknetAddress, fromPrivateKey: PrivateKey, to: StarknetAddress): ChannelKey {
