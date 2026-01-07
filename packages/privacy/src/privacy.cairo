@@ -101,6 +101,7 @@ pub mod Privacy {
 
     #[abi(embed_v0)]
     impl PausableImpl = PausableComponent::PausableImpl<ContractState>;
+    impl PausableInternalImpl = PausableComponent::InternalImpl<ContractState>;
     #[abi(embed_v0)]
     impl ReplaceabilityImpl =
         ReplaceabilityComponent::ReplaceabilityImpl<ContractState>;
@@ -497,6 +498,7 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
         fn execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
+            self.pausable.assert_not_paused();
             // TODO: Verify client proof.
             for action in actions {
                 match *action {
