@@ -108,7 +108,6 @@ pub mod Privacy {
     #[abi(embed_v0)]
     impl RolesImpl = RolesComponent::RolesImpl<ContractState>;
 
-    // TODO: Use direct storage access instead of using views.
     // TODO: Consider all randoms to be u128/120 bits.
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
@@ -212,7 +211,7 @@ pub mod Privacy {
             assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
 
             // Assert sender is registered with the given private key.
-            let sender_public_key = self.get_public_key(user_addr: sender_addr);
+            let sender_public_key = self.public_key.read(sender_addr);
             assert(sender_public_key.is_non_zero(), errors::SENDER_NOT_REGISTERED);
             assert(
                 sender_public_key == derive_public_key(private_key: sender_private_key),
@@ -359,7 +358,7 @@ pub mod Privacy {
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
-            let enc_note_value = self.get_note(:note_id);
+            let enc_note_value = self.notes.read(note_id);
             assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             // Decrypt note amount.
@@ -421,7 +420,8 @@ pub mod Privacy {
             assert(
                 index.is_zero()
                     || self
-                        .get_note(note_id: compute_note_id(:channel_key, :token, index: index - 1))
+                        .notes
+                        .read(compute_note_id(:channel_key, :token, index: index - 1))
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
             );
