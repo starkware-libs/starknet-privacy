@@ -21,9 +21,11 @@
     "lint:fix": "eslint src tests --fix",
     "format": "prettier --write src tests",
     "format:check": "prettier --check src tests",
-    "test": "npm run typecheck && npm run lint && npm run format:check && vitest run",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:watch": "vitest watch",
-    "check": "npm run test && npm run build",
+    "check": "npm run typecheck && npm run lint && npm run format:check && npm run test && npm run build",
+    "check:integration": "npm run typecheck && npm run lint && npm run format:check && npm run test:integration && npm run build",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run check",
     "prepare": "cd .. && git config core.hooksPath .husky || true"

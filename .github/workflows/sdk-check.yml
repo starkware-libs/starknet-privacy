@@ -8,7 +8,7 @@ on:
 
 jobs:
   check:
-    name: Typecheck, Test & Build
+    name: Typecheck, Unit Tests & Build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -26,6 +26,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Run check (typecheck + test + build)
+      - name: Run check (typecheck + unit tests + build)
         run: npm run check
-

@@ -6,7 +6,7 @@ import {
   NoteNonce,
   Channel,
   Witness,
-} from "../src/internal.js";
+} from "../../src/internal.js";
 
 describe("channelSerde", () => {
   it("encodes and decodes a channel round-trip", () => {

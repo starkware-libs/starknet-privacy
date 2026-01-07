@@ -60,7 +60,6 @@ export type PrivateTransfersConfig = {
   account: AccountInterface;
   viewingSigner: ViewingKey;
   provingProvider: ProofProviderInterface;
-  discoveryProvider: DiscoveryProviderInterface;
   pool: StarknetAddress;
 };
 
@@ -111,8 +110,9 @@ export interface PrivateTransfers {
 
   /**
    * register the account in the privacy pool
+   * @param random - Random value for encryption (must be non-zero, 120 bits max)
    */
-  register(): Promise<CallAndProof>;
+  register(random: bigint): Promise<CallAndProof>;
 
   /**
    * given a recipient and token, check if the recipient has a Channel associated with it and if the token is in the channel.
