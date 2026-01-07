@@ -24,8 +24,8 @@ use privacy::utils::{
     is_canonical_key,
 };
 use snforge_std::{
-    CustomToken, DeclareResultTrait, Token, TokenTrait, declare, interact_with_state,
-    map_entry_address, set_balance,
+    CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait, Token,
+    TokenTrait, declare, interact_with_state, map_entry_address, set_balance, spy_messages_to_l1,
 };
 use starknet::ContractAddress;
 use starknet::deployment::DeploymentParams;
@@ -90,16 +90,14 @@ struct User {
 
 #[generate_trait]
 pub(crate) impl UserImpl of UserTrait {
-    fn compile_client_actions(
-        self: @User, client_actions: Span<ClientAction>,
-    ) -> Span<ServerAction> {
+    fn compile_client_actions(self: @User, client_actions: Span<ClientAction>) {
         self.privacy.client.compile_client_actions(user_addr: *self.address, :client_actions)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_compile_client_actions(
         self: @User, client_actions: Span<ClientAction>,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
+    ) -> Result<(), Array<felt252>> {
         self.privacy.safe_client.compile_client_actions(user_addr: *self.address, :client_actions)
     }
 
@@ -113,14 +111,15 @@ pub(crate) impl UserImpl of UserTrait {
         for note in notes_to_create {
             client_actions.append(ClientAction::CreateNote((*self.private_key, *note)));
         }
-
-        self.compile_client_actions(client_actions: client_actions.span())
+        let mut spy = spy_messages_to_l1();
+        self.compile_client_actions(client_actions: client_actions.span());
+        spy_messages_to_server_actions(ref :spy)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_transfer(
         self: @User, notes_to_use: Span<NotePath>, notes_to_create: Span<NewNote>,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
+    ) -> Result<(), Array<felt252>> {
         let mut client_actions: Array<ClientAction> = array![];
         for note in notes_to_use {
             client_actions.append(ClientAction::UseNote((*self.private_key, *note)));
@@ -128,13 +127,12 @@ pub(crate) impl UserImpl of UserTrait {
         for note in notes_to_create {
             client_actions.append(ClientAction::CreateNote((*self.private_key, *note)));
         }
-
         self.safe_compile_client_actions(client_actions: client_actions.span())
     }
 
     fn withdraw(
         self: @User, withdrawal_target: ContractAddress, token: ContractAddress, amount: u128,
-    ) -> Span<ServerAction> {
+    ) {
         self
             .compile_client_actions(
                 client_actions: [ClientAction::Withdraw((withdrawal_target, token, amount))].span(),
@@ -160,14 +158,14 @@ pub(crate) impl UserImpl of UserTrait {
     #[feature("safe_dispatcher")]
     fn safe_withdraw(
         self: @User, withdrawal_target: ContractAddress, token: ContractAddress, amount: u128,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
+    ) -> Result<(), Array<felt252>> {
         self
             .safe_compile_client_actions(
                 client_actions: [ClientAction::Withdraw((withdrawal_target, token, amount))].span(),
             )
     }
 
-    fn open_channel(self: @User, recipient: User, random: felt252) -> Span<ServerAction> {
+    fn open_channel(self: @User, recipient: User, random: felt252) {
         self
             .compile_client_actions(
                 client_actions: [
@@ -179,10 +177,28 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
+    fn internal_open_channel(self: @User, recipient: User, random: felt252) -> Span<ServerAction> {
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                state
+                    .open_channel(
+                        sender_addr: *self.address,
+                        sender_private_key: *self.private_key,
+                        recipient_addr: recipient.address,
+                        recipient_public_key: recipient.public_key,
+                        :random,
+                    )
+            },
+        )
+            .span()
+    }
+
     #[feature("safe_dispatcher")]
     fn safe_open_channel(
         self: @User, recipient: User, random: felt252,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
+    ) -> Result<(), Array<felt252>> {
         self
             .safe_compile_client_actions(
                 client_actions: [
@@ -195,24 +211,27 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     /// Returns (random, output) where output is the output of `open_channel`.
-    fn open_channel_with_generated_random(
+    fn internal_open_channel_with_generated_random(
         ref self: User, recipient: User,
     ) -> (felt252, Span<ServerAction>) {
         let random = self.get_random().into();
-        let output = self.open_channel(:recipient, :random);
+        let output = self.internal_open_channel(:recipient, :random);
         (random, output)
     }
 
     /// Returns the random value generated by the user for the channel opening.
     fn open_channel_e2e(ref self: User, recipient: User) -> felt252 {
-        let (random, actions) = self.open_channel_with_generated_random(:recipient);
+        let random = self.get_random().into();
+        let mut spy = spy_messages_to_l1();
+        self.open_channel(:recipient, :random);
+        let actions = spy_messages_to_server_actions(ref :spy);
         self.privacy.server.execute_actions(:actions);
         random
     }
 
     fn open_subchannel(
         self: @User, recipient: User, token: ContractAddress, index: usize, random: felt252,
-    ) -> Span<ServerAction> {
+    ) {
         let channel_key = self.compute_channel_key(:recipient);
         self
             .compile_client_actions(
@@ -232,10 +251,33 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
+    fn internal_open_subchannel(
+        self: @User, recipient: User, token: ContractAddress, index: usize, random: felt252,
+    ) -> Span<ServerAction> {
+        let channel_key = self.compute_channel_key(:recipient);
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                state
+                    .open_subchannel(
+                        sender_addr: *self.address,
+                        recipient_addr: recipient.address,
+                        recipient_public_key: recipient.public_key,
+                        :channel_key,
+                        :index,
+                        :token,
+                        :random,
+                    )
+            },
+        )
+            .span()
+    }
+
     #[feature("safe_dispatcher")]
     fn safe_open_subchannel(
         self: @User, recipient: User, token: ContractAddress, index: usize, random: felt252,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
+    ) -> Result<(), Array<felt252>> {
         let channel_key = self.compute_channel_key(:recipient);
         self
             .safe_compile_client_actions(
@@ -263,7 +305,7 @@ pub(crate) impl UserImpl of UserTrait {
         index: usize,
         random: felt252,
         channel_key: felt252,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
+    ) -> Result<(), Array<felt252>> {
         self
             .safe_compile_client_actions(
                 client_actions: [
@@ -283,11 +325,11 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     /// Returns (random, output) where output is the output of `open_subchannel`.
-    fn open_subchannel_with_generated_random(
+    fn internal_open_subchannel_with_generated_random(
         ref self: User, recipient: User, token: ContractAddress, index: usize,
     ) -> (felt252, Span<ServerAction>) {
         let random = self.get_random().into();
-        let output = self.open_subchannel(:recipient, :token, :index, :random);
+        let output = self.internal_open_subchannel(:recipient, :token, :index, :random);
         (random, output)
     }
 
@@ -295,8 +337,10 @@ pub(crate) impl UserImpl of UserTrait {
     fn open_subchannel_e2e(
         ref self: User, recipient: User, token: ContractAddress, index: usize,
     ) -> felt252 {
-        let (random, actions) = self
-            .open_subchannel_with_generated_random(:recipient, :token, :index);
+        let random = self.get_random().into();
+        let mut spy = spy_messages_to_l1();
+        self.open_subchannel(:recipient, :token, :index, :random);
+        let actions = spy_messages_to_server_actions(ref :spy);
         self.privacy.server.execute_actions(:actions);
         random
     }
@@ -319,7 +363,8 @@ pub(crate) impl UserImpl of UserTrait {
         (hash_u256 % TWO_POW_120.into()).try_into().expect('RANDOM_OVERFLOW')
     }
 
-    fn create_note(self: @User, note: NewNote) -> Span<ServerAction> {
+    /// Used for should panic tests.
+    fn create_note(self: @User, note: NewNote) {
         self.compile_client_actions([ClientAction::CreateNote((*self.private_key, note)),].span())
     }
 
@@ -400,7 +445,8 @@ pub(crate) impl UserImpl of UserTrait {
         EncNote { id: note_id, enc_amount }
     }
 
-    fn use_note(self: @User, note: NotePath) -> Span<ServerAction> {
+    /// Used for should panic tests.
+    fn use_note(self: @User, note: NotePath) {
         self
             .compile_client_actions(
                 client_actions: [ClientAction::UseNote((*self.private_key, note))].span(),
@@ -463,7 +509,7 @@ pub(crate) impl UserImpl of UserTrait {
         self.new_note(:recipient, :token, :amount, :index, :random)
     }
 
-    fn deposit(self: @User, token: ContractAddress, amount: u128) -> Span<ServerAction> {
+    fn deposit(self: @User, token: ContractAddress, amount: u128) {
         self.compile_client_actions([ClientAction::Deposit((token, amount)),].span())
     }
 
@@ -484,7 +530,7 @@ pub(crate) impl UserImpl of UserTrait {
     #[feature("safe_dispatcher")]
     fn safe_deposit(
         self: @User, token: ContractAddress, amount: u128,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
+    ) -> Result<(), Array<felt252>> {
         self
             .safe_compile_client_actions(
                 client_actions: [ClientAction::Deposit((token, amount)),].span(),
@@ -525,31 +571,52 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
-    fn set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
+    fn set_viewing_key(self: @User, random: felt252) {
         self
             .compile_client_actions(
                 client_actions: [ClientAction::SetViewingKey((*self.private_key, random))].span(),
-            )
+            );
+    }
+
+    fn internal_set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                state
+                    .set_viewing_key(
+                        user_addr: *self.address, user_private_key: *self.private_key, :random,
+                    )
+            },
+        )
+            .span()
     }
 
     /// Returns (random, output) where output is the output of `set_viewing_key`.
-    fn set_viewing_key_with_generated_random(ref self: User) -> (felt252, Span<ServerAction>) {
+    fn internal_set_viewing_key_with_generated_random(
+        ref self: User,
+    ) -> (felt252, Span<ServerAction>) {
         let random = self.get_random().into();
-        let actions = self.set_viewing_key(:random);
+        let actions = self.internal_set_viewing_key(:random);
         (random, actions)
     }
 
     /// Returns the random value generated by the user for `set_viewing_key`.
     fn set_viewing_key_e2e(ref self: User) -> felt252 {
-        let (random, actions) = self.set_viewing_key_with_generated_random();
-        self.privacy.server.execute_actions(:actions);
+        let random = self.get_random().into();
+        self.set_viewing_key_e2e_with_random(:random);
         random
     }
 
+    fn set_viewing_key_e2e_with_random(ref self: User, random: felt252) {
+        let mut spy = spy_messages_to_l1();
+        self.set_viewing_key(:random);
+        let actions = spy_messages_to_server_actions(ref :spy);
+        self.privacy.server.execute_actions(:actions);
+    }
+
     #[feature("safe_dispatcher")]
-    fn safe_set_viewing_key(
-        self: @User, random: felt252,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
+    fn safe_set_viewing_key(self: @User, random: felt252) -> Result<(), Array<felt252>> {
         self
             .safe_compile_client_actions(
                 client_actions: [ClientAction::SetViewingKey((*self.private_key, random))].span(),
@@ -728,6 +795,15 @@ pub(crate) impl TestImpl of TestTrait {
                 balances_variable_selector: selector!("ERC20_balances"),
             },
         )
+    }
+
+    /// Asserts the message from the spy is valid and returns the deserialized server actions.
+    fn general_assert_spy_messages(ref self: Test, ref spy: MessageToL1Spy) -> Span<ServerAction> {
+        assert_eq!(spy.get_messages().messages.len(), 1);
+        let (from, message) = spy.get_messages().messages.at(0);
+        assert_eq!(*from, self.privacy.address);
+        assert_eq!(*message.to_address, Zero::zero());
+        deserialize_server_actions(:message)
     }
 }
 
@@ -920,4 +996,14 @@ pub(crate) fn decrypt_subchannel_token(
     let token = enc_subchannel_info.enc_token
         - compute_enc_token_hash(:channel_key, random: enc_subchannel_info.random);
     token.try_into().unwrap()
+}
+
+fn deserialize_server_actions(message: @MessageToL1) -> Span<ServerAction> {
+    let mut payload = message.payload.span();
+    Serde::<Span<ServerAction>>::deserialize(ref payload).expect('Failed deserialize')
+}
+
+fn spy_messages_to_server_actions(ref spy: MessageToL1Spy) -> Span<ServerAction> {
+    let (_from, message) = spy.get_messages().messages.at(0);
+    deserialize_server_actions(:message)
 }

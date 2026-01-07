@@ -26,7 +26,8 @@ pub mod Privacy {
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
-    use starknet::{ContractAddress, get_contract_address};
+    use starknet::syscalls::send_message_to_l1_syscall;
+    use starknet::{ContractAddress, SyscallResultTrait, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
@@ -116,7 +117,7 @@ pub mod Privacy {
         // random.
         fn compile_client_actions(
             self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
-        ) -> Span<ServerAction> {
+        ) {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Verify sender signature on TX.
             // TODO: Consider asserting that `client_actions` is not empty.
@@ -213,7 +214,7 @@ pub mod Privacy {
                 };
             }
             assert(token_balances.is_valid(), errors::TOKEN_BALANCES_MISMATCH);
-            server_actions.span()
+            self._send_message_to_server(server_actions.span());
         }
     }
 
@@ -494,6 +495,14 @@ pub mod Privacy {
             token_balances.modify_balance(:token, op: BalanceOp::SUBTRACTION, amount: note.amount);
 
             ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount))
+        }
+
+        fn _send_message_to_server(self: @ContractState, server_actions: Span<ServerAction>) {
+            let mut payload = array![];
+            server_actions.serialize(ref payload);
+            // TODO: Different to_address?
+            send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span())
+                .unwrap_syscall();
         }
     }
 

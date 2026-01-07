@@ -8,7 +8,7 @@ use privacy::tests::utils_for_tests::{
 };
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
-use snforge_std::map_entry_address;
+use snforge_std::{map_entry_address, spy_messages_to_l1};
 use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 
 #[test]
@@ -16,7 +16,7 @@ fn test_set_viewing_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let public_key = user.public_key;
-    let (random, actions) = user.set_viewing_key_with_generated_random();
+    let (random, actions) = user.internal_set_viewing_key_with_generated_random();
     let enc_private_key = user.compute_enc_private_key(:random);
 
     let public_key_storage_path_felt = map_entry_address(
@@ -606,7 +606,8 @@ fn test_open_channel() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
 
-    let (random, channel_output) = user_1.open_channel_with_generated_random(recipient: user_2);
+    let (random, channel_output) = user_1
+        .internal_open_channel_with_generated_random(recipient: user_2);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let expected_enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random,
@@ -636,7 +637,8 @@ fn test_open_channel_self_channel() {
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
 
-    let (random, channel_output) = user.open_channel_with_generated_random(recipient: user);
+    let (random, channel_output) = user
+        .internal_open_channel_with_generated_random(recipient: user);
     let channel_key = user.compute_channel_key(recipient: user);
     let expected_enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random,
@@ -728,8 +730,10 @@ fn test_open_channel_multiple_channels_same_sender() {
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
 
-    let (random_1, c1_output) = user_1.open_channel_with_generated_random(recipient: user_2);
-    let (random_2, c2_output) = user_1.open_channel_with_generated_random(recipient: user_3);
+    let (random_1, c1_output) = user_1
+        .internal_open_channel_with_generated_random(recipient: user_2);
+    let (random_2, c2_output) = user_1
+        .internal_open_channel_with_generated_random(recipient: user_3);
     let channel_key_1 = user_1.compute_channel_key(recipient: user_2);
     let channel_key_2 = user_1.compute_channel_key(recipient: user_3);
     assert_ne!(channel_key_1, channel_key_2);
@@ -796,8 +800,10 @@ fn test_open_channel_multiple_channels_same_recipient() {
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
 
-    let (random_1, c1_output) = user_2.open_channel_with_generated_random(recipient: user_1);
-    let (random_2, c2_output) = user_3.open_channel_with_generated_random(recipient: user_1);
+    let (random_1, c1_output) = user_2
+        .internal_open_channel_with_generated_random(recipient: user_1);
+    let (random_2, c2_output) = user_3
+        .internal_open_channel_with_generated_random(recipient: user_1);
     let channel_key_1 = user_2.compute_channel_key(recipient: user_1);
     let channel_key_2 = user_3.compute_channel_key(recipient: user_1);
     assert_ne!(channel_key_1, channel_key_2);
@@ -891,7 +897,7 @@ fn test_open_subchannel() {
     user_1.open_channel_e2e(recipient: user_2);
 
     let (random, channel_output) = user_1
-        .open_subchannel_with_generated_random(recipient: user_2, :token, index: 0);
+        .internal_open_subchannel_with_generated_random(recipient: user_2, :token, index: 0);
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token, :random);
@@ -922,7 +928,7 @@ fn test_open_subchannel_self_channel() {
     user.open_channel_e2e(recipient: user);
 
     let (random, channel_output) = user
-        .open_subchannel_with_generated_random(recipient: user, :token, index: 0);
+        .internal_open_subchannel_with_generated_random(recipient: user, :token, index: 0);
     let expected_subchannel_key = user.compute_subchannel_key(recipient: user, index: 0);
     let expected_enc_subchannel_info = user
         .compute_enc_subchannel_info(recipient: user, :token, :random);
@@ -1053,10 +1059,14 @@ fn test_open_subchannel_multiple() {
 
     // Multiple subchannels with different tokens.
     let (random_1, c1_output) = user_1
-        .open_subchannel_with_generated_random(recipient: user_2, token: token_1, index: 0);
+        .internal_open_subchannel_with_generated_random(
+            recipient: user_2, token: token_1, index: 0,
+        );
     test.privacy.execute_actions(actions: c1_output);
     let (random_2, c2_output) = user_1
-        .open_subchannel_with_generated_random(recipient: user_2, token: token_2, index: 1);
+        .internal_open_subchannel_with_generated_random(
+            recipient: user_2, token: token_2, index: 1,
+        );
     let expected_subchannel_key_1 = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_subchannel_key_2 = user_1.compute_subchannel_key(recipient: user_2, index: 1);
     let expected_enc_subchannel_info_1 = user_1
@@ -1106,10 +1116,10 @@ fn test_open_subchannel_multiple() {
     user_1.open_channel_e2e(recipient: user_2);
     let token = test.mock_new_token();
     let (random_1, c1_output) = user_1
-        .open_subchannel_with_generated_random(recipient: user_2, :token, index: 0);
+        .internal_open_subchannel_with_generated_random(recipient: user_2, :token, index: 0);
     test.privacy.execute_actions(actions: c1_output);
     let (random_2, c2_output) = user_1
-        .open_subchannel_with_generated_random(recipient: user_2, :token, index: 1);
+        .internal_open_subchannel_with_generated_random(recipient: user_2, :token, index: 1);
     let expected_subchannel_key_1 = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_subchannel_key_2 = user_1.compute_subchannel_key(recipient: user_2, index: 1);
     let expected_enc_subchannel_info_1 = user_1
@@ -1154,10 +1164,14 @@ fn test_open_subchannel_multiple() {
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     let (random_1, c1_output) = user_1
-        .open_subchannel_with_generated_random(recipient: user_2, token: token_1, index: 0);
+        .internal_open_subchannel_with_generated_random(
+            recipient: user_2, token: token_1, index: 0,
+        );
     test.privacy.execute_actions(actions: c1_output);
     let (random_2, c2_output) = user_1
-        .open_subchannel_with_generated_random(recipient: user_2, token: token_2, index: 0);
+        .internal_open_subchannel_with_generated_random(
+            recipient: user_2, token: token_2, index: 0,
+        );
     // Key will be the same since the index is the same.
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info_1 = user_1
@@ -1207,10 +1221,10 @@ fn test_open_subchannel_multiple_self_channel() {
 
     // Multiple subchannels with different tokens.
     let (random_1, c1_output) = user
-        .open_subchannel_with_generated_random(recipient: user, token: token_1, index: 0);
+        .internal_open_subchannel_with_generated_random(recipient: user, token: token_1, index: 0);
     test.privacy.execute_actions(actions: c1_output);
     let (random_2, c2_output) = user
-        .open_subchannel_with_generated_random(recipient: user, token: token_2, index: 1);
+        .internal_open_subchannel_with_generated_random(recipient: user, token: token_2, index: 1);
     let expected_subchannel_key_1 = user.compute_subchannel_key(recipient: user, index: 0);
     let expected_subchannel_key_2 = user.compute_subchannel_key(recipient: user, index: 1);
     let expected_enc_subchannel_info_1 = user
@@ -2012,7 +2026,7 @@ fn test_set_viewing_key_multiple_times() {
 
     // Set again to a different value.
     user.new_key();
-    let (random, actions) = user.set_viewing_key_with_generated_random();
+    let (random, actions) = user.internal_set_viewing_key_with_generated_random();
     let public_key_storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
@@ -2084,14 +2098,12 @@ fn test_set_viewing_key_same_key() {
     assert_eq!(user.get_enc_private_key(), enc_private_key_2);
 
     // Replace with the same key and same random.
-    let actions = user.set_viewing_key(:random);
-    user.privacy.execute_actions(:actions);
+    user.set_viewing_key_e2e_with_random(:random);
     assert_eq!(user.get_public_key(), original_public_key);
     assert_eq!(user.get_enc_private_key(), enc_private_key_2);
 
     // Replace with the same key and same random from registeration.
-    let actions = user.set_viewing_key(random: register_random);
-    user.privacy.execute_actions(:actions);
+    user.set_viewing_key_e2e_with_random(random: register_random);
     assert_eq!(user.get_public_key(), original_public_key);
     assert_eq!(user.get_enc_private_key(), enc_private_key_1);
 }
@@ -2131,15 +2143,20 @@ fn test_compile_client_actions() {
     let token = test.mock_new_token();
 
     // Empty actions.
-    let actions = user_1.compile_client_actions(client_actions: [].span());
-    assert_eq!(actions, [].span());
+    let mut spy = spy_messages_to_l1();
+    user_1.compile_client_actions(client_actions: [].span());
+    let actions = test.general_assert_spy_messages(ref :spy);
+    let expected_actions = [].span();
+    assert_eq!(actions, expected_actions);
 
     // Register action.
     let random = user_1.get_random().into();
-    let actions = user_1
+    let mut spy = spy_messages_to_l1();
+    user_1
         .compile_client_actions(
             client_actions: [ClientAction::SetViewingKey((user_1.private_key, random))].span(),
         );
+    let actions = test.general_assert_spy_messages(ref :spy);
     let enc_private_key = user_1.compute_enc_private_key(:random);
     let public_key_storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
@@ -2158,7 +2175,8 @@ fn test_compile_client_actions() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let random = user_1.get_random().into();
-    let actions = user_1
+    let mut spy = spy_messages_to_l1();
+    user_1
         .compile_client_actions(
             client_actions: [
                 ClientAction::OpenChannel(
@@ -2167,6 +2185,7 @@ fn test_compile_client_actions() {
             ]
                 .span(),
         );
+    let actions = test.general_assert_spy_messages(ref :spy);
     let expected_channel_id = user_1.compute_channel_id(recipient: user_2);
     let expected_channel_key = user_1.compute_channel_key(recipient: user_2);
     let expected_enc_channel_info = encrypt_channel_info(
@@ -2191,7 +2210,8 @@ fn test_compile_client_actions() {
 
     // Open subchannel action.
     let random = user_1.open_channel_e2e(recipient: user_2);
-    let actions = user_1
+    let mut spy = spy_messages_to_l1();
+    user_1
         .compile_client_actions(
             client_actions: [
                 ClientAction::OpenSubchannel(
@@ -2200,6 +2220,7 @@ fn test_compile_client_actions() {
             ]
                 .span(),
         );
+    let actions = test.general_assert_spy_messages(ref :spy);
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token);
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
@@ -2223,7 +2244,8 @@ fn test_compile_client_actions() {
     let amount = 100;
     let note = user_1.new_note_with_generated_random(recipient: user_2, :token, :amount, index: 0);
     user_1.open_subchannel_e2e(recipient: user_2, :token, index: 0);
-    let actions = user_1
+    let mut spy = spy_messages_to_l1();
+    user_1
         .compile_client_actions(
             client_actions: [
                 ClientAction::Deposit((token, amount)),
@@ -2231,6 +2253,7 @@ fn test_compile_client_actions() {
             ]
                 .span(),
         );
+    let actions = test.general_assert_spy_messages(ref :spy);
     let expected_enc_note = user_1
         .compute_enc_note(recipient: user_2, :token, index: 0, :amount, random: note.random);
     let note_storage_path = map_entry_address(
@@ -2244,7 +2267,8 @@ fn test_compile_client_actions() {
     assert_eq!(actions, expected_actions);
 
     // Deposit + withdraw actions.
-    let actions = user_1
+    let mut spy = spy_messages_to_l1();
+    user_1
         .compile_client_actions(
             client_actions: [
                 ClientAction::Deposit((token, amount)),
@@ -2252,6 +2276,7 @@ fn test_compile_client_actions() {
             ]
                 .span(),
         );
+    let actions = test.general_assert_spy_messages(ref :spy);
     let expected_actions = array![
         ServerAction::TransferFrom((user_1.address, token, amount)),
         ServerAction::TransferTo((user_2.address, token, amount)),
@@ -2268,7 +2293,8 @@ fn test_compile_client_actions() {
         .new_note_with_generated_random(recipient: user_1, :token, :amount, index: 0);
     user_2.open_channel_e2e(recipient: user_1);
     user_2.open_subchannel_e2e(recipient: user_1, :token, index: 0);
-    let actions = user_2
+    let mut spy = spy_messages_to_l1();
+    user_2
         .compile_client_actions(
             client_actions: [
                 ClientAction::UseNote((user_2.private_key, note_path)),
@@ -2276,6 +2302,7 @@ fn test_compile_client_actions() {
             ]
                 .span(),
         );
+    let actions = test.general_assert_spy_messages(ref :spy);
     let expected_enc_note = user_2
         .compute_enc_note(
             recipient: user_1, :token, index: new_note.index, :amount, random: new_note.random,
@@ -2295,7 +2322,8 @@ fn test_compile_client_actions() {
     assert_eq!(actions, expected_actions);
 
     // Use note + withdraw actions.
-    let actions = user_2
+    let mut spy = spy_messages_to_l1();
+    user_2
         .compile_client_actions(
             client_actions: [
                 ClientAction::UseNote((user_2.private_key, note_path)),
@@ -2303,6 +2331,7 @@ fn test_compile_client_actions() {
             ]
                 .span(),
         );
+    let actions = test.general_assert_spy_messages(ref :spy);
     let nullifier_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
