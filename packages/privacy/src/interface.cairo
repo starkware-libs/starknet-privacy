@@ -66,7 +66,7 @@ pub trait IClient<T> {
     /// #### Access Control
     /// - TODO
     fn compile_client_actions(
-        self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     );
 }
 
