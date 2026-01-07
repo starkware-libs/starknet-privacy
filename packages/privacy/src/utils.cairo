@@ -1,13 +1,15 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
+use core::num::traits::Zero;
 use privacy::errors;
 use privacy::hashes::{
     compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_private_key_hash,
     compute_enc_sender_addr_hash, compute_enc_token_hash,
 };
-use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
+use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo, ServerAction};
 use starknet::storage::{StorageAsPointer, StoragePath};
-use starknet::{ContractAddress, VALIDATED, get_tx_info};
+use starknet::syscalls::send_message_to_l1_syscall;
+use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_tx_info};
 use starkware_utils::constants::TWO_POW_128;
 
 pub mod constants {
@@ -184,4 +186,11 @@ pub(crate) fn assert_valid_signature(user_addr: ContractAddress) {
     let account_abi = AccountABIDispatcher { contract_address: user_addr };
     let is_valid = account_abi.is_valid_signature(hash: tx_hash, signature: signature.into());
     assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
+}
+
+pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
+    let mut payload = array![];
+    server_actions.serialize(ref payload);
+    // TODO: Different to_address?
+    send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
 }
