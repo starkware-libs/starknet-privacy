@@ -16,10 +16,10 @@ pub mod Privacy {
         BalanceOp, ClientAction, EncChannelInfo, EncChannelInfoTrait, EncPrivateKey,
         EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances, TokenBalancesTrait,
     };
+    use privacy::utils::constants::TWO_POW_120;
     use privacy::utils::{
-        StoragePathIntoFelt, TWO_POW_120, decrypt_note_amount, derive_public_key,
-        encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
-        is_canonical_key,
+        StoragePathIntoFelt, decrypt_note_amount, derive_public_key, encrypt_channel_info,
+        encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info, is_canonical_key,
     };
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
@@ -111,10 +111,13 @@ pub mod Privacy {
     // TODO: Consider all randoms to be u128/120 bits.
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
+        // TODO: Gets a single random and generate from it new randoms for each action that needs a
+        // random.
         fn compile_client_actions(
             self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) -> Span<ServerAction> {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            // TODO: Verify sender signature on TX.
             // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
             let mut server_actions: Array<ServerAction> = array![];
@@ -253,13 +256,10 @@ pub mod Privacy {
             recipient_public_key: felt252,
             random: felt252,
         ) -> Array<ServerAction> {
-            // TODO: Consider generate random instead of passing it as an argument.
-            assert(sender_private_key.is_non_zero(), errors::ZERO_SENDER_PRIVATE_KEY);
+            assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
-
-            // TODO: Verify sender signature on TX.
 
             // Assert sender private key is canonical.
             assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
@@ -308,14 +308,11 @@ pub mod Privacy {
             token: ContractAddress,
             random: felt252,
         ) -> Array<ServerAction> {
-            // TODO: Consider generate random instead of passing it as an argument.
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
-
-            // TODO: Verify sender signature on TX.
 
             // Assert channel key is valid for the given sender and recipient.
             let channel_id = compute_channel_id(
@@ -397,7 +394,7 @@ pub mod Privacy {
             ref token_balances: TokenBalances,
         ) -> ServerAction {
             // TODO: Consider adding context to the errors (which note is causing the error).
-            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
+            assert(owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(note.channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
             assert(is_canonical_key(key: owner_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
@@ -409,7 +406,7 @@ pub mod Privacy {
             let subchannel_id = compute_subchannel_id(
                 :channel_key, recipient_addr: owner_addr, :recipient_public_key, :token,
             );
-            assert(self.subchannel_exists.read(subchannel_id), errors::INVALID_SUBCHANNEL);
+            assert(self.subchannel_exists.read(subchannel_id), errors::SUBCHANNEL_NOT_FOUND);
 
             // Compute note id.
             let index = note.note_index;
@@ -442,7 +439,7 @@ pub mod Privacy {
             ref token_balances: TokenBalances,
         ) -> ServerAction {
             // TODO: Consider adding context to the errors (which note is causing the error).
-            assert(owner_private_key.is_non_zero(), errors::ZERO_OWNER_PRIVATE_KEY);
+            assert(owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(note.recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
@@ -469,7 +466,7 @@ pub mod Privacy {
             let subchannel_id = compute_subchannel_id(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
-            assert(self.subchannel_exists.read(subchannel_id), errors::INVALID_SUBCHANNEL);
+            assert(self.subchannel_exists.read(subchannel_id), errors::SUBCHANNEL_NOT_FOUND);
 
             // Assert index is sequential, i.e. the previous note exists.
             let index = note.index;
@@ -499,6 +496,7 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
         fn execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
+            // TODO: Verify client proof.
             for action in actions {
                 match *action {
                     ServerAction::WriteIfZero((
