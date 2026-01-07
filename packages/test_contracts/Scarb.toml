@@ -1,0 +1,16 @@
+[package]
+name = "test_contracts"
+version = "0.1.0"
+edition = "2024_07"
+
+[dependencies]
+starknet = "2.12.2"
+
+[lib]
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
+
+[scripts]
+compile = "scarb build && cp target/dev/*.contract_class.json compiled/ && cp target/dev/*.compiled_contract_class.json compiled/"

@@ -56,6 +56,7 @@
     "husky": "^9.1.7",
     "lint-staged": "^16.2.7",
     "prettier": "^3.7.4",
+    "starknet-devnet": "^0.7.1",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.51.0",
     "vitest": "^4.0.15"
