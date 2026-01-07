@@ -170,3 +170,8 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
     // TODO: Assert value_1 is 120 bits?
     (value_1.try_into().expect('UNPACK1_OVERFLOW'), value_2.try_into().expect('UNPACK2_OVERFLOW'))
 }
+
+#[starknet::interface]
+pub trait AccountABI<TState> {
+    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
+}

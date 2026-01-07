@@ -19,14 +19,15 @@ pub mod Privacy {
     };
     use privacy::utils::constants::TWO_POW_120;
     use privacy::utils::{
-        StoragePathIntoFelt, decrypt_note_amount, derive_public_key, encrypt_channel_info,
-        encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info, is_canonical_key,
+        AccountABIDispatcher, AccountABIDispatcherTrait, StoragePathIntoFelt, decrypt_note_amount,
+        derive_public_key, encrypt_channel_info, encrypt_note_amount, encrypt_private_key,
+        encrypt_subchannel_info, is_canonical_key,
     };
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
-    use starknet::{ContractAddress, get_contract_address};
+    use starknet::{ContractAddress, VALIDATED, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
@@ -213,6 +214,7 @@ pub mod Privacy {
                 };
             }
             assert(token_balances.is_valid(), errors::TOKEN_BALANCES_MISMATCH);
+            self._assert_valid_signature(:user_addr);
             server_actions.span()
         }
     }
@@ -494,6 +496,19 @@ pub mod Privacy {
             token_balances.modify_balance(:token, op: BalanceOp::SUBTRACTION, amount: note.amount);
 
             ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount))
+        }
+
+        fn _assert_valid_signature(self: @ContractState, user_addr: ContractAddress) {
+            let tx_info = starknet::get_tx_info().unbox();
+            let tx_hash = tx_info.transaction_hash;
+            let signature = tx_info.signature;
+            let account_abi = AccountABIDispatcher { contract_address: user_addr };
+            // TODO: Refactor to is_non_zero?
+            assert(
+                account_abi
+                    .is_valid_signature(hash: tx_hash, signature: signature.into()) == VALIDATED,
+                errors::INVALID_SIGNATURE,
+            );
         }
     }
 

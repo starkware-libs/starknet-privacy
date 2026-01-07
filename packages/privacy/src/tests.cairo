@@ -1,3 +1,4 @@
+pub mod mock_account;
 pub mod test_client;
 pub mod test_objects;
 pub mod test_server;
