@@ -68,7 +68,7 @@ pub trait IClient<T> {
     /// - TODO
     fn compile_client_actions(
         self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
-    ) -> Span<ServerAction>;
+    );
 }
 
 #[starknet::interface]
