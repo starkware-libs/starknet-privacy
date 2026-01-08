@@ -1,4 +1,5 @@
 use core::hash::{HashStateExTrait, HashStateTrait};
+use core::num::traits::Zero;
 use core::poseidon::{PoseidonTrait, poseidon_hash_span};
 use domain_separation::*;
 use starknet::ContractAddress;
@@ -121,10 +122,12 @@ pub(crate) fn compute_channel_id(
 
 /// Computes the subchannel key given the channel key and index.
 /// Assumes all the inputs are not zero.
+/// Includes a reserved zero placeholder for forward compatibility, occupying the position of a
+/// future hash component without affecting current behavior.
 ///
-/// `subchannel_key = h(SUBCHANNEL_KEY_TAG, channel_key, index)`
+/// `subchannel_key = h(SUBCHANNEL_KEY_TAG, channel_key, index, 0)`
 pub(crate) fn compute_subchannel_key(channel_key: felt252, index: usize) -> felt252 {
-    hash([SUBCHANNEL_KEY_TAG, channel_key, index.into()].span())
+    hash([SUBCHANNEL_KEY_TAG, channel_key, index.into(), Zero::zero()].span())
 }
 
 /// Computes the subchannel id given the channel key and token.
@@ -144,13 +147,15 @@ pub(crate) fn compute_subchannel_id(
 }
 
 /// Computes the note id.
-/// Asseumes `channel_key` and `token` are not zero.
+/// Assumes `channel_key` and `token` are not zero.
+/// Includes a reserved zero placeholder for forward compatibility, occupying the position of a
+/// future hash component without affecting current behavior.
 ///
-/// `note_id = h(NOTE_ID_TAG, channel_key, token, index)`
+/// `note_id = h(NOTE_ID_TAG, channel_key, token, index, 0)`
 pub(crate) fn compute_note_id(
     channel_key: felt252, token: ContractAddress, index: usize,
 ) -> felt252 {
-    hash([enc_note::NOTE_ID_TAG, channel_key, token.into(), index.into()].span())
+    hash([enc_note::NOTE_ID_TAG, channel_key, token.into(), index.into(), Zero::zero()].span())
 }
 
 /// Computes the hash used to encrypt the note amount in `EncNote`.
@@ -163,10 +168,14 @@ pub(crate) fn compute_enc_amount_hash(channel_key: felt252, random: u128) -> fel
 
 /// Computes the nullifier.
 /// Assumes `channel_key`, `token`, and `owner_private_key` are not zero.
+/// Includes a reserved zero placeholder to match the note_id hash layout.
 ///
-/// `nullifier = h(NULLIFIER_TAG, channel_key, token, index, owner_private_key)`
+/// `nullifier = h(NULLIFIER_TAG, channel_key, token, index, 0, owner_private_key)`
 pub(crate) fn compute_nullifier(
     channel_key: felt252, token: ContractAddress, index: usize, owner_private_key: felt252,
 ) -> felt252 {
-    hash([NULLIFIER_TAG, channel_key, token.into(), index.into(), owner_private_key].span())
+    hash(
+        [NULLIFIER_TAG, channel_key, token.into(), index.into(), Zero::zero(), owner_private_key]
+            .span(),
+    )
 }
