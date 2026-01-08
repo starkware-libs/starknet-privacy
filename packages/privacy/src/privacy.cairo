@@ -13,9 +13,10 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        BalanceOp, ClientAction, ClientActionTrait, EncChannelInfo, EncChannelInfoTrait,
-        EncPrivateKey, EncSubchannelInfo, NewNote, NotePath, ServerAction, TokenBalances,
-        TokenBalancesTrait,
+        BalanceOp, ClientAction, ClientActionTrait, CreateNoteInput, DepositInput, EncChannelInfo,
+        EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo, OpenChannelInput,
+        OpenSubchannelInput, ServerAction, SetViewingKeyInput, TokenBalances, TokenBalancesTrait,
+        UseNoteInput, WithdrawInput,
     };
     use privacy::utils::constants::TWO_POW_120;
     use privacy::utils::{
@@ -127,88 +128,36 @@ pub mod Privacy {
             for client_action in client_actions {
                 client_action.assert_and_set_phase(ref :current_phase);
                 match *client_action {
-                    ClientAction::SetViewingKey((
-                        user_private_key, random,
-                    )) => {
-                        server_actions
-                            .extend(self.set_viewing_key(:user_addr, :user_private_key, :random));
+                    ClientAction::SetViewingKey(input) => {
+                        server_actions.extend(self.set_viewing_key(:user_addr, :input));
                     },
-                    ClientAction::OpenChannel((
-                        user_private_key, recipient_addr, recipient_public_key, random,
-                    )) => {
-                        server_actions
-                            .extend(
-                                self
-                                    .open_channel(
-                                        sender_addr: user_addr,
-                                        sender_private_key: user_private_key,
-                                        :recipient_addr,
-                                        :recipient_public_key,
-                                        :random,
-                                    ),
-                            );
+                    ClientAction::OpenChannel(input) => {
+                        server_actions.extend(self.open_channel(sender_addr: user_addr, :input));
                     },
-                    ClientAction::OpenSubchannel((
-                        recipient_addr, recipient_public_key, channel_key, index, token, random,
-                    )) => {
-                        server_actions
-                            .extend(
-                                self
-                                    .open_subchannel(
-                                        sender_addr: user_addr,
-                                        :recipient_addr,
-                                        :recipient_public_key,
-                                        :channel_key,
-                                        :index,
-                                        :token,
-                                        :random,
-                                    ),
-                            );
+                    ClientAction::OpenSubchannel(input) => {
+                        server_actions.extend(self.open_subchannel(sender_addr: user_addr, :input));
                     },
-                    ClientAction::Deposit((
-                        token, amount,
-                    )) => {
+                    ClientAction::Deposit(input) => {
                         server_actions
-                            .append(self.deposit(:user_addr, :token, :amount, ref :token_balances));
+                            .append(self.deposit(:user_addr, :input, ref :token_balances));
                     },
-                    ClientAction::CreateNote((
-                        user_private_key, new_note,
-                    )) => {
+                    ClientAction::CreateNote(input) => {
                         server_actions
                             .append(
                                 self
                                     .create_note(
-                                        owner_addr: user_addr,
-                                        owner_private_key: user_private_key,
-                                        note: new_note,
-                                        ref :token_balances,
+                                        owner_addr: user_addr, :input, ref :token_balances,
                                     ),
                             );
                     },
-                    ClientAction::UseNote((
-                        user_private_key, note_to_withdraw,
-                    )) => {
+                    ClientAction::UseNote(input) => {
                         server_actions
                             .append(
-                                self
-                                    .use_note(
-                                        owner_addr: user_addr,
-                                        owner_private_key: user_private_key,
-                                        note: note_to_withdraw,
-                                        ref :token_balances,
-                                    ),
+                                self.use_note(owner_addr: user_addr, :input, ref :token_balances),
                             );
                     },
-                    ClientAction::Withdraw((
-                        withdrawal_target, token, amount,
-                    )) => {
-                        server_actions
-                            .append(
-                                self
-                                    .withdraw(
-                                        :withdrawal_target, :token, :amount, ref :token_balances,
-                                    ),
-                            );
+                    ClientAction::Withdraw(input) => {
+                        server_actions.append(self.withdraw(:input, ref :token_balances));
                     },
                 };
             }
@@ -222,24 +171,23 @@ pub mod Privacy {
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
         /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
         fn set_viewing_key(
-            self: @ContractState,
-            user_addr: ContractAddress,
-            user_private_key: felt252,
-            random: felt252,
+            self: @ContractState, user_addr: ContractAddress, input: SetViewingKeyInput,
         ) -> Array<ServerAction> {
-            assert(user_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
+            let private_key = input.private_key;
+            let random = input.random;
+            assert(private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
-            assert(is_canonical_key(key: user_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+            assert(is_canonical_key(key: private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
 
             // Derive the public key from the private key.
-            let user_public_key = derive_public_key(private_key: user_private_key);
+            let user_public_key = derive_public_key(:private_key);
             assert(user_public_key.is_non_zero(), internal_errors::ZERO_DERIVED_PUBLIC_KEY);
 
             // Encrypt the private key for the compliance.
             let enc_private_key = encrypt_private_key(
                 ephemeral_secret: random,
                 compliance_public_key: self.compliance_public_key.read(),
-                private_key: user_private_key,
+                :private_key,
             );
             assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
@@ -253,13 +201,12 @@ pub mod Privacy {
 
         /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
         fn open_channel(
-            self: @ContractState,
-            sender_addr: ContractAddress,
-            sender_private_key: felt252,
-            recipient_addr: ContractAddress,
-            recipient_public_key: felt252,
-            random: felt252,
+            self: @ContractState, sender_addr: ContractAddress, input: OpenChannelInput,
         ) -> Array<ServerAction> {
+            let sender_private_key = input.sender_private_key;
+            let recipient_addr = input.recipient_addr;
+            let recipient_public_key = input.recipient_public_key;
+            let random = input.random;
             assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
@@ -303,15 +250,14 @@ pub mod Privacy {
 
         /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
         fn open_subchannel(
-            self: @ContractState,
-            sender_addr: ContractAddress,
-            recipient_addr: ContractAddress,
-            recipient_public_key: felt252,
-            channel_key: felt252,
-            index: usize,
-            token: ContractAddress,
-            random: felt252,
+            self: @ContractState, sender_addr: ContractAddress, input: OpenSubchannelInput,
         ) -> Array<ServerAction> {
+            let recipient_addr = input.recipient_addr;
+            let recipient_public_key = input.recipient_public_key;
+            let channel_key = input.channel_key;
+            let index = input.index;
+            let token = input.token;
+            let random = input.random;
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
@@ -358,11 +304,12 @@ pub mod Privacy {
         fn deposit(
             self: @ContractState,
             user_addr: ContractAddress,
-            token: ContractAddress,
-            amount: u128,
+            input: DepositInput,
             ref token_balances: TokenBalances,
         ) -> ServerAction {
             // Assert input is valid.
+            let token = input.token;
+            let amount = input.amount;
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
 
@@ -372,12 +319,11 @@ pub mod Privacy {
         }
 
         fn withdraw(
-            self: @ContractState,
-            withdrawal_target: ContractAddress,
-            token: ContractAddress,
-            amount: u128,
-            ref token_balances: TokenBalances,
+            self: @ContractState, input: WithdrawInput, ref token_balances: TokenBalances,
         ) -> ServerAction {
+            let withdrawal_target = input.withdrawal_target;
+            let token = input.token;
+            let amount = input.amount;
             // Assert valid input.
             assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
@@ -393,27 +339,27 @@ pub mod Privacy {
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
-            owner_private_key: felt252,
-            note: NotePath,
+            input: UseNoteInput,
             ref token_balances: TokenBalances,
         ) -> ServerAction {
+            let owner_private_key = input.owner_private_key;
+            let channel_key = input.channel_key;
+            let token = input.token;
+            let index = input.note_index;
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
-            assert(note.channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-            assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(is_canonical_key(key: owner_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
 
             // Assert subchannel exists and is connected to owner's address and public key.
-            let channel_key = note.channel_key;
             let recipient_public_key = derive_public_key(private_key: owner_private_key);
-            let token = note.token;
             let subchannel_id = compute_subchannel_id(
                 :channel_key, recipient_addr: owner_addr, :recipient_public_key, :token,
             );
             assert(self.subchannel_exists.read(subchannel_id), errors::SUBCHANNEL_NOT_FOUND);
 
             // Compute note id.
-            let index = note.note_index;
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
@@ -438,42 +384,44 @@ pub mod Privacy {
         fn create_note(
             self: @ContractState,
             owner_addr: ContractAddress,
-            owner_private_key: felt252,
-            note: NewNote,
+            input: CreateNoteInput,
             ref token_balances: TokenBalances,
         ) -> ServerAction {
+            let sender_private_key = input.sender_private_key;
+            let recipient_addr = input.recipient_addr;
+            let recipient_public_key = input.recipient_public_key;
+            let token = input.token;
+            let amount = input.amount;
+            let index = input.index;
+            let random = input.random;
             // TODO: Consider adding context to the errors (which note is causing the error).
-            assert(owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
-            assert(note.recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(note.recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
-            assert(note.token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(note.amount.is_non_zero(), errors::ZERO_AMOUNT);
-            assert(note.random.is_non_zero(), errors::ZERO_RANDOM);
-            assert(is_canonical_key(key: owner_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+            assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
+            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
             // Assert random is 120 bits.
-            assert(note.random < TWO_POW_120, errors::RANDOM_EXCEEDS_120_BITS);
+            assert(random < TWO_POW_120, errors::RANDOM_EXCEEDS_120_BITS);
 
             // TODO: Consider impl helper function for common code.
 
             // Compute channel key.
-            let recipient_addr = note.recipient_addr;
-            let recipient_public_key = note.recipient_public_key;
             let channel_key = compute_channel_key(
                 sender_addr: owner_addr,
-                sender_private_key: owner_private_key,
+                :sender_private_key,
                 :recipient_addr,
                 :recipient_public_key,
             );
 
             // Assert subchannel exists.
-            let token = note.token;
             let subchannel_id = compute_subchannel_id(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
             assert(self.subchannel_exists.read(subchannel_id), errors::SUBCHANNEL_NOT_FOUND);
 
             // Assert index is sequential, i.e. the previous note exists.
-            let index = note.index;
             assert(
                 index.is_zero()
                     || self
@@ -485,14 +433,12 @@ pub mod Privacy {
 
             // Compute note values.
             let note_id = compute_note_id(:channel_key, :token, :index);
-            let enc_amount = encrypt_note_amount(
-                :channel_key, random: note.random, amount: note.amount,
-            );
+            let enc_amount = encrypt_note_amount(:channel_key, :random, :amount);
 
             assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
             assert(enc_amount.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
 
-            token_balances.modify_balance(:token, op: BalanceOp::SUBTRACTION, amount: note.amount);
+            token_balances.modify_balance(:token, op: BalanceOp::SUBTRACTION, :amount);
 
             ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount))
         }
