@@ -59,14 +59,9 @@ pub(crate) fn compute_enc_private_key_hash(shared_x: felt252) -> felt252 {
 
 /// Computes the hash used to encrypt the token in `EncSubchannelInfo`.
 ///
-/// Returns `h(ENC_TOKEN_TAG, channel_key, index, 0, random)`
-pub(crate) fn compute_enc_token_hash(
-    channel_key: felt252, index: usize, random: felt252,
-) -> felt252 {
-    hash(
-        [enc_subchannel_info::ENC_TOKEN_TAG, channel_key, index.into(), Zero::zero(), random]
-            .span(),
-    )
+/// Returns `h(ENC_TOKEN_TAG, channel_key, index, 0, salt)`
+pub(crate) fn compute_enc_token_hash(channel_key: felt252, index: usize, salt: felt252) -> felt252 {
+    hash([enc_subchannel_info::ENC_TOKEN_TAG, channel_key, index.into(), Zero::zero(), salt].span())
 }
 
 
@@ -165,13 +160,12 @@ pub(crate) fn compute_note_id(
 /// Computes the hash used to encrypt the note amount.
 /// Assumes `channel_key` and `token` are not zero.
 ///
-/// Returns `h(ENC_AMOUNT_TAG, channel_key, token, index, 0, random)`.
+/// Returns `h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt)`.
 pub(crate) fn compute_enc_amount_hash(
-    channel_key: felt252, token: ContractAddress, index: usize, random: u128,
+    channel_key: felt252, token: ContractAddress, index: usize, salt: u128,
 ) -> felt252 {
     hash(
-        [ENC_AMOUNT_TAG, channel_key, token.into(), index.into(), Zero::zero(), random.into()]
-            .span(),
+        [ENC_AMOUNT_TAG, channel_key, token.into(), index.into(), Zero::zero(), salt.into()].span(),
     )
 }
 

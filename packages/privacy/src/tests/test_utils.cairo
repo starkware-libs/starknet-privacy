@@ -12,17 +12,17 @@ fn test_encrypt_decrypt_note_amount() {
         nonce += 1;
         let channel_key = hash(['CHANNEL_KEY', nonce.into()].span());
         nonce += 1;
-        let random_120_bits_u256: u256 = hash(['RANDOM', nonce.into()].span())
+        let salt_120_bits_u256: u256 = hash(['SALT', nonce.into()].span())
             .into() % TWO_POW_120
             .into();
-        let random_120_bits: u128 = random_120_bits_u256.try_into().unwrap();
+        let salt_120_bits: u128 = salt_120_bits_u256.try_into().unwrap();
         nonce += 1;
         let token: ContractAddress = hash(['TOKEN', nonce.into()].span()).try_into().unwrap();
         nonce += 1;
         let index_u256: u256 = hash(['INDEX', nonce.into()].span()).into();
         let index: usize = (index_u256 % MAX_U32.into()).try_into().unwrap();
         let enc_amount = encrypt_note_amount(
-            :channel_key, :token, :index, random: random_120_bits, amount: *amount,
+            :channel_key, :token, :index, salt: salt_120_bits, amount: *amount,
         );
         let dec_amount = decrypt_note_amount(
             enc_note_value: enc_amount, :channel_key, :token, :index,
