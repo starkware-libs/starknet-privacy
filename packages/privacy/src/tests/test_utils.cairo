@@ -11,13 +11,11 @@ fn test_encrypt_decrypt_note_amount() {
         nonce += 1;
         let channel_key = hash(['CHANNEL_KEY', nonce.into()].span());
         nonce += 1;
-        let random_120_bits_u256: u256 = hash(['RANDOM', nonce.into()].span())
+        let nonce_120_bits_u256: u256 = hash(['NONCE', nonce.into()].span())
             .into() % TWO_POW_120
             .into();
-        let random_120_bits: u128 = random_120_bits_u256.try_into().unwrap();
-        let enc_amount = encrypt_note_amount(
-            :channel_key, random: random_120_bits, amount: *amount,
-        );
+        let nonce_120_bits: u128 = nonce_120_bits_u256.try_into().unwrap();
+        let enc_amount = encrypt_note_amount(:channel_key, nonce: nonce_120_bits, amount: *amount);
         let dec_amount = decrypt_note_amount(enc_note_value: enc_amount, :channel_key);
         assert_eq!(dec_amount, *amount);
     }

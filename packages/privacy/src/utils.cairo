@@ -30,13 +30,13 @@ pub fn GEN_P() -> EcPoint {
 /// Encrypts the subchannel info.
 /// Assumes all the inputs are not zero.
 ///
-/// `enc_subchannel_info = (random, enc_token)`.
-/// `enc_token = h(ENC_TOKEN_TAG, channel_key, random) + token`
+/// `enc_subchannel_info = (nonce, enc_token)`.
+/// `enc_token = h(ENC_TOKEN_TAG, channel_key, nonce) + token`
 pub(crate) fn encrypt_subchannel_info(
-    channel_key: felt252, token: ContractAddress, random: felt252,
+    channel_key: felt252, token: ContractAddress, nonce: felt252,
 ) -> EncSubchannelInfo {
-    let enc_token = compute_enc_token_hash(:channel_key, :random) + token.into();
-    EncSubchannelInfo { random, enc_token }
+    let enc_token = compute_enc_token_hash(:channel_key, :nonce) + token.into();
+    EncSubchannelInfo { nonce, enc_token }
 }
 
 /// Encrypts channel info using ECDH.
@@ -123,23 +123,23 @@ pub(crate) fn is_canonical_key(key: felt252) -> bool {
 }
 
 /// Encrypts the note amount. The result is packed into a single felt252 value.
-/// The first 120 bits are the random value, and the last 128 bits are the encrypted amount.
+/// The first 120 bits are the nonce, and the last 128 bits are the encrypted amount.
 /// The encrypted amount is computed modulo 2^128.
-/// Assumes all the inputs are not zero, and `random` is 120 bits.
+/// Assumes all the inputs are not zero, and `nonce` is 120 bits.
 ///
-/// `enc_amount = packing(random, (h(ENC_AMOUNT_TAG, channel_key, random) + amount) % 2^128)`.
-pub(crate) fn encrypt_note_amount(channel_key: felt252, random: u128, amount: u128) -> felt252 {
-    let enc_amount = (compute_enc_amount_hash(:channel_key, :random) + amount.into())
+/// `enc_amount = packing(nonce, (h(ENC_AMOUNT_TAG, channel_key, nonce) + amount) % 2^128)`.
+pub(crate) fn encrypt_note_amount(channel_key: felt252, nonce: u128, amount: u128) -> felt252 {
+    let enc_amount = (compute_enc_amount_hash(:channel_key, :nonce) + amount.into())
         .into() % TWO_POW_128;
-    packing(value_1: random, value_2: enc_amount.try_into().expect('ENC_AMOUNT_OVERFLOW'))
+    packing(value_1: nonce, value_2: enc_amount.try_into().expect('ENC_AMOUNT_OVERFLOW'))
 }
 
 /// Decrypts the note amount from `EncNote`.
 /// This is the inverse of `encrypt_note_amount`.
 pub(crate) fn decrypt_note_amount(enc_note_value: felt252, channel_key: felt252) -> u128 {
-    let (random, enc_amount) = unpacking(packed_value: enc_note_value);
+    let (nonce, enc_amount) = unpacking(packed_value: enc_note_value);
     let enc_amount_u256: u256 = enc_amount.into(); // already < 2^128 by construction
-    let pad: u256 = compute_enc_amount_hash(channel_key, random).into() % TWO_POW_128;
+    let pad: u256 = compute_enc_amount_hash(:channel_key, :nonce).into() % TWO_POW_128;
     let amount: u256 = (enc_amount_u256 + TWO_POW_128 - pad) % TWO_POW_128;
     amount.try_into().expect('AMOUNT_OVERFLOW')
 }

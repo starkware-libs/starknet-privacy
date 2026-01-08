@@ -264,12 +264,12 @@ pub mod Privacy {
             let channel_key = input.channel_key;
             let index = input.index;
             let token = input.token;
-            let random = input.random;
+            let nonce = input.nonce;
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            assert(nonce.is_non_zero(), errors::ZERO_NONCE);
 
             // Assert channel key is valid for the given sender and recipient.
             let channel_id = compute_channel_id(
@@ -292,7 +292,7 @@ pub mod Privacy {
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
             let subchannel_key = compute_subchannel_key(:channel_key, :index);
-            let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :token, :random);
+            let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :token, :nonce);
             assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
             assert(subchannel_key.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_KEY);
             assert(enc_subchannel_info.is_non_zero(), internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN);
@@ -423,17 +423,17 @@ pub mod Privacy {
             let token = input.token;
             let amount = input.amount;
             let index = input.index;
-            let random = input.random;
+            let nonce = input.nonce;
             // TODO: Consider adding context to the errors (which note is causing the error).
             assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            assert(nonce.is_non_zero(), errors::ZERO_NONCE);
             assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
-            // Assert random is 120 bits.
-            assert(random < TWO_POW_120, errors::RANDOM_EXCEEDS_120_BITS);
+            // Assert nonce is 120 bits.
+            assert(nonce < TWO_POW_120, errors::NONCE_EXCEEDS_120_BITS);
 
             // TODO: Consider impl helper function for common code.
 
@@ -463,7 +463,7 @@ pub mod Privacy {
 
             // Compute note values.
             let note_id = compute_note_id(:channel_key, :token, :index);
-            let enc_amount = encrypt_note_amount(:channel_key, :random, :amount);
+            let enc_amount = encrypt_note_amount(:channel_key, :nonce, :amount);
 
             assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
             assert(enc_amount.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
