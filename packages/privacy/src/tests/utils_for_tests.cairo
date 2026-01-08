@@ -15,7 +15,7 @@ use privacy::interface::{
 use privacy::objects::{
     ClientAction, CreateNoteInput, DepositInput, EncChannelInfo, EncPrivateKey, EncSubchannelInfo,
     OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TokenBalances,
-    UseNoteInput, WithdrawInput,
+    TokenBalancesTrait, UseNoteInput, WithdrawInput,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
@@ -148,6 +148,7 @@ pub(crate) impl UserImpl of UserTrait {
                 || {
                     let mut state = Privacy::contract_state_for_testing();
                     let mut token_balances: TokenBalances = Default::default();
+                    token_balances.add_balance(:token, :amount);
                     let input = WithdrawInput { withdrawal_target, token, amount };
                     state.withdraw(:input, ref :token_balances)
                 },
@@ -352,6 +353,7 @@ pub(crate) impl UserImpl of UserTrait {
                 || {
                     let mut state = Privacy::contract_state_for_testing();
                     let mut token_balances: TokenBalances = Default::default();
+                    token_balances.add_balance(token: note.token, amount: note.amount);
                     state.create_note(owner_addr: *self.address, input: note, ref :token_balances)
                 },
             )
