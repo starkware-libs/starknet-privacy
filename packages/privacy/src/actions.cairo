@@ -25,6 +25,9 @@ pub struct OpenChannelInput {
 }
 
 /// Input for the `OpenSubchannel` action.
+///
+/// Includes a nonce to guarantee one-time key usage, preventing privacy-related data leakage
+/// if a transaction is reverted and the same subchannel key is reused.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct OpenSubchannelInput {
     /// The recipient's address.

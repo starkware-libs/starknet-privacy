@@ -21,8 +21,6 @@ pub const ACTIONS_OUT_OF_ORDER: felt252 = 'ACTIONS_OUT_OF_ORDER';
 pub const INVALID_SIGNATURE: felt252 = 'INVALID_SIGNATURE';
 pub const NEGATIVE_INTERMEDIATE_BALANCE: felt252 = 'NEGATIVE_INTERMEDIATE_BALANCE';
 pub const FINAL_BALANCE_MUST_BE_ZERO: felt252 = 'FINAL_BALANCE_MUST_BE_ZERO';
-// TODO: Remove zero nonce - nonce can be zero.
-pub const ZERO_NONCE: felt252 = 'ZERO_NONCE';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';

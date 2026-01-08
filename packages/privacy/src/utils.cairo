@@ -28,7 +28,10 @@ pub fn GEN_P() -> EcPoint {
 }
 
 /// Encrypts the subchannel info.
-/// Assumes all the inputs are not zero.
+/// Assumes `channel_key` and `token` are not zero.
+///
+/// The nonce is used to guarantee one-time key usage, preventing privacy-related data leakage
+/// if a transaction is reverted and the same subchannel key is reused.
 ///
 /// `enc_subchannel_info = (nonce, enc_token)`.
 /// `enc_token = h(ENC_TOKEN_TAG, channel_key, nonce) + token`
@@ -125,7 +128,10 @@ pub(crate) fn is_canonical_key(key: felt252) -> bool {
 /// Encrypts the note amount. The result is packed into a single felt252 value.
 /// The first 120 bits are the nonce, and the last 128 bits are the encrypted amount.
 /// The encrypted amount is computed modulo 2^128.
-/// Assumes all the inputs are not zero, and `nonce` is 120 bits.
+/// Assumes `channel_key` and `amount` are not zero, and `nonce` is 120 bits.
+///
+/// The nonce is used to guarantee one-time key usage, preventing privacy-related data leakage
+/// if a transaction is reverted and the same note id is reused.
 ///
 /// `enc_amount = packing(nonce, (h(ENC_AMOUNT_TAG, channel_key, nonce) + amount) % 2^128)`.
 pub(crate) fn encrypt_note_amount(channel_key: felt252, nonce: u128, amount: u128) -> felt252 {
