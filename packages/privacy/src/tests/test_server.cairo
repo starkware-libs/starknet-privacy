@@ -196,9 +196,9 @@ fn test_get_subchannel_info() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
-    let random = user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+    let nonce = user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
     let expected_subchannel_info = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, :random);
+        .compute_enc_subchannel_info(recipient: user_2, :token_address, :nonce);
     assert!(expected_subchannel_info.is_non_zero());
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), expected_subchannel_info);
 }

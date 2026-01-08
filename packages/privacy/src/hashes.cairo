@@ -59,9 +59,9 @@ pub(crate) fn compute_enc_private_key_hash(shared_x: felt252) -> felt252 {
 
 /// Computes the hash used to encrypt the token in `EncSubchannelInfo`.
 ///
-/// Returns `h(ENC_TOKEN_TAG, channel_key, random)`
-pub(crate) fn compute_enc_token_hash(channel_key: felt252, random: felt252) -> felt252 {
-    hash([enc_subchannel_info::ENC_TOKEN_TAG, channel_key, random].span())
+/// Returns `h(ENC_TOKEN_TAG, channel_key, nonce)`
+pub(crate) fn compute_enc_token_hash(channel_key: felt252, nonce: felt252) -> felt252 {
+    hash([enc_subchannel_info::ENC_TOKEN_TAG, channel_key, nonce].span())
 }
 
 
@@ -160,9 +160,9 @@ pub(crate) fn compute_note_id(
 /// Computes the hash used to encrypt the note amount.
 /// Assumes `channel_key` is not zero.
 ///
-/// Returns `h(ENC_AMOUNT_TAG, channel_key, random)`.
-pub(crate) fn compute_enc_amount_hash(channel_key: felt252, random: u128) -> felt252 {
-    hash([ENC_AMOUNT_TAG, channel_key, random.into()].span())
+/// Returns `h(ENC_AMOUNT_TAG, channel_key, nonce)`.
+pub(crate) fn compute_enc_amount_hash(channel_key: felt252, nonce: u128) -> felt252 {
+    hash([ENC_AMOUNT_TAG, channel_key, nonce.into()].span())
 }
 
 /// Computes the nullifier.
