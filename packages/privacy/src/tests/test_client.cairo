@@ -2502,6 +2502,8 @@ fn test_compile_client_actions_assertions() {
     };
     let note_2 = CreateNoteInput { index: 1, ..note_1 };
 
+    // TODO: Catch INVALID_SIGNATURE.
+
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();

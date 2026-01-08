@@ -19,6 +19,7 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
+use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{
     derive_public_key, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
@@ -611,13 +612,9 @@ pub(crate) impl TestImpl of TestTrait {
             private_key = Neg::neg(private_key);
         }
         let public_key = derive_public_key(:private_key);
-        User {
-            address: ('USER_ADDRESS' + self.nonce.into()).try_into().unwrap(),
-            privacy: self.privacy,
-            private_key,
-            public_key,
-            nonce: Zero::zero(),
-        }
+        self.nonce += 1;
+        let address = deploy_mock_account(salt: self.nonce.into());
+        User { address, privacy: self.privacy, private_key, public_key, nonce: Zero::zero() }
     }
 
     /// Mock function to generate a new token address.
@@ -839,6 +836,16 @@ pub(crate) fn deploy_privacy(
         views: IViewsDispatcher { contract_address },
         safe_views: IViewsSafeDispatcher { contract_address },
     }
+}
+
+pub(crate) fn deploy_mock_account(salt: felt252) -> ContractAddress {
+    let contract_class_hash = declare(contract: "MockAccount").unwrap().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_account_for_test(
+        class_hash: *contract_class_hash, :deployment_params,
+    )
+        .expect('MockAccount deployment failed');
+    contract_address
 }
 
 /// Returns private_key decrypted from the given `enc_private_key` and

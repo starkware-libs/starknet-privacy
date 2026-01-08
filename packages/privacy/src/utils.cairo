@@ -1,12 +1,13 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
+use privacy::errors;
 use privacy::hashes::{
     compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_private_key_hash,
     compute_enc_sender_addr_hash, compute_enc_token_hash,
 };
 use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
-use starknet::ContractAddress;
 use starknet::storage::{StorageAsPointer, StoragePath};
+use starknet::{ContractAddress, VALIDATED, get_tx_info};
 use starkware_utils::constants::TWO_POW_128;
 
 pub mod constants {
@@ -169,4 +170,18 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
     // TODO: Assert bounds?
     // TODO: Assert value_1 is 120 bits?
     (value_1.try_into().expect('UNPACK1_OVERFLOW'), value_2.try_into().expect('UNPACK2_OVERFLOW'))
+}
+
+#[starknet::interface]
+pub(crate) trait AccountABI<TState> {
+    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
+}
+
+pub(crate) fn assert_valid_signature(user_addr: ContractAddress) {
+    let tx_info = get_tx_info().unbox();
+    let tx_hash = tx_info.transaction_hash;
+    let signature = tx_info.signature;
+    let account_abi = AccountABIDispatcher { contract_address: user_addr };
+    let is_valid = account_abi.is_valid_signature(hash: tx_hash, signature: signature.into());
+    assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
 }
