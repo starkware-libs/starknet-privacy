@@ -22,8 +22,6 @@ pub const INVALID_SIGNATURE: felt252 = 'INVALID_SIGNATURE';
 pub const NEGATIVE_INTERMEDIATE_BALANCE: felt252 = 'NEGATIVE_INTERMEDIATE_BALANCE';
 pub const FINAL_BALANCE_MUST_BE_ZERO: felt252 = 'FINAL_BALANCE_MUST_BE_ZERO';
 pub const INVALID_CALLER: felt252 = 'INVALID_CALLER';
-// TODO: Remove zero salt - salt can be zero.
-pub const ZERO_SALT: felt252 = 'ZERO_SALT';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';
