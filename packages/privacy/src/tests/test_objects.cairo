@@ -35,37 +35,37 @@ fn test_enc_subchannel_info_zero() {
     assert_eq!(enc_subchannel_info_zero.is_non_zero(), false);
     assert_eq!(
         enc_subchannel_info_zero,
-        EncSubchannelInfo { random: Zero::zero(), enc_token: Zero::zero() },
+        EncSubchannelInfo { nonce: Zero::zero(), enc_token: Zero::zero() },
     );
 }
 
 #[test]
 fn test_enc_subchannel_info_is_zero() {
     let mut enc_subchannel_info = EncSubchannelInfo {
-        random: 'RANDOM'.try_into().unwrap(), enc_token: 'ENC_TOKEN'.try_into().unwrap(),
+        nonce: 'NONCE'.try_into().unwrap(), enc_token: 'ENC_TOKEN'.try_into().unwrap(),
     };
     assert_eq!(enc_subchannel_info.is_zero(), false);
-    enc_subchannel_info.random = Zero::zero();
+    enc_subchannel_info.nonce = Zero::zero();
     assert_eq!(enc_subchannel_info.is_zero(), true);
-    enc_subchannel_info.random = 'RANDOM'.try_into().unwrap();
+    enc_subchannel_info.nonce = 'NONCE'.try_into().unwrap();
     enc_subchannel_info.enc_token = Zero::zero();
     assert_eq!(enc_subchannel_info.is_zero(), true);
-    enc_subchannel_info.random = Zero::zero();
+    enc_subchannel_info.nonce = Zero::zero();
     assert_eq!(enc_subchannel_info.is_zero(), true);
 }
 
 #[test]
 fn test_enc_subchannel_info_is_non_zero() {
     let mut enc_subchannel_info = EncSubchannelInfo {
-        random: 'RANDOM'.try_into().unwrap(), enc_token: 'ENC_TOKEN'.try_into().unwrap(),
+        nonce: 'NONCE'.try_into().unwrap(), enc_token: 'ENC_TOKEN'.try_into().unwrap(),
     };
     assert_eq!(enc_subchannel_info.is_non_zero(), true);
-    enc_subchannel_info.random = Zero::zero();
+    enc_subchannel_info.nonce = Zero::zero();
     assert_eq!(enc_subchannel_info.is_non_zero(), false);
-    enc_subchannel_info.random = 'RANDOM'.try_into().unwrap();
+    enc_subchannel_info.nonce = 'NONCE'.try_into().unwrap();
     enc_subchannel_info.enc_token = Zero::zero();
     assert_eq!(enc_subchannel_info.is_non_zero(), false);
-    enc_subchannel_info.random = Zero::zero();
+    enc_subchannel_info.nonce = Zero::zero();
     assert_eq!(enc_subchannel_info.is_non_zero(), false);
 }
 
