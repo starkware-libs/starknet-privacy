@@ -18,7 +18,7 @@ import { decryptChannelInfo } from "../utils/crypto.js";
 import { AddressMap } from "../utils/maps.js";
 import { assertRecipientAddress, assertViewingKey } from "../utils/validation.js";
 import type { PrivacyPool } from "./pool.js";
-import { hashes } from "./helpers.js";
+import { hashes } from "../utils/hashes.js";
 
 export class MockDiscoveryProvider implements DiscoveryProviderInterface {
   private _currentBlock: BlockIdentifier = 0; // TODO: allow block advancement

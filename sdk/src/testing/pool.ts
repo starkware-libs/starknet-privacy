@@ -30,7 +30,8 @@ import {
 import { AdvancedMap, AddressMap } from "../utils/maps.js";
 import { assert } from "console";
 import type { ERC20s } from "./erc20.js";
-import { hashes, Withdrawal } from "./helpers.js";
+import { Withdrawal } from "./helpers.js";
+import { hashes } from "../utils/hashes.js";
 import { isOpen } from "../utils/validation.js";
 
 /** Input type for composite operation: a token and either a Witness (to spend) or an Amount (deposit) */

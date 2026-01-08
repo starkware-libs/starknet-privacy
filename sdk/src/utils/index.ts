@@ -20,3 +20,4 @@ export {
   type ChannelInfo,
   type SymmetricEncryption,
 } from "./crypto.js";
+export { hashes } from "./hashes.js";
