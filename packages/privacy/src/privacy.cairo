@@ -22,7 +22,7 @@ pub mod Privacy {
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_signature, decrypt_note_amount, derive_public_key,
         encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
-        is_canonical_key,
+        is_canonical_key, send_message_to_server,
     };
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
@@ -118,7 +118,7 @@ pub mod Privacy {
         // random.
         fn compile_client_actions(
             self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
-        ) -> Span<ServerAction> {
+        ) {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
@@ -163,7 +163,7 @@ pub mod Privacy {
             }
             token_balances.squash().assert_valid();
             assert_valid_signature(:user_addr);
-            server_actions.span()
+            send_message_to_server(server_actions.span());
         }
     }
 
