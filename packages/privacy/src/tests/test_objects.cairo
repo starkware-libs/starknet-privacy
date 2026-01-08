@@ -45,7 +45,7 @@ fn test_enc_subchannel_info_is_zero() {
     };
     assert_eq!(enc_subchannel_info.is_zero(), false);
     enc_subchannel_info.salt = Zero::zero();
-    assert_eq!(enc_subchannel_info.is_zero(), true);
+    assert_eq!(enc_subchannel_info.is_zero(), false);
     enc_subchannel_info.salt = 'SALT'.try_into().unwrap();
     enc_subchannel_info.enc_token = Zero::zero();
     assert_eq!(enc_subchannel_info.is_zero(), true);
@@ -60,7 +60,7 @@ fn test_enc_subchannel_info_is_non_zero() {
     };
     assert_eq!(enc_subchannel_info.is_non_zero(), true);
     enc_subchannel_info.salt = Zero::zero();
-    assert_eq!(enc_subchannel_info.is_non_zero(), false);
+    assert_eq!(enc_subchannel_info.is_non_zero(), true);
     enc_subchannel_info.salt = 'SALT'.try_into().unwrap();
     enc_subchannel_info.enc_token = Zero::zero();
     assert_eq!(enc_subchannel_info.is_non_zero(), false);

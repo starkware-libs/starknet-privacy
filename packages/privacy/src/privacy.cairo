@@ -279,7 +279,6 @@ pub mod Privacy {
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(salt.is_non_zero(), errors::ZERO_SALT);
 
             // Assert channel key is valid for the given sender and recipient.
             let channel_id = compute_channel_id(
@@ -440,7 +439,6 @@ pub mod Privacy {
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-            assert(salt.is_non_zero(), errors::ZERO_SALT);
             assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
             // Assert salt is 120 bits.
             assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
