@@ -1,10 +1,10 @@
 use core::num::traits::Zero;
-use privacy::errors;
-use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
-use privacy::objects::{
+use privacy::actions::{
     ClientAction, CreateNoteInput, DepositInput, OpenChannelInput, OpenSubchannelInput,
     ServerAction, SetViewingKeyInput, UseNoteInput, WithdrawInput,
 };
+use privacy::errors;
+use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
 use privacy::tests::utils_for_tests::{
     EncNoteTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info,
     decrypt_private_key, decrypt_subchannel_token, spy_messages_to_server_actions,

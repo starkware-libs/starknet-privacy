@@ -2,6 +2,10 @@ use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+use privacy::actions::{
+    ClientAction, CreateNoteInput, DepositInput, OpenChannelInput, OpenSubchannelInput,
+    ServerAction, SetViewingKeyInput, UseNoteInput, WithdrawInput,
+};
 use privacy::hashes::{
     compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
     compute_enc_private_key_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
@@ -13,9 +17,7 @@ use privacy::interface::{
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
-    ClientAction, CreateNoteInput, DepositInput, EncChannelInfo, EncPrivateKey, EncSubchannelInfo,
-    OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TokenBalances,
-    TokenBalancesTrait, UseNoteInput, WithdrawInput,
+    EncChannelInfo, EncPrivateKey, EncSubchannelInfo, TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
