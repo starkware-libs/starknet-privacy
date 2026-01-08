@@ -687,14 +687,6 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
-    // Catch ZERO_SALT.
-    let result = user_1
-        .safe_transfer(
-            notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateNoteInput { salt: Zero::zero(), ..create_note_input }].span(),
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
-
     // Catch SALT_EXCEEDS_120_BITS.
     let result = user_1
         .safe_transfer(
@@ -1207,6 +1199,47 @@ fn test_open_subchannel_self_channel() {
 }
 
 #[test]
+fn test_open_subchannel_zero_salt() {
+    let mut test = Default::default();
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    let token_address = test.mock_new_token();
+    user.open_channel_e2e(recipient: user);
+
+    let salt = 0;
+    let index = 0;
+    let actions = user.internal_open_subchannel(recipient: user, :token_address, :index, :salt);
+    let expected_subchannel_key = user.compute_subchannel_key(recipient: user, index: 0);
+    let expected_enc_subchannel_info = user
+        .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, :salt);
+    let expected_subchannel_id = user.compute_subchannel_id(recipient: user, :token_address);
+    assert!(expected_enc_subchannel_info.is_non_zero());
+    assert!(expected_subchannel_id.is_non_zero());
+    assert!(expected_subchannel_key.is_non_zero());
+    let subchannel_exists_storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id].span(),
+    );
+    let subchannel_tokens_storage_path_felt = map_entry_address(
+        map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
+    );
+    let expected_actions = array![
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt, value: true.into(),
+            },
+        ),
+        ServerAction::WriteIfZeroSubchannel(
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt,
+                value: expected_enc_subchannel_info,
+            },
+        ),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
+}
+
+#[test]
 #[feature("safe_dispatcher")]
 fn test_open_subchannel_assertions() {
     let mut test = Default::default();
@@ -1241,11 +1274,6 @@ fn test_open_subchannel_assertions() {
     let result = user_1
         .safe_open_subchannel(recipient: user_2, token_address: Zero::zero(), :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
-
-    // Catch ZERO_SALT.
-    let result = user_1
-        .safe_open_subchannel(recipient: user_2, :token_address, :index, salt: Zero::zero());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
 
     // Catch ZERO_RECIPIENT_PUBLIC_KEY.
     let mut user_zero_public_key = user_2;
@@ -1773,15 +1801,20 @@ fn test_create_note_zero_amount() {
 }
 
 #[test]
-#[should_panic(expected: 'ZERO_SALT')]
 fn test_create_note_zero_salt() {
     let mut test: Test = Default::default();
-    let user_1 = test.new_user();
-    let user_2 = test.new_user();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
     let token_address = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_address, subchannel_index: 0);
     let note = user_1
         .new_note(recipient: user_2, :token_address, amount: 1, index: 0, salt: Zero::zero());
-    user_1.create_note(:note);
+    let actions = user_1.internal_create_note(:note);
+    let expected_enc_note = user_1
+        .compute_enc_note(recipient: user_2, :token_address, index: 0, amount: 1, salt: note.salt);
+    assert_eq!(actions, expected_enc_note.to_server_actions());
 }
 
 #[test]
