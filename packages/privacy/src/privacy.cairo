@@ -13,7 +13,7 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        BalanceOp, ClientAction, ClientActionTrait, CreateNoteInput, DepositInput, EncChannelInfo,
+        ClientAction, ClientActionTrait, CreateNoteInput, DepositInput, EncChannelInfo,
         EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo, OpenChannelInput,
         OpenSubchannelInput, ServerAction, SetViewingKeyInput, TokenBalances, TokenBalancesTrait,
         UseNoteInput, WithdrawInput,
@@ -161,7 +161,7 @@ pub mod Privacy {
                     },
                 };
             }
-            assert(token_balances.is_valid(), errors::TOKEN_BALANCES_MISMATCH);
+            token_balances.squash().assert_valid();
             assert_valid_signature(:user_addr);
             server_actions.span()
         }
@@ -313,7 +313,7 @@ pub mod Privacy {
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
 
-            token_balances.modify_balance(:token, op: BalanceOp::ADDITION, :amount);
+            token_balances.add_balance(:token, :amount);
 
             ServerAction::TransferFrom((user_addr, token, amount))
         }
@@ -329,7 +329,7 @@ pub mod Privacy {
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
 
-            token_balances.modify_balance(:token, op: BalanceOp::SUBTRACTION, :amount);
+            token_balances.subtract_balance(:token, :amount);
 
             ServerAction::TransferTo((withdrawal_target, token, amount))
         }
@@ -369,12 +369,13 @@ pub mod Privacy {
             // Decrypt note amount.
             let amount = decrypt_note_amount(:enc_note_value, :channel_key);
             // TODO: Sanity assert amount is non zero?
-            token_balances.modify_balance(:token, op: BalanceOp::ADDITION, :amount);
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
 
             assert(nullifier.is_non_zero(), internal_errors::ZERO_NULLIFIER);
+
+            token_balances.add_balance(:token, :amount);
 
             ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into()))
         }
@@ -438,7 +439,7 @@ pub mod Privacy {
             assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
             assert(enc_amount.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
 
-            token_balances.modify_balance(:token, op: BalanceOp::SUBTRACTION, :amount);
+            token_balances.subtract_balance(:token, :amount);
 
             ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount))
         }
