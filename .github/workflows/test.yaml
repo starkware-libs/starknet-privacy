@@ -4,7 +4,7 @@ on:
   workflow_call:
 
 jobs:
-  test:
+  unit_tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -28,3 +28,24 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage/coverage.lcov
           fail_ci_if_error: false
+
+  flow_tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: "2.12.2"
+
+      - name: Install asdf
+        run: scripts/install_asdf.sh
+
+      - name: Install starknet-devnet
+        run: |
+          asdf plugin add starknet-devnet
+          asdf install starknet-devnet 0.7.1
+          asdf global starknet-devnet 0.7.1
+
+      - name: Run flow tests
+        run: scripts/python_tests.sh
