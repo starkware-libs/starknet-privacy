@@ -40,29 +40,30 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
       const channel = decryptChannelInfo(encryptedChannel, viewingKey);
       const key = channel.key;
 
-      for (let slot = 0; slot < NoteNonce.MAX_SLOTS; slot++) {
-        let sequence = 0;
-        let token: StarknetAddressBigint | false;
-        while ((token = this.pool.getToken(key, new NoteNonce(slot, sequence++))) !== false) {
-          for (let noteSlot = 0; noteSlot < NoteNonce.MAX_SLOTS; noteSlot++) {
-            let note: { amount: Amount; open: boolean } | false;
-            let nonce = new NoteNonce(noteSlot, 0);
-            while ((note = this.pool.getNote(new Witness(key, nonce), token)) !== false) {
-              if (this.pool.getNullifier(new Witness(key, nonce), token, viewingKey) !== false) {
-                nonce = nonce.increment();
-                continue;
-              }
-
-              result.get(token)!.push({
-                id: hashes.noteId(new Witness(key, nonce), token),
-                amount: note.amount,
-                witness: new Witness(key, nonce),
-                sender: channel.sender,
-                open: note.open,
-              });
-              nonce = nonce.increment();
-            }
+      // Iterate token sequences
+      let tokenSequence = 0;
+      let token: StarknetAddressBigint | false;
+      while ((token = this.pool.getToken(key, new NoteNonce(tokenSequence++))) !== false) {
+        // Iterate note sequences for this token
+        let noteSequence = 0;
+        let note: { amount: Amount; open: boolean } | false;
+        while (
+          (note = this.pool.getNote(new Witness(key, new NoteNonce(noteSequence)), token)) !== false
+        ) {
+          const nonce = new NoteNonce(noteSequence);
+          if (this.pool.getNullifier(new Witness(key, nonce), token, viewingKey) !== false) {
+            noteSequence++;
+            continue;
           }
+
+          result.get(token)!.push({
+            id: hashes.noteId(new Witness(key, nonce), token),
+            amount: note.amount,
+            witness: new Witness(key, nonce),
+            sender: channel.sender,
+            open: note.open,
+          });
+          noteSequence++;
         }
       }
     }
@@ -84,37 +85,24 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
     for (const recipient of recipients) {
       const addr = assertRecipientAddress(recipient);
       const key = hashes.channelKey(address, viewingKey, addr, this.pool.getPublicKey(addr));
-      // TODO: simulate the logarithmic search?
-      const nonces: TokenNonce[] = [];
-      const tokens = new AddressMap<NoteNonce[]>(() => []);
-      for (let slot = 0; slot < TokenNonce.MAX_SLOTS; slot++) {
-        let sequence = 0;
-        let token: StarknetAddress | false;
-        let nonce: TokenNonce;
-        while (
-          ((nonce = new TokenNonce(slot, sequence++)),
-          (token = this.pool.getToken(key, nonce)),
-          token !== false)
-        ) {
-          for (let noteSlot = 0; noteSlot < NoteNonce.MAX_SLOTS; noteSlot++) {
-            let noteSequence = 0;
-            let nonce: NoteNonce;
-            while (
-              ((nonce = new NoteNonce(noteSlot, noteSequence++)),
-              this.pool.getNote(new Witness(key, nonce), token) !== false)
-            ) {
-              // just iterate until no note exists
-            }
-            if (nonce.sequence > 0) {
-              tokens.get(token)!.push(nonce.decrement());
-            }
-          }
+
+      // Find the highest token nonce sequence
+      let tokenSequence = 0;
+      let token: StarknetAddress | false;
+      const tokens = new AddressMap<NoteNonce>();
+
+      while ((token = this.pool.getToken(key, new TokenNonce(tokenSequence))) !== false) {
+        // Find the highest note nonce sequence for this token
+        let noteSequence = 0;
+        while (this.pool.getNote(new Witness(key, new NoteNonce(noteSequence)), token) !== false) {
+          noteSequence++;
         }
-        if (nonce.sequence > 0) {
-          nonces.push(nonce.decrement());
-        }
+        tokens.set(token, new NoteNonce(noteSequence));
+        tokenSequence++;
       }
-      result.set(addr, new Channel(key, nonces, tokens));
+
+      const tokenNonce = new TokenNonce(tokenSequence);
+      result.set(addr, new Channel(key, tokenNonce, tokens));
     }
 
     return { timestamp: this._currentBlock, channels: result };

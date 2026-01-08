@@ -12,7 +12,7 @@ import type {
 } from "../interfaces.js";
 import { Witness } from "../interfaces.js";
 import { BigNumberish } from "starknet";
-import { NoteNonce } from "../internal/index.js";
+import { NoteNonce, TokenNonce } from "../internal/index.js";
 import {
   encryptChannelInfo,
   encryptSymmetric,
@@ -118,7 +118,7 @@ export class PrivacyPool {
     to: StarknetAddress,
     channelKey: Hash,
     token: StarknetAddress,
-    nonce: NoteNonce
+    nonce: TokenNonce
   ): void {
     this.assertRegistered(from);
 
@@ -140,7 +140,7 @@ export class PrivacyPool {
     this.subchannelIds.add(hashes.subchannelId(channelKey, to, toPublicKey, token));
   }
 
-  getToken(channelKey: Hash, nonce: NoteNonce): StarknetAddressBigint | false {
+  getToken(channelKey: Hash, nonce: TokenNonce): StarknetAddressBigint | false {
     const subchannelKey = hashes.subchannelKey(channelKey, nonce);
     const encrypted = this.subchannels.get(subchannelKey);
     if (!encrypted) return false;
