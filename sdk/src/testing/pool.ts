@@ -4,11 +4,18 @@
 
 import type {
   Amount,
+  CreateNoteAction,
+  DepositAction,
   Note,
   NoteId,
   Open,
+  OpenChannelAction,
+  OpenTokenChannelAction,
+  SetViewingKeyAction,
   StarknetAddress,
   StarknetAddressBigint,
+  UseNoteAction,
+  WithdrawAction,
 } from "../interfaces.js";
 import { Witness } from "../interfaces.js";
 import { BigNumberish } from "starknet";
@@ -21,7 +28,7 @@ import {
   type ChannelKey,
   type EncChannelInfo,
   type Hash,
-  type PrivateKey,
+  type PrivateKey as ViewingKey,
   type PublicKey,
   type SymmetricEncryption,
   derivePublicKey,
@@ -29,22 +36,7 @@ import {
 import { AdvancedMap, AddressMap } from "../utils/maps.js";
 import { assert, isOpen } from "../utils/validation.js";
 import type { ERC20s } from "./erc20.js";
-import { Withdrawal } from "./helpers.js";
 import { hashes } from "../utils/hashes.js";
-
-/** Input type for composite operation: a token and either a Witness (to spend) or an Amount (deposit) */
-export type CompositeInput = {
-  token: StarknetAddress;
-  witnessOrAmount: Witness | Amount;
-};
-
-/** Output type for composite operation */
-export type CompositeOutput = {
-  token: StarknetAddress;
-  recipient: StarknetAddress;
-  context: NoteNonce | typeof Withdrawal | NoteId;
-  amount: Amount | Open;
-};
 
 type OpenNote = {
   r: bigint;
@@ -73,11 +65,7 @@ export class PrivacyPool {
     private erc20s: ERC20s
   ) {}
 
-  private assertRegistered(address: StarknetAddress): void {
-    if (!this.publicKeys.has(address)) {
-      throw new Error(`Address ${address} is not registered`);
-    }
-  }
+  // ============ Public Methods ============
 
   isRegistered(address: StarknetAddress): boolean {
     return this.publicKeys.has(address);
@@ -86,21 +74,6 @@ export class PrivacyPool {
   getPublicKey(address: StarknetAddress): PublicKey {
     this.assertRegistered(address);
     return this.publicKeys.get(address)!;
-  }
-
-  // TODO: use 'register' with private key to simulate how it'll actually be.
-  register(address: StarknetAddress, privateKey: PrivateKey): void {
-    this.publicKeys.set(address, derivePublicKey(privateKey));
-  }
-
-  setChannel(from: StarknetAddress, fromPrivateKey: PrivateKey, to: StarknetAddress): ChannelKey {
-    this.assertRegistered(from);
-    const toPublicKey = this.getPublicKey(to);
-    const channelKey = hashes.channelKey(from, fromPrivateKey, to, toPublicKey);
-    const channelInfo = encryptChannelInfo(toPublicKey, channelKey, from);
-    this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
-    this.channelIds.add(hashes.channelId(channelKey, from, to, toPublicKey));
-    return channelKey;
   }
 
   getChannels(address: StarknetAddress): EncChannelInfo[] {
@@ -113,7 +86,159 @@ export class PrivacyPool {
     );
   }
 
-  setToken(
+  getToken(channelKey: Hash, nonce: TokenNonce): StarknetAddressBigint | false {
+    const subchannelKey = hashes.subchannelKey(channelKey, nonce);
+    const encrypted = this.subchannels.get(subchannelKey);
+    if (!encrypted) return false;
+    return decryptSymmetric(encrypted, channelKey);
+  }
+
+  doesSubchannelExist(
+    channelKey: BigNumberish,
+    address: StarknetAddress,
+    token: StarknetAddress
+  ): boolean {
+    return this.subchannelIds.has(
+      hashes.subchannelId(toBigInt(channelKey), address, this.getPublicKey(address), token)
+    );
+  }
+
+  getNote(witness: Witness, token: StarknetAddress): { amount: Amount; open: boolean } | false {
+    const noteId = hashes.noteId(new Witness(witness.channelKey, witness.nonce), token);
+    const note = this.notes.get(noteId);
+    if (note === undefined) return false;
+    if (note.r == 1n) {
+      return { amount: (note as OpenNote).amount, open: true };
+    }
+    return {
+      amount: decryptSymmetric(note as SymmetricEncryption, witness.channelKey),
+      open: false,
+    };
+  }
+
+  getNullifier(witness: Witness, token: StarknetAddress, ownerPrivateKey: ViewingKey): boolean {
+    return this.nullifiers.has(hashes.nullifier(witness, token, ownerPrivateKey));
+  }
+
+  execute(
+    sender: StarknetAddress,
+    senderViewingKey: ViewingKey,
+    actions: {
+      setViewingKey?: SetViewingKeyAction;
+      openChannels?: OpenChannelAction[];
+      openTokenChannels?: OpenTokenChannelAction[];
+      deposits?: DepositAction[];
+      useNotes?: UseNoteAction[];
+      createNotes?: CreateNoteAction[];
+      withdraws?: WithdrawAction[];
+    }
+  ) {
+    // Validate before mutating any state
+    this.validateTokenTotals(actions);
+
+    // 1. Register user if setViewingKey is requested
+    if (actions.setViewingKey) {
+      this.register(sender, senderViewingKey);
+    }
+
+    // 2. Open channels for recipients
+    if (actions.openChannels) {
+      for (const action of actions.openChannels) {
+        this.setChannel(sender, senderViewingKey, action.recipient);
+      }
+    }
+
+    // 3. Open token channels
+    if (actions.openTokenChannels) {
+      for (const action of actions.openTokenChannels) {
+        const channel = action.context;
+        const nonce = channel.incrementTokenNonce();
+        this.setToken(sender, action.recipient, channel.key, action.token, nonce);
+      }
+    }
+
+    // 4. Execute operations directly
+
+    // Process deposits: transfer to pool, then create note or fill open note
+    if (actions.deposits) {
+      for (const action of actions.deposits) {
+        this.deposit(sender, action.token, action.amount);
+
+        if (action.context) {
+          // Normal deposit: create a new note
+          const nonce = action.context.incrementNoteNonce(action.token);
+          this.createNote(
+            sender,
+            senderViewingKey,
+            action.recipient,
+            action.token,
+            nonce,
+            action.amount
+          );
+        } else {
+          // Deposit to existing open note
+          this.fillOpenNote(action.recipient as NoteId, action.token, action.amount);
+        }
+      }
+    }
+
+    // Process useNotes: spend notes (marks nullifier)
+    if (actions.useNotes) {
+      for (const action of actions.useNotes) {
+        this.useNote(sender, senderViewingKey, action.token, action.note.witness);
+      }
+    }
+
+    // Process createNotes: create new notes for recipients
+    if (actions.createNotes) {
+      for (const action of actions.createNotes) {
+        const nonce = action.context.incrementNoteNonce(action.token);
+        this.createNote(
+          sender,
+          senderViewingKey,
+          action.recipient,
+          action.token,
+          nonce,
+          action.amount
+        );
+      }
+    }
+
+    // Process withdraws: transfer from pool to recipient
+    if (actions.withdraws) {
+      for (const action of actions.withdraws) {
+        this.withdraw(action.token, action.recipient, action.amount);
+      }
+    }
+  }
+
+  // ============ Private Methods ============
+
+  private assertRegistered(address: StarknetAddress): void {
+    if (!this.publicKeys.has(address)) {
+      throw new Error(`Address ${address} is not registered`);
+    }
+  }
+
+  private register(address: StarknetAddress, privateKey: ViewingKey): void {
+    this.publicKeys.set(address, derivePublicKey(privateKey));
+  }
+
+  private setChannel(
+    from: StarknetAddress,
+    fromPrivateKey: ViewingKey,
+    to: StarknetAddress
+  ): ChannelKey {
+    this.assertRegistered(from);
+    const toPublicKey = this.getPublicKey(to);
+    const channelKey = hashes.channelKey(from, fromPrivateKey, to, toPublicKey);
+    const channelInfo = encryptChannelInfo(toPublicKey, channelKey, from);
+    this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
+    this.channelIds.add(hashes.channelId(channelKey, from, to, toPublicKey));
+    return channelKey;
+  }
+
+  private setToken(
     from: StarknetAddress,
     to: StarknetAddress,
     channelKey: Hash,
@@ -140,26 +265,9 @@ export class PrivacyPool {
     this.subchannelIds.add(hashes.subchannelId(channelKey, to, toPublicKey, token));
   }
 
-  getToken(channelKey: Hash, nonce: TokenNonce): StarknetAddressBigint | false {
-    const subchannelKey = hashes.subchannelKey(channelKey, nonce);
-    const encrypted = this.subchannels.get(subchannelKey);
-    if (!encrypted) return false;
-    return decryptSymmetric(encrypted, channelKey);
-  }
-
-  doesSubchannelExist(
-    channelKey: BigNumberish,
-    address: StarknetAddress,
-    token: StarknetAddress
-  ): boolean {
-    return this.subchannelIds.has(
-      hashes.subchannelId(toBigInt(channelKey), address, this.getPublicKey(address), token)
-    );
-  }
-
-  useNote(
+  private useNote(
     owner: StarknetAddress,
-    ownerPrivateKey: PrivateKey,
+    ownerPrivateKey: ViewingKey,
     token: StarknetAddress,
     witness: Witness
   ): bigint {
@@ -185,9 +293,9 @@ export class PrivacyPool {
     return amount;
   }
 
-  createNote(
+  private createNote(
     from: StarknetAddress,
-    fromPrivateKey: PrivateKey,
+    fromPrivateKey: ViewingKey,
     to: StarknetAddress,
     token: StarknetAddress,
     nonce: NoteNonce,
@@ -221,81 +329,70 @@ export class PrivacyPool {
     };
   }
 
-  composite(
-    from: StarknetAddress,
-    fromPrivateKey: PrivateKey,
-    inputs: CompositeInput[],
-    outputs: CompositeOutput[]
-  ) {
-    const total = new AddressMap<Amount>(() => 0n);
-
-    for (const input of inputs) {
-      let amount = 0n;
-      if (input.witnessOrAmount instanceof Witness) {
-        amount = this.useNote(from, fromPrivateKey, input.token, input.witnessOrAmount);
-      } else {
-        this.erc20s.get(input.token).transfer(from, this.poolAddress, input.witnessOrAmount);
-        amount = input.witnessOrAmount;
-      }
-      total.set(input.token, total.get(input.token)! + amount);
-    }
-
-    for (const output of outputs) {
-      assert(
-        !isOpen(output.amount) || output.context !== Withdrawal,
-        `Can't create an open note and a withdrawal at the same time`
-      );
-      const amountNum = isOpen(output.amount) ? 0n : output.amount;
-      total.set(output.token, total.get(output.token)! - amountNum);
-      if (output.context instanceof NoteNonce) {
-        this.createNote(
-          from,
-          fromPrivateKey,
-          output.recipient,
-          output.token,
-          output.context,
-          output.amount
-        );
-      } else if (output.context === Withdrawal) {
-        this.erc20s
-          .get(output.token)
-          .transfer(this.poolAddress, output.recipient, output.amount as Amount);
-      } else {
-        assert(
-          !isOpen(output.amount),
-          `Can't create an open note and a deposit to one note at the same time`
-        );
-        const note = this.notes.get(toBigInt(output.context))! as OpenNote;
-        assert(note, `Note ${output.context} does not exist`);
-        assert(note.r == 1n, `Note ${output.context} is not open`);
-        assert(
-          note.token == toBigInt(output.token),
-          `Note ${output.context} is not for token ${output.token}`
-        );
-        assert(note.amount == 0n, `Note ${output.context} has already been filled`);
-        note.amount = output.amount as Amount;
-      }
-    }
-
-    for (const [token, amount] of total.entries()) {
-      assert(amount == 0n, `Total amount for token ${token} is not 0`);
-    }
+  private deposit(from: StarknetAddress, token: StarknetAddress, amount: Amount): void {
+    this.erc20s.get(token).transfer(from, this.poolAddress, amount);
   }
 
-  getNote(witness: Witness, token: StarknetAddress): { amount: Amount; open: boolean } | false {
-    const noteId = hashes.noteId(new Witness(witness.channelKey, witness.nonce), token);
-    const note = this.notes.get(noteId);
-    if (note === undefined) return false;
-    if (note.r == 1n) {
-      return { amount: (note as OpenNote).amount, open: true };
-    }
-    return {
-      amount: decryptSymmetric(note as SymmetricEncryption, witness.channelKey),
-      open: false,
+  private withdraw(token: StarknetAddress, recipient: StarknetAddress, amount: Amount): void {
+    this.erc20s.get(token).transfer(this.poolAddress, recipient, amount);
+  }
+
+  private fillOpenNote(noteId: NoteId, token: StarknetAddress, amount: Amount): void {
+    const note = this.notes.get(toBigInt(noteId))! as OpenNote;
+    assert(note, `Note ${noteId} does not exist`);
+    assert(note.r == 1n, `Note ${noteId} is not open`);
+    assert(note.token == toBigInt(token), `Note ${noteId} is not for token ${token}`);
+    assert(note.amount == 0n, `Note ${noteId} has already been filled`);
+    note.amount = amount;
+  }
+
+  private validateTokenTotals(actions: {
+    deposits?: DepositAction[];
+    useNotes?: UseNoteAction[];
+    createNotes?: CreateNoteAction[];
+    withdraws?: WithdrawAction[];
+  }): void {
+    const runningTotals = new Map<string, bigint>();
+
+    const updateTotal = (token: StarknetAddress, delta: bigint) => {
+      const tokenKey = String(toBigInt(token));
+      const current = runningTotals.get(tokenKey) ?? 0n;
+      const updated = current + delta;
+      assert(updated >= 0n, `Running total for token ${tokenKey} went negative: ${updated}`);
+      runningTotals.set(tokenKey, updated);
     };
-  }
 
-  getNullifier(witness: Witness, token: StarknetAddress, ownerPrivateKey: PrivateKey): boolean {
-    return this.nullifiers.has(hashes.nullifier(witness, token, ownerPrivateKey));
+    // Deposits are balanced: money in, then note created (net 0)
+    // No validation needed for deposits - they're self-balancing
+
+    // Using notes increases total
+    if (actions.useNotes) {
+      for (const use of actions.useNotes) {
+        const noteData = this.getNote(use.note.witness, use.token);
+        assert(noteData, `Note not found`);
+        assert(!noteData.open, `Cannot use open note as input`);
+        updateTotal(use.token, noteData.amount);
+      }
+    }
+
+    // Creating notes decreases total (open notes count as 0)
+    if (actions.createNotes) {
+      for (const create of actions.createNotes) {
+        const amount = isOpen(create.amount) ? 0n : create.amount;
+        updateTotal(create.token, -amount);
+      }
+    }
+
+    // Withdrawals decrease total
+    if (actions.withdraws) {
+      for (const withdraw of actions.withdraws) {
+        updateTotal(withdraw.token, -withdraw.amount);
+      }
+    }
+
+    // Validate all totals end at 0
+    for (const [tokenKey, total] of runningTotals.entries()) {
+      assert(total === 0n, `Final total for token ${tokenKey} is ${total}, expected 0`);
+    }
   }
 }

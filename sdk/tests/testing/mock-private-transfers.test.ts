@@ -5,9 +5,10 @@ import {
   consoleLogCallback,
   debugHint,
   isDebugEnabled,
+  hashes,
 } from "../../src/utils/index.js";
-import type { PrivateRecipient, Channel } from "../../src/interfaces.js";
-import { open, SetupRequirement } from "../../src/interfaces.js";
+import type { PrivateRecipient } from "../../src/interfaces.js";
+import { Channel, open, SetupRequirement } from "../../src/interfaces.js";
 
 // Test addresses and keys (must be valid hex addresses convertible to BigInt)
 const POOL_ADDRESS = "0x1";
@@ -25,6 +26,16 @@ describe("MockPrivateTransfers", () => {
   let pool: PrivacyPool;
   let alice: MockPrivateTransfers;
   let bob: MockPrivateTransfers;
+
+  // Helper to compute channel and set context on a PrivateRecipient
+  const setContext = (
+    from: { address: string; key: bigint },
+    recipient: PrivateRecipient
+  ): void => {
+    const toPublicKey = pool.getPublicKey(recipient.address);
+    const channelKey = hashes.channelKey(from.address, from.key, recipient.address, toPublicKey);
+    recipient.context = new Channel(channelKey);
+  };
 
   // Show debug hint after tests complete (only if debug is disabled)
   afterAll(() => {
@@ -263,18 +274,18 @@ describe("MockPrivateTransfers", () => {
       // First Bob needs to register so Alice can set up channel to him
       await bob.register();
 
-      // Create recipient - context will be populated by setup()
-      const bobRecipient: PrivateRecipient = {
-        address: BOB_ADDRESS,
-        context: undefined!,
-      };
+      // Alice registers first so she can compute channels
+      await alice.register();
 
-      // Use builder to register, setup channel, setup token, and deposit - all in one batch
+      // Create recipient and compute context (both users must be registered)
+      const bobRecipient: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
+      setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, bobRecipient);
+
+      // Use builder to setup channel, setup token, and deposit
       // prettier-ignore
       await alice
         .build()
-        .register()
-        .setup(bobRecipient) // populates bobRecipient.context with Channel
+        .setup(BOB_ADDRESS)
         .with(STRK)
           .setup(bobRecipient)
           .deposit(100n, bobRecipient)
@@ -297,20 +308,22 @@ describe("MockPrivateTransfers", () => {
       //     .transfer({ recipient: bob, amount: 20n })
       //   .execute();
 
-      // Bob needs to be registered first so Alice can set up channel to him
-      await bob.build().register().execute();
+      // Both users register first
+      await bob.register();
+      await alice.register();
 
-      // Create recipients - context will be populated by setup()
+      // Create recipients and compute contexts
       const aliceSelf: PrivateRecipient = { address: ALICE_ADDRESS, context: undefined! };
       const bobRecipient: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
+      setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, aliceSelf);
+      setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, bobRecipient);
 
-      // Alice registers, sets up channels, tokens, and deposits - all via builder
+      // Alice sets up channels, tokens, and deposits - all via builder
       // prettier-ignore
       await alice
         .build()
-        .register()
-        .setup(aliceSelf) // channel to self for deposits
-        .setup(bobRecipient) // channel to Bob for transfers
+        .setup(ALICE_ADDRESS) // channel to self for deposits
+        .setup(BOB_ADDRESS) // channel to Bob for transfers
         .with(STRK)
           .setup(aliceSelf)
           .setup(bobRecipient)
@@ -353,13 +366,14 @@ describe("MockPrivateTransfers", () => {
     });
 
     it("builder fails when input/output amounts don't match", async () => {
-      // Setup: Alice deposits 100n STRK to herself
+      // Setup: Alice registers and deposits 100n STRK to herself
+      await alice.register();
       const aliceSelf: PrivateRecipient = { address: ALICE_ADDRESS, context: undefined! };
+      setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, aliceSelf);
 
       await alice
         .build()
-        .register()
-        .setup(aliceSelf)
+        .setup(ALICE_ADDRESS)
         .with(STRK)
         .setup(aliceSelf)
         .deposit(100n, aliceSelf)
@@ -370,20 +384,18 @@ describe("MockPrivateTransfers", () => {
       expect(strkNote).toBeDefined();
 
       // Try to transfer only 50n (leaving 50n unaccounted for) - should fail
+      // Pool validates that final total per token is 0 (input 100n - output 50n = 50n != 0)
       await expect(
         alice.build().with(STRK).inputs(strkNote).withdraw({ amount: 50n }).execute()
-      ).rejects.toThrow(/input\/output mismatch.*input=100.*output=50/);
+      ).rejects.toThrow(/Final total for token.*is 50.*expected 0/);
     });
 
     it("builder: register, setup channel, and deposit in one batch", async () => {
       // Bob needs to be registered first
       await bob.register();
 
-      // Create recipient - context will be populated by setup()
-      const bobRecipient: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
-
       // Alice does everything in one builder call
-      const results = await alice.build().register().setup(bobRecipient).execute();
+      const results = await alice.build().register().setup(BOB_ADDRESS).execute();
 
       expect(results.length).toBeGreaterThan(0);
       // Verify Alice is registered (not requiring Register)
@@ -393,24 +405,26 @@ describe("MockPrivateTransfers", () => {
       );
       expect(aliceReq).not.toBe(SetupRequirement.Register);
 
-      // Verify context was populated
-      expect(bobRecipient.context).toBeDefined();
-
       // Verify channel was set up by discovering it
       const channels = alice.discoverChannels(BOB_ADDRESS);
       expect(channels.channels.has(BOB_ADDRESS)).toBe(true);
     });
 
     it("open notes: Bob creates open note, Alice deposits into it", async () => {
-      // Both users register and set up channels
+      // Both users register
+      await bob.register();
+      await alice.register();
+
+      // Create recipients and compute contexts
       const bobSelf: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
       const aliceToBob: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
+      setContext({ address: BOB_ADDRESS, key: BOB_PRIVATE_KEY }, bobSelf);
+      setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, aliceToBob);
 
       // prettier-ignore
       await bob
         .build()
-        .register()
-        .setup(bobSelf) // channel to self
+        .setup(BOB_ADDRESS) // channel to self
         .with(STRK)
           .setup(bobSelf)
         .execute();
@@ -418,8 +432,7 @@ describe("MockPrivateTransfers", () => {
       // prettier-ignore
       await alice
         .build()
-        .register()
-        .setup(aliceToBob) // channel to Bob
+        .setup(BOB_ADDRESS) // channel to Bob
         .with(STRK)
           .setup(aliceToBob)
         .execute();

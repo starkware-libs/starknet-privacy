@@ -108,6 +108,43 @@ export interface ProveInterface {
   prove(calls: AllowArray<Call>): Promise<Proof>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export type SetViewingKeyAction = {};
+
+export type OpenChannelAction = {
+  recipient: StarknetAddress;
+};
+
+export type OpenTokenChannelAction = {
+  recipient: StarknetAddress;
+  context: Channel;
+  token: StarknetAddress;
+};
+
+export type DepositAction = {
+  recipient: StarknetAddress | NoteId;
+  context?: Channel;
+  token: StarknetAddress;
+  amount: Amount;
+};
+
+export type UseNoteAction = {
+  token: StarknetAddress;
+  note: Note;
+};
+
+export type CreateNoteAction = {
+  recipient: StarknetAddress;
+  context: Channel;
+  token: StarknetAddress;
+  amount: Amount | Open;
+};
+
+export type WithdrawAction = {
+  recipient: StarknetAddress;
+  token: StarknetAddress;
+  amount: Amount;
+};
 /**
  * Main interface for clients to use. It is stateless.
  * The methods call the proof provider to generate a proof and prepare a public call to send to Starknet.
@@ -147,72 +184,6 @@ export interface PrivateTransfers {
   ): Promise<SetupRequirement>;
 
   /**
-   * register the account in the privacy pool
-   */
-  register(): Promise<CallAndProof>;
-
-  /**
-   * if an intended recipient doesn't have a Channel associated with it
-   */
-  setupChannel(
-    recipient: StarknetAddress
-  ): Promise<{ invocationData: CallAndProof; channel: Channel }>;
-
-  /**
-   * if an intended recipient doesn't have the token in its channel. TBD: expose tokens in the channel.
-   */
-  setupToken(
-    recipient: PrivateRecipient,
-    token: StarknetAddress
-  ): Promise<{ invocationData: CallAndProof; channel: Channel }>;
-
-  /**
-   * deposit tokens into the privacy pool
-   *
-   * v1: the recipient is the same as the account address or has setup a semi transparent note for the deposit.
-   */
-  deposit(params: {
-    token: StarknetAddress;
-    amount: Amount;
-    recipient: PrivateRecipient | NoteId; // note id is for open notes.
-  }): Promise<PrivateInvocationResult>;
-
-  /**
-   * Withdraw tokens from the privacy pool
-   *
-   * @param amount if not provided, the total amount of the notes is used. if provided and is lower than the total amount of notes, the remainder note is returned. In that case, the channel must be provided
-   *
-   * v1: the inputs size is 1 and the amount must match the output amount.
-   */
-  withdraw(params: {
-    token: StarknetAddress;
-    inputs: Note[];
-    recipient?: StarknetAddress;
-    amount?: Amount;
-    selfChannel?: Channel;
-  }): Promise<PrivateInvocationResult>;
-
-  /**
-   * transfer tokens from the privacy pool to a single recipient.
-   * @param amount if not provided, the total amount of the notes is used. if provided and is lower than the total amount of notes, the remainder note is returned
-   *
-   * Note: one can send notes with total that exceeds the amount ot transfer, that way a single note is returned as remainder that replaces them.
-   */
-  transfer(params: {
-    token: StarknetAddress;
-    inputs: Note[];
-    recipient: PrivateRecipient;
-    amount?: Amount | Open;
-    selfChannel?: Channel;
-  }): Promise<PrivateInvocationResult>;
-
-  /**
-   * Create a builder to batch multiple operations into a single execution.
-   * See {@link PrivateTransfersBuilder} for detailed examples.
-   */
-  build(): PrivateTransfersBuilder;
-
-  /**
    * Discover unspent notes per token
    *
    */
@@ -228,6 +199,16 @@ export interface PrivateTransfers {
     timestamp: BlockIdentifier;
     channels: AddressMap<Channel>;
   };
+
+  execute(actions: {
+    setViewingKey?: SetViewingKeyAction;
+    openChannels?: OpenChannelAction[];
+    openTokenChannels?: OpenTokenChannelAction[];
+    deposits?: DepositAction[];
+    useNotes?: UseNoteAction[];
+    createNotes?: CreateNoteAction[];
+    withdraws?: WithdrawAction[];
+  }): Promise<CallAndProof>;
 }
 
 // ============ Builder Types ============
@@ -342,11 +323,8 @@ export interface PrivateTransfersBuilder {
   /** Register the account in the privacy pool */
   register(): this;
 
-  /**
-   * Setup initial channel for a new recipient.
-   * The recipient's context will be populated with the Channel during execute().
-   */
-  setup(recipient: PrivateRecipient): this;
+  /** Setup initial channel for a new recipient. */
+  setup(recipient: StarknetAddress): this;
 
   /** Add an arbitrary Starknet call that will run on starknet after the private operations are executed */
   call(call: Call): this;

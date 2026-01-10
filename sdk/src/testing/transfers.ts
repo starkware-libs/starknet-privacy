@@ -5,19 +5,28 @@
 import type {
   Amount,
   CallAndProof,
+  CreateNoteAction,
+  DepositAction,
   Note,
   NoteId,
   Open,
+  OpenChannelAction,
+  OpenTokenChannelAction,
   PrivateInvocationResult,
   PrivateRecipient,
   PrivateTransfers,
   PrivateTransfersBuilder,
+  SetViewingKeyAction,
   StarknetAddress,
+  UseNoteAction,
+  WithdrawAction,
 } from "../interfaces.js";
 import { Channel, SetupRequirement } from "../interfaces.js";
 import type { BlockIdentifier } from "starknet";
 import type { PrivateKey } from "../utils/crypto.js";
+import { hashes } from "../utils/hashes.js";
 import { AddressMap } from "../utils/maps.js";
+import { createMockCallAndProof } from "./helpers.js";
 import type { PrivacyPool } from "./pool.js";
 import { MockDiscoveryProvider } from "./discovery.js";
 import { MockPrivateTransfersBuilder } from "./builders.js";
@@ -58,9 +67,16 @@ export class MockPrivateTransfers implements PrivateTransfers {
   async setupChannel(
     recipient: StarknetAddress
   ): Promise<{ invocationData: CallAndProof; channel: Channel }> {
-    const privateRecipient: PrivateRecipient = { address: recipient, context: undefined! };
-    const results = await this.build().setup(privateRecipient).execute();
-    return { invocationData: results[0], channel: privateRecipient.context };
+    const results = await this.build().setup(recipient).execute();
+    // Compute the channel key
+    const recipientPublicKey = this.pool.getPublicKey(recipient);
+    const channelKey = hashes.channelKey(
+      this.userAddress,
+      this.userViewingKey,
+      recipient,
+      recipientPublicKey
+    );
+    return { invocationData: results[0], channel: new Channel(channelKey) };
   }
 
   async setupToken(
@@ -154,8 +170,21 @@ export class MockPrivateTransfers implements PrivateTransfers {
     });
   }
 
+  async execute(actions: {
+    setViewingKey?: SetViewingKeyAction;
+    openChannels?: OpenChannelAction[];
+    openTokenChannels?: OpenTokenChannelAction[];
+    deposits?: DepositAction[];
+    useNotes?: UseNoteAction[];
+    createNotes?: CreateNoteAction[];
+    withdraws?: WithdrawAction[];
+  }): Promise<CallAndProof> {
+    this.pool.execute(this.userAddress, this.userViewingKey, actions);
+    return createMockCallAndProof();
+  }
+
   build(): PrivateTransfersBuilder {
-    return new MockPrivateTransfersBuilder(this.pool, this.userAddress, this.userViewingKey);
+    return new MockPrivateTransfersBuilder(this, this.userAddress);
   }
 
   discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> } = {}): {
