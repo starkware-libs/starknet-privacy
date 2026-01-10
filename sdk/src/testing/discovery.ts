@@ -11,7 +11,7 @@ import type {
   StarknetAddressBigint,
   ViewingKey,
 } from "../interfaces.js";
-import { Channel, Witness } from "../interfaces.js";
+import { Channel, SetupRequirement, Witness } from "../interfaces.js";
 import type { BlockIdentifier } from "starknet";
 import { NoteNonce, TokenNonce } from "../internal/index.js";
 import { decryptChannelInfo } from "../utils/crypto.js";
@@ -120,25 +120,25 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
     return { timestamp: this._currentBlock, channels: result };
   }
 
-  async setupRequirement(
+  async discoverRequirement(
     address: StarknetAddress,
     viewingKey: ViewingKey,
-    recipient: PrivateRecipient, // TODO: change to StarknetAddress
+    recipient: PrivateRecipient,
     token: StarknetAddress
-  ): Promise<{ register: boolean; initial: boolean; token: boolean }> {
+  ): Promise<SetupRequirement> {
     assertViewingKey(viewingKey);
     const addr = assertRecipientAddress(recipient);
     if (!this.pool.isRegistered(addr)) {
-      return { register: true, initial: false, token: false };
+      return SetupRequirement.Register;
     }
     const key = hashes.channelKey(address, viewingKey, addr, this.pool.getPublicKey(addr));
 
     if (!this.pool.doesChannelExist(key, address, addr)) {
-      return { register: false, initial: true, token: false };
+      return SetupRequirement.SetupChannel;
     }
     if (!this.pool.doesSubchannelExist(key, addr, token)) {
-      return { register: false, initial: false, token: true };
+      return SetupRequirement.SetupToken;
     }
-    return { register: false, initial: false, token: false };
+    return SetupRequirement.Ready;
   }
 }

@@ -14,7 +14,7 @@ import type {
   PrivateTransfersBuilder,
   StarknetAddress,
 } from "../interfaces.js";
-import { Channel } from "../interfaces.js";
+import { Channel, SetupRequirement } from "../interfaces.js";
 import type { BlockIdentifier } from "starknet";
 import type { PrivateKey } from "../utils/crypto.js";
 import { AddressMap } from "../utils/maps.js";
@@ -28,25 +28,26 @@ export class MockPrivateTransfers implements PrivateTransfers {
 
   // User credentials (set via configure)
   private userAddress: StarknetAddress = "0x0";
-  private userPrivateKey: PrivateKey = 0n;
+  private userViewingKey: PrivateKey = 0n;
   private discoveryProvider: MockDiscoveryProvider;
 
   constructor(pool: PrivacyPool, userAddress: StarknetAddress, userPrivateKey: PrivateKey) {
     this.pool = pool;
     this.discoveryProvider = new MockDiscoveryProvider(pool);
     this.userAddress = userAddress;
-    this.userPrivateKey = userPrivateKey;
+    this.userViewingKey = userPrivateKey;
   }
 
-  async isRegistered(): Promise<boolean> {
-    return !(
-      await this.discoveryProvider.setupRequirement(
-        this.userAddress,
-        this.userPrivateKey,
-        { address: this.userAddress, context: undefined! },
-        0x0
-      )
-    ).register;
+  async discoverRequirement(
+    recipient: PrivateRecipient,
+    token: StarknetAddress
+  ): Promise<SetupRequirement> {
+    return this.discoveryProvider.discoverRequirement(
+      this.userAddress,
+      this.userViewingKey,
+      recipient,
+      token
+    );
   }
 
   async register(): Promise<CallAndProof> {
@@ -54,19 +55,7 @@ export class MockPrivateTransfers implements PrivateTransfers {
     return results[0];
   }
 
-  async setupRequirement(
-    recipient: PrivateRecipient,
-    token: StarknetAddress
-  ): Promise<{ register: boolean; initial: boolean; token: boolean }> {
-    return this.discoveryProvider.setupRequirement(
-      this.userAddress,
-      this.userPrivateKey,
-      recipient,
-      token
-    );
-  }
-
-  async setupInitial(
+  async setupChannel(
     recipient: StarknetAddress
   ): Promise<{ invocationData: CallAndProof; channel: Channel }> {
     const privateRecipient: PrivateRecipient = { address: recipient, context: undefined! };
@@ -166,14 +155,14 @@ export class MockPrivateTransfers implements PrivateTransfers {
   }
 
   build(): PrivateTransfersBuilder {
-    return new MockPrivateTransfersBuilder(this.pool, this.userAddress, this.userPrivateKey);
+    return new MockPrivateTransfersBuilder(this.pool, this.userAddress, this.userViewingKey);
   }
 
   discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> } = {}): {
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
   } {
-    return this.discoveryProvider.discoverNotes(this.userAddress, this.userPrivateKey, params);
+    return this.discoveryProvider.discoverNotes(this.userAddress, this.userViewingKey, params);
   }
 
   discoverChannels(..._recipients: (StarknetAddress | PrivateRecipient)[]): {
@@ -182,7 +171,7 @@ export class MockPrivateTransfers implements PrivateTransfers {
   } {
     return this.discoveryProvider.discoverChannels(
       this.userAddress,
-      this.userPrivateKey,
+      this.userViewingKey,
       ..._recipients
     );
   }

@@ -29,6 +29,21 @@ export type ViewingKey = BigNumberish;
 
 export type StarknetAddress = BigNumberish;
 
+/**
+ * Result of setupRequirement - indicates what setup is needed before a transfer.
+ * Values are ordered by priority (higher value = more setup needed).
+ */
+export enum SetupRequirement {
+  /** Ready to transfer - no setup needed */
+  Ready = 0,
+  /** Need to setup the token subchannel */
+  SetupToken = 1,
+  /** Need to setup initial channel (and token) */
+  SetupChannel = 2,
+  /** Need to register (and setup channel and token) */
+  Register = 3,
+}
+
 /** A Starknet address normalized to bigint (for use as Map keys, etc.) */
 export type StarknetAddressBigint = bigint;
 
@@ -119,13 +134,6 @@ export interface PrivateTransfers {
   readonly user: StarknetAddress;
   */
 
-  isRegistered(): Promise<boolean>;
-
-  /**
-   * register the account in the privacy pool
-   */
-  register(): Promise<CallAndProof>;
-
   /**
    * given a recipient and token, check if the recipient has a Channel associated with it and if the token is in the channel.
    * @returns {initial: boolean, token: boolean}
@@ -133,15 +141,20 @@ export interface PrivateTransfers {
    * token: true if the token is in the channel
    * @throws if the account or recipient is not registered
    */
-  setupRequirement(
+  discoverRequirement(
     recipient: PrivateRecipient,
     token: StarknetAddress
-  ): Promise<{ register: boolean; initial: boolean; token: boolean }>;
+  ): Promise<SetupRequirement>;
+
+  /**
+   * register the account in the privacy pool
+   */
+  register(): Promise<CallAndProof>;
 
   /**
    * if an intended recipient doesn't have a Channel associated with it
    */
-  setupInitial(
+  setupChannel(
     recipient: StarknetAddress
   ): Promise<{ invocationData: CallAndProof; channel: Channel }>;
 
@@ -388,13 +401,12 @@ export interface DiscoveryProviderInterface {
    *
    * @param recipient - The recipient to check the setup requirements for. if self, check for 'address'
    */
-  // TODO: fix to return an enum
-  setupRequirement(
+  discoverRequirement(
     address: StarknetAddress,
     viewingKey: ViewingKey,
     recipient: PrivateRecipient,
     token: StarknetAddress
-  ): Promise<{ register: boolean; initial: boolean; token: boolean }>;
+  ): Promise<SetupRequirement>;
 }
 
 type BlobT = string | Uint8Array;
