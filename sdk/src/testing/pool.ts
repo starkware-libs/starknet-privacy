@@ -14,7 +14,6 @@ import { Witness } from "../interfaces.js";
 import { BigNumberish } from "starknet";
 import { NoteNonce } from "../internal/index.js";
 import {
-  hash,
   encryptChannelInfo,
   encryptSymmetric,
   decryptSymmetric,
@@ -28,11 +27,10 @@ import {
   derivePublicKey,
 } from "../utils/crypto.js";
 import { AdvancedMap, AddressMap } from "../utils/maps.js";
-import { assert } from "console";
+import { assert, isOpen } from "../utils/validation.js";
 import type { ERC20s } from "./erc20.js";
 import { Withdrawal } from "./helpers.js";
 import { hashes } from "../utils/hashes.js";
-import { isOpen } from "../utils/validation.js";
 
 /** Input type for composite operation: a token and either a Witness (to spend) or an Amount (deposit) */
 export type CompositeInput = {
@@ -64,9 +62,9 @@ export class PrivacyPool {
     keyConverter: (key) => `${key.address}:${key.publicKey}`,
     defaultFactory: () => [],
   });
-  private channelExists = new Set<Hash>();
-  private tokens = new Map<Hash, SymmetricEncryption>();
-  private tokenExists = new Set<Hash>();
+  private channelIds = new Set<Hash>();
+  private subchannels = new Map<Hash, SymmetricEncryption>();
+  private subchannelIds = new Set<Hash>();
   private notes = new Map<Hash, SymmetricEncryption | OpenNote>();
   private nullifiers = new Set<Hash>();
 
@@ -98,10 +96,10 @@ export class PrivacyPool {
   setChannel(from: StarknetAddress, fromPrivateKey: PrivateKey, to: StarknetAddress): ChannelKey {
     this.assertRegistered(from);
     const toPublicKey = this.getPublicKey(to);
-    const channelKey = hash(from, fromPrivateKey, to, toPublicKey);
+    const channelKey = hashes.channelKey(from, fromPrivateKey, to, toPublicKey);
     const channelInfo = encryptChannelInfo(toPublicKey, channelKey, from);
     this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
-    this.channelExists.add(hashes.channelExists(channelKey, from, to, toPublicKey));
+    this.channelIds.add(hashes.channelId(channelKey, from, to, toPublicKey));
     return channelKey;
   }
 
@@ -110,8 +108,8 @@ export class PrivacyPool {
   }
 
   doesChannelExist(channelKey: BigNumberish, from: StarknetAddress, to: StarknetAddress): boolean {
-    return this.channelExists.has(
-      hashes.channelExists(toBigInt(channelKey), from, to, this.getPublicKey(to))
+    return this.channelIds.has(
+      hashes.channelId(toBigInt(channelKey), from, to, this.getPublicKey(to))
     );
   }
 
@@ -125,36 +123,37 @@ export class PrivacyPool {
     this.assertRegistered(from);
 
     assert(
-      this.channelExists.has(hash(channelKey, from, to, this.getPublicKey(to))),
+      this.channelIds.has(hashes.channelId(channelKey, from, to, this.getPublicKey(to))),
       `Channel does not exist between ${from} and ${to}`
     );
     assert(
-      nonce.sequence == 0 || this.tokens.has(hash(channelKey, nonce.slot, nonce.sequence - 1)),
+      nonce.sequence == 0 ||
+        this.subchannels.has(hashes.subchannelKey(channelKey, nonce.decrement())),
       `Nonce ${nonce} is not sequential`
     );
     const toPublicKey = this.getPublicKey(to);
 
-    const tokenKey = hashes.tokenKey(channelKey, nonce);
-    assert(!this.tokens.has(tokenKey), `Token ${token} already exists`);
+    const subchannelKey = hashes.subchannelKey(channelKey, nonce);
+    assert(!this.subchannels.has(subchannelKey), `Token ${token} already exists`);
 
-    this.tokens.set(tokenKey, encryptSymmetric(channelKey, token));
-    this.tokenExists.add(hashes.tokenExists(channelKey, to, toPublicKey, token));
+    this.subchannels.set(subchannelKey, encryptSymmetric(channelKey, token));
+    this.subchannelIds.add(hashes.subchannelId(channelKey, to, toPublicKey, token));
   }
 
   getToken(channelKey: Hash, nonce: NoteNonce): StarknetAddressBigint | false {
-    const tokenKey = hashes.tokenKey(channelKey, nonce);
-    const encrypted = this.tokens.get(tokenKey);
+    const subchannelKey = hashes.subchannelKey(channelKey, nonce);
+    const encrypted = this.subchannels.get(subchannelKey);
     if (!encrypted) return false;
     return decryptSymmetric(encrypted, channelKey);
   }
 
-  doesTokenExists(
+  doesSubchannelExist(
     channelKey: BigNumberish,
     address: StarknetAddress,
     token: StarknetAddress
   ): boolean {
-    return this.tokenExists.has(
-      hashes.tokenExists(toBigInt(channelKey), address, this.getPublicKey(address), token)
+    return this.subchannelIds.has(
+      hashes.subchannelId(toBigInt(channelKey), address, this.getPublicKey(address), token)
     );
   }
 
@@ -166,7 +165,7 @@ export class PrivacyPool {
   ): bigint {
     const ownerPublicKey = this.getPublicKey(owner);
     assert(
-      this.tokenExists.has(hash(witness.channelKey, owner, ownerPublicKey, token)),
+      this.subchannelIds.has(hashes.subchannelId(witness.channelKey, owner, ownerPublicKey, token)),
       `Token ${token} does not exist`
     );
     const noteId = hashes.noteId(witness, token);
@@ -195,8 +194,8 @@ export class PrivacyPool {
     amount: Amount | Open
   ): Note {
     const channelKey = hashes.channelKey(from, fromPrivateKey, to, this.getPublicKey(to));
-    const tokenKey = hashes.tokenExists(channelKey, to, this.getPublicKey(to), token);
-    assert(this.tokenExists.has(tokenKey), `Token ${token} does not exist`);
+    const subchannelId = hashes.subchannelId(channelKey, to, this.getPublicKey(to), token);
+    assert(this.subchannelIds.has(subchannelId), `Token ${token} does not exist`);
     assert(
       nonce.sequence == 0 ||
         this.notes.has(hashes.noteId(new Witness(channelKey, nonce.decrement()), token)),

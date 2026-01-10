@@ -39,11 +39,20 @@ export function withLogging<T extends object>(target: T, name: string, callback:
   });
 }
 
+/** Environment variable to enable debug logging */
+export const DEBUG_ENV_VAR = "SDK_DEBUG";
+
+/** Check if debug logging is enabled */
+export const isDebugEnabled = () => Boolean(process.env[DEBUG_ENV_VAR]);
+
 /**
  * Console logging callback for use with withLogging.
  * Logs method calls to console in format: [TargetName.method] (arg1, arg2, ...) => result
+ * Only logs when SDK_DEBUG environment variable is set.
  */
 export const consoleLogCallback: LogCallback = (targetName, methodName, args, result) => {
+  if (!isDebugEnabled()) return;
+
   const format = (value: unknown): string => {
     const replacer = (_: string, v: unknown) => (typeof v === "bigint" ? v.toString() : v);
     return JSON.stringify(value, replacer);
@@ -52,3 +61,9 @@ export const consoleLogCallback: LogCallback = (targetName, methodName, args, re
   const resultStr = result !== undefined ? ` => ${format(result)}` : "";
   console.log(`[${targetName}.${methodName}] (${argsStr})${resultStr}`);
 };
+
+/** No-op logging callback - does nothing */
+export const noopLogCallback: LogCallback = () => {};
+
+/** Helper message to show when tests fail */
+export const debugHint = `\nTip: Run with ${DEBUG_ENV_VAR}=1 for detailed logging`;

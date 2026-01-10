@@ -4,7 +4,7 @@
 
 import type { Amount, StarknetAddress } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
-import { assert } from "console";
+import { assert } from "../utils/validation.js";
 
 export class ERC20 {
   private balances = new AddressMap<Amount>(() => 0n);

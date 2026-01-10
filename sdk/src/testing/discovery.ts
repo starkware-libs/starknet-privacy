@@ -136,7 +136,7 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
     if (!this.pool.doesChannelExist(key, address, addr)) {
       return { register: false, initial: true, token: false };
     }
-    if (!this.pool.doesTokenExists(key, addr, token)) {
+    if (!this.pool.doesSubchannelExist(key, addr, token)) {
       return { register: false, initial: false, token: true };
     }
     return { register: false, initial: false, token: false };

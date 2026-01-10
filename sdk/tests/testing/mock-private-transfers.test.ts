@@ -1,6 +1,11 @@
-import { describe, expect, it, beforeEach } from "vitest";
+import { describe, expect, it, beforeEach, afterAll } from "vitest";
 import { ERC20s, PrivacyPool, MockPrivateTransfers } from "../../src/testing/index.js";
-import { withLogging, consoleLogCallback } from "../../src/utils/index.js";
+import {
+  withLogging,
+  consoleLogCallback,
+  debugHint,
+  isDebugEnabled,
+} from "../../src/utils/index.js";
 import type { PrivateRecipient, Channel } from "../../src/interfaces.js";
 import { open } from "../../src/interfaces.js";
 
@@ -21,10 +26,17 @@ describe("MockPrivateTransfers", () => {
   let alice: MockPrivateTransfers;
   let bob: MockPrivateTransfers;
 
+  // Show debug hint after tests complete (only if debug is disabled)
+  afterAll(() => {
+    if (!isDebugEnabled()) {
+      console.log(debugHint);
+    }
+  });
+
   beforeEach(() => {
     // Shared pool and ERC20s for all users
     erc20s = new ERC20s();
-    // Wrap pool with logging for debugging (comment out consoleLogCallback to disable)
+    // Wrap pool with logging for debugging (logs only when SDK_DEBUG=1)
     pool = withLogging(new PrivacyPool(POOL_ADDRESS, erc20s), "PrivacyPool", consoleLogCallback);
 
     // Create transfers instances for each user
@@ -242,16 +254,16 @@ describe("MockPrivateTransfers", () => {
       expect(strkNote).toBeDefined();
       expect(ethNote).toBeDefined();
 
-      // Now use builder to transfer to Bob (matching the interface doc example)
+      // Now use builder to transfer to Bob (must use full amounts - no change support yet)
       // prettier-ignore
       await alice
         .build()
         .with(STRK)
           .inputs(strkNote)
-          .transfer({ recipient: bobRecipient, amount: 50n })
+          .transfer({ recipient: bobRecipient, amount: 100n }) // Full amount
         .with(ETH)
           .inputs(ethNote)
-          .transfer({ recipient: bobRecipient, amount: 25n })
+          .transfer({ recipient: bobRecipient, amount: 50n }) // Full amount
         .execute();
 
       // Bob should have notes
@@ -260,9 +272,32 @@ describe("MockPrivateTransfers", () => {
       const bobEthNotes = bobNotes.notes.get(ETH) ?? [];
 
       expect(bobStrkNotes.length).toBe(1);
-      expect(bobStrkNotes[0].amount).toBe(50n);
+      expect(bobStrkNotes[0].amount).toBe(100n);
       expect(bobEthNotes.length).toBe(1);
-      expect(bobEthNotes[0].amount).toBe(25n);
+      expect(bobEthNotes[0].amount).toBe(50n);
+    });
+
+    it("builder fails when input/output amounts don't match", async () => {
+      // Setup: Alice deposits 100n STRK to herself
+      const aliceSelf: PrivateRecipient = { address: ALICE_ADDRESS, context: undefined! };
+
+      await alice
+        .build()
+        .register()
+        .setup(aliceSelf)
+        .with(STRK)
+        .setup(aliceSelf)
+        .deposit(100n, aliceSelf)
+        .execute();
+
+      // Get Alice's note
+      const strkNote = (alice.discoverNotes().notes.get(STRK) ?? [])[0];
+      expect(strkNote).toBeDefined();
+
+      // Try to transfer only 50n (leaving 50n unaccounted for) - should fail
+      await expect(
+        alice.build().with(STRK).inputs(strkNote).withdraw({ amount: 50n }).execute()
+      ).rejects.toThrow(/input\/output mismatch.*input=100.*output=50/);
     });
 
     it("builder: register, setup channel, and deposit in one batch", async () => {
@@ -319,7 +354,6 @@ describe("MockPrivateTransfers", () => {
 
       // Bob discovers his open note
       const bobNotes = bob.discoverNotes();
-      console.log("Bob notes", bobNotes, STRK, bobNotes.notes.get(STRK));
       const openNotes = (bobNotes.notes.get(STRK) ?? []).filter((n) => n.open);
       expect(openNotes.length).toBe(1);
       expect(openNotes[0].open).toBe(true);

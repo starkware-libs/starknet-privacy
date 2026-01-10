@@ -11,10 +11,46 @@ export type PrivateKey = BigNumberish;
 // ============ Hash Function ============
 
 /**
- * Poseidon hash of multiple felts
+ * Convert a short string (up to 31 chars) to a felt, matching Cairo's short string literals.
+ * e.g., 'channel_key:v1' in Cairo becomes the same bigint.
  */
-export function hash(...values: BigNumberish[]): Hash {
-  return ec.starkCurve.poseidonHashMany(values.map((v) => num.toBigInt(v)));
+export function shortStringToFelt(str: string): bigint {
+  if (str.length > 31) {
+    throw new Error(`Short string must be <= 31 chars, got ${str.length}`);
+  }
+  return BigInt("0x" + Buffer.from(str).toString("hex"));
+}
+
+/**
+ * Check if a string is a numeric string (hex like "0x..." or decimal digits only).
+ */
+function isNumericString(str: string): boolean {
+  return /^0x[0-9a-fA-F]+$/.test(str) || /^[0-9]+$/.test(str);
+}
+
+/**
+ * Poseidon hash of multiple felts.
+ * String arguments are converted as follows:
+ * - Numeric strings (hex "0x..." or decimal) are converted via num.toBigInt
+ * - Short ASCII strings (domain tags like "channel_key:v1") are converted as Cairo short strings
+ *
+ * Note: This matches Cairo's hash function which does:
+ *   PoseidonTrait::new().update_with(poseidon_hash_span(data)).finalize()
+ * This is effectively h(h(data)) - a double hash.
+ */
+export function hash(...values: (BigNumberish | string)[]): Hash {
+  const feltValues = values.map((v) => {
+    if (typeof v === "string") {
+      // Numeric strings should be converted to bigint, not as short strings
+      return isNumericString(v) ? num.toBigInt(v) : shortStringToFelt(v);
+    }
+    return num.toBigInt(v);
+  });
+
+  // Match Cairo's hash function: h(h(data))
+  // First hash the array, then hash the result
+  const firstHash = ec.starkCurve.poseidonHashMany(feltValues);
+  return ec.starkCurve.poseidonHashMany([firstHash]);
 }
 
 // ============ Channel Info Encryption ============

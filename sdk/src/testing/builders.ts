@@ -18,6 +18,7 @@ import { Channel } from "../interfaces.js";
 import type { Call } from "starknet";
 import { TokenNonce } from "../internal/index.js";
 import { type PrivateKey } from "../utils/crypto.js";
+import { assert, isOpen, toBigInt } from "../utils/index.js";
 import type { CompositeInput, CompositeOutput, PrivacyPool } from "./pool.js";
 import { createMockCallAndProof } from "./helpers.js";
 import { Withdrawal } from "./index.js";
@@ -218,8 +219,43 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
       }
     }
 
-    // 5. Call composite once with all gathered inputs and outputs
+    // 5. Validate input/output balance per token before calling composite
     if (allInputs.length > 0 || allOutputs.length > 0) {
+      const inputTotals = new Map<string, bigint>();
+      const outputTotals = new Map<string, bigint>();
+
+      for (const input of allInputs) {
+        const tokenKey = String(toBigInt(input.token));
+        // For witness inputs, we need to look up the note amount from the pool
+        if (typeof input.witnessOrAmount !== "bigint") {
+          // This is a Witness - we need to get the note amount from the pool
+          const note = this.pool.getNote(input.witnessOrAmount, input.token);
+          assert(note, `Note not found for witness in token ${tokenKey}`);
+          assert(!note.open, `Cannot use open note as input`);
+          inputTotals.set(tokenKey, (inputTotals.get(tokenKey) ?? 0n) + note.amount);
+        } else {
+          inputTotals.set(tokenKey, (inputTotals.get(tokenKey) ?? 0n) + input.witnessOrAmount);
+        }
+      }
+
+      for (const output of allOutputs) {
+        const tokenKey = String(toBigInt(output.token));
+        const amount = isOpen(output.amount) ? 0n : output.amount;
+        outputTotals.set(tokenKey, (outputTotals.get(tokenKey) ?? 0n) + amount);
+      }
+
+      // Check each token balances
+      const allTokens = new Set([...inputTotals.keys(), ...outputTotals.keys()]);
+      for (const tokenKey of allTokens) {
+        const inputTotal = inputTotals.get(tokenKey) ?? 0n;
+        const outputTotal = outputTotals.get(tokenKey) ?? 0n;
+        assert(
+          inputTotal === outputTotal,
+          `Builder: input/output mismatch for token ${tokenKey}: input=${inputTotal}, output=${outputTotal}. ` +
+            `Use remainder() to send change back to self.`
+        );
+      }
+
       this.pool.composite(this.userAddress, this.userPrivateKey, allInputs, allOutputs);
       results.push(createMockCallAndProof());
     }

@@ -5,6 +5,19 @@ import { MAX_VIEWING_KEY } from "../interfaces.js";
 // ============ Validation Utilities ============
 
 /**
+ * Asserts a condition is truthy, throwing an error with the given message if not.
+ * Browser-compatible alternative to Node's assert.
+ * @param condition - The condition to check
+ * @param message - Error message if condition is falsy
+ * @throws Error if condition is falsy
+ */
+export function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) {
+    throw new Error(message);
+  }
+}
+
+/**
  * Asserts that a viewing key is valid (in range [1, MAX_VIEWING_KEY]).
  * @throws Error if the viewing key is out of range
  */
