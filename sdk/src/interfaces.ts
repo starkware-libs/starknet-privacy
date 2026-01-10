@@ -254,7 +254,7 @@ export interface TokenOperationsBuilder {
   done(): PrivateTransfersBuilder;
 
   /** Execute all queued operations */
-  execute(): Promise<CallAndProof[]>;
+  execute(): Promise<CallAndProof>;
 }
 
 /**
@@ -333,7 +333,7 @@ export interface PrivateTransfersBuilder {
   with(token: StarknetAddress): TokenOperationsBuilder;
 
   /** Execute all queued operations and return the results */
-  execute(): Promise<CallAndProof[]>;
+  execute(): Promise<CallAndProof>;
 }
 
 ////// The following are more likely to change /////////

@@ -29,7 +29,7 @@ import { AddressMap } from "../utils/maps.js";
 import { createMockCallAndProof } from "./helpers.js";
 import type { PrivacyPool } from "./pool.js";
 import { MockDiscoveryProvider } from "./discovery.js";
-import { MockPrivateTransfersBuilder } from "./builders.js";
+import { PrivateTransfersBuilderImpl } from "../internal/builders.js";
 
 export class MockPrivateTransfers implements PrivateTransfers {
   private pool: PrivacyPool;
@@ -60,14 +60,13 @@ export class MockPrivateTransfers implements PrivateTransfers {
   }
 
   async register(): Promise<CallAndProof> {
-    const results = await this.build().register().execute();
-    return results[0];
+    return this.build().register().execute();
   }
 
   async setupChannel(
     recipient: StarknetAddress
   ): Promise<{ invocationData: CallAndProof; channel: Channel }> {
-    const results = await this.build().setup(recipient).execute();
+    const invocationData = await this.build().setup(recipient).execute();
     // Compute the channel key
     const recipientPublicKey = this.pool.getPublicKey(recipient);
     const channelKey = hashes.channelKey(
@@ -76,7 +75,7 @@ export class MockPrivateTransfers implements PrivateTransfers {
       recipient,
       recipientPublicKey
     );
-    return { invocationData: results[0], channel: new Channel(channelKey) };
+    return { invocationData, channel: new Channel(channelKey) };
   }
 
   async setupToken(
@@ -84,8 +83,8 @@ export class MockPrivateTransfers implements PrivateTransfers {
     token: StarknetAddress
   ): Promise<{ invocationData: CallAndProof; channel: Channel }> {
     const channel = recipient.context;
-    const results = await this.build().with(token).setup(recipient).execute();
-    return { invocationData: results[0], channel };
+    const invocationData = await this.build().with(token).setup(recipient).execute();
+    return { invocationData, channel };
   }
 
   async deposit(params: {
@@ -93,11 +92,11 @@ export class MockPrivateTransfers implements PrivateTransfers {
     amount: Amount;
     recipient: PrivateRecipient | NoteId;
   }): Promise<PrivateInvocationResult> {
-    const results = await this.build()
+    const invocationData = await this.build()
       .with(params.token)
       .deposit(params.amount, params.recipient)
       .execute();
-    return { invocationData: results[0] };
+    return { invocationData };
   }
 
   private async withdrawOrTransfer(params: {
@@ -132,8 +131,8 @@ export class MockPrivateTransfers implements PrivateTransfers {
       });
     }
 
-    const results = await builder.execute();
-    return { invocationData: results[0] };
+    const invocationData = await builder.execute();
+    return { invocationData };
   }
 
   async withdraw(params: {
@@ -184,7 +183,7 @@ export class MockPrivateTransfers implements PrivateTransfers {
   }
 
   build(): PrivateTransfersBuilder {
-    return new MockPrivateTransfersBuilder(this, this.userAddress);
+    return new PrivateTransfersBuilderImpl(this, this.userAddress);
   }
 
   discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> } = {}): {

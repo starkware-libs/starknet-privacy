@@ -1,5 +1,5 @@
 /**
- * Mock builder implementations for testing.
+ * Builder implementations for constructing private transfer operations.
  */
 
 import type {
@@ -23,14 +23,14 @@ import type {
 } from "../interfaces.js";
 import type { Call } from "starknet";
 import { AddressMap } from "../utils/maps.js";
-import { createMockCallAndProof } from "./helpers.js";
+import { createMockCallAndProof } from "../testing/helpers.js";
 
-// ============ Mock Token Operations Builder ============
+// ============ Token Operations Builder ============
 
 const isPrivateRecipient = (v: unknown): v is PrivateRecipient =>
   typeof v === "object" && v !== null && "address" in v && "context" in v;
 
-export class MockTokenOperationsBuilder implements TokenOperationsBuilder {
+export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   // Actions
   public openTokenChannels: OpenTokenChannelAction[] = [];
   public useNotes: UseNoteAction[] = [];
@@ -39,7 +39,7 @@ export class MockTokenOperationsBuilder implements TokenOperationsBuilder {
   public createNotes: CreateNoteAction[] = [];
 
   constructor(
-    private parentBuilder: MockPrivateTransfersBuilder,
+    private parentBuilder: PrivateTransfersBuilderImpl,
     public readonly token: StarknetAddress
   ) {}
 
@@ -115,7 +115,7 @@ export class MockTokenOperationsBuilder implements TokenOperationsBuilder {
     return this.parentBuilder;
   }
 
-  async execute(): Promise<CallAndProof[]> {
+  async execute(): Promise<CallAndProof> {
     return this.parentBuilder.execute();
   }
 
@@ -128,14 +128,14 @@ export class MockTokenOperationsBuilder implements TokenOperationsBuilder {
   }
 }
 
-// ============ Mock Private Transfers Builder ============
+// ============ Private Transfers Builder ============
 
-export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
+export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   public setViewingKey?: SetViewingKeyAction;
   public openChannels: OpenChannelAction[] = [];
   public callCalls: Call[] = [];
-  public tokenBuilders = new AddressMap<MockTokenOperationsBuilder>(
-    (token) => new MockTokenOperationsBuilder(this, token)
+  public tokenBuilders = new AddressMap<TokenOperationsBuilderImpl>(
+    (token) => new TokenOperationsBuilderImpl(this, token)
   );
 
   constructor(
@@ -162,7 +162,7 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
     return this.tokenBuilders.get(token)!;
   }
 
-  async execute(): Promise<CallAndProof[]> {
+  async execute(): Promise<CallAndProof> {
     // 1. Collect all actions from token builders
     const openTokenChannels: OpenTokenChannelAction[] = [];
     const deposits: DepositAction[] = [];
@@ -178,7 +178,7 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
       withdraws.push(...tokenBuilder.withdraws);
     }
 
-    // 4. Execute everything via single pool.execute call
+    // 2. Execute everything via single pool.execute call
     await this.transfers.execute({
       setViewingKey: this.setViewingKey,
       openChannels: this.openChannels,
@@ -189,7 +189,7 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
       withdraws,
     });
 
-    return [createMockCallAndProof()];
+    return createMockCallAndProof();
   }
 
   reset(): void {
