@@ -50,3 +50,31 @@ export function assertRecipientAddress(
 export function isOpen(value: Amount | Open): value is Open {
   return typeof value !== "bigint";
 }
+
+/**
+ * Calculates the surplus for a token given inputs and outputs.
+ * Surplus = (deposits + useNotes) - (createNotes + withdraws)
+ * Open amounts in createNotes are treated as 0.
+ *
+ * @param deposits - Array of deposit amounts
+ * @param useNotes - Array of input note amounts
+ * @param createNotes - Array of output note amounts (can include Open markers)
+ * @param withdraws - Array of withdrawal amounts
+ * @returns The surplus amount (must be non-negative)
+ * @throws Error if the total is negative (outputs exceed inputs)
+ */
+export function calculateSurplus(
+  deposits: Amount[],
+  useNotes: Amount[],
+  createNotes: (Amount | Open)[],
+  withdraws: Amount[]
+): bigint {
+  const sumDeposits = deposits.reduce((sum, a) => sum + a, 0n);
+  const sumUseNotes = useNotes.reduce((sum, a) => sum + a, 0n);
+  const sumCreateNotes = createNotes.reduce<bigint>((sum, a) => sum + (isOpen(a) ? 0n : a), 0n);
+  const sumWithdraws = withdraws.reduce((sum, a) => sum + a, 0n);
+
+  const total = sumDeposits + sumUseNotes - sumCreateNotes - sumWithdraws;
+  assert(total >= 0n, `Outputs exceed inputs: deficit of ${-total}`);
+  return total;
+}

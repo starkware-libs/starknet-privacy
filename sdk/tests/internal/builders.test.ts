@@ -267,4 +267,207 @@ describe("PrivateTransfersBuilder", () => {
     const filledNotes = (bobNotesAfter.notes.get(STRK) ?? []).filter((n) => n.open);
     expect(filledNotes[0].amount).toBe(100n);
   });
+
+  describe("surplusTo", () => {
+    let aliceSelf: PrivateRecipient;
+
+    beforeEach(async () => {
+      // Setup: register Alice and set up channel to self
+      await alice.register();
+
+      aliceSelf = { address: ALICE_ADDRESS, context: undefined! };
+      setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, aliceSelf);
+
+      // prettier-ignore
+      await alice
+        .build()
+        .setup(ALICE_ADDRESS)
+        .with(STRK)
+          .setup(aliceSelf)
+        .with(ETH)
+          .setup(aliceSelf)
+        .execute();
+    });
+
+    it("surplusTo on root builder: creates surplus note for all tokens", async () => {
+      // Deposit 100 STRK to Alice (she starts with 1000n public)
+      // prettier-ignore
+      await alice
+        .build()
+        .with(STRK)
+          .deposit(100n, aliceSelf)
+        .execute();
+
+      // After deposit: 900n public, 100n private
+      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(900n);
+      const note = (alice.discoverNotes().notes.get(STRK) ?? [])[0];
+      expect(note.amount).toBe(100n);
+
+      // Use the 100n note but only withdraw 30n - surplus of 70n should go to self
+      // prettier-ignore
+      await alice
+        .build()
+        .surplusTo(aliceSelf)
+        .with(STRK)
+          .inputs(note)
+          .withdraw({ amount: 30n })
+        .execute();
+
+      // After: 930n public (900 + 30), 70n private (surplus note)
+      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(930n);
+
+      // Alice should have a new note with 70n (the surplus)
+      const notesAfter = alice.discoverNotes().notes.get(STRK) ?? [];
+      expect(notesAfter.length).toBe(1); // old note used, new surplus note created
+      expect(notesAfter[0].amount).toBe(70n);
+    });
+
+    it("surplusTo on token builder: creates surplus note for that token only", async () => {
+      // Alice starts with 1000n STRK, 500n ETH
+      // Deposit to self for both tokens
+      // prettier-ignore
+      await alice
+        .build()
+        .with(STRK)
+          .deposit(100n, aliceSelf)
+        .with(ETH)
+          .deposit(50n, aliceSelf)
+        .execute();
+
+      // After deposits: STRK 900n public, ETH 450n public
+      const strkNote = (alice.discoverNotes().notes.get(STRK) ?? [])[0];
+      const ethNote = (alice.discoverNotes().notes.get(ETH) ?? [])[0];
+
+      // Use STRK with surplus, ETH without surplus
+      // STRK: 100n in, 30n out -> 70n surplus
+      // ETH: 50n in, 50n out -> no surplus (exact match)
+      // prettier-ignore
+      await alice
+        .build()
+        .with(STRK)
+          .surplusTo(aliceSelf)
+          .inputs(strkNote)
+          .withdraw({ amount: 30n })
+        .with(ETH)
+          .inputs(ethNote)
+          .withdraw({ amount: 50n })
+        .execute();
+
+      // STRK: 930n public (900 + 30), 70n private surplus
+      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(930n);
+      const strkNotesAfter = alice.discoverNotes().notes.get(STRK) ?? [];
+      expect(strkNotesAfter.length).toBe(1);
+      expect(strkNotesAfter[0].amount).toBe(70n);
+
+      // ETH: 500n public (450 + 50), no private notes
+      expect(erc20s.get(ETH).balanceOf(ALICE_ADDRESS)).toBe(500n);
+      const ethNotesAfter = alice.discoverNotes().notes.get(ETH) ?? [];
+      expect(ethNotesAfter.length).toBe(0);
+    });
+
+    it("token-level surplusTo overrides root-level surplusTo", async () => {
+      // Register Bob too for cross-user transfer
+      await bob.register();
+      const bobSelf: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
+      setContext({ address: BOB_ADDRESS, key: BOB_PRIVATE_KEY }, bobSelf);
+
+      // Alice sets up channel to Bob
+      const aliceToBob: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
+      setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, aliceToBob);
+
+      // prettier-ignore
+      await alice
+        .build()
+        .setup(BOB_ADDRESS)
+        .with(STRK)
+          .setup(aliceToBob)
+        .execute();
+
+      // Bob sets up channel to self for STRK
+      // prettier-ignore
+      await bob
+        .build()
+        .setup(BOB_ADDRESS)
+        .with(STRK)
+          .setup(bobSelf)
+        .execute();
+
+      // Deposit to Alice (she starts with 1000n)
+      // prettier-ignore
+      await alice
+        .build()
+        .with(STRK)
+          .deposit(100n, aliceSelf)
+        .execute();
+
+      // After: 900n public, 100n private
+      const note = (alice.discoverNotes().notes.get(STRK) ?? [])[0];
+
+      // Root: surplus to self (Alice), but STRK override: surplus to Bob
+      // 100n in, 30n withdrawn -> 70n surplus goes to Bob (not Alice)
+      // prettier-ignore
+      await alice
+        .build()
+        .surplusTo(aliceSelf) // default: surplus to Alice
+        .with(STRK)
+          .surplusTo(aliceToBob) // override: surplus to Bob for STRK
+          .inputs(note)
+          .withdraw({ amount: 30n })
+        .execute();
+
+      // Alice has 930n public STRK (900 + 30), no private notes
+      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(930n);
+      const aliceNotesAfter = alice.discoverNotes().notes.get(STRK) ?? [];
+      expect(aliceNotesAfter.length).toBe(0);
+
+      // Bob has 70n private STRK (the surplus)
+      const bobNotesAfter = bob.discoverNotes().notes.get(STRK) ?? [];
+      expect(bobNotesAfter.length).toBe(1);
+      expect(bobNotesAfter[0].amount).toBe(70n);
+    });
+
+    it("no surplus note created when amounts are exactly balanced", async () => {
+      // Alice starts with 1000n
+      // prettier-ignore
+      await alice
+        .build()
+        .with(STRK)
+          .deposit(100n, aliceSelf)
+        .execute();
+
+      // After: 900n public, 100n private
+      const note = (alice.discoverNotes().notes.get(STRK) ?? [])[0];
+
+      // 100n in, 100n out -> no surplus even with surplusTo set
+      // prettier-ignore
+      await alice
+        .build()
+        .surplusTo(aliceSelf)
+        .with(STRK)
+          .inputs(note)
+          .withdraw({ amount: 100n })
+        .execute();
+
+      // Alice has 1000n public (900 + 100), no private notes
+      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
+      const notesAfter = alice.discoverNotes().notes.get(STRK) ?? [];
+      expect(notesAfter.length).toBe(0);
+    });
+
+    it("without surplusTo, unbalanced amounts still fail", async () => {
+      // prettier-ignore
+      await alice
+        .build()
+        .with(STRK)
+          .deposit(100n, aliceSelf)
+        .execute();
+
+      const note = (alice.discoverNotes().notes.get(STRK) ?? [])[0];
+
+      // 100n in, 50n out, no surplusTo -> should fail validation
+      await expect(
+        alice.build().with(STRK).inputs(note).withdraw({ amount: 50n }).execute()
+      ).rejects.toThrow(/Final total for token.*is 50.*expected 0/);
+    });
+  });
 });

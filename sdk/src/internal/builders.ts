@@ -5,6 +5,7 @@
 import type {
   Amount,
   CallAndProof,
+  Channel,
   CreateNoteAction,
   DepositAction,
   Note,
@@ -23,6 +24,7 @@ import type {
 } from "../interfaces.js";
 import type { Call } from "starknet";
 import { AddressMap } from "../utils/maps.js";
+import { calculateSurplus } from "../utils/validation.js";
 import { createMockCallAndProof } from "../testing/helpers.js";
 
 // ============ Token Operations Builder ============
@@ -37,6 +39,9 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   public deposits: DepositAction[] = [];
   public withdraws: WithdrawAction[] = [];
   public createNotes: CreateNoteAction[] = [];
+
+  // Surplus recipient (overrides parent builder's surplus recipient for this token)
+  public surplusRecipient?: PrivateRecipient;
 
   constructor(
     private parentBuilder: PrivateTransfersBuilderImpl,
@@ -107,6 +112,13 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
     return this;
   }
 
+  surplusTo(recipient: PrivateRecipient | Channel): this {
+    this.surplusRecipient = isPrivateRecipient(recipient)
+      ? recipient
+      : { address: this.parentBuilder.userAddress, context: recipient };
+    return this;
+  }
+
   with(token: StarknetAddress): TokenOperationsBuilder {
     return this.parentBuilder.with(token);
   }
@@ -125,6 +137,21 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
     this.deposits = [];
     this.withdraws = [];
     this.createNotes = [];
+    this.surplusRecipient = undefined;
+  }
+
+  /**
+   * Calculate the surplus for this token builder.
+   * Returns the surplus amount (inputs - outputs).
+   * @throws Error if outputs exceed inputs
+   */
+  calculateSurplus(): bigint {
+    return calculateSurplus(
+      this.deposits.map((d) => d.amount),
+      this.useNotes.map((u) => u.note.amount),
+      this.createNotes.map((c) => c.amount),
+      this.withdraws.map((w) => w.amount)
+    );
   }
 }
 
@@ -137,6 +164,9 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   public tokenBuilders = new AddressMap<TokenOperationsBuilderImpl>(
     (token) => new TokenOperationsBuilderImpl(this, token)
   );
+
+  // Default surplus recipient for all tokens
+  public defaultSurplusRecipient?: PrivateRecipient;
 
   constructor(
     private transfers: PrivateTransfers,
@@ -158,6 +188,13 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     return this;
   }
 
+  surplusTo(recipient: PrivateRecipient | Channel): this {
+    this.defaultSurplusRecipient = isPrivateRecipient(recipient)
+      ? recipient
+      : { address: this.userAddress, context: recipient };
+    return this;
+  }
+
   with(token: StarknetAddress): TokenOperationsBuilder {
     return this.tokenBuilders.get(token)!;
   }
@@ -170,15 +207,30 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     const createNotes: CreateNoteAction[] = [];
     const withdraws: WithdrawAction[] = [];
 
-    for (const tokenBuilder of this.tokenBuilders.values()) {
+    for (const [token, tokenBuilder] of this.tokenBuilders.entries()) {
       openTokenChannels.push(...tokenBuilder.openTokenChannels);
       deposits.push(...tokenBuilder.deposits);
       useNotes.push(...tokenBuilder.useNotes);
       createNotes.push(...tokenBuilder.createNotes);
       withdraws.push(...tokenBuilder.withdraws);
+
+      // 2. Handle surplus for this token
+      const surplusRecipient = tokenBuilder.surplusRecipient ?? this.defaultSurplusRecipient;
+      if (surplusRecipient) {
+        const surplus = tokenBuilder.calculateSurplus();
+        if (surplus > 0n) {
+          // Create a note for the surplus
+          createNotes.push({
+            token,
+            recipient: surplusRecipient.address,
+            context: surplusRecipient.context,
+            amount: surplus,
+          });
+        }
+      }
     }
 
-    // 2. Execute everything via single pool.execute call
+    // 3. Execute everything via single pool.execute call
     await this.transfers.execute({
       setViewingKey: this.setViewingKey,
       openChannels: this.openChannels,
@@ -197,5 +249,6 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     this.openChannels = [];
     this.callCalls = [];
     this.tokenBuilders.clear();
+    this.defaultSurplusRecipient = undefined;
   }
 }

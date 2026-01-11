@@ -247,6 +247,13 @@ export interface TokenOperationsBuilder {
   /** Transfer this token privately to one or more recipients */
   transfer(...outputs: TransferOutput[]): this;
 
+  /**
+   * Set the recipient for any surplus for this token.
+   * Overrides the top-level surplusTo for this specific token.
+   * If inputs exceed outputs, a CreateNoteAction is automatically added for the difference.
+   */
+  surplusTo(recipient: PrivateRecipient | Channel): this;
+
   /** Switch to another token */
   with(token: StarknetAddress): TokenOperationsBuilder;
 
@@ -328,6 +335,13 @@ export interface PrivateTransfersBuilder {
 
   /** Add an arbitrary Starknet call that will run on starknet after the private operations are executed */
   call(call: Call): this;
+
+  /**
+   * Set the default recipient for any surplus across all tokens.
+   * If inputs exceed outputs for a token, a CreateNoteAction is automatically added for the difference.
+   * Can be overridden per-token using TokenOperationsBuilder.surplusTo().
+   */
+  surplusTo(recipient: PrivateRecipient | Channel): this;
 
   /** Start token-specific operations */
   with(token: StarknetAddress): TokenOperationsBuilder;
