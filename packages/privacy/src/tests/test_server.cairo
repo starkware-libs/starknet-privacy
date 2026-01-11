@@ -546,7 +546,7 @@ fn test_execute_transfer_from() {
     let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
 
-    token.supply(:user, :amount);
+    user.increase_token_balance(:token, :amount);
     user.approve(:token, amount: amount.into());
 
     // Verify balances before transfer.
@@ -579,7 +579,7 @@ fn test_execute_transfer_from_assertions() {
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 
     // Catch INSUFFICIENT_ALLOWANCE.
-    token.supply(:user, :amount);
+    user.increase_token_balance(:token, :amount);
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom((user.address, token.contract_address(), amount)),
     ];
@@ -597,7 +597,7 @@ fn test_execute_transfer_to() {
     // Supply tokens to the server (via deposit).
     let user = test.new_user();
     let note = test.mock_new_note(:amount);
-    token.supply(:user, :amount);
+    user.increase_token_balance(:token, :amount);
     user.cheat_deposit(:token, :amount, :note);
 
     // Verify balances before transfer.
