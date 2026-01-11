@@ -12,18 +12,18 @@ describe("channelSerde", () => {
   it("encodes and decodes a channel round-trip", () => {
     const original = new Channel(
       12345n,
-      [new TokenNonce(0, 1), new TokenNonce(1, 2)],
+      new TokenNonce(5),
       new Map([
-        ["0xabc", [new NoteNonce(0, 10), new NoteNonce(1, 20)]],
-        ["0xdef", [new NoteNonce(0, 30)]],
+        ["0xabc", new NoteNonce(10)],
+        ["0xdef", new NoteNonce(30)],
       ])
     );
 
     const decoded = channelSerde.decode(channelSerde.encode(original));
 
-    // Compare essential data (AdvancedMap instances don't deep-equal well)
+    // Compare essential data (AdvressMap instances don't deep-equal well)
     expect(decoded.key).toEqual(original.key);
-    expect(decoded.nonces).toEqual(original.nonces);
+    expect(decoded.tokenNonce.sequence).toEqual(original.tokenNonce.sequence);
     expect(Array.from(decoded.tokens.entries())).toEqual(Array.from(original.tokens.entries()));
   });
 
@@ -36,11 +36,12 @@ describe("channelSerde", () => {
 
 describe("witnessSerde", () => {
   it("encodes and decodes a witness round-trip", () => {
-    const original = new Witness(42n, new NoteNonce(3, 7));
+    const original = new Witness(42n, new NoteNonce(7));
 
     const decoded = witnessSerde.decode(witnessSerde.encode(original));
 
-    expect(decoded).toEqual(original);
+    expect(decoded.channelKey).toEqual(original.channelKey);
+    expect(decoded.nonce.sequence).toEqual(original.nonce.sequence);
   });
 
   it("throws on invalid payload", () => {

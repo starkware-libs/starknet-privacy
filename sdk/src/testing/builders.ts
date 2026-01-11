@@ -16,7 +16,6 @@ import type {
 } from "../interfaces.js";
 import { Channel } from "../interfaces.js";
 import type { Call } from "starknet";
-import { TokenNonce } from "../internal/index.js";
 import { type PrivateKey } from "../utils/crypto.js";
 import { assert, isOpen, toBigInt } from "../utils/index.js";
 import type { CompositeInput, CompositeOutput, PrivacyPool } from "./pool.js";
@@ -147,8 +146,7 @@ export class MockPrivateTransfersBuilder implements PrivateTransfersBuilder {
     for (const tokenBuilder of this.tokenBuilders.values()) {
       for (const recipient of tokenBuilder.setupCalls) {
         const channel = recipient.context;
-        const { index } = TokenNonce.increment(channel.nonces);
-        const nonce = channel.nonces[index];
+        const nonce = channel.incrementTokenNonce();
         this.pool.setToken(
           this.userAddress,
           recipient.address,
