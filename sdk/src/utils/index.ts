@@ -11,7 +11,13 @@ export {
   type LogCallback,
 } from "./logging.js";
 export { AdvancedMap, AddressMap } from "./maps.js";
-export { assert, assertViewingKey, assertRecipientAddress, isOpen } from "./validation.js";
+export {
+  assert,
+  assertViewingKey,
+  assertRecipientAddress,
+  isOpen,
+  calculateSurplus,
+} from "./validation.js";
 export {
   hash,
   shortStringToFelt,
