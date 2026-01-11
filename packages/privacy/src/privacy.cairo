@@ -6,8 +6,10 @@ pub mod Privacy {
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::actions::{
-        ClientAction, ClientActionTrait, CreateNoteInput, DepositInput, OpenChannelInput,
-        OpenSubchannelInput, ServerAction, SetViewingKeyInput, UseNoteInput, WithdrawInput,
+        AppendToVecInput, ClientAction, ClientActionTrait, CreateNoteInput, DepositInput,
+        OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
+        TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput,
+        WriteIfZeroSubchannelInput, WriteInput, WritePrivateKeyInput,
     };
     use privacy::errors;
     use privacy::errors::internal_errors;
@@ -177,9 +179,17 @@ pub mod Privacy {
             assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
             array![
-                ServerAction::Write((self.public_key.entry(user_addr).into(), user_public_key)),
+                ServerAction::Write(
+                    WriteInput {
+                        storage_address: self.public_key.entry(user_addr).into(),
+                        value: user_public_key,
+                    },
+                ),
                 ServerAction::WritePrivateKey(
-                    (self.enc_private_key.entry(user_addr).into(), enc_private_key),
+                    WritePrivateKeyInput {
+                        storage_address: self.enc_private_key.entry(user_addr).into(),
+                        value: enc_private_key,
+                    },
                 ),
             ]
         }
@@ -224,12 +234,24 @@ pub mod Privacy {
 
             array![
                 ServerAction::VerifyValue(
-                    (self.public_key.entry(recipient_addr).into(), recipient_public_key),
+                    VerifyValueInput {
+                        storage_address: self.public_key.entry(recipient_addr).into(),
+                        value: recipient_public_key,
+                    },
                 ),
                 ServerAction::WriteIfZero(
-                    (self.channel_exists.entry(channel_id).into(), true.into()),
+                    WriteIfZeroInput {
+                        storage_address: self.channel_exists.entry(channel_id).into(),
+                        value: true.into(),
+                    },
                 ),
-                ServerAction::AppendToVec((recipient_addr, recipient_public_key, enc_channel_info)),
+                ServerAction::AppendToVec(
+                    AppendToVecInput {
+                        recipient_addr: recipient_addr,
+                        recipient_public_key: recipient_public_key,
+                        enc_channel_info: enc_channel_info,
+                    },
+                ),
             ]
         }
 
@@ -277,10 +299,16 @@ pub mod Privacy {
 
             array![
                 ServerAction::WriteIfZero(
-                    (self.subchannel_exists.entry(subchannel_id).into(), true.into()),
+                    WriteIfZeroInput {
+                        storage_address: self.subchannel_exists.entry(subchannel_id).into(),
+                        value: true.into(),
+                    },
                 ),
                 ServerAction::WriteIfZeroSubchannel(
-                    (self.subchannel_tokens.entry(subchannel_key).into(), enc_subchannel_info),
+                    WriteIfZeroSubchannelInput {
+                        storage_address: self.subchannel_tokens.entry(subchannel_key).into(),
+                        value: enc_subchannel_info,
+                    },
                 ),
             ]
         }
@@ -301,7 +329,11 @@ pub mod Privacy {
 
             token_balances.add_balance(:token, :amount);
 
-            array![ServerAction::TransferFrom((user_addr, token, amount))]
+            array![
+                ServerAction::TransferFrom(
+                    TransferFromInput { sender_addr: user_addr, token, amount },
+                ),
+            ]
         }
 
         fn withdraw(
@@ -317,7 +349,11 @@ pub mod Privacy {
 
             token_balances.subtract_balance(:token, :amount);
 
-            array![ServerAction::TransferTo((withdrawal_target, token, amount))]
+            array![
+                ServerAction::TransferTo(
+                    TransferToInput { recipient_addr: withdrawal_target, token, amount },
+                ),
+            ]
         }
 
         /// Returns the server action to use a note.
@@ -364,7 +400,12 @@ pub mod Privacy {
             token_balances.add_balance(:token, :amount);
 
             array![
-                ServerAction::WriteIfZero((self.nullifiers.entry(nullifier).into(), true.into())),
+                ServerAction::WriteIfZero(
+                    WriteIfZeroInput {
+                        storage_address: self.nullifiers.entry(nullifier).into(),
+                        value: true.into(),
+                    },
+                ),
             ]
         }
 
@@ -429,7 +470,13 @@ pub mod Privacy {
 
             token_balances.subtract_balance(:token, :amount);
 
-            array![ServerAction::WriteIfZero((self.notes.entry(note_id).into(), enc_amount))]
+            array![
+                ServerAction::WriteIfZero(
+                    WriteIfZeroInput {
+                        storage_address: self.notes.entry(note_id).into(), value: enc_amount,
+                    },
+                ),
+            ]
         }
     }
 
@@ -440,40 +487,63 @@ pub mod Privacy {
             // TODO: Verify client proof.
             for action in actions {
                 match *action {
-                    ServerAction::WriteIfZero((
-                        storage_address, new_value,
-                    )) => {
-                        self._execute_write(:storage_address, :new_value, require_zero: true);
-                    },
-                    ServerAction::WriteIfZeroSubchannel((
-                        storage_address, new_value,
-                    )) => { self._execute_write_subchannel(:storage_address, :new_value); },
-                    ServerAction::Write((
-                        storage_address, new_value,
-                    )) => {
-                        self._execute_write(:storage_address, :new_value, require_zero: false);
-                    },
-                    ServerAction::WritePrivateKey((
-                        storage_address, new_value,
-                    )) => { self._execute_write_private_key(:storage_address, :new_value); },
-                    ServerAction::AppendToVec((
-                        recipient_addr, recipient_public_key, enc_channel_info,
-                    )) => {
+                    ServerAction::WriteIfZero(input) => {
                         self
-                            ._execute_append_to_vector(
-                                key: (recipient_addr, recipient_public_key),
-                                value: enc_channel_info,
+                            ._execute_write(
+                                storage_address: input.storage_address,
+                                new_value: input.value,
+                                require_zero: true,
                             );
                     },
-                    ServerAction::TransferFrom((
-                        sender, token, amount,
-                    )) => { self._execute_transfer_from(:sender, :token, :amount); },
-                    ServerAction::TransferTo((
-                        recipient, token, amount,
-                    )) => { self._execute_transfer_to(:recipient, :token, :amount); },
-                    ServerAction::VerifyValue((
-                        storage_address, value,
-                    )) => { self._execute_verify_value(:storage_address, :value); },
+                    ServerAction::WriteIfZeroSubchannel(input) => {
+                        self
+                            ._execute_write_subchannel(
+                                storage_address: input.storage_address, new_value: input.value,
+                            );
+                    },
+                    ServerAction::Write(input) => {
+                        self
+                            ._execute_write(
+                                storage_address: input.storage_address,
+                                new_value: input.value,
+                                require_zero: false,
+                            );
+                    },
+                    ServerAction::WritePrivateKey(input) => {
+                        self
+                            ._execute_write_private_key(
+                                storage_address: input.storage_address, new_value: input.value,
+                            );
+                    },
+                    ServerAction::AppendToVec(input) => {
+                        self
+                            ._execute_append_to_vector(
+                                key: (input.recipient_addr, input.recipient_public_key),
+                                value: input.enc_channel_info,
+                            );
+                    },
+                    ServerAction::TransferFrom(input) => {
+                        self
+                            ._execute_transfer_from(
+                                sender_addr: input.sender_addr,
+                                token: input.token,
+                                amount: input.amount,
+                            );
+                    },
+                    ServerAction::TransferTo(input) => {
+                        self
+                            ._execute_transfer_to(
+                                recipient_addr: input.recipient_addr,
+                                token: input.token,
+                                amount: input.amount,
+                            );
+                    },
+                    ServerAction::VerifyValue(input) => {
+                        self
+                            ._execute_verify_value(
+                                storage_address: input.storage_address, value: input.value,
+                            );
+                    },
                 };
             };
         }
@@ -528,22 +598,25 @@ pub mod Privacy {
         }
 
         fn _execute_transfer_from(
-            ref self: ContractState, sender: ContractAddress, token: ContractAddress, amount: u128,
+            ref self: ContractState,
+            sender_addr: ContractAddress,
+            token: ContractAddress,
+            amount: u128,
         ) {
             IERC20Dispatcher { contract_address: token }
                 .checked_transfer_from(
-                    :sender, recipient: get_contract_address(), amount: amount.into(),
+                    sender: sender_addr, recipient: get_contract_address(), amount: amount.into(),
                 );
         }
 
         fn _execute_transfer_to(
             ref self: ContractState,
-            recipient: ContractAddress,
+            recipient_addr: ContractAddress,
             token: ContractAddress,
             amount: u128,
         ) {
             IERC20Dispatcher { contract_address: token }
-                .checked_transfer(:recipient, amount: amount.into());
+                .checked_transfer(recipient: recipient_addr, amount: amount.into());
         }
 
         fn _execute_verify_value(
