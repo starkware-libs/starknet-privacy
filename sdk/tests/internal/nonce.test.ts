@@ -1,53 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  channelSerde,
-  witnessSerde,
-  TokenNonce,
-  NoteNonce,
-  Channel,
-  Witness,
-} from "../src/internal.js";
+import { TokenNonce, NoteNonce } from "../../src/internal/index.js";
 
-describe("channelSerde", () => {
-  it("encodes and decodes a channel round-trip", () => {
-    const original = new Channel(
-      12345n,
-      [new TokenNonce(0, 1), new TokenNonce(1, 2)],
-      new Map([
-        ["0xabc", [new NoteNonce(0, 10), new NoteNonce(1, 20)]],
-        ["0xdef", [new NoteNonce(0, 30)]],
-      ])
-    );
-
-    const decoded = channelSerde.decode(channelSerde.encode(original));
-
-    expect(decoded).toEqual(original);
-  });
-
-  it("throws on invalid payload", () => {
-    expect(() => channelSerde.decode("null" as ReturnType<typeof channelSerde.encode>)).toThrow(
-      "Invalid channel payload"
-    );
-  });
-});
-
-describe("witnessSerde", () => {
-  it("encodes and decodes a witness round-trip", () => {
-    const original = new Witness(42n, new NoteNonce(3, 7));
-
-    const decoded = witnessSerde.decode(witnessSerde.encode(original));
-
-    expect(decoded).toEqual(original);
-  });
-
-  it("throws on invalid payload", () => {
-    expect(() => witnessSerde.decode("null" as ReturnType<typeof witnessSerde.encode>)).toThrow(
-      "Invalid witness payload"
-    );
-  });
-});
-
-describe("ChannelNonce.increment", () => {
+describe("TokenNonce.increment", () => {
   it("increments the oldest nonce in-place and returns index and previous", () => {
     const nonces = [
       Object.assign(new TokenNonce(0, 5), { created: 100 }),
@@ -110,7 +64,7 @@ describe("ChannelNonce.increment", () => {
   });
 });
 
-describe("TokenNonce.increment", () => {
+describe("NoteNonce.increment", () => {
   it("increments the oldest nonce in-place", () => {
     const nonces = [
       Object.assign(new NoteNonce(0, 2), { created: 300 }),
@@ -124,7 +78,7 @@ describe("TokenNonce.increment", () => {
     expect(nonces[1].sequence).toBe(2); // 1 + 1
   });
 
-  it("respects TokenNonce.MAX_SLOTS", () => {
+  it("respects NoteNonce.MAX_SLOTS", () => {
     // Create array with MAX_SLOTS nonces, none with created
     const nonces = Array.from({ length: NoteNonce.MAX_SLOTS }, (_, i) => new NoteNonce(i, 0));
 
