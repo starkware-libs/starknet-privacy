@@ -352,6 +352,26 @@ export class PrivacyPool {
     createNotes?: CreateNoteAction[];
     withdraws?: WithdrawAction[];
   }): void {
+    // 1. Validate all amounts are non-negative
+    if (actions.deposits) {
+      for (const deposit of actions.deposits) {
+        assert(deposit.amount >= 0n, `Deposit amount must be non-negative: ${deposit.amount}`);
+      }
+    }
+    if (actions.createNotes) {
+      for (const create of actions.createNotes) {
+        if (!isOpen(create.amount)) {
+          assert(create.amount >= 0n, `CreateNote amount must be non-negative: ${create.amount}`);
+        }
+      }
+    }
+    if (actions.withdraws) {
+      for (const withdraw of actions.withdraws) {
+        assert(withdraw.amount >= 0n, `Withdraw amount must be non-negative: ${withdraw.amount}`);
+      }
+    }
+
+    // 2. Validate running totals stay non-negative and end at 0
     const runningTotals = new Map<string, bigint>();
 
     const updateTotal = (token: StarknetAddress, delta: bigint) => {

@@ -241,4 +241,35 @@ describe("MockPrivateTransfers", () => {
       expect(bobNotesAfter.length).toBe(0);
     });
   });
+
+  describe("validation", () => {
+    it("rejects negative deposit amounts", async () => {
+      await alice.register();
+      const { channel } = await alice.setupChannel(ALICE_ADDRESS);
+      const aliceSelf = { address: ALICE_ADDRESS, context: channel };
+      await alice.setupToken(aliceSelf, STRK);
+
+      await expect(
+        alice.deposit({ token: STRK, amount: -100n, recipient: aliceSelf })
+      ).rejects.toThrow(/Deposit amount must be non-negative/);
+    });
+
+    it("rejects negative withdraw amounts", async () => {
+      await alice.register();
+      await bob.register();
+      const { channel } = await alice.setupChannel(BOB_ADDRESS);
+      const bobRecipient = { address: BOB_ADDRESS, context: channel };
+      await alice.setupToken(bobRecipient, STRK);
+
+      erc20s.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
+      await alice.deposit({ token: STRK, amount: 100n, recipient: bobRecipient });
+
+      const notes = bob.discoverNotes().notes.get(STRK) ?? [];
+      expect(notes.length).toBe(1);
+
+      await expect(bob.withdraw({ token: STRK, inputs: notes, amount: -50n })).rejects.toThrow(
+        /Withdraw amount must be non-negative/
+      );
+    });
+  });
 });
