@@ -93,17 +93,26 @@ struct User {
     nonce: usize,
 }
 
+// TODO: Rename compile_client_actions to execute.
+
 #[generate_trait]
 pub(crate) impl UserImpl of UserTrait {
     fn compile_client_actions(self: @User, client_actions: Span<ClientAction>) {
-        self.privacy.client.compile_client_actions(user_addr: *self.address, :client_actions)
+        self.privacy.execute(user_addr: *self.address, :client_actions)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_compile_client_actions(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
-        self.privacy.safe_client.compile_client_actions(user_addr: *self.address, :client_actions)
+        self.privacy.safe_execute(user_addr: *self.address, :client_actions)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_compile_client_actions_without_cheat_caller(
+        self: @User, client_actions: Span<ClientAction>,
+    ) -> Result<(), Array<felt252>> {
+        self.privacy.safe_client.__execute__(user_addr: *self.address, :client_actions)
     }
 
     fn transfer(
@@ -928,6 +937,19 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     fn increase_token_balance(self: @PrivacyCfg, token: Token, amount: u128) {
         token.supply(address: *self.address, :amount);
+    }
+
+    fn execute(self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>) {
+        cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
+        self.client.__execute__(:user_addr, :client_actions)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_execute(
+        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+    ) -> Result<(), Array<felt252>> {
+        cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
+        self.safe_client.__execute__(:user_addr, :client_actions)
     }
 }
 
