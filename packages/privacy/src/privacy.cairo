@@ -30,8 +30,8 @@ pub mod Privacy {
     };
     use starknet::account::Call;
     use starknet::storage::{
-        Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
-        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
+        Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StorageMapWriteAccess,
+        StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::{ContractAddress, VALIDATED, get_caller_address, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
@@ -81,6 +81,8 @@ pub mod Privacy {
         // TODO: Do we need setter for this?
         /// Public key of the compliance used for private key encryptions.
         compliance_public_key: felt252,
+        /// Storage for testing purposes.
+        dummy_storage: Map<felt252, felt252>,
     }
 
     #[event]
@@ -140,6 +142,12 @@ pub mod Privacy {
         fn dummy_execute(
             self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {}
+
+        fn dummy_write(ref self: ContractState, from: u128, to: u128) {
+            for i in from..to {
+                self.dummy_storage.write(i.into(), (i + 1).into());
+            }
+        }
     }
 
     #[generate_trait]

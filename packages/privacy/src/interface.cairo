@@ -72,6 +72,8 @@ pub trait IClient<T> {
     fn __validate__(self: @T, calls: Array<Call>) -> felt252;
 
     fn dummy_execute(self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
+
+    fn dummy_write(ref self: T, from: u128, to: u128);
 }
 
 #[starknet::interface]
