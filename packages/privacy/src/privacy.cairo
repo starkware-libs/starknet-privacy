@@ -6,8 +6,8 @@ pub mod Privacy {
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::actions::{
-        ClientAction, ClientActionTrait, CreateNoteInput, DepositInput, OpenChannelInput,
-        OpenSubchannelInput, ServerAction, SetViewingKeyInput, UseNoteInput, WithdrawInput,
+        ClientAction, ClientActionTrait, CreateNote, Deposit, OpenChannel, OpenSubchannel,
+        ServerAction, SetViewingKey, UseNote, Withdraw,
     };
     use privacy::errors;
     use privacy::errors::internal_errors;
@@ -156,7 +156,7 @@ pub mod Privacy {
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
         /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
         fn set_viewing_key(
-            self: @ContractState, user_addr: ContractAddress, input: SetViewingKeyInput,
+            self: @ContractState, user_addr: ContractAddress, input: SetViewingKey,
         ) -> Array<ServerAction> {
             let private_key = input.private_key;
             let random = input.random;
@@ -186,7 +186,7 @@ pub mod Privacy {
 
         /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
         fn open_channel(
-            self: @ContractState, sender_addr: ContractAddress, input: OpenChannelInput,
+            self: @ContractState, sender_addr: ContractAddress, input: OpenChannel,
         ) -> Array<ServerAction> {
             let sender_private_key = input.sender_private_key;
             let recipient_addr = input.recipient_addr;
@@ -235,7 +235,7 @@ pub mod Privacy {
 
         /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
         fn open_subchannel(
-            self: @ContractState, sender_addr: ContractAddress, input: OpenSubchannelInput,
+            self: @ContractState, sender_addr: ContractAddress, input: OpenSubchannel,
         ) -> Array<ServerAction> {
             let recipient_addr = input.recipient_addr;
             let recipient_public_key = input.recipient_public_key;
@@ -289,7 +289,7 @@ pub mod Privacy {
         fn deposit(
             self: @ContractState,
             user_addr: ContractAddress,
-            input: DepositInput,
+            input: Deposit,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
             // TODO: Consider checking that `user_addr` is registered.
@@ -305,7 +305,7 @@ pub mod Privacy {
         }
 
         fn withdraw(
-            self: @ContractState, input: WithdrawInput, ref token_balances: TokenBalances,
+            self: @ContractState, input: Withdraw, ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
             let withdrawal_target = input.withdrawal_target;
             let token = input.token;
@@ -325,7 +325,7 @@ pub mod Privacy {
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
-            input: UseNoteInput,
+            input: UseNote,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
             let owner_private_key = input.owner_private_key;
@@ -373,7 +373,7 @@ pub mod Privacy {
         fn create_note(
             self: @ContractState,
             owner_addr: ContractAddress,
-            input: CreateNoteInput,
+            input: CreateNote,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
             let sender_private_key = input.sender_private_key;
