@@ -3171,6 +3171,10 @@ fn test_compile_client_actions_assertions() {
 
     // TODO: Catch server errors.
 
+    // Catch INVALID_CALLER.
+    let result = user.safe_compile_client_actions_without_cheat_caller(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLER);
+
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
