@@ -135,23 +135,24 @@ pub(crate) impl UserImpl of UserTrait {
         self.safe_compile_client_actions(client_actions: client_actions.span())
     }
 
-    fn withdraw(
-        self: @User, withdrawal_target: ContractAddress, token: ContractAddress, amount: u128,
-    ) {
-        let input = WithdrawInput { withdrawal_target, token, amount };
+    fn withdraw(self: @User, withdrawal_target: ContractAddress, token: Token, amount: u128) {
+        let input = WithdrawInput { withdrawal_target, token: token.contract_address(), amount };
         self.compile_client_actions(client_actions: [ClientAction::Withdraw(input)].span())
     }
 
     fn internal_withdraw(
-        self: @User, withdrawal_target: ContractAddress, token: ContractAddress, amount: u128,
+        self: @User,
+        withdrawal_target: ContractAddress,
+        token_address: ContractAddress,
+        amount: u128,
     ) -> Span<ServerAction> {
         interact_with_state(
             *self.privacy.address,
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
-                token_balances.add_balance(:token, :amount);
-                let input = WithdrawInput { withdrawal_target, token, amount };
+                token_balances.add_balance(token: token_address, :amount);
+                let input = WithdrawInput { withdrawal_target, token: token_address, amount };
                 state.withdraw(:input, ref :token_balances)
             },
         )
@@ -160,9 +161,12 @@ pub(crate) impl UserImpl of UserTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_withdraw(
-        self: @User, withdrawal_target: ContractAddress, token: ContractAddress, amount: u128,
+        self: @User,
+        withdrawal_target: ContractAddress,
+        token_address: ContractAddress,
+        amount: u128,
     ) -> Result<(), Array<felt252>> {
-        let input = WithdrawInput { withdrawal_target, token, amount };
+        let input = WithdrawInput { withdrawal_target, token: token_address, amount };
         self.safe_compile_client_actions(client_actions: [ClientAction::Withdraw(input)].span())
     }
 
@@ -227,7 +231,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn open_subchannel(
-        self: @User, recipient: User, token: ContractAddress, index: usize, random: felt252,
+        self: @User, recipient: User, token_address: ContractAddress, index: usize, random: felt252,
     ) {
         let channel_key = self.compute_channel_key(:recipient);
         let input = OpenSubchannelInput {
@@ -235,14 +239,14 @@ pub(crate) impl UserImpl of UserTrait {
             recipient_public_key: recipient.public_key,
             channel_key,
             index,
-            token,
+            token: token_address,
             random,
         };
         self.compile_client_actions(client_actions: [ClientAction::OpenSubchannel(input),].span())
     }
 
     fn internal_open_subchannel(
-        self: @User, recipient: User, token: ContractAddress, index: usize, random: felt252,
+        self: @User, recipient: User, token_address: ContractAddress, index: usize, random: felt252,
     ) -> Span<ServerAction> {
         let channel_key = self.compute_channel_key(:recipient);
         interact_with_state(
@@ -254,7 +258,7 @@ pub(crate) impl UserImpl of UserTrait {
                     recipient_public_key: recipient.public_key,
                     channel_key,
                     index,
-                    token,
+                    token: token_address,
                     random,
                 };
                 state.open_subchannel(sender_addr: *self.address, :input)
@@ -265,7 +269,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_open_subchannel(
-        self: @User, recipient: User, token: ContractAddress, index: usize, random: felt252,
+        self: @User, recipient: User, token_address: ContractAddress, index: usize, random: felt252,
     ) -> Result<(), Array<felt252>> {
         let channel_key = self.compute_channel_key(:recipient);
         let input = OpenSubchannelInput {
@@ -273,7 +277,7 @@ pub(crate) impl UserImpl of UserTrait {
             recipient_public_key: recipient.public_key,
             channel_key,
             index,
-            token,
+            token: token_address,
             random,
         };
         self
@@ -286,7 +290,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn safe_open_subchannel_with_channel_key(
         self: @User,
         recipient: User,
-        token: ContractAddress,
+        token_address: ContractAddress,
         index: usize,
         random: felt252,
         channel_key: felt252,
@@ -296,7 +300,7 @@ pub(crate) impl UserImpl of UserTrait {
             recipient_public_key: recipient.public_key,
             channel_key,
             index,
-            token,
+            token: token_address,
             random,
         };
         self
@@ -307,20 +311,20 @@ pub(crate) impl UserImpl of UserTrait {
 
     /// Returns (random, output) where output is the output of `open_subchannel`.
     fn internal_open_subchannel_with_generated_random(
-        ref self: User, recipient: User, token: ContractAddress, index: usize,
+        ref self: User, recipient: User, token_address: ContractAddress, index: usize,
     ) -> (felt252, Span<ServerAction>) {
         let random = self.get_random().into();
-        let output = self.internal_open_subchannel(:recipient, :token, :index, :random);
+        let output = self.internal_open_subchannel(:recipient, :token_address, :index, :random);
         (random, output)
     }
 
     /// Returns the random value generated by the user for the subchannel opening.
     fn open_subchannel_e2e(
-        ref self: User, recipient: User, token: ContractAddress, index: usize,
+        ref self: User, recipient: User, token_address: ContractAddress, index: usize,
     ) -> felt252 {
         let random = self.get_random().into();
         let mut spy = spy_messages_to_l1();
-        self.open_subchannel(:recipient, :token, :index, :random);
+        self.open_subchannel(:recipient, :token_address, :index, :random);
         let actions = spy_messages_to_server_actions(ref :spy);
         self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
@@ -330,11 +334,11 @@ pub(crate) impl UserImpl of UserTrait {
     /// Open a channel and a subchannel with the given token.
     /// Returns (random_generated_for_channel, random_generated_for_subchannel).
     fn open_channel_with_token_e2e(
-        ref self: User, recipient: User, token: ContractAddress, subchannel_index: usize,
+        ref self: User, recipient: User, token_address: ContractAddress, subchannel_index: usize,
     ) -> (felt252, felt252) {
         let random_channel = self.open_channel_e2e(:recipient);
         let random_subchannel = self
-            .open_subchannel_e2e(:recipient, :token, index: subchannel_index);
+            .open_subchannel_e2e(:recipient, :token_address, index: subchannel_index);
         (random_channel, random_subchannel)
     }
 
@@ -389,32 +393,34 @@ pub(crate) impl UserImpl of UserTrait {
         compute_subchannel_key(:channel_key, :index)
     }
 
-    fn compute_subchannel_id(self: @User, recipient: User, token: ContractAddress) -> felt252 {
+    fn compute_subchannel_id(
+        self: @User, recipient: User, token_address: ContractAddress,
+    ) -> felt252 {
         compute_subchannel_id(
             channel_key: self.compute_channel_key(:recipient),
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
-            :token,
+            token: token_address,
         )
     }
 
     fn compute_enc_subchannel_info(
-        self: @User, recipient: User, token: ContractAddress, random: felt252,
+        self: @User, recipient: User, token_address: ContractAddress, random: felt252,
     ) -> EncSubchannelInfo {
         let channel_key = self.compute_channel_key(:recipient);
-        encrypt_subchannel_info(:channel_key, :token, :random)
+        encrypt_subchannel_info(:channel_key, token: token_address, :random)
     }
 
     fn compute_enc_note(
         self: @User,
         recipient: User,
-        token: ContractAddress,
+        token_address: ContractAddress,
         index: usize,
         amount: u128,
         random: u128,
     ) -> EncNote {
         let channel_key = self.compute_channel_key(:recipient);
-        let note_id = compute_note_id(:channel_key, :token, :index);
+        let note_id = compute_note_id(:channel_key, token: token_address, :index);
         let enc_amount = encrypt_note_amount(:channel_key, :random, :amount);
         EncNote { id: note_id, enc_amount }
     }
@@ -436,11 +442,11 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn compute_nullifier(
-        self: @User, sender: User, token: ContractAddress, note_index: usize,
+        self: @User, sender: User, token_address: ContractAddress, note_index: usize,
     ) -> felt252 {
         compute_nullifier(
             channel_key: sender.compute_channel_key(recipient: *self),
-            :token,
+            token: token_address,
             index: note_index,
             owner_private_key: *self.private_key,
         )
@@ -449,7 +455,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn new_note(
         self: @User,
         recipient: User,
-        token: ContractAddress,
+        token_address: ContractAddress,
         amount: u128,
         index: usize,
         random: u128,
@@ -458,7 +464,7 @@ pub(crate) impl UserImpl of UserTrait {
             sender_private_key: *self.private_key,
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
-            token,
+            token: token_address,
             amount,
             index,
             random,
@@ -466,24 +472,26 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn new_note_with_generated_random(
-        ref self: User, recipient: User, token: ContractAddress, amount: u128, index: usize,
+        ref self: User, recipient: User, token_address: ContractAddress, amount: u128, index: usize,
     ) -> CreateNoteInput {
         let random = self.get_random();
-        self.new_note(:recipient, :token, :amount, :index, :random)
+        self.new_note(:recipient, :token_address, :amount, :index, :random)
     }
 
-    fn deposit(self: @User, token: ContractAddress, amount: u128) {
-        let input = DepositInput { token, amount };
+    fn deposit(self: @User, token: Token, amount: u128) {
+        let input = DepositInput { token: token.contract_address(), amount };
         self.compile_client_actions([ClientAction::Deposit(input),].span())
     }
 
-    fn internal_deposit(self: @User, token: ContractAddress, amount: u128) -> Span<ServerAction> {
+    fn internal_deposit(
+        self: @User, token_address: ContractAddress, amount: u128,
+    ) -> Span<ServerAction> {
         interact_with_state(
             *self.privacy.address,
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
-                let input = DepositInput { token, amount };
+                let input = DepositInput { token: token_address, amount };
                 state.deposit(user_addr: *self.address, :input, ref :token_balances)
             },
         )
@@ -492,9 +500,9 @@ pub(crate) impl UserImpl of UserTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_deposit(
-        self: @User, token: ContractAddress, amount: u128,
+        self: @User, token_address: ContractAddress, amount: u128,
     ) -> Result<(), Array<felt252>> {
-        let input = DepositInput { token, amount };
+        let input = DepositInput { token: token_address, amount };
         self.safe_compile_client_actions(client_actions: [ClientAction::Deposit(input),].span())
     }
 
