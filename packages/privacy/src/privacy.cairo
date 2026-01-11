@@ -1,4 +1,4 @@
-#[starknet::contract]
+#[starknet::contract(account)]
 pub mod Privacy {
     use core::iter::Extend;
     use core::num::traits::Zero;
@@ -30,7 +30,7 @@ pub mod Privacy {
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
-    use starknet::{ContractAddress, get_contract_address};
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
@@ -116,11 +116,15 @@ pub mod Privacy {
     // TODO: Consider all randoms to be u128/120 bits.
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
+        fn __validate__(
+            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) {}
         // TODO: Gets a single random and generate from it new randoms for each action that needs a
         // random.
-        fn compile_client_actions(
+        fn __execute__(
             self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
+            assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.

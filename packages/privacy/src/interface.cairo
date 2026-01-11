@@ -2,6 +2,7 @@ use privacy::actions::{ClientAction, ServerAction};
 use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use starknet::ContractAddress;
 
+// TODO: Rename interface.
 // TODO: Use same naming convention for the functions. (owner/sender,
 // private_key/sender_private_key, etc).
 // TODO: Remove params constraints from the Parameters section (constraints should be in the
@@ -65,9 +66,9 @@ pub trait IClient<T> {
     ///
     /// #### Access Control
     /// - TODO
-    fn compile_client_actions(
-        self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
-    );
+    fn __execute__(self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
+
+    fn __validate__(self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
 }
 
 #[starknet::interface]
