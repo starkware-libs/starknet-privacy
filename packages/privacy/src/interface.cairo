@@ -1,6 +1,5 @@
-use privacy::objects::{
-    ClientAction, EncChannelInfo, EncPrivateKey, EncSubchannelInfo, ServerAction,
-};
+use privacy::actions::{ClientAction, ServerAction};
+use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use starknet::ContractAddress;
 
 // TODO: Use same naming convention for the functions. (owner/sender,

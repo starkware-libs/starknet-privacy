@@ -5,6 +5,10 @@ pub mod Privacy {
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
+    use privacy::actions::{
+        ClientAction, ClientActionTrait, CreateNoteInput, DepositInput, OpenChannelInput,
+        OpenSubchannelInput, ServerAction, SetViewingKeyInput, UseNoteInput, WithdrawInput,
+    };
     use privacy::errors;
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -13,10 +17,8 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        ClientAction, ClientActionTrait, CreateNoteInput, DepositInput, EncChannelInfo,
-        EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo, OpenChannelInput,
-        OpenSubchannelInput, ServerAction, SetViewingKeyInput, TokenBalances, TokenBalancesTrait,
-        UseNoteInput, WithdrawInput,
+        EncChannelInfo, EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo, TokenBalances,
+        TokenBalancesTrait,
     };
     use privacy::utils::constants::TWO_POW_120;
     use privacy::utils::{
