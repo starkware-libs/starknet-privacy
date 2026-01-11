@@ -189,3 +189,6 @@ function assertTokenEntries(value: unknown): Map<StarknetAddress, NoteNonce> {
   });
   return new Map(entries);
 }
+
+// Re-export builders
+export { TokenOperationsBuilderImpl, PrivateTransfersBuilderImpl } from "./builders.js";

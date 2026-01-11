@@ -5,22 +5,31 @@
 import type {
   Amount,
   CallAndProof,
+  CreateNoteAction,
+  DepositAction,
   Note,
   NoteId,
   Open,
+  OpenChannelAction,
+  OpenTokenChannelAction,
   PrivateInvocationResult,
   PrivateRecipient,
   PrivateTransfers,
   PrivateTransfersBuilder,
+  SetViewingKeyAction,
   StarknetAddress,
+  UseNoteAction,
+  WithdrawAction,
 } from "../interfaces.js";
 import { Channel, SetupRequirement } from "../interfaces.js";
 import type { BlockIdentifier } from "starknet";
 import type { PrivateKey } from "../utils/crypto.js";
+import { hashes } from "../utils/hashes.js";
 import { AddressMap } from "../utils/maps.js";
+import { createMockCallAndProof } from "./helpers.js";
 import type { PrivacyPool } from "./pool.js";
 import { MockDiscoveryProvider } from "./discovery.js";
-import { MockPrivateTransfersBuilder } from "./builders.js";
+import { PrivateTransfersBuilderImpl } from "../internal/builders.js";
 
 export class MockPrivateTransfers implements PrivateTransfers {
   private pool: PrivacyPool;
@@ -51,16 +60,22 @@ export class MockPrivateTransfers implements PrivateTransfers {
   }
 
   async register(): Promise<CallAndProof> {
-    const results = await this.build().register().execute();
-    return results[0];
+    return this.build().register().execute();
   }
 
   async setupChannel(
     recipient: StarknetAddress
   ): Promise<{ invocationData: CallAndProof; channel: Channel }> {
-    const privateRecipient: PrivateRecipient = { address: recipient, context: undefined! };
-    const results = await this.build().setup(privateRecipient).execute();
-    return { invocationData: results[0], channel: privateRecipient.context };
+    const invocationData = await this.build().setup(recipient).execute();
+    // Compute the channel key
+    const recipientPublicKey = this.pool.getPublicKey(recipient);
+    const channelKey = hashes.channelKey(
+      this.userAddress,
+      this.userViewingKey,
+      recipient,
+      recipientPublicKey
+    );
+    return { invocationData, channel: new Channel(channelKey) };
   }
 
   async setupToken(
@@ -68,8 +83,8 @@ export class MockPrivateTransfers implements PrivateTransfers {
     token: StarknetAddress
   ): Promise<{ invocationData: CallAndProof; channel: Channel }> {
     const channel = recipient.context;
-    const results = await this.build().with(token).setup(recipient).execute();
-    return { invocationData: results[0], channel };
+    const invocationData = await this.build().with(token).setup(recipient).execute();
+    return { invocationData, channel };
   }
 
   async deposit(params: {
@@ -77,11 +92,11 @@ export class MockPrivateTransfers implements PrivateTransfers {
     amount: Amount;
     recipient: PrivateRecipient | NoteId;
   }): Promise<PrivateInvocationResult> {
-    const results = await this.build()
+    const invocationData = await this.build()
       .with(params.token)
       .deposit(params.amount, params.recipient)
       .execute();
-    return { invocationData: results[0] };
+    return { invocationData };
   }
 
   private async withdrawOrTransfer(params: {
@@ -116,8 +131,8 @@ export class MockPrivateTransfers implements PrivateTransfers {
       });
     }
 
-    const results = await builder.execute();
-    return { invocationData: results[0] };
+    const invocationData = await builder.execute();
+    return { invocationData };
   }
 
   async withdraw(params: {
@@ -154,8 +169,21 @@ export class MockPrivateTransfers implements PrivateTransfers {
     });
   }
 
+  async execute(actions: {
+    setViewingKey?: SetViewingKeyAction;
+    openChannels?: OpenChannelAction[];
+    openTokenChannels?: OpenTokenChannelAction[];
+    deposits?: DepositAction[];
+    useNotes?: UseNoteAction[];
+    createNotes?: CreateNoteAction[];
+    withdraws?: WithdrawAction[];
+  }): Promise<CallAndProof> {
+    this.pool.execute(this.userAddress, this.userViewingKey, actions);
+    return createMockCallAndProof();
+  }
+
   build(): PrivateTransfersBuilder {
-    return new MockPrivateTransfersBuilder(this.pool, this.userAddress, this.userViewingKey);
+    return new PrivateTransfersBuilderImpl(this, this.userAddress);
   }
 
   discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> } = {}): {
