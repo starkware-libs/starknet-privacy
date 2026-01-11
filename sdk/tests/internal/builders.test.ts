@@ -5,10 +5,8 @@ import {
   consoleLogCallback,
   debugHint,
   isDebugEnabled,
-  hashes,
 } from "../../src/utils/index.js";
-import type { PrivateRecipient } from "../../src/interfaces.js";
-import { Channel, open, SetupRequirement } from "../../src/interfaces.js";
+import { Channel, createEmptyRegistry, open, SetupRequirement } from "../../src/interfaces.js";
 
 // Test addresses and keys (must be valid hex addresses convertible to BigInt)
 const POOL_ADDRESS = "0x1";
@@ -21,21 +19,22 @@ const ALICE_PRIVATE_KEY = 12345n;
 const BOB_ADDRESS = "0xB0B";
 const BOB_PRIVATE_KEY = 67890n;
 
+// Default options for auto-discovery and auto-setup
+const AUTO_OPTIONS = {
+  autoDiscover: { recipient: "refresh" as const },
+  autoSetup: true,
+};
+
 describe("PrivateTransfersBuilder", () => {
   let erc20s: ERC20s;
   let pool: PrivacyPool;
   let alice: MockPrivateTransfers;
   let bob: MockPrivateTransfers;
 
-  // Helper to compute channel and set context on a PrivateRecipient
-  const setContext = (
-    from: { address: string; key: bigint },
-    recipient: PrivateRecipient
-  ): void => {
-    const toPublicKey = pool.getPublicKey(recipient.address);
-    const channelKey = hashes.channelKey(from.address, from.key, recipient.address, toPublicKey);
-    recipient.context = new Channel(channelKey);
-  };
+  // Store channels for context
+  let aliceSelfChannel: Channel;
+  let aliceToBobChannel: Channel;
+  let bobSelfChannel: Channel;
 
   // Show debug hint after tests complete (only if debug is disabled)
   afterAll(() => {
@@ -60,34 +59,25 @@ describe("PrivateTransfersBuilder", () => {
   });
 
   it("example: register and setup a new recipient", async () => {
-    // From interface docs:
-    // const alice: PrivateRecipient = { address: ALICE_ADDRESS, context: undefined! };
-    // await transfers.build()
-    //   .register()
-    //   .setup(alice)  // alice.context will be populated with the Channel
-    //   .with(STRK)
-    //     .setup(alice)
-    //     .deposit(100n, alice)
-    //   .execute();
-
     // First Bob needs to register so Alice can set up channel to him
-    await bob.register();
+    await bob.build().register().execute();
 
-    // Alice registers first so she can compute channels
-    await alice.register();
+    // Alice registers and sets up channel to Bob
+    await alice.build().register().execute();
+    await alice.build().setup(BOB_ADDRESS).execute();
+    aliceToBobChannel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
 
-    // Create recipient and compute context (both users must be registered)
-    const bobRecipient: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
-    setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, bobRecipient);
+    // Setup token
+    const registry = createEmptyRegistry();
+    registry.channels.set(BOB_ADDRESS, aliceToBobChannel);
+    await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute();
 
-    // Use builder to setup channel, setup token, and deposit
+    // Use builder to deposit
     // prettier-ignore
     await alice
-      .build()
-      .setup(BOB_ADDRESS)
+      .build(AUTO_OPTIONS)
       .with(STRK)
-        .setup(bobRecipient)
-        .deposit(100n, bobRecipient)
+        .deposit(100n, BOB_ADDRESS)
       .execute();
 
     // Bob should have a note
@@ -97,40 +87,38 @@ describe("PrivateTransfersBuilder", () => {
   });
 
   it("example: transfer to multiple recipients with multiple tokens", async () => {
-    // From interface docs:
-    // await transfers.build()
-    //   .with(STRK)
-    //     .inputs(strkNote)
-    //     .transfer({ recipient: alice, amount: 10n })
-    //   .with(ETH)
-    //     .inputs(ethNote1, ethNote2)
-    //     .transfer({ recipient: bob, amount: 20n })
-    //   .execute();
-
     // Both users register first
-    await bob.register();
-    await alice.register();
+    await bob.build().register().execute();
+    await alice.build().register().execute();
 
-    // Create recipients and compute contexts
-    const aliceSelf: PrivateRecipient = { address: ALICE_ADDRESS, context: undefined! };
-    const bobRecipient: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
-    setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, aliceSelf);
-    setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, bobRecipient);
+    // Alice sets up channels
+    await alice.build().setup(ALICE_ADDRESS).setup(BOB_ADDRESS).execute();
+    aliceSelfChannel = alice.discoverChannels(ALICE_ADDRESS).channels.get(ALICE_ADDRESS)!;
+    aliceToBobChannel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
 
-    // Alice sets up channels, tokens, and deposits - all via builder
+    // Setup tokens
+    const registry = createEmptyRegistry();
+    registry.channels.set(ALICE_ADDRESS, aliceSelfChannel);
+    registry.channels.set(BOB_ADDRESS, aliceToBobChannel);
+
+    await alice
+      .build({ registry })
+      .with(STRK)
+      .setup(ALICE_ADDRESS)
+      .setup(BOB_ADDRESS)
+      .with(ETH)
+      .setup(ALICE_ADDRESS)
+      .setup(BOB_ADDRESS)
+      .execute();
+
+    // Deposit to self
     // prettier-ignore
     await alice
-      .build()
-      .setup(ALICE_ADDRESS) // channel to self for deposits
-      .setup(BOB_ADDRESS) // channel to Bob for transfers
+      .build(AUTO_OPTIONS)
       .with(STRK)
-        .setup(aliceSelf)
-        .setup(bobRecipient)
-        .deposit(100n, aliceSelf)
+        .deposit(100n, ALICE_ADDRESS)
       .with(ETH)
-        .setup(aliceSelf)
-        .setup(bobRecipient)
-        .deposit(50n, aliceSelf)
+        .deposit(50n, ALICE_ADDRESS)
       .execute();
 
     // Alice discovers her notes
@@ -141,16 +129,16 @@ describe("PrivateTransfersBuilder", () => {
     expect(strkNote).toBeDefined();
     expect(ethNote).toBeDefined();
 
-    // Now use builder to transfer to Bob (must use full amounts - no change support yet)
+    // Now use builder to transfer to Bob (must use full amounts)
     // prettier-ignore
     await alice
-      .build()
+      .build(AUTO_OPTIONS)
       .with(STRK)
         .inputs(strkNote)
-        .transfer({ recipient: bobRecipient, amount: 100n }) // Full amount
+        .transfer({ recipient: BOB_ADDRESS, amount: 100n })
       .with(ETH)
         .inputs(ethNote)
-        .transfer({ recipient: bobRecipient, amount: 50n }) // Full amount
+        .transfer({ recipient: BOB_ADDRESS, amount: 50n })
       .execute();
 
     // Bob should have notes
@@ -166,17 +154,16 @@ describe("PrivateTransfersBuilder", () => {
 
   it("builder fails when input/output amounts don't match", async () => {
     // Setup: Alice registers and deposits 100n STRK to herself
-    await alice.register();
-    const aliceSelf: PrivateRecipient = { address: ALICE_ADDRESS, context: undefined! };
-    setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, aliceSelf);
+    await alice.build().register().execute();
 
-    await alice
-      .build()
-      .setup(ALICE_ADDRESS)
-      .with(STRK)
-      .setup(aliceSelf)
-      .deposit(100n, aliceSelf)
-      .execute();
+    await alice.build().setup(ALICE_ADDRESS).execute();
+    aliceSelfChannel = alice.discoverChannels(ALICE_ADDRESS).channels.get(ALICE_ADDRESS)!;
+
+    const registry = createEmptyRegistry();
+    registry.channels.set(ALICE_ADDRESS, aliceSelfChannel);
+    await alice.build({ registry }).with(STRK).setup(ALICE_ADDRESS).execute();
+
+    await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute();
 
     // Get Alice's note
     const strkNote = (alice.discoverNotes().notes.get(STRK) ?? [])[0];
@@ -185,23 +172,20 @@ describe("PrivateTransfersBuilder", () => {
     // Try to transfer only 50n (leaving 50n unaccounted for) - should fail
     // Pool validates that final total per token is 0 (input 100n - output 50n = 50n != 0)
     await expect(
-      alice.build().with(STRK).inputs(strkNote).withdraw({ amount: 50n }).execute()
+      alice.build(AUTO_OPTIONS).with(STRK).inputs(strkNote).withdraw({ amount: 50n }).execute()
     ).rejects.toThrow(/Final total for token.*is 50.*expected 0/);
   });
 
   it("builder: register, setup channel, and deposit in one batch", async () => {
     // Bob needs to be registered first
-    await bob.register();
+    await bob.build().register().execute();
 
     // Alice does everything in one builder call
     const result = await alice.build().register().setup(BOB_ADDRESS).execute();
 
     expect(result).toBeDefined();
     // Verify Alice is registered (not requiring Register)
-    const aliceReq = await alice.discoverRequirement(
-      { address: ALICE_ADDRESS, context: undefined! },
-      "0x0"
-    );
+    const aliceReq = await alice.discoverRequirement(ALICE_ADDRESS, "0x0");
     expect(aliceReq).not.toBe(SetupRequirement.Register);
 
     // Verify channel was set up by discovering it
@@ -211,37 +195,31 @@ describe("PrivateTransfersBuilder", () => {
 
   it("open notes: Bob creates open note, Alice deposits into it", async () => {
     // Both users register
-    await bob.register();
-    await alice.register();
+    await bob.build().register().execute();
+    await alice.build().register().execute();
 
-    // Create recipients and compute contexts
-    const bobSelf: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
-    const aliceToBob: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
-    setContext({ address: BOB_ADDRESS, key: BOB_PRIVATE_KEY }, bobSelf);
-    setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, aliceToBob);
+    // Setup Bob's self channel
+    await bob.build().setup(BOB_ADDRESS).execute();
+    bobSelfChannel = bob.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
 
-    // prettier-ignore
-    await bob
-      .build()
-      .setup(BOB_ADDRESS) // channel to self
-      .with(STRK)
-        .setup(bobSelf)
-      .execute();
+    const bobRegistry = createEmptyRegistry();
+    bobRegistry.channels.set(BOB_ADDRESS, bobSelfChannel);
+    await bob.build({ registry: bobRegistry }).with(STRK).setup(BOB_ADDRESS).execute();
 
-    // prettier-ignore
-    await alice
-      .build()
-      .setup(BOB_ADDRESS) // channel to Bob
-      .with(STRK)
-        .setup(aliceToBob)
-      .execute();
+    // Setup Alice -> Bob channel
+    await alice.build().setup(BOB_ADDRESS).execute();
+    aliceToBobChannel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
+
+    const aliceRegistry = createEmptyRegistry();
+    aliceRegistry.channels.set(BOB_ADDRESS, aliceToBobChannel);
+    await alice.build({ registry: aliceRegistry }).with(STRK).setup(BOB_ADDRESS).execute();
 
     // Step 1: Bob creates an open note for himself
     // prettier-ignore
     await bob
-      .build()
+      .build(AUTO_OPTIONS)
       .with(STRK)
-        .transfer({ recipient: bobSelf, amount: open })
+        .transfer({ recipient: BOB_ADDRESS, amount: open })
       .execute();
 
     // Bob discovers his open note
@@ -257,7 +235,7 @@ describe("PrivateTransfersBuilder", () => {
 
     // prettier-ignore
     await alice
-      .build()
+      .build(AUTO_OPTIONS)
       .with(STRK)
         .deposit(100n, openNoteId) // deposit into the open note by ID
       .execute();
@@ -269,23 +247,21 @@ describe("PrivateTransfersBuilder", () => {
   });
 
   describe("surplusTo", () => {
-    let aliceSelf: PrivateRecipient;
-
     beforeEach(async () => {
       // Setup: register Alice and set up channel to self
-      await alice.register();
+      await alice.build().register().execute();
 
-      aliceSelf = { address: ALICE_ADDRESS, context: undefined! };
-      setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, aliceSelf);
+      await alice.build().setup(ALICE_ADDRESS).execute();
+      aliceSelfChannel = alice.discoverChannels(ALICE_ADDRESS).channels.get(ALICE_ADDRESS)!;
 
-      // prettier-ignore
+      const registry = createEmptyRegistry();
+      registry.channels.set(ALICE_ADDRESS, aliceSelfChannel);
       await alice
-        .build()
-        .setup(ALICE_ADDRESS)
+        .build({ registry })
         .with(STRK)
-          .setup(aliceSelf)
+        .setup(ALICE_ADDRESS)
         .with(ETH)
-          .setup(aliceSelf)
+        .setup(ALICE_ADDRESS)
         .execute();
     });
 
@@ -293,9 +269,9 @@ describe("PrivateTransfersBuilder", () => {
       // Deposit 100 STRK to Alice (she starts with 1000n public)
       // prettier-ignore
       await alice
-        .build()
+        .build(AUTO_OPTIONS)
         .with(STRK)
-          .deposit(100n, aliceSelf)
+          .deposit(100n, ALICE_ADDRESS)
         .execute();
 
       // After deposit: 900n public, 100n private
@@ -306,8 +282,8 @@ describe("PrivateTransfersBuilder", () => {
       // Use the 100n note but only withdraw 30n - surplus of 70n should go to self
       // prettier-ignore
       await alice
-        .build()
-        .surplusTo(aliceSelf)
+        .build(AUTO_OPTIONS)
+        .surplusTo(ALICE_ADDRESS)
         .with(STRK)
           .inputs(note)
           .withdraw({ amount: 30n })
@@ -327,11 +303,11 @@ describe("PrivateTransfersBuilder", () => {
       // Deposit to self for both tokens
       // prettier-ignore
       await alice
-        .build()
+        .build(AUTO_OPTIONS)
         .with(STRK)
-          .deposit(100n, aliceSelf)
+          .deposit(100n, ALICE_ADDRESS)
         .with(ETH)
-          .deposit(50n, aliceSelf)
+          .deposit(50n, ALICE_ADDRESS)
         .execute();
 
       // After deposits: STRK 900n public, ETH 450n public
@@ -343,9 +319,9 @@ describe("PrivateTransfersBuilder", () => {
       // ETH: 50n in, 50n out -> no surplus (exact match)
       // prettier-ignore
       await alice
-        .build()
+        .build(AUTO_OPTIONS)
         .with(STRK)
-          .surplusTo(aliceSelf)
+          .surplusTo(ALICE_ADDRESS)
           .inputs(strkNote)
           .withdraw({ amount: 30n })
         .with(ETH)
@@ -367,37 +343,29 @@ describe("PrivateTransfersBuilder", () => {
 
     it("token-level surplusTo overrides root-level surplusTo", async () => {
       // Register Bob too for cross-user transfer
-      await bob.register();
-      const bobSelf: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
-      setContext({ address: BOB_ADDRESS, key: BOB_PRIVATE_KEY }, bobSelf);
+      await bob.build().register().execute();
+
+      await bob.build().setup(BOB_ADDRESS).execute();
+      bobSelfChannel = bob.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
+
+      const bobRegistry = createEmptyRegistry();
+      bobRegistry.channels.set(BOB_ADDRESS, bobSelfChannel);
+      await bob.build({ registry: bobRegistry }).with(STRK).setup(BOB_ADDRESS).execute();
 
       // Alice sets up channel to Bob
-      const aliceToBob: PrivateRecipient = { address: BOB_ADDRESS, context: undefined! };
-      setContext({ address: ALICE_ADDRESS, key: ALICE_PRIVATE_KEY }, aliceToBob);
+      await alice.build().setup(BOB_ADDRESS).execute();
+      aliceToBobChannel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
 
-      // prettier-ignore
-      await alice
-        .build()
-        .setup(BOB_ADDRESS)
-        .with(STRK)
-          .setup(aliceToBob)
-        .execute();
-
-      // Bob sets up channel to self for STRK
-      // prettier-ignore
-      await bob
-        .build()
-        .setup(BOB_ADDRESS)
-        .with(STRK)
-          .setup(bobSelf)
-        .execute();
+      const aliceRegistry = createEmptyRegistry();
+      aliceRegistry.channels.set(BOB_ADDRESS, aliceToBobChannel);
+      await alice.build({ registry: aliceRegistry }).with(STRK).setup(BOB_ADDRESS).execute();
 
       // Deposit to Alice (she starts with 1000n)
       // prettier-ignore
       await alice
-        .build()
+        .build(AUTO_OPTIONS)
         .with(STRK)
-          .deposit(100n, aliceSelf)
+          .deposit(100n, ALICE_ADDRESS)
         .execute();
 
       // After: 900n public, 100n private
@@ -407,10 +375,10 @@ describe("PrivateTransfersBuilder", () => {
       // 100n in, 30n withdrawn -> 70n surplus goes to Bob (not Alice)
       // prettier-ignore
       await alice
-        .build()
-        .surplusTo(aliceSelf) // default: surplus to Alice
+        .build(AUTO_OPTIONS)
+        .surplusTo(ALICE_ADDRESS) // default: surplus to Alice
         .with(STRK)
-          .surplusTo(aliceToBob) // override: surplus to Bob for STRK
+          .surplusTo(BOB_ADDRESS) // override: surplus to Bob for STRK
           .inputs(note)
           .withdraw({ amount: 30n })
         .execute();
@@ -430,9 +398,9 @@ describe("PrivateTransfersBuilder", () => {
       // Alice starts with 1000n
       // prettier-ignore
       await alice
-        .build()
+        .build(AUTO_OPTIONS)
         .with(STRK)
-          .deposit(100n, aliceSelf)
+          .deposit(100n, ALICE_ADDRESS)
         .execute();
 
       // After: 900n public, 100n private
@@ -441,8 +409,8 @@ describe("PrivateTransfersBuilder", () => {
       // 100n in, 100n out -> no surplus even with surplusTo set
       // prettier-ignore
       await alice
-        .build()
-        .surplusTo(aliceSelf)
+        .build(AUTO_OPTIONS)
+        .surplusTo(ALICE_ADDRESS)
         .with(STRK)
           .inputs(note)
           .withdraw({ amount: 100n })
@@ -457,16 +425,16 @@ describe("PrivateTransfersBuilder", () => {
     it("without surplusTo, unbalanced amounts still fail", async () => {
       // prettier-ignore
       await alice
-        .build()
+        .build(AUTO_OPTIONS)
         .with(STRK)
-          .deposit(100n, aliceSelf)
+          .deposit(100n, ALICE_ADDRESS)
         .execute();
 
       const note = (alice.discoverNotes().notes.get(STRK) ?? [])[0];
 
       // 100n in, 50n out, no surplusTo -> should fail validation
       await expect(
-        alice.build().with(STRK).inputs(note).withdraw({ amount: 50n }).execute()
+        alice.build(AUTO_OPTIONS).with(STRK).inputs(note).withdraw({ amount: 50n }).execute()
       ).rejects.toThrow(/Final total for token.*is 50.*expected 0/);
     });
   });

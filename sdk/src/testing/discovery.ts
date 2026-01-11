@@ -6,7 +6,6 @@ import type {
   Amount,
   DiscoveryProviderInterface,
   Note,
-  PrivateRecipient,
   StarknetAddress,
   StarknetAddressBigint,
   ViewingKey,
@@ -23,6 +22,10 @@ import { hashes } from "../utils/hashes.js";
 export class MockDiscoveryProvider implements DiscoveryProviderInterface {
   private _currentBlock: BlockIdentifier = 0; // TODO: allow block advancement
   constructor(private pool: PrivacyPool) {}
+
+  getPublicKey(address: StarknetAddress) {
+    return this.pool.getPublicKey(address);
+  }
 
   discoverNotes(
     address: StarknetAddress,
@@ -77,7 +80,7 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
   discoverChannels(
     address: StarknetAddress,
     viewingKey: ViewingKey,
-    ...recipients: (StarknetAddress | PrivateRecipient)[]
+    ...recipients: StarknetAddress[]
   ): { timestamp: BlockIdentifier; channels: AddressMap<Channel> } {
     assertViewingKey(viewingKey);
 
@@ -111,7 +114,7 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
   async discoverRequirement(
     address: StarknetAddress,
     viewingKey: ViewingKey,
-    recipient: PrivateRecipient,
+    recipient: StarknetAddress,
     token: StarknetAddress
   ): Promise<SetupRequirement> {
     assertViewingKey(viewingKey);

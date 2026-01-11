@@ -85,6 +85,11 @@ export class Channel {
     this.tokens.set(token, current.increment());
     return current;
   }
+
+  /** Create a deep clone of this channel */
+  clone(): Channel {
+    return new Channel(this.key, this.tokenNonce, this.tokens.entries());
+  }
 }
 
 export const channelSerde: ChannelSerde = {
@@ -190,5 +195,7 @@ function assertTokenEntries(value: unknown): Map<StarknetAddress, NoteNonce> {
   return new Map(entries);
 }
 
-// Re-export builders
+// Re-export builders, compiler, and registry updater
 export { TokenOperationsBuilderImpl, PrivateTransfersBuilderImpl } from "./builders.js";
+export { ActionCompiler } from "./compiler.js";
+export { applyOptimisticUpdate } from "./registry-updater.js";

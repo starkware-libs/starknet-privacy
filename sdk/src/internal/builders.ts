@@ -4,18 +4,19 @@
 
 import type {
   Amount,
-  CallAndProof,
   Channel,
   CreateNoteAction,
   DepositAction,
+  ExecuteOptions,
+  ExecuteResult,
   Note,
   NoteId,
   Open,
   OpenChannelAction,
   OpenTokenChannelAction,
-  PrivateRecipient,
   PrivateTransfers,
   PrivateTransfersBuilder,
+  Actions,
   SetViewingKeyAction,
   StarknetAddress,
   TokenOperationsBuilder,
@@ -24,64 +25,51 @@ import type {
 } from "../interfaces.js";
 import type { Call } from "starknet";
 import { AddressMap } from "../utils/maps.js";
-import { calculateSurplus } from "../utils/validation.js";
-import { createMockCallAndProof } from "../testing/helpers.js";
+
+// ============ Internal Types ============
+
+/** Internal representation of surplus recipient */
+type SurplusRecipient = {
+  address: StarknetAddress;
+  channel?: Channel;
+};
+
+const isChannel = (v: unknown): v is Channel => typeof v === "object" && v !== null && "key" in v;
 
 // ============ Token Operations Builder ============
 
-const isPrivateRecipient = (v: unknown): v is PrivateRecipient =>
-  typeof v === "object" && v !== null && "address" in v && "context" in v;
-
 export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
-  // Actions
-  public openTokenChannels: OpenTokenChannelAction[] = [];
+  // Actions stored without context - context resolved during execute
+  public setupRecipients: StarknetAddress[] = [];
   public useNotes: UseNoteAction[] = [];
-  public deposits: DepositAction[] = [];
+  public deposits: Array<{ amount: Amount; recipient: StarknetAddress | NoteId }> = [];
   public withdraws: WithdrawAction[] = [];
-  public createNotes: CreateNoteAction[] = [];
+  public transfers: Array<{ recipient: StarknetAddress; amount: Amount | Open }> = [];
+  public hasExplicitInputs = false;
 
   // Surplus recipient (overrides parent builder's surplus recipient for this token)
-  public surplusRecipient?: PrivateRecipient;
+  public surplusRecipient?: SurplusRecipient;
 
   constructor(
     private parentBuilder: PrivateTransfersBuilderImpl,
     public readonly token: StarknetAddress
   ) {}
 
-  setup(recipient: PrivateRecipient): this {
-    // Use getter for lazy context access (context is populated during execute)
-    this.openTokenChannels.push({
-      recipient: recipient.address,
-      get context() {
-        return recipient.context;
-      },
-      token: this.token,
-    });
+  setup(recipient: StarknetAddress): this {
+    this.setupRecipients.push(recipient);
     return this;
   }
 
   inputs(...notes: Note[]): this {
+    this.hasExplicitInputs = true;
     for (const note of notes) {
       this.useNotes.push({ token: this.token, note });
     }
     return this;
   }
 
-  deposit(amount: Amount, recipient: PrivateRecipient | NoteId): this {
-    if (isPrivateRecipient(recipient)) {
-      // Use getter for lazy context access (context is populated during execute)
-      this.deposits.push({
-        token: this.token,
-        amount,
-        recipient: recipient.address,
-        get context() {
-          return recipient.context;
-        },
-      });
-    } else {
-      // NoteId - no context needed
-      this.deposits.push({ token: this.token, amount, recipient });
-    }
+  deposit(amount: Amount, recipient: StarknetAddress | NoteId): this {
+    this.deposits.push({ amount, recipient });
     return this;
   }
 
@@ -96,26 +84,15 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
     return this;
   }
 
-  transfer(...outputs: Array<{ recipient: PrivateRecipient; amount: Amount | Open }>): this {
-    for (const output of outputs) {
-      const recipient = output.recipient;
-      // Use getter for lazy context access (context is populated during execute)
-      this.createNotes.push({
-        token: this.token,
-        recipient: recipient.address,
-        get context() {
-          return recipient.context;
-        },
-        amount: output.amount,
-      });
-    }
+  transfer(...outputs: Array<{ recipient: StarknetAddress; amount: Amount | Open }>): this {
+    this.transfers.push(...outputs);
     return this;
   }
 
-  surplusTo(recipient: PrivateRecipient | Channel): this {
-    this.surplusRecipient = isPrivateRecipient(recipient)
-      ? recipient
-      : { address: this.parentBuilder.userAddress, context: recipient };
+  surplusTo(recipient: StarknetAddress | Channel): this {
+    this.surplusRecipient = isChannel(recipient)
+      ? { address: this.parentBuilder.userAddress, channel: recipient }
+      : { address: recipient };
     return this;
   }
 
@@ -127,31 +104,18 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
     return this.parentBuilder;
   }
 
-  async execute(): Promise<CallAndProof> {
-    return this.parentBuilder.execute();
+  async execute(options?: ExecuteOptions): Promise<ExecuteResult> {
+    return this.parentBuilder.execute(options);
   }
 
   reset(): void {
-    this.openTokenChannels = [];
+    this.setupRecipients = [];
     this.useNotes = [];
     this.deposits = [];
     this.withdraws = [];
-    this.createNotes = [];
+    this.transfers = [];
+    this.hasExplicitInputs = false;
     this.surplusRecipient = undefined;
-  }
-
-  /**
-   * Calculate the surplus for this token builder.
-   * Returns the surplus amount (inputs - outputs).
-   * @throws Error if outputs exceed inputs
-   */
-  calculateSurplus(): bigint {
-    return calculateSurplus(
-      this.deposits.map((d) => d.amount),
-      this.useNotes.map((u) => u.note.amount),
-      this.createNotes.map((c) => c.amount),
-      this.withdraws.map((w) => w.amount)
-    );
   }
 }
 
@@ -166,12 +130,18 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   );
 
   // Default surplus recipient for all tokens
-  public defaultSurplusRecipient?: PrivateRecipient;
+  public defaultSurplusRecipient?: SurplusRecipient;
+
+  // Options passed at build time
+  private buildOptions?: ExecuteOptions;
 
   constructor(
     private transfers: PrivateTransfers,
-    public readonly userAddress: StarknetAddress
-  ) {}
+    public readonly userAddress: StarknetAddress,
+    options?: ExecuteOptions
+  ) {
+    this.buildOptions = options;
+  }
 
   register(): this {
     this.setViewingKey = {};
@@ -188,10 +158,10 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     return this;
   }
 
-  surplusTo(recipient: PrivateRecipient | Channel): this {
-    this.defaultSurplusRecipient = isPrivateRecipient(recipient)
-      ? recipient
-      : { address: this.userAddress, context: recipient };
+  surplusTo(recipient: StarknetAddress | Channel): this {
+    this.defaultSurplusRecipient = isChannel(recipient)
+      ? { address: this.userAddress, channel: recipient }
+      : { address: recipient };
     return this;
   }
 
@@ -199,8 +169,19 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     return this.tokenBuilders.get(token)!;
   }
 
-  async execute(): Promise<CallAndProof> {
-    // 1. Collect all actions from token builders
+  async execute(options?: ExecuteOptions): Promise<ExecuteResult> {
+    // Merge build-time options with execute-time options
+    const mergedOptions: ExecuteOptions = {
+      ...this.buildOptions,
+      ...options,
+      autoDiscover: {
+        ...this.buildOptions?.autoDiscover,
+        ...options?.autoDiscover,
+      },
+    };
+
+    // Collect raw actions from token builders
+    // Context resolution will happen in PrivateTransfers.execute via ActionCompiler
     const openTokenChannels: OpenTokenChannelAction[] = [];
     const deposits: DepositAction[] = [];
     const useNotes: UseNoteAction[] = [];
@@ -208,40 +189,73 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     const withdraws: WithdrawAction[] = [];
 
     for (const [token, tokenBuilder] of this.tokenBuilders.entries()) {
-      openTokenChannels.push(...tokenBuilder.openTokenChannels);
-      deposits.push(...tokenBuilder.deposits);
+      // Setup actions (no context - raw action)
+      for (const recipient of tokenBuilder.setupRecipients) {
+        openTokenChannels.push({ recipient, token });
+      }
+
+      // Deposits (no context - raw action)
+      for (const dep of tokenBuilder.deposits) {
+        if (typeof dep.recipient === "bigint" || typeof dep.recipient === "number") {
+          // Deposit to open note
+          deposits.push({ token, amount: dep.amount, noteId: dep.recipient as NoteId });
+        } else {
+          // Deposit to address
+          deposits.push({ token, amount: dep.amount, recipient: dep.recipient });
+        }
+      }
+
+      // Use notes
       useNotes.push(...tokenBuilder.useNotes);
-      createNotes.push(...tokenBuilder.createNotes);
+
+      // Transfers (no context - raw action)
+      for (const transfer of tokenBuilder.transfers) {
+        createNotes.push({
+          token,
+          recipient: transfer.recipient,
+          amount: transfer.amount,
+        });
+      }
+
+      // Withdraws
       withdraws.push(...tokenBuilder.withdraws);
 
-      // 2. Handle surplus for this token
+      // Handle surplus - calculate and add CreateNoteAction if needed
       const surplusRecipient = tokenBuilder.surplusRecipient ?? this.defaultSurplusRecipient;
       if (surplusRecipient) {
-        const surplus = tokenBuilder.calculateSurplus();
+        // Calculate surplus: deposits + useNotes - transfers - withdraws
+        const depositSum = tokenBuilder.deposits.reduce((sum, d) => sum + d.amount, 0n);
+        const useNoteSum = tokenBuilder.useNotes.reduce((sum, u) => sum + u.note.amount, 0n);
+        const transferSum = tokenBuilder.transfers.reduce(
+          (sum, t) => sum + (typeof t.amount === "object" ? 0n : t.amount),
+          0n
+        );
+        const withdrawSum = tokenBuilder.withdraws.reduce((sum, w) => sum + w.amount, 0n);
+
+        const surplus = depositSum + useNoteSum - transferSum - withdrawSum;
         if (surplus > 0n) {
-          // Create a note for the surplus
           createNotes.push({
             token,
             recipient: surplusRecipient.address,
-            context: surplusRecipient.context,
             amount: surplus,
           });
         }
       }
     }
 
-    // 3. Execute everything via single pool.execute call
-    await this.transfers.execute({
+    // Build raw actions (no context - ActionCompiler will resolve)
+    const actions: Actions = {
       setViewingKey: this.setViewingKey,
-      openChannels: this.openChannels,
-      openTokenChannels,
-      deposits,
-      useNotes,
-      createNotes,
-      withdraws,
-    });
+      openChannels: this.openChannels.length > 0 ? this.openChannels : undefined,
+      openTokenChannels: openTokenChannels.length > 0 ? openTokenChannels : undefined,
+      deposits: deposits.length > 0 ? deposits : undefined,
+      useNotes: useNotes.length > 0 ? useNotes : undefined,
+      createNotes: createNotes.length > 0 ? createNotes : undefined,
+      withdraws: withdraws.length > 0 ? withdraws : undefined,
+    };
 
-    return createMockCallAndProof();
+    // Execute via PrivateTransfers - ActionCompiler will resolve contexts
+    return this.transfers.execute(actions, mergedOptions);
   }
 
   reset(): void {

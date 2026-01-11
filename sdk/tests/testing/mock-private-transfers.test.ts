@@ -6,8 +6,7 @@ import {
   debugHint,
   isDebugEnabled,
 } from "../../src/utils/index.js";
-import type { PrivateRecipient } from "../../src/interfaces.js";
-import { Channel, SetupRequirement } from "../../src/interfaces.js";
+import { Channel, createEmptyRegistry, SetupRequirement } from "../../src/interfaces.js";
 
 // Test addresses and keys (must be valid hex addresses convertible to BigInt)
 const POOL_ADDRESS = "0x1";
@@ -19,6 +18,12 @@ const ALICE_PRIVATE_KEY = 12345n;
 
 const BOB_ADDRESS = "0xB0B";
 const BOB_PRIVATE_KEY = 67890n;
+
+// Default options for auto-discovery and auto-setup
+const AUTO_OPTIONS = {
+  autoDiscover: { recipient: "refresh" as const },
+  autoSetup: true,
+};
 
 describe("MockPrivateTransfers", () => {
   let erc20s: ERC20s;
@@ -45,87 +50,88 @@ describe("MockPrivateTransfers", () => {
   });
 
   describe("discoverRequirement", () => {
-    // Helper to create a PrivateRecipient
-    const recipient = (address: string): PrivateRecipient => ({
-      address,
-      context: undefined!,
-    });
-
     describe("discovering requirements for self", () => {
       it("returns Register when user is not registered", async () => {
-        const req = await alice.discoverRequirement(recipient(ALICE_ADDRESS), STRK);
+        const req = await alice.discoverRequirement(ALICE_ADDRESS, STRK);
         expect(req).toBe(SetupRequirement.Register);
       });
 
       it("returns SetupChannel after registration (no channel to self)", async () => {
-        await alice.register();
-        const req = await alice.discoverRequirement(recipient(ALICE_ADDRESS), STRK);
+        await alice.build().register().execute();
+        const req = await alice.discoverRequirement(ALICE_ADDRESS, STRK);
         expect(req).toBe(SetupRequirement.SetupChannel);
       });
 
       it("returns SetupToken after channel setup (no token)", async () => {
-        await alice.register();
-        await alice.setupChannel(ALICE_ADDRESS);
-        const req = await alice.discoverRequirement(recipient(ALICE_ADDRESS), STRK);
+        await alice.build().register().execute();
+        await alice.build().setup(ALICE_ADDRESS).execute();
+        const req = await alice.discoverRequirement(ALICE_ADDRESS, STRK);
         expect(req).toBe(SetupRequirement.SetupToken);
       });
 
       it("returns Ready after token setup", async () => {
-        await alice.register();
-        const { channel } = await alice.setupChannel(ALICE_ADDRESS);
-        const aliceRecipient: PrivateRecipient = { address: ALICE_ADDRESS, context: channel };
-        await alice.setupToken(aliceRecipient, STRK);
-        const req = await alice.discoverRequirement(recipient(ALICE_ADDRESS), STRK);
+        await alice.build().register().execute();
+        await alice.build().setup(ALICE_ADDRESS).execute();
+        const channel = alice.discoverChannels(ALICE_ADDRESS).channels.get(ALICE_ADDRESS)!;
+
+        const registry = createEmptyRegistry();
+        registry.channels.set(ALICE_ADDRESS, channel);
+        await alice.build({ registry }).with(STRK).setup(ALICE_ADDRESS).execute();
+
+        const req = await alice.discoverRequirement(ALICE_ADDRESS, STRK);
         expect(req).toBe(SetupRequirement.Ready);
       });
     });
 
     describe("discovering requirements for another user", () => {
       it("returns Register when recipient is not registered", async () => {
-        await alice.register();
-        const req = await alice.discoverRequirement(recipient(BOB_ADDRESS), STRK);
+        await alice.build().register().execute();
+        const req = await alice.discoverRequirement(BOB_ADDRESS, STRK);
         expect(req).toBe(SetupRequirement.Register);
       });
 
       it("returns SetupChannel when recipient is registered but no channel", async () => {
-        await alice.register();
-        await bob.register();
-        const req = await alice.discoverRequirement(recipient(BOB_ADDRESS), STRK);
+        await alice.build().register().execute();
+        await bob.build().register().execute();
+        const req = await alice.discoverRequirement(BOB_ADDRESS, STRK);
         expect(req).toBe(SetupRequirement.SetupChannel);
       });
 
       it("returns SetupToken when channel exists but token not set up", async () => {
-        await alice.register();
-        await bob.register();
-        await alice.setupChannel(BOB_ADDRESS);
-        const req = await alice.discoverRequirement(recipient(BOB_ADDRESS), STRK);
+        await alice.build().register().execute();
+        await bob.build().register().execute();
+        await alice.build().setup(BOB_ADDRESS).execute();
+        const req = await alice.discoverRequirement(BOB_ADDRESS, STRK);
         expect(req).toBe(SetupRequirement.SetupToken);
       });
 
       it("returns Ready when fully set up", async () => {
-        await alice.register();
-        await bob.register();
-        const { channel } = await alice.setupChannel(BOB_ADDRESS);
-        const bobRecipient: PrivateRecipient = { address: BOB_ADDRESS, context: channel };
-        await alice.setupToken(bobRecipient, STRK);
-        const req = await alice.discoverRequirement(recipient(BOB_ADDRESS), STRK);
+        await alice.build().register().execute();
+        await bob.build().register().execute();
+        await alice.build().setup(BOB_ADDRESS).execute();
+        const channel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
+
+        const registry = createEmptyRegistry();
+        registry.channels.set(BOB_ADDRESS, channel);
+        await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute();
+
+        const req = await alice.discoverRequirement(BOB_ADDRESS, STRK);
         expect(req).toBe(SetupRequirement.Ready);
       });
 
       it("different tokens require separate setup", async () => {
-        await alice.register();
-        await bob.register();
-        const { channel } = await alice.setupChannel(BOB_ADDRESS);
-        const bobRecipient: PrivateRecipient = { address: BOB_ADDRESS, context: channel };
-        await alice.setupToken(bobRecipient, STRK);
+        await alice.build().register().execute();
+        await bob.build().register().execute();
+        await alice.build().setup(BOB_ADDRESS).execute();
+        const channel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
+
+        const registry = createEmptyRegistry();
+        registry.channels.set(BOB_ADDRESS, channel);
+        await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute();
 
         // STRK is ready, but ETH still needs setup
-        expect(await alice.discoverRequirement(recipient(BOB_ADDRESS), STRK)).toBe(
-          SetupRequirement.Ready
-        );
-        expect(await alice.discoverRequirement(recipient(BOB_ADDRESS), ETH)).toBe(
-          SetupRequirement.SetupToken
-        );
+        expect(await alice.discoverRequirement(BOB_ADDRESS, STRK)).toBe(SetupRequirement.Ready);
+        expect(await alice.discoverRequirement(BOB_ADDRESS, ETH)).toBe(SetupRequirement.SetupToken);
       });
     });
 
@@ -138,37 +144,29 @@ describe("MockPrivateTransfers", () => {
     });
   });
 
-  describe("direct methods", () => {
+  describe("builder operations", () => {
     let aliceChannel: Channel;
-    let bobRecipient: PrivateRecipient;
 
     beforeEach(async () => {
       // Register both users
-      await alice.register();
-      await bob.register();
+      await alice.build().register().execute();
+      await bob.build().register().execute();
 
       // Alice sets up channel to Bob
-      const setupResult = await alice.setupChannel(BOB_ADDRESS);
-      aliceChannel = setupResult.channel;
-
-      bobRecipient = {
-        address: BOB_ADDRESS,
-        context: aliceChannel,
-      };
+      await alice.build().setup(BOB_ADDRESS).execute();
+      aliceChannel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
 
       // Setup token for Bob
-      await alice.setupToken(bobRecipient, STRK);
+      const registry = createEmptyRegistry();
+      registry.channels.set(BOB_ADDRESS, aliceChannel);
+      await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute();
 
       // Give Alice some public STRK to deposit
       erc20s.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
     });
 
     it("deposit creates a note for the recipient", async () => {
-      await alice.deposit({
-        token: STRK,
-        amount: 100n,
-        recipient: bobRecipient,
-      });
+      await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, BOB_ADDRESS).execute();
 
       // Bob should be able to discover the note
       const discovered = bob.discoverNotes();
@@ -179,11 +177,7 @@ describe("MockPrivateTransfers", () => {
 
     it("withdraw converts private note back to public balance", async () => {
       // First deposit
-      await alice.deposit({
-        token: STRK,
-        amount: 100n,
-        recipient: bobRecipient,
-      });
+      await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, BOB_ADDRESS).execute();
 
       // Bob discovers his notes
       const discovered = bob.discoverNotes();
@@ -191,12 +185,12 @@ describe("MockPrivateTransfers", () => {
       expect(notes.length).toBe(1);
 
       // Bob withdraws
-      await bob.withdraw({
-        token: STRK,
-        inputs: notes,
-        recipient: BOB_ADDRESS,
-        amount: 100n,
-      });
+      await bob
+        .build(AUTO_OPTIONS)
+        .with(STRK)
+        .inputs(...notes)
+        .withdraw({ recipient: BOB_ADDRESS, amount: 100n })
+        .execute();
 
       // Bob should have public balance now
       expect(erc20s.get(STRK).balanceOf(BOB_ADDRESS)).toBe(100n);
@@ -204,32 +198,27 @@ describe("MockPrivateTransfers", () => {
 
     it("transfer moves note from one user to another", async () => {
       // Setup: Alice deposits to Bob
-      await alice.deposit({
-        token: STRK,
-        amount: 100n,
-        recipient: bobRecipient,
-      });
+      await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, BOB_ADDRESS).execute();
 
       // Bob discovers his notes
       const bobNotes = bob.discoverNotes().notes.get(STRK) ?? [];
       expect(bobNotes.length).toBe(1);
 
       // Bob needs to set up channel to Alice for transfer
-      const bobToAliceSetup = await bob.setupChannel(ALICE_ADDRESS);
-      const bobToAliceChannel = bobToAliceSetup.channel;
-      const aliceRecipient: PrivateRecipient = {
-        address: ALICE_ADDRESS,
-        context: bobToAliceChannel,
-      };
-      await bob.setupToken(aliceRecipient, STRK);
+      await bob.build().setup(ALICE_ADDRESS).execute();
+      const bobToAliceChannel = bob.discoverChannels(ALICE_ADDRESS).channels.get(ALICE_ADDRESS)!;
+
+      const bobRegistry = createEmptyRegistry();
+      bobRegistry.channels.set(ALICE_ADDRESS, bobToAliceChannel);
+      await bob.build({ registry: bobRegistry }).with(STRK).setup(ALICE_ADDRESS).execute();
 
       // Bob transfers to Alice
-      await bob.transfer({
-        token: STRK,
-        inputs: bobNotes,
-        recipient: aliceRecipient,
-        amount: 100n,
-      });
+      await bob
+        .build(AUTO_OPTIONS)
+        .with(STRK)
+        .inputs(...bobNotes)
+        .transfer({ recipient: ALICE_ADDRESS, amount: 100n })
+        .execute();
 
       // Alice should now have the note
       const aliceNotes = alice.discoverNotes().notes.get(STRK) ?? [];
@@ -244,32 +233,43 @@ describe("MockPrivateTransfers", () => {
 
   describe("validation", () => {
     it("rejects negative deposit amounts", async () => {
-      await alice.register();
-      const { channel } = await alice.setupChannel(ALICE_ADDRESS);
-      const aliceSelf = { address: ALICE_ADDRESS, context: channel };
-      await alice.setupToken(aliceSelf, STRK);
+      await alice.build().register().execute();
+      await alice.build().setup(ALICE_ADDRESS).execute();
+      const channel = alice.discoverChannels(ALICE_ADDRESS).channels.get(ALICE_ADDRESS)!;
+
+      const registry = createEmptyRegistry();
+      registry.channels.set(ALICE_ADDRESS, channel);
+      await alice.build({ registry }).with(STRK).setup(ALICE_ADDRESS).execute();
 
       await expect(
-        alice.deposit({ token: STRK, amount: -100n, recipient: aliceSelf })
+        alice.build(AUTO_OPTIONS).with(STRK).deposit(-100n, ALICE_ADDRESS).execute()
       ).rejects.toThrow(/Deposit amount must be non-negative/);
     });
 
     it("rejects negative withdraw amounts", async () => {
-      await alice.register();
-      await bob.register();
-      const { channel } = await alice.setupChannel(BOB_ADDRESS);
-      const bobRecipient = { address: BOB_ADDRESS, context: channel };
-      await alice.setupToken(bobRecipient, STRK);
+      await alice.build().register().execute();
+      await bob.build().register().execute();
+      await alice.build().setup(BOB_ADDRESS).execute();
+      const channel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
+
+      const registry = createEmptyRegistry();
+      registry.channels.set(BOB_ADDRESS, channel);
+      await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute();
 
       erc20s.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
-      await alice.deposit({ token: STRK, amount: 100n, recipient: bobRecipient });
+      await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, BOB_ADDRESS).execute();
 
       const notes = bob.discoverNotes().notes.get(STRK) ?? [];
       expect(notes.length).toBe(1);
 
-      await expect(bob.withdraw({ token: STRK, inputs: notes, amount: -50n })).rejects.toThrow(
-        /Withdraw amount must be non-negative/
-      );
+      await expect(
+        bob
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .inputs(...notes)
+          .withdraw({ amount: -50n })
+          .execute()
+      ).rejects.toThrow(/Withdraw amount must be non-negative/);
     });
   });
 });

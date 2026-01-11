@@ -108,6 +108,8 @@ export interface ProveInterface {
   prove(calls: AllowArray<Call>): Promise<Proof>;
 }
 
+// ============ Raw Actions (builder output, no context) ============
+
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export type SetViewingKeyAction = {};
 
@@ -117,16 +119,16 @@ export type OpenChannelAction = {
 
 export type OpenTokenChannelAction = {
   recipient: StarknetAddress;
-  context: Channel;
   token: StarknetAddress;
 };
 
 export type DepositAction = {
-  recipient: StarknetAddress | NoteId;
-  context?: Channel;
   token: StarknetAddress;
   amount: Amount;
-};
+} & (
+  | { recipient: StarknetAddress } // Deposit to address (context resolved from registry)
+  | { noteId: NoteId } // Deposit to open note (no context needed)
+);
 
 export type UseNoteAction = {
   token: StarknetAddress;
@@ -135,7 +137,6 @@ export type UseNoteAction = {
 
 export type CreateNoteAction = {
   recipient: StarknetAddress;
-  context: Channel;
   token: StarknetAddress;
   amount: Amount | Open;
 };
@@ -145,6 +146,82 @@ export type WithdrawAction = {
   token: StarknetAddress;
   amount: Amount;
 };
+
+/** Actions - context comes from registry */
+export type Actions = {
+  setViewingKey?: SetViewingKeyAction;
+  openChannels?: OpenChannelAction[];
+  openTokenChannels?: OpenTokenChannelAction[];
+  deposits?: DepositAction[];
+  useNotes?: UseNoteAction[];
+  createNotes?: CreateNoteAction[];
+  withdraws?: WithdrawAction[];
+};
+
+// ============ Auto-Discovery & Registry Types ============
+
+/**
+ * Discovery level controls when/whether to call the discovery service.
+ * - 'none': Never call discovery. Missing data → error.
+ * - 'explicit': Only discover when data is missing. Trust registry contents.
+ * - 'refresh': Always discover. Use registry as optimization hint.
+ */
+export type DiscoveryLevel = "none" | "explicit" | "refresh";
+
+/**
+ * Options for automatic discovery during execute.
+ */
+export type AutoDiscoveryOptions = {
+  /** Discovery level for notes */
+  notes?: DiscoveryLevel;
+  /** Discovery level for recipient channels (includes self) */
+  recipient?: DiscoveryLevel;
+};
+
+/**
+ * Registry holding the user's private state: channels and notes.
+ * Passed to execute() for context resolution and updated with new state.
+ */
+export type PrivateRegistry = {
+  /** Channels by recipient address */
+  channels: AddressMap<Channel>;
+  /** Notes by token address */
+  notes: AddressMap<Note[]>;
+};
+
+/** Create an empty private registry */
+export function createEmptyRegistry(): PrivateRegistry {
+  return {
+    channels: new AddressMap<Channel>(),
+    notes: new AddressMap<Note[]>(() => []),
+  };
+}
+
+/**
+ * Options for building and executing private transfers.
+ */
+export type ExecuteOptions = {
+  /** Auto-discovery options */
+  autoDiscover?: AutoDiscoveryOptions;
+  /** If true, add OpenChannel/OpenTokenChannel actions implicitly when missing */
+  autoSetup?: boolean;
+  /** If true, auto-select notes from registry when inputs() not called */
+  autoSelectNotes?: boolean;
+  /** Registry for context/notes lookup. Updated during execute unless registryConst is true. */
+  registry?: PrivateRegistry;
+  /** If true, registry is not mutated; a new one is returned instead */
+  registryConst?: boolean;
+};
+
+/**
+ * Result of execute, including the call/proof and updated registry.
+ */
+export type ExecuteResult = {
+  callAndProof: CallAndProof;
+  /** Updated registry (new object if registryConst was true, same object otherwise) */
+  registry: PrivateRegistry;
+};
+
 /**
  * Main interface for clients to use. It is stateless.
  * The methods call the proof provider to generate a proof and prepare a public call to send to Starknet.
@@ -179,7 +256,7 @@ export interface PrivateTransfers {
    * @throws if the account or recipient is not registered
    */
   discoverRequirement(
-    recipient: PrivateRecipient,
+    recipient: StarknetAddress,
     token: StarknetAddress
   ): Promise<SetupRequirement>;
 
@@ -195,20 +272,22 @@ export interface PrivateTransfers {
   /**
    * Discover channels for one or more recipients
    */
-  discoverChannels(...recipients: (StarknetAddress | PrivateRecipient)[]): {
+  discoverChannels(...recipients: StarknetAddress[]): {
     timestamp: BlockIdentifier;
     channels: AddressMap<Channel>;
   };
 
-  execute(actions: {
-    setViewingKey?: SetViewingKeyAction;
-    openChannels?: OpenChannelAction[];
-    openTokenChannels?: OpenTokenChannelAction[];
-    deposits?: DepositAction[];
-    useNotes?: UseNoteAction[];
-    createNotes?: CreateNoteAction[];
-    withdraws?: WithdrawAction[];
-  }): Promise<CallAndProof>;
+  /**
+   * Execute raw actions. The implementation:
+   * 1. Compiles actions (resolves contexts from registry, openChannels, autoSetup, or discovery)
+   * 2. Validates the compiled actions
+   * 3. Executes on the pool
+   * 4. Returns result with updated registry
+   */
+  execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /** Create a builder for batching multiple operations */
+  build(options?: ExecuteOptions): PrivateTransfersBuilder;
 }
 
 // ============ Builder Types ============
@@ -216,7 +295,7 @@ export interface PrivateTransfers {
 /**
  * Output specification for transfer/withdraw operations
  */
-export type TransferOutput = { recipient: PrivateRecipient; amount: Amount | Open };
+export type TransferOutput = { recipient: StarknetAddress; amount: Amount | Open };
 export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
 
 /**
@@ -231,28 +310,32 @@ export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
  */
 export interface TokenOperationsBuilder {
   /** Setup this token in recipient's channel */
-  setup(recipient: PrivateRecipient): this;
+  setup(recipient: StarknetAddress): this;
 
-  /** Specify input notes for this token */
+  /** Specify input notes for this token. If not called and autoSelectNotes is enabled, notes are auto-selected. */
   inputs(...notes: Note[]): this;
 
-  /** Deposit this token (to self by default, or to a recipient with an open note already prepared)
-   * @param recipient can be a recipient or a note id for an open note.
+  /**
+   * Deposit this token.
+   * @param recipient Address or NoteId (for open notes). Context resolved from registry or discovery.
    */
-  deposit(amount: Amount, recipient: PrivateRecipient | NoteId): this;
+  deposit(amount: Amount, recipient: StarknetAddress | NoteId): this;
 
   /** Withdraw this token to one or more public addresses */
   withdraw(...outputs: WithdrawOutput[]): this;
 
-  /** Transfer this token privately to one or more recipients */
-  transfer(...outputs: TransferOutput[]): this;
+  /**
+   * Transfer this token privately to one or more recipients.
+   * Context for each recipient is resolved from registry or discovery.
+   */
+  transfer(...outputs: Array<{ recipient: StarknetAddress; amount: Amount | Open }>): this;
 
   /**
    * Set the recipient for any surplus for this token.
    * Overrides the top-level surplusTo for this specific token.
    * If inputs exceed outputs, a CreateNoteAction is automatically added for the difference.
    */
-  surplusTo(recipient: PrivateRecipient | Channel): this;
+  surplusTo(recipient: StarknetAddress | Channel): this;
 
   /** Switch to another token */
   with(token: StarknetAddress): TokenOperationsBuilder;
@@ -261,7 +344,7 @@ export interface TokenOperationsBuilder {
   done(): PrivateTransfersBuilder;
 
   /** Execute all queued operations */
-  execute(): Promise<CallAndProof>;
+  execute(options?: ExecuteOptions): Promise<ExecuteResult>;
 }
 
 /**
@@ -279,13 +362,12 @@ export interface TokenOperationsBuilder {
  *
  * @example Register and setup a new recipient
  * ```ts
- * const alice: PrivateRecipient = { address: ALICE_ADDRESS, context: undefined! };
- * await transfers.build()
+ * await transfers.build({ autoSetup: true })
  *   .register()
- *   .setup(alice)  // alice.context will be populated with the Channel
+ *   .setup(BOB_ADDRESS)
  *   .with(STRK)
- *     .setup(alice)
- *     .deposit(100n, alice)
+ *     .setup(BOB_ADDRESS)
+ *     .deposit(100n, BOB_ADDRESS)
  *   .execute();
  * ```
  *
@@ -341,13 +423,13 @@ export interface PrivateTransfersBuilder {
    * If inputs exceed outputs for a token, a CreateNoteAction is automatically added for the difference.
    * Can be overridden per-token using TokenOperationsBuilder.surplusTo().
    */
-  surplusTo(recipient: PrivateRecipient | Channel): this;
+  surplusTo(recipient: StarknetAddress | Channel): this;
 
   /** Start token-specific operations */
   with(token: StarknetAddress): TokenOperationsBuilder;
 
   /** Execute all queued operations and return the results */
-  execute(): Promise<CallAndProof>;
+  execute(options?: ExecuteOptions): Promise<ExecuteResult>;
 }
 
 ////// The following are more likely to change /////////
@@ -364,8 +446,13 @@ export interface ProofProviderInterface {
 
 export interface DiscoveryProviderInterface {
   /**
+   * Get the public key for a registered address.
+   * This is a contract read operation.
+   */
+  getPublicKey(address: StarknetAddress): BigNumberish;
+
+  /**
    * Discover unspent notes per token
-   *
    */
   discoverNotes(
     address: StarknetAddress,
@@ -382,7 +469,7 @@ export interface DiscoveryProviderInterface {
   discoverChannels(
     address: StarknetAddress,
     viewingKey: ViewingKey,
-    ...recipients: (StarknetAddress | PrivateRecipient)[]
+    ...recipients: StarknetAddress[]
   ): {
     timestamp: BlockIdentifier;
     channels: AddressMap<Channel>;
@@ -396,7 +483,7 @@ export interface DiscoveryProviderInterface {
   discoverRequirement(
     address: StarknetAddress,
     viewingKey: ViewingKey,
-    recipient: PrivateRecipient,
+    recipient: StarknetAddress,
     token: StarknetAddress
   ): Promise<SetupRequirement>;
 }

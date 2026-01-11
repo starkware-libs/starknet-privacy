@@ -3,21 +3,16 @@
  */
 
 import type {
+  Actions,
   Amount,
-  CreateNoteAction,
-  DepositAction,
   Note,
   NoteId,
   Open,
-  OpenChannelAction,
-  OpenTokenChannelAction,
-  SetViewingKeyAction,
+  PrivateRegistry,
   StarknetAddress,
   StarknetAddressBigint,
-  UseNoteAction,
-  WithdrawAction,
 } from "../interfaces.js";
-import { Witness } from "../interfaces.js";
+import { Witness, Channel } from "../interfaces.js";
 import { BigNumberish } from "starknet";
 import { NoteNonce, TokenNonce } from "../internal/index.js";
 import {
@@ -123,18 +118,25 @@ export class PrivacyPool {
   execute(
     sender: StarknetAddress,
     senderViewingKey: ViewingKey,
-    actions: {
-      setViewingKey?: SetViewingKeyAction;
-      openChannels?: OpenChannelAction[];
-      openTokenChannels?: OpenTokenChannelAction[];
-      deposits?: DepositAction[];
-      useNotes?: UseNoteAction[];
-      createNotes?: CreateNoteAction[];
-      withdraws?: WithdrawAction[];
-    }
+    actions: Actions,
+    registry: PrivateRegistry
   ) {
+    // Clone channels to avoid mutating the registry (simulates real contract behavior)
+    // The real Starknet contract doesn't have access to our local registry objects
+    const clonedChannels = new AddressMap<Channel>();
+    for (const [addr, channel] of registry.channels.entries()) {
+      clonedChannels.set(addr, channel.clone());
+    }
+
+    // Helper to get cloned channel
+    const getChannel = (recipient: StarknetAddress) => {
+      const channel = clonedChannels.get(recipient);
+      assert(channel, `No channel found for recipient ${recipient} in registry`);
+      return channel;
+    };
+
     // Validate before mutating any state
-    this.validateTokenTotals(actions);
+    this.validateTokenTotals(actions, registry);
 
     // 1. Register user if setViewingKey is requested
     if (actions.setViewingKey) {
@@ -148,10 +150,10 @@ export class PrivacyPool {
       }
     }
 
-    // 3. Open token channels
+    // 3. Open token channels - use cloned channel
     if (actions.openTokenChannels) {
       for (const action of actions.openTokenChannels) {
-        const channel = action.context;
+        const channel = getChannel(action.recipient);
         const nonce = channel.incrementTokenNonce();
         this.setToken(sender, action.recipient, channel.key, action.token, nonce);
       }
@@ -164,9 +166,13 @@ export class PrivacyPool {
       for (const action of actions.deposits) {
         this.deposit(sender, action.token, action.amount);
 
-        if (action.context) {
-          // Normal deposit: create a new note
-          const nonce = action.context.incrementNoteNonce(action.token);
+        if ("noteId" in action) {
+          // Deposit to existing open note
+          this.fillOpenNote(action.noteId, action.token, action.amount);
+        } else {
+          // Normal deposit: create a new note - use cloned channel
+          const channel = getChannel(action.recipient);
+          const nonce = channel.incrementNoteNonce(action.token);
           this.createNote(
             sender,
             senderViewingKey,
@@ -175,9 +181,6 @@ export class PrivacyPool {
             nonce,
             action.amount
           );
-        } else {
-          // Deposit to existing open note
-          this.fillOpenNote(action.recipient as NoteId, action.token, action.amount);
         }
       }
     }
@@ -189,10 +192,11 @@ export class PrivacyPool {
       }
     }
 
-    // Process createNotes: create new notes for recipients
+    // Process createNotes: create new notes for recipients - use cloned channel
     if (actions.createNotes) {
       for (const action of actions.createNotes) {
-        const nonce = action.context.incrementNoteNonce(action.token);
+        const channel = getChannel(action.recipient);
+        const nonce = channel.incrementNoteNonce(action.token);
         this.createNote(
           sender,
           senderViewingKey,
@@ -346,12 +350,7 @@ export class PrivacyPool {
     note.amount = amount;
   }
 
-  private validateTokenTotals(actions: {
-    deposits?: DepositAction[];
-    useNotes?: UseNoteAction[];
-    createNotes?: CreateNoteAction[];
-    withdraws?: WithdrawAction[];
-  }): void {
+  private validateTokenTotals(actions: Actions, _registry: PrivateRegistry): void {
     // 1. Validate all amounts are non-negative
     if (actions.deposits) {
       for (const deposit of actions.deposits) {
