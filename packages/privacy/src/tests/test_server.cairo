@@ -1,5 +1,8 @@
 use core::num::traits::Zero;
-use privacy::actions::ServerAction;
+use privacy::actions::{
+    AppendToVec, ServerAction, TransferFrom, TransferTo, VerifyValue, Write, WriteIfZero,
+    WriteIfZeroSubchannel, WritePrivateKey,
+};
 use privacy::errors;
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
@@ -273,7 +276,9 @@ fn test_execute_write_if_zero() {
 
     // Verify channel doesn't exist and write.
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZero { storage_address: storage_path_felt, value: true.into() },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -285,7 +290,9 @@ fn test_execute_write_if_zero() {
         map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZero { storage_address: storage_path_felt, value: true.into() },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -297,7 +304,9 @@ fn test_execute_write_if_zero() {
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, user.public_key)),
+        ServerAction::WriteIfZero(
+            WriteIfZero { storage_address: storage_path_felt, value: user.public_key },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -311,7 +320,9 @@ fn test_execute_write_if_zero() {
     );
     assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, note.enc_amount)),
+        ServerAction::WriteIfZero(
+            WriteIfZero { storage_address: storage_path_felt, value: note.enc_amount },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -328,7 +339,9 @@ fn test_execute_write_if_zero() {
     );
     assert_eq!(current_value, false);
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZero { storage_address: storage_path_felt, value: true.into() },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -347,7 +360,9 @@ fn test_execute_write_if_zero_assertions() {
         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZero { storage_address: storage_path_felt, value: true.into() },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
     let current_value: bool = generic_load(
@@ -362,7 +377,9 @@ fn test_execute_write_if_zero_assertions() {
         map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZero { storage_address: storage_path_felt, value: true.into() },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
     let current_value: bool = generic_load(
@@ -378,7 +395,9 @@ fn test_execute_write_if_zero_assertions() {
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, note.enc_amount)),
+        ServerAction::WriteIfZero(
+            WriteIfZero { storage_address: storage_path_felt, value: note.enc_amount },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
     let current_value: felt252 = generic_load(
@@ -394,7 +413,9 @@ fn test_execute_write_if_zero_assertions() {
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero((storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZero { storage_address: storage_path_felt, value: true.into() },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
     let current_value: bool = generic_load(
@@ -418,7 +439,7 @@ fn test_execute_write() {
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::Write((storage_path_felt, user.public_key)),
+        ServerAction::Write(Write { storage_address: storage_path_felt, value: user.public_key }),
     ];
     test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_public_key(), user.public_key);
@@ -426,14 +447,14 @@ fn test_execute_write() {
     // Change public key.
     user.new_key();
     let actions: Array<ServerAction> = array![
-        ServerAction::Write((storage_path_felt, user.public_key)),
+        ServerAction::Write(Write { storage_address: storage_path_felt, value: user.public_key }),
     ];
     test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_public_key(), user.public_key);
 
     // Change public key to zero.
     let actions: Array<ServerAction> = array![
-        ServerAction::Write((storage_path_felt, Zero::zero())),
+        ServerAction::Write(Write { storage_address: storage_path_felt, value: Zero::zero() }),
     ];
     test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_public_key(), Zero::zero());
@@ -453,7 +474,11 @@ fn test_execute_write_if_zero_subchannel() {
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroSubchannel((storage_path_felt, enc_subchannel_info)),
+        ServerAction::WriteIfZeroSubchannel(
+            WriteIfZeroSubchannel {
+                storage_address: storage_path_felt, value: enc_subchannel_info,
+            },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -472,7 +497,11 @@ fn test_execute_write_if_zero_subchannel_assertions() {
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroSubchannel((storage_path_felt, enc_subchannel_info)),
+        ServerAction::WriteIfZeroSubchannel(
+            WriteIfZeroSubchannel {
+                storage_address: storage_path_felt, value: enc_subchannel_info,
+            },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
     let current_value = generic_load(
@@ -498,7 +527,9 @@ fn test_execute_write_private_key() {
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WritePrivateKey((storage_path_felt, enc_private_key)),
+        ServerAction::WritePrivateKey(
+            WritePrivateKey { storage_address: storage_path_felt, value: enc_private_key },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -509,14 +540,18 @@ fn test_execute_write_private_key() {
     let new_enc_private_key = test.mock_new_enc_private_key();
     assert!(new_enc_private_key.is_non_zero());
     let actions: Array<ServerAction> = array![
-        ServerAction::WritePrivateKey((storage_path_felt, new_enc_private_key)),
+        ServerAction::WritePrivateKey(
+            WritePrivateKey { storage_address: storage_path_felt, value: new_enc_private_key },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_enc_private_key(), new_enc_private_key);
 
     // Write zero.
     let actions: Array<ServerAction> = array![
-        ServerAction::WritePrivateKey((storage_path_felt, Zero::zero())),
+        ServerAction::WritePrivateKey(
+            WritePrivateKey { storage_address: storage_path_felt, value: Zero::zero() },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_enc_private_key(), Zero::zero());
@@ -530,7 +565,13 @@ fn test_execute_append_to_vector() {
 
     // Append channel to vector
     let actions: Array<ServerAction> = array![
-        ServerAction::AppendToVec((user.address, user.public_key, enc_channel_info)),
+        ServerAction::AppendToVec(
+            AppendToVec {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                enc_channel_info: enc_channel_info,
+            },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -555,7 +596,9 @@ fn test_execute_transfer_from() {
 
     // Test transfer_from.
     let actions: Array<ServerAction> = array![
-        ServerAction::TransferFrom((user.address, token.contract_address(), amount)),
+        ServerAction::TransferFrom(
+            TransferFrom { sender_addr: user.address, token: token.contract_address(), amount },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -573,7 +616,11 @@ fn test_execute_transfer_from_assertions() {
 
     // Catch INSUFFICIENT_BALANCE.
     let actions: Array<ServerAction> = array![
-        ServerAction::TransferFrom((user.address, token.contract_address(), amount)),
+        ServerAction::TransferFrom(
+            TransferFrom {
+                sender_addr: user.address, token: token.contract_address(), amount: amount,
+            },
+        ),
     ];
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
@@ -581,7 +628,11 @@ fn test_execute_transfer_from_assertions() {
     // Catch INSUFFICIENT_ALLOWANCE.
     token.supply(:user, :amount);
     let actions: Array<ServerAction> = array![
-        ServerAction::TransferFrom((user.address, token.contract_address(), amount)),
+        ServerAction::TransferFrom(
+            TransferFrom {
+                sender_addr: user.address, token: token.contract_address(), amount: amount,
+            },
+        ),
     ];
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
@@ -606,7 +657,11 @@ fn test_execute_transfer_to() {
 
     // Test transfer_to.
     let actions: Array<ServerAction> = array![
-        ServerAction::TransferTo((recipient.address, token.contract_address(), amount)),
+        ServerAction::TransferTo(
+            TransferTo {
+                recipient_addr: recipient.address, token: token.contract_address(), amount: amount,
+            },
+        ),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -624,7 +679,11 @@ fn test_execute_transfer_to_assertions() {
 
     // Catch INSUFFICIENT_BALANCE.
     let actions: Array<ServerAction> = array![
-        ServerAction::TransferTo((recipient.address, token.contract_address(), amount)),
+        ServerAction::TransferTo(
+            TransferTo {
+                recipient_addr: recipient.address, token: token.contract_address(), amount: amount,
+            },
+        ),
     ];
     assert_lt!(token.balance_of(address: test.privacy.address), amount.into());
     let result = test.privacy.safe_execute_actions(actions.span());
@@ -640,7 +699,11 @@ fn test_execute_verify_value() {
     let storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
-    let actions = array![ServerAction::WriteIfZero((storage_path_felt, user.public_key))];
+    let actions = array![
+        ServerAction::WriteIfZero(
+            WriteIfZero { storage_address: storage_path_felt, value: user.public_key },
+        ),
+    ];
     test.privacy.execute_actions(actions.span());
 
     // Verify value by loading from storage.
@@ -650,7 +713,11 @@ fn test_execute_verify_value() {
     assert_eq!(current_value, user.public_key);
 
     // Verify value by action.
-    let actions = array![ServerAction::VerifyValue((storage_path_felt, user.public_key))];
+    let actions = array![
+        ServerAction::VerifyValue(
+            VerifyValue { storage_address: storage_path_felt, value: user.public_key },
+        ),
+    ];
     test.privacy.execute_actions(actions.span());
 }
 
@@ -667,7 +734,11 @@ fn test_execute_verify_value_assertions() {
         target: test.privacy.address, storage_address: storage_path_felt,
     );
     assert_ne!(current_value, user.public_key);
-    let actions = array![ServerAction::VerifyValue((storage_path_felt, user.public_key))];
+    let actions = array![
+        ServerAction::VerifyValue(
+            VerifyValue { storage_address: storage_path_felt, value: user.public_key },
+        ),
+    ];
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
 }

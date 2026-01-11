@@ -3,8 +3,9 @@ use core::num::traits::Zero;
 use core::traits::Neg;
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
-    ClientAction, CreateNoteInput, DepositInput, OpenChannelInput, OpenSubchannelInput,
-    ServerAction, SetViewingKeyInput, UseNoteInput, WithdrawInput,
+    AppendToVec, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput, OpenSubchannelInput,
+    ServerAction, SetViewingKeyInput, TransferFrom, TransferTo, UseNoteInput, WithdrawInput,
+    WriteIfZero,
 };
 use privacy::hashes::{
     compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
@@ -67,7 +68,12 @@ pub(crate) impl EncNoteImpl of EncNoteTrait {
         let storage_path = map_entry_address(
             map_selector: selector!("notes"), keys: [*self.id].span(),
         );
-        [ServerAction::WriteIfZero((storage_path, *self.enc_amount)),].span()
+        [
+            ServerAction::WriteIfZero(
+                WriteIfZero { storage_address: storage_path, value: *self.enc_amount },
+            ),
+        ]
+            .span()
     }
 }
 
@@ -624,12 +630,18 @@ pub(crate) impl UserImpl of UserTrait {
         self.approve(:token, amount: amount.into());
         let actions = [
             ServerAction::WriteIfZero(
-                (
-                    map_entry_address(map_selector: selector!("notes"), keys: [note.id].span()),
-                    note.enc_amount,
-                ),
+                WriteIfZero {
+                    storage_address: map_entry_address(
+                        map_selector: selector!("notes"), keys: [note.id].span(),
+                    ),
+                    value: note.enc_amount,
+                },
             ),
-            ServerAction::TransferFrom((*self.address, token.contract_address(), amount)),
+            ServerAction::TransferFrom(
+                TransferFrom {
+                    sender_addr: *self.address, token: token.contract_address(), amount,
+                },
+            ),
         ]
             .span();
         self.privacy.server.execute_actions(:actions);
@@ -645,14 +657,16 @@ pub(crate) impl UserImpl of UserTrait {
     ) {
         let actions = [
             ServerAction::WriteIfZero(
-                (
-                    map_entry_address(
+                WriteIfZero {
+                    storage_address: map_entry_address(
                         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
                     ),
-                    true.into(),
-                ),
+                    value: true.into(),
+                },
             ),
-            ServerAction::TransferTo((recipient_addr, token.contract_address(), amount)),
+            ServerAction::TransferTo(
+                TransferTo { recipient_addr, token: token.contract_address(), amount },
+            ),
         ]
             .span();
         self.privacy.server.execute_actions(:actions);
@@ -792,14 +806,16 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     ) {
         let actions = [
             ServerAction::WriteIfZero(
-                (
-                    map_entry_address(
+                WriteIfZero {
+                    storage_address: map_entry_address(
                         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
                     ),
-                    true.into(),
-                ),
+                    value: true.into(),
+                },
             ),
-            ServerAction::AppendToVec((recipient_addr, recipient_public_key, enc_channel_info)),
+            ServerAction::AppendToVec(
+                AppendToVec { recipient_addr, recipient_public_key, enc_channel_info },
+            ),
         ]
             .span();
         self.execute_actions(:actions);
@@ -825,7 +841,11 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self
             .server
             .execute_actions(
-                actions: array![ServerAction::WriteIfZero((storage_path_felt, note.enc_amount))]
+                actions: array![
+                    ServerAction::WriteIfZero(
+                        WriteIfZero { storage_address: storage_path_felt, value: note.enc_amount },
+                    ),
+                ]
                     .span(),
             )
     }
@@ -842,7 +862,12 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self
             .server
             .execute_actions(
-                actions: array![ServerAction::WriteIfZero((storage_path_felt, true.into()))].span(),
+                actions: array![
+                    ServerAction::WriteIfZero(
+                        WriteIfZero { storage_address: storage_path_felt, value: true.into() },
+                    ),
+                ]
+                    .span(),
             )
     }
 
