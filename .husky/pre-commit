@@ -1,2 +1,4 @@
-cd sdk && npx lint-staged
-
+# Only run sdk lint-staged if sdk files are being committed
+if git diff --cached --name-only | grep -q "^sdk/"; then
+  cd sdk && npx lint-staged
+fi

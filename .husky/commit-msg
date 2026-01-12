@@ -1,2 +1,4 @@
-cd sdk && npx commitlint --edit "$1"
-
+# Only run sdk commitlint if sdk files are being committed
+if git diff --cached --name-only | grep -q "^sdk/"; then
+  cd sdk && npx commitlint --edit "$1"
+fi
