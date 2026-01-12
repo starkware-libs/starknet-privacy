@@ -17,7 +17,6 @@ starkware_utils.workspace = true
 [dev-dependencies]
 assert_macros.workspace = true
 snforge_std.workspace = true
-openzeppelin_testing.workspace = true
 starkware_utils_testing.workspace = true
 
 [[test]]
