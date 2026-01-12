@@ -53,14 +53,14 @@ export class MockPrivateTransfers implements PrivateTransfers {
   }
 
   async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
-    // 1. Compile actions - resolves contexts and updates registry
-    const { actions: compiledActions, registry } = this.compiler.compile(actions, options);
+    // 1. Compile actions - resolves contexts and produces clientActions
+    const { clientActions, registry } = this.compiler.compile(actions, options);
 
-    // 2. Execute actions on the pool - pass registry for context lookup
-    await this.pool.execute(this.userAddress, this.userViewingKey, compiledActions, registry);
+    // 2. Execute client actions on the pool
+    this.pool.execute(this.userAddress, clientActions);
 
     // 3. Apply optimistic updates - update channel nonces, remove spent notes
-    applyOptimisticUpdate(compiledActions, registry);
+    applyOptimisticUpdate(clientActions, registry);
 
     return {
       callAndProof: createMockCallAndProof(),
