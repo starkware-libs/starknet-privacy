@@ -446,12 +446,6 @@ export interface ProofProviderInterface {
 
 export interface DiscoveryProviderInterface {
   /**
-   * Get the public key for a registered address.
-   * This is a contract read operation.
-   */
-  getPublicKey(address: StarknetAddress): BigNumberish;
-
-  /**
    * Discover unspent notes per token
    */
   discoverNotes(

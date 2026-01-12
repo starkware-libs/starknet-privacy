@@ -125,7 +125,7 @@ describe("ActionCompiler (via builder)", () => {
     it("refresh: discovers all recipients, updates registry with fresh nonces", async () => {
       // Start with an outdated registry (nonces at 0)
       const staleRegistry = createEmptyRegistry();
-      const staleChannel = new Channel(aliceToBobChannel.key); // fresh channel with nonce 0
+      const staleChannel = new Channel(aliceToBobChannel.key, aliceToBobChannel.recipientPublicKey); // fresh channel with nonce 0
       staleRegistry.channels.set(BOB_ADDRESS, staleChannel);
 
       // Do first deposit - this advances nonces in the pool
