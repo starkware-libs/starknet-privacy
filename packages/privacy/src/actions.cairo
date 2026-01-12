@@ -100,7 +100,6 @@ pub struct WithdrawInput {
 }
 
 
-// TODO: Consider refactoring tuples to named structs in ServerAction.
 // TODO: Gets a single random and generate from it new randoms for each action that needs a random.
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
@@ -159,38 +158,106 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
     }
 }
 
+/// Input for the `WriteIfZero` action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct WriteIfZeroInput {
+    /// The storage address to write to.
+    pub storage_address: felt252,
+    /// The value to write.
+    pub value: felt252,
+}
+
+/// Input for the `WriteIfZeroSubchannel` action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct WriteIfZeroSubchannelInput {
+    /// The storage address to write to.
+    pub storage_address: felt252,
+    /// The value to write.
+    pub value: EncSubchannelInfo,
+}
+
+/// Input for the `Write` action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct WriteInput {
+    /// The storage address to write to.
+    pub storage_address: felt252,
+    /// The value to write.
+    pub value: felt252,
+}
+
+/// Input for the `WritePrivateKey` action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct WritePrivateKeyInput {
+    /// The storage address to write to.
+    pub storage_address: felt252,
+    /// The value to write.
+    pub value: EncPrivateKey,
+}
+
+/// Input for the `AppendToVec` action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct AppendToVecInput {
+    /// The recipient's address.
+    pub recipient_addr: ContractAddress,
+    /// The recipient's public key.
+    pub recipient_public_key: felt252,
+    /// The channel info to append.
+    pub enc_channel_info: EncChannelInfo,
+}
+/// Input for the `TransferFrom` action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct TransferFromInput {
+    /// The sender's address.
+    pub sender_addr: ContractAddress,
+    /// The token's address.
+    pub token: ContractAddress,
+    /// The amount to transfer.
+    pub amount: u128,
+}
+
+/// Input for the `TransferTo` action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct TransferToInput {
+    /// The recipient's address.
+    pub recipient_addr: ContractAddress,
+    /// The token's address.
+    pub token: ContractAddress,
+    /// The amount to transfer.
+    pub amount: u128,
+}
+
+/// Input for the `VerifyValue` action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct VerifyValueInput {
+    /// The storage address to verify.
+    pub storage_address: felt252,
+    /// The value to verify.
+    pub value: felt252,
+}
+
 /// An action to be executed by the server.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ServerAction {
     /// Verify that a storage value is zero/empty and then write to it.
-    /// (storage_address: felt252, new_value: felt252)
-    WriteIfZero: (felt252, felt252),
+    WriteIfZero: WriteIfZeroInput,
     // TODO: Generalize to any type, Merge with WriteIfZero.
     // TODO: Better naming for this action.
     /// Verify that a storage value is zero/empty and then write to it.
-    /// (storage_address: felt252, new_value: EncSubchannelInfo)
-    WriteIfZeroSubchannel: (felt252, EncSubchannelInfo),
+    WriteIfZeroSubchannel: WriteIfZeroSubchannelInput,
     /// Write a value to storage.
-    /// (storage_address: felt252, new_value: felt252)
-    Write: (felt252, felt252),
+    Write: WriteInput,
     // TODO: Generalize to any type, Merge with Write.
     // TODO: Better naming for this action.
     /// Write an `EncPrivateKey` value to storage.
-    /// (storage_address: felt252, new_value: EncPrivateKey)
-    WritePrivateKey: (felt252, EncPrivateKey),
+    WritePrivateKey: WritePrivateKeyInput,
     // TODO: Generalize to any vector.
     /// Append a `EncChannelInfo` value to (`recipient_addr`, `recipient_public_key`)'s vector in
     /// storage.
-    /// (recipient_addr: ContractAddress, recipient_public_key: felt252, enc_channel_info:
-    /// EncChannelInfo)
-    AppendToVec: (ContractAddress, felt252, EncChannelInfo),
+    AppendToVec: AppendToVecInput,
     /// Transfer tokens from a user to the contract (ERC20 transfer_from).
-    /// (sender: ContractAddress, token: ContractAddress, amount: u128)
-    TransferFrom: (ContractAddress, ContractAddress, u128),
+    TransferFrom: TransferFromInput,
     /// Transfer tokens from the contract to a recipient (ERC20 transfer).
-    /// (recipient: ContractAddress, token: ContractAddress, amount: u128)
-    TransferTo: (ContractAddress, ContractAddress, u128),
+    TransferTo: TransferToInput,
     /// Verify that a storage value is equal to a given value.
-    /// (storage_address: felt252, value: felt252)
-    VerifyValue: (felt252, felt252),
+    VerifyValue: VerifyValueInput,
 }

@@ -1,7 +1,9 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    ClientAction, CreateNoteInput, DepositInput, OpenChannelInput, OpenSubchannelInput,
-    ServerAction, SetViewingKeyInput, UseNoteInput, WithdrawInput,
+    AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
+    OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
+    UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput, WriteIfZeroSubchannelInput,
+    WriteInput, WritePrivateKeyInput,
 };
 use privacy::errors;
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
@@ -31,8 +33,14 @@ fn test_set_viewing_key() {
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
     let expected_actions = [
-        ServerAction::Write((public_key_storage_path_felt, public_key)),
-        ServerAction::WritePrivateKey((enc_private_key_storage_path_felt, enc_private_key)),
+        ServerAction::Write(
+            WriteInput { storage_address: public_key_storage_path_felt, value: public_key },
+        ),
+        ServerAction::WritePrivateKey(
+            WritePrivateKeyInput {
+                storage_address: enc_private_key_storage_path_felt, value: enc_private_key,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -136,8 +144,14 @@ fn test_transfer() {
         map_selector: selector!("notes"), keys: [enc_note.id].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.enc_amount)),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: storage_path_felt_nullifier, value: true.into() },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: storage_path_felt_note, value: enc_note.enc_amount,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -186,8 +200,14 @@ fn test_transfer_to_self() {
         map_selector: selector!("notes"), keys: [enc_note.id].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.enc_amount)),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: storage_path_felt_nullifier, value: true.into() },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: storage_path_felt_note, value: enc_note.enc_amount,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -259,9 +279,19 @@ fn test_transfer_one_to_many() {
         map_selector: selector!("notes"), keys: [enc_note_2.id].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_note_1, enc_note_1.enc_amount)),
-        ServerAction::WriteIfZero((storage_path_felt_note_2, enc_note_2.enc_amount)),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: storage_path_felt_nullifier, value: true.into() },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: storage_path_felt_note_1, value: enc_note_1.enc_amount,
+            },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: storage_path_felt_note_2, value: enc_note_2.enc_amount,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -342,9 +372,17 @@ fn test_transfer_many_to_one() {
         map_selector: selector!("notes"), keys: [enc_note.id].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((storage_path_felt_nullifier_1, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_nullifier_2, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_note, enc_note.enc_amount)),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: storage_path_felt_nullifier_1, value: true.into() },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: storage_path_felt_nullifier_2, value: true.into() },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: storage_path_felt_note, value: enc_note.enc_amount,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -437,10 +475,22 @@ fn test_transfer_many_to_many() {
         map_selector: selector!("notes"), keys: [enc_note_2.id].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((storage_path_felt_nullifier_1, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_nullifier_2, true.into())),
-        ServerAction::WriteIfZero((storage_path_felt_note_1, enc_note_1.enc_amount)),
-        ServerAction::WriteIfZero((storage_path_felt_note_2, enc_note_2.enc_amount)),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: storage_path_felt_nullifier_1, value: true.into() },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: storage_path_felt_nullifier_2, value: true.into() },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: storage_path_felt_note_1, value: enc_note_1.enc_amount,
+            },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: storage_path_felt_note_2, value: enc_note_2.enc_amount,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -753,9 +803,19 @@ fn test_open_channel() {
         map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
     );
     let expected_actions = array![
-        ServerAction::VerifyValue((public_key_storage_path, user_2.public_key)),
-        ServerAction::WriteIfZero((channel_exists_storage_path, true.into())),
-        ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info)),
+        ServerAction::VerifyValue(
+            VerifyValueInput { storage_address: public_key_storage_path, value: user_2.public_key },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: channel_exists_storage_path, value: true.into() },
+        ),
+        ServerAction::AppendToVec(
+            AppendToVecInput {
+                recipient_addr: user_2.address,
+                recipient_public_key: user_2.public_key,
+                enc_channel_info: expected_enc_channel_info,
+            },
+        ),
     ]
         .span();
     assert_eq!(channel_output, expected_actions);
@@ -784,9 +844,19 @@ fn test_open_channel_self_channel() {
         map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
     );
     let expected_actions = array![
-        ServerAction::VerifyValue((public_key_storage_path, user.public_key)),
-        ServerAction::WriteIfZero((channel_exists_storage_path, true.into())),
-        ServerAction::AppendToVec((user.address, user.public_key, expected_enc_channel_info)),
+        ServerAction::VerifyValue(
+            VerifyValueInput { storage_address: public_key_storage_path, value: user.public_key },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: channel_exists_storage_path, value: true.into() },
+        ),
+        ServerAction::AppendToVec(
+            AppendToVecInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                enc_channel_info: expected_enc_channel_info,
+            },
+        ),
     ]
         .span();
     assert_eq!(channel_output, expected_actions);
@@ -904,15 +974,39 @@ fn test_open_channel_multiple_channels_same_sender() {
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::VerifyValue((public_key_storage_path_1, user_2.public_key)),
-        ServerAction::WriteIfZero((channel_exists_storage_path_1, true.into())),
-        ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info_1)),
+        ServerAction::VerifyValue(
+            VerifyValueInput {
+                storage_address: public_key_storage_path_1, value: user_2.public_key,
+            },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: channel_exists_storage_path_1, value: true.into() },
+        ),
+        ServerAction::AppendToVec(
+            AppendToVecInput {
+                recipient_addr: user_2.address,
+                recipient_public_key: user_2.public_key,
+                enc_channel_info: expected_enc_channel_info_1,
+            },
+        ),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::VerifyValue((public_key_storage_path_2, user_3.public_key)),
-        ServerAction::WriteIfZero((channel_exists_storage_path_2, true.into())),
-        ServerAction::AppendToVec((user_3.address, user_3.public_key, expected_enc_channel_info_2)),
+        ServerAction::VerifyValue(
+            VerifyValueInput {
+                storage_address: public_key_storage_path_2, value: user_3.public_key,
+            },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: channel_exists_storage_path_2, value: true.into() },
+        ),
+        ServerAction::AppendToVec(
+            AppendToVecInput {
+                recipient_addr: user_3.address,
+                recipient_public_key: user_3.public_key,
+                enc_channel_info: expected_enc_channel_info_2,
+            },
+        ),
     ]
         .span();
     assert_eq!(c1_output, expected_actions_1);
@@ -975,15 +1069,39 @@ fn test_open_channel_multiple_channels_same_recipient() {
         map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::VerifyValue((public_key_storage_path_1, user_1.public_key)),
-        ServerAction::WriteIfZero((channel_exists_storage_path_1, true.into())),
-        ServerAction::AppendToVec((user_1.address, user_1.public_key, expected_enc_channel_info_1)),
+        ServerAction::VerifyValue(
+            VerifyValueInput {
+                storage_address: public_key_storage_path_1, value: user_1.public_key,
+            },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: channel_exists_storage_path_1, value: true.into() },
+        ),
+        ServerAction::AppendToVec(
+            AppendToVecInput {
+                recipient_addr: user_1.address,
+                recipient_public_key: user_1.public_key,
+                enc_channel_info: expected_enc_channel_info_1,
+            },
+        ),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::VerifyValue((public_key_storage_path_2, user_1.public_key)),
-        ServerAction::WriteIfZero((channel_exists_storage_path_2, true.into())),
-        ServerAction::AppendToVec((user_1.address, user_1.public_key, expected_enc_channel_info_2)),
+        ServerAction::VerifyValue(
+            VerifyValueInput {
+                storage_address: public_key_storage_path_2, value: user_1.public_key,
+            },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: channel_exists_storage_path_2, value: true.into() },
+        ),
+        ServerAction::AppendToVec(
+            AppendToVecInput {
+                recipient_addr: user_1.address,
+                recipient_public_key: user_1.public_key,
+                enc_channel_info: expected_enc_channel_info_2,
+            },
+        ),
     ]
         .span();
     assert_eq!(c1_output, expected_actions_1);
@@ -1042,9 +1160,16 @@ fn test_open_subchannel() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt, expected_enc_subchannel_info),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt,
+                value: expected_enc_subchannel_info,
+            },
         ),
     ]
         .span();
@@ -1073,9 +1198,16 @@ fn test_open_subchannel_self_channel() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt, expected_enc_subchannel_info),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt,
+                value: expected_enc_subchannel_info,
+            },
         ),
     ]
         .span();
@@ -1235,16 +1367,30 @@ fn test_open_subchannel_multiple() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_2].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt_1, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt_1, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt_1, expected_enc_subchannel_info_1),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt_1,
+                value: expected_enc_subchannel_info_1,
+            },
         ),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt_2, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt_2, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt_2, expected_enc_subchannel_info_2),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt_2,
+                value: expected_enc_subchannel_info_2,
+            },
         ),
     ]
         .span();
@@ -1288,16 +1434,30 @@ fn test_open_subchannel_multiple() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_2].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt_1, expected_enc_subchannel_info_1),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt_1,
+                value: expected_enc_subchannel_info_1,
+            },
         ),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt_2, expected_enc_subchannel_info_2),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt_2,
+                value: expected_enc_subchannel_info_2,
+            },
         ),
     ]
         .span();
@@ -1346,16 +1506,30 @@ fn test_open_subchannel_multiple() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt_1, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt_1, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt, expected_enc_subchannel_info_1),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt,
+                value: expected_enc_subchannel_info_1,
+            },
         ),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt_2, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt_2, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt, expected_enc_subchannel_info_2),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt,
+                value: expected_enc_subchannel_info_2,
+            },
         ),
     ]
         .span();
@@ -1413,16 +1587,30 @@ fn test_open_subchannel_multiple_self_channel() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_2].span(),
     );
     let expected_actions_1 = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt_1, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt_1, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt_1, expected_enc_subchannel_info_1),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt_1,
+                value: expected_enc_subchannel_info_1,
+            },
         ),
     ]
         .span();
     let expected_actions_2 = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt_2, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt_2, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt_2, expected_enc_subchannel_info_2),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt_2,
+                value: expected_enc_subchannel_info_2,
+            },
         ),
     ]
         .span();
@@ -1845,7 +2033,11 @@ fn test_use_note() {
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
-    let expected_actions = [ServerAction::WriteIfZero((nullifier_storage_path, true.into()))]
+    let expected_actions = [
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_storage_path, value: true.into() },
+        )
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 }
@@ -1873,7 +2065,11 @@ fn test_use_note_self_note() {
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
-    let expected_actions = [ServerAction::WriteIfZero((nullifier_storage_path, true.into()))]
+    let expected_actions = [
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_storage_path, value: true.into() },
+        )
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 }
@@ -1943,11 +2139,23 @@ fn test_use_note_multiple_notes() {
     let nullifier_storage_path_3 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_3].span(),
     );
-    let expected_actions_1 = [ServerAction::WriteIfZero((nullifier_storage_path_1, true.into()))]
+    let expected_actions_1 = [
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_storage_path_1, value: true.into() },
+        )
+    ]
         .span();
-    let expected_actions_2 = [ServerAction::WriteIfZero((nullifier_storage_path_2, true.into()))]
+    let expected_actions_2 = [
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_storage_path_2, value: true.into() },
+        )
+    ]
         .span();
-    let expected_actions_3 = [ServerAction::WriteIfZero((nullifier_storage_path_3, true.into()))]
+    let expected_actions_3 = [
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_storage_path_3, value: true.into() },
+        )
+    ]
         .span();
     assert_eq!(actions_1, expected_actions_1);
     assert_eq!(actions_2, expected_actions_2);
@@ -2016,9 +2224,17 @@ fn test_use_note_same_amount() {
     let nullifier_storage_path_2 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_2].span(),
     );
-    let expected_actions_1 = [ServerAction::WriteIfZero((nullifier_storage_path_1, true.into()))]
+    let expected_actions_1 = [
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_storage_path_1, value: true.into() },
+        )
+    ]
         .span();
-    let expected_actions_2 = [ServerAction::WriteIfZero((nullifier_storage_path_2, true.into()))]
+    let expected_actions_2 = [
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_storage_path_2, value: true.into() },
+        )
+    ]
         .span();
     assert_eq!(actions_1, expected_actions_1);
     assert_eq!(actions_2, expected_actions_2);
@@ -2245,7 +2461,11 @@ fn test_use_note_find_nullifier() {
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
-    let expected_actions = [ServerAction::WriteIfZero((nullifier_storage_path, true.into()))]
+    let expected_actions = [
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_storage_path, value: true.into() },
+        )
+    ]
         .span();
     assert_eq!(actions, expected_actions);
     user_2.privacy.cheat_use_note(nullifier: expected_nullifier);
@@ -2275,21 +2495,39 @@ fn test_withdraw_different_targets() {
     // Withdraw note to self.
     let actions = user_1
         .internal_withdraw(withdrawal_target: user_1.address, :token_address, :amount);
-    let expected_actions = [ServerAction::TransferTo((user_1.address, token_address, amount)),]
+    let expected_actions = [
+        ServerAction::TransferTo(
+            TransferToInput {
+                recipient_addr: user_1.address, token: token_address, amount: amount,
+            },
+        ),
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 
     // Withdraw note to other registered user.
     let actions = user_1
         .internal_withdraw(withdrawal_target: user_2.address, :token_address, :amount);
-    let expected_actions = [ServerAction::TransferTo((user_2.address, token_address, amount)),]
+    let expected_actions = [
+        ServerAction::TransferTo(
+            TransferToInput {
+                recipient_addr: user_2.address, token: token_address, amount: amount,
+            },
+        ),
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 
     // Withdraw note to not registered user.
     let actions = user_1
         .internal_withdraw(withdrawal_target: user_3.address, :token_address, :amount);
-    let expected_actions = [ServerAction::TransferTo((user_3.address, token_address, amount)),]
+    let expected_actions = [
+        ServerAction::TransferTo(
+            TransferToInput {
+                recipient_addr: user_3.address, token: token_address, amount: amount,
+            },
+        ),
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 }
@@ -2335,9 +2573,13 @@ fn test_set_viewing_key_multiple_times() {
     );
     let expected_enc_private_key = user.compute_enc_private_key(:random);
     let expected_actions = [
-        ServerAction::Write((public_key_storage_path_felt, user.public_key)),
+        ServerAction::Write(
+            WriteInput { storage_address: public_key_storage_path_felt, value: user.public_key },
+        ),
         ServerAction::WritePrivateKey(
-            (enc_private_key_storage_path_felt, expected_enc_private_key),
+            WritePrivateKeyInput {
+                storage_address: enc_private_key_storage_path_felt, value: expected_enc_private_key,
+            },
         ),
     ]
         .span();
@@ -2473,8 +2715,14 @@ fn test_compile_client_actions_set_viewing_key() {
         map_selector: selector!("enc_private_key"), keys: [user_1.address.into()].span(),
     );
     let expected_actions = [
-        ServerAction::Write((public_key_storage_path_felt, user_1.public_key)),
-        ServerAction::WritePrivateKey((enc_private_key_storage_path_felt, enc_private_key)),
+        ServerAction::Write(
+            WriteInput { storage_address: public_key_storage_path_felt, value: user_1.public_key },
+        ),
+        ServerAction::WritePrivateKey(
+            WritePrivateKeyInput {
+                storage_address: enc_private_key_storage_path_felt, value: enc_private_key,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -2524,9 +2772,21 @@ fn test_compile_client_actions_open_channel() {
         map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
     );
     let expected_actions = array![
-        ServerAction::VerifyValue((recipient_public_key_storage_path, user_2.public_key)),
-        ServerAction::WriteIfZero((channel_exists_storage_path, true.into())),
-        ServerAction::AppendToVec((user_2.address, user_2.public_key, expected_enc_channel_info)),
+        ServerAction::VerifyValue(
+            VerifyValueInput {
+                storage_address: recipient_public_key_storage_path, value: user_2.public_key,
+            },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: channel_exists_storage_path, value: true.into() },
+        ),
+        ServerAction::AppendToVec(
+            AppendToVecInput {
+                recipient_addr: user_2.address,
+                recipient_public_key: user_2.public_key,
+                enc_channel_info: expected_enc_channel_info,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -2577,9 +2837,16 @@ fn test_compile_client_actions_open_subchannel() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((subchannel_exists_storage_path_felt, true.into())),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path_felt, value: true.into(),
+            },
+        ),
         ServerAction::WriteIfZeroSubchannel(
-            (subchannel_tokens_storage_path_felt, expected_enc_subchannel_info),
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path_felt,
+                value: expected_enc_subchannel_info,
+            },
         ),
     ]
         .span();
@@ -2627,8 +2894,16 @@ fn test_compile_client_actions_deposit_create_note() {
         map_selector: selector!("notes"), keys: [expected_enc_note.id].span(),
     );
     let expected_actions = array![
-        ServerAction::TransferFrom((user_1.address, token_address, amount)),
-        ServerAction::WriteIfZero((note_storage_path, expected_enc_note.enc_amount)),
+        ServerAction::TransferFrom(
+            TransferFromInput {
+                sender_addr: user_1.address, token: token_address, amount: amount.into(),
+            },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: note_storage_path, value: expected_enc_note.enc_amount,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -2662,8 +2937,16 @@ fn test_compile_client_actions_deposit_withdraw() {
     test.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
     let expected_actions = array![
-        ServerAction::TransferFrom((user_1.address, token_address, amount)),
-        ServerAction::TransferTo((user_2.address, token_address, amount)),
+        ServerAction::TransferFrom(
+            TransferFromInput {
+                sender_addr: user_1.address, token: token_address, amount: amount.into(),
+            },
+        ),
+        ServerAction::TransferTo(
+            TransferToInput {
+                recipient_addr: user_2.address, token: token_address, amount: amount.into(),
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -2721,8 +3004,14 @@ fn test_compile_client_actions_use_note_create_note() {
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((nullifier_storage_path, true.into())),
-        ServerAction::WriteIfZero((note_storage_path, expected_enc_note.enc_amount)),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_storage_path, value: true.into() },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: note_storage_path, value: expected_enc_note.enc_amount,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -2774,8 +3063,14 @@ fn test_compile_client_actions_use_note_withdraw() {
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     let expected_actions = array![
-        ServerAction::WriteIfZero((nullifier_path, true.into())),
-        ServerAction::TransferTo((user_1.address, token_address, amount)),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_path, value: true.into() },
+        ),
+        ServerAction::TransferTo(
+            TransferToInput {
+                recipient_addr: user_1.address, token: token_address, amount: amount,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -2812,7 +3107,11 @@ fn test_internal_actions() {
 
     // Deposit action.
     let actions = user_1.internal_deposit(:token_address, :amount);
-    let expected_actions = [ServerAction::TransferFrom((user_1.address, token_address, amount))]
+    let expected_actions = [
+        ServerAction::TransferFrom(
+            TransferFromInput { sender_addr: user_1.address, token: token_address, amount: amount },
+        )
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 
@@ -2827,14 +3126,24 @@ fn test_internal_actions() {
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
-    let expected_actions = [ServerAction::WriteIfZero((storage_path_felt_nullifier, true.into()))]
+    let expected_actions = [
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: storage_path_felt_nullifier, value: true.into() },
+        )
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 
     // Withdraw action.
     let actions = user_2
         .internal_withdraw(withdrawal_target: user_1.address, :token_address, :amount);
-    let expected_actions = [ServerAction::TransferTo((user_1.address, token_address, amount))]
+    let expected_actions = [
+        ServerAction::TransferTo(
+            TransferToInput {
+                recipient_addr: user_1.address, token: token_address, amount: amount,
+            },
+        )
+    ]
         .span();
     assert_eq!(actions, expected_actions);
 }
@@ -3390,19 +3699,45 @@ fn test_compile_client_actions_writes() {
     );
     let expected_sevrer_actions = [
         // Set viewing key.
-        ServerAction::Write((public_key_storage_path, public_key)),
-        ServerAction::WritePrivateKey((enc_private_key_storage_path, enc_private_key)),
+        ServerAction::Write(
+            WriteInput { storage_address: public_key_storage_path, value: public_key },
+        ),
+        ServerAction::WritePrivateKey(
+            WritePrivateKeyInput {
+                storage_address: enc_private_key_storage_path, value: enc_private_key,
+            },
+        ),
         // Open channel.
-        ServerAction::VerifyValue((public_key_storage_path, public_key)),
-        ServerAction::WriteIfZero((channel_exists_storage_path, true.into())),
-        ServerAction::AppendToVec((address, public_key, enc_channel_info)),
+        ServerAction::VerifyValue(
+            VerifyValueInput { storage_address: public_key_storage_path, value: public_key },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: channel_exists_storage_path, value: true.into() },
+        ),
+        ServerAction::AppendToVec(
+            AppendToVecInput {
+                recipient_addr: address, recipient_public_key: public_key, enc_channel_info,
+            },
+        ),
         // Open subchannel.
-        ServerAction::WriteIfZero((subchannel_exists_storage_path, true.into())),
-        ServerAction::WriteIfZeroSubchannel((subchannel_tokens_storage_path, enc_subchannel_info)),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: subchannel_exists_storage_path, value: true.into(),
+            },
+        ),
+        ServerAction::WriteIfZeroSubchannel(
+            WriteIfZeroSubchannelInput {
+                storage_address: subchannel_tokens_storage_path, value: enc_subchannel_info,
+            },
+        ),
         // Deposit.
-        ServerAction::TransferFrom((address, token_address, amount)),
+        ServerAction::TransferFrom(
+            TransferFromInput { sender_addr: address, token: token_address, amount: amount.into() },
+        ),
         // Create note.
-        ServerAction::WriteIfZero((note_storage_path, enc_note.enc_amount)),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: note_storage_path, value: enc_note.enc_amount },
+        ),
     ]
         .span();
     // Assert server actions.
