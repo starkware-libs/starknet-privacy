@@ -6,7 +6,8 @@
  * See packages/privacy/src/actions.cairo for the Cairo definitions.
  */
 
-import type { Amount, StarknetAddress, ViewingKey } from "./interfaces.js";
+import { Call } from "starknet";
+import type { Amount, NoteId, Open, StarknetAddress, ViewingKey } from "./interfaces.js";
 
 /**
  * Input for the SetViewingKey action.
@@ -63,7 +64,7 @@ export type CreateNoteInput = {
   /** The token's address */
   token: StarknetAddress;
   /** The amount the note represents */
-  amount: Amount;
+  amount: Amount | Open;
   /** The index of the note within the channel (note nonce) */
   index: number;
   /** Random value used to encrypt the note amount (must be 120 bits) */
@@ -78,6 +79,8 @@ export type DepositInput = {
   token: StarknetAddress;
   /** The amount to deposit */
   amount: Amount;
+  /** The note id to deposit to (open note) */
+  noteId?: NoteId;
 };
 
 /**
@@ -106,6 +109,10 @@ export type WithdrawInput = {
   amount: Amount;
 };
 
+export type FollowupCallInput = {
+  call: Call;
+};
+
 /**
  * Union type representing all possible client action inputs.
  * Matches Cairo's ClientAction enum.
@@ -117,4 +124,5 @@ export type ClientAction =
   | { type: "CreateNote"; input: CreateNoteInput }
   | { type: "Deposit"; input: DepositInput }
   | { type: "UseNote"; input: UseNoteInput }
-  | { type: "Withdraw"; input: WithdrawInput };
+  | { type: "Withdraw"; input: WithdrawInput }
+  | { type: "FollowupCall"; input: FollowupCallInput };

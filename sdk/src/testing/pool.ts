@@ -3,7 +3,13 @@
  * Consumes ClientAction[] (the unwrapped action inputs from the compiler).
  */
 
-import type { Amount, NoteId, StarknetAddress, StarknetAddressBigint } from "../interfaces.js";
+import type {
+  Amount,
+  NoteId,
+  Open,
+  StarknetAddress,
+  StarknetAddressBigint,
+} from "../interfaces.js";
 import { Witness } from "../interfaces.js";
 import { BigNumberish } from "starknet";
 import { NoteNonce, TokenNonce } from "../internal/index.js";
@@ -20,8 +26,8 @@ import {
   derivePublicKey,
 } from "../utils/crypto.js";
 import { AdvancedMap, AddressMap } from "../utils/maps.js";
-import { assert } from "../utils/validation.js";
-import type { ERC20s, ERC20sSnapshot } from "./erc20.js";
+import { assert, isOpen } from "../utils/validation.js";
+import type { MockContracts, MockContract } from "./contracts.js";
 import { hashes } from "../utils/hashes.js";
 import type { ClientAction } from "../client-actions.js";
 
@@ -40,7 +46,6 @@ export type PrivacyPoolSnapshot = {
   subchannelIds: Set<Hash>;
   notes: Map<Hash, SymmetricEncryption | OpenNote>;
   nullifiers: Set<Hash>;
-  erc20s: ERC20sSnapshot;
 };
 
 class ChannelsMap extends AdvancedMap<
@@ -57,7 +62,7 @@ class ChannelsMap extends AdvancedMap<
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type StateCallback = () => any;
 
-export class PrivacyPool {
+export class PrivacyPool implements MockContract {
   private publicKeys = new AddressMap<PublicKey>();
   private channels = new ChannelsMap();
   private channelIds = new Set<Hash>();
@@ -65,10 +70,12 @@ export class PrivacyPool {
   private subchannelIds = new Set<Hash>();
   private notes = new Map<Hash, SymmetricEncryption | OpenNote>();
   private nullifiers = new Set<Hash>();
+  // Allow dynamic access for MockContract interface
+  [key: string]: unknown;
 
   constructor(
-    private poolAddress: StarknetAddress,
-    private erc20s: ERC20s
+    public address: StarknetAddress,
+    private contracts: MockContracts
   ) {}
 
   // ============ Snapshot/Restore ============
@@ -95,7 +102,6 @@ export class PrivacyPool {
       subchannelIds: new Set(this.subchannelIds),
       notes: notesSnapshot,
       nullifiers: new Set(this.nullifiers),
-      erc20s: this.erc20s.snapshot(),
     };
   }
 
@@ -117,8 +123,6 @@ export class PrivacyPool {
     this.subchannelIds = new Set(snapshot.subchannelIds);
     this.notes = new Map(snapshot.notes);
     this.nullifiers = new Set(snapshot.nullifiers);
-
-    this.erc20s.restore(snapshot.erc20s);
   }
 
   // ============ Public Methods ============
@@ -182,6 +186,11 @@ export class PrivacyPool {
     );
   }
 
+  openDeposit(noteId: NoteId, token: StarknetAddress, amount: Amount): void {
+    this.fillOpenNote(noteId, token, amount);
+    this.deposit(this.address, token, amount);
+  }
+
   /**
    * Execute client actions. Actions must be in the correct order:
    * 1. SetViewingKey (optional, at most 1)
@@ -204,14 +213,11 @@ export class PrivacyPool {
     // Validate token totals before mutating state
     this.validateTokenTotals(sender, clientActions);
 
-    // Take snapshot before processing
-    const snapshot = this.snapshot();
-
     const callbacks: StateCallback[] = [];
 
     // Process actions in order
     for (const action of clientActions) {
-      let callback: StateCallback;
+      let callback: StateCallback | undefined = undefined;
 
       switch (action.type) {
         case "SetViewingKey":
@@ -240,7 +246,14 @@ export class PrivacyPool {
 
         case "Deposit":
           callback = this.deposit(sender, action.input.token, action.input.amount);
-
+          if (action.input.noteId !== undefined) {
+            const noteId = action.input.noteId;
+            const token = action.input.token;
+            const amount = action.input.amount;
+            callback = () => {
+              this.openDeposit(noteId as NoteId, token, amount);
+            };
+          }
           break;
 
         case "UseNote":
@@ -271,15 +284,24 @@ export class PrivacyPool {
             action.input.amount
           );
           break;
+
+        case "FollowupCall":
+          callbacks.push(() => {
+            this.contracts.call(
+              action.input.call.contractAddress,
+              action.input.call.entrypoint,
+              ...(action.input.call.calldata ? (action.input.call.calldata as unknown[]) : [])
+            );
+          });
+          break;
       }
 
       // Execute callback and store it
-      callback();
-      callbacks.push(callback);
+      if (callback) {
+        callback();
+        callbacks.push(callback);
+      }
     }
-
-    // Restore to pre-execution state
-    this.restore(snapshot);
 
     return callbacks;
   }
@@ -371,7 +393,7 @@ export class PrivacyPool {
     toPublicKey: PublicKey,
     token: StarknetAddress,
     index: number,
-    amount: Amount
+    amount: Amount | Open
   ): StateCallback {
     // Derive sender address from private key (not needed for note creation, but for validation)
     const senderPublicKey = derivePublicKey(senderPrivateKey);
@@ -404,9 +426,7 @@ export class PrivacyPool {
 
     assert(!this.notes.has(noteId), `Note ${noteId} already exists`);
 
-    // Amount of 0 indicates an open note
-    const isOpenNote = amount === 0n;
-    const noteData = isOpenNote
+    const noteData = isOpen(amount)
       ? { r: 1n, amount: 0n, token: toBigInt(token) }
       : encryptSymmetric(channelKey, amount);
 
@@ -416,7 +436,7 @@ export class PrivacyPool {
   }
 
   private deposit(from: StarknetAddress, token: StarknetAddress, amount: Amount): StateCallback {
-    return () => this.erc20s.get(token).transfer(from, this.poolAddress, amount);
+    return () => this.contracts.get(token).transfer(from, this.address, amount);
   }
 
   private withdraw(
@@ -424,7 +444,7 @@ export class PrivacyPool {
     recipient: StarknetAddress,
     amount: Amount
   ): StateCallback {
-    return () => this.erc20s.get(token).transfer(this.poolAddress, recipient, amount);
+    return () => this.contracts.get(token).transfer(this.address, recipient, amount);
   }
 
   /**
@@ -458,7 +478,11 @@ export class PrivacyPool {
             action.input.amount >= 0n,
             `Deposit amount must be non-negative: ${action.input.amount}`
           );
-          updateTotal(action.input.token, action.input.amount);
+          // If depositing to a specific noteId (open note), it doesn't affect running total
+          // as it's a direct fill, not unallocated funds.
+          if (!("noteId" in action.input) || action.input.noteId === undefined) {
+            updateTotal(action.input.token, action.input.amount);
+          }
           break;
 
         case "UseNote": {
@@ -475,7 +499,8 @@ export class PrivacyPool {
         case "CreateNote": {
           // Creating a note decreases available balance (0 for open notes)
           const amount = action.input.amount;
-          if (amount > 0n) {
+          if (!isOpen(amount)) {
+            assert(amount >= 0n, `CreateNote amount must be non-negative: ${amount}`);
             updateTotal(action.input.token, -amount);
           }
           break;

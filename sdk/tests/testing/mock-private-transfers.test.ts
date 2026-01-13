@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterAll } from "vitest";
 import {
-  ERC20s,
+  MockContracts,
   PrivacyPool,
   MockPrivateTransfers,
   applyStateChanges,
@@ -31,7 +31,7 @@ const AUTO_OPTIONS = {
 };
 
 describe("MockPrivateTransfers", () => {
-  let erc20s: ERC20s;
+  let contracts: MockContracts;
   let pool: PrivacyPool;
   let alice: MockPrivateTransfers;
   let bob: MockPrivateTransfers;
@@ -44,14 +44,16 @@ describe("MockPrivateTransfers", () => {
   });
 
   beforeEach(() => {
-    // Shared pool and ERC20s for all users
-    erc20s = new ERC20s();
+    // Shared pool and MockContracts for all users
+    contracts = new MockContracts();
+
     // Wrap pool with logging for debugging (logs only when SDK_DEBUG=1)
-    pool = withLogging(new PrivacyPool(POOL_ADDRESS, erc20s), "PrivacyPool", consoleLogCallback);
+    pool = withLogging(new PrivacyPool(POOL_ADDRESS, contracts), "PrivacyPool", consoleLogCallback);
+    contracts.register(pool);
 
     // Create transfers instances for each user
-    alice = new MockPrivateTransfers(pool, ALICE_ADDRESS, ALICE_PRIVATE_KEY);
-    bob = new MockPrivateTransfers(pool, BOB_ADDRESS, BOB_PRIVATE_KEY);
+    alice = new MockPrivateTransfers(contracts, POOL_ADDRESS, ALICE_ADDRESS, ALICE_PRIVATE_KEY);
+    bob = new MockPrivateTransfers(contracts, POOL_ADDRESS, BOB_ADDRESS, BOB_PRIVATE_KEY);
   });
 
   describe("discoverRequirement", () => {
@@ -169,12 +171,16 @@ describe("MockPrivateTransfers", () => {
       applyStateChanges(await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute());
 
       // Give Alice some public STRK to deposit
-      erc20s.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
+      contracts.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
     });
 
     it("deposit creates a note for the recipient", async () => {
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, BOB_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
+          .execute()
       );
 
       // Bob should be able to discover the note
@@ -187,7 +193,11 @@ describe("MockPrivateTransfers", () => {
     it("withdraw converts private note back to public balance", async () => {
       // First deposit
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, BOB_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
+          .execute()
       );
 
       // Bob discovers his notes
@@ -206,13 +216,17 @@ describe("MockPrivateTransfers", () => {
       );
 
       // Bob should have public balance now
-      expect(erc20s.get(STRK).balanceOf(BOB_ADDRESS)).toBe(100n);
+      expect(contracts.get(STRK).balanceOf(BOB_ADDRESS)).toBe(100n);
     });
 
     it("transfer moves note from one user to another", async () => {
       // Setup: Alice deposits to Bob
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, BOB_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
+          .execute()
       );
 
       // Bob discovers his notes
@@ -261,7 +275,11 @@ describe("MockPrivateTransfers", () => {
       applyStateChanges(await alice.build({ registry }).with(STRK).setup(ALICE_ADDRESS).execute());
 
       await expect(
-        alice.build(AUTO_OPTIONS).with(STRK).deposit(-100n, ALICE_ADDRESS).execute()
+        alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: -100n, recipient: ALICE_ADDRESS })
+          .execute()
       ).rejects.toThrow(/Deposit amount must be non-negative/);
     });
 
@@ -275,9 +293,13 @@ describe("MockPrivateTransfers", () => {
       registry.channels.set(BOB_ADDRESS, channel);
       applyStateChanges(await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute());
 
-      erc20s.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
+      contracts.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, BOB_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
+          .execute()
       );
 
       const notes = bob.discoverNotes().notes.get(STRK) ?? [];

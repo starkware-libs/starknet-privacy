@@ -23,7 +23,7 @@ export function createMockCallAndProof(callbacks?: StateCallback[]): CallAndProo
       entrypoint: "execute_writes",
       calldata: [],
       ...(typeof callbacks !== "undefined" ? { call: () => callbacks.map((cb) => cb()) } : {}),
-    } as any,
+    } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
     proof: createMockProof(),
   };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterAll } from "vitest";
 import {
-  ERC20s,
+  MockContracts,
   PrivacyPool,
   MockPrivateTransfers,
   applyStateChanges,
@@ -11,7 +11,7 @@ import {
   debugHint,
   isDebugEnabled,
 } from "../../src/utils/index.js";
-import { Channel, createEmptyRegistry, open, SetupRequirement } from "../../src/interfaces.js";
+import { Channel, createEmptyRegistry, Open, SetupRequirement } from "../../src/interfaces.js";
 
 // Test addresses and keys (must be valid hex addresses convertible to BigInt)
 const POOL_ADDRESS = "0x1";
@@ -31,7 +31,7 @@ const AUTO_OPTIONS = {
 };
 
 describe("PrivateTransfersBuilder", () => {
-  let erc20s: ERC20s;
+  let contracts: MockContracts;
   let pool: PrivacyPool;
   let alice: MockPrivateTransfers;
   let bob: MockPrivateTransfers;
@@ -49,18 +49,20 @@ describe("PrivateTransfersBuilder", () => {
   });
 
   beforeEach(() => {
-    // Shared pool and ERC20s for all users
-    erc20s = new ERC20s();
+    // Shared pool and MockContracts for all users
+    contracts = new MockContracts();
+
     // Wrap pool with logging for debugging (logs only when SDK_DEBUG=1)
-    pool = withLogging(new PrivacyPool(POOL_ADDRESS, erc20s), "PrivacyPool", consoleLogCallback);
+    pool = withLogging(new PrivacyPool(POOL_ADDRESS, contracts), "PrivacyPool", consoleLogCallback);
+    contracts.register(pool);
 
     // Create transfers instances for each user
-    alice = new MockPrivateTransfers(pool, ALICE_ADDRESS, ALICE_PRIVATE_KEY);
-    bob = new MockPrivateTransfers(pool, BOB_ADDRESS, BOB_PRIVATE_KEY);
+    alice = new MockPrivateTransfers(contracts, POOL_ADDRESS, ALICE_ADDRESS, ALICE_PRIVATE_KEY);
+    bob = new MockPrivateTransfers(contracts, POOL_ADDRESS, BOB_ADDRESS, BOB_PRIVATE_KEY);
 
     // Give Alice some public tokens
-    erc20s.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
-    erc20s.get(ETH).setBalance(ALICE_ADDRESS, 500n);
+    contracts.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
+    contracts.get(ETH).setBalance(ALICE_ADDRESS, 500n);
   });
 
   it("example: register and setup a new recipient", async () => {
@@ -79,7 +81,11 @@ describe("PrivateTransfersBuilder", () => {
 
     // Use builder to deposit
     applyStateChanges(
-      await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, BOB_ADDRESS).execute()
+      await alice
+        .build(AUTO_OPTIONS)
+        .with(STRK)
+        .deposit({ amount: 100n, recipient: BOB_ADDRESS })
+        .execute()
     );
 
     // Bob should have a note
@@ -120,9 +126,9 @@ describe("PrivateTransfersBuilder", () => {
       await alice
         .build(AUTO_OPTIONS)
         .with(STRK)
-        .deposit(100n, ALICE_ADDRESS)
+        .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
         .with(ETH)
-        .deposit(50n, ALICE_ADDRESS)
+        .deposit({ amount: 50n, recipient: ALICE_ADDRESS })
         .execute()
     );
 
@@ -170,7 +176,11 @@ describe("PrivateTransfersBuilder", () => {
     applyStateChanges(await alice.build({ registry }).with(STRK).setup(ALICE_ADDRESS).execute());
 
     applyStateChanges(
-      await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+      await alice
+        .build(AUTO_OPTIONS)
+        .with(STRK)
+        .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+        .execute()
     );
 
     // Get Alice's note
@@ -212,7 +222,7 @@ describe("PrivateTransfersBuilder", () => {
   });
 
   // TODO: Implement FillOpenNote action (not a ClientAction) to enable deposits to open notes
-  it.skip("open notes: Bob creates open note, Alice deposits into it", async () => {
+  it("open notes: Bob creates open note, Alice deposits into it", async () => {
     // Both users register
     applyStateChanges(await bob.build().register().execute());
     applyStateChanges(await alice.build().register().execute());
@@ -242,7 +252,7 @@ describe("PrivateTransfersBuilder", () => {
       await bob
         .build(AUTO_OPTIONS)
         .with(STRK)
-        .transfer({ recipient: BOB_ADDRESS, amount: open })
+        .transfer({ recipient: BOB_ADDRESS, amount: Open })
         .execute()
     );
 
@@ -255,10 +265,14 @@ describe("PrivateTransfersBuilder", () => {
     const openNoteId = openNotes[0].id;
 
     // Step 2: Alice deposits into Bob's open note
-    erc20s.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
+    contracts.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
 
     applyStateChanges(
-      await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, openNoteId).execute()
+      await alice
+        .build(AUTO_OPTIONS)
+        .with(STRK)
+        .deposit({ amount: 100n, noteId: openNoteId })
+        .execute()
     );
 
     // Bob should now have a filled note with the deposited amount
@@ -291,11 +305,15 @@ describe("PrivateTransfersBuilder", () => {
     it("surplusTo on root builder: creates surplus note for all tokens", async () => {
       // Deposit 100 STRK to Alice (she starts with 1000n public)
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
 
       // After deposit: 900n public, 100n private
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(900n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(900n);
       const note = (alice.discoverNotes().notes.get(STRK) ?? [])[0];
       expect(note.amount).toBe(100n);
 
@@ -311,7 +329,7 @@ describe("PrivateTransfersBuilder", () => {
       );
 
       // After: 930n public (900 + 30), 70n private (surplus note)
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(930n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(930n);
 
       // Alice should have a new note with 70n (the surplus)
       const notesAfter = alice.discoverNotes().notes.get(STRK) ?? [];
@@ -326,9 +344,9 @@ describe("PrivateTransfersBuilder", () => {
         await alice
           .build(AUTO_OPTIONS)
           .with(STRK)
-          .deposit(100n, ALICE_ADDRESS)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
           .with(ETH)
-          .deposit(50n, ALICE_ADDRESS)
+          .deposit({ amount: 50n, recipient: ALICE_ADDRESS })
           .execute()
       );
 
@@ -353,13 +371,13 @@ describe("PrivateTransfersBuilder", () => {
       );
 
       // STRK: 930n public (900 + 30), 70n private surplus
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(930n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(930n);
       const strkNotesAfter = alice.discoverNotes().notes.get(STRK) ?? [];
       expect(strkNotesAfter.length).toBe(1);
       expect(strkNotesAfter[0].amount).toBe(70n);
 
       // ETH: 500n public (450 + 50), no private notes
-      expect(erc20s.get(ETH).balanceOf(ALICE_ADDRESS)).toBe(500n);
+      expect(contracts.get(ETH).balanceOf(ALICE_ADDRESS)).toBe(500n);
       const ethNotesAfter = alice.discoverNotes().notes.get(ETH) ?? [];
       expect(ethNotesAfter.length).toBe(0);
     });
@@ -389,7 +407,11 @@ describe("PrivateTransfersBuilder", () => {
 
       // Deposit to Alice (she starts with 1000n)
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
 
       // After: 900n public, 100n private
@@ -409,7 +431,7 @@ describe("PrivateTransfersBuilder", () => {
       );
 
       // Alice has 930n public STRK (900 + 30), no private notes
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(930n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(930n);
       const aliceNotesAfter = alice.discoverNotes().notes.get(STRK) ?? [];
       expect(aliceNotesAfter.length).toBe(0);
 
@@ -422,7 +444,11 @@ describe("PrivateTransfersBuilder", () => {
     it("no surplus note created when amounts are exactly balanced", async () => {
       // Alice starts with 1000n
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
 
       // After: 900n public, 100n private
@@ -440,14 +466,18 @@ describe("PrivateTransfersBuilder", () => {
       );
 
       // Alice has 1000n public (900 + 100), no private notes
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
       const notesAfter = alice.discoverNotes().notes.get(STRK) ?? [];
       expect(notesAfter.length).toBe(0);
     });
 
     it("without surplusTo, unbalanced amounts still fail", async () => {
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
 
       const note = (alice.discoverNotes().notes.get(STRK) ?? [])[0];

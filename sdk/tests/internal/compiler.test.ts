@@ -1,11 +1,12 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import {
-  ERC20s,
+  MockContracts,
   PrivacyPool,
   MockPrivateTransfers,
   applyStateChanges,
 } from "../../src/testing/index.js";
 import { Channel, createEmptyRegistry } from "../../src/interfaces.js";
+import { consoleLogCallback, withLogging } from "../../src/utils/index.js";
 
 // Test addresses (must be valid hex)
 const POOL_ADDRESS = "0x1";
@@ -25,7 +26,7 @@ const AUTO_OPTIONS = {
 };
 
 describe("ActionCompiler (via builder)", () => {
-  let erc20s: ERC20s;
+  let contracts: MockContracts;
   let pool: PrivacyPool;
   let alice: MockPrivateTransfers;
   let bob: MockPrivateTransfers;
@@ -35,14 +36,19 @@ describe("ActionCompiler (via builder)", () => {
   let aliceSelfChannel: Channel;
 
   beforeEach(() => {
-    erc20s = new ERC20s();
-    pool = new PrivacyPool(POOL_ADDRESS, erc20s);
-    alice = new MockPrivateTransfers(pool, ALICE_ADDRESS, ALICE_PRIVATE_KEY);
-    bob = new MockPrivateTransfers(pool, BOB_ADDRESS, BOB_PRIVATE_KEY);
+    // Shared pool and MockContracts for all users
+    contracts = new MockContracts();
+
+    // Wrap pool with logging for debugging (logs only when SDK_DEBUG=1)
+    pool = withLogging(new PrivacyPool(POOL_ADDRESS, contracts), "PrivacyPool", consoleLogCallback);
+    contracts.register(pool);
+
+    alice = new MockPrivateTransfers(contracts, POOL_ADDRESS, ALICE_ADDRESS, ALICE_PRIVATE_KEY);
+    bob = new MockPrivateTransfers(contracts, POOL_ADDRESS, BOB_ADDRESS, BOB_PRIVATE_KEY);
 
     // Give Alice some tokens
-    erc20s.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
-    erc20s.get(ETH).setBalance(ALICE_ADDRESS, 500n);
+    contracts.get(STRK).setBalance(ALICE_ADDRESS, 1000n);
+    contracts.get(ETH).setBalance(ALICE_ADDRESS, 500n);
   });
 
   describe("autoDiscover.recipient", () => {
@@ -68,7 +74,7 @@ describe("ActionCompiler (via builder)", () => {
         alice
           .build({ registry: emptyRegistry, autoDiscover: { recipient: "none" }, autoSetup: false })
           .with(STRK)
-          .deposit(100n, BOB_ADDRESS)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .execute()
       ).rejects.toThrow(/Missing channel context for recipients/);
     });
@@ -84,7 +90,7 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({ registry, autoDiscover: { recipient: "none" } })
           .with(STRK)
-          .deposit(100n, BOB_ADDRESS)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .execute()
       );
 
@@ -100,7 +106,7 @@ describe("ActionCompiler (via builder)", () => {
       registry.channels.set(BOB_ADDRESS, bobChannel);
 
       // Carol registers so we can set up channel
-      const carol = new MockPrivateTransfers(pool, CAROL_ADDRESS, 99999n);
+      const carol = new MockPrivateTransfers(contracts, POOL_ADDRESS, CAROL_ADDRESS, 99999n);
       applyStateChanges(await carol.build().register().execute());
 
       // Setup Carol's channel in pool
@@ -117,8 +123,8 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({ registry, autoDiscover: { recipient: "explicit" } })
           .with(STRK)
-          .deposit(50n, BOB_ADDRESS)
-          .deposit(50n, CAROL_ADDRESS)
+          .deposit({ amount: 50n, recipient: BOB_ADDRESS })
+          .deposit({ amount: 50n, recipient: CAROL_ADDRESS })
           .execute()
       );
 
@@ -144,7 +150,7 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({ registry: staleRegistry, autoDiscover: { recipient: "refresh" } })
           .with(STRK)
-          .deposit(50n, BOB_ADDRESS)
+          .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .execute()
       );
 
@@ -153,7 +159,7 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({ registry: staleRegistry, autoDiscover: { recipient: "refresh" } })
           .with(STRK)
-          .deposit(50n, BOB_ADDRESS)
+          .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .execute()
       );
 
@@ -176,7 +182,11 @@ describe("ActionCompiler (via builder)", () => {
 
       // Deposit to create a note
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
     });
 
@@ -226,7 +236,7 @@ describe("ActionCompiler (via builder)", () => {
       );
 
       // Alice should have public balance
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n); // 900 + 100 back
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n); // 900 + 100 back
     });
 
     it("explicit: discovers notes only when registry is empty", async () => {
@@ -255,7 +265,7 @@ describe("ActionCompiler (via builder)", () => {
       expect(registry.notes.has(STRK)).toBe(true);
 
       // Alice should have public balance
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
     });
 
     it("explicit: uses existing registry notes, does not rediscover", async () => {
@@ -281,7 +291,7 @@ describe("ActionCompiler (via builder)", () => {
           .execute()
       );
 
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
     });
 
     it("refresh: discovers fresh notes even when registry has stale data", async () => {
@@ -307,7 +317,7 @@ describe("ActionCompiler (via builder)", () => {
       );
 
       // Withdraw succeeded (note was discovered from pool, not registry)
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
 
       // After spending the note, a fresh discovery should show no notes
       const freshNotes = alice.discoverNotes().notes.get(STRK) ?? [];
@@ -335,7 +345,7 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({ autoSetup: true, autoDiscover: { recipient: "refresh" } })
           .with(STRK)
-          .deposit(100n, BOB_ADDRESS)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .execute()
       );
 
@@ -358,7 +368,11 @@ describe("ActionCompiler (via builder)", () => {
 
       // Deposit to self first
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
 
       // Setup Bob's channel and token in pool
@@ -391,7 +405,7 @@ describe("ActionCompiler (via builder)", () => {
         alice
           .build({ autoSetup: false, autoDiscover: { recipient: "none" } })
           .with(STRK)
-          .deposit(100n, BOB_ADDRESS)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .execute()
       ).rejects.toThrow(/Missing channel context for recipients/);
     });
@@ -419,7 +433,11 @@ describe("ActionCompiler (via builder)", () => {
 
       // Deposit to create notes
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
     });
 
@@ -437,7 +455,7 @@ describe("ActionCompiler (via builder)", () => {
       );
 
       // Should have withdrawn (note auto-selected)
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
       const notes = alice.discoverNotes().notes.get(STRK) ?? [];
       expect(notes.length).toBe(0);
     });
@@ -459,7 +477,7 @@ describe("ActionCompiler (via builder)", () => {
           .execute()
       );
 
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
     });
 
     it("false: does not auto-select, fails when inputs not provided", async () => {
@@ -491,7 +509,7 @@ describe("ActionCompiler (via builder)", () => {
           .execute()
       );
 
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
     });
   });
 
@@ -513,7 +531,7 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({ registry, autoDiscover: { recipient: "refresh" } })
           .with(STRK)
-          .deposit(50n, BOB_ADDRESS)
+          .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .execute()
       );
 
@@ -525,7 +543,7 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({ registry, autoDiscover: { recipient: "refresh" } })
           .with(STRK)
-          .deposit(50n, BOB_ADDRESS)
+          .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .execute()
       );
 
@@ -553,7 +571,11 @@ describe("ActionCompiler (via builder)", () => {
 
       // Deposit to create notes
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
 
       // Start with empty notes in registry
@@ -576,7 +598,7 @@ describe("ActionCompiler (via builder)", () => {
       expect(registry.notes.get(STRK)?.length ?? 0).toBe(0);
 
       // Verify withdraw succeeded
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(1000n);
 
       // Fresh discovery confirms notes are gone in pool too
       const freshNotes = alice.discoverNotes().notes.get(STRK) ?? [];
@@ -605,7 +627,7 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({ registry, autoDiscover: { recipient: "none" } })
           .with(STRK)
-          .deposit(100n, BOB_ADDRESS)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .execute()
       );
 
@@ -631,7 +653,11 @@ describe("ActionCompiler (via builder)", () => {
 
       // Deposit to create a note
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
 
       // Discover notes and put them in registry
@@ -676,8 +702,8 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({ registry, autoDiscover: { recipient: "none" } })
           .with(STRK)
-          .deposit(50n, BOB_ADDRESS)
-          .deposit(30n, BOB_ADDRESS)
+          .deposit({ amount: 50n, recipient: BOB_ADDRESS })
+          .deposit({ amount: 30n, recipient: BOB_ADDRESS })
           .execute()
       );
 
@@ -703,10 +729,18 @@ describe("ActionCompiler (via builder)", () => {
 
       // Create two notes
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(50n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 50n, recipient: ALICE_ADDRESS })
+          .execute()
       );
 
       // Refresh registry with current state (notes + updated channel nonces)
@@ -796,10 +830,10 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({ registry, autoDiscover: { recipient: "none" } })
           .with(STRK)
-          .deposit(100n, BOB_ADDRESS)
-          .deposit(50n, BOB_ADDRESS)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
+          .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .with(ETH)
-          .deposit(200n, BOB_ADDRESS)
+          .deposit({ amount: 200n, recipient: BOB_ADDRESS })
           .execute()
       );
 
@@ -835,13 +869,25 @@ describe("ActionCompiler (via builder)", () => {
 
       // Create three notes
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(50n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 50n, recipient: ALICE_ADDRESS })
+          .execute()
       );
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(25n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 25n, recipient: ALICE_ADDRESS })
+          .execute()
       );
 
       // Sync registry with discovery
@@ -897,7 +943,11 @@ describe("ActionCompiler (via builder)", () => {
 
       // Deposit using builder
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, BOB_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
+          .execute()
       );
 
       // Bob should have a note
@@ -906,7 +956,7 @@ describe("ActionCompiler (via builder)", () => {
       expect(bobNotes[0].amount).toBe(100n);
 
       // Alice's public balance should decrease
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(900n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(900n);
     });
 
     it("transfer creates notes using input notes", async () => {
@@ -923,7 +973,11 @@ describe("ActionCompiler (via builder)", () => {
 
       // Deposit to self using builder
       applyStateChanges(
-        await alice.build(AUTO_OPTIONS).with(STRK).deposit(100n, ALICE_ADDRESS).execute()
+        await alice
+          .build(AUTO_OPTIONS)
+          .with(STRK)
+          .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
+          .execute()
       );
 
       // Alice should have a note
@@ -982,9 +1036,9 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build(AUTO_OPTIONS)
           .with(STRK)
-          .deposit(100n, BOB_ADDRESS)
+          .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .with(ETH)
-          .deposit(50n, BOB_ADDRESS)
+          .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .execute()
       );
 
@@ -998,8 +1052,8 @@ describe("ActionCompiler (via builder)", () => {
       expect(bobEthNotes[0].amount).toBe(50n);
 
       // Alice's balances should decrease
-      expect(erc20s.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(900n);
-      expect(erc20s.get(ETH).balanceOf(ALICE_ADDRESS)).toBe(450n);
+      expect(contracts.get(STRK).balanceOf(ALICE_ADDRESS)).toBe(900n);
+      expect(contracts.get(ETH).balanceOf(ALICE_ADDRESS)).toBe(450n);
     });
   });
 });

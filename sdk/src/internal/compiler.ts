@@ -28,7 +28,6 @@ import type {
 } from "../interfaces.js";
 import { Channel, createEmptyRegistry } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
-import { isOpen } from "../utils/validation.js";
 import type { ClientAction } from "../client-actions.js";
 
 export type CompileResult = {
@@ -166,38 +165,9 @@ export class ActionCompiler {
           input: {
             token: action.token,
             amount: action.amount,
+            noteId: action.noteId,
           },
         });
-
-        // If deposit has a recipient (not noteId), also create a note
-        if ("recipient" in action) {
-          const channel = getChannel(action.recipient);
-
-          // Get note nonce delta map for this recipient
-          let recipientDeltas = noteNonceDeltas.get(action.recipient);
-          if (!recipientDeltas) {
-            recipientDeltas = new AddressMap<number>(() => 0);
-            noteNonceDeltas.set(action.recipient, recipientDeltas);
-          }
-
-          const currentDelta = recipientDeltas.get(action.token)!;
-          const noteNonce = channel.tokens.get(action.token);
-          const index = (noteNonce?.sequence ?? 0) + currentDelta;
-          recipientDeltas.set(action.token, currentDelta + 1);
-
-          clientActions.push({
-            type: "CreateNote",
-            input: {
-              senderPrivateKey: this.userViewingKey,
-              recipientAddr: action.recipient,
-              recipientPublicKey: channel.recipientPublicKey,
-              token: action.token,
-              amount: action.amount,
-              index,
-              random: generateRandom120(),
-            },
-          });
-        }
       }
     }
 
@@ -222,19 +192,12 @@ export class ActionCompiler {
         const channel = getChannel(action.recipient);
 
         // Get note nonce delta map for this recipient
-        let recipientDeltas = noteNonceDeltas.get(action.recipient);
-        if (!recipientDeltas) {
-          recipientDeltas = new AddressMap<number>(() => 0);
-          noteNonceDeltas.set(action.recipient, recipientDeltas);
-        }
+        const recipientDeltas = noteNonceDeltas.get(action.recipient)!;
 
         const currentDelta = recipientDeltas.get(action.token)!;
         const noteNonce = channel.tokens.get(action.token);
         const index = (noteNonce?.sequence ?? 0) + currentDelta;
         recipientDeltas.set(action.token, currentDelta + 1);
-
-        // For open notes, use 0 as amount (will be filled by deposit)
-        const amount = isOpen(action.amount) ? 0n : action.amount;
 
         clientActions.push({
           type: "CreateNote",
@@ -243,7 +206,7 @@ export class ActionCompiler {
             recipientAddr: action.recipient,
             recipientPublicKey: channel.recipientPublicKey,
             token: action.token,
-            amount,
+            amount: action.amount,
             index,
             random: generateRandom120(),
           },
@@ -263,6 +226,16 @@ export class ActionCompiler {
           },
         });
       }
+    }
+
+    // 8. FollowupCall
+    if (actions.followupCall) {
+      clientActions.push({
+        type: "FollowupCall",
+        input: {
+          call: actions.followupCall.call,
+        },
+      });
     }
 
     return clientActions;
@@ -290,14 +263,6 @@ export class ActionCompiler {
     if (actions.openTokenChannels) {
       for (const action of actions.openTokenChannels) {
         recipientsNeeded.set(action.recipient, true);
-      }
-    }
-
-    if (actions.deposits) {
-      for (const action of actions.deposits) {
-        if ("recipient" in action) {
-          recipientsNeeded.set(action.recipient, true);
-        }
       }
     }
 
@@ -393,36 +358,84 @@ export class ActionCompiler {
       }
     }
 
-    // Auto-select notes if enabled and no useNotes provided
-    if (options?.autoSelectNotes && (!actions.useNotes || actions.useNotes.length === 0)) {
-      // Collect tokens that need notes (from createNotes, withdraws)
-      const tokensNeeded = new AddressMap<boolean>();
+    // Auto-select notes if enabled
+    if (options?.autoSelectNotes) {
+      // Calculate token balances (inputs - outputs)
+      // Positive balance = surplus (needs change note)
+      // Negative balance = deficit (needs input notes)
+      const balances = new AddressMap<bigint>(() => 0n);
 
-      if (actions.createNotes) {
-        for (const action of actions.createNotes) {
-          tokensNeeded.set(action.token, true);
-        }
-      }
-
-      if (actions.withdraws) {
-        for (const action of actions.withdraws) {
-          tokensNeeded.set(action.token, true);
-        }
-      }
-
-      // Select all available notes for needed tokens
-      const useNotes: UseNoteAction[] = [];
-      for (const token of tokensNeeded.keys()) {
-        const tokenNotes = registry.notes.get(token);
-        if (tokenNotes) {
-          for (const note of tokenNotes) {
-            useNotes.push({ token, note });
+      // Inputs: Deposits (without noteId)
+      if (actions.deposits) {
+        for (const d of actions.deposits) {
+          if (d.noteId === undefined) {
+            const current = balances.get(d.token)!;
+            balances.set(d.token, current + d.amount);
           }
         }
       }
 
-      if (useNotes.length > 0) {
-        actions.useNotes = useNotes;
+      // Inputs: Existing UseNotes
+      const usedNoteIds = new Set<string>();
+      if (actions.useNotes) {
+        for (const u of actions.useNotes) {
+          const current = balances.get(u.token)!;
+          balances.set(u.token, current + u.note.amount);
+          usedNoteIds.add(String(u.note.id));
+        }
+      }
+
+      // Outputs: Withdraws
+      if (actions.withdraws) {
+        for (const w of actions.withdraws) {
+          const current = balances.get(w.token)!;
+          balances.set(w.token, current - w.amount);
+        }
+      }
+
+      // Outputs: CreateNotes (ignore Open amounts)
+      if (actions.createNotes) {
+        for (const c of actions.createNotes) {
+          if (typeof c.amount === "bigint") {
+            const current = balances.get(c.token)!;
+            balances.set(c.token, current - c.amount);
+          }
+        }
+      }
+
+      // Resolve deficits and surpluses
+      for (const token of balances.keys()) {
+        let balance = balances.get(token)!;
+
+        // If deficit, try to cover with notes from registry
+        if (balance < 0n) {
+          const availableNotes = registry.notes.get(token) ?? [];
+          const newUseNotes: UseNoteAction[] = [];
+
+          for (const note of availableNotes) {
+            if (balance >= 0n) break; // Deficit covered
+            if (usedNoteIds.has(String(note.id))) continue; // Skip used notes
+
+            balance += note.amount;
+            newUseNotes.push({ token, note });
+            usedNoteIds.add(String(note.id));
+          }
+
+          if (newUseNotes.length > 0) {
+            actions.useNotes = actions.useNotes ?? [];
+            actions.useNotes.push(...newUseNotes);
+          }
+        }
+
+        // If surplus (after adding notes or initially), create change note
+        if (balance > 0n) {
+          actions.createNotes = actions.createNotes ?? [];
+          actions.createNotes.push({
+            recipient: this.userAddress,
+            token,
+            amount: balance,
+          });
+        }
       }
     }
   }
