@@ -13,8 +13,6 @@ import { readFileSync, existsSync } from "fs";
 import { execSync } from "child_process";
 import { join } from "path";
 import { hashes } from "../../src/utils/hashes.js";
-import { Witness } from "../../src/interfaces.js";
-import { TokenNonce, NoteNonce } from "../../src/internal/index.js";
 
 // Paths
 const fixturesPath = join(__dirname, "../fixtures/cairo-reference-hashes.json");
@@ -208,8 +206,7 @@ describe("Cairo compatibility", () => {
       const { inputs, outputs } = referenceData;
       // Cairo uses (index, 0), TypeScript uses (slot, sequence)
       // With slot=index, sequence=0, they match
-      const nonce = new TokenNonce(inputs.index, 0);
-      const result = hashes.subchannelKey(inputs.channelKey, nonce);
+      const result = hashes.subchannelKey(inputs.channelKey, inputs.index);
       expect("0x" + result.toString(16)).toBe(outputs.subchannelKey);
     });
 
@@ -230,9 +227,7 @@ describe("Cairo compatibility", () => {
       const { inputs, outputs } = referenceData;
       // Cairo uses (index, 0), TypeScript uses (slot, sequence)
       // With slot=index, sequence=0, they match
-      const nonce = new NoteNonce(inputs.index, 0);
-      const witness = new Witness(inputs.channelKey, nonce);
-      const result = hashes.noteId(witness, inputs.token);
+      const result = hashes.noteId(inputs.channelKey, inputs.token, inputs.index);
       expect("0x" + result.toString(16)).toBe(outputs.noteId);
     });
 
@@ -241,9 +236,12 @@ describe("Cairo compatibility", () => {
       const { inputs, outputs } = referenceData;
       // Cairo uses (index, 0), TypeScript uses (slot, sequence)
       // With slot=index, sequence=0, they match
-      const nonce = new NoteNonce(inputs.index, 0);
-      const witness = new Witness(inputs.channelKey, nonce);
-      const result = hashes.nullifier(witness, inputs.token, inputs.senderPrivateKey);
+      const result = hashes.nullifier(
+        inputs.channelKey,
+        inputs.token,
+        inputs.index,
+        inputs.senderPrivateKey
+      );
       expect("0x" + result.toString(16)).toBe(outputs.nullifier);
     });
   });

@@ -56,15 +56,19 @@ type ChannelKey = bigint;
 /** Channel containing nonces for token and note creation. */
 export class Channel {
   /** @internal */ readonly key: ChannelKey;
+  /** Recipient's public key (needed for creating notes) */
+  readonly recipientPublicKey: bigint;
   /** @internal */ tokenNonce: TokenNonce;
   /** @internal */ readonly tokens: AddressMap<NoteNonce>;
 
   constructor(
     key: ChannelKey,
+    recipientPublicKey: bigint,
     tokenNonce?: TokenNonce,
     tokens?: Iterable<[StarknetAddress, NoteNonce]>
   ) {
     this.key = key;
+    this.recipientPublicKey = recipientPublicKey;
     this.tokenNonce = tokenNonce ?? new TokenNonce();
     this.tokens = new AddressMap<NoteNonce>(() => new NoteNonce());
     if (tokens) {
@@ -88,7 +92,7 @@ export class Channel {
 
   /** Create a deep clone of this channel */
   clone(): Channel {
-    return new Channel(this.key, this.tokenNonce, this.tokens.entries());
+    return new Channel(this.key, this.recipientPublicKey, this.tokenNonce, this.tokens.entries());
   }
 }
 
@@ -98,6 +102,7 @@ export const channelSerde: ChannelSerde = {
     const json = jsonStringify({
       v: 1,
       key: channel.key,
+      recipientPublicKey: channel.recipientPublicKey,
       tokenNonce: channel.tokenNonce,
       tokens: Array.from(channel.tokens.entries()),
     });
@@ -109,12 +114,13 @@ export const channelSerde: ChannelSerde = {
     if (parsed === null || typeof parsed !== "object") {
       throw new Error("Invalid channel payload");
     }
-    const { key, tokenNonce, tokens } = parsed as Record<string, unknown>;
+    const { key, recipientPublicKey, tokenNonce, tokens } = parsed as Record<string, unknown>;
     const decodedKey = assertChannelKey(key);
+    const decodedPublicKey = assertChannelKey(recipientPublicKey); // same format as key
     const decodedTokenNonce = assertTokenNonce(tokenNonce);
     const decodedTokens = assertTokenEntries(tokens);
 
-    return new Channel(decodedKey, decodedTokenNonce, decodedTokens);
+    return new Channel(decodedKey, decodedPublicKey, decodedTokenNonce, decodedTokens);
   },
 };
 
