@@ -5,7 +5,7 @@ use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTr
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
     OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
-    UseNoteInput, WithdrawInput, WriteIfZeroInput, WriteIfZeroSubchannelInput,
+    UseNoteInput, WithdrawInput, WriteIfZeroInput,
 };
 use privacy::hashes::{
     compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
@@ -23,6 +23,8 @@ use privacy::objects::{
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
+use privacy::tests::mock_client::MockClient::deploy_for_test as deploy_mock_client_for_test;
+use privacy::tests::mock_client::{IMockClientDispatcher, IMockClientDispatcherTrait};
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{
     derive_public_key, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
@@ -94,6 +96,7 @@ pub(crate) struct PrivacyCfg {
 struct User {
     pub address: ContractAddress,
     pub privacy: PrivacyCfg,
+    pub mock_client: MockClientCfg,
     pub private_key: felt252,
     pub public_key: felt252,
     nonce: usize,
@@ -119,6 +122,10 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
         self.privacy.safe_client.__execute__(user_addr: *self.address, :client_actions)
+    }
+
+    fn compile_client_actions_revert(self: @User, client_actions: Span<ClientAction>) {
+        self.mock_client.execute(user_addr: *self.address, :client_actions)
     }
 
     fn transfer(
@@ -152,7 +159,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn withdraw(self: @User, withdrawal_target: ContractAddress, token: Token, amount: u128) {
         let input = WithdrawInput { withdrawal_target, token: token.contract_address(), amount };
-        self.compile_client_actions(client_actions: [ClientAction::Withdraw(input)].span())
+        self.compile_client_actions_revert(client_actions: [ClientAction::Withdraw(input)].span())
     }
 
     fn internal_withdraw(
@@ -192,7 +199,10 @@ pub(crate) impl UserImpl of UserTrait {
             recipient_public_key: recipient.public_key,
             random,
         };
-        self.compile_client_actions(client_actions: [ClientAction::OpenChannel(input)].span())
+        self
+            .compile_client_actions_revert(
+                client_actions: [ClientAction::OpenChannel(input)].span(),
+            )
     }
 
     fn internal_open_channel(self: @User, recipient: User, random: felt252) -> Span<ServerAction> {
@@ -240,7 +250,6 @@ pub(crate) impl UserImpl of UserTrait {
         let mut spy = spy_messages_to_l1();
         self.open_channel(:recipient, :random);
         let actions = spy_messages_to_server_actions(ref :spy);
-        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
         random
     }
@@ -257,7 +266,10 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_address,
             random,
         };
-        self.compile_client_actions(client_actions: [ClientAction::OpenSubchannel(input),].span())
+        self
+            .compile_client_actions_revert(
+                client_actions: [ClientAction::OpenSubchannel(input),].span(),
+            )
     }
 
     fn internal_open_subchannel(
@@ -341,7 +353,6 @@ pub(crate) impl UserImpl of UserTrait {
         let mut spy = spy_messages_to_l1();
         self.open_subchannel(:recipient, :token_address, :index, :random);
         let actions = spy_messages_to_server_actions(ref :spy);
-        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
         random
     }
@@ -365,7 +376,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn create_note(self: @User, note: CreateNoteInput) {
-        self.compile_client_actions([ClientAction::CreateNote(note)].span())
+        self.compile_client_actions_revert([ClientAction::CreateNote(note)].span())
     }
 
     fn internal_create_note(self: @User, note: CreateNoteInput) -> Span<ServerAction> {
@@ -441,7 +452,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn use_note(self: @User, note: UseNoteInput) {
-        self.compile_client_actions(client_actions: [ClientAction::UseNote(note)].span())
+        self.compile_client_actions_revert(client_actions: [ClientAction::UseNote(note)].span())
     }
 
     fn internal_use_note(self: @User, note: UseNoteInput) -> Span<ServerAction> {
@@ -495,7 +506,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn deposit(self: @User, token: Token, amount: u128) {
         let input = DepositInput { token: token.contract_address(), amount };
-        self.compile_client_actions([ClientAction::Deposit(input),].span())
+        self.compile_client_actions_revert([ClientAction::Deposit(input),].span())
     }
 
     fn internal_deposit(
@@ -557,7 +568,10 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn set_viewing_key(self: @User, random: felt252) {
         let input = SetViewingKeyInput { private_key: *self.private_key, random };
-        self.compile_client_actions(client_actions: [ClientAction::SetViewingKey(input)].span())
+        self
+            .compile_client_actions_revert(
+                client_actions: [ClientAction::SetViewingKey(input)].span(),
+            )
     }
 
     fn internal_set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
@@ -592,7 +606,6 @@ pub(crate) impl UserImpl of UserTrait {
         let mut spy = spy_messages_to_l1();
         self.set_viewing_key(:random);
         let actions = spy_messages_to_server_actions(ref :spy);
-        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
     }
 
@@ -693,6 +706,7 @@ pub(crate) impl UserImpl of UserTrait {
 #[derive(Drop, Copy)]
 pub(crate) struct Test {
     pub privacy: PrivacyCfg,
+    pub mock_client: MockClientCfg,
     pub nonce: usize,
     // TODO: Compliance fields as struct + trait?
     pub compliance_private_key: felt252,
@@ -710,7 +724,14 @@ pub(crate) impl TestImpl of TestTrait {
         let public_key = derive_public_key(:private_key);
         self.nonce += 1;
         let address = deploy_mock_account(salt: self.nonce.into());
-        User { address, privacy: self.privacy, private_key, public_key, nonce: Zero::zero() }
+        User {
+            address,
+            privacy: self.privacy,
+            mock_client: self.mock_client,
+            private_key,
+            public_key,
+            nonce: Zero::zero(),
+        }
     }
 
     /// Mock function to generate a new token address.
@@ -913,26 +934,6 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         IPausableDispatcher { contract_address: *self.address }.pause();
     }
 
-    fn revert_actions_for_testing(self: @PrivacyCfg, actions: Span<ServerAction>) {
-        for action in actions {
-            match *action {
-                ServerAction::WriteIfZero(WriteIfZeroInput {
-                    storage_address, ..,
-                }) => { self.store_zero(:storage_address); },
-                ServerAction::WriteIfZeroSubchannel(WriteIfZeroSubchannelInput {
-                    storage_address, ..,
-                }) => {
-                    self.store_zero(:storage_address);
-                    self.store_zero(storage_address: storage_address + 1);
-                },
-                ServerAction::AppendToVec(AppendToVecInput {
-                    recipient_addr, recipient_public_key, ..,
-                }) => { self.pop_from_vec(:recipient_addr, :recipient_public_key); },
-                _ => {},
-            }
-        }
-    }
-
     fn store_zero(self: @PrivacyCfg, storage_address: felt252) {
         store(target: *self.address, :storage_address, serialized_value: [Zero::zero()].span());
     }
@@ -985,14 +986,52 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 }
 
+#[derive(Drop, Copy)]
+struct MockClientCfg {
+    pub address: ContractAddress,
+    pub privacy: ContractAddress,
+}
+
+#[generate_trait]
+impl MockClientImpl of MockClientTrait {
+    #[feature("safe_dispatcher")]
+    fn execute(
+        self: @MockClientCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+    ) {
+        cheat_caller_address_once(contract_address: *self.privacy, caller_address: Zero::zero());
+        IMockClientDispatcher { contract_address: *self.address }
+            .wrap_execute(:user_addr, :client_actions)
+    }
+}
+
 impl DefaultTestImpl of Default<Test> {
     fn default() -> Test {
         let governance_admin = 'GOVERNANCE_ADMIN'.try_into().unwrap();
         let compliance_private_key = 'COMPLIANCE_PRIVATE_KEY';
         let compliance_public_key = derive_public_key(private_key: compliance_private_key);
         let privacy = deploy_privacy(:governance_admin, :compliance_public_key);
-        Test { privacy, nonce: Zero::zero(), compliance_private_key, compliance_public_key }
+        let mock_client = deploy_mock_client(client_contract: privacy.address);
+        Test {
+            privacy,
+            mock_client,
+            nonce: Zero::zero(),
+            compliance_private_key,
+            compliance_public_key,
+        }
     }
+}
+
+fn deploy_mock_client(client_contract: ContractAddress) -> MockClientCfg {
+    let contract_class_hash = declare(contract: "MockClient")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_client_for_test(
+        class_hash: *contract_class_hash, :deployment_params, :client_contract,
+    )
+        .expect('Mock Client deployment failed');
+    MockClientCfg { address: contract_address, privacy: client_contract }
 }
 
 pub(crate) fn deploy_privacy(

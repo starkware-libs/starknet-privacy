@@ -3760,3 +3760,67 @@ fn test_compile_client_actions_writes() {
     // Assert server actions.
     assert_eq!(server_actions, expected_sevrer_actions);
 }
+
+// TODO: Move to different file?
+#[test]
+fn test_mock_client_revert() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let random = user_1.get_random().into();
+
+    let mut spy = spy_messages_to_l1();
+    user_1
+        .compile_client_actions_revert(
+            client_actions: [
+                ClientAction::SetViewingKey(
+                    SetViewingKeyInput { private_key: user_1.private_key, random },
+                )
+            ]
+                .span(),
+        );
+
+    // Assert storage didn't change.
+    let storage_public_key = user_1.get_public_key();
+    assert_eq!(storage_public_key, Zero::zero());
+    let storage_enc_private_key = user_1.get_enc_private_key();
+    assert_eq!(storage_enc_private_key, Zero::zero());
+
+    // Assert server actions.
+    let server_actions = spy_messages_to_server_actions(ref spy);
+    let public_key_storage_path_felt = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
+    );
+    let enc_private_key_storage_path_felt = map_entry_address(
+        map_selector: selector!("enc_private_key"), keys: [user_1.address.into()].span(),
+    );
+    let enc_private_key = user_1.compute_enc_private_key(:random);
+    let expected_server_actions = [
+        ServerAction::Write(
+            WriteInput { storage_address: public_key_storage_path_felt, value: user_1.public_key },
+        ),
+        ServerAction::WritePrivateKey(
+            WritePrivateKeyInput {
+                storage_address: enc_private_key_storage_path_felt, value: enc_private_key,
+            },
+        ),
+    ]
+        .span();
+    assert_eq!(server_actions, expected_server_actions);
+}
+
+#[test]
+#[should_panic(expected: 'ZERO_PRIVATE_KEY')]
+fn test_mock_client_panic() {
+    let mut test: Test = Default::default();
+    let user_1 = test.new_user();
+
+    user_1
+        .compile_client_actions_revert(
+            client_actions: [
+                ClientAction::SetViewingKey(
+                    SetViewingKeyInput { private_key: Zero::zero(), random: Zero::zero() },
+                ),
+            ]
+                .span(),
+        );
+}
