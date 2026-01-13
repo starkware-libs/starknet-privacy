@@ -978,6 +978,12 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
         self.safe_client.__execute__(:user_addr, :client_actions)
     }
+
+    fn validate(
+        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+    ) -> felt252 {
+        self.client.__validate__(:user_addr, :client_actions)
+    }
 }
 
 impl DefaultTestImpl of Default<Test> {
