@@ -32,7 +32,7 @@ pub mod Privacy {
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
-    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use starknet::{ContractAddress, VALIDATED, get_caller_address, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
@@ -120,7 +120,10 @@ pub mod Privacy {
     pub impl ClientImpl of IClient<ContractState> {
         fn __validate__(
             self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
-        ) {}
+        ) -> felt252 {
+            VALIDATED
+        }
+
         // TODO: Gets a single random and generate from it new randoms for each action that needs a
         // random.
         fn __execute__(

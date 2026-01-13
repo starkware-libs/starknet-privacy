@@ -14,9 +14,26 @@ use privacy::tests::utils_for_tests::{
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
 use snforge_std::{TokenTrait, map_entry_address, spy_messages_to_l1};
+use starknet::VALIDATED;
 use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 
 // TODO: Catch server errors in the client side.
+
+#[test]
+fn test_validate() {
+    let mut test: Test = Default::default();
+    let validated = test.privacy.validate(user_addr: Zero::zero(), client_actions: [].span());
+    assert_eq!(validated, VALIDATED);
+    let mut user = test.new_user();
+    let client_actions = [
+        ClientAction::SetViewingKey(
+            SetViewingKeyInput { private_key: user.private_key, random: user.get_random().into() },
+        )
+    ]
+        .span();
+    let validated = test.privacy.validate(user_addr: user.address, :client_actions);
+    assert_eq!(validated, VALIDATED);
+}
 
 #[test]
 fn test_set_viewing_key() {
