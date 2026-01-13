@@ -125,7 +125,7 @@ pub mod Privacy {
         // random.
         fn __execute__(
             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
-        ) {
+        ) -> Span<ServerAction> {
             assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Consider asserting that `client_actions` is not empty.
@@ -154,7 +154,9 @@ pub mod Privacy {
             }
             token_balances.squash().assert_valid();
             assert_valid_signature(:user_addr);
-            send_message_to_server(server_actions.span());
+            let server_actions = server_actions.span();
+            send_message_to_server(:server_actions);
+            server_actions
         }
     }
 

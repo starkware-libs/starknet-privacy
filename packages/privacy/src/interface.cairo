@@ -66,7 +66,9 @@ pub trait IClient<T> {
     ///
     /// #### Access Control
     /// - TODO
-    fn __execute__(ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
+    fn __execute__(
+        ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+    ) -> Span<ServerAction>;
 
     // TODO: Should T be ref?
     fn __validate__(self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>);

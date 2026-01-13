@@ -23,9 +23,10 @@ fn test_set_viewing_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let public_key = user.public_key;
-    let (random, actions) = user.internal_set_viewing_key_with_generated_random();
+    let mut spy = spy_messages_to_l1();
+    let (random, actions) = user.set_viewing_key_with_generated_random();
+    // Compute the expected actions.
     let enc_private_key = user.compute_enc_private_key(:random);
-
     let public_key_storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
@@ -43,6 +44,11 @@ fn test_set_viewing_key() {
         ),
     ]
         .span();
+    // Test the msg.
+    test.general_assert_spy_messages(ref :spy);
+    let message_actions = spy_messages_to_server_actions(ref :spy);
+    assert_eq!(message_actions, expected_actions);
+    // Test the output.
     assert_eq!(actions, expected_actions);
 }
 
@@ -129,9 +135,11 @@ fn test_transfer() {
         .new_note_with_generated_random(
             recipient: user_2, :token_address, :amount, index: note_index,
         );
+    let mut spy = spy_messages_to_l1();
     let actions = user_1
         .transfer(notes_to_use: [use_note_input].span(), notes_to_create: [note].span());
 
+    // Compute the expected actions.
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token_address, :note_index);
     let enc_note = user_1
         .compute_enc_note(
@@ -154,7 +162,13 @@ fn test_transfer() {
         ),
     ]
         .span();
+    // Test the msg.
+    test.general_assert_spy_messages(ref :spy);
+    let message_actions = spy_messages_to_server_actions(ref :spy);
+    assert_eq!(message_actions, expected_actions);
+    // Test the output.
     assert_eq!(actions, expected_actions);
+    // Test the privacy state.
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
 }
@@ -186,8 +200,10 @@ fn test_transfer_to_self() {
             recipient: user_1, :token_address, :amount, index: note_index,
         );
 
+    let mut spy = spy_messages_to_l1();
     let actions = user_1
         .transfer(notes_to_use: [use_note_input].span(), notes_to_create: [note].span());
+    // Compute the expected actions.
     let expected_nullifier = user_1.compute_nullifier(sender: user_2, :token_address, :note_index);
     let enc_note = user_1
         .compute_enc_note(
@@ -210,7 +226,13 @@ fn test_transfer_to_self() {
         ),
     ]
         .span();
+    // Test the msg.
+    test.general_assert_spy_messages(ref :spy);
+    let message_actions = spy_messages_to_server_actions(ref :spy);
+    assert_eq!(message_actions, expected_actions);
+    // Test the output.
     assert_eq!(actions, expected_actions);
+    // Test the privacy state.
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
 }
@@ -250,8 +272,10 @@ fn test_transfer_one_to_many() {
             recipient: user_3, :token_address, amount: amount_2, index: note_index,
         );
 
+    let mut spy = spy_messages_to_l1();
     let actions = user_1
         .transfer(notes_to_use: [use_note_input].span(), notes_to_create: [note_1, note_2].span());
+    // Compute the expected actions.
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token_address, :note_index);
     let enc_note_1 = user_1
         .compute_enc_note(
@@ -294,7 +318,13 @@ fn test_transfer_one_to_many() {
         ),
     ]
         .span();
+    // Test the msg.
+    test.general_assert_spy_messages(ref :spy);
+    let message_actions = spy_messages_to_server_actions(ref :spy);
+    assert_eq!(message_actions, expected_actions);
+    // Test the output.
     assert_eq!(actions, expected_actions);
+    // Test the privacy state.
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_amount);
     assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), enc_note_2.enc_amount);
@@ -346,13 +376,13 @@ fn test_transfer_many_to_one() {
             recipient: user_2, :token_address, :amount, index: note_index,
         );
 
+    let mut spy = spy_messages_to_l1();
     let actions = user_1
         .transfer(
             notes_to_use: [use_note_input_1, use_note_input_2].span(),
             notes_to_create: [note].span(),
         );
-
-    // Test use_note output.
+    // Compute the expected actions.
     let expected_nullifier_1 = user_1
         .compute_nullifier(sender: user_2, :token_address, :note_index);
     let expected_nullifier_2 = user_1
@@ -385,7 +415,13 @@ fn test_transfer_many_to_one() {
         ),
     ]
         .span();
+    // Test the msg.
+    test.general_assert_spy_messages(ref :spy);
+    let message_actions = spy_messages_to_server_actions(ref :spy);
+    assert_eq!(message_actions, expected_actions);
+    // Test the output.
     assert_eq!(actions, expected_actions);
+    // Test the privacy state.
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
     assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
@@ -441,12 +477,14 @@ fn test_transfer_many_to_many() {
             recipient: user_2, :token_address, :amount, index: note_index,
         );
 
+    let mut spy = spy_messages_to_l1();
     let actions = user_3
         .transfer(
             notes_to_use: [use_note_input_1, use_note_input_2].span(),
             notes_to_create: [note_1, note_2].span(),
         );
 
+    // Compute the expected actions.
     let expected_nullifier_1 = user_3
         .compute_nullifier(sender: user_1, :token_address, :note_index);
     let expected_nullifier_2 = user_3
@@ -493,7 +531,13 @@ fn test_transfer_many_to_many() {
         ),
     ]
         .span();
+    // Test the msg.
+    test.general_assert_spy_messages(ref :spy);
+    let message_actions = spy_messages_to_server_actions(ref :spy);
+    assert_eq!(message_actions, expected_actions);
+    // Test the output.
     assert_eq!(actions, expected_actions);
+    // Test the private state.
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
     assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_amount);
