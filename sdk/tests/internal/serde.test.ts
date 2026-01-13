@@ -12,6 +12,7 @@ describe("channelSerde", () => {
   it("encodes and decodes a channel round-trip", () => {
     const original = new Channel(
       12345n,
+      67890n, // recipientPublicKey
       new TokenNonce(5),
       new Map([
         ["0xabc", new NoteNonce(10)],
@@ -23,6 +24,7 @@ describe("channelSerde", () => {
 
     // Compare essential data (AdvressMap instances don't deep-equal well)
     expect(decoded.key).toEqual(original.key);
+    expect(decoded.recipientPublicKey).toEqual(original.recipientPublicKey);
     expect(decoded.tokenNonce.sequence).toEqual(original.tokenNonce.sequence);
     expect(Array.from(decoded.tokens.entries())).toEqual(Array.from(original.tokens.entries()));
   });

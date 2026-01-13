@@ -21,6 +21,7 @@ import { MockDiscoveryProvider } from "./discovery.js";
 import { PrivateTransfersBuilderImpl } from "../internal/builders.js";
 import { ActionCompiler } from "../internal/compiler.js";
 import { applyOptimisticUpdate } from "../internal/registry-updater.js";
+import { MockContracts } from "./contracts.js";
 
 export class MockPrivateTransfers implements PrivateTransfers {
   private pool: PrivacyPool;
@@ -32,9 +33,14 @@ export class MockPrivateTransfers implements PrivateTransfers {
   private discoveryProvider: MockDiscoveryProvider;
   private compiler: ActionCompiler;
 
-  constructor(pool: PrivacyPool, userAddress: StarknetAddress, userPrivateKey: PrivateKey) {
-    this.pool = pool;
-    this.discoveryProvider = new MockDiscoveryProvider(pool);
+  constructor(
+    private contracts: MockContracts,
+    poolAddress: StarknetAddress,
+    userAddress: StarknetAddress,
+    userPrivateKey: PrivateKey
+  ) {
+    this.pool = this.contracts.get<PrivacyPool>(poolAddress);
+    this.discoveryProvider = new MockDiscoveryProvider(this.pool);
     this.userAddress = userAddress;
     this.userViewingKey = userPrivateKey;
     this.compiler = new ActionCompiler(userAddress, userPrivateKey, this.discoveryProvider);
@@ -53,17 +59,19 @@ export class MockPrivateTransfers implements PrivateTransfers {
   }
 
   async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
-    // 1. Compile actions - resolves contexts and updates registry
-    const { actions: compiledActions, registry } = this.compiler.compile(actions, options);
+    // 1. Compile actions - resolves contexts and produces clientActions
+    const { clientActions, registry } = this.compiler.compile(actions, options);
 
-    // 2. Execute actions on the pool - pass registry for context lookup
-    await this.pool.execute(this.userAddress, this.userViewingKey, compiledActions, registry);
+    const snapshot = this.contracts.snapshot();
+    // 2. Execute client actions on the pool (returns callbacks, state is restored)
+    const callbacks = this.pool.execute(this.userAddress, clientActions);
 
+    this.contracts.restore(snapshot);
     // 3. Apply optimistic updates - update channel nonces, remove spent notes
-    applyOptimisticUpdate(compiledActions, registry);
+    applyOptimisticUpdate(clientActions, registry);
 
     return {
-      callAndProof: createMockCallAndProof(),
+      callAndProof: createMockCallAndProof(callbacks),
       registry,
     };
   }

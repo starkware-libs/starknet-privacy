@@ -6,6 +6,7 @@ import type {
   Amount,
   DiscoveryProviderInterface,
   Note,
+  NoteId,
   StarknetAddress,
   StarknetAddressBigint,
   ViewingKey,
@@ -13,7 +14,7 @@ import type {
 import { Channel, SetupRequirement, Witness } from "../interfaces.js";
 import type { BlockIdentifier } from "starknet";
 import { NoteNonce, TokenNonce } from "../internal/index.js";
-import { decryptChannelInfo } from "../utils/crypto.js";
+import { decryptChannelInfo, toBigInt } from "../utils/crypto.js";
 import { AddressMap } from "../utils/maps.js";
 import { assertRecipientAddress, assertViewingKey } from "../utils/validation.js";
 import type { PrivacyPool } from "./pool.js";
@@ -22,10 +23,6 @@ import { hashes } from "../utils/hashes.js";
 export class MockDiscoveryProvider implements DiscoveryProviderInterface {
   private _currentBlock: BlockIdentifier = 0; // TODO: allow block advancement
   constructor(private pool: PrivacyPool) {}
-
-  getPublicKey(address: StarknetAddress) {
-    return this.pool.getPublicKey(address);
-  }
 
   discoverNotes(
     address: StarknetAddress,
@@ -49,7 +46,7 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
       while ((token = this.pool.getToken(key, new NoteNonce(tokenSequence++))) !== false) {
         // Iterate note sequences for this token
         let noteSequence = 0;
-        let note: { amount: Amount; open: boolean } | false;
+        let note: { id: NoteId; amount: Amount; open: boolean } | false;
         while (
           (note = this.pool.getNote(new Witness(key, new NoteNonce(noteSequence)), token)) !== false
         ) {
@@ -60,7 +57,7 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
           }
 
           result.get(token)!.push({
-            id: hashes.noteId(new Witness(key, nonce), token),
+            id: note.id,
             amount: note.amount,
             witness: new Witness(key, nonce),
             sender: channel.sender,
@@ -87,7 +84,8 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
     const result = new AddressMap<Channel>();
     for (const recipient of recipients) {
       const addr = assertRecipientAddress(recipient);
-      const key = hashes.channelKey(address, viewingKey, addr, this.pool.getPublicKey(addr));
+      const recipientPublicKey = toBigInt(this.pool.getPublicKey(addr));
+      const key = hashes.channelKey(address, viewingKey, addr, recipientPublicKey);
 
       // Find the highest token nonce sequence
       let tokenSequence = 0;
@@ -105,7 +103,7 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
       }
 
       const tokenNonce = new TokenNonce(tokenSequence);
-      result.set(addr, new Channel(key, tokenNonce, tokens));
+      result.set(addr, new Channel(key, recipientPublicKey, tokenNonce, tokens));
     }
 
     return { timestamp: this._currentBlock, channels: result };

@@ -4,8 +4,6 @@
  */
 
 import type { StarknetAddress } from "../interfaces.js";
-import { Witness } from "../interfaces.js";
-import type { TokenNonce } from "../internal/index.js";
 import { hash, type Hash, type PrivateKey, type PublicKey } from "./crypto.js";
 
 // Domain separation tags (must match Cairo constants in domain_separation module)
@@ -44,8 +42,8 @@ export const hashes = {
    * `subchannel_key = h(SUBCHANNEL_KEY_TAG, channel_key, slot, sequence)`
    * Cairo uses (index, 0) where index=slot, 0=sequence
    */
-  subchannelKey: (channelKey: Hash, nonce: TokenNonce): Hash =>
-    hash(SUBCHANNEL_KEY_TAG, channelKey, nonce.sequence, 0n),
+  subchannelKey: (channelKey: Hash, index: number): Hash =>
+    hash(SUBCHANNEL_KEY_TAG, channelKey, index, 0n),
 
   /**
    * Computes the subchannel id given the channel key and token.
@@ -63,14 +61,18 @@ export const hashes = {
    * `note_id = h(NOTE_ID_TAG, channel_key, token, slot, sequence)`
    * Cairo uses (index, 0) where index=slot, 0=sequence
    */
-  noteId: (witness: Witness, token: StarknetAddress): Hash =>
-    hash(NOTE_ID_TAG, witness.channelKey, token, witness.nonce.sequence, 0n),
+  noteId: (channelKey: Hash, token: StarknetAddress, index: number): Hash =>
+    hash(NOTE_ID_TAG, channelKey, token, index, 0n),
 
   /**
    * Computes the nullifier.
    * `nullifier = h(NULLIFIER_TAG, channel_key, token, slot, sequence, owner_private_key)`
    * Cairo uses (index, 0, privKey) where index=slot, 0=sequence
    */
-  nullifier: (witness: Witness, token: StarknetAddress, ownerPrivateKey: PrivateKey): Hash =>
-    hash(NULLIFIER_TAG, witness.channelKey, token, witness.nonce.sequence, 0n, ownerPrivateKey),
+  nullifier: (
+    channelKey: Hash,
+    token: StarknetAddress,
+    index: number,
+    ownerPrivateKey: PrivateKey
+  ): Hash => hash(NULLIFIER_TAG, channelKey, token, index, 0n, ownerPrivateKey),
 };

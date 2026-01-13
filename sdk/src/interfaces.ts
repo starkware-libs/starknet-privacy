@@ -20,7 +20,7 @@ export const MAX_VIEWING_KEY = ec.starkCurve.CURVE.n / 2n;
 
 /** Marker for creating an open note (a note whose amount is open and can be filled later with a deposit) */
 export type Open = { readonly __marker: "open" };
-export const open: Open = { __marker: "open" };
+export const Open: Open = { __marker: "open" };
 
 /**
  * Union that allows both the concrete Account class as well as the lighter AccountInterface.
@@ -125,10 +125,8 @@ export type OpenTokenChannelAction = {
 export type DepositAction = {
   token: StarknetAddress;
   amount: Amount;
-} & (
-  | { recipient: StarknetAddress } // Deposit to address (context resolved from registry)
-  | { noteId: NoteId } // Deposit to open note (no context needed)
-);
+  noteId?: NoteId;
+};
 
 export type UseNoteAction = {
   token: StarknetAddress;
@@ -147,6 +145,10 @@ export type WithdrawAction = {
   amount: Amount;
 };
 
+export type FollowupCallAction = {
+  call: Call;
+};
+
 /** Actions - context comes from registry */
 export type Actions = {
   setViewingKey?: SetViewingKeyAction;
@@ -156,6 +158,7 @@ export type Actions = {
   useNotes?: UseNoteAction[];
   createNotes?: CreateNoteAction[];
   withdraws?: WithdrawAction[];
+  followupCall?: FollowupCallAction;
 };
 
 // ============ Auto-Discovery & Registry Types ============
@@ -297,6 +300,9 @@ export interface PrivateTransfers {
  */
 export type TransferOutput = { recipient: StarknetAddress; amount: Amount | Open };
 export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
+export type DepositInput = ({ recipient?: StarknetAddress } | { noteId: NoteId }) & {
+  amount: Amount;
+};
 
 /**
  * Token-specific sub-builder for operations on a single token.
@@ -317,9 +323,9 @@ export interface TokenOperationsBuilder {
 
   /**
    * Deposit this token.
-   * @param recipient Address or NoteId (for open notes). Context resolved from registry or discovery.
+   * @param inputs Array of inputs to deposit. Each input can be a recipient address or a note id.
    */
-  deposit(amount: Amount, recipient: StarknetAddress | NoteId): this;
+  deposit(...inputs: DepositInput[]): this;
 
   /** Withdraw this token to one or more public addresses */
   withdraw(...outputs: WithdrawOutput[]): this;
@@ -445,12 +451,6 @@ export interface ProofProviderInterface {
 }
 
 export interface DiscoveryProviderInterface {
-  /**
-   * Get the public key for a registered address.
-   * This is a contract read operation.
-   */
-  getPublicKey(address: StarknetAddress): BigNumberish;
-
   /**
    * Discover unspent notes per token
    */
