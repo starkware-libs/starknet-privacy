@@ -134,7 +134,7 @@ pub(crate) fn encrypt_note_amount(channel_key: felt252, random: u128, amount: u1
     packing(value_1: random, value_2: enc_amount.try_into().expect('ENC_AMOUNT_OVERFLOW'))
 }
 
-/// Decrypts the note amount from `EncNote`.
+/// Decrypts the note amount from `enc_note_value`.
 /// This is the inverse of `encrypt_note_amount`.
 pub(crate) fn decrypt_note_amount(enc_note_value: felt252, channel_key: felt252) -> u128 {
     let (random, enc_amount) = unpacking(packed_value: enc_note_value);

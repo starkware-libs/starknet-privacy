@@ -27,11 +27,10 @@ pub mod domain_separation {
         pub const ENC_CHANNEL_KEY_TAG: felt252 = 'channel_info:enc_channel_key:v1';
         pub const ENC_SENDER_ADDR_TAG: felt252 = 'channel_info:enc_sender_addr:v1';
     }
-    /// Tags for the `EncNote` struct.
-    pub mod enc_note {
-        pub const NOTE_ID_TAG: felt252 = 'enc_note:id:v1';
-        pub const ENC_AMOUNT_TAG: felt252 = 'enc_note:enc_amount:v1';
-    }
+    /// Tag for `note_id`.
+    pub const NOTE_ID_TAG: felt252 = 'enc_note:id:v1';
+    /// Tag for encrypted amount of the note.
+    pub const ENC_AMOUNT_TAG: felt252 = 'enc_note:enc_amount:v1';
     /// Tags for the `EncSubchannelInfo` struct.
     // TODO: Now using "subchannel_info" instead of "enc_subchannel_info" to fit in a single felt.
     pub mod enc_subchannel_info {
@@ -155,15 +154,15 @@ pub(crate) fn compute_subchannel_id(
 pub(crate) fn compute_note_id(
     channel_key: felt252, token: ContractAddress, index: usize,
 ) -> felt252 {
-    hash([enc_note::NOTE_ID_TAG, channel_key, token.into(), index.into(), Zero::zero()].span())
+    hash([NOTE_ID_TAG, channel_key, token.into(), index.into(), Zero::zero()].span())
 }
 
-/// Computes the hash used to encrypt the note amount in `EncNote`.
+/// Computes the hash used to encrypt the note amount.
 /// Assumes `channel_key` is not zero.
 ///
 /// Returns `h(ENC_AMOUNT_TAG, channel_key, random)`.
 pub(crate) fn compute_enc_amount_hash(channel_key: felt252, random: u128) -> felt252 {
-    hash([enc_note::ENC_AMOUNT_TAG, channel_key, random.into()].span())
+    hash([ENC_AMOUNT_TAG, channel_key, random.into()].span())
 }
 
 /// Computes the nullifier.
