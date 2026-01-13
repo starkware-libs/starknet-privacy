@@ -10,8 +10,6 @@ import type {
   ExecuteOptions,
   ExecuteResult,
   Note,
-  NoteId,
-  Open,
   OpenChannelAction,
   OpenTokenChannelAction,
   PrivateTransfers,
@@ -22,9 +20,13 @@ import type {
   TokenOperationsBuilder,
   UseNoteAction,
   WithdrawAction,
+  WithdrawOutput,
+  DepositInput,
+  TransferOutput,
 } from "../interfaces.js";
 import type { Call } from "starknet";
 import { AddressMap } from "../utils/maps.js";
+import { isOpen } from "../utils/validation.js";
 
 // ============ Internal Types ============
 
@@ -40,11 +42,11 @@ const isChannel = (v: unknown): v is Channel => typeof v === "object" && v !== n
 
 export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   // Actions stored without context - context resolved during execute
-  public setupRecipients: StarknetAddress[] = [];
+  public openTokenChannels: OpenTokenChannelAction[] = [];
   public useNotes: UseNoteAction[] = [];
-  public deposits: Array<{ amount: Amount; recipient: StarknetAddress | NoteId }> = [];
+  public deposits: DepositAction[] = [];
+  public createNotes: CreateNoteAction[] = [];
   public withdraws: WithdrawAction[] = [];
-  public transfers: Array<{ recipient: StarknetAddress; amount: Amount | Open }> = [];
   public hasExplicitInputs = false;
 
   // Surplus recipient (overrides parent builder's surplus recipient for this token)
@@ -56,7 +58,7 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   ) {}
 
   setup(recipient: StarknetAddress): this {
-    this.setupRecipients.push(recipient);
+    this.openTokenChannels.push({ recipient, token: this.token });
     return this;
   }
 
@@ -68,12 +70,23 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
     return this;
   }
 
-  deposit(amount: Amount, recipient: StarknetAddress | NoteId): this {
-    this.deposits.push({ amount, recipient });
+  deposit(...inputs: DepositInput[]): this {
+    for (const input of inputs) {
+      if ("noteId" in input) {
+        this.deposits.push({ token: this.token, amount: input.amount, noteId: input.noteId });
+      } else {
+        this.deposits.push({ token: this.token, amount: input.amount });
+        this.createNotes.push({
+          token: this.token,
+          recipient: input.recipient ?? this.parentBuilder.userAddress,
+          amount: input.amount,
+        });
+      }
+    }
     return this;
   }
 
-  withdraw(...outputs: Array<{ recipient?: StarknetAddress; amount: Amount }>): this {
+  withdraw(...outputs: WithdrawOutput[]): this {
     for (const output of outputs) {
       this.withdraws.push({
         token: this.token,
@@ -84,8 +97,14 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
     return this;
   }
 
-  transfer(...outputs: Array<{ recipient: StarknetAddress; amount: Amount | Open }>): this {
-    this.transfers.push(...outputs);
+  transfer(...outputs: TransferOutput[]): this {
+    for (const output of outputs) {
+      this.createNotes.push({
+        token: this.token,
+        recipient: output.recipient,
+        amount: output.amount,
+      });
+    }
     return this;
   }
 
@@ -109,11 +128,10 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   }
 
   reset(): void {
-    this.setupRecipients = [];
+    this.openTokenChannels = [];
     this.useNotes = [];
     this.deposits = [];
     this.withdraws = [];
-    this.transfers = [];
     this.hasExplicitInputs = false;
     this.surplusRecipient = undefined;
   }
@@ -189,33 +207,16 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     const withdraws: WithdrawAction[] = [];
 
     for (const [token, tokenBuilder] of this.tokenBuilders.entries()) {
-      // Setup actions (no context - raw action)
-      for (const recipient of tokenBuilder.setupRecipients) {
-        openTokenChannels.push({ recipient, token });
-      }
+      openTokenChannels.push(...tokenBuilder.openTokenChannels);
 
-      // Deposits (no context - raw action)
-      for (const dep of tokenBuilder.deposits) {
-        if (typeof dep.recipient === "bigint" || typeof dep.recipient === "number") {
-          // Deposit to open note
-          deposits.push({ token, amount: dep.amount, noteId: dep.recipient as NoteId });
-        } else {
-          // Deposit to address
-          deposits.push({ token, amount: dep.amount, recipient: dep.recipient });
-        }
-      }
+      // Deposits
+      deposits.push(...tokenBuilder.deposits);
 
       // Use notes
       useNotes.push(...tokenBuilder.useNotes);
 
-      // Transfers (no context - raw action)
-      for (const transfer of tokenBuilder.transfers) {
-        createNotes.push({
-          token,
-          recipient: transfer.recipient,
-          amount: transfer.amount,
-        });
-      }
+      // Create notes
+      createNotes.push(...tokenBuilder.createNotes);
 
       // Withdraws
       withdraws.push(...tokenBuilder.withdraws);
@@ -224,15 +225,18 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
       const surplusRecipient = tokenBuilder.surplusRecipient ?? this.defaultSurplusRecipient;
       if (surplusRecipient) {
         // Calculate surplus: deposits + useNotes - transfers - withdraws
-        const depositSum = tokenBuilder.deposits.reduce((sum, d) => sum + d.amount, 0n);
+        const depositSum = tokenBuilder.deposits.reduce(
+          (sum, d) => sum + (d.noteId ? 0n : d.amount),
+          0n
+        );
         const useNoteSum = tokenBuilder.useNotes.reduce((sum, u) => sum + u.note.amount, 0n);
-        const transferSum = tokenBuilder.transfers.reduce(
-          (sum, t) => sum + (typeof t.amount === "object" ? 0n : t.amount),
+        const createNoteSum = tokenBuilder.createNotes.reduce(
+          (sum, c) => sum + (isOpen(c.amount) ? 0n : (c.amount as Amount)),
           0n
         );
         const withdrawSum = tokenBuilder.withdraws.reduce((sum, w) => sum + w.amount, 0n);
 
-        const surplus = depositSum + useNoteSum - transferSum - withdrawSum;
+        const surplus = depositSum + useNoteSum - createNoteSum - withdrawSum;
         if (surplus > 0n) {
           createNotes.push({
             token,
