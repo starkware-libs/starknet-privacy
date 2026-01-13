@@ -8,5 +8,6 @@ export default defineConfig({
     coverage: {
       enabled: false,
     },
+    setupFiles: ["tests/setup.ts"],
   },
 });

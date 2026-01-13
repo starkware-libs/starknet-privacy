@@ -48,7 +48,7 @@ export enum SetupRequirement {
 export type StarknetAddressBigint = bigint;
 
 // Import and re-export Witness class from internal.ts
-import { Witness, Channel } from "./internal/index.js";
+import { Witness, Channel } from "./internal/channel.js";
 export { Witness, Channel };
 
 export type Note = {
@@ -145,6 +145,11 @@ export type WithdrawAction = {
   amount: Amount;
 };
 
+export type SurplusAction = {
+  recipient: StarknetAddress;
+  token: StarknetAddress;
+};
+
 export type FollowupCallAction = {
   call: Call;
 };
@@ -158,6 +163,7 @@ export type Actions = {
   useNotes?: UseNoteAction[];
   createNotes?: CreateNoteAction[];
   withdraws?: WithdrawAction[];
+  surpluses?: SurplusAction[];
   followupCall?: FollowupCallAction;
 };
 
@@ -169,17 +175,25 @@ export type Actions = {
  * - 'explicit': Only discover when data is missing. Trust registry contents.
  * - 'refresh': Always discover. Use registry as optimization hint.
  */
-export type DiscoveryLevel = "none" | "explicit" | "refresh";
+export type DiscoveryLevel = "explicit" | "refresh";
 
 /**
  * Options for automatic discovery during execute.
  */
 export type AutoDiscoveryOptions = {
-  /** Discovery level for notes */
-  notes?: DiscoveryLevel;
+  /** Discovery level for notes. 'all' means discover all tokens regardless if used in the actions */
+  notes?: DiscoveryLevel | "all";
   /** Discovery level for recipient channels (includes self) */
-  recipient?: DiscoveryLevel;
+  channels?: DiscoveryLevel;
 };
+
+/**
+ * Auto-selection strategy for notes.
+ * - 'all': Select all notes (requires surplus handling)
+ * - 'none': Do not select any notes.
+ * - 'naive': Select first notes until balance is non negative (may create surplus)
+ */
+export type AutoSelectionStrategy = "all" | "naive" /*| "exact"*/; //
 
 /**
  * Registry holding the user's private state: channels and notes.
@@ -204,12 +218,14 @@ export function createEmptyRegistry(): PrivateRegistry {
  * Options for building and executing private transfers.
  */
 export type ExecuteOptions = {
+  /** adds a set viewing key action if the user is not in the registry */
+  autoRegister?: boolean;
   /** Auto-discovery options */
   autoDiscover?: AutoDiscoveryOptions;
   /** If true, add OpenChannel/OpenTokenChannel actions implicitly when missing */
   autoSetup?: boolean;
-  /** If true, auto-select notes from registry when inputs() not called */
-  autoSelectNotes?: boolean;
+  /** If defined, auto select notes from registry. **/
+  autoSelectNotes?: AutoSelectionStrategy;
   /** Registry for context/notes lookup. Updated during execute unless registryConst is true. */
   registry?: PrivateRegistry;
   /** If true, registry is not mutated; a new one is returned instead */
@@ -457,7 +473,7 @@ export interface DiscoveryProviderInterface {
   discoverNotes(
     address: StarknetAddress,
     viewingKey: ViewingKey,
-    params?: { since?: BlockIdentifier; known?: AddressMap<Note[]> }
+    params?: { since?: BlockIdentifier; known?: AddressMap<Note[]>; tokens?: StarknetAddress[] }
   ): {
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
