@@ -1,6 +1,9 @@
 //! Discovery service library.
 //!
-//! This crate provides the RPC-based storage backend for reading privacy contract
-//! state from a StarkNet node via JSON-RPC.
+//! This crate provides:
+//! - RPC-based storage backend for reading privacy contract state
+//! - Indexer for Starknet new heads subscription
 
+pub mod indexer;
 pub mod rpc_backend;
+pub mod shutdown;
