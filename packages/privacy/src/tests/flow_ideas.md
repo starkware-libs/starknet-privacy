@@ -1,13 +1,4 @@
 # Flow Ideas
-## Open Subchannel
-1. open subchannel twice same index same token
-2. open subchannel twice same index different token
-3. open subchannel twice different index same token
-4. open subchannel end-to-end.
-5. Open subchannel sequential index requirement (subchannels must be opened sequentially: index 0, then 1, then 2, etc.).
-6. Open subchannel with non-sequential index (should fail - INDEX_NOT_SEQUENTIAL).
-7. Open subchannel before channel exists (should fail - INVALID_CHANNEL).
-
 ## Deposit
 1. Deposit end-to-end.
 2. User deposit different tokens.
