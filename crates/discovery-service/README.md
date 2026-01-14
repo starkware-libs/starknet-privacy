@@ -51,5 +51,11 @@ cargo run -p discovery-service -- --log-level info
 ## Test
 From the repo root:
 ```bash
-cargo test -p discovery-service
+# Unit tests
+cargo test -p discovery-service --lib
+
+# Integration tests (require starknet-devnet, must run sequentially)
+cargo test -p discovery-service --test integration -- --test-threads=1
 ```
+
+Note: Integration tests spawn starknet-devnet instances on port 5050 and must run sequentially to avoid port conflicts.
