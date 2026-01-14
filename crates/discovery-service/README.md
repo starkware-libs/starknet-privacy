@@ -48,6 +48,11 @@ From the repo root:
 cargo run -p discovery-service -- --log-level info
 ```
 
+To drop the existing database and reindex from scratch:
+```bash
+cargo run -p discovery-service -- --reindex
+```
+
 ## Test
 From the repo root:
 ```bash

@@ -14,6 +14,10 @@ struct Cli {
     /// Logging level (off, error, warn, info, debug, trace). Overrides RUST_LOG.
     #[arg(long)]
     log_level: Option<String>,
+
+    /// Drop the existing database and reindex from scratch.
+    #[arg(long)]
+    reindex: bool,
 }
 
 fn init_tracing(log_level: Option<&str>) {
@@ -46,8 +50,23 @@ async fn main() {
     if let Ok(ws_url) = std::env::var("WS_URL") {
         indexer_config.ws_url = ws_url;
     }
+    if let Ok(db_path) = std::env::var("DB_PATH") {
+        indexer_config.db_path = db_path;
+    }
+
+    if cli.reindex {
+        let db_path = std::path::Path::new(&indexer_config.db_path);
+        if db_path.exists() {
+            if let Err(e) = std::fs::remove_file(db_path) {
+                error!("Failed to remove database for reindexing: {}", e);
+                std::process::exit(1);
+            }
+            info!("Removed existing database for reindexing");
+        }
+    }
 
     let mut indexer = Indexer::new(indexer_config, shutdown.subscribe());
+
     let indexer_handle = tokio::spawn(async move { indexer.run().await });
     let shutdown_handle = tokio::spawn(async move { shutdown.run().await });
 
