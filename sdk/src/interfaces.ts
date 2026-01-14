@@ -19,8 +19,11 @@ export type Amount = bigint;
 export const MAX_VIEWING_KEY = ec.starkCurve.CURVE.n / 2n;
 
 /** Marker for creating an open note (a note whose amount is open and can be filled later with a deposit) */
-export type Open = { readonly __marker: "open" };
-export const Open: Open = { __marker: "open" };
+export const Open = Symbol("Open");
+export type Open = typeof Open;
+
+export const All = Symbol("All");
+export type All = typeof All;
 
 /**
  * Union that allows both the concrete Account class as well as the lighter AccountInterface.
@@ -148,6 +151,7 @@ export type WithdrawAction = {
 export type SurplusAction = {
   recipient: StarknetAddress;
   token: StarknetAddress;
+  withdraw?: boolean;
 };
 
 export type FollowupCallAction = {
@@ -241,6 +245,66 @@ export type ExecuteResult = {
 };
 
 /**
+ * Simple interface for simple private transfer scenarios
+ */
+export interface SimplePrivateTransfers {
+  readonly user: StarknetAddress;
+  readonly registry: PrivateRegistry;
+
+  /**
+   * deposit tokens into the privacy pool
+   *
+   * v1: the recipient is the same as the account address or has setup a semi transparent note for the deposit.
+   */
+  deposit(token: StarknetAddress, amount: Amount): Promise<ExecuteResult>;
+
+  /**
+   * Withdraw tokens from the privacy pool
+   */
+  withdraw(
+    token: StarknetAddress,
+    recipient: StarknetAddress,
+    amount: Amount | All
+  ): Promise<ExecuteResult>;
+
+  /**
+   * transfer tokens from the privacy pool to a single recipient.
+   */
+  transfer(
+    token: StarknetAddress,
+    recipient: StarknetAddress,
+    amount: Amount | All
+  ): Promise<ExecuteResult>;
+
+  /**
+   * will withdraw to the contract in `helperCall` and then deposit to the privacy pool in `toToken`
+   * Note: a noteid will be added to the helper calldata
+   */
+  swap(
+    fromToken: StarknetAddress,
+    fromAmount: Amount,
+    toToken: StarknetAddress,
+    helperCall: Call
+  ): Promise<ExecuteResult>;
+
+  /**
+   * Discover unspent notes per token
+   */
+  discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): {
+    timestamp: BlockIdentifier;
+    notes: AddressMap<Note[]>;
+  };
+
+  /**
+   * Discover channels for one or more recipients
+   */
+  discoverChannels(...recipients: StarknetAddress[]): {
+    timestamp: BlockIdentifier;
+    channels: AddressMap<Channel>;
+  };
+}
+
+/**
  * Main interface for clients to use. It is stateless.
  * The methods call the proof provider to generate a proof and prepare a public call to send to Starknet.
  *
@@ -263,8 +327,8 @@ export interface PrivateTransfers {
   readonly viewingSigner: ViewingKey;
   readonly discoveryProvider: DiscoveryProviderInterface;
   readonly pool: StarknetAddress;
-  readonly user: StarknetAddress;
   */
+  readonly user: StarknetAddress;
 
   /**
    * given a recipient and token, check if the recipient has a Channel associated with it and if the token is in the channel.
@@ -356,7 +420,7 @@ export interface TokenOperationsBuilder {
    * Overrides the top-level surplusTo for this specific token.
    * If inputs exceed outputs, a CreateNoteAction is automatically added for the difference.
    */
-  surplusTo(recipient: StarknetAddress | Channel): this;
+  surplusTo(recipient: StarknetAddress, withdraw?: boolean): this;
 
   /** Switch to another token */
   with(token: StarknetAddress): TokenOperationsBuilder;
@@ -444,7 +508,7 @@ export interface PrivateTransfersBuilder {
    * If inputs exceed outputs for a token, a CreateNoteAction is automatically added for the difference.
    * Can be overridden per-token using TokenOperationsBuilder.surplusTo().
    */
-  surplusTo(recipient: StarknetAddress | Channel): this;
+  surplusTo(recipient: StarknetAddress, withdraw?: boolean): this;
 
   /** Start token-specific operations */
   with(token: StarknetAddress): TokenOperationsBuilder;

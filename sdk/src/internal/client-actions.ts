@@ -7,7 +7,7 @@
  */
 
 import { Call } from "starknet";
-import type { Amount, NoteId, Open, StarknetAddress, ViewingKey } from "./interfaces.js";
+import type { Amount, NoteId, Open, StarknetAddress, ViewingKey } from "../interfaces.js";
 
 /**
  * Input for the SetViewingKey action.

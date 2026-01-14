@@ -33,7 +33,7 @@ import { AdvancedMap, AddressMap } from "../utils/maps.js";
 import { assert, isOpen } from "../utils/validation.js";
 import type { MockContracts, MockContract } from "./contracts.js";
 import { hashes } from "../utils/hashes.js";
-import { ClientAction } from "../client-actions.js";
+import { ClientAction } from "../internal/client-actions.js";
 import { debugLog, hex } from "../utils/logging.js";
 
 type OpenNote = {

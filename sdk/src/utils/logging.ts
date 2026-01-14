@@ -189,14 +189,14 @@ export const consoleLogCallback: LogCallback = (
 /**
  * Log arbitrary messages if debug is enabled for the target.
  */
-export const debugLog = (target: string, ...args: unknown[]) => {
-  if (isDebugEnabled(target)) {
+export const debugLog = (target: string, sub: string, ...args: unknown[]) => {
+  if (isDebugEnabled(`${target}.${sub}`)) {
     // Attempt to get current trace ID if inside a logged context
     const current = traceStorage.getStore();
     const traceId = current ? current.id : "?";
 
     console.log(
-      color(`[${traceId}] [${target}]`, CYAN),
+      color(`[${traceId}] [${target}.${sub}]`, CYAN),
       ...args.map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg, replacer, 2)))
     );
   }

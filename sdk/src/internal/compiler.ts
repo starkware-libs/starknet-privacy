@@ -29,7 +29,7 @@ import type {
 } from "../interfaces.js";
 import { Channel, createEmptyRegistry } from "../interfaces.js";
 import { AddressMap, AdvancedMap } from "../utils/maps.js";
-import type { ClientAction } from "../client-actions.js";
+import type { ClientAction } from "./client-actions.js";
 import { PrivacyPool } from "../testing/pool.js";
 import { MockContracts } from "../testing/contracts.js";
 import { assert, isOpen } from "../utils/validation.js";
@@ -509,14 +509,27 @@ export class ActionCompiler {
     const notesDiscoveryLevel = options?.autoDiscover?.notes;
     // discover notes if requested
     if (notesDiscoveryLevel !== undefined) {
-      const tokensToDiscover =
-        notesDiscoveryLevel === "all"
-          ? undefined
-          : [...balances.keys()].filter(
-              (token) =>
-                balances.get(token)! < 0n &&
-                (notesDiscoveryLevel === "refresh" || !registry.notes.has(token))
-            );
+      const tokensToDiscover = (() => {
+        if (notesDiscoveryLevel === "all") return undefined;
+        return [...balances.entries()]
+          .filter(([token, balance]) => {
+            // Case 1: We have a deficit (negative balance), so we need inputs.
+            const hasDeficit = balance < 0n;
+
+            // Case 2: We want to sweep all funds (autoSelectNotes="all") into a surplus recipient.
+            // Even if balance is 0, we check if we should fetch notes to dump them.
+            const isSweeping =
+              options?.autoSelectNotes === "all" && // assume 'all' means the user wants to always "compress" their notes even if balance is 0
+              actions.surpluses?.some((s) => s.token === token);
+
+            if (!hasDeficit && !isSweeping) return false;
+
+            // Finally, check if discovery is actually needed (forced refresh or missing from registry)
+            return notesDiscoveryLevel === "refresh" || !registry.notes.has(token);
+          })
+          .map(([token]) => token);
+      })();
+
       debugLog("compiler", "discovering notes", tokensToDiscover);
 
       if (!tokensToDiscover || tokensToDiscover.length > 0) {
@@ -538,7 +551,7 @@ export class ActionCompiler {
       let balance = balances.get(token)!;
 
       // If deficit, try to cover with notes from registry
-      if (balance < 0n && options?.autoSelectNotes) {
+      if ((balance < 0n && options?.autoSelectNotes) || options?.autoSelectNotes === "all") {
         const availableNotes = registry.notes.get(token) ?? [];
         actions.useNotes ??= [];
 
@@ -549,23 +562,32 @@ export class ActionCompiler {
 
           actions.useNotes.push({ token, note });
           balance += note.amount;
-          if (balance >= 0n || options?.autoSelectNotes === "naive") break; // Deficit covered
+          if (balance >= 0n && options?.autoSelectNotes !== "all") break; // Deficit covered
         }
       }
 
       // If surplus (after adding notes or initially), create change note
       if (balance > 0n) {
-        const surplusRecipient = actions.surpluses?.find((s) => s.token === token)?.recipient;
-        if (!surplusRecipient)
+        const surplusAction = actions.surpluses?.find((s) => s.token === token);
+        if (!surplusAction)
           throw new Error(
-            `Surplus of ${balance} found for token ${token} but no surplus recipient found`
+            `Surplus of ${balance} found for token ${token} but no surplus action found`
           );
-        actions.createNotes ??= [];
-        actions.createNotes.push({
-          recipient: surplusRecipient,
-          token,
-          amount: balance,
-        });
+        if (surplusAction.withdraw) {
+          actions.withdraws ??= [];
+          actions.withdraws.push({
+            recipient: surplusAction.recipient,
+            token,
+            amount: balance,
+          });
+        } else {
+          actions.createNotes ??= [];
+          actions.createNotes.push({
+            recipient: surplusAction.recipient,
+            token,
+            amount: balance,
+          });
+        }
       }
     }
   }
