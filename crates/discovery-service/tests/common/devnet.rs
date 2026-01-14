@@ -1,16 +1,18 @@
 //! Devnet wrapper for integration tests.
 
 use std::fs;
-use std::io::{BufRead, BufReader, Read, Write};
-use std::net::TcpListener;
+use std::io::{BufReader, Read, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
 use flate2::read::GzDecoder;
+use nix::sys::signal::Signal;
 use starknet_types_core::felt::Felt;
 use tempfile::NamedTempFile;
+
+use super::process::{find_free_port, signal_process, wait_for_log_pattern};
 
 /// Metadata from devnet dump, written by SDK during fixture generation.
 #[derive(Debug, Clone, serde::Deserialize)]
@@ -25,17 +27,19 @@ pub struct DumpMetadata {
 pub struct DevnetConfig {
     pub seed: u32,
     pub accounts: u32,
+    /// Optional port to use. If None, a free port will be found automatically.
+    pub port: Option<u16>,
 }
 
-pub struct Devnet {
+pub struct DevnetClient {
     process: Child,
     port: u16,
     _temp_dump: Option<NamedTempFile>,
 }
 
-impl Devnet {
+impl DevnetClient {
     pub fn spawn(config: DevnetConfig) -> Result<Self> {
-        let port = find_free_port()?;
+        let port = config.port.unwrap_or(find_free_port()?);
 
         let mut process = Command::new("starknet-devnet")
             .args([
@@ -63,25 +67,22 @@ impl Devnet {
             .context("failed to spawn starknet-devnet")?;
 
         let stdout = process.stdout.take().expect("stdout piped");
-        let start = std::time::Instant::now();
+        let patterns = ["listening on"];
 
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            if start.elapsed() > Duration::from_secs(30) {
-                process.kill().ok();
-                bail!("devnet timeout");
-            }
-            if line.contains("Predeployed FeeToken") || line.contains("listening on") {
+        match wait_for_log_pattern(BufReader::new(stdout), &patterns, Duration::from_secs(30)) {
+            Ok(_) => {
                 std::thread::sleep(Duration::from_millis(100));
-                return Ok(Self {
+                Ok(Self {
                     process,
                     port,
                     _temp_dump: None,
-                });
+                })
+            }
+            Err(e) => {
+                process.kill().ok();
+                Err(e.context("devnet failed to start"))
             }
         }
-
-        process.kill().ok();
-        bail!("devnet failed to start")
     }
 
     /// Read metadata from fixtures directory.
@@ -152,18 +153,47 @@ impl Devnet {
     pub fn rpc_url(&self) -> String {
         format!("http://127.0.0.1:{}", self.port)
     }
-}
 
-impl Drop for Devnet {
-    fn drop(&mut self) {
-        #[cfg(unix)]
-        unsafe {
-            libc::kill(self.process.id() as i32, libc::SIGINT);
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+
+    pub fn ws_url(&self) -> String {
+        format!("ws://127.0.0.1:{}/ws", self.port)
+    }
+
+    /// Create a new block (devnet_createBlock).
+    pub async fn create_block(&self) -> Result<String> {
+        let resp: serde_json::Value = reqwest::Client::new()
+            .post(format!("{}/rpc", self.rpc_url()))
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "devnet_createBlock",
+                "params": {}
+            }))
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        if let Some(error) = resp.get("error") {
+            bail!("devnet_createBlock failed: {}", error);
         }
-        self.process.kill().ok();
+
+        resp["result"]["block_hash"]
+            .as_str()
+            .map(String::from)
+            .ok_or_else(|| anyhow::anyhow!("No block_hash in response"))
     }
 }
 
-fn find_free_port() -> Result<u16> {
-    Ok(TcpListener::bind("127.0.0.1:0")?.local_addr()?.port())
+impl Drop for DevnetClient {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        {
+            signal_process(self.process.id(), Signal::SIGINT).ok();
+        }
+        self.process.kill().ok();
+    }
 }
