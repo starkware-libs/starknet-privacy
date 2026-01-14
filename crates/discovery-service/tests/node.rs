@@ -15,9 +15,10 @@ pub struct Node {
 }
 
 impl Node {
-    pub async fn spawn_with_binary(binary: &str, ws_url: &str) -> Result<Self> {
+    pub async fn spawn_with_binary(binary: &str, ws_url: &str, db_path: &str) -> Result<Self> {
         let mut process = Command::new(binary)
             .env("WS_URL", ws_url)
+            .env("DB_PATH", db_path)
             .stderr(std::process::Stdio::piped())
             .spawn()?;
 

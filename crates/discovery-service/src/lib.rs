@@ -4,3 +4,4 @@
 
 pub mod indexer;
 pub mod shutdown;
+pub mod store;
