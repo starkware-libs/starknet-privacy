@@ -7,6 +7,7 @@
 pub mod indexer;
 pub mod rpc_backend;
 pub mod shutdown;
+pub mod store;
 
 // Re-export storage types from discovery-core for convenience
 pub use discovery_core::storage;

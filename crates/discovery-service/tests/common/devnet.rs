@@ -4,7 +4,7 @@
 //! - Auto port finding
 //! - `load_dump_bytes()` for loading fixture state
 //! - `DevnetConfig` for configuring seed, accounts, etc.
-//! - Async API with `ws_url()`, `http_url()`, `create_block()`
+//! - Async API with `ws_url()`, `http_url()`, `create_block()`, `abort_blocks()`
 
 use std::io::{Read as StdRead, Write as StdWrite};
 use std::net::TcpListener;
@@ -46,7 +46,7 @@ impl DevnetClient {
             .args(["--accounts", &config.accounts.to_string()])
             .args(["--block-generation-on", "demand"])
             .args(["--lite-mode"])
-            .args(["--state-archive-capacity", "none"])
+            .args(["--state-archive-capacity", "full"]) // Required for abort_blocks
             .args(["--l2-gas-price-fri", "1"])
             .args(["--data-gas-price-fri", "1"])
             .args(["--gas-price-fri", "1"])
@@ -143,6 +143,28 @@ impl DevnetClient {
             .as_str()
             .map(String::from)
             .ok_or(anyhow!("No block_hash in response"))
+    }
+
+    /// Abort blocks to simulate reorg (devnet_abortBlocks).
+    pub async fn abort_blocks(&self, starting_block_hash: &str) -> Result<Vec<String>> {
+        let resp: Value = self
+            .rpc(
+                "devnet_abortBlocks",
+                json!({
+                    "starting_block_id": {
+                        "block_hash": starting_block_hash
+                    }
+                }),
+            )
+            .await?;
+        Ok(resp["aborted"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
+            .unwrap_or_default())
     }
 
     async fn rpc(&self, method: &str, params: Value) -> Result<Value> {
