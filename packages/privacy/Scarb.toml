@@ -25,6 +25,7 @@ build-external-contracts = ["starkware_utils::erc20::erc20_mocks::DualCaseERC20M
 
 [scripts]
 test = "SNFORGE_BACKTRACE=1 snforge test"
+flow-tests = "snforge test privacy::tests::flow_tests"
 
 [lib]
 

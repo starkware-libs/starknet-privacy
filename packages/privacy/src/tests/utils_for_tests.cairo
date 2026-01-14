@@ -196,16 +196,20 @@ pub(crate) impl UserImpl of UserTrait {
         self.safe_compile_client_actions(client_actions: [ClientAction::Withdraw(input)].span())
     }
 
-    fn open_channel(self: @User, recipient: User, random: felt252) -> Span<ServerAction> {
+    fn open_channel_actions(self: @User, recipient: User, random: felt252) -> Span<ClientAction> {
         let input = OpenChannelInput {
             sender_private_key: *self.private_key,
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             random,
         };
+        [ClientAction::OpenChannel(input)].span()
+    }
+
+    fn open_channel(self: @User, recipient: User, random: felt252) -> Span<ServerAction> {
         self
             .compile_client_actions_revert(
-                client_actions: [ClientAction::OpenChannel(input)].span(),
+                client_actions: self.open_channel_actions(:recipient, :random),
             )
     }
 
@@ -509,6 +513,10 @@ pub(crate) impl UserImpl of UserTrait {
         self.compile_client_actions_revert([ClientAction::Deposit(input),].span())
     }
 
+    fn is_registered(self: @User) -> bool {
+        self.get_public_key().is_non_zero()
+    }
+
     fn internal_deposit(
         self: @User, token_address: ContractAddress, amount: u128,
     ) -> Span<ServerAction> {
@@ -566,12 +574,13 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
-    fn set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
+    fn set_viewing_key_actions(self: @User, random: felt252) -> Span<ClientAction> {
         let input = SetViewingKeyInput { private_key: *self.private_key, random };
-        self
-            .compile_client_actions_revert(
-                client_actions: [ClientAction::SetViewingKey(input)].span(),
-            )
+        [ClientAction::SetViewingKey(input)].span()
+    }
+
+    fn set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
+        self.compile_client_actions_revert(client_actions: self.set_viewing_key_actions(:random))
     }
 
     fn internal_set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
@@ -698,6 +707,28 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn increase_token_balance(self: @User, token: Token, amount: u128) {
         token.supply(address: *self.address, :amount);
+    }
+}
+
+#[generate_trait]
+pub(crate) impl UserFlowImpl of UserFlowTrait {
+    fn open_channel_flow(ref self: User, ref recipient: User) {
+        if (!recipient.is_registered()) {
+            recipient.set_viewing_key_e2e();
+        }
+
+        let mut client_actions = array![];
+        if (!self.is_registered()) {
+            client_actions
+                .append_span(self.set_viewing_key_actions(random: self.get_random().into()));
+        }
+
+        client_actions
+            .append_span(self.open_channel_actions(:recipient, random: self.get_random().into()));
+
+        let server_actions = self
+            .compile_client_actions_revert(client_actions: client_actions.span());
+        self.privacy.server.execute_actions(actions: server_actions);
     }
 }
 
