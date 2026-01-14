@@ -70,12 +70,12 @@ fn test_get_num_of_channels() {
     user.set_viewing_key_e2e();
     assert_eq!(user.get_num_of_channels(), 0);
     // After opening a channel.
-    user.open_channel_e2e(recipient: user);
+    user.open_channel_e2e(recipient: @user);
     assert_eq!(user.get_num_of_channels(), 1);
     // After opening a second channel.
     let mut different_user = test.new_user();
     different_user.set_viewing_key_e2e();
-    different_user.open_channel_e2e(recipient: user);
+    different_user.open_channel_e2e(recipient: @user);
     assert_eq!(user.get_num_of_channels(), 2);
     assert_eq!(different_user.get_num_of_channels(), 0);
 }
@@ -176,12 +176,12 @@ fn test_subchannel_exists() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token_address = test.mock_new_token();
-    let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
+    let subchannel_id = user_1.compute_subchannel_id(recipient: @user_2, :token_address);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_id), false);
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1.open_channel_e2e(recipient: user_2);
-    user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+    user_1.open_channel_e2e(recipient: @user_2);
+    user_1.open_subchannel_e2e(recipient: @user_2, :token_address, index: 0);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_id), true);
 }
 
@@ -191,14 +191,14 @@ fn test_get_subchannel_info() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token_address = test.mock_new_token();
-    let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
+    let subchannel_key = user_1.compute_subchannel_key(recipient: @user_2, index: 0);
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1.open_channel_e2e(recipient: user_2);
-    let random = user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+    user_1.open_channel_e2e(recipient: @user_2);
+    let random = user_1.open_subchannel_e2e(recipient: @user_2, :token_address, index: 0);
     let expected_subchannel_info = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, :random);
+        .compute_enc_subchannel_info(recipient: @user_2, :token_address, :random);
     assert!(expected_subchannel_info.is_non_zero());
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), expected_subchannel_info);
 }
