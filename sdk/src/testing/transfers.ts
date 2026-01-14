@@ -23,14 +23,13 @@ import { ActionCompiler } from "../internal/compiler.js";
 import { MockContracts } from "./contracts.js";
 
 export class MockPrivateTransfers implements PrivateTransfers {
-  private pool: PrivacyPool;
-  private _currentBlock: BlockIdentifier = 0;
-
   // User credentials (set via configure)
-  private userAddress: StarknetAddress = "0x0";
+  readonly user: StarknetAddress = "0x0";
   private userViewingKey: PrivateKey = 0n;
   private discoveryProvider: MockDiscoveryProvider;
   private compiler: ActionCompiler;
+  private pool: PrivacyPool;
+  private _currentBlock: BlockIdentifier = 0;
 
   constructor(
     private contracts: MockContracts,
@@ -40,7 +39,7 @@ export class MockPrivateTransfers implements PrivateTransfers {
   ) {
     this.pool = this.contracts.get<PrivacyPool>(poolAddress);
     this.discoveryProvider = new MockDiscoveryProvider(this.pool);
-    this.userAddress = userAddress;
+    this.user = userAddress;
     this.userViewingKey = userPrivateKey;
     this.compiler = new ActionCompiler(userAddress, userPrivateKey, this.discoveryProvider);
   }
@@ -50,7 +49,7 @@ export class MockPrivateTransfers implements PrivateTransfers {
     token: StarknetAddress
   ): Promise<SetupRequirement> {
     return this.discoveryProvider.discoverRequirement(
-      this.userAddress,
+      this.user,
       this.userViewingKey,
       recipient,
       token
@@ -63,7 +62,7 @@ export class MockPrivateTransfers implements PrivateTransfers {
 
     const snapshot = this.contracts.snapshot();
     // 2. Execute client actions on the pool (returns callbacks, state is restored)
-    const callbacks = this.pool.execute(this.userAddress, ...clientActions);
+    const callbacks = this.pool.execute(this.user, ...clientActions);
 
     this.contracts.restore(snapshot);
     // 3. Apply optimistic updates - update channel nonces, remove spent notes
@@ -76,24 +75,20 @@ export class MockPrivateTransfers implements PrivateTransfers {
   }
 
   build(options?: ExecuteOptions): PrivateTransfersBuilder {
-    return new PrivateTransfersBuilderImpl(this, this.userAddress, options);
+    return new PrivateTransfersBuilderImpl(this, this.user, options);
   }
 
   discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> } = {}): {
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
   } {
-    return this.discoveryProvider.discoverNotes(this.userAddress, this.userViewingKey, params);
+    return this.discoveryProvider.discoverNotes(this.user, this.userViewingKey, params);
   }
 
   discoverChannels(...recipients: StarknetAddress[]): {
     timestamp: BlockIdentifier;
     channels: AddressMap<Channel>;
   } {
-    return this.discoveryProvider.discoverChannels(
-      this.userAddress,
-      this.userViewingKey,
-      ...recipients
-    );
+    return this.discoveryProvider.discoverChannels(this.user, this.userViewingKey, ...recipients);
   }
 }

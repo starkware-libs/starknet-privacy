@@ -27,6 +27,8 @@ import type {
 import type { Call } from "starknet";
 import { AddressMap } from "../utils/maps.js";
 
+import { debugLog } from "../utils/logging.js";
+
 // ============ Token Operations Builder ============
 
 export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
@@ -36,23 +38,23 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   public deposits: DepositAction[] = [];
   public createNotes: CreateNoteAction[] = [];
   public withdraws: WithdrawAction[] = [];
-  public hasExplicitInputs = false;
-
   // Surplus recipient (overrides parent builder's surplus recipient for this token)
-  public surplusRecipient?: StarknetAddress;
+  public surplusAction?: SurplusAction;
 
   constructor(
     private parentBuilder: PrivateTransfersBuilderImpl,
     public readonly token: StarknetAddress
-  ) {}
+  ) {
+    debugLog("builder", `TokenBuilder created for ${token}`);
+  }
 
   setup(recipient: StarknetAddress): this {
+    debugLog("builder", `TokenBuilder.setup for ${this.token} -> ${recipient}`);
     this.openTokenChannels.push({ recipient, token: this.token });
     return this;
   }
 
   inputs(...notes: Note[]): this {
-    this.hasExplicitInputs = true;
     for (const note of notes) {
       this.useNotes.push({ token: this.token, note });
     }
@@ -60,6 +62,7 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   }
 
   deposit(...inputs: DepositInput[]): this {
+    debugLog("builder", `TokenBuilder.deposit for ${this.token}`, inputs);
     for (const input of inputs) {
       if ("noteId" in input) {
         this.deposits.push({ token: this.token, amount: input.amount, noteId: input.noteId });
@@ -97,8 +100,8 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
     return this;
   }
 
-  surplusTo(recipient: StarknetAddress): this {
-    this.surplusRecipient = recipient;
+  surplusTo(recipient: StarknetAddress, withdraw?: boolean): this {
+    this.surplusAction = { recipient, token: this.token, withdraw };
     return this;
   }
 
@@ -119,8 +122,7 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
     this.useNotes = [];
     this.deposits = [];
     this.withdraws = [];
-    this.hasExplicitInputs = false;
-    this.surplusRecipient = undefined;
+    this.surplusAction = undefined;
   }
 }
 
@@ -135,7 +137,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   );
 
   // Default surplus recipient for all tokens
-  public defaultSurplusRecipient?: StarknetAddress;
+  public defaultSurplusAction?: SurplusAction;
 
   // Options passed at build time
   private buildOptions?: ExecuteOptions;
@@ -163,8 +165,8 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     return this;
   }
 
-  surplusTo(recipient: StarknetAddress): this {
-    this.defaultSurplusRecipient = recipient;
+  surplusTo(recipient: StarknetAddress, withdraw?: boolean): this {
+    this.defaultSurplusAction = { recipient, token: undefined!, withdraw };
     return this;
   }
 
@@ -173,6 +175,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   }
 
   async execute(options?: ExecuteOptions): Promise<ExecuteResult> {
+    debugLog("builder", "PrivateTransfersBuilderImpl.execute called");
     // Merge build-time options with execute-time options
     const mergedOptions: ExecuteOptions = {
       ...this.buildOptions,
@@ -193,6 +196,10 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     const surpluses: SurplusAction[] = [];
 
     for (const [token, tokenBuilder] of this.tokenBuilders.entries()) {
+      debugLog("builder", `Collecting actions for ${token}`, {
+        openTokenChannels: tokenBuilder.openTokenChannels,
+        deposits: tokenBuilder.deposits.length,
+      });
       openTokenChannels.push(...tokenBuilder.openTokenChannels);
 
       // Deposits
@@ -208,10 +215,10 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
       withdraws.push(...tokenBuilder.withdraws);
 
       // Handle surplus - calculate and add CreateNoteAction if needed
-      const surplusRecipient = tokenBuilder.surplusRecipient ?? this.defaultSurplusRecipient;
-      if (surplusRecipient) {
+      const surplusToAction = tokenBuilder.surplusAction ?? this.defaultSurplusAction;
+      if (surplusToAction) {
         surpluses.push({
-          recipient: surplusRecipient,
+          ...surplusToAction,
           token: token,
         });
       }
@@ -239,6 +246,6 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     this.openChannels = [];
     this.followupCall = undefined;
     this.tokenBuilders.clear();
-    this.defaultSurplusRecipient = undefined;
+    this.defaultSurplusAction = undefined;
   }
 }
