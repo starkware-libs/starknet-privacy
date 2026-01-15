@@ -1,11 +1,12 @@
 //! Storage layer with multi-reader, single-writer SQLite backend.
 
+use serde::Serialize;
 use sqlx::pool::PoolConnection;
 use sqlx::sqlite::{
     SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous,
     SqliteTransactionManager,
 };
-use sqlx::{Pool, Sqlite, TransactionManager};
+use sqlx::{Pool, Row, Sqlite, TransactionManager};
 use starknet::core::types::Felt;
 use std::ops::DerefMut;
 use std::path::Path;
@@ -29,14 +30,26 @@ pub enum StoreError {
     Transaction(String),
 }
 
+/// Current indexed head information.
+#[derive(Debug, Clone, Serialize)]
+pub struct Head {
+    pub block_number: u64,
+    pub block_hash: String,
+    pub timestamp: u64,
+}
+
 /// Storage operations for the discovery service.
 #[async_trait::async_trait]
 pub trait Store: Send + Sync {
     /// Store a block.
     async fn store_block(&mut self, height: u64, hash: Felt) -> Result<(), StoreError>;
 
-    /// Update the head.
-    async fn set_head(&mut self, height: u64, hash: Felt) -> Result<(), StoreError>;
+    /// Update the head with height, hash, and timestamp (Unix seconds).
+    async fn set_head(&mut self, height: u64, hash: Felt, timestamp: u64) -> Result<(), StoreError>;
+
+    /// Get current head information.
+    /// Returns None if no head has been set yet.
+    async fn get_head(&mut self) -> Result<Option<Head>, StoreError>;
 
     /// Commit changes.
     async fn commit(&mut self) -> Result<(), StoreError>;
@@ -85,6 +98,11 @@ impl SqliteStore {
             .await?;
 
         Ok(Self { pool })
+    }
+
+    /// Acquire a connection from the pool.
+    pub async fn acquire(&self) -> Result<PoolConnection<Sqlite>, StoreError> {
+        self.pool.acquire().await.map_err(StoreError::from)
     }
 
     /// Initialize database schema.
@@ -141,16 +159,53 @@ impl Store for PoolConnection<Sqlite> {
         Ok(())
     }
 
-    async fn set_head(&mut self, height: u64, hash: Felt) -> Result<(), StoreError> {
+    async fn set_head(&mut self, height: u64, hash: Felt, timestamp: u64) -> Result<(), StoreError> {
         sqlx::query(
             "INSERT OR REPLACE INTO meta (key, value) \
-            VALUES ('head_height', ?), ('head_hash', ?)",
+            VALUES ('head_height', ?), ('head_hash', ?), ('head_timestamp', ?)",
         )
         .bind(height.to_string())
         .bind(format!("{:#066x}", hash))
+        .bind(timestamp.to_string())
         .execute(self.deref_mut())
         .await?;
         Ok(())
+    }
+
+    async fn get_head(&mut self) -> Result<Option<Head>, StoreError> {
+        let rows = sqlx::query(
+            "SELECT key, value FROM meta WHERE key IN ('head_height', 'head_hash', 'head_timestamp')",
+        )
+        .fetch_all(self.deref_mut())
+        .await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let mut height: Option<u64> = None;
+        let mut hash: Option<String> = None;
+        let mut timestamp: Option<u64> = None;
+
+        for row in rows {
+            let key: String = row.get("key");
+            let value: String = row.get("value");
+            match key.as_str() {
+                "head_height" => height = value.parse().ok(),
+                "head_hash" => hash = Some(value),
+                "head_timestamp" => timestamp = value.parse().ok(),
+                _ => {}
+            }
+        }
+
+        match (height, hash, timestamp) {
+            (Some(block_number), Some(block_hash), Some(timestamp)) => Ok(Some(Head {
+                block_number,
+                block_hash,
+                timestamp,
+            })),
+            _ => Ok(None),
+        }
     }
 
     async fn commit(&mut self) -> Result<(), StoreError> {

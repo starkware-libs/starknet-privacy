@@ -15,12 +15,14 @@
 
 mod common;
 
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 
 use common::{DevnetClient, DevnetConfig, IndexerClient};
 use discovery_core::storage::{IViews, StorageBackend};
 use discovery_service::rpc_backend::{RpcBackend, RpcConfig};
 use expect_test::expect;
+use reqwest::StatusCode;
 use serde::Deserialize;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Row, SqlitePool};
@@ -92,6 +94,15 @@ async fn test_public_key_lookup() {
 
 // === Indexer Tests ===
 
+/// Counter for generating unique API server ports across tests.
+static API_PORT_COUNTER: AtomicU16 = AtomicU16::new(19000);
+
+/// Generate a unique API host address for tests.
+fn test_api_host() -> String {
+    let port = API_PORT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("127.0.0.1:{}", port)
+}
+
 struct TempDb {
     _dir: TempDir,
     path: String,
@@ -117,9 +128,10 @@ async fn test_startup_and_shutdown() {
     let devnet = DevnetClient::spawn(DevnetConfig::default())
         .await
         .expect("Failed to spawn devnet");
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path)
-        .await
-        .expect("Failed to spawn indexer");
+    let mut indexer =
+        IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &test_api_host())
+            .await
+            .expect("Failed to spawn indexer");
 
     indexer
         .wait_for_log("Indexer started", Duration::from_secs(10))
@@ -141,9 +153,10 @@ async fn test_new_block_notification() {
     let devnet = DevnetClient::spawn(DevnetConfig::default())
         .await
         .expect("Failed to spawn devnet");
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path)
-        .await
-        .expect("Failed to spawn indexer");
+    let mut indexer =
+        IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &test_api_host())
+            .await
+            .expect("Failed to spawn indexer");
 
     indexer
         .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
@@ -167,9 +180,10 @@ async fn test_reorg_notification() {
     let devnet = DevnetClient::spawn(DevnetConfig::default())
         .await
         .expect("Failed to spawn devnet");
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path)
-        .await
-        .expect("Failed to spawn indexer");
+    let mut indexer =
+        IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &test_api_host())
+            .await
+            .expect("Failed to spawn indexer");
 
     indexer
         .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
@@ -206,9 +220,10 @@ async fn test_reconnection_on_devnet_restart() {
     let devnet = DevnetClient::spawn(DevnetConfig::default())
         .await
         .expect("Failed to spawn devnet");
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path)
-        .await
-        .expect("Failed to spawn indexer");
+    let mut indexer =
+        IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &test_api_host())
+            .await
+            .expect("Failed to spawn indexer");
 
     indexer
         .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
@@ -241,9 +256,10 @@ async fn test_blocks_persisted_and_head_matches_latest() {
     let devnet = DevnetClient::spawn(DevnetConfig::default())
         .await
         .expect("Failed to spawn devnet");
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path)
-        .await
-        .expect("Failed to spawn indexer");
+    let mut indexer =
+        IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &test_api_host())
+            .await
+            .expect("Failed to spawn indexer");
 
     indexer
         .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
@@ -305,4 +321,67 @@ async fn test_blocks_persisted_and_head_matches_latest() {
         let normalized = format!("{:#066x}", Felt::from_hex(&hash).unwrap());
         assert!(stored_hashes.contains(&normalized));
     }
+}
+
+// === API Tests ===
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct HealthResponse {
+    status: String,
+    chain_head: Option<ChainHead>,
+    lag_secs: u64,
+}
+
+#[derive(Deserialize)]
+struct ChainHead {
+    block_number: u64,
+    block_hash: String,
+    timestamp: u64,
+}
+
+#[tokio::test]
+async fn test_health_endpoint_returns_ok() {
+    let temp_db = temp_db("health_endpoint");
+    let api_host = test_api_host();
+    let devnet = DevnetClient::spawn(DevnetConfig::default())
+        .await
+        .expect("Failed to spawn devnet");
+    let mut indexer =
+        IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &api_host)
+            .await
+            .expect("Failed to spawn indexer");
+
+    indexer
+        .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
+        .await
+        .unwrap();
+
+    // Create a block so we have a chain head
+    devnet.create_block().await.unwrap();
+    indexer
+        .wait_for_log("New block #", Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    // Call health endpoint
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("http://{}/health", api_host))
+        .send()
+        .await
+        .expect("Failed to call health endpoint");
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let health: HealthResponse = resp.json().await.expect("Failed to parse health response");
+    assert_eq!(health.status, "OK");
+    assert!(health.chain_head.is_some());
+    let chain_head = health.chain_head.unwrap();
+    assert!(chain_head.block_number > 0);
+    assert!(chain_head.block_hash.starts_with("0x"));
+    assert!(chain_head.timestamp > 0);
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
 }
