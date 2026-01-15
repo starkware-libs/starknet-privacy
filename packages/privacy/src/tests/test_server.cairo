@@ -9,18 +9,18 @@ use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants,
 };
-use privacy::utils::constants::OPEN_NOTE_SALT;
-use privacy::utils::{open_note, to_write_once_action, unpacking};
+use privacy::utils::constants::{OPEN_NOTE_SALT, PROOF_VALIDITY_BLOCK_INTERVAL};
+use privacy::utils::{ProofFacts, open_note, to_write_once_action, unpacking};
 use privacy::{errors, events};
 use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
-use starknet::ContractAddress;
+use starknet::{ContractAddress, get_block_number};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
 use starkware_utils::constants::MAX_U128;
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{
-    TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_error,
-    assert_panic_with_felt_error,
+    TokenHelperTrait, advance_block_number_global, assert_expected_event_emitted,
+    assert_panic_with_error, assert_panic_with_felt_error,
 };
 
 #[test]
@@ -614,6 +614,57 @@ fn test_execute_actions_paused() {
     test.privacy.pause();
     let result = test.privacy.safe_execute_actions([].span());
     assert_panic_with_felt_error(:result, expected_error: PausableErrors::PAUSED);
+}
+
+#[test]
+fn test_execute_actions_assertions() {
+    let mut test: Test = Default::default();
+    let actions = [].span();
+    let proof_facts: ProofFacts = Default::default();
+
+    // Catch PROOF_FACTS_DESERIALIZE_ERROR.
+    let result = test.privacy.safe_execute_actions_without_cheat(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::PROOF_FACTS_DESERIALIZE_ERROR);
+
+    // Catch INVALID_PROGRAM_VARIANT.
+    let mut proof_facts_invalid_program_variant = proof_facts;
+    proof_facts_invalid_program_variant.program_variant = 1;
+    let result = test
+        .privacy
+        .safe_execute_actions_with_proof_facts(
+            :actions, proof_facts: proof_facts_invalid_program_variant,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_PROGRAM_VARIANT);
+
+    // Catch INVALID_OS_OUTPUT_VERSION.
+    let mut proof_facts_invalid_os_output_version = proof_facts;
+    proof_facts_invalid_os_output_version.starknet_os_output_version = 1;
+    let result = test
+        .privacy
+        .safe_execute_actions_with_proof_facts(
+            :actions, proof_facts: proof_facts_invalid_os_output_version,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_OS_OUTPUT_VERSION);
+
+    // Catch INVALID_PROOF_MSG.
+    let result = test.privacy.safe_execute_actions_with_proof_facts(:actions, :proof_facts);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_PROOF_MSG);
+
+    // Catch PROOF_EXPIRED.
+    let mut proof_facts_expired = proof_facts;
+    proof_facts_expired.base_block_number = get_block_number();
+    advance_block_number_global(blocks: PROOF_VALIDITY_BLOCK_INTERVAL + 1);
+    let result = test
+        .privacy
+        .safe_execute_actions_with_proof_facts(:actions, proof_facts: proof_facts_expired);
+    assert_panic_with_felt_error(:result, expected_error: errors::PROOF_EXPIRED);
+}
+
+#[test]
+fn test_execute_actions_proof_facts_cheat() {
+    let mut test: Test = Default::default();
+    let actions = [].span();
+    test.privacy.execute_actions(:actions);
 }
 
 #[test]
