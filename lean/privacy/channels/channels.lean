@@ -16,27 +16,26 @@ theorem exists_private_key
     (success: (create_channel crypto inp rm |> process_action crypto rm).success) :
     ∃ kbob: crypto.PrivateKeys,
       inp.Kbob = crypto.priv_to_pub kbob ∧
-      rm.m .PrivateKeyHashes [inp.addrbob, kbob] = 1 := by
+      rm.m .PublicKeys [inp.addrbob] = inp.Kbob := by
   let info := create_channel_info crypto inp rm success
   have bob_registered := info.bob_registered
   rw [←info.h_Kbob] at bob_registered
 
-  have := public_keys bob_registered
-  rw [info.h_Kbob] at this
-  exact this
+  have ⟨kalice, h⟩ := public_keys bob_registered
+  exact ⟨kalice, by rw [←info.h_Kbob, h], by rw [info.h_Kbob]⟩
 
 -- Channel hash entry implies c is a valid channel id and Kbob is a valid public key.
 theorem channel_exists_implies_hash
     {crypto: Crypto} {c addralice addrbob Kbob: ℕ} :
     ∀ {rm: ReachableMemory crypto},
     rm.m .ChannelHashes [crypto.hash [c, addralice, addrbob, Kbob]] ≠ 0 →
-    (∃ kalice,
+    (∃ kalice: crypto.PrivateKeys,
       c = crypto.hash [addralice, kalice, addrbob, Kbob] ∧
-      rm.m .PrivateKeyHashes [addralice, kalice] ≠ 0
+      rm.m .PublicKeys [addralice] = crypto.priv_to_pub kalice
     ) ∧
     (∃ kbob: crypto.PrivateKeys,
       Kbob = crypto.priv_to_pub kbob ∧
-      rm.m .PrivateKeyHashes [addrbob, kbob] = 1
+      rm.m .PublicKeys [addrbob] = Kbob
     ) := by
   apply ReachableMemory.induction
   case inv₀ => intro h; trivial
@@ -53,18 +52,17 @@ theorem channel_exists_implies_hash
     case pos =>
       simp only [h_is_same]
       constructor
-      · use inp.kalice
+      · use ⟨inp.kalice, info.kalice_valid⟩
         constructor
         · trivial
         · rw [info.no_change _ _ (by simp)]
-          exact info.kalice_valid
+          exact info.alice_registered
       · conv => rhs; intro kbob; rw [info.no_change _ _ (by simp)]
-        have := exists_private_key success
         exact exists_private_key success
     case neg =>
       rw [info.no_change _ _  (by
-        simp only [ne_eq, Prod.mk.injEq, reduceCtorEq, List.cons.injEq, List.ne_cons_self,
-          and_false, and_self, not_false_eq_true, List.nil_eq, and_true, true_and]
+        simp only [ne_eq, Prod.mk.injEq, reduceCtorEq, List.cons.injEq, and_true, false_and,
+          not_false_eq_true, List.ne_cons_self, and_false, and_self, true_and]
         by_contra h'
         apply crypto.h_hash at h'
         repeat injection h' with _ h'
@@ -81,12 +79,18 @@ theorem channel_exists_implies_hash
 
     have ⟨⟨kalice, h₀, h₁⟩, ⟨kbob, h₂, h₃⟩⟩ := ih h
     refine ⟨⟨kalice, h₀, ?_⟩, ⟨kbob, h₂, ?_⟩⟩
-    · by_cases h_is_same: addralice = inp.addralice ∧ kalice = inp.kalice
-      case pos => simp [h_is_same, info.memory_diff₁]
-      case neg => rwa [info.no_change _ _ (by simp) (by simp [h_is_same])]
-    · by_cases h_is_same: addrbob = inp.addralice ∧ kbob = inp.kalice
-      case pos => simp only [h_is_same, info.memory_diff₁]
-      case neg => rwa [info.no_change _ _ (by simp) (by simp [h_is_same])]
+    · by_cases h_is_same: addralice = inp.addralice
+      case pos =>
+        rw [h_is_same, info.alice_was_not_registered] at h₁
+        have := crypto.zero_not_public_key kalice
+        simp [h₁] at this
+      case neg => rwa [info.no_change _ _ (by simp [h_is_same])]
+    · by_cases h_is_same: addrbob = inp.addralice
+      case pos =>
+        rw [h_is_same, info.alice_was_not_registered] at h₃
+        have := crypto.zero_not_public_key kbob
+        simp [h₃, h₂] at this
+      case neg => rwa [info.no_change _ _ (by simp [h_is_same])]
 
   all_goals exact ih
 

@@ -13,8 +13,7 @@ abbrev RegisterInput.Kalice (crypto: Crypto) (inp: RegisterInput) : ℕ :=
 
 def register (crypto: Crypto) (inp: RegisterInput) (_: Memory) : List ServerAction × Bool :=
   ([
-    .Write .PublicKeys [inp.addralice] (inp.Kalice crypto),
-    .Write .PrivateKeyHashes [inp.addralice, inp.kalice] 1,
+    .WriteOnce .PublicKeys [inp.addralice] (inp.Kalice crypto),
     .Event (.Register inp.addralice (crypto.enc crypto.council_pub_key [inp.kalice])),
   ], inp.kalice ∈ crypto.PrivateKeys)
 
@@ -23,7 +22,7 @@ def register (crypto: Crypto) (inp: RegisterInput) (_: Memory) : List ServerActi
 --------------------
 
 structure CreateChannelInput where
-  (kalice Kbob addralice addrbob: ℕ)
+  (addralice kalice addrbob Kbob: ℕ)
   -- Outgoing channel index and random blinding value.
   (s r: ℕ)
 
@@ -49,16 +48,16 @@ abbrev CreateChannelInput.enc_Kbob (crypto: Crypto) (inp: CreateChannelInput) : 
   crypto.hash [inp.addralice, inp.kalice, inp.r, 1] + inp.Kbob
 
 def create_channel (crypto: Crypto) (inp: CreateChannelInput) (m: Memory) : List ServerAction × Bool :=
-  let kalice_valid := m .PrivateKeyHashes [inp.addralice, inp.kalice] ≠ 0
+  let alice_registered := m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
   let prev_outgoing_exists := inp.s = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
   ([
-    .Append .ChannelsJ .Channels [inp.addrbob, inp.Kbob] (inp.enc crypto) (by simp),
+    .Append .ChannelsJ .Channels [inp.addrbob] (inp.enc crypto) (by simp),
     .WriteOnce .ChannelHashes [inp.channel_hash crypto] 1,
     .ReadAssert .PublicKeys [inp.addrbob] inp.Kbob,
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 0] inp.r,
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 1] (inp.enc_addrbob crypto),
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 2] (inp.enc_Kbob crypto),
-  ], inp.Kbob ≠ 0 ∧ kalice_valid ∧ inp.r ≠ 0 ∧ prev_outgoing_exists)
+  ], inp.Kbob ≠ 0 ∧ alice_registered ∧ inp.kalice ∈ crypto.PrivateKeys ∧ inp.r ≠ 0 ∧ prev_outgoing_exists)
 
 -----------------------
 -- Create Subchannel --

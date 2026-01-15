@@ -10,12 +10,11 @@ structure RegisterInfo (crypto: Crypto) (inp: RegisterInput) (m: Memory) where
   m': Memory
   h_m': m' = (register crypto inp m |> process_action crypto m).m
   kalice_private_key: inp.kalice ∈ crypto.PrivateKeys
+  alice_was_not_registered: m .PublicKeys [inp.addralice] = 0
   no_change: ∀ t, ∀ x,
     (t, x) ≠ (.PublicKeys, [inp.addralice]) →
-    (t, x) ≠ (.PrivateKeyHashes, [inp.addralice, inp.kalice]) →
     m' t x = m t x
   memory_diff₀: m' .PublicKeys [inp.addralice] = inp.Kalice crypto
-  memory_diff₁: m' .PrivateKeyHashes [inp.addralice, inp.kalice] = 1
 
 def register_info
     (crypto: Crypto) (inp: RegisterInput) (m: Memory)
@@ -27,15 +26,18 @@ def register_info
   simp only [register, decide_eq_true_eq] at success₀
   let kalice_private_key := success₀
 
+  simp [register, ServerAction.run_all, ServerAction.run] at success₁
+  have alice_was_not_registered := success₁
+
   exact {
     m' := m'
     h_m':= by rfl,
     kalice_private_key := kalice_private_key,
+    alice_was_not_registered := alice_was_not_registered,
     no_change := by
-      intro t x h₀ h₁
-      simp [m', h₀, h₁, register, ServerAction.run_all, ServerAction.run]
+      intro t x h₀
+      simp [m', h₀, register, ServerAction.run_all, ServerAction.run]
     memory_diff₀ := by simp [m', register, ServerAction.run_all, ServerAction.run]
-    memory_diff₁ := by simp [m', register, ServerAction.run_all, ServerAction.run]
   }
 
 theorem RegisterInfo.events (_: RegisterInfo crypto inp m) :
@@ -51,24 +53,25 @@ structure CreateChannelInfo (crypto: Crypto) (inp: CreateChannelInput) (m: Memor
   m': Memory
   h_m': m' = (create_channel crypto inp m |> process_action crypto m).m
   j: ℕ
-  h_j: j = m .ChannelsJ [inp.addrbob, inp.Kbob]
+  h_j: j = m .ChannelsJ [inp.addrbob]
   h_Kbob: m .PublicKeys [inp.addrbob] = inp.Kbob
   bob_registered: inp.Kbob ≠ 0
-  kalice_valid: m .PrivateKeyHashes [inp.addralice, inp.kalice] ≠ 0
+  alice_registered: m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
+  kalice_valid: inp.kalice ∈ crypto.PrivateKeys
   r_ne_zero: inp.r ≠ 0
   prev_outgoing_exists: inp.s = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
   channel_didnt_exist: m .ChannelHashes [inp.channel_hash crypto] = 0
   outgoing_channel_didnt_exist: m .OutgoingChannels [inp.outgoing_channel_id crypto, 0] = 0
   no_change: ∀ t, ∀ x, (
-    (t, x) ≠ (.ChannelsJ, [inp.addrbob, inp.Kbob]) ∧
-    (t, x) ≠ (.Channels, [inp.addrbob, inp.Kbob, j]) ∧
+    (t, x) ≠ (.ChannelsJ, [inp.addrbob]) ∧
+    (t, x) ≠ (.Channels, [inp.addrbob, j]) ∧
     (t, x) ≠ (.ChannelHashes, [inp.channel_hash crypto]) ∧
     (t, x) ≠ (.OutgoingChannels, [inp.outgoing_channel_id crypto, 0]) ∧
     (t, x) ≠ (.OutgoingChannels, [inp.outgoing_channel_id crypto, 1]) ∧
     (t, x) ≠ (.OutgoingChannels, [inp.outgoing_channel_id crypto, 2])
   ) → m' t x = m t x
-  memory_diff₀: m' .ChannelsJ [inp.addrbob, inp.Kbob] = m .ChannelsJ [inp.addrbob, inp.Kbob] + 1
-  memory_diff₁: m' .Channels [inp.addrbob, inp.Kbob, j] = inp.enc crypto
+  memory_diff₀: m' .ChannelsJ [inp.addrbob] = m .ChannelsJ [inp.addrbob] + 1
+  memory_diff₁: m' .Channels [inp.addrbob, j] = inp.enc crypto
   memory_diff₂: m' .ChannelHashes [inp.channel_hash crypto] = 1
   memory_diff₃: m' .OutgoingChannels [inp.outgoing_channel_id crypto, 0] = inp.r
   memory_diff₄: m' .OutgoingChannels [inp.outgoing_channel_id crypto, 1] = inp.enc_addrbob crypto
@@ -79,7 +82,7 @@ def create_channel_info
   (success: (create_channel crypto inp m |> process_action crypto m).success = true) : CreateChannelInfo crypto inp m := by
   let m' := (create_channel crypto inp m |> process_action crypto m).m
   let c := crypto.hash [inp.addralice, inp.kalice, inp.addrbob, inp.Kbob]
-  let j := m .ChannelsJ [inp.addrbob, inp.Kbob]
+  let j := m .ChannelsJ [inp.addrbob]
 
   rw [Bool.and_eq_true] at success
   have ⟨success₀, success₁⟩ := success
@@ -88,7 +91,7 @@ def create_channel_info
   simp only [Bool.decide_and, decide_not, Bool.decide_or, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
     Bool.not_true, decide_eq_false_iff_not, Bool.or_eq_true, decide_eq_true_eq] at success₀
 
-  let ⟨bob_registered, kalice_valid, r_ne_zero, prev_outgoing_exists⟩ := success₀
+  let ⟨bob_registered, alice_registered, kalice_valid, r_ne_zero, prev_outgoing_exists⟩ := success₀
 
   simp [ServerAction.run_all, create_channel, ServerAction.run, List.foldl_cons, List.foldl_nil, write_ne] at success₁
   have ⟨⟨⟨⟨channel_didnt_exist, h_Kbob⟩, outgoing_channel_didnt_exist⟩, _⟩, _⟩ := success₁
@@ -100,6 +103,7 @@ def create_channel_info
     h_j := by rfl
     h_Kbob := h_Kbob,
     bob_registered := bob_registered,
+    alice_registered := alice_registered,
     kalice_valid := kalice_valid,
     channel_didnt_exist := channel_didnt_exist,
     r_ne_zero := r_ne_zero,

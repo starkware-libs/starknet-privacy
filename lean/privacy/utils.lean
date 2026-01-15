@@ -2,7 +2,6 @@ import Mathlib.Data.ZMod.Basic
 
 inductive MemoryType where
   | PublicKeys
-  | PrivateKeyHashes
   | ChannelsJ
   | Channels
   | ChannelHashes
