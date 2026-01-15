@@ -25,7 +25,7 @@ use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
 use privacy::tests::mock_client::MockClient::deploy_for_test as deploy_mock_client_for_test;
-use privacy::tests::mock_client::{IMockClientDispatcher, IMockClientDispatcherTrait};
+use privacy::tests::mock_client::{IMockClientSafeDispatcher, IMockClientSafeDispatcherTrait};
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{
     derive_public_key, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
@@ -100,7 +100,7 @@ pub(crate) struct User {
     pub mock_client: MockClientCfg,
     pub private_key: felt252,
     pub public_key: felt252,
-    channel_indices: Felt252Dict<usize>,
+    pub channel_indices: Felt252Dict<usize>,
     nonce: usize,
 }
 
@@ -115,6 +115,16 @@ impl CloneUserImpl of Clone<User> {
             channel_indices: Default::default(),
             nonce: *self.nonce,
         }
+    }
+}
+
+#[generate_trait]
+pub(crate) impl UserIndicesImpl of UserIndicesTrait {
+    fn bump_subchannel_index(ref self: User, sender: @User) -> usize {
+        let channel_id = sender.compute_channel_id(recipient: @self);
+        let index = self.channel_indices.get(channel_id);
+        self.channel_indices.insert(channel_id, index + 1);
+        index
     }
 }
 
@@ -144,6 +154,12 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
         self.mock_client.execute(user_addr: *self.address, :client_actions)
+    }
+
+    fn safe_compile_client_actions_revert(
+        self: @User, client_actions: Span<ClientAction>,
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
+        self.mock_client.safe_execute(user_addr: *self.address, :client_actions)
     }
 
     fn transfer(
@@ -276,13 +292,13 @@ pub(crate) impl UserImpl of UserTrait {
         random
     }
 
-    fn open_subchannel(
+    fn open_subchannel_actions(
         self: @User,
         recipient: @User,
         token_address: ContractAddress,
         index: usize,
         random: felt252,
-    ) -> Span<ServerAction> {
+    ) -> Span<ClientAction> {
         let channel_key = self.compute_channel_key(:recipient);
         let input = OpenSubchannelInput {
             recipient_addr: *recipient.address,
@@ -292,9 +308,20 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_address,
             random,
         };
+        [ClientAction::OpenSubchannel(input)].span()
+    }
+
+    fn open_subchannel(
+        self: @User,
+        recipient: @User,
+        token_address: ContractAddress,
+        index: usize,
+        random: felt252,
+    ) -> Span<ServerAction> {
         self
             .compile_client_actions_revert(
-                client_actions: [ClientAction::OpenSubchannel(input),].span(),
+                client_actions: self
+                    .open_subchannel_actions(:recipient, :token_address, :index, :random),
             )
     }
 
@@ -331,7 +358,7 @@ pub(crate) impl UserImpl of UserTrait {
         token_address: ContractAddress,
         index: usize,
         random: felt252,
-    ) -> Result<(), Array<felt252>> {
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
         let channel_key = self.compute_channel_key(:recipient);
         let input = OpenSubchannelInput {
             recipient_addr: *recipient.address,
@@ -342,7 +369,7 @@ pub(crate) impl UserImpl of UserTrait {
             random,
         };
         self
-            .safe_compile_client_actions(
+            .safe_compile_client_actions_revert(
                 client_actions: [ClientAction::OpenSubchannel(input),].span(),
             )
     }
@@ -386,6 +413,7 @@ pub(crate) impl UserImpl of UserTrait {
         let random = self.get_random().into();
         let actions = self.open_subchannel(:recipient, :token_address, :index, :random);
         self.privacy.server.execute_actions(:actions);
+        // TODO: Consider bumping subchannel index for recipient.
         random
     }
 
@@ -744,11 +772,7 @@ pub(crate) impl UserImpl of UserTrait {
 
 #[generate_trait]
 pub(crate) impl UserFlowImpl of UserFlowTrait {
-    fn open_channel_flow(self: @User, ref recipient: User) {
-        if (!recipient.is_registered()) {
-            recipient.set_viewing_key_e2e();
-        }
-
+    fn open_channel_flow_actions(self: @User, ref recipient: User) -> Span<ClientAction> {
         let mut client_actions = array![];
         if (!self.is_registered()) {
             client_actions
@@ -763,6 +787,41 @@ pub(crate) impl UserFlowImpl of UserFlowTrait {
                     ),
             );
 
+        client_actions.span()
+    }
+
+    fn open_channel_flow(self: @User, ref recipient: User) {
+        if (!recipient.is_registered()) {
+            recipient.set_viewing_key_e2e();
+        }
+
+        let client_actions = self.open_channel_flow_actions(ref :recipient);
+        let server_actions = self.compile_client_actions_revert(:client_actions);
+        self.privacy.server.execute_actions(actions: server_actions);
+    }
+
+    fn open_subchannel_flow(ref self: User, ref recipient: User, token: Token) {
+        if (!recipient.is_registered()) {
+            recipient.set_viewing_key_e2e();
+        }
+
+        let channel_id = self.compute_channel_id(recipient: @recipient);
+        let mut client_actions = array![];
+        if (!self.privacy.channel_exists(:channel_id)) {
+            client_actions.append_span(self.open_channel_flow_actions(ref :recipient));
+        }
+
+        let index = recipient.bump_subchannel_index(sender: @self);
+        client_actions
+            .append_span(
+                self
+                    .open_subchannel_actions(
+                        recipient: @recipient,
+                        token_address: token.contract_address(),
+                        :index,
+                        random: self.get_random().into(),
+                    ),
+            );
         let server_actions = self
             .compile_client_actions_revert(client_actions: client_actions.span());
         self.privacy.server.execute_actions(actions: server_actions);
@@ -1061,23 +1120,34 @@ struct MockClientCfg {
 
 #[generate_trait]
 impl MockClientImpl of MockClientTrait {
-    #[feature("safe_dispatcher")]
     fn execute(
         self: @MockClientCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
+        self.safe_execute(user_addr: user_addr, client_actions: client_actions).unwrap_syscall()
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_execute(
+        self: @MockClientCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
         cheat_caller_address_once(contract_address: *self.privacy, caller_address: Zero::zero());
         let mut spy = spy_messages_to_l1();
-        IMockClientDispatcher { contract_address: *self.address }
+        let result = IMockClientSafeDispatcher { contract_address: *self.address }
             .wrap_execute(:user_addr, :client_actions);
 
-        // Assert the message from the spy is valid.
-        assert_eq!(spy.get_messages().messages.len(), 1);
-        let (from, message) = spy.get_messages().messages.at(0);
-        assert_eq!(*from, *self.privacy);
-        assert_eq!(*message.to_address, Zero::zero());
+        match result {
+            Ok(()) => {
+                // Assert the message from the spy is valid.
+                assert_eq!(spy.get_messages().messages.len(), 1);
+                let (from, message) = spy.get_messages().messages.at(0);
+                assert_eq!(*from, *self.privacy);
+                assert_eq!(*message.to_address, Zero::zero());
 
-        // Return the server actions.
-        spy_messages_to_server_actions(ref :spy)
+                // Return the server actions.
+                Ok(spy_messages_to_server_actions(ref :spy))
+            },
+            Err(err) => Err(err),
+        }
     }
 }
 
