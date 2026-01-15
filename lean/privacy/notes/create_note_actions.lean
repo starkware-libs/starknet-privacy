@@ -73,9 +73,9 @@ theorem create_note_actions_implies
       all_goals
         rw [ReachableMemory.add_m, run_action, ←info.h_m']
         rw [info.no_change _ _ (by simp [h_note_id]) (by simp [h_note_id])]
-      exact h₁
-      exact h₂
-      exact h₃
+      · exact h₁
+      · exact h₂
+      · exact h₃
 
   case CreateSubchannel inp' =>
     let info := create_subchannel_info crypto inp' rm success
@@ -150,7 +150,9 @@ theorem create_note_actions_iff_note_exists
 -- Scanned note ↔ there's a CreateNote action that created it for (addrbob, kbob).
 theorem create_note_actions_iff_note_discoverable
     {crypto: Crypto} {rm: ReachableMemory crypto}
-    (addrbob: ℕ) (kbob: crypto.PrivateKeys) (sn: ScannedNote) :
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (sn: ScannedNote) :
     sn ∈ scan_notes_for_recipient (.from rm) addrbob kbob ↔
     ∃ inp, inp ∈ create_note_actions crypto rm ∧
       inp.to_scanned_note crypto = sn ∧
@@ -158,7 +160,7 @@ theorem create_note_actions_iff_note_discoverable
       inp.Kbob = crypto.priv_to_pub kbob := by
   constructor
   · intro h
-    obtain ⟨h_note_exists, ⟨addralice, kalice, h_c⟩⟩ := discoverable_note_implies h
+    obtain ⟨h_note_exists, ⟨addralice, kalice, h_c⟩⟩ := discoverable_note_implies h_kbob h
     obtain ⟨inp, h₀, h₁⟩ := create_note_actions_iff_note_exists.1 h_note_exists
     use inp, h₀, CreateNoteInput.to_scanned_note_eq h₁
     have ⟨h_inp_c, h_inp_token⟩ : inp.c crypto = sn.c ∧ inp.token = sn.token := by
@@ -175,7 +177,7 @@ theorem create_note_actions_iff_note_discoverable
   · intro h
     obtain ⟨inp, h₀, h₁, h_inp_addrbob, h_inp_Kbob⟩ := h
     have := create_note_actions_iff_note_exists.2 ⟨inp, h₀, by rfl⟩
-    obtain ⟨addrbob', kbob', sn', h₆, h_note_id, _, ⟨addralice, kalice, h_c'⟩⟩ :=
+    obtain ⟨addrbob', kbob', sn', h₆, h_note_id, h_channel_exists, ⟨addralice, kalice, h_c'⟩⟩ :=
       note_exists_implies_for_recipient this
     have h_sn := CreateNoteInput.to_scanned_note_eq h_note_id
 

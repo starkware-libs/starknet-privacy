@@ -207,6 +207,7 @@ theorem note_exists_implies_for_recipient
 theorem discoverable_note_implies
     {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} {kbob: crypto.PrivateKeys}
     {sn: ScannedNote}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
     (h: sn ∈ scan_notes_for_recipient (.from rm) addrbob kbob) :
     note_exists rm (sn.note_id crypto) ∧
     (∃ addralice kalice, sn.c = crypto.hash [addralice, kalice, addrbob, crypto.priv_to_pub kbob]) := by
@@ -220,8 +221,7 @@ theorem discoverable_note_implies
   obtain ⟨i₁, h', h_note_id⟩ := h'
   replace h' := h' i₁ (by rfl)
   constructor
-  ·
-    rw [←h_note_id]
+  · rw [←h_note_id]
     exact h'
-  · apply discoverable_channel_implies_exists at h_scan_channels
+  · apply discoverable_channel_implies_exists h_kbob at h_scan_channels
     exact h_scan_channels.2
