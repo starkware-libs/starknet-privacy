@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time", "process", "io-util"] }
+axum = "0.8"
 clap = { version = "4", features = ["derive"] }
 dotenv = "0.15"
 tracing = "0.1"

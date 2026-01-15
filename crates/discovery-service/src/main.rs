@@ -1,8 +1,10 @@
 #![doc = include_str!("../README.md")]
 
 use clap::Parser;
+use discovery_service::api_server::{ApiServer, ApiServerConfig};
 use discovery_service::indexer::{Indexer, IndexerConfig};
 use discovery_service::shutdown::Shutdown;
+use discovery_service::store::SqliteStore;
 use tokio::task::JoinHandle;
 use tracing::{error, info, subscriber::set_global_default};
 use tracing_subscriber::filter::EnvFilter;
@@ -53,6 +55,19 @@ async fn main() {
     if let Ok(db_path) = std::env::var("DB_PATH") {
         indexer_config.db_path = db_path;
     }
+    let db_path = indexer_config.db_path.clone();
+
+    let mut api_config = ApiServerConfig::default();
+    if let Ok(api_host) = std::env::var("API_HOST") {
+        api_config.api_host = api_host;
+    }
+
+    // Initialize database before starting services
+    info!("Initializing database at {}", db_path);
+    if let Err(e) = SqliteStore::writer(&db_path).await {
+        error!("Failed to initialize database: {}", e);
+        std::process::exit(1);
+    }
 
     if cli.reindex {
         let db_path = std::path::Path::new(&indexer_config.db_path);
@@ -66,11 +81,17 @@ async fn main() {
     }
 
     let mut indexer = Indexer::new(indexer_config, shutdown.subscribe());
+    let api_server = ApiServer::new(api_config, db_path, shutdown.subscribe());
 
     let indexer_handle = tokio::spawn(async move { indexer.run().await });
+    let api_handle = tokio::spawn(async move { api_server.run().await });
     let shutdown_handle = tokio::spawn(async move { shutdown.run().await });
 
-    match tokio::try_join!(flatten(indexer_handle), flatten(shutdown_handle)) {
+    match tokio::try_join!(
+        flatten(indexer_handle),
+        flatten(api_handle),
+        flatten(shutdown_handle)
+    ) {
         Ok(_) => {
             info!("Discovery service has shut down");
             std::process::exit(0);

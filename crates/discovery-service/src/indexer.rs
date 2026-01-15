@@ -140,7 +140,7 @@ impl Indexer {
                             info!("New block #{}: {:#064x}", head.block_number, head.block_hash);
                             let mut tx = store.begin().await?;
                             tx.store_block(head.block_number, head.block_hash).await?;
-                            tx.set_head(head.block_number, head.block_hash).await?;
+                            tx.set_head(head.block_number, head.block_hash, head.timestamp).await?;
                             tx.commit().await?;
                         }
                         NewHeadsUpdate::Reorg(reorg) => {
