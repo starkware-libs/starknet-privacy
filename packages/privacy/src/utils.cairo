@@ -1,3 +1,4 @@
+use constants::{PROOF_VALIDITY_BLOCK_INTERVAL, VIRTUAL_SNOS};
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
 use core::num::traits::Zero;
@@ -5,18 +6,24 @@ use privacy::actions::ServerAction;
 use privacy::errors;
 use privacy::hashes::{
     compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_private_key_hash,
-    compute_enc_sender_addr_hash, compute_enc_token_hash,
+    compute_enc_sender_addr_hash, compute_enc_token_hash, hash,
 };
 use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use starknet::storage::{StorageAsPointer, StoragePath};
-use starknet::syscalls::send_message_to_l1_syscall;
+use starknet::syscalls::{get_execution_info_v3_syscall, send_message_to_l1_syscall};
 use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_tx_info};
 use starkware_utils::constants::TWO_POW_128;
+use starkware_utils::span::contains;
 
 pub mod constants {
     use core::num::traits::Pow;
 
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
+    // TODO: Change to the real number of blocks.
+    /// The interval of blocks for which the proof is valid.
+    pub const PROOF_VALIDITY_BLOCK_INTERVAL: u64 = 21_600; // ~12 hours (2 sec/block)
+    /// The proof type for the virtual Starknet OS.
+    pub const VIRTUAL_SNOS: felt252 = 'VIRTUAL_SNOS';
 }
 
 // TODO: Test the util and hash functions.
@@ -194,4 +201,52 @@ pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
     server_actions.serialize(ref payload);
     // TODO: Different to_address?
     send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
+}
+
+#[derive(Drop, Serde, Debug, Copy)]
+pub struct ProofFacts {
+    /// The proof version.
+    pub proof_version: felt252,
+    /// The proof type (currently only 'VIRTUAL_SNOS' is supported).
+    pub proof_type: felt252,
+    /// The hash of the virtual Starknet OS program.
+    pub virtual_program_hash: felt252,
+    /// The output version (currently always 0).
+    pub starknet_os_version: felt252,
+    /// The base block number.
+    pub base_block_number: u64,
+    /// The base block hash.
+    pub base_block_hash: felt252,
+    /// The hash of the Starknet OS config.
+    pub starknet_os_config_hash: felt252,
+    /// Messages from L2 to L1.
+    pub l2_to_l1_messages: Span<felt252>,
+}
+
+pub(crate) fn validate_proof(actions: Span<ServerAction>) {
+    let execution_info = get_execution_info_v3_syscall().unwrap_syscall();
+    let contract_address = execution_info.contract_address;
+    let mut proof_facts = execution_info.tx_info.proof_facts;
+    let proof_facts_struct: ProofFacts = Serde::deserialize(ref proof_facts)
+        .expect(errors::PROOF_FACTS_DESERIALIZE_ERROR);
+    assert(proof_facts_struct.proof_type == VIRTUAL_SNOS, errors::INVALID_PROOF_TYPE);
+    assert(proof_facts_struct.starknet_os_version.is_zero(), errors::INVALID_STARKNET_OS_VERSION);
+    // Assert base block number is recent.
+    let current_block_number = execution_info.block_info.unbox().block_number;
+    let proof_block_number = proof_facts_struct.base_block_number;
+    assert(
+        proof_block_number + PROOF_VALIDITY_BLOCK_INTERVAL <= current_block_number,
+        errors::PROOF_EXPIRED,
+    );
+    // Assert that the message hash is included in the L1 messages,
+    // meaning the proof is valid for this transaction.
+    // The message hash is computed from the L1 message, which includes:
+    // - `from_address`: the contract address.
+    // - `to_address`: zero.
+    // - `payload`: `Span<ServerAction>` passed as input to the server
+    //   function (`execute_actions`).
+    let mut l1_message_data: Array<felt252> = array![contract_address.into(), Zero::zero()];
+    actions.serialize(ref l1_message_data);
+    let message_hash = hash(l1_message_data.span());
+    assert(contains(proof_facts_struct.l2_to_l1_messages, message_hash), errors::INVALID_PROOF);
 }

@@ -26,7 +26,7 @@ pub mod Privacy {
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_signature, decrypt_note_amount, derive_public_key,
         encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
-        is_canonical_key, send_message_to_server,
+        is_canonical_key, send_message_to_server, validate_proof,
     };
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
@@ -487,7 +487,7 @@ pub mod Privacy {
     pub impl ServerImpl of IServer<ContractState> {
         fn execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
             self.pausable.assert_not_paused();
-            // TODO: Verify client proof.
+            validate_proof(:actions);
             for action in actions {
                 match *action {
                     ServerAction::WriteIfZero(input) => {
