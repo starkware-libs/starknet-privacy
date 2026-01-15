@@ -1,20 +1,4 @@
 # Flow Ideas
-## Deposit
-1. Deposit end-to-end.
-2. User deposit different tokens.
-3. User deposit the same token multiple times.
-4. Call server deposit twice with the same input.
-5. User deposit note, withdraw it.
-6. User A deposit note, transfer to user B, user B withdraws it.
-7. User deposit note, transfer to themselves, withdraw it.
-8. User deposit note, transfer to themselves, withdraw it, deposit again. (check deposit indexing)
-9. User deposit multiple notes, merge them into one note for themselves, withdraw it.
-10. User A deposit multiple notes, merge them into one note for themselves, transfer it to users B and C, users B and C withdraw the notes.
-11. User A deposit multiple notes, transfer them to one note for user B, user B withdraw it.
-12. User A deposit one note, transfer to users B and C, users B and C withdraw the notes.
-13. User A deposit one note, transfer to users B and C with leftover for themselves, all users withdraw.
-14. User deposit same token and amount twice - assert enc_amount and id are different.
-
 ## Transfer
 1. Transfer end-to-end.
 2. Split Transfer: User A sends to User B and gets change back.
@@ -73,6 +57,9 @@
 15. Try to open a new channel using the old viewing key (should fail, only new viewing key should be accepted).
 16. Try to open a new subchannel using the old viewing key (should succeed, viewing key isn't checked on subchannels).
 17. Migrate (transfer) all notes belonging to the user from their old viewing key to the new viewing key after SetViewingKey.
+
+# The Mega Flow
+Set viewing key -> open channels -> open subchannels -> deposit multiple tokens -> create notes -> use notes -> withdraw multiple tokens (all in the same TX).
 
 # General Notes
 - After each `execute_actions` call, verify external (token) balances.
