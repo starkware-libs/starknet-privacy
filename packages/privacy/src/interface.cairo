@@ -1,6 +1,7 @@
 use privacy::actions::{ClientAction, ServerAction};
 use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use starknet::ContractAddress;
+use starknet::account::Call;
 
 // TODO: Rename interface.
 // TODO: Use same naming convention for the functions. (owner/sender,
@@ -66,11 +67,11 @@ pub trait IClient<T> {
     ///
     /// #### Access Control
     /// - TODO
-    fn __execute__(ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
+    fn __execute__(ref self: T, calls: Array<Call>);
 
-    fn __validate__(
-        self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
-    ) -> felt252;
+    fn __validate__(self: @T, calls: Array<Call>) -> felt252;
+
+    fn dummy_execute(self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
 }
 
 #[starknet::interface]

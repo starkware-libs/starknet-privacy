@@ -28,6 +28,7 @@ pub mod Privacy {
         encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
         is_canonical_key, send_message_to_server,
     };
+    use starknet::account::Call;
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
@@ -118,18 +119,37 @@ pub mod Privacy {
     // TODO: Consider all randoms to be u128/120 bits.
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
-        fn __validate__(
-            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
-        ) -> felt252 {
+        fn __validate__(self: @ContractState, calls: Array<Call>) -> felt252 {
             VALIDATED
         }
 
+        fn __execute__(ref self: ContractState, calls: Array<Call>) {
+            assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
+            assert(calls.len() == 1, errors::INVALID_CALLS_LENGTH);
+            let call = calls[0];
+            assert(*call.to == get_contract_address(), errors::INVALID_CALL_TO);
+            assert(*call.selector == selector!("dummy_execute"), errors::INVALID_CALL_SELECTOR);
+            let mut serialized = *call.calldata;
+            let (user_addr, client_actions) = Serde::<
+                (ContractAddress, Span<ClientAction>),
+            >::deserialize(ref :serialized)
+                .expect(errors::INVALID_CALLDATA);
+            self.compile_client_actions(:user_addr, :client_actions);
+        }
+
+        fn dummy_execute(
+            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) {}
+    }
+
+    #[generate_trait]
+    pub(crate) impl ClientInternalImpl of ClientInternalTrait {
         // TODO: Gets a single random and generate from it new randoms for each action that needs a
         // random.
-        fn __execute__(
+        // TODO: Rename.
+        fn compile_client_actions(
             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
-            assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
@@ -159,10 +179,7 @@ pub mod Privacy {
             assert_valid_signature(:user_addr);
             send_message_to_server(server_actions.span());
         }
-    }
 
-    #[generate_trait]
-    pub(crate) impl ClientInternalImpl of ClientInternalTrait {
         /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
         fn set_viewing_key(
             self: @ContractState, user_addr: ContractAddress, input: SetViewingKeyInput,

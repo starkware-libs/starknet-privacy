@@ -33,6 +33,7 @@ use snforge_std::{
     TokenTrait, declare, interact_with_state, map_entry_address, set_balance, spy_messages_to_l1,
     store,
 };
+use starknet::account::Call;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
 use starknet::{ContractAddress, SyscallResultTrait};
@@ -112,13 +113,6 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
         self.privacy.safe_execute(user_addr: *self.address, :client_actions)
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_compile_client_actions_without_cheat_caller(
-        self: @User, client_actions: Span<ClientAction>,
-    ) -> Result<(), Array<felt252>> {
-        self.privacy.safe_client.__execute__(user_addr: *self.address, :client_actions)
     }
 
     fn transfer(
@@ -966,22 +960,49 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     fn execute(self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>) {
+        let calls = self.arguments_to_calls(:user_addr, :client_actions);
         cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
-        self.client.__execute__(:user_addr, :client_actions)
+        self.client.__execute__(:calls)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_execute(
         self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
+        let calls = self.arguments_to_calls(:user_addr, :client_actions);
         cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
-        self.safe_client.__execute__(:user_addr, :client_actions)
+        self.safe_client.__execute__(:calls)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_execute_with_calls(
+        self: @PrivacyCfg, calls: Array<Call>, cheat_caller: bool,
+    ) -> Result<(), Array<felt252>> {
+        if cheat_caller {
+            cheat_caller_address_once(
+                contract_address: *self.address, caller_address: Zero::zero(),
+            );
+        }
+        self.safe_client.__execute__(:calls)
     }
 
     fn validate(
         self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> felt252 {
-        self.client.__validate__(:user_addr, :client_actions)
+        let calls = self.arguments_to_calls(:user_addr, :client_actions);
+        self.client.__validate__(:calls)
+    }
+
+    fn arguments_to_calls(
+        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+    ) -> Array<Call> {
+        let mut calldata = array![];
+        user_addr.serialize(ref calldata);
+        client_actions.serialize(ref calldata);
+        let call = Call {
+            to: *self.address, selector: selector!("dummy_execute"), calldata: calldata.span(),
+        };
+        array![call]
     }
 }
 

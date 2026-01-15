@@ -15,6 +15,7 @@ use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
 use snforge_std::{TokenTrait, map_entry_address, spy_messages_to_l1};
 use starknet::VALIDATED;
+use starknet::account::Call;
 use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 
 // TODO: Catch server errors in the client side.
@@ -3188,10 +3189,6 @@ fn test_compile_client_actions_assertions() {
 
     // TODO: Catch server errors.
 
-    // Catch INVALID_CALLER.
-    let result = user.safe_compile_client_actions_without_cheat_caller(client_actions: [].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLER);
-
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
@@ -3759,4 +3756,46 @@ fn test_compile_client_actions_writes() {
         .span();
     // Assert server actions.
     assert_eq!(server_actions, expected_sevrer_actions);
+}
+
+#[test]
+fn test_execute_assertions() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let user_addr = user.address;
+    let client_actions = [].span();
+    let call = *test.privacy.arguments_to_calls(user_addr: user_addr, :client_actions)[0];
+
+    // Catch INVALID_CALLER.
+    let result = test.privacy.safe_execute_with_calls(calls: array![], cheat_caller: false);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLER);
+
+    // Catch INVALID_CALLS_LENGTH.
+    let result = test.privacy.safe_execute_with_calls(calls: array![], cheat_caller: true);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLS_LENGTH);
+    let result = test
+        .privacy
+        .safe_execute_with_calls(calls: array![call, call], cheat_caller: true);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLS_LENGTH);
+
+    // Catch INVALID_CALL_TO.
+    let call_invalid_to = Call { to: Zero::zero(), ..call };
+    let result = test
+        .privacy
+        .safe_execute_with_calls(calls: array![call_invalid_to], cheat_caller: true);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALL_TO);
+
+    // Catch INVALID_CALL_SELECTOR.
+    let call_invalid_selector = Call { selector: Zero::zero(), ..call };
+    let result = test
+        .privacy
+        .safe_execute_with_calls(calls: array![call_invalid_selector], cheat_caller: true);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALL_SELECTOR);
+
+    // Catch INVALID_CALLDATA.
+    let call_invalid_calldata = Call { calldata: array![].span(), ..call };
+    let result = test
+        .privacy
+        .safe_execute_with_calls(calls: array![call_invalid_calldata], cheat_caller: true);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLDATA);
 }

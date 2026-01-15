@@ -39,26 +39,8 @@ fn generate_reference_hashes() {
     let subchannel_id = compute_subchannel_id(CHANNEL_KEY, recipient, RECIPIENT_PUBLIC_KEY, token);
     let note_id = compute_note_id(CHANNEL_KEY, token, INDEX);
     let nullifier = compute_nullifier(CHANNEL_KEY, token, INDEX, SENDER_PRIVATE_KEY);
-
     // Print in format parseable by sdk/scripts/generate-cairo-refs.ts
-    println!("=== CAIRO REFERENCE HASHES ===");
-
-    // Inputs (source of truth)
-    println!("inputs.sender: 0x{:x}", SENDER);
-    println!("inputs.recipient: 0x{:x}", RECIPIENT);
-    println!("inputs.senderPrivateKey: 0x{:x}", SENDER_PRIVATE_KEY);
-    println!("inputs.recipientPublicKey: 0x{:x}", RECIPIENT_PUBLIC_KEY);
-    println!("inputs.channelKey: 0x{:x}", CHANNEL_KEY);
-    println!("inputs.token: 0x{:x}", TOKEN);
-    println!("inputs.index: {}", INDEX);
-
-    // Outputs (computed hashes)
-    println!("outputs.channelKey: 0x{:x}", channel_key);
-    println!("outputs.channelId: 0x{:x}", channel_id);
-    println!("outputs.subchannelKey: 0x{:x}", subchannel_key);
-    println!("outputs.subchannelId: 0x{:x}", subchannel_id);
-    println!("outputs.noteId: 0x{:x}", note_id);
-    println!("outputs.nullifier: 0x{:x}", nullifier);
-    println!("==============================");
+// Inputs (source of truth)
+// Outputs (computed hashes)
 }
 
