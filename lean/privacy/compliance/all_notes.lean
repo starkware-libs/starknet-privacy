@@ -46,7 +46,7 @@ theorem all_notes_are_discoverable {crypto: Crypto} {rm: ReachableMemory crypto}
   obtain ⟨addrbob, kbob, sn, h₀, h₁, h_channel_exists, ⟨addralice, kalice, h₃⟩⟩ := note_exists_implies_for_recipient h
 
   have ⟨addralice', addrbob', Kbob, h_channel_exists⟩ := h_channel_exists
-  have ⟨⟨kalice', h_sn_c, h_private_key_hashes_alice⟩, ⟨kbob', _, h_private_key_hashes_bob⟩⟩ := channel_exists_implies_hash h_channel_exists
+  have ⟨⟨kalice', h_sn_c, h_public_keys_alice⟩, ⟨kbob', h_Kbob, h_public_keys_bob⟩⟩ := channel_exists_implies_hash h_channel_exists
 
   have ⟨h_addrbob, h_kbob⟩ : addrbob = addrbob' ∧ kbob = kbob' := by
     rw [h₃] at h_sn_c
@@ -57,31 +57,33 @@ theorem all_notes_are_discoverable {crypto: Crypto} {rm: ReachableMemory crypto}
     apply crypto.priv_to_pub_inj (by simp) (by simp)
     simp [*]
 
-  replace h_private_key_hashes_bob := calc _
-    _ = _ := h_private_key_hashes_bob
-    _ ≠ 0 := by simp
+  rw [h_Kbob, ←h_kbob] at h_public_keys_bob
+  have h_public_keys_bob' := h_public_keys_bob ▸ crypto.zero_not_public_key kbob
+  have h_public_keys_alice' := h_public_keys_alice ▸ crypto.zero_not_public_key kalice'
 
-  have ⟨inp_alice, h_inp_in_actions_alice, h_inp_alice⟩ := private_key_hash_implies h_private_key_hashes_alice
-  have ⟨inp_bob, h_inp_in_actions_bob, h_inp_bob⟩ := private_key_hash_implies h_private_key_hashes_bob
+  have ⟨inp_alice, h_inp_in_actions_alice, h_inp_alice₀, h_inp_alice₁, h_kalice_valid⟩ := public_key_implies h_public_keys_alice'
+  have ⟨inp_bob, h_inp_in_actions_bob, h_inp_bob₀, h_inp_bob₁, h_kbob_valid⟩ := public_key_implies h_public_keys_bob'
+
+  rw [h_public_keys_bob] at h_inp_bob₁
+  rw [h_public_keys_alice] at h_inp_alice₁
 
   refine ⟨sn, ?_, h₁, ?_⟩
 
   · rw [scan_all_notes_iff]
     refine ⟨addrbob, kbob, ?_, h₀⟩
-    rw [h_addrbob, h_kbob]
-    rw [←h_inp_bob.1, ←h_inp_bob.2]
-
+    rw [h_addrbob]
+    rw [←h_inp_bob₀, crypto.priv_to_pub_inj (by simp) h_kbob_valid h_inp_bob₁]
     exact register_implies_scan_users h_inp_in_actions_bob
   · use addralice, kalice, addrbob, kbob
-    rw [h_addrbob, h_kbob]
-    rw [←h_inp_bob.1, ←h_inp_bob.2]
+    rw [h_addrbob]
+    rw [←h_inp_bob₀, crypto.priv_to_pub_inj (by simp) h_kbob_valid h_inp_bob₁]
     refine ⟨?_, ?_, ?_⟩
-    · simp [*]
+    · rw [h₃, h_inp_bob₁]; simp [*]
     · have : addralice = addralice' ∧ kalice = kalice' := by
         rw [h₃] at h_sn_c
         apply crypto.h_hash at h_sn_c
         injections
         simp [*]
-      simp only [this, ←h_inp_alice]
+      simp only [this, ←h_inp_alice₀, crypto.priv_to_pub_inj (by simp) h_kalice_valid h_inp_alice₁]
       exact register_implies_scan_users h_inp_in_actions_alice
     · exact register_implies_scan_users h_inp_in_actions_bob
