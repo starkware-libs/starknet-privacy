@@ -45,6 +45,7 @@ use starkware_utils::components::pausable::interface::{
 use starkware_utils_testing::test_utils::{
     Deployable, TokenConfig, cheat_caller_address_once, generic_load, set_account_as_security_agent,
 };
+use crate::utils::decrypt_note_amount;
 
 pub(crate) mod constants {
     use core::num::traits::Pow;
@@ -54,6 +55,39 @@ pub(crate) mod constants {
     pub const TOKEN_SUPPLY: u256 = 10_u256.pow(12 + DECIMALS.into());
     pub const TOKEN_OWNER: ContractAddress = 'TOKEN_OWNER'.try_into().unwrap();
     pub const DEFAULT_AMOUNT: u128 = 10_u128.pow(DECIMALS.into());
+}
+
+#[generate_trait]
+pub(crate) impl SortedClientActionsImpl of SortedClientActionsTrait {
+    fn sorted(self: @Span<ClientAction>) -> Span<ClientAction> {
+        let mut account_actions = array![];
+        let mut channel_actions = array![];
+        let mut subchannel_actions = array![];
+        let mut deposit_actions = array![];
+        let mut use_notes_actions = array![];
+        let mut create_notes_actions = array![];
+        let mut withdraw_actions = array![];
+        for action in self {
+            match action {
+                ClientAction::SetViewingKey(_) => account_actions.append(*action),
+                ClientAction::OpenChannel(_) => channel_actions.append(*action),
+                ClientAction::OpenSubchannel(_) => subchannel_actions.append(*action),
+                ClientAction::Deposit(_) => deposit_actions.append(*action),
+                ClientAction::UseNote(_) => use_notes_actions.append(*action),
+                ClientAction::CreateNote(_) => create_notes_actions.append(*action),
+                ClientAction::Withdraw(_) => withdraw_actions.append(*action),
+            }
+        }
+        let mut sorted_actions = array![];
+        sorted_actions.append_span(account_actions.span());
+        sorted_actions.append_span(channel_actions.span());
+        sorted_actions.append_span(subchannel_actions.span());
+        sorted_actions.append_span(deposit_actions.span());
+        sorted_actions.append_span(use_notes_actions.span());
+        sorted_actions.append_span(create_notes_actions.span());
+        sorted_actions.append_span(withdraw_actions.span());
+        sorted_actions.span()
+    }
 }
 
 // TODO: Consider removing this struct.
@@ -101,6 +135,7 @@ pub(crate) struct User {
     pub private_key: felt252,
     pub public_key: felt252,
     pub channel_indices: Felt252Dict<usize>,
+    pub subchannel_indices: Felt252Dict<usize>,
     nonce: usize,
 }
 
@@ -113,6 +148,7 @@ impl CloneUserImpl of Clone<User> {
             private_key: *self.private_key,
             public_key: *self.public_key,
             channel_indices: Default::default(),
+            subchannel_indices: Default::default(),
             nonce: *self.nonce,
         }
     }
@@ -124,6 +160,14 @@ pub(crate) impl UserIndicesImpl of UserIndicesTrait {
         let channel_id = sender.compute_channel_id(recipient: @self);
         let index = self.channel_indices.get(channel_id);
         self.channel_indices.insert(channel_id, index + 1);
+        index
+    }
+
+    fn bump_note_index(ref self: User, sender: @User, token: Token) -> usize {
+        let subchannel_id = sender
+            .compute_subchannel_id(recipient: @self, token_address: token.contract_address());
+        let index = self.subchannel_indices.get(subchannel_id);
+        self.subchannel_indices.insert(subchannel_id, index + 1);
         index
     }
 }
@@ -162,6 +206,12 @@ pub(crate) impl UserImpl of UserTrait {
         self.mock_client.safe_execute(user_addr: *self.address, :client_actions)
     }
 
+    fn compile_and_execute(self: @User, client_actions: Span<ClientAction>) {
+        let server_actions = self
+            .compile_client_actions_revert(client_actions: client_actions.sorted());
+        self.privacy.execute_actions(actions: server_actions);
+    }
+
     fn transfer(
         self: @User, notes_to_use: Span<UseNoteInput>, notes_to_create: Span<CreateNoteInput>,
     ) -> Span<ServerAction> {
@@ -191,11 +241,11 @@ pub(crate) impl UserImpl of UserTrait {
         self.safe_compile_client_actions(client_actions: client_actions.span())
     }
 
-    fn withdraw(
+    fn withdraw_action(
         self: @User, withdrawal_target: ContractAddress, token: Token, amount: u128,
-    ) -> Span<ServerAction> {
+    ) -> ClientAction {
         let input = WithdrawInput { withdrawal_target, token: token.contract_address(), amount };
-        self.compile_client_actions_revert(client_actions: [ClientAction::Withdraw(input)].span())
+        ClientAction::Withdraw(input)
     }
 
     fn internal_withdraw(
@@ -568,9 +618,9 @@ pub(crate) impl UserImpl of UserTrait {
         self.new_note(:recipient, :token_address, :amount, :index, :random)
     }
 
-    fn deposit(self: @User, token: Token, amount: u128) -> Span<ServerAction> {
+    fn deposit_action(self: @User, token: Token, amount: u128) -> ClientAction {
         let input = DepositInput { token: token.contract_address(), amount };
-        self.compile_client_actions_revert([ClientAction::Deposit(input),].span())
+        ClientAction::Deposit(input)
     }
 
     fn is_registered(self: @User) -> bool {
@@ -800,18 +850,16 @@ pub(crate) impl UserFlowImpl of UserFlowTrait {
         self.privacy.server.execute_actions(actions: server_actions);
     }
 
-    fn open_subchannel_flow(ref self: User, ref recipient: User, token: Token) {
-        if (!recipient.is_registered()) {
-            recipient.set_viewing_key_e2e();
-        }
-
+    fn open_subchannel_flow_actions(
+        self: @User, ref recipient: User, token: Token,
+    ) -> Span<ClientAction> {
         let channel_id = self.compute_channel_id(recipient: @recipient);
         let mut client_actions = array![];
         if (!self.privacy.channel_exists(:channel_id)) {
             client_actions.append_span(self.open_channel_flow_actions(ref :recipient));
         }
 
-        let index = recipient.bump_subchannel_index(sender: @self);
+        let index = recipient.bump_subchannel_index(sender: self);
         client_actions
             .append_span(
                 self
@@ -819,12 +867,158 @@ pub(crate) impl UserFlowImpl of UserFlowTrait {
                         recipient: @recipient,
                         token_address: token.contract_address(),
                         :index,
-                        random: self.get_random().into(),
+                        random: recipient.get_random().into(),
+                    ),
+            );
+        client_actions.span()
+    }
+
+    fn open_subchannel_flow(self: @User, ref recipient: User, token: Token) {
+        if (!recipient.is_registered()) {
+            recipient.set_viewing_key_e2e();
+        }
+
+        let client_actions = self.open_subchannel_flow_actions(ref :recipient, :token);
+        let server_actions = self.compile_client_actions_revert(:client_actions);
+        self.privacy.server.execute_actions(actions: server_actions);
+    }
+
+    fn create_note_actions(
+        self: @User, ref recipient: User, token: Token, amount: u128,
+    ) -> (Span<ClientAction>, usize) {
+        let subchannel_id = self
+            .compute_subchannel_id(recipient: @recipient, token_address: token.contract_address());
+        let mut client_actions = array![];
+        if (!self.privacy.subchannel_exists(:subchannel_id)) {
+            client_actions.append_span(self.open_subchannel_flow_actions(ref :recipient, :token));
+        }
+
+        let note_index = recipient.bump_note_index(sender: self, :token);
+        let create_note_action = ClientAction::CreateNote(
+            CreateNoteInput {
+                sender_private_key: *self.private_key,
+                recipient_addr: recipient.address,
+                recipient_public_key: recipient.public_key,
+                token: token.contract_address(),
+                amount,
+                index: note_index,
+                random: recipient.get_random(),
+            },
+        );
+        client_actions.append(create_note_action);
+        (client_actions.span(), note_index)
+    }
+
+    fn deposit_flow(self: @User, ref recipient: User, token: Token, amount: u128) -> usize {
+        if (!recipient.is_registered()) {
+            recipient.set_viewing_key_e2e();
+        }
+
+        // TODO: Consider also supplying user with token.
+        // TODO: Consider increasing allowance instead of setting it.
+        self.approve(:token, amount: amount.into());
+
+        let mut client_actions = array![];
+        client_actions.append(self.deposit_action(:token, :amount));
+        let (create_note_actions, note_index) = self
+            .create_note_actions(ref :recipient, :token, :amount);
+        client_actions.append_span(create_note_actions);
+        self.compile_and_execute(client_actions: client_actions.span());
+
+        note_index
+    }
+
+    fn use_note_action(
+        self: @User, sender: @User, token: Token, note_index: usize,
+    ) -> ClientAction {
+        let channel_key = sender.compute_channel_key(recipient: self);
+        ClientAction::UseNote(
+            UseNoteInput {
+                owner_private_key: *self.private_key,
+                channel_key,
+                token: token.contract_address(),
+                note_index,
+            },
+        )
+    }
+
+    fn leftover_note_actions(
+        ref self: User, sender: @User, token: Token, note_index: usize, amount: u128,
+    ) -> Option<(Span<ClientAction>, usize)> {
+        let channel_key = sender.compute_channel_key(recipient: @self);
+        let note_id = compute_note_id(
+            :channel_key, token: token.contract_address(), index: note_index,
+        );
+        let note_amount = decrypt_note_amount(
+            enc_note_value: self.privacy.get_note(:note_id), :channel_key,
+        );
+
+        if note_amount > amount {
+            Some(self.create_note_actions(ref recipient: self, :token, :amount))
+        } else {
+            None
+        }
+    }
+
+    fn withdraw_flow(
+        ref self: User,
+        sender: @User,
+        withdrawal_target: @User,
+        token: Token,
+        note_index: usize,
+        amount: u128,
+    ) -> Option<usize> {
+        let mut client_actions = array![];
+        client_actions.append(self.use_note_action(:sender, :token, :note_index));
+
+        let mut leftover_note_index = None;
+        if let Some((action, note_index)) = self
+            .leftover_note_actions(:sender, :token, :note_index, :amount) {
+            client_actions.append_span(action);
+            leftover_note_index = Some(note_index);
+        }
+
+        client_actions
+            .append(
+                self
+                    .withdraw_action(
+                        withdrawal_target: *withdrawal_target.address, :token, :amount,
                     ),
             );
         let server_actions = self
             .compile_client_actions_revert(client_actions: client_actions.span());
-        self.privacy.server.execute_actions(actions: server_actions);
+        self.privacy.execute_actions(actions: server_actions);
+
+        leftover_note_index
+    }
+
+    fn simple_transfer_flow(
+        ref self: User,
+        sender: @User,
+        ref recipient: User,
+        token: Token,
+        note_index: usize,
+        amount: u128,
+    ) -> (usize, Option<usize>) {
+        if (!recipient.is_registered()) {
+            recipient.set_viewing_key_e2e();
+        }
+
+        let mut client_actions = array![];
+        client_actions.append(self.use_note_action(:sender, :token, :note_index));
+        let (create_note_actions, note_index) = self
+            .create_note_actions(ref :recipient, :token, :amount);
+        client_actions.append_span(create_note_actions);
+
+        let mut leftover_note_index = None;
+        if let Some((create_note_actions, note_index)) = self
+            .leftover_note_actions(:sender, :token, :note_index, :amount) {
+            client_actions.append_span(create_note_actions);
+            leftover_note_index = Some(note_index);
+        }
+        self.compile_and_execute(client_actions: client_actions.span());
+
+        (note_index, leftover_note_index)
     }
 }
 
@@ -856,6 +1050,7 @@ pub(crate) impl TestImpl of TestTrait {
             private_key,
             public_key,
             channel_indices: Default::default(),
+            subchannel_indices: Default::default(),
             nonce: Zero::zero(),
         }
     }
@@ -952,6 +1147,10 @@ pub(crate) impl PrivacyTokenImpl of PrivacyTokenTrait {
     fn supply(self: @Token, address: ContractAddress, amount: u128) {
         let current_balance = self.balance_of(:address);
         set_balance(target: address, new_balance: current_balance + amount.into(), token: *self);
+    }
+
+    fn allowance(self: @Token, owner: ContractAddress, spender: ContractAddress) -> u256 {
+        IERC20Dispatcher { contract_address: self.contract_address() }.allowance(:owner, :spender)
     }
 }
 
