@@ -28,7 +28,7 @@ pub mod Privacy {
         encrypt_note_amount, encrypt_outgoing_channel_info, encrypt_private_key,
         encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, open_note, packing,
         panic_with_server_actions, send_message_to_server, to_write_once_action, unpacking,
-        unwrap_execute_and_panic_result,
+        unwrap_execute_and_panic_result, validate_proof,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -716,7 +716,7 @@ pub mod Privacy {
     pub impl ServerImpl of IServer<ContractState> {
         fn execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
             self.pausable.assert_not_paused();
-            // TODO: Verify client proof.
+            validate_proof(:actions);
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => {
