@@ -6,16 +6,28 @@
 mod devnet;
 mod node;
 
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 
 use devnet::Devnet;
 use node::Node;
+use reqwest::StatusCode;
+use serde::Deserialize;
 use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{Row, SqlitePool};
 use starknet::core::types::Felt;
 use tempfile::TempDir;
 
 const BINARY: &str = env!("CARGO_BIN_EXE_discovery-service");
+
+/// Counter for generating unique API server ports across tests.
+static API_PORT_COUNTER: AtomicU16 = AtomicU16::new(19000);
+
+/// Generate a unique API host address for tests.
+fn test_api_host() -> String {
+    let port = API_PORT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("127.0.0.1:{}", port)
+}
 
 struct TempDb {
     _dir: TempDir,
@@ -40,9 +52,10 @@ fn extract_hash_from_log(line: &str) -> Option<String> {
 async fn test_startup_and_shutdown() {
     let temp_db = temp_db("startup_shutdown");
     let devnet = Devnet::spawn().await.expect("Failed to spawn devnet");
-    let mut node = Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path)
-        .await
-        .expect("Failed to spawn node");
+    let mut node =
+        Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &test_api_host())
+            .await
+            .expect("Failed to spawn node");
 
     node.wait_for_log("Indexer started", Duration::from_secs(10))
         .await
@@ -60,9 +73,10 @@ async fn test_startup_and_shutdown() {
 async fn test_new_block_notification() {
     let temp_db = temp_db("new_block");
     let devnet = Devnet::spawn().await.expect("Failed to spawn devnet");
-    let mut node = Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path)
-        .await
-        .expect("Failed to spawn node");
+    let mut node =
+        Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &test_api_host())
+            .await
+            .expect("Failed to spawn node");
 
     node.wait_for_log("Subscribed to new heads", Duration::from_secs(10))
         .await
@@ -82,9 +96,10 @@ async fn test_new_block_notification() {
 async fn test_reorg_notification() {
     let temp_db = temp_db("reorg");
     let devnet = Devnet::spawn().await.expect("Failed to spawn devnet");
-    let mut node = Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path)
-        .await
-        .expect("Failed to spawn node");
+    let mut node =
+        Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &test_api_host())
+            .await
+            .expect("Failed to spawn node");
 
     node.wait_for_log("Subscribed to new heads", Duration::from_secs(10))
         .await
@@ -115,9 +130,10 @@ async fn test_reorg_notification() {
 async fn test_reconnection_on_devnet_restart() {
     let temp_db = temp_db("reconnection");
     let devnet = Devnet::spawn().await.expect("Failed to spawn devnet");
-    let mut node = Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path)
-        .await
-        .expect("Failed to spawn node");
+    let mut node =
+        Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &test_api_host())
+            .await
+            .expect("Failed to spawn node");
 
     node.wait_for_log("Subscribed to new heads", Duration::from_secs(10))
         .await
@@ -143,9 +159,10 @@ async fn test_reconnection_on_devnet_restart() {
 async fn test_blocks_persisted_and_head_matches_latest() {
     let temp_db = temp_db("blocks_persisted");
     let devnet = Devnet::spawn().await.expect("Failed to spawn devnet");
-    let mut node = Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path)
-        .await
-        .expect("Failed to spawn node");
+    let mut node =
+        Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &test_api_host())
+            .await
+            .expect("Failed to spawn node");
 
     node.wait_for_log("Subscribed to new heads", Duration::from_secs(10))
         .await
@@ -206,4 +223,60 @@ async fn test_blocks_persisted_and_head_matches_latest() {
         let normalized = format!("{:#066x}", Felt::from_hex(&hash).unwrap());
         assert!(stored_hashes.contains(&normalized));
     }
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct HealthResponse {
+    status: String,
+    chain_head: Option<ChainHead>,
+    lag_secs: u64,
+}
+
+#[derive(Deserialize)]
+struct ChainHead {
+    block_number: u64,
+    block_hash: String,
+    timestamp: u64,
+}
+
+#[tokio::test]
+async fn test_health_endpoint_returns_ok() {
+    let temp_db = temp_db("health_endpoint");
+    let api_host = test_api_host();
+    let devnet = Devnet::spawn().await.expect("Failed to spawn devnet");
+    let mut node = Node::spawn_with_binary(BINARY, &devnet.ws_url(), &temp_db.path, &api_host)
+        .await
+        .expect("Failed to spawn node");
+
+    node.wait_for_log("Subscribed to new heads", Duration::from_secs(10))
+        .await
+        .unwrap();
+
+    // Create a block so we have a chain head
+    devnet.create_block().await.unwrap();
+    node.wait_for_log("New block #", Duration::from_secs(5))
+        .await
+        .unwrap();
+
+    // Call health endpoint
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(format!("http://{}/health", api_host))
+        .send()
+        .await
+        .expect("Failed to call health endpoint");
+
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let health: HealthResponse = resp.json().await.expect("Failed to parse health response");
+    assert_eq!(health.status, "OK");
+    assert!(health.chain_head.is_some());
+    let chain_head = health.chain_head.unwrap();
+    assert!(chain_head.block_number > 0);
+    assert!(chain_head.block_hash.starts_with("0x"));
+    assert!(chain_head.timestamp > 0);
+
+    node.signal_shutdown().unwrap();
+    node.wait().await.unwrap();
 }
