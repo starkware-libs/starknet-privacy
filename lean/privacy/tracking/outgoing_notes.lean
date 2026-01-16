@@ -64,18 +64,9 @@ theorem outgoing_notes₁
       simp only [kalices, List.mem_dedup, List.mem_map, List.mem_filter]
       use ⟨inp.addralice, inp.kalice⟩
       refine ⟨⟨?_, ?_⟩, by rfl⟩
-      . have h_exists := create_note_actions_implies h_inp.1
-        have ⟨sn, _, h_sn_note_id, ⟨addralice, kalice, addrbob, kbob, h_c, h_in_scan_users_alice, h_in_scan_users_bob⟩⟩ := all_notes_are_discoverable h_exists.1
-        have : inp.c crypto = sn.c := by
-          apply crypto.h_hash at h_sn_note_id
-          injections
-        have : inp.addralice = addralice ∧ inp.kalice = kalice := by
-          rw [h_c] at this
-          apply crypto.h_hash at this
-          injections
-          rename_i h_kalice _
-          simp [*]
-        simp [this, h_in_scan_users_alice]
+      . have ⟨note_imp⟩ := NoteImplies.from_create_note_actions h_inp.1
+        rw [note_imp.h_kalice]
+        exact note_imp.subchannel.channel.alice_registered.scan
       · simp only [Bool.decide_and, Bool.and_eq_true, decide_eq_true_eq] at h_inp
         simp [h_inp]
     )

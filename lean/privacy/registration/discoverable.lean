@@ -1,4 +1,5 @@
 import privacy.actions
+import privacy.registration.registration
 
 def scan_users (crypto: Crypto) (events: List Event) : List (ℕ × ℕ) :=
   events |>.filterMap (λ e ↦ match e with
@@ -51,10 +52,14 @@ theorem scan_users_private_key {crypto: Crypto} (rm: ReachableMemory crypto) {ad
 
     all_goals contradiction
 
-theorem register_implies_scan_users
+theorem RegisterImplies.scan
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: RegisterInput}
-    (h: .Register inp ∈ rm.actions) :
+    (register_imp: RegisterImplies rm inp) :
     (inp.addralice, inp.kalice) ∈ scan_users crypto rm.events := by
+  revert register_imp
+  suffices h: .Register inp ∈ rm.actions → (inp.addralice, inp.kalice) ∈ scan_users crypto rm.events from
+    λ h' ↦ h h'.h_action
+
   rw [scan_users']
 
   revert rm

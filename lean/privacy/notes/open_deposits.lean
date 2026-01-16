@@ -95,14 +95,13 @@ theorem deposit_action_token
       rw [h_inp_deposit, ←info.open_note_token]
       have h_note_exists : note_exists rm inp_deposit'.note_id := by
         simp [note_exists, info.old_value, crypto.pack_nz]
-      have ⟨inp, h_inp, h_inp_note_id⟩ := create_note_actions_iff_note_exists.1 h_note_exists
-      rw [←h_inp_note_id]
-      have ⟨_, _, h_open_note, h_r⟩ := create_note_actions_implies h_inp
-      have := info.old_value
-      rw [h_inp_note_id, info.old_value, crypto.unpack_pack] at h_r
-      rw [h_open_note (by simp [←h_r])]
-      rw [←h_inp_deposit, h_note_id] at h_inp_note_id
-      rw [←CreateNoteInput.to_scanned_note_eq h_inp_note_id]
+      have ⟨inp_create_note, note_imp, h_note_id'⟩ := NoteImplies.from_note_exists h_note_exists
+      rw [←h_note_id']
+      have h_r := note_imp.h_r
+      rw [h_note_id', info.old_value, crypto.unpack_pack] at h_r
+      rw [note_imp.h_open_note (by simp [←h_r])]
+      rw [←h_inp_deposit, h_note_id] at h_note_id'
+      rw [←CreateNoteInput.to_scanned_note_eq h_note_id']
 
     case inr h_inp_deposit =>
       exact ih h_inp_deposit
