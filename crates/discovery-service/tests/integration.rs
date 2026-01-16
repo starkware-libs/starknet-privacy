@@ -3,14 +3,13 @@
 //! These tests spawn a real starknet-devnet instance and the discovery-service binary,
 //! then verify behavior by parsing logs.
 
-mod devnet;
-mod node;
+mod helpers;
 
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 
-use devnet::Devnet;
-use node::Node;
+use helpers::devnet::Devnet;
+use helpers::node::Node;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use sqlx::sqlite::SqliteConnectOptions;
@@ -279,4 +278,42 @@ async fn test_health_endpoint_returns_ok() {
 
     node.signal_shutdown().unwrap();
     node.wait().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_privacy_contract_deploy() {
+    use std::path::PathBuf;
+
+    use crate::helpers::privacy::PrivacyContract;
+    use crate::helpers::sncast::Sncast;
+
+    // Spawn devnet with auto-mining (blocks created on each transaction)
+    let devnet = Devnet::spawn_auto_mine()
+        .await
+        .expect("Failed to spawn devnet");
+
+    // Get alice's address
+    let accounts = devnet
+        .get_predeployed_accounts()
+        .await
+        .expect("Failed to get predeployed accounts");
+    let alice = Felt::from_hex(&accounts[0].address).expect("Invalid alice address");
+
+    // Create sncast wrapper (uses alice as signer)
+    // Working dir is project root where Scarb.toml is located
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let sncast = Sncast::for_devnet(&devnet.http_url(), project_root, &accounts, 0)
+        .await
+        .expect("Failed to create sncast");
+
+    // Declare and deploy privacy contract
+    let contract = PrivacyContract::declare_and_deploy(
+        sncast,
+        alice,                // governance_admin
+        Felt::from(0x123u64), // compliance_public_key
+    )
+    .await
+    .expect("Failed to deploy privacy contract");
+
+    eprintln!("Privacy contract deployed at: {:#x}", contract.address);
 }
