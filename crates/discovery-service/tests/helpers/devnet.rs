@@ -6,10 +6,31 @@ use anyhow::{anyhow, Result};
 use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 use reqwest::Client;
+use serde::Deserialize;
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
 use tracing::info;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct PredeployedAccount {
+    pub address: String,
+    pub private_key: String,
+    pub public_key: String,
+}
+
+/// Block generation mode for devnet.
+///
+/// See: <https://0xspaceshard.github.io/starknet-devnet/docs/blocks>
+#[derive(Debug, Clone, Copy, Default)]
+pub enum BlockGeneration {
+    /// Blocks are created on-demand via `create_block()` RPC call.
+    /// Transactions are stored in a pre-confirmed block until manually mined.
+    #[default]
+    Demand,
+    /// Blocks are created automatically on each transaction (devnet default).
+    Transaction,
+}
 
 /// Wrapper for starknet-devnet binary and an RPC client.
 pub struct DevnetClient {
@@ -25,14 +46,32 @@ pub struct DevnetClient {
 
 impl DevnetClient {
     /// Spawn devnet with on-demand block generation.
+    /// Use `create_block()` to mine blocks manually.
     pub async fn spawn() -> Result<Self> {
+        Self::spawn_with_config(BlockGeneration::Demand).await
+    }
+
+    /// Spawn devnet with automatic block generation on each transaction.
+    /// Blocks are mined automatically, no need to call `create_block()`.
+    pub async fn spawn_auto_mine() -> Result<Self> {
+        Self::spawn_with_config(BlockGeneration::Transaction).await
+    }
+
+    /// Spawn devnet with specified block generation mode.
+    async fn spawn_with_config(block_generation: BlockGeneration) -> Result<Self> {
         let host = "127.0.0.1".to_string();
         let port = 5050u16;
 
+        let block_mode = match block_generation {
+            BlockGeneration::Demand => "demand",
+            BlockGeneration::Transaction => "transaction",
+        };
+
         let mut process = Command::new("starknet-devnet")
             .args(["--port", &port.to_string()])
-            .args(["--block-generation-on", "demand"])
+            .args(["--block-generation-on", block_mode])
             .args(["--state-archive-capacity", "full"]) // required for abort_blocks
+            .args(["--accounts", "3"]) // alice, bob, charlie
             .stderr(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .spawn()?;
@@ -71,6 +110,13 @@ impl DevnetClient {
 
     pub fn http_url(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
+    }
+
+    /// Fetch predeployed accounts from devnet.
+    pub async fn get_predeployed_accounts(&self) -> Result<Vec<PredeployedAccount>> {
+        let resp: Value = self.rpc("devnet_getPredeployedAccounts", json!({})).await?;
+        let accounts: Vec<PredeployedAccount> = serde_json::from_value(resp)?;
+        Ok(accounts)
     }
 
     /// Create a new block (devnet_createBlock).

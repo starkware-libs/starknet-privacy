@@ -78,3 +78,6 @@ __pycache__
 
 # claude
 .claude
+
+# sncast
+accounts.json
