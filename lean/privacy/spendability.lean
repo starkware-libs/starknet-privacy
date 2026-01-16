@@ -26,8 +26,7 @@ theorem spendable_note
     (h_amount_ne_zero: note_amount crypto rm (sn.note_id crypto) sn.c ≠ 0) :
     let inp := spend_note crypto rm addrbob kbob sn
     (cancel_note crypto inp rm |> process_action crypto rm).success := by
-  have ⟨inp_create, h_inp_create, h_sn, h_addrbob, h_Kbob⟩ := (create_note_actions_iff_note_discoverable h_kbob sn).1 h_note_in_scan
-  have ⟨h_note_exists, h_subchannel_exists⟩ := create_note_actions_implies h_inp_create
+  have ⟨inp_create, note_imp, h_sn, h_addrbob, h_Kbob⟩ := NoteImplies.from_scan_notes_for_recipient h_kbob h_note_in_scan
 
   have h_note_id : inp_create.note_id crypto = sn.note_id crypto := by rw [←h_sn]
 
@@ -35,7 +34,7 @@ theorem spendable_note
   have h_sn := ScannedNote.ext_iff.1 h_sn
   simp only at h_sn
 
-  have ⟨h_r, h_amount⟩ := note_amount_eq_amount h_inp_create
+  have ⟨h_r, h_amount⟩ := note_amount_eq_amount note_imp.in_create_note_actions
 
   unfold spend_note cancel_note
   intro inp
@@ -45,9 +44,11 @@ theorem spendable_note
     Bool.not_true, decide_eq_false_iff_not, decide_eq_true_eq]
 
   refine ⟨⟨?_, ?_, ?_, ?_, ?_⟩, ?_⟩
-  · rw [h_addrbob, h_Kbob] at h_subchannel_exists
-    simp only [h_sn] at h_subchannel_exists
-    exact h_subchannel_exists.1
+  · have := note_imp.subchannel.subchannel_hash
+    simp only [CreateSubchannelInput.subchannel_hash] at this
+    rw [h_addrbob, h_Kbob] at this
+    simp only [h_sn] at this
+    exact this
   · rwa [h_note_id] at h_r
   · rw [h_note_id] at h_amount
   · exact kbob.prop
@@ -129,7 +130,7 @@ theorem spendable_notes
         exact h_amount_ne_zero.1
       case h_not_canceled =>
         by_contra h_canceled
-        have ⟨cancel_inp, h_cancel_inp, h_note_id⟩ := cancel_note_actions_iff_note_canceled.1 h_canceled
+        have ⟨addrbob, amount, ⟨cancel_imp⟩⟩ := CancelImplies.from_note_canceled h_canceled
 
         have : cancel_note_actions crypto rm' = res₀.1 ++ (cancel_note_actions crypto rm) := by
           simp only [cancel_note_actions, h_actions, List.filterMap_append,
@@ -137,6 +138,7 @@ theorem spendable_notes
           conv in _ ∘ _ => intro x; simp only [Function.comp_apply]
           rw [List.filterMap_some]
 
+        have h_cancel_inp := cancel_imp.in_cancel_note_actions
         rw [this] at h_cancel_inp
         simp only [List.mem_append] at h_cancel_inp
 
@@ -144,16 +146,13 @@ theorem spendable_notes
         case inl h_cancel_inp =>
           dsimp only [res₀] at h_cancel_inp
           apply in_spend_notes at h_cancel_inp
-          simp only [h_note_id.1, List.mem_map] at h_cancel_inp
+          simp only [List.mem_map] at h_cancel_inp
           have ⟨sn', h_sn', h_note_id'⟩ := h_cancel_inp
           apply ScannedNote.note_id_eq at h_note_id'
           rw [h_note_id'] at h_sn'
           exact h_nodup.1 h_sn'
         case inr h_cancel_inp =>
-          have : note_canceled crypto rm.m sn.c sn.token sn.i₀ sn.i₁ ↑kbob := by
-            apply cancel_note_actions_iff_note_canceled.2
-            use cancel_inp
-
+          have := (CancelImplies.from_cancel_note_actions h_cancel_inp |>.some).h_note_canceled
           exact h_not_canceled.1 this
 
     let rm'' := rm'.add (.CancelNote (spend_note crypto rm' addrbob kbob sn)) h_success

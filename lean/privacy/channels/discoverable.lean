@@ -86,58 +86,31 @@ theorem channels_j_zero
 -----------------------------------------
 
 -- Channel exists → it is discoverable by scanning.
-theorem channels_are_discoverable {crypto: Crypto} {rm: ReachableMemory crypto} {c: ℕ}
-    (c_exists: channel_exists crypto rm c) :
-    ∃ addralice kalice addrbob, ∃ kbob: crypto.PrivateKeys,
-      c = crypto.hash [addralice, kalice, addrbob, (crypto.priv_to_pub kbob)] ∧
-      c ∈ scan_channels crypto rm addrbob kbob := by
-  revert rm
-  apply ReachableMemory.induction
-  case inv₀ => unfold channel_exists; simp [ReachableMemory.m]
+theorem ChannelImplies.scan {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateChannelInput}
+    (channel_imp: ChannelImplies rm inp) :
+    inp.c crypto ∈ scan_channels crypto rm inp.addrbob channel_imp.kbob := by
+  simp only [scan_channels, List.mem_map]
 
-  intro action rm ih success c_exists
-  cases action
-  case CreateChannel inp =>
-    obtain ⟨addralice, addrbob, Kbob, c_exists⟩ := c_exists
-    let info := create_channel_info crypto inp rm success
-    by_cases h₀ : crypto.hash [c, addralice, addrbob, Kbob] = inp.channel_hash crypto
-    case pos =>
-      have ⟨_, ⟨kbob, h_kbob, _⟩⟩ := channel_exists_implies_hash (rm:=rm.add (.CreateChannel inp) success) c_exists
-      use inp.addralice, inp.kalice, inp.addrbob, kbob
-      have h_Kbob : crypto.priv_to_pub kbob = inp.Kbob := by
-        replace h₀ := crypto.h_hash h₀
-        injections h₀
-        rwa [←h_kbob]
+  use channel_imp.j
+  constructor
+  · rw [List.mem_range]; exact channel_imp.h_j_lt
+  · rw [channel_imp.channel_enc]
+    rw [CreateChannelInput.enc, channel_imp.h_Kbob, crypto.dec_enc]
+    simp
 
-      simp only [ReachableMemory.add_m, run_action, ←info.h_m'] at *
-
-      constructor
-      · rw [h_Kbob]
-        replace h₀ := crypto.h_hash h₀
-        injections h₀
-      · simp only [scan_channels]
-        simp only [List.headD_eq_head?_getD, List.mem_map, List.mem_range]
-        use info.j
-        constructor
-        · rw [info.h_j, info.memory_diff₀]; omega
-        · rw [info.memory_diff₁, CreateChannelInput.enc, ←h_Kbob, crypto.dec_enc]
-          injection crypto.h_hash h₀ with h₀  _
-          simp only [List.head?_cons, Option.getD_some, h₀]
-    case neg =>
-      simp only [ReachableMemory.add_m, run_action, ←info.h_m'] at c_exists
-      rw [info.no_change _ _ (by simp [h₀])] at c_exists
-      have ⟨addralice, kalice, addrbob, kbob, ih⟩ := ih ⟨addralice, addrbob, Kbob, c_exists⟩
-      use addralice, kalice, addrbob, kbob, ih.1, scan_channels_monotone success ih.2
-
-  all_goals exact ih c_exists
-
--- Discoverable channel → channel_exists and c is linked to (addrbob, kbob).
-theorem discoverable_channel_implies_exists
+-- Discoverable channel → channel exists.
+theorem ChannelImplies.from_scan
     {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} {kbob: crypto.PrivateKeys} {c: ℕ}
     (k_kbob: rm.m .PublicKeys [addrbob] = crypto.priv_to_pub kbob)
     (h: c ∈ scan_channels crypto rm addrbob kbob) :
-    channel_exists crypto rm c ∧
-    ∃ addralice kalice, c = crypto.hash [addralice, kalice, addrbob, crypto.priv_to_pub kbob] := by
+    ∃ (inp: CreateChannelInput) (channel_imp: ChannelImplies rm inp),
+    inp.c crypto = c ∧ inp.addrbob = addrbob ∧ channel_imp.kbob = kbob := by
+  suffices h' : channel_exists crypto rm c ∧ ∃ addralice kalice, c = crypto.hash [addralice, kalice, addrbob, crypto.priv_to_pub kbob] from by
+    have ⟨h₀, ⟨addralice, kalice, h₁⟩⟩ := h'
+    have ⟨inp, channel_imp, h_c⟩ := ChannelImplies.from_channel_exists h₀
+    refine ⟨inp, channel_imp, by rw [←h_c], ?_⟩
+    simp [channel_imp.same_c_priv (h_c ▸ h₁)]
+
   revert rm
   apply ReachableMemory.induction
   case inv₀ => intro h_kbob h; trivial

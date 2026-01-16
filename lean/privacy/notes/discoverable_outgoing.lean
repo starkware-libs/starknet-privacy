@@ -42,20 +42,12 @@ theorem scan_outgoing_notes_for_recipient_implies
   exact h
 
 theorem notes_are_discoverable_outgoing
-    {crypto: Crypto} {rm: ReachableMemory crypto} {note_id: ℕ}
-    (h_exists: note_exists rm note_id) :
-    ∃ addralice kalice sn,
-      sn ∈ scan_outgoing_notes_for_recipient (.from rm) addralice kalice ∧
-      sn.note_id crypto = note_id := by
-  have ⟨sn, h_note_id, note_id_in_scan, subchannel_exists⟩ := note_exists_implies_for_channel crypto rm note_id h_exists
-
-  have ⟨h_token, h_channel_exists⟩ := subchannel_exists_implies subchannel_exists
-  have ⟨addralice, kalice, addrbob, kbob, h_sn_c, _⟩ := channels_are_discoverable h_channel_exists
-  rw [h_sn_c] at h_token h_channel_exists note_id_in_scan
-  have h_scan_outgoing_channels := outgoing_channels_are_discoverable h_channel_exists
-
-  refine ⟨addralice, kalice, sn, ?_, by simp [h_note_id]⟩
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
+    (note_imp: NoteImplies rm inp) :
+    inp.to_scanned_note crypto ∈ scan_outgoing_notes_for_recipient (.from rm) inp.addralice inp.kalice := by
+  have := note_imp.subchannel.channel.scan
 
   simp only [scan_outgoing_notes_for_recipient, List.bind_eq_flatMap, List.mem_flatMap]
-  use ⟨addrbob, crypto.priv_to_pub kbob⟩, h_scan_outgoing_channels
-  use sn.token, h_token, note_id_in_scan
+  refine ⟨⟨inp.addrbob, inp.Kbob⟩, ?_, inp.token, note_imp.subchannel.scan, note_imp.scan_for_channel⟩
+  rw [note_imp.h_kalice]
+  use outgoing_channels_are_discoverable note_imp.subchannel.channel.h_channel_exists

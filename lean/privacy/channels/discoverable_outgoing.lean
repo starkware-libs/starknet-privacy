@@ -71,6 +71,20 @@ theorem scan_outgoing_channels_monotone
       exact h₁
   all_goals exact h
 
+theorem scan_outgoing_channels_extends
+    {crypto: Crypto} {rm rm': ReachableMemory crypto} {addralice kalice: ℕ}
+    (h_extends: rm'.extends rm)
+    {item: ℕ × ℕ}
+    (h: item ∈ scan_outgoing_channels (.from rm) addralice kalice) :
+    item ∈ scan_outgoing_channels (.from rm') addralice kalice := by
+  revert rm'
+  apply invariant_induction_for_extends
+  case inv₀ => exact h
+
+  intro action rm' h_extends h success
+  apply scan_outgoing_channels_monotone success
+  exact h
+
 -----------------------------------------
 -- Channel exists implies discoverable --
 -----------------------------------------
@@ -80,60 +94,40 @@ theorem outgoing_channels_are_discoverable {crypto: Crypto} {rm: ReachableMemory
     {addralice kalice addrbob Kbob: ℕ}
     (c_exists: channel_exists crypto rm (crypto.hash [addralice, kalice, addrbob, Kbob])) :
     (addrbob, Kbob) ∈ scan_outgoing_channels (.from rm) addralice kalice := by
-  revert rm
-  apply ReachableMemory.induction
-  case inv₀ => simp [channel_exists, ReachableMemory.m]
+  have ⟨inp, channel_imp, h_c⟩ := ChannelImplies.from_channel_exists c_exists
+  have ⟨rm₀, success, h_extends⟩ := channel_imp.success
+  apply scan_outgoing_channels_extends h_extends
+  let info := create_channel_info crypto inp rm₀ success
+  simp only [scan_outgoing_channels, List.mem_map, List.mem_range,
+    Nat.lt_find_iff, ReachableMemory.add_m, run_action, ←info.h_m']
+  use inp.s
 
-  intro action rm ih success c_exists
-  cases action
-  case CreateChannel inp =>
-    by_cases h_channel_existed: channel_exists crypto rm (crypto.hash [addralice, kalice, addrbob, Kbob])
-    case pos =>
-      -- Channel existed before.
-      exact scan_outgoing_channels_monotone success (ih h_channel_existed)
-    case neg =>
-      have ⟨inp, h_inp, h_c⟩ := channel_exists_iff_CreateChannel.1 c_exists
+  simp only [channel_imp.same_c h_c]
+  rw [info.memory_diff₃, info.memory_diff₄, info.memory_diff₅]
+  refine ⟨?_, by simp⟩
 
-      cases h_inp
-      case tail h_inp =>
-        have := channel_exists_iff_CreateChannel.2 ⟨inp, h_inp, h_c⟩
+  intro s'
+  have ⟨sbound, h_contiguous⟩ := outgoing_channels_contiguous rm₀ addralice kalice
+
+  by_cases h_s': s' = inp.s
+  case pos =>
+    intro _
+    simp only [h_s', info.memory_diff₃]
+    exact info.r_ne_zero
+  case neg =>
+    cases info.prev_outgoing_exists
+    case inl h_prev => omega
+    case inr h_prev =>
+      intro h_s'_le
+      have := (h_contiguous (inp.s - 1)).2 (by simp only [channel_imp.same_c h_c]; exact h_prev)
+      have := (h_contiguous s').1 (by omega)
+
+      have h_ne : crypto.hash [inp.addralice, inp.kalice, s'] ≠ inp.outgoing_channel_id crypto := by
+        by_contra h_eq
+        apply crypto.h_hash at h_eq
+        injections h_eq
         contradiction
 
-      -- Channel was just added.
-      let info := create_channel_info crypto inp rm success
-      simp only [scan_outgoing_channels, List.mem_map, List.mem_range,
-        Nat.lt_find_iff, ReachableMemory.add_m, run_action, ←info.h_m']
-      use inp.s
-
-      have : addralice = inp.addralice ∧ kalice = inp.kalice ∧ addrbob = inp.addrbob ∧ Kbob = inp.Kbob := by
-        apply crypto.h_hash at h_c
-        injections
-        simp [*]
-
-      constructor
-      · intro s' h_s'
-        have ⟨sbound, h_contiguous⟩ := outgoing_channels_contiguous rm addralice kalice
-
-        by_cases h_s'': s' = inp.s
-        case pos =>
-          simp only [h_s'', this, info.memory_diff₃]
-          exact info.r_ne_zero
-        case neg =>
-          cases info.prev_outgoing_exists
-          case inl h_prev => omega
-          case inr h_prev =>
-            have := (h_contiguous (inp.s - 1)).2 (by simp only [this]; exact h_prev)
-            have := (h_contiguous s').1 (by omega)
-
-            have h_ne : crypto.hash [addralice, kalice, s'] ≠ inp.outgoing_channel_id crypto := by
-              by_contra h_eq
-              apply crypto.h_hash at h_eq
-              injections h_eq
-              contradiction
-
-            rw [info.no_change _ _ (by simp [h_ne])]
-            exact this
-
-      · simp [this, info.memory_diff₃, info.memory_diff₄, info.memory_diff₅]
-
-  all_goals exact ih c_exists
+      rw [info.no_change _ _ (by simp [h_ne])]
+      simp only [←channel_imp.same_c h_c]
+      exact this
