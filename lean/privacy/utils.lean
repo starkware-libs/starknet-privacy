@@ -98,6 +98,22 @@ theorem fiber_sum
 
     simp [List.sum_map_ite, this]
 
+-- If `x ∈ ℓ` is the only element satisfying the predicate `p`, then `ℓ.find? p = some x`.
+theorem find?_eq_some
+    {α: Type} {ℓ: List α} {p: α → Bool} {x: α}
+    (h_x_in_ℓ: x ∈ ℓ) (h_p_x: p x)
+    (h_inj: ∀ y ∈ ℓ, p y → x = y) :
+    ℓ.find? p = some x := by
+  cases h_y: ℓ.find? p
+  case none =>
+    exfalso
+    rw [List.find?_eq_none] at h_y
+    exact h_y x h_x_in_ℓ h_p_x
+  case some y =>
+    rw [List.find?_eq_some_iff_append] at h_y
+    have ⟨h_p_y, _, _, h⟩ := h_y
+    rw [h_inj y (by simp [h]) h_p_y]
+
 theorem filter_map_nodup (α β: Type) [DecidableEq β] (ℓ: List α) (f: α → Bool) (m: α → β)
     (h_nodup: ℓ |>.map m |>.Nodup) :
     ℓ |>.filter f |>.map m |>.Nodup := by

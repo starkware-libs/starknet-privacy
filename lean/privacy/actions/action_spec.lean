@@ -104,7 +104,13 @@ def create_note (crypto: Crypto) (inp: CreateNoteInput) (m: Memory) : List Serve
   ([
     .WriteOnce .Notes [note_id, 0] (crypto.pack inp.r (inp.enc crypto)),
     .Write .OpenNoteToken [note_id] (if inp.r = 1 then inp.token else 0),
-  ], inp.r ≠ 0 ∧ prev_note_exists ∧ inp.i₀ < crypto.MAX_I₀ ∧ subchannel_exists)
+    .Event (
+      if inp.r = 1 then
+        .CreateOpenNote note_id (crypto.enc crypto.council_pub_key [inp.addralice])
+      else
+        .None
+    ),
+  ], inp.r ≠ 0 ∧ prev_note_exists ∧ inp.i₀ < crypto.MAX_I₀ ∧ subchannel_exists ∧ (inp.r = 1 → inp.amount = 0))
 
 -----------------
 -- Cancel Note --

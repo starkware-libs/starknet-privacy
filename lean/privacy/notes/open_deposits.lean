@@ -102,7 +102,7 @@ theorem OpenDepositImplies.from_action
       h_note_id := h_note_id,
       h_r := h_r,
       h_token := by
-        rw [←info.open_note_token, ←h_note_id, note_imp.h_open_note h_r]
+        rw [←info.open_note_token, ←h_note_id, (note_imp.h_open_note h_r).1]
       value := by
         rw [ReachableMemory.add_m, run_action, ←info.h_m']
         rw [h_note_id, info.memory_diff₀]
@@ -141,6 +141,23 @@ theorem sum_deposits_for_note_id_eq_zero
   have ⟨open_deposit_imp⟩ := OpenDepositImplies.from_open_deposit_actions h'
   exact λ h'' ↦ h (h'' ▸ open_deposit_imp.h_note_id ▸ open_deposit_imp.created.h_note_exists)
 
+theorem sum_deposits_for_note_id_eq_zero₁
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
+    (note_imp: NoteImplies rm inp)
+    (h_r: inp.r ≠ 1) :
+    sum_deposits_for_note_id crypto rm (inp.note_id crypto) = 0 := by
+  unfold sum_deposits_for_note_id
+  convert List.sum_nil
+  simp only [List.map_eq_nil_iff, List.filter_eq_nil_iff, decide_eq_true_eq]
+  intro inp_deposit h' h_note_id
+  have ⟨open_deposit_imp⟩ := OpenDepositImplies.from_open_deposit_actions h'
+
+  have := note_imp.h_r
+  rw [←h_note_id, ←open_deposit_imp.h_note_id] at this
+  rw [open_deposit_imp.value] at this
+  rw [crypto.unpack_pack] at this
+  simp [←this] at h_r
+
 theorem sum_deposits_for_note_id_next
     {crypto: Crypto} {rm: ReachableMemory crypto} {note_id: ℕ}
     (success: (run_action crypto (.OpenDeposit inp) rm.m).success) :
@@ -155,3 +172,6 @@ theorem sum_deposits_for_note_id_next
   by_cases h : inp.note_id = note_id
   case pos => simp [h]
   case neg => simp [h]
+
+def is_open_note (crypto: Crypto) (m: Memory) (note_id: ℕ) : Bool :=
+  (crypto.unpack (m .Notes [note_id, 0])).1 = 1

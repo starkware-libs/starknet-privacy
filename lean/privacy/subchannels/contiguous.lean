@@ -68,4 +68,4 @@ theorem subchannels_contiguous
         omega
       rw [info.no_change _ _ (by simp) (by simp [this]) (by simp)]
       exact h k₁
-  all_goals intro h success; exact h
+  all_goals intro h success; try exact h
