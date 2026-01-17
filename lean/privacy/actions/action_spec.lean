@@ -42,10 +42,7 @@ abbrev CreateChannelInput.outgoing_channel_id (crypto: Crypto) (inp: CreateChann
   crypto.hash [inp.addralice, inp.kalice, inp.s]
 
 abbrev CreateChannelInput.enc_addrbob (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
-  crypto.hash [inp.addralice, inp.kalice, inp.r, 0] + inp.addrbob
-
-abbrev CreateChannelInput.enc_Kbob (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
-  crypto.hash [inp.addralice, inp.kalice, inp.r, 1] + inp.Kbob
+  crypto.hash [inp.addralice, inp.kalice, inp.r] + inp.addrbob
 
 def create_channel (crypto: Crypto) (inp: CreateChannelInput) (m: Memory) : List ServerAction × Bool :=
   let alice_registered := m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
@@ -56,7 +53,6 @@ def create_channel (crypto: Crypto) (inp: CreateChannelInput) (m: Memory) : List
     .ReadAssert .PublicKeys [inp.addrbob] inp.Kbob,
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 0] inp.r,
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 1] (inp.enc_addrbob crypto),
-    .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 2] (inp.enc_Kbob crypto),
   ], inp.Kbob ≠ 0 ∧ alice_registered ∧ inp.kalice ∈ crypto.PrivateKeys ∧ inp.r ≠ 0 ∧ prev_outgoing_exists)
 
 -----------------------
