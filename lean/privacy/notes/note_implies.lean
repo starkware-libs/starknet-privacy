@@ -91,15 +91,15 @@ theorem NoteImplies.from_action
   cases h
   case head =>
     let info := create_note_info crypto inp rm success
-    have ⟨addralice, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_hash_exists info.subchannel_exists
-    have h_addralice: inp.addralice = addralice := by
+    have ⟨addralice, Kbob, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_hash_exists info.subchannel_exists
+    have ⟨h_addralice, h_Kbob⟩: inp.addralice = addralice ∧ inp.Kbob = Kbob := by
       simp [subchannel_imp.channel.same_c (Eq.symm subchannel_imp.h_c)]
 
     constructor; constructor
 
     case h_action => simp
     case h_i₀ => exact info.i₀_lt_MAX_I₀
-    case subchannel => rw [h_addralice]; exact Nonempty.some (subchannel_imp.next success)
+    case subchannel => rw [h_addralice, h_Kbob]; exact Nonempty.some (subchannel_imp.next success)
     case h_note_exists =>
       rw [ReachableMemory.add_m, run_action, ←info.h_m', note_exists, info.memory_diff₀]
       exact crypto.pack_nz info.r_ne_zero

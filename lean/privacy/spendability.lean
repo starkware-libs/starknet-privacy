@@ -43,16 +43,17 @@ theorem spendable_note
   simp only [ne_eq, Bool.decide_and, decide_not, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
     Bool.not_true, decide_eq_false_iff_not, decide_eq_true_eq]
 
-  refine ⟨⟨?_, ?_, ?_, ?_, ?_⟩, ?_⟩
+  refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
   · have := note_imp.subchannel.subchannel_hash
     simp only [CreateSubchannelInput.subchannel_hash] at this
-    rw [h_addrbob, h_Kbob] at this
+    rw [h_addrbob] at this
     simp only [h_sn] at this
     exact this
   · rwa [h_note_id] at h_r
   · rw [h_note_id] at h_amount
   · exact kbob.prop
   · exact h_amount_ne_zero
+  · exact h_kbob
   · unfold note_canceled at h_not_canceled
     simp at h_not_canceled
     exact h_not_canceled

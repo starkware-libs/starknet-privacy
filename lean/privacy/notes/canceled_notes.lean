@@ -102,7 +102,7 @@ theorem CancelImplies.from_action
   case head =>
     let info := cancel_note_info crypto inp rm success
     have ⟨inp_create, note_imp, h_note_id⟩ := NoteImplies.from_note_exists info.r_ne_zero
-    have ⟨addralice, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_hash_exists info.subchannel_exists
+    have ⟨addralice, Kbob, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_hash_exists info.subchannel_exists
 
     let res : CancelImplies₀ (rm.add (.CancelNote inp) success) inp := {
       h_action := by simp
@@ -120,12 +120,17 @@ theorem CancelImplies.from_action
       injections
       simp only [*, true_and]
 
-      have := calc subchannel_imp.channel.c
+      have h_c := calc subchannel_imp.channel.c
         _ = inp.c := by simp [subchannel_imp.h_c]
         _ = inp_create.c crypto := by assumption
-      have ⟨_, _, h_addrbob, h_kbob⟩ := subchannel_imp.channel.same_c this
-      simp only [CancelNoteInput.Kbob] at h_addrbob h_kbob
-      rw [←h_addrbob, ←h_kbob]
+      have ⟨_, _, h_addrbob, h_kbob⟩ := subchannel_imp.channel.same_c h_c
+      simp only at h_addrbob h_kbob
+
+      have h_Kbob_eq : Kbob = crypto.priv_to_pub inp.kbob := by
+        rw [←CancelNoteInput.Kbob, ←info.bob_registered]
+        rw [subchannel_imp.channel.bob_registered.public_key]
+        rw [←subchannel_imp.channel.h_Kbob]
+      rw [←h_addrbob, ←h_Kbob_eq, ←h_kbob]
 
     exact ⟨{
       toCancelImplies₀ := res,
@@ -148,7 +153,7 @@ theorem CancelImplies.from_note_canceled
   cases action
   case CancelNote inp =>
     let info := cancel_note_info crypto inp rm success
-    have ⟨kalice, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_hash_exists info.subchannel_exists
+    have ⟨addralice, Kbob, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_hash_exists info.subchannel_exists
     by_cases h_is_same : crypto.hash [c, token, i₀, i₁, kbob] = inp.nullifier crypto
     case pos =>
       use inp.addrbob, inp.amount

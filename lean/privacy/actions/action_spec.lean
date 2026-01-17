@@ -33,7 +33,7 @@ abbrev CreateChannelInput.enc (crypto: Crypto) (inp: CreateChannelInput) : ℕ :
   crypto.enc inp.Kbob [inp.c crypto, inp.addralice]
 
 abbrev CreateChannelInput.channel_hash (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
-  crypto.hash [inp.c crypto, inp.addralice, inp.addrbob, inp.Kbob]
+  crypto.hash [inp.c crypto, inp.addralice, inp.addrbob]
 
 abbrev CreateChannelInput.prev_outgoing_channel_id (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
   crypto.hash [inp.addralice, inp.kalice, inp.s - 1]
@@ -60,7 +60,7 @@ def create_channel (crypto: Crypto) (inp: CreateChannelInput) (m: Memory) : List
 -----------------------
 
 structure CreateSubchannelInput where
-  (c addralice addrbob Kbob token k₀ k₁ r: ℕ)
+  (c addralice addrbob token k₀ k₁ r: ℕ)
 
 abbrev CreateSubchannelInput.subchannel_id (crypto: Crypto) (inp: CreateSubchannelInput) : ℕ :=
   crypto.hash [inp.c, inp.k₀, inp.k₁]
@@ -69,10 +69,10 @@ abbrev CreateSubchannelInput.enc (crypto: Crypto) (inp: CreateSubchannelInput) :
   crypto.hash [inp.c, inp.r] + inp.token
 
 abbrev CreateSubchannelInput.subchannel_hash (crypto: Crypto) (inp: CreateSubchannelInput) : ℕ :=
-  crypto.hash [inp.c, inp.addrbob, inp.Kbob, inp.token]
+  crypto.hash [inp.c, inp.addrbob, inp.token]
 
 def create_subchannel (crypto: Crypto) (inp: CreateSubchannelInput) (m: Memory) : List ServerAction × Bool :=
-  let channel_exists := m .ChannelHashes [crypto.hash [inp.c, inp.addralice, inp.addrbob, inp.Kbob]] ≠ 0
+  let channel_exists := m .ChannelHashes [crypto.hash [inp.c, inp.addralice, inp.addrbob]] ≠ 0
   let prev_subchannel_exists := inp.k₁ = 0 ∨ m .SubchannelTokens [crypto.hash [inp.c, inp.k₀, inp.k₁ - 1], 0] != 0
   ([
     .WriteOnce .SubchannelTokens [inp.subchannel_id crypto, 0] inp.r,
@@ -99,7 +99,7 @@ abbrev CreateNoteInput.enc (crypto: Crypto) (inp: CreateNoteInput) : ℕ :=
 def create_note (crypto: Crypto) (inp: CreateNoteInput) (m: Memory) : List ServerAction × Bool :=
   let c := inp.c crypto
   let note_id := inp.note_id crypto
-  let subchannel_exists := m .SubchannelHashes [crypto.hash [c, inp.addrbob, inp.Kbob, inp.token]] ≠ 0
+  let subchannel_exists := m .SubchannelHashes [crypto.hash [c, inp.addrbob, inp.token]] ≠ 0
   let prev_note_exists := inp.i₁ = 0 ∨ m .Notes [crypto.hash [c, inp.token, inp.i₀, inp.i₁ - 1], 0] ≠ 0
   ([
     .WriteOnce .Notes [note_id, 0] (crypto.pack inp.r (inp.enc crypto)),
@@ -126,12 +126,13 @@ abbrev CancelNoteInput.Kbob (crypto: Crypto) (inp: CancelNoteInput) : ℕ :=
   crypto.priv_to_pub inp.kbob
 
 def cancel_note (crypto: Crypto) (inp: CancelNoteInput) (m: Memory) : List ServerAction × Bool :=
-  let subchannel_exists := m .SubchannelHashes [crypto.hash [inp.c, inp.addrbob, inp.Kbob crypto, inp.token]] ≠ 0
+  let subchannel_exists := m .SubchannelHashes [crypto.hash [inp.c, inp.addrbob, inp.token]] ≠ 0
+  let bob_registered := m .PublicKeys [inp.addrbob] = inp.Kbob crypto
   let r := m .Notes [inp.note_id crypto, 0]
   let dec_amount := note_amount crypto m (inp.note_id crypto) inp.c
   ([
     .WriteOnce .Nullifiers [inp.nullifier crypto] 1,
-  ], subchannel_exists ∧ r ≠ 0 ∧ dec_amount = inp.amount ∧ inp.kbob ∈ crypto.PrivateKeys ∧ inp.amount ≠ 0)
+  ], subchannel_exists ∧ r ≠ 0 ∧ dec_amount = inp.amount ∧ inp.kbob ∈ crypto.PrivateKeys ∧ inp.amount ≠ 0 ∧ bob_registered)
 
 -------------
 -- Deposit --

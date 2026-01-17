@@ -267,19 +267,22 @@ theorem cancel_note_immutable
     {crypto: Crypto} {m₀ m₁: Memory} (inp: CancelNoteInput)
     (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelHashes x))
     (imm₂: ∀ x, immutable_fn m₀ m₁ (note_modified_value_fn crypto x))
+    (imm₃: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .PublicKeys x))
     (success: (run_action₀ crypto (.CancelNote inp) m₀).2) :
     run_action₀ crypto (.CancelNote inp) m₁ = run_action₀ crypto (.CancelNote inp) m₀ := by
   dsimp only [run_action₀, cancel_note] at *
   rw [decide_eq_true_iff] at success
-  have ⟨h₀, h₁, h₂, h₃, h₅⟩ := success
+  have ⟨h₀, h₁, h₂, h₃, h₅, h₆⟩ := success
 
-  dsimp only [immutable_fn, mem_cell_fn] at imm₀ imm₂
+  dsimp only [immutable_fn, mem_cell_fn] at imm₀ imm₂ imm₃
   unfold note_modified_value_fn at imm₂
 
   apply Prod.ext
   · trivial
   · simp only
     rw [imm₀ _ h₀]
+    rw [imm₃ [inp.addrbob] (by rw [h₆]; exact crypto.zero_not_public_key ⟨inp.kbob, h₃⟩)]
+
     dsimp only [note_amount]
 
     set val₀ := m₀ MemoryType.Notes [inp.note_id crypto, 0] with h_val₀
@@ -316,7 +319,7 @@ theorem run_action₀_immutable
   case CreateChannel inp => exact create_channel_immutable inp imm.imm₃ imm.imm₄ success
   case CreateSubchannel inp => exact create_subchannel_immutable inp imm.imm₀ imm.imm₁ success
   case CreateNote inp => exact create_note_immutable inp imm.imm₂ imm.imm₅ success
-  case CancelNote inp => exact cancel_note_immutable inp imm.imm₂ imm.imm₆ success
+  case CancelNote inp => exact cancel_note_immutable inp imm.imm₂ imm.imm₆ imm.imm₃ success
   case OpenDeposit inp => trivial
 
 theorem ImmutableCells.of_extends

@@ -140,7 +140,7 @@ theorem ChannelImplies.from_scan
           simp [channel_decryption]
         constructor
         · unfold channel_exists
-          use inp.addralice, inp.addrbob, inp.Kbob
+          use inp.addralice, inp.addrbob
           simp [h_c, info.memory_diff₂]
         · use inp.addralice, inp.kalice
           rw [h_c, ←h_Kbob, h_bob]
