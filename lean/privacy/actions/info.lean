@@ -67,15 +67,13 @@ structure CreateChannelInfo (crypto: Crypto) (inp: CreateChannelInput) (m: Memor
     (t, x) ≠ (.Channels, [inp.addrbob, j]) ∧
     (t, x) ≠ (.ChannelHashes, [inp.channel_hash crypto]) ∧
     (t, x) ≠ (.OutgoingChannels, [inp.outgoing_channel_id crypto, 0]) ∧
-    (t, x) ≠ (.OutgoingChannels, [inp.outgoing_channel_id crypto, 1]) ∧
-    (t, x) ≠ (.OutgoingChannels, [inp.outgoing_channel_id crypto, 2])
+    (t, x) ≠ (.OutgoingChannels, [inp.outgoing_channel_id crypto, 1])
   ) → m' t x = m t x
   memory_diff₀: m' .ChannelsJ [inp.addrbob] = m .ChannelsJ [inp.addrbob] + 1
   memory_diff₁: m' .Channels [inp.addrbob, j] = inp.enc crypto
   memory_diff₂: m' .ChannelHashes [inp.channel_hash crypto] = 1
   memory_diff₃: m' .OutgoingChannels [inp.outgoing_channel_id crypto, 0] = inp.r
   memory_diff₄: m' .OutgoingChannels [inp.outgoing_channel_id crypto, 1] = inp.enc_addrbob crypto
-  memory_diff₅: m' .OutgoingChannels [inp.outgoing_channel_id crypto, 2] = inp.enc_Kbob crypto
 
 def create_channel_info
   (crypto: Crypto) (inp: CreateChannelInput) (m: Memory)
@@ -94,7 +92,7 @@ def create_channel_info
   let ⟨bob_registered, alice_registered, kalice_valid, r_ne_zero, prev_outgoing_exists⟩ := success₀
 
   simp [ServerAction.run_all, create_channel, ServerAction.run, List.foldl_cons, List.foldl_nil, write_ne] at success₁
-  have ⟨⟨⟨⟨channel_didnt_exist, h_Kbob⟩, outgoing_channel_didnt_exist⟩, _⟩, _⟩ := success₁
+  have ⟨⟨⟨channel_didnt_exist, h_Kbob⟩, outgoing_channel_didnt_exist⟩, _⟩ := success₁
 
   exact {
     m' := m'
@@ -110,8 +108,8 @@ def create_channel_info
     prev_outgoing_exists := prev_outgoing_exists,
     outgoing_channel_didnt_exist := outgoing_channel_didnt_exist,
     no_change := by
-      intro t x ⟨h₀, h₁, h₂, h₃, h₄, h₅⟩
-      simp [m', h₂, h₃, h₄, h₅, create_channel, ServerAction.run_all, ServerAction.run]
+      intro t x ⟨h₀, h₁, h₂, h₃, h₄⟩
+      simp [m', h₂, h₃, h₄, create_channel, ServerAction.run_all, ServerAction.run]
       rw [write_ne h₁]
       simp [h₀]
     memory_diff₀ := by simp [m', create_channel, ServerAction.run_all, ServerAction.run]
@@ -121,7 +119,6 @@ def create_channel_info
     memory_diff₂ := by simp [m', create_channel, ServerAction.run_all, ServerAction.run]
     memory_diff₃ := by simp [m', create_channel, ServerAction.run_all, ServerAction.run]
     memory_diff₄ := by simp [m', create_channel, ServerAction.run_all, ServerAction.run]
-    memory_diff₅ := by simp [m', create_channel, ServerAction.run_all, ServerAction.run]
   }
 
 -----------------------
