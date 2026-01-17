@@ -203,6 +203,9 @@ async fn test_reorg_notification() {
         .await
         .unwrap();
 
+    // Wait a bit to make sure the indexer has time to index the blocks before making a reorg
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
     // Abort to block1 (simulates reorg)
     devnet.abort_blocks(&block1).await.unwrap();
     indexer
@@ -330,6 +333,7 @@ async fn test_blocks_persisted_and_head_matches_latest() {
 struct HealthResponse {
     status: String,
     chain_head: Option<ChainHead>,
+    indexed_state: Option<IndexedState>,
     lag_secs: u64,
 }
 
@@ -338,6 +342,12 @@ struct ChainHead {
     block_number: u64,
     block_hash: String,
     timestamp: u64,
+}
+
+#[derive(Deserialize)]
+struct IndexedState {
+    block_number: u64,
+    block_hash: String,
 }
 
 #[tokio::test]
@@ -357,12 +367,15 @@ async fn test_health_endpoint_returns_ok() {
         .await
         .unwrap();
 
-    // Create a block so we have a chain head
+    // Create a block and wait for it to be processed
     devnet.create_block().await.unwrap();
     indexer
         .wait_for_log("New block #", Duration::from_secs(5))
         .await
         .unwrap();
+
+    // Give indexer time to complete state diff indexing
+    tokio::time::sleep(Duration::from_millis(500)).await;
 
     // Call health endpoint
     let client = reqwest::Client::new();
@@ -376,11 +389,23 @@ async fn test_health_endpoint_returns_ok() {
 
     let health: HealthResponse = resp.json().await.expect("Failed to parse health response");
     assert_eq!(health.status, "OK");
+
+    // Verify chain_head
     assert!(health.chain_head.is_some());
     let chain_head = health.chain_head.unwrap();
-    assert!(chain_head.block_number > 0);
+    assert!(chain_head.block_number >= 1, "expected at least 1 block");
     assert!(chain_head.block_hash.starts_with("0x"));
     assert!(chain_head.timestamp > 0);
+
+    // Verify indexed_state is present
+    assert!(health.indexed_state.is_some());
+    let indexed_state = health.indexed_state.unwrap();
+    assert!(indexed_state.block_hash.starts_with("0x"));
+    // Indexed state should be at or close to chain head
+    assert!(
+        indexed_state.block_number <= chain_head.block_number,
+        "indexed state should not exceed chain head"
+    );
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();

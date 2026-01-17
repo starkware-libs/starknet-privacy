@@ -13,7 +13,7 @@ use thiserror::Error;
 use tokio::sync::broadcast;
 use tracing::{error, info};
 
-use crate::store::{Head, SqliteStore, Store, StoreError};
+use crate::store::{SqliteStore, Store};
 
 /// Default maximum lag threshold for health check (5 seconds).
 const DEFAULT_HEALTH_MAX_LAG_SECS: u64 = 5;
@@ -24,9 +24,6 @@ const DEFAULT_API_HOST: &str = "127.0.0.1:8080";
 /// Errors that can occur during API server operation.
 #[derive(Debug, Error)]
 pub enum ApiServerError {
-    /// Failed to open database.
-    #[error("Failed to open database: {0}")]
-    Database(#[from] StoreError),
     /// Failed to bind to address.
     #[error("Failed to bind to {0}: {1}")]
     Bind(String, std::io::Error),
@@ -62,8 +59,24 @@ struct AppState {
 #[derive(Serialize)]
 struct HealthResponse {
     status: &'static str,
-    chain_head: Option<Head>,
+    chain_head: Option<ChainHead>,
+    indexed_state: Option<IndexedStateInfo>,
     lag_secs: u64,
+}
+
+/// Chain head info.
+#[derive(Serialize)]
+struct ChainHead {
+    block_number: u64,
+    block_hash: String,
+    timestamp: u64,
+}
+
+/// Indexed state info.
+#[derive(Serialize)]
+struct IndexedStateInfo {
+    block_number: u64,
+    block_hash: String,
 }
 
 /// API server that exposes health endpoint.
@@ -98,8 +111,7 @@ impl ApiServer {
         let api_host = self.config.api_host.clone();
         info!("API server starting on {}", api_host);
 
-        let store = SqliteStore::reader(&self.db_path).await?;
-
+        let store = SqliteStore::reader(&self.db_path);
         let state = Arc::new(AppState {
             store,
             config: self.config,
@@ -146,6 +158,7 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 Json(HealthResponse {
                     status: "UNHEALTHY",
                     chain_head: None,
+                    indexed_state: None,
                     lag_secs: 0,
                 }),
             );
@@ -161,13 +174,25 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
                 Json(HealthResponse {
                     status: "UNHEALTHY",
                     chain_head: None,
+                    indexed_state: None,
                     lag_secs: 0,
                 }),
             );
         }
     };
 
-    let (status, lag_secs) = match &head {
+    let indexed_state = match conn.get_indexed_state().await {
+        Ok(state) => state.map(|s| IndexedStateInfo {
+            block_number: s.block_height,
+            block_hash: format!("{:#066x}", s.block_hash),
+        }),
+        Err(e) => {
+            error!("Failed to get indexed state for health check: {}", e);
+            None
+        }
+    };
+
+    let (status, lag_secs, chain_head) = match head {
         Some(h) => {
             let lag = now_secs.saturating_sub(h.timestamp);
             let status = if lag <= state.config.health_max_lag_secs {
@@ -175,10 +200,15 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
             } else {
                 "UNHEALTHY"
             };
-            (status, lag)
+            let chain_head = ChainHead {
+                block_number: h.block_number,
+                block_hash: h.block_hash,
+                timestamp: h.timestamp,
+            };
+            (status, lag, Some(chain_head))
         }
         // No head yet means service is still initializing
-        None => ("UNHEALTHY", now_secs),
+        None => ("UNHEALTHY", now_secs, None),
     };
 
     let status_code = if status == "OK" {
@@ -191,7 +221,8 @@ async fn health(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         status_code,
         Json(HealthResponse {
             status,
-            chain_head: head,
+            chain_head,
+            indexed_state,
             lag_secs,
         }),
     )

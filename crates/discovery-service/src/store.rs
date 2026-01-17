@@ -38,6 +38,13 @@ pub struct Head {
     pub timestamp: u64,
 }
 
+/// Current indexed state for state diffs (separate from chain head).
+#[derive(Debug, Clone)]
+pub struct IndexedState {
+    pub block_height: u64,
+    pub block_hash: Felt,
+}
+
 /// Storage operations for the discovery service.
 #[async_trait::async_trait]
 pub trait Store: Send + Sync {
@@ -45,11 +52,27 @@ pub trait Store: Send + Sync {
     async fn store_block(&mut self, height: u64, hash: Felt) -> Result<(), StoreError>;
 
     /// Update the head with height, hash, and timestamp (Unix seconds).
-    async fn set_head(&mut self, height: u64, hash: Felt, timestamp: u64) -> Result<(), StoreError>;
+    async fn set_head(&mut self, height: u64, hash: Felt, timestamp: u64)
+        -> Result<(), StoreError>;
 
     /// Get current head information.
     /// Returns None if no head has been set yet.
     async fn get_head(&mut self) -> Result<Option<Head>, StoreError>;
+
+    /// Get the current indexed state (separate from chain head).
+    /// Returns None if no state has been indexed yet.
+    async fn get_indexed_state(&mut self) -> Result<Option<IndexedState>, StoreError>;
+
+    /// Set the indexed state height and hash.
+    async fn set_indexed_state(&mut self, height: u64, hash: Felt) -> Result<(), StoreError>;
+
+    /// Batch insert storage diffs for a block.
+    /// Each entry is (key, value).
+    async fn batch_insert_storage_diffs(
+        &mut self,
+        height: u64,
+        entries: &[(Felt, Felt)],
+    ) -> Result<(), StoreError>;
 
     /// Commit changes.
     async fn commit(&mut self) -> Result<(), StoreError>;
@@ -85,19 +108,17 @@ impl SqliteStore {
         Ok(store)
     }
 
-    /// Create a reader instance (multiple concurrent connections).
-    pub async fn reader<P: AsRef<Path>>(path: P) -> Result<Self, StoreError> {
+    /// Create a reader instance (multiple concurrent connections, lazy connect).
+    pub fn reader<P: AsRef<Path>>(path: P) -> Self {
         let options = SqliteConnectOptions::new()
             .filename(path.as_ref())
-            .read_only(true)
-            .busy_timeout(std::time::Duration::from_millis(SQLITE_BUSY_TIMEOUT_MS));
+            .read_only(true);
 
         let pool = SqlitePoolOptions::new()
             .max_connections(SQLITE_MAX_READERS)
-            .connect_with(options)
-            .await?;
+            .connect_lazy_with(options);
 
-        Ok(Self { pool })
+        Self { pool }
     }
 
     /// Acquire a connection from the pool.
@@ -134,6 +155,24 @@ impl SqliteStore {
             .execute(&self.pool)
             .await?;
 
+        sqlx::query(
+            r#"
+            CREATE TABLE IF NOT EXISTS storage_diffs (
+                block_height INTEGER NOT NULL,
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            "#,
+        )
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"CREATE INDEX IF NOT EXISTS idx_storage_diffs_block_height ON storage_diffs (block_height);"#,
+        )
+        .execute(&self.pool)
+        .await?;
+
         Ok(())
     }
 
@@ -159,7 +198,12 @@ impl Store for PoolConnection<Sqlite> {
         Ok(())
     }
 
-    async fn set_head(&mut self, height: u64, hash: Felt, timestamp: u64) -> Result<(), StoreError> {
+    async fn set_head(
+        &mut self,
+        height: u64,
+        hash: Felt,
+        timestamp: u64,
+    ) -> Result<(), StoreError> {
         sqlx::query(
             "INSERT OR REPLACE INTO meta (key, value) \
             VALUES ('head_height', ?), ('head_hash', ?), ('head_timestamp', ?)",
@@ -206,6 +250,69 @@ impl Store for PoolConnection<Sqlite> {
             })),
             _ => Ok(None),
         }
+    }
+
+    async fn get_indexed_state(&mut self) -> Result<Option<IndexedState>, StoreError> {
+        let rows = sqlx::query(
+            "SELECT key, value FROM meta WHERE key IN ('indexed_height', 'indexed_hash')",
+        )
+        .fetch_all(self.deref_mut())
+        .await?;
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let mut height: Option<u64> = None;
+        let mut hash: Option<Felt> = None;
+
+        for row in rows {
+            let key: String = row.get("key");
+            let value: String = row.get("value");
+            match key.as_str() {
+                "indexed_height" => height = value.parse().ok(),
+                "indexed_hash" => hash = Felt::from_hex(&value).ok(),
+                _ => {}
+            }
+        }
+
+        match (height, hash) {
+            (Some(block_height), Some(block_hash)) => Ok(Some(IndexedState {
+                block_height,
+                block_hash,
+            })),
+            _ => Ok(None),
+        }
+    }
+
+    async fn set_indexed_state(&mut self, height: u64, hash: Felt) -> Result<(), StoreError> {
+        sqlx::query(
+            "INSERT OR REPLACE INTO meta (key, value) \
+            VALUES ('indexed_height', ?), ('indexed_hash', ?)",
+        )
+        .bind(height.to_string())
+        .bind(format!("{:#066x}", hash))
+        .execute(self.deref_mut())
+        .await?;
+        Ok(())
+    }
+
+    async fn batch_insert_storage_diffs(
+        &mut self,
+        height: u64,
+        entries: &[(Felt, Felt)],
+    ) -> Result<(), StoreError> {
+        for (key, value) in entries {
+            sqlx::query(
+                "INSERT OR REPLACE INTO storage_diffs (block_height, key, value) VALUES (?, ?, ?)",
+            )
+            .bind(height as i64)
+            .bind(format!("{:#066x}", key))
+            .bind(format!("{:#066x}", value))
+            .execute(self.deref_mut())
+            .await?;
+        }
+        Ok(())
     }
 
     async fn commit(&mut self) -> Result<(), StoreError> {

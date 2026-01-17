@@ -5,6 +5,7 @@ use discovery_service::api_server::{ApiServer, ApiServerConfig};
 use discovery_service::indexer::{Indexer, IndexerConfig};
 use discovery_service::shutdown::Shutdown;
 use discovery_service::store::SqliteStore;
+use starknet::core::types::Felt;
 use tokio::task::JoinHandle;
 use tracing::{error, info, subscriber::set_global_default};
 use tracing_subscriber::filter::EnvFilter;
@@ -52,8 +53,26 @@ async fn main() {
     if let Ok(ws_url) = std::env::var("WS_URL") {
         indexer_config.ws_url = ws_url;
     }
+    if let Ok(rpc_url) = std::env::var("RPC_URL") {
+        indexer_config.rpc_url = rpc_url;
+    }
     if let Ok(db_path) = std::env::var("DB_PATH") {
         indexer_config.db_path = db_path;
+    }
+    if let Ok(addr) = std::env::var("CONTRACT_ADDRESS") {
+        indexer_config.contract_address =
+            Felt::from_hex(&addr).expect("Invalid CONTRACT_ADDRESS hex format");
+    }
+    if let Ok(starting) = std::env::var("STARTING_BLOCK") {
+        // Format: "height:hash" or just "height"
+        let parts: Vec<&str> = starting.split(':').collect();
+        let height: u64 = parts[0].parse().expect("Invalid STARTING_BLOCK height");
+        let hash = if parts.len() > 1 {
+            Felt::from_hex(parts[1]).expect("Invalid STARTING_BLOCK hash")
+        } else {
+            Felt::ZERO
+        };
+        indexer_config.starting_block = Some((height, hash));
     }
     let db_path = indexer_config.db_path.clone();
 
