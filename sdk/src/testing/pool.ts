@@ -3,23 +3,13 @@
  * Consumes ClientAction[] (the unwrapped action inputs from the compiler).
  */
 
-import type {
-  Amount,
-  Note,
-  NoteId,
-  Open,
-  PrivateRegistry,
-  StarknetAddress,
-  StarknetAddressBigint,
-} from "../interfaces.js";
+import type { Amount, Note, Open, PrivateRegistry, StarknetAddressBigint } from "../interfaces.js";
 import { Witness } from "../interfaces.js";
-import { BigNumberish } from "starknet";
 import { Channel } from "../internal/channel.js";
 import {
   encryptChannelInfo,
   encryptSymmetric,
   decryptSymmetric,
-  toBigInt,
   type EncChannelInfo,
   type Hash,
   type PrivateKey as ViewingKey,
@@ -44,7 +34,7 @@ type OpenNote = {
 
 type TrackingState = {
   channels: AddressMap<Channel>;
-  notes: AddressMap<Map<NoteId, Note>>;
+  notes: AddressMap<Map<bigint, Note>>;
 };
 
 /** Snapshot of PrivacyPool state */
@@ -60,12 +50,15 @@ export type PrivacyPoolSnapshot = {
 };
 
 class ChannelsMap extends AdvancedMap<
-  { address: StarknetAddress; publicKey: PublicKey },
+  { address: bigint; publicKey: PublicKey },
   EncChannelInfo[],
   string
 > {
   constructor() {
-    super({ keyConverter: (key) => `${key.address}:${key.publicKey}`, defaultFactory: () => [] });
+    super({
+      keyConverter: (key) => `${key.address}:${key.publicKey}`,
+      defaultFactory: () => [],
+    });
   }
 }
 
@@ -85,14 +78,14 @@ export class PrivacyPool implements MockContract {
   // state tracking, not part of the official spec
   private tracking = new AddressMap<TrackingState>(() => ({
     channels: new AddressMap<Channel>(),
-    notes: new AddressMap<Map<NoteId, Note>>(() => new Map()),
+    notes: new AddressMap<Map<bigint, Note>>(() => new Map<bigint, Note>()),
   }));
 
   // Allow dynamic access for MockContract interface
   [key: string]: unknown;
 
   constructor(
-    public address: StarknetAddress,
+    public address: bigint,
     private contracts: MockContracts,
     private validateExecutionBalances: boolean = true
   ) {}
@@ -122,9 +115,9 @@ export class PrivacyPool implements MockContract {
         channelsCopy.set(addr, channel.clone());
       }
 
-      const notesCopy = new AddressMap<Map<NoteId, Note>>(() => new Map());
+      const notesCopy = new AddressMap<Map<bigint, Note>>(() => new Map<bigint, Note>());
       for (const [token, notesMap] of data.notes.entries()) {
-        notesCopy.set(token, new Map(notesMap.entries()));
+        notesCopy.set(token, new Map<bigint, Note>(notesMap.entries()));
       }
 
       trackingSnapshot.set(user, {
@@ -155,7 +148,7 @@ export class PrivacyPool implements MockContract {
     this.channels.clear();
     for (const [strKey, value] of s.channels) {
       const [address, publicKey] = strKey.split(":");
-      this.channels.set({ address, publicKey: BigInt(publicKey) }, value);
+      this.channels.set({ address: BigInt(address), publicKey: BigInt(publicKey) }, value);
     }
 
     // Regular Maps/Sets can be replaced directly
@@ -173,7 +166,7 @@ export class PrivacyPool implements MockContract {
         channelsMap.set(addr, channel.clone());
       }
 
-      const notesMap = new AddressMap<Map<NoteId, Note>>(() => new Map());
+      const notesMap = new AddressMap<Map<bigint, Note>>(() => new Map<bigint, Note>());
       for (const [token, notes] of data.notes) {
         notesMap.set(token, new Map(notes.entries()));
       }
@@ -187,23 +180,29 @@ export class PrivacyPool implements MockContract {
 
   // ============ Public Methods ============
 
-  isRegistered(address: StarknetAddress): boolean {
+  isRegistered(address: bigint): boolean {
     return this.publicKeys.has(address);
   }
 
-  getPublicKey(address: StarknetAddress): PublicKey {
+  getPublicKey(address: bigint): PublicKey {
     this.assertRegistered(address);
     return this.publicKeys.get(address)!;
   }
 
-  getChannels(address: StarknetAddress): EncChannelInfo[] {
-    return this.channels.get({ address: address, publicKey: this.getPublicKey(address) })!;
+  getChannels(address: bigint): EncChannelInfo[] {
+    const pk = this.getPublicKey(address);
+    const result = this.channels.get({ address, publicKey: pk })!;
+    debugLog("pool", "getChannels debug", {
+      address: hex(address),
+      publicKey: hex(pk),
+      resultLength: result?.length ?? 0,
+      allKeys: [...this.channels.keys()],
+    });
+    return result;
   }
 
-  doesChannelExist(channelKey: BigNumberish, from: StarknetAddress, to: StarknetAddress): boolean {
-    return this.channelIds.has(
-      hashes.channelId(toBigInt(channelKey), from, to, this.getPublicKey(to))
-    );
+  doesChannelExist(channelKey: bigint, from: bigint, to: bigint): boolean {
+    return this.channelIds.has(hashes.channelId(channelKey, from, to, this.getPublicKey(to)));
   }
 
   getToken(channelKey: Hash, nonce: number): StarknetAddressBigint | false {
@@ -213,17 +212,13 @@ export class PrivacyPool implements MockContract {
     return decryptSymmetric(encrypted, channelKey);
   }
 
-  doesSubchannelExist(
-    channelKey: BigNumberish,
-    address: StarknetAddress,
-    token: StarknetAddress
-  ): boolean {
+  doesSubchannelExist(channelKey: bigint, address: bigint, token: bigint): boolean {
     return this.subchannelIds.has(
-      hashes.subchannelId(toBigInt(channelKey), address, this.getPublicKey(address), token)
+      hashes.subchannelId(channelKey, address, this.getPublicKey(address), token)
     );
   }
 
-  getNote(channelKey: ChannelKey, index: number, token: StarknetAddress) {
+  getNote(channelKey: ChannelKey, index: number, token: bigint) {
     const noteId = hashes.noteId(channelKey, token, index);
     const note = this.notes.get(noteId);
     if (note === undefined) return false;
@@ -238,25 +233,21 @@ export class PrivacyPool implements MockContract {
     };
   }
 
-  hasNoteById(noteId: NoteId) {
-    return this.notes.has(toBigInt(noteId));
+  hasNoteById(noteId: bigint) {
+    return this.notes.has(noteId);
   }
 
-  getNullifier(witness: Witness, token: StarknetAddress, ownerPrivateKey: ViewingKey): boolean {
+  getNullifier(witness: Witness, token: bigint, ownerPrivateKey: ViewingKey): boolean {
     return this.nullifiers.has(
       hashes.nullifier(witness.channelKey, token, witness.nonce, ownerPrivateKey)
     );
   }
 
-  getTracking(address: StarknetAddress) {
-    return this.tracking.get(address);
+  getUsersChannel(sender: bigint, recipient: bigint): Channel | undefined {
+    return this.tracking.get(sender)?.channels.get(recipient);
   }
 
-  getUsersChannel(recipient: StarknetAddress): Channel | undefined {
-    return this.tracking.get(this.address)?.channels.get(recipient);
-  }
-
-  openDeposit(noteId: NoteId, token: StarknetAddress, amount: Amount): void {
+  openDeposit(noteId: bigint, token: bigint, amount: Amount): void {
     this.fillOpenNote(noteId, token, amount);
     this.deposit(this.address, token, amount);
   }
@@ -279,7 +270,7 @@ export class PrivacyPool implements MockContract {
    * @param clientActions The array of client action inputs from the compiler
    * @returns Array of callbacks that perform the state changes
    */
-  execute(sender: StarknetAddress, ...clientActions: ClientAction[]): StateCallback[] {
+  execute(sender: bigint, ...clientActions: ClientAction[]): StateCallback[] {
     // Validate token totals before mutating state
     if (this.validateExecutionBalances) {
       this.validateTokenTotals(sender, clientActions);
@@ -325,7 +316,7 @@ export class PrivacyPool implements MockContract {
             const token = action.input.token;
             const amount = action.input.amount;
             callback = () => {
-              this.openDeposit(noteId as NoteId, token, amount);
+              this.openDeposit(noteId, token, amount);
             };
           }
           break;
@@ -383,9 +374,9 @@ export class PrivacyPool implements MockContract {
   }
 
   setupChannel(
-    userAddress: StarknetAddress,
+    userAddress: bigint,
     viewingKey: ViewingKey,
-    address: StarknetAddress,
+    address: bigint,
     channel: Channel
   ): void {
     this.publicKeys.set(address, channel.publicKey);
@@ -413,7 +404,7 @@ export class PrivacyPool implements MockContract {
         this.notes.set(hashes.noteId(channel.key, token, nonces.noteNonce - 1), {
           r: 1n,
           amount: 0n,
-          token: toBigInt(token),
+          token,
         });
       }
 
@@ -422,7 +413,7 @@ export class PrivacyPool implements MockContract {
     }
   }
 
-  setupNote(userAddress: StarknetAddress, note: Note, token: StarknetAddress) {
+  setupNote(userAddress: bigint, note: Note, token: bigint) {
     this.subchannelIds.add(
       hashes.subchannelId(
         note.witness.channelKey,
@@ -432,16 +423,19 @@ export class PrivacyPool implements MockContract {
       )
     );
     this.notes.set(
-      toBigInt(note.id),
+      note.id as bigint,
       note.open
-        ? { r: 1n, amount: note.amount, token: toBigInt(token) }
+        ? { r: 1n, amount: note.amount, token }
         : encryptSymmetric(note.witness.channelKey, note.amount as bigint, note.witness.r)
     );
 
-    this.tracking.get(userAddress)!.notes.get(toBigInt(token))!.set(note.id, note);
+    this.tracking
+      .get(userAddress)!
+      .notes.get(token)!
+      .set(note.id as bigint, note);
   }
 
-  updateRegistry(userAddress: StarknetAddress, registry: PrivateRegistry): PrivateRegistry {
+  updateRegistry(userAddress: bigint, registry: PrivateRegistry): PrivateRegistry {
     for (const [address, channel] of this.tracking.get(userAddress)!.channels.entries()) {
       registry.channels.set(address, channel);
     }
@@ -453,17 +447,22 @@ export class PrivacyPool implements MockContract {
 
   // ============ Private Methods ============
 
-  private assertRegistered(address: StarknetAddress): void {
+  private assertRegistered(address: bigint): void {
+    debugLog(
+      "pool",
+      "assertRegistered",
+      hex(address),
+      "has?",
+      this.publicKeys.has(address),
+      "keys:",
+      [...this.publicKeys.keys()].map(hex)
+    );
     if (!this.publicKeys.has(address)) {
       throw new Error(`Address ${hex(address)} is not registered`);
     }
   }
 
-  private register(
-    address: StarknetAddress,
-    privateKey: ViewingKey,
-    _random: bigint
-  ): StateCallback {
+  private register(address: bigint, privateKey: ViewingKey, _random: bigint): StateCallback {
     const publicKey = derivePublicKey(privateKey);
     return () => {
       this.publicKeys.set(address, publicKey);
@@ -472,9 +471,9 @@ export class PrivacyPool implements MockContract {
   }
 
   private setChannel(
-    from: StarknetAddress,
+    from: bigint,
     fromPrivateKey: ViewingKey,
-    to: StarknetAddress,
+    to: bigint,
     toPublicKey: PublicKey,
     _random: bigint
   ): StateCallback {
@@ -483,18 +482,23 @@ export class PrivacyPool implements MockContract {
     // TODO: use random argument (not needed for now)
     const channelInfo = encryptChannelInfo(toPublicKey, channelKey, from);
     return () => {
+      debugLog("pool.callback", "setChannel callback executing from:", hex(from), "to:", hex(to));
       this.tracking.get(from)!.channels.get(to, () => new Channel(toPublicKey))!.key = channelKey;
       this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
       this.channelIds.add(hashes.channelId(channelKey, from, to, toPublicKey));
+      debugLog("pool.callback", "channels after setChannel", {
+        to: hex(to),
+        channelsLength: this.channels.get({ address: to, publicKey: toPublicKey })!.length,
+      });
     };
   }
 
   private setToken(
-    from: StarknetAddress,
-    to: StarknetAddress,
+    from: bigint,
+    to: bigint,
     toPublicKey: PublicKey,
     channelKey: Hash,
-    token: StarknetAddress,
+    token: bigint,
     index: number,
     random: bigint
   ): StateCallback {
@@ -553,9 +557,9 @@ export class PrivacyPool implements MockContract {
   }
 
   private useNote(
-    owner: StarknetAddress,
+    owner: bigint,
     ownerPrivateKey: ViewingKey,
-    token: StarknetAddress,
+    token: bigint,
     channelKey: Hash,
     noteIndex: number
   ): StateCallback {
@@ -572,17 +576,24 @@ export class PrivacyPool implements MockContract {
     assert(!this.nullifiers.has(nullifier), () => `Nullifier ${nullifier} already exists`);
 
     return () => {
-      this.tracking.get(owner)!.notes.get(toBigInt(token))!.delete(noteId);
+      debugLog("pool.callback", "useNote callback - adding nullifier", {
+        nullifier: hex(nullifier),
+        nullifiersSize: this.nullifiers.size,
+      });
+      this.tracking.get(owner)!.notes.get(token)!.delete(noteId);
       this.nullifiers.add(nullifier);
+      debugLog("pool.callback", "useNote callback - after add", {
+        nullifiersSize: this.nullifiers.size,
+      });
     };
   }
 
   createNote(
-    sender: StarknetAddress,
+    sender: bigint,
     senderPrivateKey: ViewingKey,
-    to: StarknetAddress,
+    to: bigint,
     toPublicKey: PublicKey,
-    token: StarknetAddress,
+    token: bigint,
     index: number,
     amount: Amount | Open,
     random: bigint
@@ -601,14 +612,14 @@ export class PrivacyPool implements MockContract {
     assert(!this.notes.has(noteId), () => `Note ${noteId} already exists`);
 
     const noteData = isOpen(amount)
-      ? { r: 1n, amount: 0n, token: toBigInt(token) }
+      ? { r: 1n, amount: 0n, token }
       : encryptSymmetric(channelKey, amount, random);
 
     return () => {
       this.tracking.get(sender)!.channels.get(to)!.incrementNoteNonce(token);
       this.tracking
-        .get(sender)!
-        .notes.get(toBigInt(token))!
+        .get(to)!
+        .notes.get(token)!
         .set(noteId, {
           id: noteId,
           amount: amount as bigint,
@@ -619,39 +630,37 @@ export class PrivacyPool implements MockContract {
     };
   }
 
-  private deposit(from: StarknetAddress, token: StarknetAddress, amount: Amount): StateCallback {
+  private deposit(from: bigint, token: bigint, amount: Amount): StateCallback {
     return () => this.contracts.get(token).transfer(from, this.address, amount);
   }
 
-  private withdraw(
-    token: StarknetAddress,
-    recipient: StarknetAddress,
-    amount: Amount
-  ): StateCallback {
+  private withdraw(token: bigint, recipient: bigint, amount: Amount): StateCallback {
     return () => this.contracts.get(token).transfer(this.address, recipient, amount);
   }
 
   /**
    * Fill an open note with an amount (for deposits to open notes).
    */
-  fillOpenNote(noteId: NoteId, token: StarknetAddress, amount: Amount): void {
-    const note = this.notes.get(toBigInt(noteId))! as OpenNote;
+  fillOpenNote(noteId: bigint, token: bigint, amount: Amount): void {
+    const note = this.notes.get(noteId)! as OpenNote;
     assert(note, () => `Note ${hex(noteId)} does not exist`);
     assert(note.r == 1n, () => `Note ${hex(noteId)} is not open`);
-    assert(note.token == toBigInt(token), () => `Note ${hex(noteId)} is not for token ${token}`);
+    assert(note.token == token, () => `Note ${hex(noteId)} is not for token ${token}`);
     assert(note.amount == 0n, () => `Note ${hex(noteId)} has already been filled`);
     note.amount = amount;
   }
 
-  private validateTokenTotals(sender: StarknetAddress, clientActions: ClientAction[]): void {
-    const runningTotals = new Map<string, bigint>();
+  private validateTokenTotals(sender: bigint, clientActions: ClientAction[]): void {
+    const runningTotals = new Map<bigint, bigint>();
 
-    const updateTotal = (token: StarknetAddress, delta: bigint) => {
-      const tokenKey = String(toBigInt(token));
-      const current = runningTotals.get(tokenKey) ?? 0n;
+    const updateTotal = (token: bigint, delta: bigint) => {
+      const current = runningTotals.get(token) ?? 0n;
       const updated = current + delta;
-      assert(updated >= 0n, () => `Running total for token ${tokenKey} went negative: ${updated}`);
-      runningTotals.set(tokenKey, updated);
+      assert(
+        updated >= 0n,
+        () => `Running total for token ${hex(token)} went negative: ${updated}`
+      );
+      runningTotals.set(token, updated);
     };
 
     for (const action of clientActions) {
@@ -709,8 +718,8 @@ export class PrivacyPool implements MockContract {
     }
 
     // Validate all totals end at 0
-    for (const [tokenKey, total] of runningTotals.entries()) {
-      assert(total === 0n, () => `Final total for token ${tokenKey} is ${total}, expected 0`);
+    for (const [token, total] of runningTotals.entries()) {
+      assert(total === 0n, () => `Final total for token ${hex(token)} is ${total}, expected 0`);
     }
   }
 }

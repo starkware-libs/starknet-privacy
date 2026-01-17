@@ -133,11 +133,11 @@ export const hex = (v: BigNumberish | Uint8Array) => {
     return (
       "0x" +
       Array.from(v)
-        .map((b) => b.toString(16).padStart(2, "0"))
+        .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
         .join("")
     );
   }
-  return `0x${num.toBigInt(v).toString(16)}`;
+  return `0x${num.toBigInt(v).toString(16).toUpperCase()}`;
 };
 
 const replacer = (_: string, v: unknown) => {
