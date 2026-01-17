@@ -21,25 +21,23 @@ theorem ScanOutgoingChannelContext.from
 
 def scan_outgoing_channels
     {crypto: Crypto} {m: Memory} (context: ScanOutgoingChannelContext crypto m)
-    (addralice kalice: ℕ) : List (ℕ × ℕ) :=
+    (addralice kalice: ℕ) : List ℕ :=
   let bound := Nat.find (context.h_outgoing_channels addralice kalice)
   (List.range bound).map (λ s ↦
     let addrbob_enc := m .OutgoingChannels [crypto.hash [addralice, kalice, s], 1]
-    let Kbob_enc := m .OutgoingChannels [crypto.hash [addralice, kalice, s], 2]
     let r := m .OutgoingChannels [crypto.hash [addralice, kalice, s], 0]
-    let sym_key_addrbob := crypto.hash [addralice, kalice, r, 0]
-    let sym_key_Kbob := crypto.hash [addralice, kalice, r, 1]
+    let sym_key_addrbob := crypto.hash [addralice, kalice, r]
 
-    ⟨addrbob_enc - sym_key_addrbob, Kbob_enc - sym_key_Kbob⟩
+    addrbob_enc - sym_key_addrbob
   )
 
 theorem scan_outgoing_channels_monotone
    {crypto: Crypto} {rm: ReachableMemory crypto} {addralice kalice: ℕ}
    {action: Action}
-   {item: ℕ × ℕ}
+   {addrbob: ℕ}
    (success: (run_action crypto action rm).success)
-   (h: item ∈ scan_outgoing_channels (.from rm) addralice kalice) :
-   item ∈ scan_outgoing_channels (.from (rm.add action success)) addralice kalice := by
+   (h: addrbob ∈ scan_outgoing_channels (.from rm) addralice kalice) :
+   addrbob ∈ scan_outgoing_channels (.from (rm.add action success)) addralice kalice := by
   cases action
   case CreateChannel inp =>
     let info := create_channel_info crypto inp rm success
@@ -67,16 +65,15 @@ theorem scan_outgoing_channels_monotone
 
       rw [info.no_change _ _ (by simp [h_ne])]
       rw [info.no_change _ _ (by simp [h_ne])]
-      rw [info.no_change _ _ (by simp [h_ne])]
       exact h₁
   all_goals exact h
 
 theorem scan_outgoing_channels_extends
     {crypto: Crypto} {rm rm': ReachableMemory crypto} {addralice kalice: ℕ}
     (h_extends: rm'.extends rm)
-    {item: ℕ × ℕ}
-    (h: item ∈ scan_outgoing_channels (.from rm) addralice kalice) :
-    item ∈ scan_outgoing_channels (.from rm') addralice kalice := by
+    {addrbob: ℕ}
+    (h: addrbob ∈ scan_outgoing_channels (.from rm) addralice kalice) :
+    addrbob ∈ scan_outgoing_channels (.from rm') addralice kalice := by
   revert rm'
   apply invariant_induction_for_extends
   case inv₀ => exact h
@@ -93,7 +90,7 @@ theorem scan_outgoing_channels_extends
 theorem outgoing_channels_are_discoverable {crypto: Crypto} {rm: ReachableMemory crypto}
     {addralice kalice addrbob Kbob: ℕ}
     (c_exists: channel_exists crypto rm (crypto.hash [addralice, kalice, addrbob, Kbob])) :
-    (addrbob, Kbob) ∈ scan_outgoing_channels (.from rm) addralice kalice := by
+    addrbob ∈ scan_outgoing_channels (.from rm) addralice kalice := by
   have ⟨inp, channel_imp, h_c⟩ := ChannelImplies.from_channel_exists c_exists
   have ⟨rm₀, success, h_extends⟩ := channel_imp.success
   apply scan_outgoing_channels_extends h_extends
@@ -103,7 +100,7 @@ theorem outgoing_channels_are_discoverable {crypto: Crypto} {rm: ReachableMemory
   use inp.s
 
   simp only [channel_imp.same_c h_c]
-  rw [info.memory_diff₃, info.memory_diff₄, info.memory_diff₅]
+  rw [info.memory_diff₃, info.memory_diff₄]
   refine ⟨?_, by simp⟩
 
   intro s'
