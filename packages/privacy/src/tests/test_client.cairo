@@ -2,8 +2,8 @@ use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
     OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
-    UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput, WriteIfZeroSubchannelInput,
-    WriteInput, WritePrivateKeyInput,
+    UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput, WriteIfZeroPrivateKeyInput,
+    WriteIfZeroSubchannelInput,
 };
 use privacy::errors;
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
@@ -50,11 +50,11 @@ fn test_set_viewing_key() {
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
     let expected_actions = [
-        ServerAction::Write(
-            WriteInput { storage_address: public_key_storage_path_felt, value: public_key },
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: public_key_storage_path_felt, value: public_key },
         ),
-        ServerAction::WritePrivateKey(
-            WritePrivateKeyInput {
+        ServerAction::WriteIfZeroPrivateKey(
+            WriteIfZeroPrivateKeyInput {
                 storage_address: enc_private_key_storage_path_felt, value: enc_private_key,
             },
         ),
@@ -97,19 +97,6 @@ fn test_set_viewing_key_assertions() {
 fn test_set_viewing_key_decrypt_private_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    user.set_viewing_key_e2e();
-
-    // Compliance should be able to decrypt the private key.
-    let enc_private_key = user.get_enc_private_key();
-    let decrypted_private_key = decrypt_private_key(
-        :enc_private_key, compliance_private_key: test.compliance_private_key,
-    );
-    assert_eq!(decrypted_private_key, user.private_key);
-
-    // Set again to a different value.
-    let key_before = user.private_key;
-    user.new_key();
-    assert_ne!(user.private_key, key_before);
     user.set_viewing_key_e2e();
 
     // Compliance should be able to decrypt the private key.
@@ -2354,8 +2341,6 @@ fn test_use_note_wrong_owner_private_key() {
     user_1.cheat_create_note_e2e(:note);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     user_2.new_key();
-    user_2.set_viewing_key_e2e();
-    user_1.open_channel_e2e(recipient: user_2);
     let use_note_input = UseNoteInput {
         owner_private_key: user_2.private_key, channel_key, token: token_address, note_index,
     };
@@ -2574,116 +2559,19 @@ fn test_withdraw_assertions() {
 }
 
 #[test]
-fn test_set_viewing_key_multiple_times() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    user.set_viewing_key_e2e();
-
-    // Set again to a different value.
-    user.new_key();
-    let (random, actions) = user.internal_set_viewing_key_with_generated_random();
-    let public_key_storage_path_felt = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
-    );
-    let enc_private_key_storage_path_felt = map_entry_address(
-        map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
-    );
-    let expected_enc_private_key = user.compute_enc_private_key(:random);
-    let expected_actions = [
-        ServerAction::Write(
-            WriteInput { storage_address: public_key_storage_path_felt, value: user.public_key },
-        ),
-        ServerAction::WritePrivateKey(
-            WritePrivateKeyInput {
-                storage_address: enc_private_key_storage_path_felt, value: expected_enc_private_key,
-            },
-        ),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
-}
-
-#[test]
-fn test_set_viewing_key_sanity() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    let original_private_key = user.private_key;
-    let original_public_key = user.public_key;
-
-    // Register the user first.
-    let random = user.set_viewing_key_e2e();
-    assert_eq!(user.get_public_key(), original_public_key);
-    let enc_private_key_1 = user.compute_enc_private_key(:random);
-    assert_eq!(user.get_enc_private_key(), enc_private_key_1);
-
-    // Replace the public key first time.
-    user.new_key();
-    let random = user.set_viewing_key_e2e();
-    let enc_private_key_2 = user.compute_enc_private_key(:random);
-    assert_eq!(user.get_public_key(), user.public_key);
-    assert_eq!(user.get_enc_private_key(), enc_private_key_2);
-
-    // Replace the public key second time.
-    user.new_key();
-    let random = user.set_viewing_key_e2e();
-    let enc_private_key_3 = user.compute_enc_private_key(:random);
-    assert_eq!(user.get_public_key(), user.public_key);
-    assert_eq!(user.get_enc_private_key(), enc_private_key_3);
-
-    // Replace back to original public key.
-    user.private_key = original_private_key;
-    let random = user.set_viewing_key_e2e();
-    let enc_private_key_4 = user.compute_enc_private_key(:random);
-    assert_eq!(user.get_public_key(), original_public_key);
-    assert_eq!(user.get_enc_private_key(), enc_private_key_4);
-}
-
-#[test]
-fn test_set_viewing_key_same_key() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    let original_public_key = user.public_key;
-
-    // Register the user first.
-    let register_random = user.set_viewing_key_e2e();
-    assert_eq!(user.get_public_key(), original_public_key);
-    let enc_private_key_1 = user.compute_enc_private_key(random: register_random);
-    assert_eq!(user.get_enc_private_key(), enc_private_key_1);
-
-    // Replace with the same key.
-    let random = user.set_viewing_key_e2e();
-    let enc_private_key_2 = user.compute_enc_private_key(:random);
-    assert_eq!(user.get_public_key(), original_public_key);
-    assert_eq!(user.get_enc_private_key(), enc_private_key_2);
-
-    // Replace with the same key and same random.
-    user.set_viewing_key_e2e_with_random(:random);
-    assert_eq!(user.get_public_key(), original_public_key);
-    assert_eq!(user.get_enc_private_key(), enc_private_key_2);
-
-    // Replace with the same key and same random from registeration.
-    user.set_viewing_key_e2e_with_random(random: register_random);
-    assert_eq!(user.get_public_key(), original_public_key);
-    assert_eq!(user.get_enc_private_key(), enc_private_key_1);
-}
-
-#[test]
 fn test_set_viewing_key_to_other_user_key() {
     let mut test: Test = Default::default();
     let mut user1 = test.new_user();
     let mut user2 = test.new_user();
-    let user1_original_key = user1.public_key;
     let user2_public_key = user2.public_key;
 
-    // Register both users.
-    user1.set_viewing_key_e2e();
+    // Register user2.
     user2.set_viewing_key_e2e();
 
     // Verify initial keys.
-    assert_eq!(user1.get_public_key(), user1_original_key);
     assert_eq!(user2.get_public_key(), user2_public_key);
 
-    // User1 replaces their public key to user2's public key.
+    // User1 sets their viewing key to user2's viewing key.
     user1.private_key = user2.private_key;
     user1.set_viewing_key_e2e();
 
@@ -2732,11 +2620,13 @@ fn test_compile_client_actions_set_viewing_key() {
         map_selector: selector!("enc_private_key"), keys: [user_1.address.into()].span(),
     );
     let expected_actions = [
-        ServerAction::Write(
-            WriteInput { storage_address: public_key_storage_path_felt, value: user_1.public_key },
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: public_key_storage_path_felt, value: user_1.public_key,
+            },
         ),
-        ServerAction::WritePrivateKey(
-            WritePrivateKeyInput {
+        ServerAction::WriteIfZeroPrivateKey(
+            WriteIfZeroPrivateKeyInput {
                 storage_address: enc_private_key_storage_path_felt, value: enc_private_key,
             },
         ),
@@ -3716,11 +3606,11 @@ fn test_compile_client_actions_writes() {
     );
     let expected_sevrer_actions = [
         // Set viewing key.
-        ServerAction::Write(
-            WriteInput { storage_address: public_key_storage_path, value: public_key },
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: public_key_storage_path, value: public_key },
         ),
-        ServerAction::WritePrivateKey(
-            WritePrivateKeyInput {
+        ServerAction::WriteIfZeroPrivateKey(
+            WriteIfZeroPrivateKeyInput {
                 storage_address: enc_private_key_storage_path, value: enc_private_key,
             },
         ),

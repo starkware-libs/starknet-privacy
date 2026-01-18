@@ -9,7 +9,7 @@ pub mod Privacy {
         AppendToVecInput, ClientAction, ClientActionTrait, CreateNoteInput, DepositInput,
         OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
         TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput,
-        WriteIfZeroSubchannelInput, WriteInput, WritePrivateKeyInput,
+        WriteIfZeroPrivateKeyInput, WriteIfZeroSubchannelInput,
     };
     use privacy::errors;
     use privacy::errors::internal_errors;
@@ -186,14 +186,14 @@ pub mod Privacy {
             assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
             array![
-                ServerAction::Write(
-                    WriteInput {
+                ServerAction::WriteIfZero(
+                    WriteIfZeroInput {
                         storage_address: self.public_key.entry(user_addr).into(),
                         value: user_public_key,
                     },
                 ),
-                ServerAction::WritePrivateKey(
-                    WritePrivateKeyInput {
+                ServerAction::WriteIfZeroPrivateKey(
+                    WriteIfZeroPrivateKeyInput {
                         storage_address: self.enc_private_key.entry(user_addr).into(),
                         value: enc_private_key,
                     },
@@ -504,15 +504,7 @@ pub mod Privacy {
                                 storage_address: input.storage_address, new_value: input.value,
                             );
                     },
-                    ServerAction::Write(input) => {
-                        self
-                            ._execute_write(
-                                storage_address: input.storage_address,
-                                new_value: input.value,
-                                require_zero: false,
-                            );
-                    },
-                    ServerAction::WritePrivateKey(input) => {
+                    ServerAction::WriteIfZeroPrivateKey(input) => {
                         self
                             ._execute_write_private_key(
                                 storage_address: input.storage_address, new_value: input.value,
@@ -578,6 +570,7 @@ pub mod Privacy {
             let current_value = target.read();
             // TODO: Require zero as param?
             // Require zero.
+            // TODO: Fix is zero, should check all fields are non zero.
             assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
             target.write(new_value);
         }
@@ -590,6 +583,11 @@ pub mod Privacy {
             let mut target = StorageBase::<
                 Mutable<EncPrivateKey>,
             > { __base_address__: storage_address };
+            let current_value = target.read();
+            // TODO: Require zero as param?
+            // Require zero.
+            // TODO: Fix is zero, should check all fields are non zero.
+            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
             target.write(new_value);
         }
 
