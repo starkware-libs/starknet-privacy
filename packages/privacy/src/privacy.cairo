@@ -19,8 +19,8 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        EncChannelInfo, EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo, TokenBalances,
-        TokenBalancesTrait,
+        EncChannelInfo, EncChannelInfoTrait, EncPrivateKey, EncPrivateKeyTrait, EncSubchannelInfo,
+        EncSubchannelInfoTrait, TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::constants::TWO_POW_120;
     use privacy::utils::{
@@ -182,7 +182,7 @@ pub mod Privacy {
                 compliance_public_key: self.compliance_public_key.read(),
                 :private_key,
             );
-            assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
+            assert(enc_private_key.is_all_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
             array![
                 ServerAction::WriteIfZero(
@@ -236,7 +236,7 @@ pub mod Privacy {
             );
 
             assert(channel_id.is_non_zero(), internal_errors::ZERO_CHANNEL_ID);
-            assert(enc_channel_info.is_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
+            assert(enc_channel_info.is_all_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
 
             array![
                 ServerAction::VerifyValue(
@@ -283,7 +283,7 @@ pub mod Privacy {
                     || self
                         .subchannel_tokens
                         .read(compute_subchannel_key(:channel_key, index: index - 1))
-                        .is_non_zero(),
+                        .is_all_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
             );
 
@@ -295,7 +295,9 @@ pub mod Privacy {
             let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :token, :random);
             assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
             assert(subchannel_key.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_KEY);
-            assert(enc_subchannel_info.is_non_zero(), internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN);
+            assert(
+                enc_subchannel_info.is_all_non_zero(), internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN,
+            );
 
             array![
                 ServerAction::WriteIfZero(
@@ -566,8 +568,7 @@ pub mod Privacy {
             let current_value = target.read();
             // TODO: Require zero as param?
             // Require zero.
-            // TODO: Fix is zero, should check all fields are non zero.
-            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
+            assert(current_value.is_all_zero(), errors::NON_ZERO_VALUE);
             target.write(new_value);
         }
 
@@ -582,8 +583,7 @@ pub mod Privacy {
             let current_value = target.read();
             // TODO: Require zero as param?
             // Require zero.
-            // TODO: Fix is zero, should check all fields are non zero.
-            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
+            assert(current_value.is_all_zero(), errors::NON_ZERO_VALUE);
             target.write(new_value);
         }
 
