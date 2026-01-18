@@ -18,7 +18,8 @@ pub mod Privacy {
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
         EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
-        EncSubchannelInfo, Note, NoteTrait, ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
+        EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, NoteTrait,
+        ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::constants::{ERROR_WRAPPER, OK_WRAPPER, TWO_POW_120};
     use privacy::utils::{
@@ -242,7 +243,7 @@ pub mod Privacy {
                 compliance_public_key: self.compliance_public_key.read(),
                 :private_key,
             );
-            assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
+            assert(enc_private_key.is_all_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
             array![
                 ServerAction::WriteIfZero(
@@ -322,7 +323,7 @@ pub mod Privacy {
             );
 
             assert(channel_id.is_non_zero(), internal_errors::ZERO_CHANNEL_ID);
-            assert(enc_channel_info.is_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
+            assert(enc_channel_info.is_all_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
             assert(outgoing_channel_key.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_KEY);
             assert(
                 enc_outgoing_channel_info.is_non_zero(),
@@ -451,6 +452,7 @@ pub mod Privacy {
                 compliance_public_key: self.compliance_public_key.read(),
                 :user_addr,
             );
+            assert(enc_user_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
 
             array![
                 ServerAction::TransferTo(

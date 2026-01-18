@@ -42,11 +42,10 @@ pub struct EncChannelInfo {
     pub enc_sender_addr: felt252,
 }
 
-// TODO: Consider implementing is_non_zero() using the Zero trait.
 #[generate_trait]
 pub impl EncChannelInfoImpl of EncChannelInfoTrait {
     /// Check if all the `EncChannelInfo`'s fields are non-zero.
-    fn is_non_zero(self: @EncChannelInfo) -> bool {
+    fn is_all_non_zero(self: @EncChannelInfo) -> bool {
         return self.ephemeral_pubkey.is_non_zero()
             && self.enc_channel_key.is_non_zero()
             && self.enc_sender_addr.is_non_zero();
@@ -64,17 +63,11 @@ pub(crate) struct EncPrivateKey {
     pub enc_private_key: felt252,
 }
 
-pub impl EncPrivateKeyZero of Zero<EncPrivateKey> {
-    fn zero() -> EncPrivateKey {
-        EncPrivateKey { ephemeral_pubkey: Zero::zero(), enc_private_key: Zero::zero() }
-    }
-    /// Check if one of the `EncPrivateKey`'s fields is zero.
-    fn is_zero(self: @EncPrivateKey) -> bool {
-        return self.ephemeral_pubkey.is_zero() || self.enc_private_key.is_zero();
-    }
+#[generate_trait]
+pub impl EncPrivateKeyImpl of EncPrivateKeyTrait {
     /// Check if all the `EncPrivateKey`'s fields are non-zero.
-    fn is_non_zero(self: @EncPrivateKey) -> bool {
-        !self.is_zero()
+    fn is_all_non_zero(self: @EncPrivateKey) -> bool {
+        return self.ephemeral_pubkey.is_non_zero() && self.enc_private_key.is_non_zero();
     }
 }
 
@@ -110,6 +103,14 @@ pub(crate) struct EncUserAddr {
     /// Encrypted user address.
     /// `enc_user_addr = h(ENC_USER_ADDR_TAG, rK.x) + user_addr`
     pub enc_user_addr: felt252,
+}
+
+#[generate_trait]
+pub impl EncUserAddrImpl of EncUserAddrTrait {
+    /// Check if all the `EncUserAddr`'s fields are non-zero.
+    fn is_all_non_zero(self: @EncUserAddr) -> bool {
+        return self.ephemeral_pubkey.is_non_zero() && self.enc_user_addr.is_non_zero();
+    }
 }
 
 /// An encrypted outgoing channel info, to be written to storage.
@@ -164,6 +165,7 @@ pub impl NoteImpl of NoteTrait {
     }
 }
 
+// TODO: Use this trait when impl OpenNote (is_non_zero).
 pub impl NoteZero of Zero<Note> {
     fn zero() -> Note {
         Note { enc_value: Zero::zero(), token: Zero::zero() }
