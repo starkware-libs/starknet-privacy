@@ -795,6 +795,10 @@ pub(crate) impl PrivacyTokenImpl of PrivacyTokenTrait {
         let current_balance = self.balance_of(:address);
         set_balance(target: address, new_balance: current_balance + amount.into(), token: *self);
     }
+
+    fn set_balance(self: @Token, address: ContractAddress, amount: u128) {
+        set_balance(target: address, new_balance: amount.into(), token: *self);
+    }
 }
 
 #[generate_trait]
