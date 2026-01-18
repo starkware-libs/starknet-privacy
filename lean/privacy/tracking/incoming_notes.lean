@@ -61,21 +61,8 @@ theorem incoming_notes₁
       simp only [kbobs, List.mem_dedup, List.mem_map, List.mem_filter]
       use ⟨inp.addrbob, inp.kbob⟩
       refine ⟨⟨?_, ?_⟩, by rfl⟩
-      . have ⟨⟨addralice, kalice, h_inp_c⟩, _, _, h_canceled⟩ := (note_cancel_action_implies h_inp.1)
-        have h_exists := canceled_note_implies_exists h_canceled
-        have ⟨sn, _, h_sn_note_id, ⟨addralice, kalice, addrbob, kbob, h_c, h_in_scan_users⟩⟩ := all_notes_are_discoverable h_exists
-        have : inp.c = sn.c := by
-          apply crypto.h_hash at h_sn_note_id
-          injections
-        have : inp.addrbob = addrbob ∧ inp.kbob = kbob := by
-          rw [h_c, h_inp_c] at this
-          apply crypto.h_hash at this
-          injections
-          rename_i h_kbob _
-          unfold CancelNoteInput.Kbob at h_kbob
-          apply crypto.priv_to_pub_inj (by assumption) (by simp) at h_kbob
-          simp [*]
-        simp [this, h_in_scan_users]
+      . have ⟨cancel_imp⟩ := CancelImplies.from_cancel_note_actions h_inp.1
+        exact cancel_imp.h_kbob' ▸ cancel_imp.note_created.subchannel.channel.bob_registered.scan
       · simp only [Bool.decide_and, Bool.and_eq_true, decide_eq_true_eq] at h_inp
         simp [h_inp]
     )

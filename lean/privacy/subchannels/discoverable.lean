@@ -8,7 +8,6 @@ import privacy.utils
 structure ScanTokenContext (crypto: Crypto) (m: Memory) where
   h_subchannels: ∀ c k₀, ∃ k₁, m .SubchannelTokens [crypto.hash [c, k₀, k₁], 0] = 0
 
-
 theorem ScanTokenContext.from
     {crypto: Crypto} (rm: ReachableMemory crypto)
     : ScanTokenContext crypto rm := by
@@ -82,76 +81,28 @@ theorem scan_tokens_for_channel_k₀_monotone
       exact h.2
   all_goals exact h
 
-theorem subchannel_hash_exists_implies_k₀
-    {crypto: Crypto} {rm: ReachableMemory crypto} {c addrbob Kbob token: ℕ}
-    (h_subchannel_hash_exists : rm.m .SubchannelHashes [crypto.hash [c, addrbob, Kbob, token]] ≠ 0):
-    ∃ k₀,
-      k₀ < crypto.MAX_K₀ ∧
-      token ∈ scan_tokens_for_channel_k₀ (.from rm) c k₀ ∧
-      channel_exists crypto rm c := by
-  revert rm
-  apply ReachableMemory.induction
-  case inv₀ => simp [ReachableMemory.m]
-
-  intro action rm ih success h_subchannel_hash_exists
-  cases action
-  case CreateChannel inp =>
-    obtain ⟨k₀, k₀_lt_MAX_K₀, h⟩ := ih h_subchannel_hash_exists
-    use k₀, k₀_lt_MAX_K₀, h.1
-    apply channel_exists_monotone
-    exact h.2
-  case CreateSubchannel inp =>
-    let info := create_subchannel_info crypto inp rm success
-    rw [ReachableMemory.add_m, run_action, ←info.h_m'] at h_subchannel_hash_exists
-
-    by_cases h_is_same: crypto.hash [c, addrbob, Kbob, token] = inp.subchannel_hash crypto
+theorem SubchannelImplies.scan_k₀
+    {crypto: Crypto} {rm: ReachableMemory crypto} {c addralice addrbob Kbob token: ℕ}
+    (subchannel_imp: SubchannelImplies rm c addralice addrbob Kbob token) :
+      token ∈ scan_tokens_for_channel_k₀ (.from rm) c subchannel_imp.k₀ := by
+  simp only [scan_tokens_for_channel_k₀, List.pure_def, List.bind_eq_flatMap, List.mem_flatMap,
+    List.mem_range, Nat.lt_find_iff, List.mem_cons, List.not_mem_nil, or_false]
+  use subchannel_imp.k₁
+  constructor
+  · intro k₁' h_k₁'_le
+    by_cases h_k₁': k₁' = subchannel_imp.k₁
     case pos =>
-      use inp.k₀
-      simp only [scan_tokens_for_channel_k₀, List.pure_def, List.bind_eq_flatMap, List.mem_flatMap,
-        List.mem_range, Nat.lt_find_iff, List.mem_cons, List.not_mem_nil, or_false]
-
-      have ⟨h_c, h_token⟩ : c = inp.c ∧ token = inp.token := by
-        have := crypto.h_hash h_is_same
-        injections
-        omega
-
-      refine ⟨info.k₀_lt_MAX_K₀, ⟨inp.k₁, ?_, ?_⟩, ?_⟩
-      · intro k₁' h_k₁'_le_inpk₁
-        rw [ReachableMemory.add_m, run_action, ←info.h_m']
-
-        by_cases h_k₁': k₁' = inp.k₁
-        case pos =>
-          rw [h_k₁', h_c, info.memory_diff₀]
-          exact info.r_ne_zero
-        case neg =>
-          cases info.prev_subchannel_exists
-          case inl h_prev => omega
-          case inr h_prev =>
-            obtain ⟨k₁'', h_contiguous⟩ := subchannels_contiguous rm c inp.k₀
-            have := (h_contiguous (inp.k₁ - 1)).2 (by rw [h_c]; exact h_prev)
-            have := (h_contiguous k₁').1 (by omega)
-            rw [info.no_change _ _ (by simp) (by
-              simp only [ne_eq, Prod.mk.injEq, List.cons.injEq, and_true, true_and]
-              by_contra h'
-              apply crypto.h_hash at h'
-              injections
-              omega
-            ) (by simp)]
-            exact this
-      · rw [ReachableMemory.add_m, run_action, ←info.h_m', h_c, info.memory_diff₀, info.memory_diff₁, h_token, add_tsub_cancel_left]
-      · use inp.addralice, inp.addrbob, inp.Kbob
-        rw [h_c]
-        exact info.channel_exists
+      rw [h_k₁', subchannel_imp.subchannel_tokens₀]
+      exact subchannel_imp.r_ne_zero
     case neg =>
-      rw [info.no_change _ _ (by simp [h_is_same]) (by simp) (by simp)] at h_subchannel_hash_exists
-      obtain ⟨k₀, k₀_lt_MAX_K₀, h⟩ := ih h_subchannel_hash_exists
-      use k₀
-      use k₀_lt_MAX_K₀
-
-      use scan_tokens_for_channel_k₀_monotone crypto rm (.CreateSubchannel inp) c k₀ token success h.1
-      exact h.2
-
-  all_goals exact ih h_subchannel_hash_exists
+      cases subchannel_imp.prev_subchannel_exists
+      case inl h_prev => omega
+      case inr h_prev =>
+        obtain ⟨k₁'', h_contiguous⟩ := subchannels_contiguous rm c subchannel_imp.k₀
+        have := (h_contiguous (subchannel_imp.k₁ - 1)).2 h_prev
+        exact (h_contiguous k₁').1 (by omega)
+  · rw [subchannel_imp.subchannel_tokens₀, subchannel_imp.subchannel_tokens₁]
+    simp
 
 -----------------------------
 -- Scan tokens for channel --
@@ -164,15 +115,12 @@ def scan_tokens_for_channel
   let token ← scan_tokens_for_channel_k₀ context c k₀
   return token
 
--- Subchannel existence implies that it's discoverable and the corresponding channel exists.
-theorem subchannel_exists_implies
-    {crypto: Crypto} {rm: ReachableMemory crypto} {c token: ℕ}
-    (h : subchannel_exists crypto rm c token) :
-    token ∈ scan_tokens_for_channel (.from rm) c ∧
-    channel_exists crypto rm c
+-- Subchannel existence implies that it's discoverable.
+theorem SubchannelImplies.scan
+    {crypto: Crypto} {rm: ReachableMemory crypto} {c addralice addrbob Kbob token: ℕ}
+    (subchannel_imp: SubchannelImplies rm c addralice addrbob Kbob token) :
+    token ∈ scan_tokens_for_channel (.from rm) c
 := by
   simp only [scan_tokens_for_channel, List.pure_def, List.bind_eq_flatMap, List.mem_flatMap,
     List.mem_range, List.mem_cons, List.not_mem_nil, or_false]
-  obtain ⟨addrbob, Kbob, h⟩ := h
-  obtain ⟨k₀, h_k₀_lt_MAX_K₀, h⟩ := subchannel_hash_exists_implies_k₀ h
-  exact ⟨⟨k₀, h_k₀_lt_MAX_K₀, by simp [h.1]⟩, h.2⟩
+  exact ⟨subchannel_imp.k₀, subchannel_imp.h_k₀, token, subchannel_imp.scan_k₀, by rfl⟩

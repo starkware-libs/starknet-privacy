@@ -167,7 +167,15 @@ abbrev filter_CreateNote (action: Action) : Option CreateNoteInput :=
     | .CreateNote inp => some inp
     | _ => none
 
+theorem filter_CreateNote_some (action: Action) :
+    filter_CreateNote action = some inp ↔ action = .CreateNote inp := by
+  cases action; all_goals simp
+
 abbrev filter_CancelNote (action: Action) : Option CancelNoteInput :=
   match action with
     | .CancelNote inp => some inp
     | _ => none
+
+theorem filter_CancelNote_some (action: Action) :
+    filter_CancelNote action = some inp ↔ action = .CancelNote inp := by
+  cases action; all_goals simp
