@@ -5,36 +5,46 @@ import privacy.subchannels.contiguous
 import privacy.subchannels.subchannels
 import privacy.utils
 
+structure ScanTokenContext (crypto: Crypto) (m: Memory) where
+  h_subchannels: ∀ c k₀, ∃ k₁, m .SubchannelTokens [crypto.hash [c, k₀, k₁], 0] = 0
+
+
+theorem ScanTokenContext.from
+    {crypto: Crypto} (rm: ReachableMemory crypto)
+    : ScanTokenContext crypto rm := by
+  constructor
+  intro c k₀
+  have h_contiguous := subchannels_contiguous rm
+  obtain ⟨bound, h_bound⟩ := h_contiguous c k₀
+  use bound
+  have := (h_bound bound).not.mp (Nat.lt_irrefl bound)
+  simp only [ne_eq, not_not] at this
+  exact this
+
 -----------------------------------
 -- Scan tokens for (channel, k₀) --
 -----------------------------------
 
 def scan_tokens_for_channel_k₀
-    (crypto: Crypto) (rm: ReachableMemory crypto) (c k₀: ℕ) : List ℕ :=
-  have h_exists : ∃ k₁, rm.m .Tokens [crypto.hash [c, k₀, k₁], 0] = 0 := by
-    have h_contiguous := subchannels_contiguous rm
-    obtain ⟨bound, h_bound⟩ := h_contiguous c k₀
-    use bound
-    have := (h_bound bound).not.mp (Nat.lt_irrefl bound)
-    simp only [ne_eq, not_not] at this
-    exact this
-  let bound := Nat.find h_exists
+    {crypto: Crypto} {m: Memory} (context: ScanTokenContext crypto m)
+    (c k₀: ℕ) : List ℕ :=
+  let bound := Nat.find (context.h_subchannels c k₀)
   do
     let k₁ ← (List.range bound)
-    let enc_token := rm.m .Tokens [crypto.hash [c, k₀, k₁], 1]
-    let r := rm.m .Tokens [crypto.hash [c, k₀, k₁], 0]
+    let enc_token := m .SubchannelTokens [crypto.hash [c, k₀, k₁], 1]
+    let r := m .SubchannelTokens [crypto.hash [c, k₀, k₁], 0]
     let sym_key := crypto.hash [c, r]
     return enc_token - sym_key
 
 theorem scan_tokens_for_channel_k₀_monotone
   (crypto: Crypto) (rm: ReachableMemory crypto) (action: Action)
   (c k₀ token: ℕ)
-  (success: (run_action crypto action rm.m).2)
-  (h : token ∈ scan_tokens_for_channel_k₀ crypto rm c k₀)
+  (success: (run_action crypto action rm.m).success)
+  (h : token ∈ scan_tokens_for_channel_k₀ (.from rm) c k₀)
   : let rm' := rm.add action success
-    token ∈ scan_tokens_for_channel_k₀ crypto rm' c k₀
+    token ∈ scan_tokens_for_channel_k₀ (.from rm') c k₀
 := by
-  unfold scan_tokens_for_channel_k₀ ReachableMemory.add run_action
+  unfold scan_tokens_for_channel_k₀
   cases action
   case CreateSubchannel inp =>
     simp only [List.pure_def, List.bind_eq_flatMap, List.mem_flatMap, List.mem_range,
@@ -45,7 +55,7 @@ theorem scan_tokens_for_channel_k₀_monotone
     use k₁
 
     let info := create_subchannel_info crypto inp rm success
-    rw [←info.h_m']
+    rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
     constructor
     ·
@@ -77,11 +87,11 @@ theorem subchannel_hash_exists_implies_k₀
     (h_subchannel_hash_exists : rm.m .SubchannelHashes [crypto.hash [c, addrbob, Kbob, token]] ≠ 0):
     ∃ k₀,
       k₀ < crypto.MAX_K₀ ∧
-      token ∈ scan_tokens_for_channel_k₀ crypto rm c k₀ ∧
+      token ∈ scan_tokens_for_channel_k₀ (.from rm) c k₀ ∧
       channel_exists crypto rm c := by
   revert rm
   apply ReachableMemory.induction
-  case inv₀ => simp
+  case inv₀ => simp [ReachableMemory.m]
 
   intro action rm ih success h_subchannel_hash_exists
   cases action
@@ -91,11 +101,8 @@ theorem subchannel_hash_exists_implies_k₀
     apply channel_exists_monotone
     exact h.2
   case CreateSubchannel inp =>
-    unfold ReachableMemory.add run_action at h_subchannel_hash_exists ⊢
-    simp only at h_subchannel_hash_exists ⊢
-
     let info := create_subchannel_info crypto inp rm success
-    rw [←info.h_m'] at h_subchannel_hash_exists
+    rw [ReachableMemory.add_m, run_action, ←info.h_m'] at h_subchannel_hash_exists
 
     by_cases h_is_same: crypto.hash [c, addrbob, Kbob, token] = inp.subchannel_hash crypto
     case pos =>
@@ -110,7 +117,7 @@ theorem subchannel_hash_exists_implies_k₀
 
       refine ⟨info.k₀_lt_MAX_K₀, ⟨inp.k₁, ?_, ?_⟩, ?_⟩
       · intro k₁' h_k₁'_le_inpk₁
-        rw [←info.h_m']
+        rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
         by_cases h_k₁': k₁' = inp.k₁
         case pos =>
@@ -131,7 +138,7 @@ theorem subchannel_hash_exists_implies_k₀
               omega
             ) (by simp)]
             exact this
-      · rw [←info.h_m', h_c, info.memory_diff₀, info.memory_diff₁, h_token, add_tsub_cancel_left]
+      · rw [ReachableMemory.add_m, run_action, ←info.h_m', h_c, info.memory_diff₀, info.memory_diff₁, h_token, add_tsub_cancel_left]
       · use inp.addralice, inp.addrbob, inp.Kbob
         rw [h_c]
         exact info.channel_exists
@@ -151,19 +158,17 @@ theorem subchannel_hash_exists_implies_k₀
 -----------------------------
 
 def scan_tokens_for_channel
-    (crypto: Crypto)
-    (rm: ReachableMemory crypto)
-    (c: ℕ)
-    : List ℕ := do
+    {crypto: Crypto} {m: Memory} (context: ScanTokenContext crypto m)
+    (c: ℕ) : List ℕ := do
   let k₀ ← (List.range crypto.MAX_K₀)
-  let token ← scan_tokens_for_channel_k₀ crypto rm c k₀
+  let token ← scan_tokens_for_channel_k₀ context c k₀
   return token
 
 -- Subchannel existence implies that it's discoverable and the corresponding channel exists.
 theorem subchannel_exists_implies
     {crypto: Crypto} {rm: ReachableMemory crypto} {c token: ℕ}
     (h : subchannel_exists crypto rm c token) :
-    token ∈ scan_tokens_for_channel crypto rm c ∧
+    token ∈ scan_tokens_for_channel (.from rm) c ∧
     channel_exists crypto rm c
 := by
   simp only [scan_tokens_for_channel, List.pure_def, List.bind_eq_flatMap, List.mem_flatMap,

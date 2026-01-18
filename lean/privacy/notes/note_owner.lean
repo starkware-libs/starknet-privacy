@@ -25,7 +25,7 @@ theorem note_owner_of_create_note
   have h_note_exists := (create_note_actions_implies h_inp).1
   have ⟨sn, h_note_id, _, _, h_subchannel_exists⟩ := note_exists_implies_i₀ h_note_exists
   have ⟨_, ⟨addralice, addrbob, Kbob, h_channel_exists⟩⟩ := subchannel_exists_implies h_subchannel_exists
-  have ⟨kalice, h_sn_c, ⟨kbob, _⟩⟩ := channel_exists_implies_hash h_channel_exists
+  have ⟨⟨kalice, h_sn_c, _⟩, ⟨kbob, _⟩⟩ := channel_exists_implies_hash h_channel_exists
 
   have : crypto.priv_to_pub ↑kbob = inp.Kbob := by
     have := CreateNoteInput.to_scanned_note_eq h_note_id

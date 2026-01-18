@@ -6,23 +6,17 @@ import privacy.subchannels.subchannels
 def note_canceled (crypto: Crypto) (m: Memory) (c token i₀ i₁ kbob: ℕ) : Prop :=
   m .Nullifiers [crypto.hash [c, token, i₀, i₁, kbob]] ≠ 0
 
-def note_canceled_by_id (crypto: Crypto) (m: Memory) (note_id: ℕ) : Prop :=
-  ∃ c token i₀ i₁ kbob,
-    note_id = crypto.hash [c, token, i₀, i₁] ∧
-    note_canceled crypto m c token i₀ i₁ kbob
-
 -- Once a note is canceled, it stays canceled.
 theorem note_canceled_monotone
     {crypto: Crypto} {rm: ReachableMemory crypto} {action: Action}
-    (success: (run_action crypto action rm.m).2)
+    (success: (run_action crypto action rm.m).success)
     (h: note_canceled crypto rm.m c token i₀ i₁ kbob) :
     note_canceled crypto (rm.add action success) c token i₀ i₁ kbob := by
-  unfold note_canceled ReachableMemory.add run_action
+  unfold note_canceled
   cases action
   case CancelNote inp =>
     let info := cancel_note_info crypto inp rm success
-    simp only
-    rw [←info.h_m']
+    rw [ReachableMemory.add_m, run_action, ←info.h_m']
     by_cases h_is_same : crypto.hash [c, token, i₀, i₁, kbob] = inp.nullifier crypto
     case pos =>
       simp [h_is_same, info.memory_diff₀]
@@ -44,11 +38,11 @@ theorem canceled_note_implies_exists
   intro action rm ih success h_note_canceled
   cases action
   case CancelNote inp =>
-    dsimp only [note_canceled, note_exists, ReachableMemory.add, run_action] at h_note_canceled ⊢
+    dsimp only [note_canceled, note_exists] at h_note_canceled ⊢
     let info := cancel_note_info crypto inp rm success
     by_cases h_is_same : crypto.hash [c, token, i₀, i₁] = inp.note_id crypto ∧ kbob = inp.kbob
     case pos =>
-      rw [←info.h_m', h_is_same.1, info.no_change _ _ (by simp)]
+      rw [ReachableMemory.add_m, run_action, ←info.h_m', h_is_same.1, info.no_change _ _ (by simp)]
       use info.r_ne_zero
     case neg =>
       have : crypto.hash [c, token, i₀, i₁, kbob] ≠ CancelNoteInput.nullifier crypto inp := by
@@ -56,7 +50,7 @@ theorem canceled_note_implies_exists
         apply crypto.h_hash at h₀
         repeat injection h₀ with _ h₀
         simp [*] at h_is_same
-      rw [←info.h_m', info.no_change _ _ (by simp [this])] at h_note_canceled
+      rw [ReachableMemory.add_m, run_action, ←info.h_m', info.no_change _ _ (by simp [this])] at h_note_canceled
       exact note_exists_monotone success (ih h_note_canceled)
 
   case CreateNote inp =>
@@ -79,7 +73,7 @@ theorem canceled_note_implies_kbob_private_key
   intro action rm ih success h_note_canceled
   cases action
   case CancelNote inp =>
-    dsimp only [note_canceled, ReachableMemory.add, run_action] at h_note_canceled
+    dsimp only [note_canceled] at h_note_canceled
     let info := cancel_note_info crypto inp rm success
     by_cases h_is_same : crypto.hash [c, token, i₀, i₁] = inp.note_id crypto ∧ kbob = inp.kbob
     case pos =>
@@ -91,20 +85,17 @@ theorem canceled_note_implies_kbob_private_key
         apply crypto.h_hash at h₀
         repeat injection h₀ with _ h₀
         simp [*] at h_is_same
-      rw [←info.h_m', info.no_change _ _ (by simp [this])] at h_note_canceled
+      rw [ReachableMemory.add_m, run_action, ←info.h_m', info.no_change _ _ (by simp [this])] at h_note_canceled
       exact ih h_note_canceled
 
   repeat exact ih h_note_canceled
 
 def cancel_note_actions (crypto: Crypto) (rm: ReachableMemory crypto) : List CancelNoteInput :=
-  rm.actions.flatMap (λ action ↦ match action with
-    | .CancelNote inp => [inp]
-    | _ => []
-  )
+  rm.actions.filterMap filter_CancelNote
 
 theorem cancel_note_actions_add
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CancelNoteInput}
-    (success: (run_action crypto (.CancelNote inp) rm.m).2) :
+    (success: (run_action crypto (.CancelNote inp) rm.m).success) :
     (cancel_note_actions crypto (rm.add (.CancelNote inp) success)) =
     inp :: cancel_note_actions crypto rm := by
   simp [cancel_note_actions]
@@ -127,7 +118,7 @@ theorem cancel_note_actions_iff_note_canceled {crypto: Crypto} {rm: ReachableMem
   case CancelNote inp =>
     let info := cancel_note_info crypto inp rm success
     rw [cancel_note_actions_add]
-    simp only [ReachableMemory.add, List.mem_cons, exists_eq_or_imp, run_action]
+    simp only [List.mem_cons, exists_eq_or_imp]
 
     by_cases h_is_same : crypto.hash [c, token, i₀, i₁] = inp.note_id crypto ∧ inp.kbob = kbob
     case pos =>
@@ -140,7 +131,7 @@ theorem cancel_note_actions_iff_note_canceled {crypto: Crypto} {rm: ReachableMem
         apply crypto.h_hash at this
         repeat injection this with _ this
 
-        rw [←info.h_m', note_canceled]
+        rw [ReachableMemory.add_m, run_action, ←info.h_m', note_canceled]
         simp only [*]
         simp [←h_is_same.2, info.memory_diff₀]
     case neg =>
@@ -153,7 +144,7 @@ theorem cancel_note_actions_iff_note_canceled {crypto: Crypto} {rm: ReachableMem
           use inp
         case neg =>
           apply Or.inl
-          rw [←info.h_m', note_canceled, info.no_change _ _ (by
+          rw [ReachableMemory.add_m, run_action, ←info.h_m', note_canceled, info.no_change _ _ (by
             by_contra h₀
             simp only [CancelNoteInput.nullifier, Prod.mk.injEq, List.cons.injEq, and_true,
               true_and] at h₀
@@ -168,7 +159,7 @@ theorem cancel_note_actions_iff_note_canceled {crypto: Crypto} {rm: ReachableMem
         case inl h' =>
           have := crypto.h_hash (Eq.symm h'.1)
           injections
-          rw [←info.h_m', note_canceled]
+          rw [ReachableMemory.add_m, run_action, ←info.h_m', note_canceled]
           simp [*]
           simp [←h'.2, info.memory_diff₀]
         case inr h' =>
@@ -181,7 +172,8 @@ theorem note_cancel_action_implies
     (h: inp ∈ cancel_note_actions crypto rm) :
     (∃ addralice kalice, inp.c = crypto.hash [addralice, kalice, inp.addrbob, inp.Kbob crypto]) ∧
     inp.kbob ∈ crypto.PrivateKeys ∧
-    inp.amount ≠ 0 := by
+    inp.amount ≠ 0 ∧
+    note_canceled crypto rm inp.c inp.token inp.i₀ inp.i₁ inp.kbob := by
   revert rm
   apply ReachableMemory.induction
   case inv₀ => intro h; trivial
@@ -195,8 +187,18 @@ theorem note_cancel_action_implies
     case inl h =>
       rw [h]
       let info := cancel_note_info crypto inp' rm success
-      exact ⟨subchannel_hash_exists_implies_hash info.subchannel_exists, info.kbob_private_key, info.amount_ne_zero⟩
-    case inr h => exact ih h
+
+      exact ⟨
+        subchannel_hash_exists_implies_hash info.subchannel_exists,
+        info.kbob_private_key,
+        info.amount_ne_zero,
+        by
+          rw [ReachableMemory.add_m, run_action, ←info.h_m', note_canceled, info.memory_diff₀]
+          simp
+      ⟩
+    case inr h =>
+      have ⟨ih₀, ih₁, ih₂, ih₃⟩ := ih h
+      exact ⟨ih₀, ih₁, ih₂, note_canceled_monotone success ih₃⟩
 
   repeat exact ih h
 
@@ -212,5 +214,5 @@ theorem note_canceled_monotone_extends
   refine ⟨?_, h.2⟩
   obtain ⟨ℓ, h_extends⟩ := h_extends
   rw [cancel_note_actions, ←h_extends]
-  rw [List.flatMap_append, List.mem_append, List.mem_flatMap]
+  rw [List.filterMap_append, List.mem_append, List.mem_filterMap]
   exact Or.inr h.1

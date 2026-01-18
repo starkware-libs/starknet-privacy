@@ -10,15 +10,14 @@ def scan_channels (crypto: Crypto) (m: Memory) (addrbob: ℕ) (kbob: crypto.Priv
 
 theorem scan_channels_monotone
    {crypto: Crypto} {m: Memory} {addrbob c: ℕ} {kbob: crypto.PrivateKeys}
-   {action: Action} (success: (run_action crypto action m).2)
+   {action: Action} (success: (run_action crypto action m).success)
    (h: c ∈ scan_channels crypto m addrbob kbob) :
-   c ∈ scan_channels crypto (run_action crypto action m).1 addrbob kbob := by
+   c ∈ scan_channels crypto (run_action crypto action m).m addrbob kbob := by
   cases action
   case CreateChannel inp =>
-    unfold run_action at *
     simp only [scan_channels] at *
     let info := create_channel_info crypto inp m success
-    rw [←info.h_m']
+    rw [run_action, ←info.h_m']
     simp only [List.headD_eq_head?_getD, List.mem_map, List.mem_range] at *
     obtain ⟨j, h⟩ := h
     use j
@@ -34,11 +33,12 @@ theorem scan_channels_monotone
       · by_cases h_j': j = info.j
         case pos => rw [info.h_j] at h_j'; omega
         case neg =>
-          rw [info.no_change _ _ (by simp) (by simp [h_j']) (by simp)]
+          rw [info.no_change _ _ (by simp [h_j'])]
           exact h.2
     case neg =>
-      rw [info.no_change _ _ (by simp [h_bob]) (by simp) (by simp)]
-      rw [info.no_change _ _ (by simp) (by by_contra; injections; injections; simp [*] at h_bob) (by simp)]
+      rw [info.no_change _ _ (by simp [h_bob])]
+      have : ¬(addrbob = inp.addrbob ∧ Kbob = inp.Kbob ∧ j = info.j) := λ h ↦ h_bob ⟨h.1, h.2.1⟩
+      rw [info.no_change _ _ (by simp [this])]
       exact h
 
   all_goals exact h
@@ -55,7 +55,7 @@ theorem channels_are_discoverable {crypto: Crypto} {rm: ReachableMemory crypto} 
       c ∈ scan_channels crypto rm addrbob kbob := by
   revert rm
   apply ReachableMemory.induction
-  case inv₀ => unfold channel_exists; simp
+  case inv₀ => unfold channel_exists; simp [ReachableMemory.m]
 
   intro action rm ih success c_exists
   cases action
@@ -64,14 +64,14 @@ theorem channels_are_discoverable {crypto: Crypto} {rm: ReachableMemory crypto} 
     let info := create_channel_info crypto inp rm success
     by_cases h₀ : crypto.hash [c, addralice, addrbob, Kbob] = inp.channel_hash crypto
     case pos =>
-      have ⟨kalice', _, ⟨kbob, h_kbob⟩⟩ := channel_exists_implies_hash (rm:=rm.add (.CreateChannel inp) success) c_exists
+      have ⟨_, ⟨kbob, h_kbob, _⟩⟩ := channel_exists_implies_hash (rm:=rm.add (.CreateChannel inp) success) c_exists
       use inp.addralice, inp.kalice, inp.addrbob, kbob
       have h_Kbob : crypto.priv_to_pub kbob = inp.Kbob := by
         replace h₀ := crypto.h_hash h₀
         injections h₀
         rwa [←h_kbob]
 
-      simp only [ReachableMemory.add, run_action, ←info.h_m'] at *
+      simp only [ReachableMemory.add_m, run_action, ←info.h_m'] at *
 
       constructor
       · rw [h_Kbob]
@@ -83,12 +83,12 @@ theorem channels_are_discoverable {crypto: Crypto} {rm: ReachableMemory crypto} 
         use info.j
         constructor
         · rw [info.h_j, info.memory_diff₀]; omega
-        · rw [info.memory_diff₁, CreateChannelInput.enc, ←h_Kbob , crypto.dec_enc]
+        · rw [info.memory_diff₁, CreateChannelInput.enc, ←h_Kbob, crypto.dec_enc]
           injection crypto.h_hash h₀ with h₀  _
           simp only [List.head?_cons, Option.getD_some, h₀]
     case neg =>
-      simp only [ReachableMemory.add, run_action, ←info.h_m'] at c_exists
-      rw [info.no_change _ _ (by simp) (by simp) (by simp [h₀])] at c_exists
+      simp only [ReachableMemory.add_m, run_action, ←info.h_m'] at c_exists
+      rw [info.no_change _ _ (by simp [h₀])] at c_exists
       have ⟨addralice, kalice, addrbob, kbob, ih⟩ := ih ⟨addralice, addrbob, Kbob, c_exists⟩
       use addralice, kalice, addrbob, kbob, ih.1, scan_channels_monotone success ih.2
 
@@ -109,9 +109,7 @@ theorem discoverable_channel_implies_exists
   cases action
   case CreateChannel inp =>
     let info := create_channel_info crypto inp rm success
-    unfold ReachableMemory.add run_action
-    dsimp only
-    rw [←info.h_m'] at *
+    rw [ReachableMemory.add_m, run_action, ←info.h_m'] at *
     intro channel_discoverable_
     simp only [scan_channels, List.headD_eq_head?_getD, List.mem_map, List.mem_range] at *
     obtain ⟨j, j_lt, channel_decryption⟩ := channel_discoverable_
@@ -133,13 +131,14 @@ theorem discoverable_channel_implies_exists
         · use inp.addralice, inp.kalice
           rw [h_c, h_bob.1, h_bob.2]
       case neg =>
-        rw [info.no_change _ _ (by simp) (by simp [same_j]) (by simp)] at channel_decryption
+        rw [info.no_change _ _ (by simp [same_j])] at channel_decryption
         have ⟨h₀, h₁⟩ := ih ⟨j, (by omega), channel_decryption⟩
         rw [h_bob.1, h_bob.2, info.h_m']
         use channel_exists_monotone crypto rm (.CreateChannel inp) c success h₀
     case neg =>
-      rw [info.no_change _ _ (by simp [h_bob]) (by simp) (by simp)] at j_lt
-      rw [info.no_change _ _ (by simp) (by by_contra; injections; injections; simp [*] at h_bob) (by simp)] at channel_decryption
+      rw [info.no_change _ _ (by simp [h_bob])] at j_lt
+      have : ¬(addrbob = inp.addrbob ∧ crypto.priv_to_pub kbob = inp.Kbob ∧ j = info.j) := λ h ↦ h_bob ⟨h.1, h.2.1⟩
+      rw [info.no_change _ _ (by simp [this])] at channel_decryption
       have ⟨h₀, h₁⟩ := ih ⟨j, j_lt, channel_decryption⟩
       rw [info.h_m']
       use channel_exists_monotone crypto rm (.CreateChannel inp) c success h₀

@@ -29,8 +29,8 @@ theorem deposit_action_implies
 
     case inl h_inp =>
       -- inp is the new action
-      dsimp only [note_exists, ReachableMemory.add, run_action]
-      rw [←info.h_m', h_inp, info.memory_diff₀]
+      dsimp only [note_exists]
+      rw [ReachableMemory.add_m, run_action, ←info.h_m', h_inp, info.memory_diff₀]
       exact crypto.pack_nz (by simp)
 
     case inr h_inp =>
@@ -60,7 +60,7 @@ theorem sum_deposits_for_note_id_eq_zero
 
 theorem sum_deposits_for_note_id_next
     {crypto: Crypto} {rm: ReachableMemory crypto} {note_id: ℕ}
-    (success: (run_action crypto (.OpenDeposit inp) rm.m).2) :
+    (success: (run_action crypto (.OpenDeposit inp) rm.m).success) :
     sum_deposits_for_note_id crypto (rm.add (.OpenDeposit inp) success) note_id =
     sum_deposits_for_note_id crypto rm note_id +
     (if inp.note_id = note_id then inp.amount else 0) := by
