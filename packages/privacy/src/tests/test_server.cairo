@@ -3,7 +3,7 @@ use privacy::actions::{
     AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
     WriteOnceInput,
 };
-use privacy::objects::{Note, ToServerActionsTrait};
+use privacy::objects::{EncPrivateKeyTrait, Note, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
 };
@@ -39,6 +39,7 @@ fn test_constructor() {
     let contract_replaceability = IReplaceableDispatcher { contract_address: test.privacy.address };
     assert_eq!(contract_replaceability.get_upgrade_delay(), Zero::zero());
 }
+// TODO: Test constructor assertions.
 
 #[test]
 fn test_get_compliance_public_key() {
@@ -246,7 +247,9 @@ fn test_get_enc_private_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     // Before registration.
-    assert_eq!(user.get_enc_private_key(), Zero::zero());
+    let enc_private_key = user.get_enc_private_key();
+    assert_eq!(enc_private_key.ephemeral_pubkey, Zero::zero());
+    assert_eq!(enc_private_key.enc_private_key, Zero::zero());
     // After registration.
     let random = user.set_viewing_key_e2e();
     let expected_enc_private_key_1 = user.compute_enc_private_key(:random);
@@ -449,7 +452,9 @@ fn test_execute_write_once_subchannel() {
     assert!(enc_subchannel_info.is_non_zero());
 
     // Verify subchannel info is zero before writing.
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
+    let subchannel_info = test.privacy.get_subchannel_info(:subchannel_key);
+    assert_eq!(subchannel_info.salt, Zero::zero());
+    assert_eq!(subchannel_info.enc_token, Zero::zero());
 
     // Verify subchannel doesn't exist and write.
     let storage_address = map_entry_address(
@@ -485,10 +490,12 @@ fn test_execute_write_once_private_key() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let enc_private_key = test.mock_new_enc_private_key();
-    assert!(enc_private_key.is_non_zero());
+    assert!(enc_private_key.is_all_non_zero());
 
     // Verify private key is zero before writing.
-    assert_eq!(user.get_enc_private_key(), Zero::zero());
+    let private_key = user.get_enc_private_key();
+    assert_eq!(private_key.ephemeral_pubkey, Zero::zero());
+    assert_eq!(private_key.enc_private_key, Zero::zero());
 
     // Write private key.
     let storage_address = map_entry_address(
@@ -506,7 +513,7 @@ fn test_execute_write_once_private_key_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let enc_private_key = test.mock_new_enc_private_key();
-    assert!(enc_private_key.is_non_zero());
+    assert!(enc_private_key.is_all_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
@@ -579,7 +586,7 @@ fn test_execute_write_once_note() {
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
     let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, Zero::zero());
+    assert_eq!(current_value, Note { enc_value: Zero::zero(), token: Zero::zero() });
 
     // Write stored note.
     let actions: Array<ServerAction> = array![note_value.to_write_once_action(:storage_address)];
