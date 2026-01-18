@@ -26,17 +26,14 @@ import type {
   ViewingKey,
 } from "../interfaces.js";
 import { Channel, createEmptyRegistry } from "../interfaces.js";
-import { AddressMap, AdvancedMap } from "../utils/maps.js";
+import { AddressMap, AdvancedMap, toBigInt } from "../utils/index.js";
 import type { ClientAction } from "./client-actions.js";
 import { PrivacyPool } from "../testing/pool.js";
 import { MockContracts } from "../testing/contracts.js";
 import { assert, isOpen } from "../utils/validation.js";
-import { num, BigNumberish } from "starknet";
+import type { BigNumberish } from "starknet";
 import { generateRandom } from "../utils/crypto.js";
 import { consoleLogCallback, withLogging, debugLog, hex } from "../utils/logging.js";
-
-/** Normalize BigNumberish to bigint */
-const toBigInt = (value: BigNumberish): bigint => num.toBigInt(value);
 
 export type CompileResult = {
   clientActions: ClientAction[];

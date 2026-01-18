@@ -1,6 +1,7 @@
 // ============ Logging Utilities ============
 import { AsyncLocalStorage } from "async_hooks";
-import { num, BigNumberish } from "starknet";
+import type { BigNumberish } from "starknet";
+import { toBigInt } from "./crypto.js";
 
 // --- Tracing Context ---
 
@@ -137,7 +138,7 @@ export const hex = (v: BigNumberish | Uint8Array) => {
         .join("")
     );
   }
-  return `0x${num.toBigInt(v).toString(16).toUpperCase()}`;
+  return `0x${toBigInt(v).toString(16).toUpperCase()}`;
 };
 
 const replacer = (_: string, v: unknown) => {

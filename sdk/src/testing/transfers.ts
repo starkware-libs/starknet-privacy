@@ -13,9 +13,8 @@ import type {
 } from "../interfaces.js";
 import { Channel, SetupRequirement } from "../interfaces.js";
 import type { BlockIdentifier } from "starknet";
-import { num } from "starknet";
 import type { PrivateKey } from "../utils/crypto.js";
-import { AddressMap } from "../utils/maps.js";
+import { AddressMap, toBigInt } from "../utils/index.js";
 import { createMockCallAndProof } from "./helpers.js";
 import type { PrivacyPool } from "./pool.js";
 import { MockDiscoveryProvider } from "./discovery.js";
@@ -23,9 +22,6 @@ import { PrivateTransfersBuilderImpl } from "../internal/builders.js";
 import { ActionCompiler } from "../internal/compiler.js";
 import { MockContracts } from "./contracts.js";
 import { debugLog } from "../utils/logging.js";
-
-/** Normalize BigNumberish to bigint */
-const toBigInt = (value: StarknetAddress): bigint => num.toBigInt(value);
 
 export class MockPrivateTransfers implements PrivateTransfers {
   // User credentials (set via configure)
