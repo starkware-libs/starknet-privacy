@@ -785,14 +785,6 @@ pub(crate) impl TestImpl of TestTrait {
             },
         )
     }
-
-    /// Asserts the message from the spy is valid.
-    fn general_assert_spy_messages(ref self: Test, ref spy: MessageToL1Spy) {
-        assert_eq!(spy.get_messages().messages.len(), 1);
-        let (from, message) = spy.get_messages().messages.at(0);
-        assert_eq!(*from, self.privacy.address);
-        assert_eq!(*message.to_address, Zero::zero());
-    }
 }
 
 // TODO: Move to utils repo.
@@ -982,6 +974,14 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> felt252 {
         self.client.__validate__(:user_addr, :client_actions)
+    }
+
+    /// Asserts the message from the spy is valid.
+    fn general_assert_spy_messages(self: @PrivacyCfg, ref spy: MessageToL1Spy) {
+        assert_eq!(spy.get_messages().messages.len(), 1);
+        let (from, message) = spy.get_messages().messages.at(0);
+        assert_eq!(*from, *self.address);
+        assert_eq!(*message.to_address, Zero::zero());
     }
 }
 
