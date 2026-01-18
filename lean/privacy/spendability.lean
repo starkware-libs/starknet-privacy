@@ -3,6 +3,7 @@ import privacy.amounts
 import privacy.notes.canceled_notes
 import privacy.notes.discoverable
 import privacy.utils
+import privacy.transactions.immutability
 
 def spend_note (crypto: Crypto) (m: Memory) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (sn: ScannedNote)
      : CancelNoteInput :=
@@ -19,12 +20,13 @@ def spend_note (crypto: Crypto) (m: Memory) (addrbob: ℕ) (kbob: crypto.Private
 -- A discoverable, uncanceled note with non-zero amount can be spent.
 theorem spendable_note
     {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} {kbob: crypto.PrivateKeys} {sn: ScannedNote}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
     (h_note_in_scan: sn ∈ scan_notes_for_recipient (.from rm) addrbob kbob)
     (h_not_canceled: ¬note_canceled crypto rm.m sn.c sn.token sn.i₀ sn.i₁ kbob)
     (h_amount_ne_zero: note_amount crypto rm (sn.note_id crypto) sn.c ≠ 0) :
     let inp := spend_note crypto rm addrbob kbob sn
     (cancel_note crypto inp rm |> process_action crypto rm).success := by
-  have ⟨inp_create, h_inp_create, h_sn, h_addrbob, h_Kbob⟩ := (create_note_actions_iff_note_discoverable addrbob kbob sn).1 h_note_in_scan
+  have ⟨inp_create, h_inp_create, h_sn, h_addrbob, h_Kbob⟩ := (create_note_actions_iff_note_discoverable h_kbob sn).1 h_note_in_scan
   have ⟨h_note_exists, h_subchannel_exists⟩ := create_note_actions_implies h_inp_create
 
   have h_note_id : inp_create.note_id crypto = sn.note_id crypto := by rw [←h_sn]
@@ -85,6 +87,7 @@ theorem in_spend_notes
 -- A list of discoverable, uncanceled, non-zero notes can all be spent.
 theorem spendable_notes
     {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} {kbob: crypto.PrivateKeys} {sns: List ScannedNote}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
     (h_note_in_scan: sns ⊆ scan_notes_for_recipient (.from rm) addrbob kbob)
     (h_not_canceled: ∀ sn ∈ sns, ¬note_canceled crypto rm.m sn.c sn.token sn.i₀ sn.i₁ kbob)
     (h_amount_ne_zero: ∀ sn ∈ sns, note_amount crypto rm (sn.note_id crypto) sn.c ≠ 0)
@@ -113,6 +116,11 @@ theorem spendable_notes
       unfold run_action
       dsimp only
       apply spendable_note
+      case h_kbob =>
+        rw [←h_kbob]
+        apply immutability h_extends _ (by simp)
+        rw [h_kbob]
+        apply crypto.zero_not_public_key
       case h_note_in_scan =>
         rw [h_scan]
         exact h_note_in_scan.1
@@ -175,7 +183,9 @@ def spend_all (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (kbob
   res.1
 
 -- Bob can spend all his notes, leaving zero unspent balance.
-theorem spend_all_props (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) :
+theorem spend_all_props
+    (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys)
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob) :
     ∃ rm': ReachableMemory crypto,
     rm'.extends rm ∧
     ∀ token,
@@ -206,14 +216,20 @@ theorem spend_all_props (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: 
     simp only [ne_eq]
     exact h_sn.2
 
-  have ⟨rm', _, h_scan_notes_for_recipient, h_actions, h_canceled, h_amounts⟩ := spendable_notes h_note_in_scan h_not_canceled h_amount_ne_zero (by apply List.nodup_dedup)
+  have ⟨rm', _, h_scan_notes_for_recipient, h_actions, h_canceled, h_amounts⟩ := spendable_notes h_kbob h_note_in_scan h_not_canceled h_amount_ne_zero (by apply List.nodup_dedup)
   use rm'
 
   have h_extends : rm'.extends rm := by simp [ReachableMemory.extends, h_actions]
   use h_extends
 
+  have h_kbob' : rm'.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob := by
+    rw [←h_kbob]
+    apply immutability h_extends _ (by simp)
+    rw [h_kbob]
+    apply crypto.zero_not_public_key
+
   intro token
-  simp only [sum_create_note_cancel_note, Nat.add_eq_left]
+  simp only [sum_create_note_cancel_note h_kbob', Nat.add_eq_left]
   apply List.sum_eq_zero
   intro amount h
   have ⟨sn, h⟩ := List.mem_map.1 h

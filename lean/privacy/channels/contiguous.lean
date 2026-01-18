@@ -25,10 +25,10 @@ theorem channel_exists_monotone (crypto: Crypto) (rm: ReachableMemory crypto) (a
       rwa [info.no_change _ _ (by simp [h₀])]
   all_goals exact h
 
--- The j-s of the channels for (addrbob, Kbob) form a contiguous range [0, j_bound) where j_bound
+-- The j-s of the channels for addrbob form a contiguous range [0, j_bound) where j_bound
 -- is recorded in ChannelsJ.
-theorem channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypto) (addrbob Kbob: ℕ) :
-    ∀ j, (j ≥ rm.m .ChannelsJ [addrbob, Kbob]) ↔ rm.m .Channels [addrbob, Kbob, j] = 0 := by
+theorem channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypto) (addrbob: ℕ) :
+    ∀ j, (j ≥ rm.m .ChannelsJ [addrbob]) ↔ rm.m .Channels [addrbob, j] = 0 := by
   revert rm
   apply ReachableMemory.induction
   case inv₀ => intros; simp [ReachableMemory.m]
@@ -41,10 +41,10 @@ theorem channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypto) (addrb
     have info := create_channel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
-    by_cases h_bob: addrbob = inp.addrbob ∧ Kbob = inp.Kbob
+    by_cases h_bob: addrbob = inp.addrbob
     case pos =>
       replace h := h j
-      rw [h_bob.1, h_bob.2] at *
+      rw [h_bob] at *
       rw [info.memory_diff₀]
       rw [←info.h_j] at *
 
@@ -66,10 +66,10 @@ theorem channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypto) (addrb
     case neg =>
         rw [info.no_change _ _ (by simp [h_bob])]
         rw [info.no_change _ _ (by
-          simp only [ne_eq, Prod.mk.injEq, true_and, List.cons.injEq, List.cons_ne_self, and_false,
-            and_true, reduceCtorEq, not_false_eq_true]
-          by_contra
-          simp [*] at h_bob
+          simp only [ne_eq, Prod.mk.injEq, reduceCtorEq, List.cons.injEq, List.cons_ne_self,
+            and_false, and_self, not_false_eq_true, and_true, true_and, not_and, false_and]
+          intro h
+          contradiction
         )]
         exact h j
   all_goals intro h success; exact h

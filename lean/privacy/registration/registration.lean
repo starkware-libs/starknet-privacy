@@ -6,8 +6,7 @@ theorem public_keys {crypto: Crypto} {addralice: ℕ} :
     ∀ {rm: ReachableMemory crypto},
     rm.m .PublicKeys [addralice] ≠ 0 →
     ∃ kalice: crypto.PrivateKeys,
-      rm.m .PublicKeys [addralice] = crypto.priv_to_pub kalice ∧
-      rm.m .PrivateKeyHashes [addralice, kalice] = 1 := by
+      rm.m .PublicKeys [addralice] = crypto.priv_to_pub kalice := by
   apply ReachableMemory.induction
   case inv₀ => simp [ReachableMemory.m]
 
@@ -22,20 +21,19 @@ theorem public_keys {crypto: Crypto} {addralice: ℕ} :
     case pos =>
       rw [h_addralice, info.memory_diff₀]
       intro h
-      refine ⟨⟨inp.kalice, info.kalice_private_key⟩, by rfl, info.memory_diff₁⟩
+      refine ⟨⟨inp.kalice, info.kalice_private_key⟩, by rfl⟩
     case neg =>
-      rw [info.no_change _ _ (by simp [h_addralice]) (by simp)]
-      intro h_public_key_ne_zero
-      conv => rhs; intro kalice; rw [info.no_change _ _ (by simp) (by simp [h_addralice])]
-      exact h h_public_key_ne_zero
+      rw [info.no_change _ _ (by simp [h_addralice])]
+      exact h
   repeat intro h success; exact h
 
-theorem private_key_hash_implies {crypto: Crypto} {rm: ReachableMemory crypto} {addralice kalice: ℕ}
-    (h: rm.m .PrivateKeyHashes [addralice, kalice] ≠ 0) :
+theorem public_key_implies {crypto: Crypto} {rm: ReachableMemory crypto} {addralice: ℕ}
+    (h: rm.m .PublicKeys [addralice] ≠ 0) :
     ∃ inp: RegisterInput,
       .Register inp ∈ rm.actions ∧
       inp.addralice = addralice ∧
-      inp.kalice = kalice := by
+      rm.m .PublicKeys [addralice] = crypto.priv_to_pub inp.kalice ∧
+      inp.kalice ∈ crypto.PrivateKeys := by
   revert rm
   apply ReachableMemory.induction
   case inv₀ => simp [ReachableMemory.m]
@@ -43,15 +41,15 @@ theorem private_key_hash_implies {crypto: Crypto} {rm: ReachableMemory crypto} {
   intro action rm ih success h
   cases action
   case Register inp =>
-    by_cases h_is_same: addralice = inp.addralice ∧ kalice = inp.kalice
+    let info := register_info crypto inp rm success
+    rw [rm.add_m, run_action, ←info.h_m'] at ⊢ h
+    by_cases h_is_same: addralice = inp.addralice
     case pos =>
       use inp
-      simp [h_is_same]
+      simp only [h_is_same, info.memory_diff₀, info.kalice_private_key]
+      simp
     case neg =>
-      let info := register_info crypto inp rm success
-
-      rw [rm.add_m, run_action, ←info.h_m'] at h
-      rw [info.no_change _ _ (by simp) (by simp [h_is_same])] at h
+      rw [info.no_change _ _ (by simp [h_is_same])] at ⊢ h
       have ⟨inp, h₀, h₁⟩ := ih h
       exact ⟨inp, by simp [ReachableMemory.add, h₀], h₁⟩
 

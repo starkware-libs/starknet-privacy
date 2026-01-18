@@ -7,7 +7,10 @@ import privacy.notes.note_owner
 import privacy.utils
 
 theorem filtered_scan_notes_eq_notes_from_actions
-    (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) :
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ):
     (
       scan_notes_for_recipient (.from rm) addrbob kbob
       |>.filter (λ sn ↦ sn.token = token)
@@ -23,14 +26,14 @@ theorem filtered_scan_notes_eq_notes_from_actions
     decide_eq_true_eq]
   constructor
   · intro ⟨h₀, h_token⟩
-    apply (create_note_actions_iff_note_discoverable addrbob kbob sn).1 at h₀
+    apply (create_note_actions_iff_note_discoverable h_kbob sn).1 at h₀
     obtain ⟨inp, h₀, h₁, h₂, h₃⟩ := h₀
     rw [←h₁] at h_token
     use inp, ⟨h₀, by omega, h₂, h₃⟩, h₁
   · intro h
     obtain ⟨inp, ⟨h₀₀, h₀₁, h₀₂, h₀₃⟩, h₁⟩ := h
 
-    use (create_note_actions_iff_note_discoverable addrbob kbob sn).2
+    use (create_note_actions_iff_note_discoverable h_kbob sn).2
       ⟨inp, h₀₀, h₁, h₀₂, h₀₃⟩
     rwa [←h₁]
 
@@ -195,7 +198,10 @@ abbrev sum_deposits_for_create_note_amounts (crypto: Crypto) (rm: ReachableMemor
   |>.sum
 
 theorem sum_of_created_notes_to_scanned_notes₀
-    (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
     sum_create_note_amounts crypto rm addrbob kbob token +
     sum_deposits_for_create_note_amounts crypto rm addrbob kbob token =
     (
@@ -209,7 +215,7 @@ theorem sum_of_created_notes_to_scanned_notes₀
   have : ∀ ℓ: List ScannedNote, ℓ.dedup.toFinset = ℓ.toFinset := by
     intro ℓ; ext x; simp [List.mem_toFinset, List.mem_dedup]
 
-  rw [←List.sum_toFinset _ (List.nodup_dedup _), this, filtered_scan_notes_eq_notes_from_actions]
+  rw [←List.sum_toFinset _ (List.nodup_dedup _), this, filtered_scan_notes_eq_notes_from_actions h_kbob]
 
   rw [List.sum_toFinset _ (by
     apply filter_map_nodup
@@ -229,7 +235,7 @@ theorem sum_of_created_notes_to_scanned_notes₀
   apply congrArg
   simp only [Bool.decide_and, List.map_map, List.map_inj_left, List.mem_filter, Bool.and_eq_true,
     decide_eq_true_eq, Function.comp_apply, and_imp]
-  intro inp h₀ h₁ h₂ h₃
+  intro inp h₀ h₁ h₂
   simp [(note_amount_eq_amount h₀).2]
 
 -------------------------------
@@ -327,7 +333,10 @@ theorem sum_deposit_amounts_eq
     simp [h_addrbob_kbob, h_inp_token, h_kbob'] at this
 
 theorem sum_of_created_notes_to_scanned_notes
-    (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
     sum_create_note_amounts crypto rm addrbob kbob token +
     sum_deposit_amounts crypto rm addrbob kbob token =
     (
@@ -337,7 +346,7 @@ theorem sum_of_created_notes_to_scanned_notes
       |>.map (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c)
       |>.sum
     ) := by
-  rw [sum_deposit_amounts_eq, sum_of_created_notes_to_scanned_notes₀]
+  rw [sum_deposit_amounts_eq, sum_of_created_notes_to_scanned_notes₀ h_kbob]
 
 -------------------------------
 
@@ -370,7 +379,10 @@ def spent_notes_from_scan
   |>.filter (λ sn ↦ m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] ≠ 0)
   |>.toFinset
 
-theorem spent_notes_from_scan' (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
+theorem spent_notes_from_scan' {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
     spent_notes_from_scan (.from rm) addrbob kbob token =
     (
        cancel_note_actions crypto rm
@@ -378,7 +390,7 @@ theorem spent_notes_from_scan' (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.Pri
        |>.map (λ inp ↦ inp.to_scanned_note)
        |>.toFinset
     ) := by
-  rw [spent_notes_from_scan, List.toFinset_filter, filtered_scan_notes_eq_notes_from_actions]
+  rw [spent_notes_from_scan, List.toFinset_filter, filtered_scan_notes_eq_notes_from_actions h_kbob]
 
   ext sn
   simp only [Bool.decide_and, Finset.mem_filter, List.mem_toFinset,
@@ -561,7 +573,10 @@ abbrev sum_cancel_note_amounts (crypto: Crypto) (rm: ReachableMemory crypto) (ad
   |>.sum
 
 theorem sum_of_canceled_notes_to_scanned_notes
-    (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
     sum_cancel_note_amounts crypto rm addrbob kbob token =
     (
       scan_notes_for_recipient (.from rm) addrbob kbob
@@ -580,7 +595,7 @@ theorem sum_of_canceled_notes_to_scanned_notes
     apply List.nodup_dedup
   )]
 
-  rw [this, ←spent_notes_from_scan, spent_notes_from_scan']
+  rw [this, ←spent_notes_from_scan, spent_notes_from_scan' h_kbob]
 
   rw [List.sum_toFinset _ (by
     apply filter_map_nodup
@@ -607,7 +622,10 @@ theorem sum_of_canceled_notes_to_scanned_notes
 -- For any recipient (addrbob, kbob) and token:
 --   created notes + deposited notes = canceled notes + unspent notes.
 theorem sum_create_note_cancel_note
-    (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
     sum_create_note_amounts crypto rm addrbob kbob token +
     sum_deposit_amounts crypto rm addrbob kbob token =
     sum_cancel_note_amounts crypto rm addrbob kbob token +
@@ -632,20 +650,23 @@ theorem sum_create_note_cancel_note
   calc sum_create_note_amounts crypto rm addrbob kbob token +
        sum_deposit_amounts crypto rm addrbob kbob token
     _ = (ℓ |>.filter f_token |>.dedup |>.map amount |>.sum) :=
-        sum_of_created_notes_to_scanned_notes crypto addrbob kbob token rm
+        sum_of_created_notes_to_scanned_notes h_kbob token
     -- Split sum into spent + unspent.
     _ = (ℓ |>.filter f_token |>.dedup |>.filter f_spent |>.map amount |>.sum) +
         (ℓ |>.filter f_token |>.dedup |>.filter (¬f_spent ·) |>.map amount |>.sum) := by
         rw [←List.sum_map_filter_add_sum_map_filter_not f_spent]
     _ = sum_cancel_note_amounts crypto rm addrbob kbob token +
         (ℓ |>.filter f_token |>.dedup |>.filter (¬f_spent ·) |>.map amount |>.sum) := by
-        rw [sum_of_canceled_notes_to_scanned_notes]
+        rw [sum_of_canceled_notes_to_scanned_notes h_kbob]
     _ = _ := by rw [neg_f_spent]
 
 -- Can't spend more than created + deposited.
 theorem sum_cancel_note_le_sum_create_note
-    (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
     sum_cancel_note_amounts crypto rm addrbob kbob token ≤
     sum_create_note_amounts crypto rm addrbob kbob token +
     sum_deposit_amounts crypto rm addrbob kbob token := by
-  simp [sum_create_note_cancel_note]
+  simp [sum_create_note_cancel_note h_kbob]
