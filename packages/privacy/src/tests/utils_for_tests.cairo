@@ -9,7 +9,7 @@ use privacy::actions::{
     WriteIfZeroSubchannelInput,
 };
 use privacy::hashes::{
-    compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
+    compute_channel_id, compute_channel_key, compute_enc_address_hash, compute_enc_channel_key_hash,
     compute_enc_private_key_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
     compute_note_id, compute_nullifier, compute_subchannel_id, compute_subchannel_key, hash,
 };
@@ -19,15 +19,15 @@ use privacy::interface::{
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
-    EncChannelInfo, EncPrivateKey, EncSubchannelInfo, TokenBalances, TokenBalancesTrait,
+    EncAddress, EncChannelInfo, EncPrivateKey, EncSubchannelInfo, TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{
-    derive_public_key, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
-    is_canonical_key,
+    derive_public_key, encrypt_address, encrypt_note_amount, encrypt_private_key,
+    encrypt_subchannel_info, is_canonical_key,
 };
 use snforge_std::{
     CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait, Token,
@@ -151,9 +151,31 @@ pub(crate) impl UserImpl of UserTrait {
         self.safe_compile_client_actions(client_actions: client_actions.span())
     }
 
-    fn withdraw(self: @User, withdrawal_target: ContractAddress, token: Token, amount: u128) {
-        let input = WithdrawInput { withdrawal_target, token: token.contract_address(), amount };
-        self.compile_client_actions(client_actions: [ClientAction::Withdraw(input)].span())
+    fn withdraw_and_use_note_with_generated_random(
+        ref self: User,
+        withdrawal_target: ContractAddress,
+        token: Token,
+        amount: u128,
+        channel_key: felt252,
+        note_index: usize,
+    ) {
+        let random = self.get_random().into();
+        let use_note_input = UseNoteInput {
+            owner_private_key: self.private_key,
+            channel_key,
+            token: token.contract_address(),
+            note_index,
+        };
+        let withdraw_input = WithdrawInput {
+            withdrawal_target, token: token.contract_address(), amount, random,
+        };
+        self
+            .compile_client_actions(
+                client_actions: [
+                    ClientAction::UseNote(use_note_input), ClientAction::Withdraw(withdraw_input),
+                ]
+                    .span(),
+            )
     }
 
     fn internal_withdraw(
@@ -161,6 +183,7 @@ pub(crate) impl UserImpl of UserTrait {
         withdrawal_target: ContractAddress,
         token_address: ContractAddress,
         amount: u128,
+        random: felt252,
     ) -> Span<ServerAction> {
         interact_with_state(
             *self.privacy.address,
@@ -168,11 +191,25 @@ pub(crate) impl UserImpl of UserTrait {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
                 token_balances.add_balance(token: token_address, :amount);
-                let input = WithdrawInput { withdrawal_target, token: token_address, amount };
-                state.withdraw(:input, ref :token_balances)
+                let input = WithdrawInput {
+                    withdrawal_target, token: token_address, amount, random,
+                };
+                state.withdraw(user_addr: *self.address, :input, ref :token_balances)
             },
         )
             .span()
+    }
+
+    /// Returns (random, output) where output is the output of `withdraw`.
+    fn internal_withdraw_with_generated_random(
+        ref self: User,
+        withdrawal_target: ContractAddress,
+        token_address: ContractAddress,
+        amount: u128,
+    ) -> (felt252, Span<ServerAction>) {
+        let random = self.get_random().into();
+        let output = self.internal_withdraw(:withdrawal_target, :token_address, :amount, :random);
+        (random, output)
     }
 
     #[feature("safe_dispatcher")]
@@ -181,8 +218,9 @@ pub(crate) impl UserImpl of UserTrait {
         withdrawal_target: ContractAddress,
         token_address: ContractAddress,
         amount: u128,
+        random: felt252,
     ) -> Result<(), Array<felt252>> {
-        let input = WithdrawInput { withdrawal_target, token: token_address, amount };
+        let input = WithdrawInput { withdrawal_target, token: token_address, amount, random };
         self.safe_compile_client_actions(client_actions: [ClientAction::Withdraw(input)].span())
     }
 
@@ -441,6 +479,14 @@ pub(crate) impl UserImpl of UserTrait {
         EncNote { id: note_id, enc_amount }
     }
 
+    fn compute_enc_user_addr(self: @User, random: felt252) -> EncAddress {
+        encrypt_address(
+            ephemeral_secret: random,
+            compliance_public_key: self.privacy.get_compliance_public_key(),
+            address: *self.address,
+        )
+    }
+
     fn use_note(self: @User, note: UseNoteInput) {
         self.compile_client_actions(client_actions: [ClientAction::UseNote(note)].span())
     }
@@ -494,9 +540,25 @@ pub(crate) impl UserImpl of UserTrait {
         self.new_note(:recipient, :token_address, :amount, :index, :random)
     }
 
-    fn deposit(self: @User, token: Token, amount: u128) {
-        let input = DepositInput { token: token.contract_address(), amount };
-        self.compile_client_actions([ClientAction::Deposit(input),].span())
+    fn deposit_and_create_note_with_generated_random(ref self: User, token: Token, amount: u128) {
+        let random = self.get_random();
+        let deposit_input = DepositInput { token: token.contract_address(), amount };
+        let create_note_input = CreateNoteInput {
+            sender_private_key: self.private_key,
+            recipient_addr: self.address,
+            recipient_public_key: self.public_key,
+            token: token.contract_address(),
+            amount,
+            index: 0,
+            random,
+        };
+        self.increase_token_balance(:token, :amount);
+        self.approve(:token, amount: amount.into());
+        self
+            .compile_client_actions(
+                [ClientAction::Deposit(deposit_input), ClientAction::CreateNote(create_note_input)]
+                    .span(),
+            )
     }
 
     fn internal_deposit(
@@ -726,6 +788,15 @@ pub(crate) impl TestImpl of TestTrait {
         EncPrivateKey {
             ephemeral_pubkey: 'EPHEMERAL_PUBKEY' + self.nonce.into(),
             enc_private_key: 'ENC_PRIVATE_KEY' + self.nonce.into(),
+        }
+    }
+
+    /// Mock function to generate a new enc address.
+    fn mock_new_enc_address(ref self: Test) -> EncAddress {
+        self.nonce += 1;
+        EncAddress {
+            ephemeral_pubkey: 'EPHEMERAL_PUBKEY' + self.nonce.into(),
+            enc_address: 'ENC_ADDRESS' + self.nonce.into(),
         }
     }
 
@@ -1089,6 +1160,17 @@ pub(crate) fn decrypt_subchannel_token(
     let token = enc_subchannel_info.enc_token
         - compute_enc_token_hash(:channel_key, random: enc_subchannel_info.random);
     token.try_into().unwrap()
+}
+
+pub(crate) fn decrypt_enc_user_addr(
+    enc_user_addr: EncAddress, compliance_private_key: felt252,
+) -> ContractAddress {
+    let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_user_addr.ephemeral_pubkey)
+        .unwrap();
+    let shared_point = ephemeral_pubkey_point.mul(scalar: compliance_private_key);
+    let shared_x = shared_point.try_into().unwrap().x();
+    let address = enc_user_addr.enc_address - compute_enc_address_hash(:shared_x);
+    address.try_into().unwrap()
 }
 
 fn deserialize_server_actions(message: @MessageToL1) -> Span<ServerAction> {
