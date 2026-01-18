@@ -188,10 +188,8 @@ pub struct WriteIfZeroPrivateKeyInput {
 /// Input for the `AppendToVec` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct AppendToVecInput {
-    /// The recipient's address.
+    /// The recipient's address, which is the key of the map in storage.
     pub recipient_addr: ContractAddress,
-    /// The recipient's public key.
-    pub recipient_public_key: felt252,
     /// The channel info to append.
     pub enc_channel_info: EncChannelInfo,
 }
@@ -240,8 +238,7 @@ pub enum ServerAction {
     /// Verify that a storage value is zero/empty and then write to it.
     WriteIfZeroPrivateKey: WriteIfZeroPrivateKeyInput,
     // TODO: Generalize to any vector.
-    /// Append a `EncChannelInfo` value to (`recipient_addr`, `recipient_public_key`)'s vector in
-    /// storage.
+    /// Append a `EncChannelInfo` value to `recipient_addr`'s vector in storage.
     AppendToVec: AppendToVecInput,
     /// Transfer tokens from a user to the contract (ERC20 transfer_from).
     TransferFrom: TransferFromInput,
