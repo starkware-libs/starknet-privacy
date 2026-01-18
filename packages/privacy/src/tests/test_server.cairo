@@ -1,7 +1,7 @@
 use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
-    WriteIfZeroInput, WriteIfZeroSubchannelInput, WriteInput, WritePrivateKeyInput,
+    WriteIfZeroInput, WriteIfZeroPrivateKeyInput, WriteIfZeroSubchannelInput,
 };
 use privacy::errors;
 use privacy::tests::utils_for_tests::{
@@ -213,12 +213,6 @@ fn test_get_enc_private_key() {
     let random = user.set_viewing_key_e2e();
     let expected_enc_private_key_1 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_enc_private_key(), expected_enc_private_key_1);
-    // After replacing the key.
-    user.new_key();
-    let random = user.set_viewing_key_e2e();
-    let expected_enc_private_key_2 = user.compute_enc_private_key(:random);
-    assert_ne!(expected_enc_private_key_1, expected_enc_private_key_2);
-    assert_eq!(user.get_enc_private_key(), expected_enc_private_key_2);
 }
 
 #[test]
@@ -427,44 +421,6 @@ fn test_execute_write_if_zero_assertions() {
 }
 
 #[test]
-fn test_execute_write() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-
-    // Verify public key is zero before writing.
-    assert_eq!(user.get_public_key(), Zero::zero());
-
-    // Set initial public key.
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
-    );
-    let actions: Array<ServerAction> = array![
-        ServerAction::Write(
-            WriteInput { storage_address: storage_path_felt, value: user.public_key },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
-    assert_eq!(user.get_public_key(), user.public_key);
-
-    // Change public key.
-    user.new_key();
-    let actions: Array<ServerAction> = array![
-        ServerAction::Write(
-            WriteInput { storage_address: storage_path_felt, value: user.public_key },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
-    assert_eq!(user.get_public_key(), user.public_key);
-
-    // Change public key to zero.
-    let actions: Array<ServerAction> = array![
-        ServerAction::Write(WriteInput { storage_address: storage_path_felt, value: Zero::zero() }),
-    ];
-    test.privacy.execute_actions(actions.span());
-    assert_eq!(user.get_public_key(), Zero::zero());
-}
-
-#[test]
 fn test_execute_write_if_zero_subchannel() {
     let mut test: Test = Default::default();
     let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
@@ -517,7 +473,7 @@ fn test_execute_write_if_zero_subchannel_assertions() {
 }
 
 #[test]
-fn test_execute_write_private_key() {
+fn test_execute_write_if_zero_private_key() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let enc_private_key = test.mock_new_enc_private_key();
@@ -531,34 +487,43 @@ fn test_execute_write_private_key() {
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WritePrivateKey(
-            WritePrivateKeyInput { storage_address: storage_path_felt, value: enc_private_key },
+        ServerAction::WriteIfZeroPrivateKey(
+            WriteIfZeroPrivateKeyInput {
+                storage_address: storage_path_felt, value: enc_private_key,
+            },
         ),
     ];
     test.privacy.execute_actions(actions.span());
 
     // Verify private key exists.
     assert_eq!(user.get_enc_private_key(), enc_private_key);
+}
 
-    // Write again.
-    let new_enc_private_key = test.mock_new_enc_private_key();
-    assert!(new_enc_private_key.is_non_zero());
+#[test]
+fn test_execute_write_if_zero_private_key_assertions() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let enc_private_key = test.mock_new_enc_private_key();
+    assert!(enc_private_key.is_non_zero());
+
+    // Catch NON_ZERO_VALUE.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
+    );
     let actions: Array<ServerAction> = array![
-        ServerAction::WritePrivateKey(
-            WritePrivateKeyInput { storage_address: storage_path_felt, value: new_enc_private_key },
+        ServerAction::WriteIfZeroPrivateKey(
+            WriteIfZeroPrivateKeyInput {
+                storage_address: storage_path_felt, value: enc_private_key,
+            },
         ),
     ];
     test.privacy.execute_actions(actions.span());
-    assert_eq!(user.get_enc_private_key(), new_enc_private_key);
-
-    // Write zero.
-    let actions: Array<ServerAction> = array![
-        ServerAction::WritePrivateKey(
-            WritePrivateKeyInput { storage_address: storage_path_felt, value: Zero::zero() },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
-    assert_eq!(user.get_enc_private_key(), Zero::zero());
+    let current_value = generic_load(
+        target: test.privacy.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, enc_private_key);
+    let result = test.privacy.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
