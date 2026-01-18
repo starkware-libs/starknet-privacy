@@ -101,3 +101,14 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
         !self.is_zero()
     }
 }
+
+/// Ciphertext for an ECDH-based encryption of user address.
+/// Used for compliance to be able to decrypt the user address when withdrawing.
+#[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
+pub(crate) struct EncAddress {
+    /// Ephemeral ECDH public key x-coordinate (rG.x). Used by the compliance to derive rK.
+    pub ephemeral_pubkey: felt252,
+    /// Encrypted address.
+    /// `enc_address = h(ENC_ADDRESS_TAG, rK.x) + address`
+    pub enc_address: felt252,
+}
