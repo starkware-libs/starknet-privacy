@@ -8,14 +8,16 @@ use privacy::actions::{
 use privacy::errors;
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
 use privacy::tests::utils_for_tests::{
-    EncNoteTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info,
-    decrypt_private_key, decrypt_subchannel_token,
+    EncNoteTrait, PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait,
+    decrypt_channel_info, decrypt_private_key, decrypt_subchannel_token,
 };
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
 use snforge_std::{TokenTrait, map_entry_address};
 use starknet::VALIDATED;
-use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
+use starkware_utils::erc20::erc20_errors::Erc20Error;
+use starkware_utils::errors::Describable;
+use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
 
 // TODO: Catch server errors in the client side.
 
@@ -3622,4 +3624,116 @@ fn test_compile_client_actions_writes() {
         .span();
     // Assert server actions.
     assert_eq!(server_actions, expected_sevrer_actions);
+}
+
+#[test]
+fn test_client_transfers_dont_execute() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let token = test.new_token();
+    let token_address = token.contract_address();
+    let amount = 100;
+
+    user.set_viewing_key_e2e();
+    user.open_channel_e2e(recipient: user);
+    user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
+
+    // Deposit.
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+
+    let random = user.get_random();
+    let server_actions = user
+        .compile_client_actions(
+            client_actions: [
+                ClientAction::Deposit(DepositInput { token: token_address, amount }),
+                ClientAction::CreateNote(
+                    CreateNoteInput {
+                        sender_private_key: user.private_key,
+                        recipient_addr: user.address,
+                        recipient_public_key: user.public_key,
+                        token: token_address,
+                        amount,
+                        index: 0,
+                        random,
+                    },
+                ),
+            ]
+                .span(),
+        );
+
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+
+    let enc_note = user
+        .compute_enc_note(recipient: user, :token_address, index: 0, :amount, :random);
+    let note_storage_path = map_entry_address(
+        map_selector: selector!("notes"), keys: [enc_note.id].span(),
+    );
+    let expected_server_actions = array![
+        ServerAction::TransferFrom(
+            TransferFromInput {
+                sender_addr: user.address, token: token_address, amount: amount.into(),
+            },
+        ),
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: note_storage_path, value: enc_note.enc_amount },
+        ),
+    ]
+        .span();
+    assert_eq!(server_actions, expected_server_actions);
+    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
+
+    // TODO: Actual deposit when snforge fix the storage revert bug.
+
+    // Withdraw.
+    token.set_balance(address: test.privacy.address, amount: Zero::zero());
+
+    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+
+    let server_actions = user
+        .compile_client_actions(
+            client_actions: [
+                ClientAction::UseNote(
+                    UseNoteInput {
+                        owner_private_key: user.private_key,
+                        channel_key: user.compute_channel_key(recipient: user),
+                        token: token_address,
+                        note_index: 0,
+                    },
+                ),
+                ClientAction::Withdraw(
+                    WithdrawInput { withdrawal_target: user.address, token: token_address, amount },
+                ),
+            ]
+                .span(),
+        );
+
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+
+    let nullifier = user.compute_nullifier(sender: user, :token_address, note_index: 0);
+    let nullifier_path = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+    );
+    let expected_server_actions = array![
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address: nullifier_path, value: true.into() },
+        ),
+        ServerAction::TransferTo(
+            TransferToInput {
+                recipient_addr: user.address, token: token_address, amount: amount.into(),
+            },
+        ),
+    ]
+        .span();
+    assert_eq!(server_actions, expected_server_actions);
+
+    // TODO: Remove when client reverts by itself.
+    test.privacy.revert_actions_for_testing(actions: server_actions);
+
+    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 }
