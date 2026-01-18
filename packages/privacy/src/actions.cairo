@@ -1,4 +1,5 @@
 use privacy::errors;
+use privacy::events::ViewingKeySet;
 use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use starknet::ContractAddress;
 
@@ -249,4 +250,6 @@ pub enum ServerAction {
     TransferTo: TransferToInput,
     /// Verify that a storage value is equal to a given value.
     VerifyValue: VerifyValueInput,
+    /// Emit [`ViewingKeySet`](privacy::events::ViewingKeySet) event.
+    EmitViewingKeySet: ViewingKeySet,
 }

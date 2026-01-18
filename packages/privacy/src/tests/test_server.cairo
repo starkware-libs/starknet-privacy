@@ -3,11 +3,11 @@ use privacy::actions::{
     AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
     WriteIfZeroInput, WriteIfZeroPrivateKeyInput, WriteIfZeroSubchannelInput,
 };
-use privacy::errors;
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
 };
-use snforge_std::{TokenTrait, map_entry_address};
+use privacy::{errors, events};
+use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
 use starkware_utils::components::replaceability::interface::{
     IReplaceableDispatcher, IReplaceableDispatcherTrait,
@@ -16,7 +16,8 @@ use starkware_utils::components::roles::interface::{IRolesDispatcher, IRolesDisp
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{
-    assert_panic_with_error, assert_panic_with_felt_error, generic_load,
+    assert_expected_event_emitted, assert_panic_with_error, assert_panic_with_felt_error,
+    generic_load,
 };
 
 // TODO: Different file for Views tests?
@@ -712,6 +713,27 @@ fn test_execute_verify_value_assertions() {
     ];
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
+}
+
+#[test]
+fn test_execute_emit_viewing_key_set() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let enc_private_key = test.mock_new_enc_private_key();
+    let expected_event = events::ViewingKeySet {
+        user_addr: user.address, public_key: user.public_key, enc_private_key,
+    };
+    let actions = array![ServerAction::EmitViewingKeySet(expected_event)];
+    let mut spy = spy_events();
+    test.privacy.execute_actions(actions.span());
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("ViewingKeySet"),
+        expected_event_name: "ViewingKeySet",
+    );
 }
 
 #[test]

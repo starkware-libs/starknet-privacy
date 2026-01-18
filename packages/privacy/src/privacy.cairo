@@ -11,7 +11,6 @@ pub mod Privacy {
         TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput,
         WriteIfZeroPrivateKeyInput, WriteIfZeroSubchannelInput,
     };
-    use privacy::errors;
     use privacy::errors::internal_errors;
     use privacy::hashes::{
         compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
@@ -28,6 +27,7 @@ pub mod Privacy {
         encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
         is_canonical_key, send_message_to_server,
     };
+    use privacy::{errors, events};
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
@@ -95,6 +95,7 @@ pub mod Privacy {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
+        ViewingKeySet: events::ViewingKeySet,
     }
 
     #[constructor]
@@ -196,6 +197,11 @@ pub mod Privacy {
                     WriteIfZeroPrivateKeyInput {
                         storage_address: self.enc_private_key.entry(user_addr).into(),
                         value: enc_private_key,
+                    },
+                ),
+                ServerAction::EmitViewingKeySet(
+                    events::ViewingKeySet {
+                        user_addr, public_key: user_public_key, enc_private_key,
                     },
                 ),
             ]
@@ -539,6 +545,7 @@ pub mod Privacy {
                                 storage_address: input.storage_address, value: input.value,
                             );
                     },
+                    ServerAction::EmitViewingKeySet(event) => { self.emit(event); },
                 };
             };
         }
