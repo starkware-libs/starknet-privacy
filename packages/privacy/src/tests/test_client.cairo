@@ -2930,7 +2930,8 @@ fn test_compile_client_actions_set_viewing_key() {
     let view_actions = user_1.execute_view(:client_actions);
     assert_eq!(view_actions, actions);
     assert_eq!(user_1.get_public_key(), Zero::zero());
-    assert_eq!(user_1.get_enc_private_key(), Zero::zero());
+    assert_eq!(user_1.get_enc_private_key().ephemeral_pubkey, Zero::zero());
+    assert_eq!(user_1.get_enc_private_key().enc_private_key, Zero::zero());
     // TODO: Verify no events emitted (after snforge revert bug is resolved).
 
     let mut spy_events = spy_events();
