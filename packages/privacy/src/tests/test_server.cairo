@@ -712,6 +712,28 @@ fn test_execute_emit_viewing_key_set() {
 }
 
 #[test]
+fn test_execute_emit_withdrawal() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let token = test.mock_new_token();
+    let enc_user_addr = test.mock_new_enc_address();
+    let expected_event = events::Withdrawal {
+        enc_user_addr, withdrawal_target: user.address, token, amount: 1,
+    };
+    let actions = array![ServerAction::EmitWithdrawal(expected_event)];
+    let mut spy = spy_events();
+    test.privacy.execute_actions(actions.span());
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("Withdrawal"),
+        expected_event_name: "Withdrawal",
+    );
+}
+
+#[test]
 fn test_execute_actions_paused() {
     let mut test: Test = Default::default();
     test.privacy.pause();

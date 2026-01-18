@@ -23,8 +23,8 @@ pub mod Privacy {
     use privacy::utils::constants::TWO_POW_120;
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_signature, decrypt_note_amount, derive_public_key,
-        encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
-        is_canonical_key, send_message_to_server,
+        encrypt_address, encrypt_channel_info, encrypt_note_amount, encrypt_private_key,
+        encrypt_subchannel_info, is_canonical_key, send_message_to_server,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -94,6 +94,7 @@ pub mod Privacy {
         #[flat]
         SRC5Event: SRC5Component::Event,
         ViewingKeySet: events::ViewingKeySet,
+        Withdrawal: events::Withdrawal,
     }
 
     #[constructor]
@@ -157,7 +158,7 @@ pub mod Privacy {
                         self.use_note(owner_addr: user_addr, :input, ref :token_balances), true,
                     ),
                     ClientAction::Withdraw(input) => (
-                        self.withdraw(:input, ref :token_balances), false,
+                        self.withdraw(:user_addr, :input, ref :token_balances), false,
                     ),
                 };
                 if should_execute {
@@ -353,21 +354,36 @@ pub mod Privacy {
         }
 
         fn withdraw(
-            self: @ContractState, input: WithdrawInput, ref token_balances: TokenBalances,
+            self: @ContractState,
+            user_addr: ContractAddress,
+            input: WithdrawInput,
+            ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
             let withdrawal_target = input.withdrawal_target;
             let token = input.token;
             let amount = input.amount;
+            let random = input.random;
             // Assert valid input.
             assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
 
             token_balances.subtract_balance(:token, :amount);
+
+            // Encrypt the user address for the compliance.
+            let enc_user_addr = encrypt_address(
+                ephemeral_secret: random,
+                compliance_public_key: self.compliance_public_key.read(),
+                address: user_addr,
+            );
 
             array![
                 ServerAction::TransferTo(
                     TransferToInput { recipient_addr: withdrawal_target, token, amount },
+                ),
+                ServerAction::EmitWithdrawal(
+                    events::Withdrawal { enc_user_addr, withdrawal_target, token, amount },
                 ),
             ]
         }
@@ -552,6 +568,7 @@ pub mod Privacy {
                             );
                     },
                     ServerAction::EmitViewingKeySet(event) => { self.emit(event); },
+                    ServerAction::EmitWithdrawal(event) => { self.emit(event); },
                 };
             };
         }

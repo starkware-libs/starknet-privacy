@@ -4,10 +4,10 @@ use core::num::traits::Zero;
 use privacy::actions::ServerAction;
 use privacy::errors;
 use privacy::hashes::{
-    compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_private_key_hash,
-    compute_enc_sender_addr_hash, compute_enc_token_hash,
+    compute_enc_address_hash, compute_enc_amount_hash, compute_enc_channel_key_hash,
+    compute_enc_private_key_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
 };
-use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
+use privacy::objects::{EncAddress, EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::send_message_to_l1_syscall;
 use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_tx_info};
@@ -109,6 +109,40 @@ pub(crate) fn encrypt_private_key(
     let enc_private_key = compute_enc_private_key_hash(:shared_x) + private_key;
     EncPrivateKey { ephemeral_pubkey: ephemeral_pub_x, enc_private_key }
 }
+
+/// Encrypts the user address when withdrawing for the compliance using ECDH.
+/// Assumes all the inputs are not zero.
+///
+/// High level:
+/// - User picks a fresh random scalar `r` (= `ephemeral_secret`).
+/// - User publishes the ephemeral public key `R = rG` (only the x-coordinate is stored).
+/// - User derives a shared secret with the copmliance:
+///   `S = r * K_copmliance`, where `K_copmliance` is the copmliance's public key as a curve point
+///   (only the x-coordinate is used as the shared secret material).
+///
+/// Specifically, we output:
+/// - `ephemeral_pubkey = (rG).x`
+/// - `enc_address  = h( ENC_ADDRESS_TAG, (rK_copmliance).x ) + address`
+///
+/// Decryption (Compliance):
+/// - Reconstruct `R` from `R.x` (curve point recovery).
+/// - Compute `S = k_copmliance * R = k_copmliance * (rG)`.
+/// - Take `S.x` and subtract the same hash masks to recover the plaintext fields.
+pub(crate) fn encrypt_address(
+    ephemeral_secret: felt252, compliance_public_key: felt252, address: ContractAddress,
+) -> EncAddress {
+    // Compute ephemeral public key.
+    let ephemeral_pub_point = GEN_P().mul(scalar: ephemeral_secret);
+    let ephemeral_pub_x = ephemeral_pub_point.try_into().unwrap().x();
+    // Compute shared point.
+    let compliance_public_point = EcPointTrait::new_from_x(x: compliance_public_key).unwrap();
+    let shared_point = compliance_public_point.mul(scalar: ephemeral_secret);
+    let shared_x = shared_point.try_into().unwrap().x();
+    // Encrypt address.
+    let enc_address = compute_enc_address_hash(:shared_x) + address.into();
+    EncAddress { ephemeral_pubkey: ephemeral_pub_x, enc_address }
+}
+
 
 /// Derives the public key from the private key.
 /// Assumes the private key is not zero.
