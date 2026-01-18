@@ -1,7 +1,8 @@
 use privacy::hashes::hash;
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{decrypt_note_amount, encrypt_note_amount, packing, unpacking};
-use starkware_utils::constants::{MAX_U128, TWO_POW_128};
+use starknet::ContractAddress;
+use starkware_utils::constants::{MAX_U128, MAX_U32, TWO_POW_128};
 
 #[test]
 fn test_encrypt_decrypt_note_amount() {
@@ -15,10 +16,17 @@ fn test_encrypt_decrypt_note_amount() {
             .into() % TWO_POW_120
             .into();
         let random_120_bits: u128 = random_120_bits_u256.try_into().unwrap();
+        nonce += 1;
+        let token: ContractAddress = hash(['TOKEN', nonce.into()].span()).try_into().unwrap();
+        nonce += 1;
+        let index_u256: u256 = hash(['INDEX', nonce.into()].span()).into();
+        let index: usize = (index_u256 % MAX_U32.into()).try_into().unwrap();
         let enc_amount = encrypt_note_amount(
-            :channel_key, random: random_120_bits, amount: *amount,
+            :channel_key, :token, :index, random: random_120_bits, amount: *amount,
         );
-        let dec_amount = decrypt_note_amount(enc_note_value: enc_amount, :channel_key);
+        let dec_amount = decrypt_note_amount(
+            enc_note_value: enc_amount, :channel_key, :token, :index,
+        );
         assert_eq!(dec_amount, *amount);
     }
 }

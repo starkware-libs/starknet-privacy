@@ -420,10 +420,10 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn compute_enc_subchannel_info(
-        self: @User, recipient: User, token_address: ContractAddress, random: felt252,
+        self: @User, recipient: User, token_address: ContractAddress, index: usize, random: felt252,
     ) -> EncSubchannelInfo {
         let channel_key = self.compute_channel_key(:recipient);
-        encrypt_subchannel_info(:channel_key, token: token_address, :random)
+        encrypt_subchannel_info(:channel_key, :index, token: token_address, :random)
     }
 
     fn compute_enc_note(
@@ -436,7 +436,9 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> EncNote {
         let channel_key = self.compute_channel_key(:recipient);
         let note_id = compute_note_id(:channel_key, token: token_address, :index);
-        let enc_amount = encrypt_note_amount(:channel_key, :random, :amount);
+        let enc_amount = encrypt_note_amount(
+            :channel_key, token: token_address, :index, :random, :amount,
+        );
         EncNote { id: note_id, enc_amount }
     }
 
@@ -1077,10 +1079,10 @@ pub(crate) fn decrypt_channel_info(
 }
 
 pub(crate) fn decrypt_subchannel_token(
-    enc_subchannel_info: EncSubchannelInfo, channel_key: felt252,
+    enc_subchannel_info: EncSubchannelInfo, channel_key: felt252, index: usize,
 ) -> ContractAddress {
     let token = enc_subchannel_info.enc_token
-        - compute_enc_token_hash(:channel_key, random: enc_subchannel_info.random);
+        - compute_enc_token_hash(:channel_key, :index, random: enc_subchannel_info.random);
     token.try_into().unwrap()
 }
 
