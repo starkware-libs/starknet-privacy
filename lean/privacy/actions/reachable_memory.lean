@@ -3,10 +3,14 @@ import privacy.actions.run_action
 import privacy.actions.server_actions
 
 structure ReachableMemory (crypto: Crypto) where
-  m: Memory
   actions: List Action
-  success: (run_all crypto actions 0).2
-  h: m = (run_all crypto actions 0).1
+  success: (run_all crypto actions 0).success
+
+abbrev ReachableMemory.m {crypto: Crypto} (rm: ReachableMemory crypto) : Memory :=
+  run_all crypto rm.actions 0 |>.m
+
+abbrev ReachableMemory.events {crypto: Crypto} (rm: ReachableMemory crypto) : List Event :=
+  run_all crypto rm.actions 0 |>.events
 
 instance : CoeOut (ReachableMemory crypto) Memory where
   coe := ReachableMemory.m
@@ -14,10 +18,8 @@ instance : CoeOut (ReachableMemory crypto) Memory where
 @[simp]
 def ReachableMemory.empty {crypto: Crypto} : ReachableMemory crypto :=
   {
-    m := 0
     actions := []
     success := by rfl
-    h := by rfl
   }
 
 @[simp]
@@ -25,17 +27,27 @@ def ReachableMemory.add
     {crypto: Crypto}
     (rm: ReachableMemory crypto)
     (action: Action)
-    (success: (run_action crypto action rm.m).2)
+    (success: (run_action crypto action rm.m).success)
   : ReachableMemory crypto :=
-  let m' := (run_action crypto action rm.m).1
+  let m' := (run_action crypto action rm.m).m
   let actions' := action :: rm.actions
-  let h : m' = (run_all crypto actions' 0).1 := by simp [m', actions', rm.h]
+  have h : m' = (run_all crypto actions' 0).m := by simp [m', actions']
   {
-    m := m'
     actions := actions'
-    success := by unfold actions'; simp [←rm.h, rm.success, success]
-    h := h
+    success := by unfold actions'; simpa [rm.success]
   }
+
+theorem ReachableMemory.add_m
+    {crypto: Crypto}
+    {rm: ReachableMemory crypto} {action: Action} (success: (run_action crypto action rm.m).success) :
+    (rm.add action success).m = (run_action crypto action rm.m).m := by
+  simp [ReachableMemory.add, ReachableMemory.m]
+
+theorem ReachableMemory.add_events
+    {crypto: Crypto}
+    {rm: ReachableMemory crypto} {action: Action} (success: (run_action crypto action rm.m).success) :
+    (rm.add action success).events = rm.events ++ (run_action crypto action rm.m).events := by
+  simp [ReachableMemory.add, ReachableMemory.events]
 
 def ReachableMemory.extends (rm' rm: ReachableMemory crypto) : Prop :=
   rm.actions <:+ rm'.actions
@@ -50,7 +62,7 @@ def ReachableMemory.extends (rm' rm: ReachableMemory crypto) : Prop :=
 abbrev invariant_step
   (crypto: Crypto) (inv: ReachableMemory crypto → Prop) (action: Action) (rm: ReachableMemory crypto) :=
   inv rm →
-  ∀ success: (run_action crypto action rm.m).2,
+  ∀ success: (run_action crypto action rm.m).success,
   inv (rm.add action success)
 
 -- Induction for ReachableMemory: If
@@ -63,20 +75,16 @@ theorem ReachableMemory.induction
     (inv_step: ∀ action: Action, ∀ rm: ReachableMemory crypto,
       invariant_step crypto f action rm)
   : ∀ rm: ReachableMemory crypto, f rm := by
-  intro ⟨m', actions, success, h⟩
-  induction actions generalizing m'
+  intro ⟨actions, success⟩
+  induction actions
 
-  case nil =>
-    simp only [run_all] at h
-    subst h
-    exact inv₀
+  case nil => exact inv₀
 
   case cons action actions ih =>
     simp only [run_all, List.foldr_cons, Bool.and_eq_true] at success
-    let m := (run_all crypto actions 0).1
-    let rm : ReachableMemory crypto := ⟨m, actions, success.1, by rfl⟩
-    subst h
-    exact inv_step action rm (ih m success.1 rm.h) success.2
+    let m := (run_all crypto actions 0).m
+    let rm : ReachableMemory crypto := ⟨actions, success.1⟩
+    exact inv_step action rm (ih success.1) success.2
 
 theorem invariant_induction_for_extends
     {crypto: Crypto}

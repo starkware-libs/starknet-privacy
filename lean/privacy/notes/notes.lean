@@ -6,13 +6,12 @@ def note_exists (m: Memory) (note_id: ℕ) : Prop :=
 
 -- OpenDeposit doesn't affect `note_exists`.
 theorem note_exists_open_deposit {crypto: Crypto} {rm: ReachableMemory crypto}
-    (success: (run_action crypto (.OpenDeposit inp) rm.m).2) (note_id: ℕ) :
+    (success: (run_action crypto (.OpenDeposit inp) rm.m).success) (note_id: ℕ) :
     note_exists (rm.add (.OpenDeposit inp) success) note_id ↔ note_exists rm note_id := by
-  unfold ReachableMemory.add run_action note_exists at *
-  dsimp only
+  unfold note_exists at *
 
   let info := open_deposit_info crypto inp rm success
-  rw [←info.h_m']
+  rw [ReachableMemory.add_m, run_action, ←info.h_m']
   by_cases h₀ : note_id = inp.note_id
   case pos =>
     have note_existed : rm.m MemoryType.Notes [inp.note_id, 0] ≠ 0 := by
@@ -25,16 +24,15 @@ theorem note_exists_open_deposit {crypto: Crypto} {rm: ReachableMemory crypto}
 
 -- Once a note exists, it stays this way.
 theorem note_exists_monotone {crypto: Crypto} {rm: ReachableMemory crypto} {action: Action}
-    (success: (run_action crypto action rm.m).2)
+    (success: (run_action crypto action rm.m).success)
     {note_id : ℕ}
     (h : note_exists rm note_id) :
     note_exists (rm.add action success) note_id := by
   cases action
   case CreateNote inp =>
-    unfold ReachableMemory.add run_action note_exists at *
-    simp
+    unfold note_exists at *
     let info := create_note_info crypto inp rm success
-    rw [←info.h_m']
+    rw [ReachableMemory.add_m, run_action, ←info.h_m']
     by_cases h₀ : note_id = inp.note_id crypto
     case pos =>
       rw [h₀, info.memory_diff₀]

@@ -1,5 +1,8 @@
 import privacy.utils
 
+inductive Event where
+  | Register (addralice kalice: ℕ)
+
 inductive ServerAction where
   -- Writes `val` at `(t, key)`.
   | Write (t: MemoryType) (key: List ℕ) (val: ℕ)
@@ -9,9 +12,11 @@ inductive ServerAction where
   -- `(t_idx, key)` is used to store the length of the list.
   | Append (t_idx t: MemoryType) (key: List ℕ) (val: ℕ) (h: t_idx = .ChannelsJ ∧ t = .Channels)
   -- Reads the value and asserts that it is equal to `val`.
-  | Check (t: MemoryType) (key: List ℕ) (val: ℕ)
+  | ReadAssert (t: MemoryType) (key: List ℕ) (val: ℕ)
   -- Deposits `amount` of `token` into the open note `note_id`.
   | OpenDeposit (note_id amount token: ℕ)
+  -- Emits an event.
+  | Event (event: Event)
 
 def ServerAction.run (crypto: Crypto) (action: ServerAction) (m: Memory) : Memory × Bool :=
   match action with
@@ -22,11 +27,12 @@ def ServerAction.run (crypto: Crypto) (action: ServerAction) (m: Memory) : Memor
     let m := write t_idx key (idx + 1) m
     let m := write t (key ++ [idx]) val m
     (m, true)
-  | .Check t key val => (m, m t key = val)
+  | .ReadAssert t key val => (m, m t key = val)
   | .OpenDeposit note_id amount token =>
     let old_value := m .Notes [note_id, 0]
     let m := write .Notes [note_id, 0] (crypto.pack 1 amount) m
     (m, old_value = crypto.pack 1 0 ∧ m .OpenNoteToken [note_id] = token)
+  | .Event _event => (m, true)
 
 def ServerAction.run_all (crypto: Crypto) (actions: List ServerAction) (m: Memory) : Memory × Bool :=
   actions.foldl (λ (m, success) action ↦
@@ -56,6 +62,20 @@ theorem ServerAction.run_all_append
     rw [←List.append_assoc, ServerAction.run_all_append_singleton,
       ServerAction.run_all_append_singleton, ih]
 
-abbrev process_action (crypto: Crypto) (m: Memory) (r_client: List ServerAction × Bool) : Memory × Bool :=
+def get_events (server_actions: List ServerAction) : List Event :=
+  server_actions.filterMap (λ action ↦ match action with
+    | .Event event => some event
+    | _ => none
+  )
+
+structure RunResult where
+  m: Memory
+  events: List Event
+  success: Bool
+
+abbrev RunResult.add (res_old: RunResult) (res_new: RunResult) : RunResult :=
+  { m := res_new.m, events := res_old.events ++ res_new.events, success := res_old.success && res_new.success }
+
+abbrev process_action (crypto: Crypto) (m: Memory) (r_client: List ServerAction × Bool) : RunResult :=
   let r_server := ServerAction.run_all crypto r_client.1 m
-  (r_server.1, r_client.2 && r_server.2)
+  { m := r_server.1, events := get_events r_client.1, success := r_client.2 && r_server.2 }

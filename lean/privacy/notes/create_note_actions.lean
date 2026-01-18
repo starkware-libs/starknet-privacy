@@ -3,17 +3,22 @@ import privacy.notes.discoverable
 import privacy.utils
 
 def create_note_actions (crypto: Crypto) (rm: ReachableMemory crypto) : List CreateNoteInput :=
-  rm.actions.flatMap (λ action ↦ match action with
-    | .CreateNote inp => [inp]
-    | _ => []
-  )
+  rm.actions.filterMap filter_CreateNote
 
 theorem create_note_actions_add
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
-    (success: (run_action crypto (.CreateNote inp) rm.m).2) :
+    (success: (run_action crypto (.CreateNote inp) rm.m).success) :
     (create_note_actions crypto (rm.add (.CreateNote inp) success)) =
     inp :: create_note_actions crypto rm := by
   simp [create_note_actions]
+
+theorem create_note_actions_add'
+    {crypto: Crypto} {rm: ReachableMemory crypto} {action: Action}
+    (success: (run_action crypto action rm.m).success)
+    (h: filter_CreateNote action = none) :
+    (create_note_actions crypto (rm.add action success)) =
+    create_note_actions crypto rm := by
+  simp only [create_note_actions, ReachableMemory.add, List.filterMap_cons, h]
 
 -- CreateNote action implies:
 -- 1. note exists,
@@ -42,9 +47,8 @@ theorem create_note_actions_implies
 
     case inl h' =>
       rw [h']
-      unfold note_exists ReachableMemory.add run_action
-      dsimp only
-      rw [←info.h_m']
+      unfold note_exists
+      rw [ReachableMemory.add_m, run_action, ←info.h_m']
       refine ⟨?_, ?_, ?_, ?_⟩
       · dsimp only
         rw [CreateNoteInput.note_id, CreateNoteInput.c, info.memory_diff₀]
@@ -67,8 +71,7 @@ theorem create_note_actions_implies
         exact h₀
 
       all_goals
-        dsimp only [ReachableMemory.add, run_action]
-        rw [←info.h_m']
+        rw [ReachableMemory.add_m, run_action, ←info.h_m']
         rw [info.no_change _ _ (by simp [h_note_id]) (by simp [h_note_id])]
       exact h₁
       exact h₂
@@ -78,11 +81,10 @@ theorem create_note_actions_implies
     let info := create_subchannel_info crypto inp' rm success
 
     intro h'
-    dsimp only [ReachableMemory.add, run_action]
     have ⟨h₀, h₁, h₂, h₃⟩ := ih h'
     refine ⟨h₀, ?_, h₂, h₃⟩
 
-    rw [←info.h_m']
+    rw [ReachableMemory.add_m, run_action, ←info.h_m']
     by_cases h_is_same: crypto.hash [inp.c crypto, inp.addrbob, inp.Kbob, inp.token] = inp'.subchannel_hash crypto
     case pos =>
       rw [h_is_same, info.memory_diff₂]; simp
@@ -97,8 +99,7 @@ theorem create_note_actions_implies
     refine ⟨h₀, h₁, h₂, ?_⟩
 
     let info := open_deposit_info crypto inp' rm success
-    dsimp only [ReachableMemory.add, run_action]
-    rw [←info.h_m']
+    rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
     by_cases h_is_same: inp.note_id crypto = inp'.note_id
     case pos =>
@@ -134,9 +135,8 @@ theorem create_note_actions_iff_note_exists
     case neg =>
       intro h_note_exists
       have : note_exists rm.m note_id := by
-        unfold note_exists ReachableMemory.add run_action at *
-        dsimp only at *
-        rw [←info.h_m'] at h_note_exists
+        unfold note_exists at *
+        rw [ReachableMemory.add_m, run_action, ←info.h_m'] at h_note_exists
         rw [info.no_change _ _ (by simp [h_note_id]) (by simp)] at h_note_exists
         exact h_note_exists
       obtain ⟨inp, ih⟩ := ih this
@@ -151,7 +151,7 @@ theorem create_note_actions_iff_note_exists
 theorem create_note_actions_iff_note_discoverable
     {crypto: Crypto} {rm: ReachableMemory crypto}
     (addrbob: ℕ) (kbob: crypto.PrivateKeys) (sn: ScannedNote) :
-    sn ∈ scan_notes_for_recipient crypto rm addrbob kbob ↔
+    sn ∈ scan_notes_for_recipient (.from rm) addrbob kbob ↔
     ∃ inp, inp ∈ create_note_actions crypto rm ∧
       inp.to_scanned_note crypto = sn ∧
       inp.addrbob = addrbob ∧
@@ -175,7 +175,7 @@ theorem create_note_actions_iff_note_discoverable
   · intro h
     obtain ⟨inp, h₀, h₁, h_inp_addrbob, h_inp_Kbob⟩ := h
     have := create_note_actions_iff_note_exists.2 ⟨inp, h₀, by rfl⟩
-    obtain ⟨addrbob', kbob', sn', h₆, h_note_id, ⟨addralice, kalice, h_c'⟩⟩ :=
+    obtain ⟨addrbob', kbob', sn', h₆, h_note_id, _, ⟨addralice, kalice, h_c'⟩⟩ :=
       note_exists_implies_for_recipient this
     have h_sn := CreateNoteInput.to_scanned_note_eq h_note_id
 
