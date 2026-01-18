@@ -1,28 +1,64 @@
 import privacy.actions
 import privacy.utils
 
+-------------------------
+-- Storage functionals --
+-------------------------
+
+abbrev Functional (β: Type) := Memory → β
+
+def mem_cell_fn (t: MemoryType) (x: List ℕ) : Functional ℕ := λ m: Memory ↦ m t x
+
+-- If the note is (r=1, amount=0), returns 0.
+-- Otherwise, returns the packed encrypted value of the note.
+def note_modified_value_fn (crypto: Crypto) (note_id: ℕ) :=
+  (λ val ↦ if val = crypto.pack 1 0 then 0 else val) ∘ (mem_cell_fn .Notes [note_id, 0])
+
+def note_exists_fn (note_id: ℕ) : Memory → Bool :=
+  (λ val ↦ decide (val ≠ 0)) ∘ (mem_cell_fn .Notes [note_id, 0])
+
+------------------
+-- Immutability --
+------------------
+
 -- For certain memory spaces, once a value is written, it cannot be changed.
 theorem immutability₀ (crypto: Crypto) (m: Memory) (action: Action) (t: MemoryType) (x: List ℕ)
     (h_nonzero: m t x ≠ 0)
     (h_t:
-      t ≠ .PublicKeys ∧
       t ≠ .ChannelsJ ∧
       t ≠ .Channels ∧
       t ≠ .Notes ∧
       t ≠ .OpenNoteToken ∧
-      (t = .Tokens → ∃ v, x = [v, 0])
+      (t = .SubchannelTokens → ∃ v, x = [v, 0]) ∧
+      (t = .OutgoingChannels → ∃ v, x = [v, 0])
     )
-    (success: (run_action crypto action m).2)
-    : (run_action crypto action m).1 t x = m t x := by
+    (success: (run_action crypto action m).success)
+    : (run_action crypto action m).m t x = m t x := by
   cases action
   case Register inp =>
     let info := register_info crypto inp m success
-    rw [run_action, ←info.h_m', info.no_change _ _ (by simp [h_t])]
+    rw [run_action, ←info.h_m', info.no_change _ _ (by
+      by_contra
+      simp only [Prod.mk.injEq] at this
+      simp [this] at h_nonzero
+      exact h_nonzero info.alice_was_not_registered
+    )]
 
   case CreateChannel inp =>
     let info := create_channel_info crypto inp m success
-    rw [run_action, ←info.h_m', info.no_change _ _ (by simp [h_t]) (by simp [h_t])
-      (λ h' ↦ h_nonzero (by rw [Prod.mk.injEq] at h'; simp [h'.1, h'.2, info.channel_didnt_exist]))]
+    rw [run_action, ←info.h_m', info.no_change _ _ (by
+      simp only [ne_eq, Prod.mk.injEq, h_t, false_and, not_false_eq_true, not_and, true_and]
+      refine ⟨?_, ?_, ?_, ?_⟩
+
+      · intro h₀ h₁
+        rw [h₀, h₁, info.channel_didnt_exist] at h_nonzero
+        contradiction
+      · intro h₀ h₁
+        rw [h₀, h₁, info.outgoing_channel_didnt_exist] at h_nonzero
+        contradiction
+      · intro h₀ h₁; simp [h₀, h₁] at h_t
+      · intro h₀ h₁; simp [h₀, h₁] at h_t
+    )]
 
   case CreateSubchannel inp =>
     let info := create_subchannel_info crypto inp m success
@@ -53,12 +89,12 @@ theorem immutability {crypto: Crypto} {rm rm': ReachableMemory crypto}
     {t: MemoryType} {x: List ℕ}
     (h_nonzero: rm.m t x ≠ 0)
     (h_t:
-      t ≠ .PublicKeys ∧
       t ≠ .ChannelsJ ∧
       t ≠ .Channels ∧
       t ≠ .Notes ∧
       t ≠ .OpenNoteToken ∧
-      (t = .Tokens → ∃ v, x = [v, 0])
+      (t = .SubchannelTokens → ∃ v, x = [v, 0]) ∧
+      (t = .OutgoingChannels → ∃ v, x = [v, 0])
     )
     : rm'.m t x = rm.m t x := by
   revert rm'
@@ -66,56 +102,18 @@ theorem immutability {crypto: Crypto} {rm rm': ReachableMemory crypto}
   case inv₀ => trivial
 
   intro action rm' h_extends h success
-  dsimp only [ReachableMemory.add]
-  rwa [immutability₀ (h_t:=h_t) (h_nonzero:=by rwa [h]) (success:=success)]
-
--- For PublicKeys, once a value is written, it cannot be changed back to 0.
-theorem public_key_stays_nonzero₀ (crypto: Crypto) (m: Memory) (action: Action) (x: List ℕ)
-    (h_nonzero: m .PublicKeys x ≠ 0)
-    (success: (run_action crypto action m).2)
-    : (run_action crypto action m).1 .PublicKeys x ≠ 0 := by
-  cases action
-  case Register inp =>
-    let info := register_info crypto inp m success
-    rw [run_action, ←info.h_m']
-    by_cases h: x = [inp.addrbob]
-    case pos =>
-      rw [h, info.memory_diff₀]
-      exact crypto.zero_not_public_key ⟨inp.kbob, info.kbob_private_key⟩
-    case neg => rwa [info.no_change _ _ (by simp [h])]
-
-  all_goals trivial
-
--- Once a public key entry is non-zero, it stays non-zero.
-theorem public_key_stays_nonzero {crypto: Crypto} {rm rm': ReachableMemory crypto}
-    (h_extends: rm'.extends rm)
-    {x: List ℕ}
-    (h_nonzero: rm.m .PublicKeys x ≠ 0)
-    : rm'.m .PublicKeys x ≠ 0 := by
-  revert rm'
-  apply invariant_induction_for_extends rm
-
-  case inv₀ => trivial
-
-  intro action rm' h_extends h success
-  apply public_key_stays_nonzero₀ (success:=success)
-  exact h
-
--- If the note is (r=1, amount=0), returns 0.
--- Otherwise, returns the packed encrypted value of the note.
-def note_modified_value_fn (crypto: Crypto) (note_id: ℕ) :=
-  λ (m: Memory) ↦ (
-    let val := m .Notes [note_id, 0]
-    if val = crypto.pack 1 0 then 0 else val
-)
+  rw [←h, ←immutability₀ (h_t:=h_t) (h_nonzero:=by rwa [h]) (success:=success)]
+  rfl
 
 -- For PublicKeys, once a value is written, it cannot be changed back to 0.
 theorem note_amount_immutable₀ (crypto: Crypto) (m: Memory) (action: Action) (note_id: ℕ)
-    (success: (run_action crypto action m).2) :
-    (m .Notes [note_id, 0] ≠ 0 → (run_action crypto action m).1 .Notes [note_id, 0] ≠ 0) ∧
+    (success: (run_action crypto action m).success) :
+    (m .Notes [note_id, 0] ≠ 0 → (run_action crypto action m).m .Notes [note_id, 0] ≠ 0) ∧
     (note_modified_value_fn crypto note_id m ≠ 0 →
-      note_modified_value_fn crypto note_id (run_action crypto action m).1 =
+      note_modified_value_fn crypto note_id (run_action crypto action m).m =
       note_modified_value_fn crypto note_id m) := by
+  dsimp only [note_modified_value_fn, mem_cell_fn, Function.comp_apply]
+
   cases action
   case CreateNote inp =>
     let info := create_note_info crypto inp m success
@@ -129,7 +127,6 @@ theorem note_amount_immutable₀ (crypto: Crypto) (m: Memory) (action: Action) (
       · intro h_nonzero
         have note_existed : m .Notes [note_id, 0] ≠ 0 := by
           by_contra h'
-          dsimp only [note_modified_value_fn] at h_nonzero
           simp [h'] at h_nonzero
         have := info.old_value_was_zero
         rw [h] at note_existed
@@ -140,7 +137,6 @@ theorem note_amount_immutable₀ (crypto: Crypto) (m: Memory) (action: Action) (
       · intro h_nonzero
         rwa [info.no_change _ _ (by simpa) (by simp)]
       · intro h_nonzero
-        unfold note_modified_value_fn
         rw [info.no_change _ _ (by simpa) (by simp)]
 
   case OpenDeposit inp =>
@@ -160,7 +156,6 @@ theorem note_amount_immutable₀ (crypto: Crypto) (m: Memory) (action: Action) (
       · intro h_nonzero
         rwa [info.no_change _ _ (by simp [h])]
       · intro h_nonzero
-        unfold note_modified_value_fn
         rw [info.no_change _ _ (by simp [h])]
 
   all_goals exact ⟨by intro _; trivial, by intro _; trivial⟩
@@ -181,38 +176,55 @@ theorem note_amount_immutable {crypto: Crypto} {rm rm': ReachableMemory crypto}
   · intro h_nonzero
     exact (note_amount_immutable₀ crypto rm' action note_id success).1 (h.1 h_nonzero)
   · intro h_nonzero
-    unfold ReachableMemory.add
+    rw [ReachableMemory.add_m success]
     rw [(note_amount_immutable₀ crypto rm' action note_id success).2 (by rwa [h.2 h_nonzero])]
     exact h.2 h_nonzero
 
 -------------------------
 
 -- A function on the memory is called immutable if once it becomes non-zero, it cannot be changed.
-def immutable_fn {β: Type} [Inhabited β] (m₀ m₁: Memory) (f: Memory → β) : Prop :=
+def immutable_fn {β: Type} [Inhabited β] (m₀ m₁: Memory) (f: Functional β) : Prop :=
   f m₀ ≠ default → f m₁ = f m₀
 
-theorem immutable_fn_prop {m₀ m₁: Memory} {f: Memory → Bool} (imm: immutable_fn m₀ m₁ f) :
+theorem immutable_fn_prop {m₀ m₁: Memory} {f: Functional Bool} (imm: immutable_fn m₀ m₁ f) :
     f m₀ → (f m₁ ↔ f m₀) := by
   intro h
   rw [imm (by simp [h])]
 
-def immutable_cell (m₀ m₁: Memory) (t: MemoryType) (x: List ℕ) : Prop :=
-  immutable_fn m₀ m₁ (λ m: Memory ↦ m t x)
+theorem create_channel_immutable
+    {crypto: Crypto} {m₀ m₁: Memory} (inp: CreateChannelInput)
+    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .PublicKeys x))
+    (imm₁: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .OutgoingChannels [x, 0]))
+    (success: (run_action₀ crypto (.CreateChannel inp) m₀).2) :
+    run_action₀ crypto (.CreateChannel inp) m₁ = run_action₀ crypto (.CreateChannel inp) m₀ := by
+  dsimp only [run_action₀, create_channel] at *
+  rw [decide_eq_true_iff] at success
 
-def note_exists_fn (note_id: ℕ) : Memory → Bool :=
-  λ (m: Memory) ↦ decide (m .Notes [note_id, 0] ≠ 0)
+  have ⟨h₀, h₁, h₂, h₃, h₄⟩ := success
+
+  dsimp only [immutable_fn, mem_cell_fn] at imm₀ imm₁
+
+  apply Prod.ext
+  · trivial
+  · simp only [imm₀ [inp.addralice] (by
+      rw [h₁]; exact crypto.zero_not_public_key ⟨inp.kalice, h₂⟩
+    )]
+
+    cases h₄
+    case inl h₄ => simp [h₄]
+    case inr h₄ => rw [imm₁ _ h₄]
 
 theorem create_subchannel_immutable
     {crypto: Crypto} {m₀ m₁: Memory} (inp: CreateSubchannelInput)
-    (imm₀: ∀ x, immutable_cell m₀ m₁ .ChannelHashes x)
-    (imm₁: ∀ x, immutable_cell m₀ m₁ .Tokens [x, 0])
+    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .ChannelHashes x))
+    (imm₁: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelTokens [x, 0]))
     (success: (run_action₀ crypto (.CreateSubchannel inp) m₀).2) :
     run_action₀ crypto (.CreateSubchannel inp) m₁ = run_action₀ crypto (.CreateSubchannel inp) m₀ := by
   dsimp only [run_action₀, create_subchannel] at *
   rw [decide_eq_true_iff] at success
   have ⟨h₀, h₁, h₂, h₃⟩ := success
 
-  dsimp only [immutable_cell, immutable_fn] at imm₀ imm₁
+  dsimp only [immutable_fn, mem_cell_fn] at imm₀ imm₁
 
   apply Prod.ext
   · trivial
@@ -227,7 +239,7 @@ theorem create_subchannel_immutable
 
 theorem create_note_immutable
     {crypto: Crypto} {m₀ m₁: Memory} (inp: CreateNoteInput)
-    (imm₀: ∀ x, immutable_cell m₀ m₁ .SubchannelHashes x)
+    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelHashes x))
     (imm₁: ∀ x, immutable_fn m₀ m₁ (note_exists_fn x))
     (success: (run_action₀ crypto (.CreateNote inp) m₀).2) :
     run_action₀ crypto (.CreateNote inp) m₁ = run_action₀ crypto (.CreateNote inp) m₀ := by
@@ -235,8 +247,8 @@ theorem create_note_immutable
   rw [decide_eq_true_iff] at success
   have ⟨h₀, h₁, h₂, h₃⟩ := success
 
-  dsimp only [immutable_cell, immutable_fn] at imm₀
-  unfold note_exists_fn at imm₁
+  dsimp only [immutable_fn, mem_cell_fn] at imm₀
+  dsimp only [note_exists_fn] at imm₁
 
   apply Prod.ext
   · trivial
@@ -246,13 +258,15 @@ theorem create_note_immutable
     case inl h₁ =>
       simp [h₁]
     case inr h₁ =>
-      have := immutable_fn_prop (imm₁ (crypto.hash [CreateNoteInput.c crypto inp, inp.token, inp.i₀, inp.i₁ - 1])) (by simp; exact h₁)
-      simp only [decide_eq_true_eq] at this
+      have := immutable_fn_prop
+        (imm₁ (crypto.hash [CreateNoteInput.c crypto inp, inp.token, inp.i₀, inp.i₁ - 1]))
+        (by simp; exact h₁)
+      simp only [Function.comp_apply, decide_eq_true_eq, mem_cell_fn] at this
       conv => lhs; arg 1; rw [this]
 
 theorem cancel_note_immutable
     {crypto: Crypto} {m₀ m₁: Memory} (inp: CancelNoteInput)
-    (imm₀: ∀ x, immutable_cell m₀ m₁ .SubchannelHashes x)
+    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelHashes x))
     (imm₂: ∀ x, immutable_fn m₀ m₁ (note_modified_value_fn crypto x))
     (success: (run_action₀ crypto (.CancelNote inp) m₀).2) :
     run_action₀ crypto (.CancelNote inp) m₁ = run_action₀ crypto (.CancelNote inp) m₀ := by
@@ -260,7 +274,7 @@ theorem cancel_note_immutable
   rw [decide_eq_true_iff] at success
   have ⟨h₀, h₁, h₂, h₃, h₅⟩ := success
 
-  dsimp only [immutable_cell, immutable_fn] at imm₀ imm₂
+  dsimp only [immutable_fn, mem_cell_fn] at imm₀ imm₂
   unfold note_modified_value_fn at imm₂
 
   apply Prod.ext
@@ -278,18 +292,20 @@ theorem cancel_note_immutable
       simp at h₂
       omega
 
-    have := imm₂ (inp.note_id crypto) (by simpa [←h_val₀, reduceIte, non_empty_note])
-    simp only [←h_val₀, reduceIte, non_empty_note] at this
+    have := imm₂ (inp.note_id crypto) (by simpa [mem_cell_fn, ←h_val₀, reduceIte, non_empty_note])
+    simp only [Function.comp_apply, mem_cell_fn, ←h_val₀, reduceIte, non_empty_note] at this
     rw [ite_eq_iff] at this
     simp [Ne.symm h₁] at this
     rw [this.2]
 
 structure ImmutableCells (crypto: Crypto) (m₀ m₁: Memory) where
-  (imm₀: ∀ x, immutable_cell m₀ m₁ .ChannelHashes x)
-  (imm₁: ∀ x, immutable_cell m₀ m₁ .Tokens [x, 0])
-  (imm₂: ∀ x, immutable_cell m₀ m₁ .SubchannelHashes x)
-  (imm₃: ∀ x, immutable_fn m₀ m₁ (note_exists_fn x))
-  (imm₄: ∀ x, immutable_fn m₀ m₁ (note_modified_value_fn crypto x))
+  (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .ChannelHashes x))
+  (imm₁: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelTokens [x, 0]))
+  (imm₂: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelHashes x))
+  (imm₃: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .PublicKeys x))
+  (imm₄: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .OutgoingChannels [x, 0]))
+  (imm₅: ∀ x, immutable_fn m₀ m₁ (note_exists_fn x))
+  (imm₆: ∀ x, immutable_fn m₀ m₁ (note_modified_value_fn crypto x))
 
 theorem run_action₀_immutable
     {crypto: Crypto} {m₀ m₁: Memory} (actions: Action)
@@ -298,10 +314,10 @@ theorem run_action₀_immutable
     run_action₀ crypto actions m₁ = run_action₀ crypto actions m₀ := by
   cases actions
   case Register inp => trivial
-  case CreateChannel inp => trivial
+  case CreateChannel inp => exact create_channel_immutable inp imm.imm₃ imm.imm₄ success
   case CreateSubchannel inp => exact create_subchannel_immutable inp imm.imm₀ imm.imm₁ success
-  case CreateNote inp => exact create_note_immutable inp imm.imm₂ imm.imm₃ success
-  case CancelNote inp => exact cancel_note_immutable inp imm.imm₂ imm.imm₄ success
+  case CreateNote inp => exact create_note_immutable inp imm.imm₂ imm.imm₅ success
+  case CancelNote inp => exact cancel_note_immutable inp imm.imm₂ imm.imm₆ success
   case OpenDeposit inp => trivial
 
 theorem ImmutableCells.of_extends
@@ -310,12 +326,12 @@ theorem ImmutableCells.of_extends
     ImmutableCells crypto rm.m rm'.m := by
   constructor
   all_goals intro x h
-  case imm₃ =>
+  case imm₅ =>
     unfold note_exists_fn at *
-    rw [decide_eq_decide]
+    simp only [Function.comp_apply, mem_cell_fn, decide_eq_decide] at *
     rw [Bool.default_bool, ne_eq, decide_eq_false_iff_not, not_not] at h
     simp [(note_amount_immutable h_extends).1 h, h]
-  case imm₄ => exact (note_amount_immutable h_extends).2 h
+  case imm₆ => exact (note_amount_immutable h_extends).2 h
   all_goals exact immutability h_extends h (by simp)
 
 ------------------------
@@ -325,17 +341,20 @@ theorem ImmutableCells.of_extends
 -- The output of a ServerAction is the same if
 -- (1) the input is the same, OR
 -- (2) the action changed the value.
-def reflection_prop (crypto: Crypto) (f: Memory → β) : Prop :=
-  ∀ {m m': Memory},
+def reflection_prop (crypto: Crypto) (f: Functional β) : Prop :=
   ∀ {sa: ServerAction},
+  ∀ {m m': Memory},
   (h: f m = f m' ∨ f (sa.run crypto m).1 ≠ f m) → f (sa.run crypto m).1 = f (sa.run crypto m').1
 
 -- Helper lemma for reflection₀: a single write either modifies the target cell (equal results)
 -- or another cell (preserves the original relationship).
 private lemma reflection_single_write
-    {t t': MemoryType} {x x': List ℕ} {v: ℕ} {m m': Memory}
-    (h: m t x = m' t x ∨ write t' x' v m t x ≠ m t x) :
-    write t' x' v m t x = write t' x' v m' t x := by
+    {t t': MemoryType} {x x': List ℕ} {v: ℕ} {m m': Memory} (g: ℕ → β) :
+    let f := g ∘ (mem_cell_fn t x)
+    (h: f m = f m' ∨ f (write t' x' v m) ≠ f m) →
+    (f (write t' x' v m) = f (write t' x' v m')) := by
+  simp only [mem_cell_fn, Function.comp_apply]
+  intro h
   by_cases h' : t = t' ∧ x = x'
   case pos => simp [h'.1, h'.2, write_eq]
   case neg =>
@@ -346,113 +365,27 @@ private lemma reflection_single_write
 
 lemma reflection₀
     (crypto: Crypto)
-    {t: MemoryType} {x: List ℕ}
+    (t: MemoryType) (x: List ℕ)
+    (g: ℕ → β)
     (h_t: t ≠ .ChannelsJ ∧ t ≠ .Channels) :
-    reflection_prop crypto (λ m: Memory ↦ m t x) := by
-  intro m m' sa h
+    reflection_prop crypto (g ∘ (mem_cell_fn t x)) := by
+  intro sa m m' h
   cases sa
-  case Write t' x' v' => exact reflection_single_write h
-  case WriteOnce t' x' v' => exact reflection_single_write h
+  case Write t' x' v' => exact reflection_single_write g h
+  case WriteOnce t' x' v' => exact reflection_single_write g h
   case Append t_idx' t' x' v' h_t' =>
-    dsimp only [ServerAction.run] at h ⊢
+    unfold ServerAction.run mem_cell_fn at h ⊢
+    dsimp only at h ⊢
+    simp only [Function.comp_apply] at h ⊢
     have h_ne_t : t ≠ t' := λ h' ↦ by simp [h', h_t'] at h_t
     have h_ne_idx : t ≠ t_idx' := λ h' ↦ by simp [h', h_t'] at h_t
     rw [write_ne (by simp [*]), write_ne (by simp [*]),
         write_ne (by simp [*]), write_ne (by simp [*])]
     rw [write_ne (by simp [*]), write_ne (by simp [*])] at h
     exact h.elim id (absurd rfl)
-  case Check t' x' v' => exact h.elim id (absurd rfl)
-  case OpenDeposit note_id amount token => exact reflection_single_write h
+  case OpenDeposit note_id amount token => exact reflection_single_write g h
 
-lemma reflection₁
-    (crypto: Crypto) (note_id: ℕ) :
-    reflection_prop crypto (note_exists_fn note_id) ∧
-    reflection_prop crypto (note_modified_value_fn crypto note_id) := by
-  apply forall_and.1; intro m
-  apply forall_and.1; intro m'
-  apply forall_and.1; intro sa
-
-  unfold note_exists_fn at *
-  simp [decide_eq_decide] at *
-  cases sa
-
-  case Write t' x' v' =>
-    constructor
-    all_goals
-    . intro h
-      dsimp only [ServerAction.run, note_modified_value_fn] at h ⊢
-      by_cases h' : .Notes = t' ∧ [note_id, 0] = x'
-      case pos => simp [h', write_eq]
-      case neg =>
-        cases h
-        case inl h =>
-          rw [write_ne (by simp [h'])]
-          rwa [write_ne (by simp [h'])]
-        case inr h =>
-          rw [write_ne (by simp [h'])] at h
-          try rw [iff_self] at h
-          contradiction
-
-  case WriteOnce t' x' v' =>
-    constructor
-    all_goals
-    . intro h
-      dsimp only [ServerAction.run, note_modified_value_fn] at h ⊢
-      by_cases h' : .Notes = t' ∧ [note_id, 0] = x'
-      case pos => simp [h', write_eq]
-      case neg =>
-        cases h
-        case inl h =>
-          rw [write_ne (by simp [h'])]
-          rwa [write_ne (by simp [h'])]
-        case inr h =>
-          rw [write_ne (by simp [h'])] at h
-          try rw [iff_self] at h
-          contradiction
-
-  case Append t_idx' t' x' v' h_t' =>
-    constructor
-    all_goals
-    · intro h
-      dsimp only [ServerAction.run, note_modified_value_fn] at h ⊢
-      have : .Notes ≠ t' := λ h' ↦ by simp [←h'] at h_t'
-      have : .Notes ≠ t_idx' := λ h' ↦ by simp [←h'] at h_t'
-      rw [write_ne (by simp [*])]
-      rw [write_ne (by simp [*])]
-      rw [write_ne (by simp [*])]
-      rw [write_ne (by simp [*])]
-      rw [write_ne (by simp [*])] at h
-      rw [write_ne (by simp [*])] at h
-      simp only [not_true_eq_false, or_false] at h
-      exact h
-
-  case Check t' x' v' =>
-    constructor
-    all_goals
-    · intro h
-      cases h
-      case inl h => trivial
-      case inr h =>
-        dsimp only [ServerAction.run] at h
-        try rw [iff_self] at h
-        contradiction
-
-  case OpenDeposit note_id' amount token =>
-    constructor
-    all_goals
-    · intro h
-      dsimp only [ServerAction.run, note_modified_value_fn] at h ⊢
-      by_cases h' : note_id = note_id'
-      case pos => simp [h', write_eq]
-      case neg =>
-        cases h
-        case inl h =>
-          rw [write_ne (by simp [h'])]
-          rwa [write_ne (by simp [h'])]
-        case inr h =>
-          rw [write_ne (by simp [h'])] at h
-          try rw [iff_self] at h
-          contradiction
+  all_goals exact h.elim id (absurd rfl)
 
 -------------------------
 
@@ -462,7 +395,7 @@ lemma reflection₁
 -- we can conclude immutability for `m → m₁`.
 theorem reflected_immutability₀
     {β: Type} [Inhabited β]
-    {f: Memory → β}
+    {f: Functional β}
     {m m₀ m₁: Memory}
     (imm: immutable_fn m₀ m₁ f)
     (reflected: f m ≠ f m₀ → f m₁ = f m)
@@ -477,7 +410,7 @@ theorem reflected_immutability₀
 
 lemma reflection
     {β: Type} [Inhabited β]
-    {crypto: Crypto} {f: Memory → β}
+    {crypto: Crypto} {f: Functional β}
     {m: Memory} {ℓ: List ServerAction}
     (h_change: f (ServerAction.run_all crypto ℓ m).1 ≠ f m)
     (refl_prop: reflection_prop crypto f)
@@ -517,7 +450,7 @@ abbrev TransactionExecution.m_s (crypto: Crypto) (e: TransactionExecution) : Mem
 
 theorem reflected_immutability
     {β: Type} [Inhabited β]
-    {f: Memory → β}
+    {f: Functional β}
     (e: TransactionExecution)
     (imm: immutable_fn e.m_c₀ (e.m_s crypto) f)
     (refl_prop: reflection_prop crypto f) :
@@ -531,34 +464,37 @@ theorem ImmutableCells.reflected_immutability'
     (imm: ImmutableCells crypto e.m_c₀ (e.m_s crypto)) :
     ImmutableCells crypto (e.m_c crypto) (e.m_s crypto) := by
   cases imm
-  rename_i imm₀ imm₁ imm₂ imm₃ imm₄
+  rename_i imm₀ imm₁ imm₂ imm₃ imm₄ imm₅ imm₆
 
   constructor
   case imm₀ =>
     intro x
-    have : reflection_prop crypto (λ m: Memory ↦ m .ChannelHashes x) := reflection₀ _ (t:=.ChannelHashes) (x:=x) (h_t:=by simp)
-    apply reflected_immutability e _ this
+    apply reflected_immutability e _ (reflection₀ _ .ChannelHashes x id (by simp))
     exact imm₀ x
   case imm₁ =>
     intro x
-    have : reflection_prop crypto (λ m: Memory ↦ m .Tokens [x, 0]) := reflection₀ _ (t:=.Tokens) (x:=[x, 0]) (h_t:=by simp)
-    apply reflected_immutability e _ this
+    apply reflected_immutability e _ (reflection₀ _ .SubchannelTokens [x, 0] id (by simp))
     exact imm₁ x
   case imm₂ =>
     intro x
-    have : reflection_prop crypto (λ m: Memory ↦ m .SubchannelHashes x) := reflection₀ _ (t:=.SubchannelHashes) (x:=x) (h_t:=by simp)
-    apply reflected_immutability e _ this
+    apply reflected_immutability e _ (reflection₀ _ .SubchannelHashes x id (by simp))
     exact imm₂ x
   case imm₃ =>
     intro x
-    have := reflection₁ crypto x
-    apply reflected_immutability e _ this.1
+    apply reflected_immutability e _ (reflection₀ _ .PublicKeys x id (by simp))
     exact imm₃ x
   case imm₄ =>
     intro x
-    have := reflection₁ crypto x
-    apply reflected_immutability e _ this.2
+    apply reflected_immutability e _ (reflection₀ _ .OutgoingChannels [x, 0] id (by simp))
     exact imm₄ x
+  case imm₅ =>
+    intro x
+    apply reflected_immutability e _ (reflection₀ _ .Notes [x, 0] _ (by simp))
+    exact imm₅ x
+  case imm₆ =>
+    intro x
+    apply reflected_immutability e _ (reflection₀ _ .Notes [x, 0] _ (by simp))
+    exact imm₆ x
 
 def TransactionExecution.add
     (e: TransactionExecution) (crypto: Crypto) (action: Action) : TransactionExecution :=

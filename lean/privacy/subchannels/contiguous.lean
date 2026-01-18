@@ -4,21 +4,18 @@ import privacy.utils
 -- The k₁-s of subchannels for (c, k₀) form a contiguous range [0, k₁_bound).
 theorem subchannels_contiguous
     {crypto: Crypto} (rm: ReachableMemory crypto) (c k₀) :
-    ∃ k₁_bound, ∀ k₁, (k₁ < k₁_bound) ↔ rm.m .Tokens [crypto.hash [c, k₀, k₁], 0] ≠ 0 := by
+    ∃ k₁_bound, ∀ k₁, (k₁ < k₁_bound) ↔ rm.m .SubchannelTokens [crypto.hash [c, k₀, k₁], 0] ≠ 0 := by
   revert rm
   apply ReachableMemory.induction
-  case inv₀ => use 0; simp
+  case inv₀ => use 0; simp [ReachableMemory.m]
 
   intro action rm
   cases action
   case CreateSubchannel inp =>
     intro h success
 
-    unfold ReachableMemory.add run_action
-
     have info := create_subchannel_info crypto inp rm success
-    simp only
-    rw [←info.h_m']
+    rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
     obtain ⟨k₁_bound, h⟩ := h
 
