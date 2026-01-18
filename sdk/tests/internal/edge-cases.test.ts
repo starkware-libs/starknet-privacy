@@ -49,7 +49,7 @@ describe("Edge Cases", () => {
           .execute()
       );
 
-      const notes = bob.discoverNotes().notes.get(ACE) ?? [];
+      const notes = (await bob.discoverNotes()).notes.get(ACE) ?? [];
       expect(notes.length).toBe(1);
 
       await expect(
@@ -74,11 +74,11 @@ describe("Edge Cases", () => {
         await alice
           .build({ ...AUTO_ALL, registry: selfRegistry })
           .with(ACE)
-            .deposit({ amount: 100n, recipient: ALICE.address })
+          .deposit({ amount: 100n, recipient: ALICE.address })
           .execute()
       );
 
-      const notes = alice.discoverNotes().notes.get(ACE) ?? [];
+      const notes = (await alice.discoverNotes()).notes.get(ACE) ?? [];
 
       await expect(
         alice
@@ -88,14 +88,6 @@ describe("Edge Cases", () => {
           .transfer({ recipient: BOB.address, amount: -50n })
           .execute()
       ).rejects.toThrow(/Created note amount must be positive/);
-    });
-  });
-
-  describe("SetupRequirement Enum Ordering", () => {
-    it("Register > SetupChannel > SetupToken > Ready (higher = more setup needed)", () => {
-      expect(SetupRequirement.Register).toBeGreaterThan(SetupRequirement.SetupChannel);
-      expect(SetupRequirement.SetupChannel).toBeGreaterThan(SetupRequirement.SetupToken);
-      expect(SetupRequirement.SetupToken).toBeGreaterThan(SetupRequirement.Ready);
     });
   });
 

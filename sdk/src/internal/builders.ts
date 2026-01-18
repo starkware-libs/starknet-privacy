@@ -10,7 +10,7 @@ import type {
   Note,
   OpenChannelAction,
   OpenTokenChannelAction,
-  PrivateTransfers,
+  PrivateTransfersInterface,
   PrivateTransfersBuilder,
   Actions,
   SetViewingKeyAction,
@@ -146,7 +146,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   private buildOptions?: ExecuteOptions;
 
   constructor(
-    private transfers: PrivateTransfers,
+    private transfers: PrivateTransfersInterface,
     public readonly userAddress: StarknetAddress,
     options?: ExecuteOptions
   ) {

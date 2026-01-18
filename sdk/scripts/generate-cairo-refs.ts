@@ -1,23 +1,25 @@
 /**
- * Script to generate Cairo reference hash values for TypeScript compatibility tests.
+ * Script to parse Cairo test output and generate reference hash JSON.
  *
- * Usage: npx tsx scripts/generate-cairo-refs.ts
+ * This script reads a file containing Cairo test output and extracts
+ * key-value pairs like "path.to.key: 0x123" into a JSON structure.
  *
- * This script:
- * 1. Runs Cairo code that outputs key-value pairs like "path.to.key: 0x123"
- * 2. Parses these into a JSON structure and updates tests/fixtures/cairo-reference-hashes.json
- *
- * The TypeScript tests will automatically call this if values are stale.
+ * Usage: npx tsx scripts/generate-cairo-refs.ts <input-file>
  */
 
-import { execSync } from "child_process";
 import { readFileSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesPath = join(__dirname, "../tests/fixtures/cairo-reference-hashes.json");
-const cairoProjectPath = join(__dirname, "../../packages/privacy");
+
+// Get input file from command line argument
+const inputFile = process.argv[2];
+if (!inputFile) {
+  console.error("Usage: npx tsx scripts/generate-cairo-refs.ts <input-file>");
+  process.exit(1);
+}
 
 // Load current fixtures (for metadata like _comment, _ttl_days)
 const fixtures = JSON.parse(readFileSync(fixturesPath, "utf-8"));
@@ -50,40 +52,24 @@ function parseValue(value: string): string | number {
 }
 
 /**
- * Run Cairo and parse output into a JSON object.
+ * Parse Cairo output into a JSON object.
  * Expects lines like "path.to.key: 0x123" or "path.to.key: 42"
  */
-function runCairo(): Record<string, unknown> | null {
-  try {
-    console.log("Running Cairo in:", cairoProjectPath);
+function parseOutput(output: string): Record<string, unknown> | null {
+  const data: Record<string, unknown> = {};
+  const lineRegex = /^([a-zA-Z_][a-zA-Z0-9_.]*)\s*:\s*(0x[0-9a-fA-F]+|\d+)$/gm;
 
-    const result = execSync(
-      `cd ${cairoProjectPath} && snforge test generate_reference_hashes --include-ignored 2>&1`,
-      { encoding: "utf-8", timeout: 120000 }
-    );
+  let match: RegExpExecArray | null;
+  while ((match = lineRegex.exec(output)) !== null) {
+    const [, path, value] = match;
+    setPath(data, path, parseValue(value));
+  }
 
-    console.log("Cairo output:", result);
-
-    // Parse all "key: value" lines
-    const data: Record<string, unknown> = {};
-    const lineRegex = /^([a-zA-Z_][a-zA-Z0-9_.]*)\s*:\s*(0x[0-9a-fA-F]+|\d+)$/gm;
-
-    let match;
-    while ((match = lineRegex.exec(result)) !== null) {
-      const [, path, value] = match;
-      setPath(data, path, parseValue(value));
-    }
-
-    if (Object.keys(data).length === 0) {
-      console.error("No key-value pairs found in Cairo output");
-      return null;
-    }
-
-    return data;
-  } catch (error) {
-    console.error("Failed to run Cairo:", error);
+  if (Object.keys(data).length === 0) {
     return null;
   }
+
+  return data;
 }
 
 /**
@@ -105,14 +91,13 @@ function updateFixtures(data: Record<string, unknown>): void {
 }
 
 // Main
-console.log("Generating Cairo reference hashes...");
+const output = readFileSync(inputFile, "utf-8");
+const cairoData = parseOutput(output);
 
-const cairoData = runCairo();
-
-if (cairoData) {
-  updateFixtures(cairoData);
-  console.log("Done! Reference values updated.");
-} else {
-  console.error("Failed to generate Cairo reference values.");
+if (!cairoData) {
+  console.error("No key-value pairs found in Cairo output");
   process.exit(1);
 }
+
+updateFixtures(cairoData);
+console.log("Done! Reference values updated.");

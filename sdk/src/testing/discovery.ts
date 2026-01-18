@@ -2,31 +2,30 @@
  * Mock DiscoveryProvider implementation for testing.
  */
 
-import type {
-  Amount,
-  DiscoveryProviderInterface,
-  Note,
-  NoteId,
-  ViewingKey,
-} from "../interfaces.js";
-import { Channel, SetupRequirement, Witness } from "../interfaces.js";
+import type { Amount, Note, NoteId, StarknetAddressBigint, ViewingKey } from "../interfaces.js";
+import { Channel, Witness } from "../interfaces.js";
 import type { BlockIdentifier } from "starknet";
-import { decryptChannelInfo } from "../utils/crypto.js";
+import { encryptions } from "../utils/encryptions.js";
 import { AddressMap } from "../utils/maps.js";
 import { assertViewingKey } from "../utils/validation.js";
 import type { PrivacyPool } from "./pool.js";
-import { hashes } from "../utils/hashes.js";
+import { compute_channel_key } from "../utils/hashes.js";
+import { toBigInt } from "../utils/crypto.js";
 import { debugLog } from "../utils/logging.js";
+import { AbstractDiscoveryProvider } from "../internal/abstract-discovery.js";
+import { NotesCursor, SenderCursor } from "../internal/channel.js";
 
-export class MockDiscoveryProvider implements DiscoveryProviderInterface {
+export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
   private _currentBlock: BlockIdentifier = 0; // TODO: allow block advancement
-  constructor(private pool: PrivacyPool) {}
+  constructor(private pool: PrivacyPool) {
+    super();
+  }
 
-  discoverNotes(
+  async discoverNotes(
     address: bigint,
     viewingKey: ViewingKey,
-    params: { since?: BlockIdentifier; known?: AddressMap<Note[]>; tokens?: bigint[] } = {}
-  ): { timestamp: BlockIdentifier; notes: AddressMap<Note[]> } {
+    params: { since?: BlockIdentifier; cursor?: NotesCursor; tokens?: bigint[] } = {}
+  ): Promise<{ timestamp: BlockIdentifier; notes: AddressMap<Note[]>; cursor: NotesCursor }> {
     // TODO(ittay): Add usage of 'since' and 'known'
     assertViewingKey(viewingKey);
 
@@ -36,7 +35,7 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
 
     debugLog("discovery", "discovering notes address", address, "channelCount:", channels.length);
     for (const encryptedChannel of channels) {
-      const channel = decryptChannelInfo(encryptedChannel, viewingKey);
+      const channel = encryptions.decryptChannelInfo(encryptedChannel, toBigInt(viewingKey));
       debugLog("discovery", "processing channel key:", channel.key, "sender:", channel.sender);
       const key = channel.key;
 
@@ -87,14 +86,20 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
     return {
       timestamp: this._currentBlock,
       notes: result,
+      cursor: {
+        timestamp: this._currentBlock,
+        channelKeyIndex: 0,
+        senders: new AddressMap<SenderCursor>(),
+      },
     };
   }
 
-  discoverChannels(
+  async discoverChannels(
     address: bigint,
     viewingKey: ViewingKey,
-    ...recipients: bigint[]
-  ): { timestamp: BlockIdentifier; channels: AddressMap<Channel> } {
+    recipients: StarknetAddressBigint[],
+    _params?: { cursor?: AddressMap<Channel> }
+  ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }> {
     assertViewingKey(viewingKey);
 
     const result = new AddressMap<Channel>();
@@ -103,7 +108,12 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
         continue;
       }
       const publicKey = this.pool.getPublicKey(recipient);
-      const key = hashes.channelKey(address, viewingKey, recipient, publicKey);
+      const key = compute_channel_key(
+        address,
+        toBigInt(viewingKey),
+        recipient,
+        toBigInt(publicKey)
+      );
       if (!this.pool.doesChannelExist(key, address, recipient)) {
         result.set(recipient, new Channel(publicKey));
         continue;
@@ -131,31 +141,5 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
     }
 
     return { timestamp: this._currentBlock, channels: result };
-  }
-
-  async discoverRequirement(
-    address: bigint,
-    viewingKey: ViewingKey,
-    recipient: bigint,
-    token: bigint
-  ): Promise<SetupRequirement> {
-    assertViewingKey(viewingKey);
-    if (!this.pool.isRegistered(recipient)) {
-      return SetupRequirement.Register;
-    }
-    const key = hashes.channelKey(
-      address,
-      viewingKey,
-      recipient,
-      this.pool.getPublicKey(recipient)
-    );
-
-    if (!this.pool.doesChannelExist(key, address, recipient)) {
-      return SetupRequirement.SetupChannel;
-    }
-    if (!this.pool.doesSubchannelExist(key, recipient, token)) {
-      return SetupRequirement.SetupToken;
-    }
-    return SetupRequirement.Ready;
   }
 }

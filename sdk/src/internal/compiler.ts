@@ -72,24 +72,31 @@ export class ActionCompiler {
   /**
    * Compile actions by resolving contexts, updating the registry, and producing ClientAction[].
    */
-  compile(actions: Actions, options?: ExecuteOptions): CompileResult {
+  async compile(actions: Actions, options?: ExecuteOptions): Promise<CompileResult> {
     const registry_ = options?.registry ?? createEmptyRegistry();
     const registry = options?.registryConst ? this.cloneRegistry(registry_) : registry_;
     const recipientsNeeded = this.getRecipientsNeeded(actions);
 
     // Phase 1: Resolve recipient channels
-    const channels = this.resolveRecipientChannels(actions, options, registry, recipientsNeeded);
+    const channels = await this.resolveRecipientChannels(
+      actions,
+      options,
+      registry,
+      recipientsNeeded
+    );
 
     // Phase 2: Resolve notes (discover and/or auto-select)
-    this.resolveNotes(actions, registry, options);
+    await this.resolveNotes(actions, registry, options);
 
-    // debugLog("compiler", "registry notes after resolve", registry?.notes?.size);
+    debugLog("compiler", "compile", "post resolveNotes", registry?.notes?.size, actions);
 
     // create a pool to simulate the execution of the actions
     const pool = this.createPool(actions, registry, channels);
 
     // Phase 3: Transform Actions to ClientAction[]
     const clientActions = this.transformToClientActions(actions, pool, recipientsNeeded, options);
+
+    debugLog("compiler", "compile", "post transformToClientActions", clientActions);
 
     return { clientActions, registry: pool.updateRegistry(this.userAddress, registry) };
   }
@@ -161,27 +168,20 @@ export class ActionCompiler {
       input: { privateKey: this.userViewingKey, random: generateRandom() },
     });
 
-    debugLog(
-      "compiler",
-      "after SetViewingKey, isRegistered?",
-      pool.isRegistered(this.userAddress),
-      "userAddress:",
-      hex(this.userAddress)
-    );
-    debugLog("compiler", "setup discovered channels", channels);
+    debugLog("compiler", "setupDiscoveredChannels", channels);
 
     for (const [addr, channel] of channels?.entries() ?? []) {
       pool.setupChannel(this.userAddress, this.userViewingKey, addr, channel);
     }
 
-    debugLog("compiler", "setup registry channels", registry?.channels);
+    debugLog("compiler", "setupRegistryChannels", registry?.channels);
 
     for (const [addr, channel] of registry?.channels?.entries() ?? []) {
       if (channels?.has(addr)) continue; // skip channels that were already set up in the previous step
       pool.setupChannel(this.userAddress, this.userViewingKey, addr, channel);
     }
 
-    debugLog("compiler", "setup notes", registry?.notes);
+    debugLog("compiler", "setupNotes", registry?.notes);
 
     if (registry?.notes) {
       for (const [token, notes] of registry.notes.entries()) {
@@ -264,7 +264,7 @@ export class ActionCompiler {
       for (const action of actions.openChannels) {
         if (seenRecipients.has(action.recipient)) continue;
         seenRecipients.add(action.recipient);
-        debugLog("compiler", "open channel x", action.recipient);
+        debugLog("compiler", "open channel", action.recipient);
         const channel = pool.getUsersChannel(this.userAddress, action.recipient);
         assert(channel, () => `Missing channel context for recipient ${hex(action.recipient)}`);
         const input = {
@@ -273,7 +273,7 @@ export class ActionCompiler {
             senderPrivateKey: this.userViewingKey,
             recipientAddr: action.recipient,
             recipientPublicKey: channel.publicKey as bigint,
-            random: generateRandom(),
+            random: 2n, // TODO: fixed when there's discovery for forward tracing
           },
         } as const; // typescipt magic
         execute(input, clientActions.openChannels);
@@ -422,6 +422,7 @@ export class ActionCompiler {
       clientActions.followupCall = execute(input);
     }
 
+    debugLog("compiler", "transformToClientActions", actions, clientActions);
     return Object.values(clientActions)
       .filter((action) => action !== undefined)
       .flat();
@@ -430,12 +431,12 @@ export class ActionCompiler {
   /**
    * Resolve recipient channels by discovering or using registry.
    */
-  private resolveRecipientChannels(
+  private async resolveRecipientChannels(
     actions: Actions,
     options: ExecuteOptions | undefined,
     registry: PrivateRegistry,
     recipientsNeeded: AddressMap<boolean>
-  ): AddressMap<Channel> | undefined {
+  ): Promise<AddressMap<Channel> | undefined> {
     const recipientDiscoveryLevel = options?.autoDiscover?.channels;
 
     if (!recipientDiscoveryLevel) {
@@ -463,25 +464,35 @@ export class ActionCompiler {
 
     // Discover channels for all recipients that need discovery in a single call
     // discoverChannels computes channel keys and returns current nonce state
-    const { channels } = this.discoveryProvider.discoverChannels(
+    debugLog(
+      "compiler",
+      "resolveRecipientChannels",
+      "recipientsToDiscover",
+      recipientsToDiscover.map(hex)
+    );
+    const { channels } = await this.discoveryProvider.discoverChannels(
       this.userAddress,
       this.userViewingKey,
-      ...recipientsToDiscover
+      recipientsToDiscover
     );
 
+    debugLog(
+      "compiler",
+      "resolveRecipientChannels",
+      "discovered channels",
+      [...channels.entries()].map(([addr, ch]) => [hex(addr), ch])
+    );
     return channels;
   }
 
   /**
    * Resolve notes by discovering and/or auto-selecting from registry.
    */
-  private resolveNotes(
+  private async resolveNotes(
     actions: Actions,
     registry: PrivateRegistry,
     options?: ExecuteOptions
-  ): void {
-    if (!actions.surpluses && !options?.autoSelectNotes) return;
-
+  ): Promise<void> {
     // Calculate token balances (inputs - outputs)
     // Positive balance = surplus (needs change note)
     // Negative balance = deficit (needs input notes)
@@ -561,14 +572,15 @@ export class ActionCompiler {
           .map(([token]) => token);
       })();
 
-      debugLog("compiler", "discovering notes", tokensToDiscover);
+      debugLog("compiler", "discoverNotes", tokensToDiscover);
 
       if (!tokensToDiscover || tokensToDiscover.length > 0) {
-        const { notes } = this.discoveryProvider.discoverNotes(
+        const { notes, cursor } = await this.discoveryProvider.discoverNotes(
           this.userAddress,
           this.userViewingKey,
-          { known: registry.notes, tokens: tokensToDiscover }
+          { cursor: registry.cursor, tokens: tokensToDiscover }
         );
+        registry.cursor = cursor;
 
         // Replace registry notes (don't merge - some may have been spent)
         for (const [token, discoveredNotes] of notes.entries()) {
@@ -576,6 +588,8 @@ export class ActionCompiler {
         }
       }
     }
+
+    debugLog("compiler", "resolveNotes", balances, options?.autoSelectNotes);
 
     // Resolve deficits and surpluses
     for (const token of balances.keys()) {
@@ -600,6 +614,7 @@ export class ActionCompiler {
       // If surplus (after adding notes or initially), create change note
       if (balance > 0n) {
         let surplusAction = actions.surpluses?.find((s) => s.token === token);
+        debugLog("compiler", "resolveNotes", "surplusAction", surplusAction);
         if (!surplusAction) {
           if (actions.deposits?.some((d) => d.token === token)) {
             surplusAction = {
@@ -629,6 +644,7 @@ export class ActionCompiler {
             token,
             amount: balance,
           });
+          debugLog("compiler", "resolveNotes", "createNote", actions);
         }
       }
     }

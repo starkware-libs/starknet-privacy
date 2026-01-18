@@ -5,9 +5,14 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ["dist/**", "node_modules/**", "vendor/**"],
+    ignores: ["dist/**", "node_modules/**", "vendor/**", "eslint.config.js"],
   },
   {
+    languageOptions: {
+      parserOptions: {
+        project: "./tsconfig.json",
+      },
+    },
     rules: {
       "@typescript-eslint/no-unused-vars": [
         "error",
@@ -18,6 +23,7 @@ export default tseslint.config(
       ],
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/no-namespace": "off", // Allow namespaces for type organization
+      "@typescript-eslint/no-floating-promises": "error", // Catch missing await
     },
   }
 );

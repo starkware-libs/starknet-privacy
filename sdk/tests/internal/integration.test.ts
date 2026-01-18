@@ -13,7 +13,7 @@ import {
 } from "../helpers/test-fixtures.js";
 import { Open } from "../../src/interfaces.js";
 import { debugHint, derivePublicKey, isDebugEnabled } from "../../src/utils/index.js";
-import { hashes } from "../../src/utils/hashes.js";
+import { compute_channel_key, compute_note_id } from "../../src/utils/hashes.js";
 import { debugLog, hex } from "../../src/utils/logging.js";
 import { MockSwapHelper } from "../../src/testing/contracts.js";
 
@@ -65,7 +65,7 @@ describe("Private Transfers Integration", () => {
       // prettier-ignore
       applyStateChanges(
         await alice
-          .build({registry})
+          .build({ registry })
           .surplusTo(ALICE.address)
           .with(ACE)
             .inputs(note)
@@ -80,7 +80,7 @@ describe("Private Transfers Integration", () => {
       expect(aliceNotes.length).toBe(1);
       expect(aliceNotes[0].amount).toBe(25n);
 
-      const bobNotes = bob.discoverNotes().notes.get(ACE) ?? [];
+      const bobNotes = (await bob.discoverNotes()).notes.get(ACE) ?? [];
       expect(bobNotes.length).toBe(1);
       expect(bobNotes[0].amount).toBe(50n);
 
@@ -114,13 +114,13 @@ describe("Private Transfers Integration", () => {
       // prettier-ignore
       const registry = applyStateChanges(
         await alice
-          .build({ ...AUTO_ALL, autoRegister: true, autoSelectNotes: "naive"})
+          .build({ ...AUTO_ALL, autoRegister: true, autoSelectNotes: "naive" })
           .with(ACE)
             .deposit({ amount: 100n, recipient: ALICE.address })
             .transfer({ recipient: BOB.address, amount: 50n })
             .surplusTo(ALICE.address, true)
           .with(BEE)
-            .deposit({ amount: 100n})
+            .deposit({ amount: 100n })
             .transfer({ recipient: BOB.address, amount: 50n })
             .transfer({ recipient: ALICE.address, amount: 50n })
           .execute()
@@ -129,7 +129,7 @@ describe("Private Transfers Integration", () => {
       expect(registry.notes.get(ACE)?.length).toBe(0);
       expect(registry.notes.get(BEE)?.length).toBe(1);
 
-      const bobNotes = bob.discoverNotes().notes;
+      const bobNotes = (await bob.discoverNotes()).notes;
       expect(bobNotes.get(ACE)?.length).toBe(1);
       expect(bobNotes.get(ACE)?.[0].amount).toBe(50n);
       expect(bobNotes.get(BEE)?.length).toBe(1);
@@ -164,7 +164,7 @@ describe("Private Transfers Integration", () => {
       // Phase 2: Use registry with channels but WITHOUT notes
       // This tests autoDiscover: "missing" (discovers notes not in registry)
       const channelOnly = createEmptyRegistry();
-      const channel = alice.discoverChannels(ALICE.address).channels.get(ALICE.address)!;
+      const channel = (await alice.discoverChannels([ALICE.address])).channels.get(ALICE.address)!;
       channelOnly.channels.set(ALICE.address, channel);
 
       // Deposit 30n with:
@@ -172,6 +172,7 @@ describe("Private Transfers Integration", () => {
       // - registryConst: true (don't mutate channelOnly)
       // - autoDiscover: { notes: "missing" } (discover ACE notes since not in registry)
       // - surplusTo triggers the "sweeping" code path for discovery
+      debugLog("test", "main");
       const result = applyStateChanges(
         await alice
           .build({
@@ -223,7 +224,7 @@ describe("Private Transfers Integration", () => {
       expect(result.notes.get(ACE)?.[0].amount).toBe(70n);
 
       // Bob got his 30n
-      const bobNotes = bob.discoverNotes().notes.get(ACE) ?? [];
+      const bobNotes = (await bob.discoverNotes()).notes.get(ACE) ?? [];
       expect(bobNotes.length).toBe(1);
       expect(bobNotes[0].amount).toBe(30n);
 
@@ -242,19 +243,19 @@ describe("Private Transfers Integration", () => {
     const swapHelper = new MockSwapHelper(SWAP_HELPER_ADDRESS, contracts);
     contracts.register(swapHelper);
 
-    const key = hashes.channelKey(
+    const key = compute_channel_key(
       ALICE.address,
       ALICE.privateKey,
       ALICE.address,
       derivePublicKey(ALICE.privateKey)
     );
-    const beeNoteId = hashes.noteId(key, BEE, 0);
+    const beeNoteId = compute_note_id(key, BEE, 0);
 
     // 1. Setup self-channel and deposit ACE (autoSetup handles token subchannel setup)
     // prettier-ignore
     applyStateChanges(
       await alice
-        .build({...AUTO_ALL, autoRegister: true})
+        .build({ ...AUTO_ALL, autoRegister: true })
         .with(ACE)
           .deposit({ amount: 100n, recipient: ALICE.address })
           .withdraw({ recipient: swapHelper.address, amount: 10n })
@@ -270,12 +271,12 @@ describe("Private Transfers Integration", () => {
     );
 
     // 4. Verify: Alice has 90n ACE change note
-    const aceNotes = alice.discoverNotes().notes.get(ACE) ?? [];
+    const aceNotes = (await alice.discoverNotes()).notes.get(ACE) ?? [];
     expect(aceNotes.length).toBe(1);
     expect(aceNotes[0].amount).toBe(90n);
 
     // Alice has 20n BEE note (swap helper gives 2x)
-    const beeNotes = alice.discoverNotes().notes.get(BEE) ?? [];
+    const beeNotes = (await alice.discoverNotes()).notes.get(BEE) ?? [];
     expect(beeNotes.length).toBe(1);
     expect(beeNotes[0].amount).toBe(20n);
     expect(beeNotes[0].open).toBe(true);

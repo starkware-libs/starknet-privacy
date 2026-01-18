@@ -1,0 +1,98 @@
+diff --git a/packages/privacy/src/interface.cairo b/packages/privacy/src/interface.cairo
+index b580c72..448b6af 100644
+--- a/packages/privacy/src/interface.cairo
++++ b/packages/privacy/src/interface.cairo
+@@ -66,7 +66,7 @@ pub trait IClient<T> {
+     ///
+     /// #### Access Control
+     /// - TODO
+-    fn __execute__(ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
++    fn __execute__(ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>) -> Span<felt252>;
+ 
+     fn execute_and_panic(
+         ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+diff --git a/packages/privacy/src/privacy.cairo b/packages/privacy/src/privacy.cairo
+index 0405d42..627b1ac 100644
+--- a/packages/privacy/src/privacy.cairo
++++ b/packages/privacy/src/privacy.cairo
+@@ -129,7 +129,7 @@ pub mod Privacy {
+         // random.
+         fn __execute__(
+             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+-        ) {
++        ) -> Span<felt252> {
+             assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
+             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+             let mut calldata = array![];
+@@ -144,7 +144,7 @@ pub mod Privacy {
+             let mut serialized_server_actions = unwrap_execute_and_panic_result(:syscall_result);
+             let server_actions = Serde::deserialize(ref serialized_server_actions)
+                 .expect(internal_errors::DESERIALIZE_FAILED);
+-            send_message_to_server(:server_actions);
++            send_message_to_server(:server_actions)
+         }
+ 
+         /// Panics directly for internal errors; external calls are wrapped via syscall
+@@ -200,15 +200,15 @@ pub mod Privacy {
+             // storage is not modified.
+             // TODO: Consider refactoring wrapping logic to a function.
+             // TODO: Test wrapped `is_valid_signature` panics.
+-            if let Err(err) = assert_valid_signature(:user_addr) {
+-                panic_message.append(ERROR_WRAPPER);
+-                panic_message.extend(err);
+-                panic_message.append(ERROR_WRAPPER);
+-            } else {
++            // if let Err(err) = assert_valid_signature(:user_addr) {
++            //     panic_message.append(ERROR_WRAPPER);
++            //     panic_message.extend(err);
++            //     panic_message.append(ERROR_WRAPPER);
++            // } else {
+                 panic_message.append(OK_WRAPPER);
+                 server_actions.serialize(ref panic_message);
+                 panic_message.append(OK_WRAPPER);
+-            }
++            //}
+             panic(panic_message);
+         }
+     }
+diff --git a/packages/privacy/src/tests/utils_for_tests.cairo b/packages/privacy/src/tests/utils_for_tests.cairo
+index b731dc8..be44be3 100644
+--- a/packages/privacy/src/tests/utils_for_tests.cairo
++++ b/packages/privacy/src/tests/utils_for_tests.cairo
+@@ -120,7 +120,8 @@ pub(crate) impl UserImpl of UserTrait {
+     fn safe_compile_client_actions_without_cheat_caller(
+         self: @User, client_actions: Span<ClientAction>,
+     ) -> Result<(), Array<felt252>> {
+-        self.privacy.safe_client.__execute__(user_addr: *self.address, :client_actions)
++        self.privacy.safe_client.__execute__(user_addr: *self.address, :client_actions)?;
++        Ok(())
+     }
+ 
+     fn transfer(
+@@ -987,7 +988,8 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
+         self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+     ) -> Result<(), Array<felt252>> {
+         cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
+-        self.safe_client.__execute__(:user_addr, :client_actions)
++        self.safe_client.__execute__(:user_addr, :client_actions)?;
++        Ok(())
+     }
+ 
+     fn validate(
+diff --git a/packages/privacy/src/utils.cairo b/packages/privacy/src/utils.cairo
+index 504c812..671b8da 100644
+--- a/packages/privacy/src/utils.cairo
++++ b/packages/privacy/src/utils.cairo
+@@ -262,10 +262,11 @@ pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<(), A
+     Ok(())
+ }
+ 
+-pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
++pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) -> Span<felt252> {
+     let mut payload = array![];
+     server_actions.serialize(ref payload);
+     send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
++    payload.span()
+ }
+ 
+ pub(crate) fn unwrap_execute_and_panic_result(

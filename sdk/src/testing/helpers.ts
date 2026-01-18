@@ -11,8 +11,8 @@ import { debugLog } from "../utils/logging.js";
 export function createMockProof(overrides?: Partial<Proof>): Proof {
   return {
     data: new Uint8Array([0, 1, 2, 3]),
-    outputHash: 0n,
-    output: [0n],
+    outputHash: "0x0",
+    output: ["0x0"],
     ...overrides,
   };
 }
@@ -41,15 +41,6 @@ export const Withdrawal = Symbol("Withdrawal");
  */
 export function applyStateChanges(result: ExecuteResult): PrivateRegistry {
   const { callAndProof } = result;
-  debugLog("applyStateChanges", "checking callAndProof.call", {
-    hasCall: !!callAndProof.call,
-    isObject: typeof callAndProof.call === "object",
-    hasCallCall: callAndProof.call && "call" in callAndProof.call,
-    callCallType:
-      callAndProof.call && "call" in callAndProof.call
-        ? typeof (callAndProof.call as any).call
-        : "N/A",
-  });
   if (
     callAndProof.call &&
     typeof callAndProof.call === "object" &&

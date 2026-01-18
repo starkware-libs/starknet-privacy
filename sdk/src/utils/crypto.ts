@@ -162,7 +162,7 @@ export function encryptChannelInfo(
   senderAddr: StarknetAddress
 ): EncChannelInfo {
   // Generate ephemeral key pair
-  const ephemeralSecret = starkCurve.utils.randomPrivateKey();
+  const ephemeralSecret = new Uint8Array([2]); // until there's forward tracing. then starkCurve.utils.randomPrivateKey();
   const ephemeralPubPoint = starkCurve.getPublicKey(ephemeralSecret);
   const ephemeralPubkey = getXCoordinateFromBytes(ephemeralPubPoint);
 
