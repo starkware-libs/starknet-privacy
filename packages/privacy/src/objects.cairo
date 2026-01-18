@@ -40,11 +40,10 @@ pub struct EncChannelInfo {
     pub enc_sender_addr: felt252,
 }
 
-// TODO: Consider implementing is_non_zero() using the Zero trait.
 #[generate_trait]
 pub impl EncChannelInfoImpl of EncChannelInfoTrait {
     /// Check if all the `EncChannelInfo`'s fields are non-zero.
-    fn is_non_zero(self: @EncChannelInfo) -> bool {
+    fn is_all_non_zero(self: @EncChannelInfo) -> bool {
         return self.ephemeral_pubkey.is_non_zero()
             && self.enc_channel_key.is_non_zero()
             && self.enc_sender_addr.is_non_zero();
@@ -62,17 +61,15 @@ pub(crate) struct EncPrivateKey {
     pub enc_private_key: felt252,
 }
 
-pub impl EncPrivateKeyZero of Zero<EncPrivateKey> {
-    fn zero() -> EncPrivateKey {
-        EncPrivateKey { ephemeral_pubkey: Zero::zero(), enc_private_key: Zero::zero() }
-    }
-    /// Check if one of the `EncPrivateKey`'s fields is zero.
-    fn is_zero(self: @EncPrivateKey) -> bool {
-        return self.ephemeral_pubkey.is_zero() || self.enc_private_key.is_zero();
+#[generate_trait]
+pub impl EncPrivateKeyImpl of EncPrivateKeyTrait {
+    /// Check if all the `EncPrivateKey`'s fields are zero.
+    fn is_all_zero(self: @EncPrivateKey) -> bool {
+        return self.ephemeral_pubkey.is_zero() && self.enc_private_key.is_zero();
     }
     /// Check if all the `EncPrivateKey`'s fields are non-zero.
-    fn is_non_zero(self: @EncPrivateKey) -> bool {
-        !self.is_zero()
+    fn is_all_non_zero(self: @EncPrivateKey) -> bool {
+        return self.ephemeral_pubkey.is_non_zero() && self.enc_private_key.is_non_zero();
     }
 }
 
@@ -89,16 +86,14 @@ pub struct EncSubchannelInfo {
     pub enc_token: felt252,
 }
 
-pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
-    fn zero() -> EncSubchannelInfo {
-        EncSubchannelInfo { random: Zero::zero(), enc_token: Zero::zero() }
-    }
-    /// Check if one of the `EncSubchannelInfo`'s fields is zero.
-    fn is_zero(self: @EncSubchannelInfo) -> bool {
-        return self.random.is_zero() || self.enc_token.is_zero();
+#[generate_trait]
+pub impl EncSubchannelInfoImpl of EncSubchannelInfoTrait {
+    /// Check if all the `EncSubchannelInfo`'s fields are zero.
+    fn is_all_zero(self: @EncSubchannelInfo) -> bool {
+        return self.random.is_zero() && self.enc_token.is_zero();
     }
     /// Check if all the `EncSubchannelInfo`'s fields are non-zero.
-    fn is_non_zero(self: @EncSubchannelInfo) -> bool {
-        !self.is_zero()
+    fn is_all_non_zero(self: @EncSubchannelInfo) -> bool {
+        return self.random.is_non_zero() && self.enc_token.is_non_zero();
     }
 }

@@ -4,6 +4,7 @@ use privacy::actions::{
     WriteIfZeroInput, WriteIfZeroPrivateKeyInput, WriteIfZeroSubchannelInput,
 };
 use privacy::errors;
+use privacy::objects::{EncPrivateKeyTrait, EncSubchannelInfoTrait};
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
 };
@@ -192,14 +193,14 @@ fn test_get_subchannel_info() {
     let mut user_2 = test.new_user();
     let token_address = test.mock_new_token();
     let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
+    assert!(test.privacy.get_subchannel_info(:subchannel_key).is_all_zero());
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2);
     let random = user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
     let expected_subchannel_info = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token_address, :random);
-    assert!(expected_subchannel_info.is_non_zero());
+    assert!(expected_subchannel_info.is_all_non_zero());
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), expected_subchannel_info);
 }
 
@@ -208,7 +209,7 @@ fn test_get_enc_private_key() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     // Before registration.
-    assert_eq!(user.get_enc_private_key(), Zero::zero());
+    assert!(user.get_enc_private_key().is_all_zero());
     // After registration.
     let random = user.set_viewing_key_e2e();
     let expected_enc_private_key_1 = user.compute_enc_private_key(:random);
@@ -424,10 +425,10 @@ fn test_execute_write_if_zero_assertions() {
 fn test_execute_write_if_zero_subchannel() {
     let mut test: Test = Default::default();
     let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
-    assert!(enc_subchannel_info.is_non_zero());
+    assert!(enc_subchannel_info.is_all_non_zero());
 
     // Verify subchannel info is zero before writing.
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
+    assert!(test.privacy.get_subchannel_info(:subchannel_key).is_all_zero());
 
     // Verify subchannel doesn't exist and write.
     let storage_path_felt = map_entry_address(
@@ -450,7 +451,7 @@ fn test_execute_write_if_zero_subchannel() {
 fn test_execute_write_if_zero_subchannel_assertions() {
     let mut test: Test = Default::default();
     let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
-    assert!(enc_subchannel_info.is_non_zero());
+    assert!(enc_subchannel_info.is_all_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_path_felt = map_entry_address(
@@ -477,10 +478,10 @@ fn test_execute_write_if_zero_private_key() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let enc_private_key = test.mock_new_enc_private_key();
-    assert!(enc_private_key.is_non_zero());
+    assert!(enc_private_key.is_all_non_zero());
 
     // Verify private key is zero before writing.
-    assert_eq!(user.get_enc_private_key(), Zero::zero());
+    assert!(user.get_enc_private_key().is_all_zero());
 
     // Write private key.
     let storage_path_felt = map_entry_address(
@@ -504,7 +505,7 @@ fn test_execute_write_if_zero_private_key_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let enc_private_key = test.mock_new_enc_private_key();
-    assert!(enc_private_key.is_non_zero());
+    assert!(enc_private_key.is_all_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_path_felt = map_entry_address(
