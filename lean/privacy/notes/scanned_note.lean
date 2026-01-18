@@ -23,6 +23,9 @@ theorem ScannedNote.note_id_eq {crypto: Crypto} {sn sn': ScannedNote} :
   ext
   repeat assumption
 
+abbrev ScannedNote.amount (crypto: Crypto) (m: Memory) (sn: ScannedNote) : ℕ :=
+  note_amount crypto m (sn.note_id crypto) sn.c sn.token sn.i₀ sn.i₁
+
 abbrev CreateNoteInput.to_scanned_note (crypto: Crypto) (inp: CreateNoteInput) : ScannedNote :=
   ⟨inp.c crypto, inp.token, inp.i₀, inp.i₁⟩
 

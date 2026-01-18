@@ -53,9 +53,9 @@ def Crypto.pack_nz (crypto: Crypto) {x y: ℕ} (h: x ≠ 0) : crypto.pack x y �
   rw [crypto.unpack_zero, crypto.unpack_pack] at h'
   exact h (Prod.ext_iff.1 h').1
 
-def note_amount (crypto: Crypto) (m: Memory) (note_id c: ℕ) : ℕ :=
+def note_amount (crypto: Crypto) (m: Memory) (note_id c token i₀ i₁: ℕ) : ℕ :=
   let w := crypto.unpack (m .Notes [note_id, 0])
-  w.2 - (if w.1 = 1 then 0 else crypto.hash [c, w.1])
+  w.2 - (if w.1 = 1 then 0 else crypto.hash [c, token, i₀, i₁, w.1])
 
 -----------------
 -- List lemmas --
