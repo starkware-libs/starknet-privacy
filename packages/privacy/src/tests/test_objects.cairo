@@ -1,6 +1,7 @@
 use core::num::traits::Zero;
 use privacy::objects::{
-    EncChannelInfo, EncChannelInfoTrait, EncSubchannelInfo, TokenBalances, TokenBalancesTrait,
+    EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncSubchannelInfo, TokenBalances,
+    TokenBalancesTrait,
 };
 use starknet::ContractAddress;
 
@@ -66,6 +67,49 @@ fn test_enc_subchannel_info_is_non_zero() {
     assert_eq!(enc_subchannel_info.is_non_zero(), false);
     enc_subchannel_info.salt = Zero::zero();
     assert_eq!(enc_subchannel_info.is_non_zero(), false);
+}
+
+#[test]
+fn test_enc_outgoing_channel_info_zero() {
+    let enc_outgoing_channel_info_zero: EncOutgoingChannelInfo = Zero::zero();
+    assert_eq!(enc_outgoing_channel_info_zero.is_zero(), true);
+    assert_eq!(enc_outgoing_channel_info_zero.is_non_zero(), false);
+    assert_eq!(
+        enc_outgoing_channel_info_zero,
+        EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
+    );
+}
+
+#[test]
+fn test_enc_outgoing_channel_info_is_zero() {
+    let mut enc_outgoing_channel_info = EncOutgoingChannelInfo {
+        salt: 'salt'.try_into().unwrap(),
+        enc_recipient_addr: 'ENC_RECIPIENT_ADDR'.try_into().unwrap(),
+    };
+    assert_eq!(enc_outgoing_channel_info.is_zero(), false);
+    enc_outgoing_channel_info.salt = Zero::zero();
+    assert_eq!(enc_outgoing_channel_info.is_zero(), false);
+    enc_outgoing_channel_info.salt = 'salt'.try_into().unwrap();
+    enc_outgoing_channel_info.enc_recipient_addr = Zero::zero();
+    assert_eq!(enc_outgoing_channel_info.is_zero(), true);
+    enc_outgoing_channel_info.salt = Zero::zero();
+    assert_eq!(enc_outgoing_channel_info.is_zero(), true);
+}
+
+#[test]
+fn test_enc_outgoing_channel_info_is_non_zero() {
+    let mut enc_outgoing_channel_info = EncOutgoingChannelInfo {
+        salt: 'salt'.try_into().unwrap(),
+        enc_recipient_addr: 'ENC_RECIPIENT_ADDR'.try_into().unwrap(),
+    };
+    assert_eq!(enc_outgoing_channel_info.is_non_zero(), true);
+    enc_outgoing_channel_info.salt = Zero::zero();
+    assert_eq!(enc_outgoing_channel_info.is_non_zero(), true);
+    enc_outgoing_channel_info.salt = 'salt'.try_into().unwrap();
+    enc_outgoing_channel_info.enc_recipient_addr = Zero::zero();
+    assert_eq!(enc_outgoing_channel_info.is_non_zero(), false);
+    enc_outgoing_channel_info.salt = Zero::zero();
+    assert_eq!(enc_outgoing_channel_info.is_non_zero(), false);
 }
 
 #[test]
