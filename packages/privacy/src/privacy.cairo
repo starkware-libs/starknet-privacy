@@ -18,7 +18,7 @@ pub mod Privacy {
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
         EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
-        EncSubchannelInfo, Note, NoteTrait, TokenBalances, TokenBalancesTrait,
+        EncSubchannelInfo, Note, NoteTrait, ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::constants::{ERROR_WRAPPER, OK_WRAPPER, TWO_POW_120};
     use privacy::utils::{
@@ -32,8 +32,13 @@ pub mod Privacy {
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
-    use starknet::syscalls::call_contract_syscall;
-    use starknet::{ContractAddress, VALIDATED, get_caller_address, get_contract_address};
+    use starknet::storage_access::{
+        StorageBaseAddress, storage_address_from_base_and_offset, storage_base_address_from_felt252,
+    };
+    use starknet::syscalls::{call_contract_syscall, storage_read_syscall, storage_write_syscall};
+    use starknet::{
+        ContractAddress, SyscallResultTrait, VALIDATED, get_caller_address, get_contract_address,
+    };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
@@ -250,15 +255,13 @@ pub mod Privacy {
                 ServerAction::WriteIfZero(
                     WriteIfZeroInput {
                         storage_address: self.public_key.entry(user_addr).into(),
-                        value: user_public_key,
+                        value: [user_public_key].span(),
                     },
                 ),
-                ServerAction::WriteIfZeroPrivateKey(
-                    WriteIfZeroInput {
+                enc_private_key
+                    .to_write_if_zero_action(
                         storage_address: self.enc_private_key.entry(user_addr).into(),
-                        value: enc_private_key,
-                    },
-                ),
+                    ),
                 ServerAction::EmitViewingKeySet(
                     events::ViewingKeySet {
                         user_addr, public_key: user_public_key, enc_private_key,
@@ -343,16 +346,14 @@ pub mod Privacy {
                 ServerAction::WriteIfZero(
                     WriteIfZeroInput {
                         storage_address: self.channel_exists.entry(channel_id).into(),
-                        value: true.into(),
+                        value: [true.into()].span(),
                     },
                 ),
                 ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
-                ServerAction::WriteIfZeroOutgoingChannel(
-                    WriteIfZeroInput {
+                enc_outgoing_channel_info
+                    .to_write_if_zero_action(
                         storage_address: self.outgoing_channels.entry(outgoing_channel_key).into(),
-                        value: enc_outgoing_channel_info,
-                    },
-                ),
+                    ),
             ]
         }
 
@@ -401,15 +402,13 @@ pub mod Privacy {
                 ServerAction::WriteIfZero(
                     WriteIfZeroInput {
                         storage_address: self.subchannel_exists.entry(subchannel_id).into(),
-                        value: true.into(),
+                        value: [true.into()].span(),
                     },
                 ),
-                ServerAction::WriteIfZeroSubchannel(
-                    WriteIfZeroInput {
+                enc_subchannel_info
+                    .to_write_if_zero_action(
                         storage_address: self.subchannel_tokens.entry(subchannel_key).into(),
-                        value: enc_subchannel_info,
-                    },
-                ),
+                    ),
             ]
         }
 
@@ -518,7 +517,7 @@ pub mod Privacy {
                 ServerAction::WriteIfZero(
                     WriteIfZeroInput {
                         storage_address: self.nullifiers.entry(nullifier).into(),
-                        value: true.into(),
+                        value: [true.into()].span(),
                     },
                 ),
             ]
@@ -582,13 +581,7 @@ pub mod Privacy {
 
             token_balances.subtract_balance(:token, :amount);
 
-            array![
-                ServerAction::WriteIfZeroNote(
-                    WriteIfZeroInput {
-                        storage_address: self.notes.entry(note_id).into(), value: note,
-                    },
-                ),
-            ]
+            array![note.to_write_if_zero_action(storage_address: self.notes.entry(note_id).into())]
         }
     }
 
@@ -605,30 +598,6 @@ pub mod Privacy {
                                 storage_address: input.storage_address,
                                 new_value: input.value,
                                 require_zero: true,
-                            );
-                    },
-                    ServerAction::WriteIfZeroSubchannel(input) => {
-                        self
-                            ._execute_write_subchannel(
-                                storage_address: input.storage_address, new_value: input.value,
-                            );
-                    },
-                    ServerAction::WriteIfZeroOutgoingChannel(input) => {
-                        self
-                            ._execute_write_outgoing_channel(
-                                storage_address: input.storage_address, new_value: input.value,
-                            );
-                    },
-                    ServerAction::WriteIfZeroPrivateKey(input) => {
-                        self
-                            ._execute_write_private_key(
-                                storage_address: input.storage_address, new_value: input.value,
-                            );
-                    },
-                    ServerAction::WriteIfZeroNote(input) => {
-                        self
-                            ._execute_write_note(
-                                storage_address: input.storage_address, new_value: input.value,
                             );
                     },
                     ServerAction::AppendToVec(input) => {
@@ -672,70 +641,25 @@ pub mod Privacy {
         fn _execute_write(
             ref self: ContractState,
             storage_address: felt252,
-            new_value: felt252,
+            new_value: Span<felt252>,
             require_zero: bool,
         ) {
-            let mut target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
-            if require_zero {
-                assert(target.read().is_zero(), errors::NON_ZERO_VALUE);
+            let base: StorageBaseAddress = storage_base_address_from_felt252(addr: storage_address);
+            let mut offset = 0;
+            for value in new_value {
+                let address = storage_address_from_base_and_offset(:base, :offset);
+                offset += 1;
+
+                if require_zero {
+                    assert(
+                        storage_read_syscall(address_domain: 0, :address)
+                            .unwrap_syscall()
+                            .is_zero(),
+                        errors::NON_ZERO_VALUE,
+                    );
+                }
+                storage_write_syscall(address_domain: 0, :address, value: *value).unwrap_syscall();
             }
-            target.write(new_value);
-        }
-
-        // TODO: Make generic and consider merging this with `_execute_write` function.
-        // TODO: Better naming for this function.
-        fn _execute_write_subchannel(
-            ref self: ContractState, storage_address: felt252, new_value: EncSubchannelInfo,
-        ) {
-            let mut target = StorageBase::<
-                Mutable<EncSubchannelInfo>,
-            > { __base_address__: storage_address };
-            let current_value = target.read();
-            // TODO: Require zero as param?
-            // Require zero.
-            // TODO: Fix is zero, should check all fields are non zero.
-            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
-            target.write(new_value);
-        }
-
-        // TODO: Merge with `_execute_write_subchannel` function.
-        fn _execute_write_outgoing_channel(
-            ref self: ContractState, storage_address: felt252, new_value: EncOutgoingChannelInfo,
-        ) {
-            let mut target = StorageBase::<
-                Mutable<EncOutgoingChannelInfo>,
-            > { __base_address__: storage_address };
-            let current_value = target.read();
-            // TODO: Require zero as param?
-            // Require zero.
-            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
-            target.write(new_value);
-        }
-
-        // TODO: Make generic and consider merging this with `_execute_write` function.
-        // TODO: Better naming for this function.
-        fn _execute_write_private_key(
-            ref self: ContractState, storage_address: felt252, new_value: EncPrivateKey,
-        ) {
-            let mut target = StorageBase::<
-                Mutable<EncPrivateKey>,
-            > { __base_address__: storage_address };
-            let current_value = target.read();
-            // TODO: Require zero as param?
-            // Require zero.
-            // TODO: Fix is zero, should check all fields are non zero.
-            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
-            target.write(new_value);
-        }
-
-        // TODO: Make generic and consider merging this with `_execute_write` function.
-        // TODO: Better naming for this function.
-        fn _execute_write_note(ref self: ContractState, storage_address: felt252, new_value: Note) {
-            let mut target = StorageBase::<Mutable<Note>> { __base_address__: storage_address };
-            let current_value = target.read();
-            // TODO: Consider revising to use `enc_value.is_zero()` once open notes are implemented.
-            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
-            target.write(new_value);
         }
 
         fn _execute_append_to_vector(
