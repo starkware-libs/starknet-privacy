@@ -1,5 +1,6 @@
 use core::dict::{Felt252Dict, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
+use privacy::actions::{ServerAction, WriteIfZeroInput};
 use privacy::errors;
 use starknet::ContractAddress;
 
@@ -76,6 +77,25 @@ pub impl EncPrivateKeyZero of Zero<EncPrivateKey> {
     }
 }
 
+#[generate_trait]
+pub(crate) impl EncPrivateKeyImpl of EncPrivateKeyTrait {
+    fn to_write_if_zero_actions(
+        self: @EncPrivateKey, base_storage_address: felt252,
+    ) -> Array<ServerAction> {
+        array![
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput {
+                    storage_address: base_storage_address, value: *self.ephemeral_pubkey,
+                },
+            ),
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput {
+                    storage_address: base_storage_address + 1, value: *self.enc_private_key,
+                },
+            ),
+        ]
+    }
+}
 /// An encrypted subchannel info, to be written to storage.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
 pub struct EncSubchannelInfo {
@@ -96,6 +116,24 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
     /// Check if `enc_token` field is non-zero.
     fn is_non_zero(self: @EncSubchannelInfo) -> bool {
         !self.is_zero()
+    }
+}
+
+#[generate_trait]
+pub(crate) impl EncSubchannelInfoImpl of EncSubchannelInfoTrait {
+    fn to_write_if_zero_actions(
+        self: @EncSubchannelInfo, base_storage_address: felt252,
+    ) -> Array<ServerAction> {
+        array![
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput { storage_address: base_storage_address, value: *self.salt },
+            ),
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput {
+                    storage_address: base_storage_address + 1, value: *self.enc_token,
+                },
+            ),
+        ]
     }
 }
 
@@ -121,5 +159,23 @@ pub impl EncOutgoingChannelInfoZero of Zero<EncOutgoingChannelInfo> {
     /// Check if `enc_recipient_addr` field is non-zero.
     fn is_non_zero(self: @EncOutgoingChannelInfo) -> bool {
         !self.is_zero()
+    }
+}
+
+#[generate_trait]
+pub(crate) impl EncOutgoingChannelInfoImpl of EncOutgoingChannelInfoTrait {
+    fn to_write_if_zero_actions(
+        self: @EncOutgoingChannelInfo, base_storage_address: felt252,
+    ) -> Array<ServerAction> {
+        array![
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput { storage_address: base_storage_address, value: *self.salt },
+            ),
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput {
+                    storage_address: base_storage_address + 1, value: *self.enc_recipient_addr,
+                },
+            ),
+        ]
     }
 }

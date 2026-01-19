@@ -1,5 +1,5 @@
 use privacy::errors;
-use privacy::objects::{EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo};
+use privacy::objects::EncChannelInfo;
 use starknet::ContractAddress;
 
 /// Input for the `SetViewingKey` action.
@@ -177,33 +177,6 @@ pub struct WriteIfZeroInput {
     pub value: felt252,
 }
 
-/// Input for the `WriteIfZeroSubchannel` action.
-#[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct WriteIfZeroSubchannelInput {
-    /// The storage address to write to.
-    pub storage_address: felt252,
-    /// The value to write.
-    pub value: EncSubchannelInfo,
-}
-
-/// Input for the `WriteIfZeroOutgoingChannel` action.
-#[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct WriteIfZeroOutgoingChannelInput {
-    /// The storage address to write to.
-    pub storage_address: felt252,
-    /// The value to write.
-    pub value: EncOutgoingChannelInfo,
-}
-
-/// Input for the `WriteIfZeroPrivateKey` action.
-#[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct WriteIfZeroPrivateKeyInput {
-    /// The storage address to write to.
-    pub storage_address: felt252,
-    /// The value to write.
-    pub value: EncPrivateKey,
-}
-
 /// Input for the `AppendToVec` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct AppendToVecInput {
@@ -250,17 +223,6 @@ pub struct VerifyValueInput {
 pub enum ServerAction {
     /// Verify that a storage value is zero/empty and then write to it.
     WriteIfZero: WriteIfZeroInput,
-    // TODO: Generalize to any type, Merge with WriteIfZero.
-    // TODO: Better naming for this action.
-    /// Verify that a storage value is zero/empty and then write to it.
-    WriteIfZeroSubchannel: WriteIfZeroSubchannelInput,
-    // TODO: Merge with WriteIfZeroSubchannel.
-    /// Verify that a storage value is zero/empty and then write to it.
-    WriteIfZeroOutgoingChannel: WriteIfZeroOutgoingChannelInput,
-    // TODO: Generalize to any type, Merge with WriteIfZero.
-    // TODO: Better naming for this action.
-    /// Verify that a storage value is zero/empty and then write to it.
-    WriteIfZeroPrivateKey: WriteIfZeroPrivateKeyInput,
     // TODO: Generalize to any vector.
     /// Append a `EncChannelInfo` value to (`recipient_addr`, `recipient_public_key`)'s vector in
     /// storage.

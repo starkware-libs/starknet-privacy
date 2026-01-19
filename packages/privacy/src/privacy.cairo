@@ -9,7 +9,6 @@ pub mod Privacy {
         AppendToVecInput, ClientAction, ClientActionTrait, CreateNoteInput, DepositInput,
         OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
         TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput,
-        WriteIfZeroOutgoingChannelInput, WriteIfZeroPrivateKeyInput, WriteIfZeroSubchannelInput,
     };
     use privacy::errors;
     use privacy::errors::internal_errors;
@@ -19,8 +18,9 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
-        EncSubchannelInfo, TokenBalances, TokenBalancesTrait,
+        EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncOutgoingChannelInfoTrait,
+        EncPrivateKey, EncPrivateKeyTrait, EncSubchannelInfo, EncSubchannelInfoTrait, TokenBalances,
+        TokenBalancesTrait,
     };
     use privacy::utils::constants::TWO_POW_120;
     use privacy::utils::{
@@ -188,20 +188,20 @@ pub mod Privacy {
             );
             assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
-            array![
+            let enc_private_key_storage_address = self.enc_private_key.entry(user_addr).into();
+            let write_if_zero_actions = enc_private_key
+                .to_write_if_zero_actions(base_storage_address: enc_private_key_storage_address);
+
+            let mut actions = array![
                 ServerAction::WriteIfZero(
                     WriteIfZeroInput {
                         storage_address: self.public_key.entry(user_addr).into(),
                         value: user_public_key,
                     },
                 ),
-                ServerAction::WriteIfZeroPrivateKey(
-                    WriteIfZeroPrivateKeyInput {
-                        storage_address: self.enc_private_key.entry(user_addr).into(),
-                        value: enc_private_key,
-                    },
-                ),
-            ]
+            ];
+            actions.extend(write_if_zero_actions);
+            actions
         }
 
         /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
@@ -270,7 +270,14 @@ pub mod Privacy {
                 internal_errors::ZERO_ENC_OUTGOING_CHANNEL_INFO,
             );
 
-            array![
+            let outgoing_channels_storage_address = self
+                .outgoing_channels
+                .entry(outgoing_channel_key)
+                .into();
+            let write_if_zero_actions = enc_outgoing_channel_info
+                .to_write_if_zero_actions(base_storage_address: outgoing_channels_storage_address);
+
+            let mut actions = array![
                 ServerAction::VerifyValue(
                     VerifyValueInput {
                         storage_address: self.public_key.entry(recipient_addr).into(),
@@ -286,13 +293,9 @@ pub mod Privacy {
                 ServerAction::AppendToVec(
                     AppendToVecInput { recipient_addr, recipient_public_key, enc_channel_info },
                 ),
-                ServerAction::WriteIfZeroOutgoingChannel(
-                    WriteIfZeroOutgoingChannelInput {
-                        storage_address: self.outgoing_channels.entry(outgoing_channel_key).into(),
-                        value: enc_outgoing_channel_info,
-                    },
-                ),
-            ]
+            ];
+            actions.extend(write_if_zero_actions);
+            actions
         }
 
         /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
@@ -336,20 +339,23 @@ pub mod Privacy {
             assert(subchannel_key.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_KEY);
             assert(enc_subchannel_info.is_non_zero(), internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN);
 
-            array![
+            let subchannel_tokens_storage_address = self
+                .subchannel_tokens
+                .entry(subchannel_key)
+                .into();
+            let write_if_zero_actions = enc_subchannel_info
+                .to_write_if_zero_actions(base_storage_address: subchannel_tokens_storage_address);
+
+            let mut actions = array![
                 ServerAction::WriteIfZero(
                     WriteIfZeroInput {
                         storage_address: self.subchannel_exists.entry(subchannel_id).into(),
                         value: true.into(),
                     },
                 ),
-                ServerAction::WriteIfZeroSubchannel(
-                    WriteIfZeroSubchannelInput {
-                        storage_address: self.subchannel_tokens.entry(subchannel_key).into(),
-                        value: enc_subchannel_info,
-                    },
-                ),
-            ]
+            ];
+            actions.extend(write_if_zero_actions);
+            actions
         }
 
         /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
@@ -533,24 +539,6 @@ pub mod Privacy {
                                 require_zero: true,
                             );
                     },
-                    ServerAction::WriteIfZeroSubchannel(input) => {
-                        self
-                            ._execute_write_subchannel(
-                                storage_address: input.storage_address, new_value: input.value,
-                            );
-                    },
-                    ServerAction::WriteIfZeroOutgoingChannel(input) => {
-                        self
-                            ._execute_write_outgoing_channel(
-                                storage_address: input.storage_address, new_value: input.value,
-                            );
-                    },
-                    ServerAction::WriteIfZeroPrivateKey(input) => {
-                        self
-                            ._execute_write_private_key(
-                                storage_address: input.storage_address, new_value: input.value,
-                            );
-                    },
                     ServerAction::AppendToVec(input) => {
                         self
                             ._execute_append_to_vector(
@@ -597,52 +585,6 @@ pub mod Privacy {
             if require_zero {
                 assert(target.read().is_zero(), errors::NON_ZERO_VALUE);
             }
-            target.write(new_value);
-        }
-
-        // TODO: Make generic and consider merging this with `_execute_write` function.
-        // TODO: Better naming for this function.
-        fn _execute_write_subchannel(
-            ref self: ContractState, storage_address: felt252, new_value: EncSubchannelInfo,
-        ) {
-            let mut target = StorageBase::<
-                Mutable<EncSubchannelInfo>,
-            > { __base_address__: storage_address };
-            let current_value = target.read();
-            // TODO: Require zero as param?
-            // Require zero.
-            // TODO: Fix is zero, should check all fields are non zero.
-            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
-            target.write(new_value);
-        }
-
-        // TODO: Merge with `_execute_write_subchannel` function.
-        fn _execute_write_outgoing_channel(
-            ref self: ContractState, storage_address: felt252, new_value: EncOutgoingChannelInfo,
-        ) {
-            let mut target = StorageBase::<
-                Mutable<EncOutgoingChannelInfo>,
-            > { __base_address__: storage_address };
-            let current_value = target.read();
-            // TODO: Require zero as param?
-            // Require zero.
-            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
-            target.write(new_value);
-        }
-
-        // TODO: Make generic and consider merging this with `_execute_write` function.
-        // TODO: Better naming for this function.
-        fn _execute_write_private_key(
-            ref self: ContractState, storage_address: felt252, new_value: EncPrivateKey,
-        ) {
-            let mut target = StorageBase::<
-                Mutable<EncPrivateKey>,
-            > { __base_address__: storage_address };
-            let current_value = target.read();
-            // TODO: Require zero as param?
-            // Require zero.
-            // TODO: Fix is zero, should check all fields are non zero.
-            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
             target.write(new_value);
         }
 

@@ -1,8 +1,11 @@
 use core::num::traits::Zero;
+use privacy::actions::{ServerAction, WriteIfZeroInput};
 use privacy::objects::{
-    EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncSubchannelInfo, TokenBalances,
+    EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncOutgoingChannelInfoTrait,
+    EncPrivateKey, EncPrivateKeyTrait, EncSubchannelInfo, EncSubchannelInfoTrait, TokenBalances,
     TokenBalancesTrait,
 };
+use snforge_std::map_entry_address;
 use starknet::ContractAddress;
 
 #[test]
@@ -169,4 +172,80 @@ fn test_token_balances_final_balance_must_be_zero() {
     token_balances.subtract_balance(token: token_2, amount: 1);
 
     token_balances.squash().assert_valid();
+}
+
+#[test]
+fn test_enc_private_key_to_write_if_zero_actions() {
+    let ephemeral_pubkey = 'EPHEMERAL_PUBKEY';
+    let enc_private_key = 'ENC_PRIVATE_KEY';
+    let enc_private_key_obj = EncPrivateKey { ephemeral_pubkey, enc_private_key };
+    let key = 'KEY';
+    let base_storage_address = map_entry_address(
+        map_selector: selector!("enc_private_key"), keys: [key].span(),
+    );
+    let actions = enc_private_key_obj.to_write_if_zero_actions(:base_storage_address).span();
+    assert_eq!(
+        actions,
+        [
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput { storage_address: base_storage_address, value: ephemeral_pubkey },
+            ),
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput {
+                    storage_address: base_storage_address + 1, value: enc_private_key,
+                },
+            ),
+        ]
+            .span(),
+    );
+}
+
+#[test]
+fn test_enc_subchannel_info_to_write_if_zero_actions() {
+    let salt = 'SALT';
+    let enc_token = 'ENC_TOKEN';
+    let enc_subchannel_info = EncSubchannelInfo { salt, enc_token };
+    let key = 'KEY';
+    let base_storage_address = map_entry_address(
+        map_selector: selector!("subchannel_tokens"), keys: [key].span(),
+    );
+    let actions = enc_subchannel_info.to_write_if_zero_actions(:base_storage_address).span();
+    assert_eq!(
+        actions,
+        [
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput { storage_address: base_storage_address, value: salt },
+            ),
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput { storage_address: base_storage_address + 1, value: enc_token },
+            ),
+        ]
+            .span(),
+    );
+}
+
+#[test]
+fn test_enc_outgoing_channel_info_to_write_if_zero_actions() {
+    let salt = 'SALT';
+    let enc_recipient_addr = 'ENC_RECIPIENT_ADDR';
+    let enc_outgoing_channel_info = EncOutgoingChannelInfo { salt, enc_recipient_addr };
+    let key = 'KEY';
+    let base_storage_address = map_entry_address(
+        map_selector: selector!("outgoing_channels"), keys: [key].span(),
+    );
+    let actions = enc_outgoing_channel_info.to_write_if_zero_actions(:base_storage_address).span();
+    assert_eq!(
+        actions,
+        [
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput { storage_address: base_storage_address, value: salt },
+            ),
+            ServerAction::WriteIfZero(
+                WriteIfZeroInput {
+                    storage_address: base_storage_address + 1, value: enc_recipient_addr,
+                },
+            ),
+        ]
+            .span(),
+    );
 }
