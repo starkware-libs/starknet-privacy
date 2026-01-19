@@ -306,7 +306,9 @@ pub mod Privacy {
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
             let subchannel_key = compute_subchannel_key(:channel_key, :index);
-            let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :token, :random);
+            let enc_subchannel_info = encrypt_subchannel_info(
+                :channel_key, :index, :token, :random,
+            );
             assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
             assert(subchannel_key.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_KEY);
             assert(enc_subchannel_info.is_non_zero(), internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN);
@@ -403,7 +405,7 @@ pub mod Privacy {
             assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             // Decrypt note amount.
-            let amount = decrypt_note_amount(:enc_note_value, :channel_key);
+            let amount = decrypt_note_amount(:enc_note_value, :channel_key, :token, :index);
             // TODO: Sanity assert amount is non zero?
 
             // Compute nullifier.
@@ -477,7 +479,7 @@ pub mod Privacy {
 
             // Compute note values.
             let note_id = compute_note_id(:channel_key, :token, :index);
-            let enc_amount = encrypt_note_amount(:channel_key, :random, :amount);
+            let enc_amount = encrypt_note_amount(:channel_key, :token, :index, :random, :amount);
 
             assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
             assert(enc_amount.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);

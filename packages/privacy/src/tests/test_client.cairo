@@ -1156,7 +1156,7 @@ fn test_open_subchannel() {
         );
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, :random);
+        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :random);
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
 
     let subchannel_exists_storage_path_felt = map_entry_address(
@@ -1194,7 +1194,7 @@ fn test_open_subchannel_self_channel() {
         .internal_open_subchannel_with_generated_random(recipient: user, :token_address, index: 0);
     let expected_subchannel_key = user.compute_subchannel_key(recipient: user, index: 0);
     let expected_enc_subchannel_info = user
-        .compute_enc_subchannel_info(recipient: user, :token_address, :random);
+        .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, :random);
     let expected_subchannel_id = user.compute_subchannel_id(recipient: user, :token_address);
 
     let subchannel_exists_storage_path_felt = map_entry_address(
@@ -1346,11 +1346,11 @@ fn test_open_subchannel_multiple() {
     let expected_subchannel_key_2 = user_1.compute_subchannel_key(recipient: user_2, index: 1);
     let expected_enc_subchannel_info_1 = user_1
         .compute_enc_subchannel_info(
-            recipient: user_2, token_address: token_address_1, random: random_1,
+            recipient: user_2, token_address: token_address_1, index: 0, random: random_1,
         );
     let expected_enc_subchannel_info_2 = user_1
         .compute_enc_subchannel_info(
-            recipient: user_2, token_address: token_address_2, random: random_2,
+            recipient: user_2, token_address: token_address_2, index: 1, random: random_2,
         );
     let expected_subchannel_id_1 = user_1
         .compute_subchannel_id(recipient: user_2, token_address: token_address_1);
@@ -1422,9 +1422,9 @@ fn test_open_subchannel_multiple() {
     let expected_subchannel_key_1 = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_subchannel_key_2 = user_1.compute_subchannel_key(recipient: user_2, index: 1);
     let expected_enc_subchannel_info_1 = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, random: random_1);
+        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, random: random_1);
     let expected_enc_subchannel_info_2 = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, random: random_2);
+        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 1, random: random_2);
     // Id will be the same since the token is the same.
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
     assert_ne!(expected_subchannel_key_1, expected_subchannel_key_2);
@@ -1489,11 +1489,11 @@ fn test_open_subchannel_multiple() {
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info_1 = user_1
         .compute_enc_subchannel_info(
-            recipient: user_2, token_address: token_address_1, random: random_1,
+            recipient: user_2, token_address: token_address_1, index: 0, random: random_1,
         );
     let expected_enc_subchannel_info_2 = user_1
         .compute_enc_subchannel_info(
-            recipient: user_2, token_address: token_address_2, random: random_2,
+            recipient: user_2, token_address: token_address_2, index: 0, random: random_2,
         );
     let expected_subchannel_id_1 = user_1
         .compute_subchannel_id(recipient: user_2, token_address: token_address_1);
@@ -1566,11 +1566,11 @@ fn test_open_subchannel_multiple_self_channel() {
     let expected_subchannel_key_2 = user.compute_subchannel_key(recipient: user, index: 1);
     let expected_enc_subchannel_info_1 = user
         .compute_enc_subchannel_info(
-            recipient: user, token_address: token_address_1, random: random_1,
+            recipient: user, token_address: token_address_1, index: 0, random: random_1,
         );
     let expected_enc_subchannel_info_2 = user
         .compute_enc_subchannel_info(
-            recipient: user, token_address: token_address_2, random: random_2,
+            recipient: user, token_address: token_address_2, index: 1, random: random_2,
         );
     let expected_subchannel_id_1 = user
         .compute_subchannel_id(recipient: user, token_address: token_address_1);
@@ -1645,7 +1645,7 @@ fn test_open_subchannel_decrypt_subchannel_info() {
     let subchannel_key = compute_subchannel_key(channel_key: decrypted_channel_key, index: 0);
     let enc_subchannel_info = test.privacy.get_subchannel_info(:subchannel_key);
     let decrypted_token = decrypt_subchannel_token(
-        :enc_subchannel_info, channel_key: decrypted_channel_key,
+        :enc_subchannel_info, channel_key: decrypted_channel_key, index: 0,
     );
     assert_eq!(decrypted_token, token_address);
 }
@@ -1993,7 +1993,9 @@ fn test_create_note_decrypt_amount() {
     let (channel_key, _) = decrypt_channel_info(:enc_channel_info, private_key: user_2.private_key);
     let note_id = compute_note_id(:channel_key, token: token_address, index: note_index);
     let enc_amount = user_2.privacy.get_note(:note_id);
-    let decrypted_amount = decrypt_note_amount(enc_note_value: enc_amount, :channel_key);
+    let decrypted_amount = decrypt_note_amount(
+        enc_note_value: enc_amount, :channel_key, token: token_address, index: note_index,
+    );
     assert_eq!(decrypted_amount, amount);
 }
 
@@ -2726,7 +2728,7 @@ fn test_compile_client_actions_open_subchannel() {
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, :random);
+        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :random);
     let subchannel_exists_storage_path_felt = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id].span(),
     );
@@ -3574,7 +3576,9 @@ fn test_compile_client_actions_writes() {
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
     let enc_subchannel_info = user
-        .compute_enc_subchannel_info(recipient: user, :token_address, random: random.into());
+        .compute_enc_subchannel_info(
+            recipient: user, :token_address, index: 0, random: random.into(),
+        );
     let enc_note = user.compute_enc_note(recipient: user, :token_address, :index, :amount, :random);
     let note_storage_path = map_entry_address(
         map_selector: selector!("notes"), keys: [enc_note.id].span(),
