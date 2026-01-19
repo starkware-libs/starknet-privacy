@@ -20,17 +20,19 @@ pub mod Privacy {
         EncChannelInfo, EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo, TokenBalances,
         TokenBalancesTrait,
     };
-    use privacy::utils::constants::TWO_POW_120;
+    use privacy::utils::constants::{ERROR_WRAPPER, OK_WRAPPER, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_signature, decrypt_note_amount, derive_public_key,
         encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
         encrypt_user_addr, is_canonical_key, send_message_to_server,
+        unwrap_execute_and_panic_result,
     };
     use privacy::{errors, events};
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
+    use starknet::syscalls::call_contract_syscall;
     use starknet::{ContractAddress, VALIDATED, get_caller_address, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -131,6 +133,27 @@ pub mod Privacy {
         ) {
             assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            let mut calldata = array![];
+            user_addr.serialize(ref calldata);
+            client_actions.serialize(ref calldata);
+            let syscall_result = call_contract_syscall(
+                address: get_contract_address(),
+                entry_point_selector: selector!("execute_and_panic"),
+                calldata: calldata.span(),
+            );
+
+            let mut serialized_server_actions = unwrap_execute_and_panic_result(:syscall_result);
+            let server_actions = Serde::deserialize(ref serialized_server_actions)
+                .expect(internal_errors::DESERIALIZE_FAILED);
+            send_message_to_server(:server_actions);
+        }
+
+        /// Panics directly for internal errors; external calls are wrapped via syscall
+        /// to wrap their panics with `ERROR_WRAPPER`.
+        fn execute_and_panic(
+            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) {
+            // TODO: Consider extracting logic to internal `main` function.
             // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
             let mut server_actions: Array<ServerAction> = array![];
@@ -166,9 +189,21 @@ pub mod Privacy {
                 }
                 server_actions.extend(actions);
             }
-            token_balances.squash().assert_valid();
-            assert_valid_signature(:user_addr);
-            send_message_to_server(server_actions.span());
+
+            let mut panic_message = array![];
+            // `assert_valid_signature` must be the last call before panicking, to ensure contract
+            // storage is not modified.
+            if let Err(err) = assert_valid_signature(:user_addr) {
+                panic_message.append(ERROR_WRAPPER);
+                panic_message.extend(err);
+                panic_message.append(ERROR_WRAPPER);
+            } else {
+                token_balances.squash().assert_valid();
+                panic_message.append(OK_WRAPPER);
+                server_actions.serialize(ref panic_message);
+                panic_message.append(OK_WRAPPER);
+            }
+            panic(panic_message);
         }
     }
 
