@@ -3818,13 +3818,15 @@ fn test_compile_client_actions_writes() {
     assert_eq!(server_actions, expected_sevrer_actions);
     // Assert events.
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: events[0],
-        :expected_event,
-        expected_event_selector: @selector!("ViewingKeySet"),
-        expected_event_name: "ViewingKeySet",
-    );
+    assert_eq!(events.len(), 2);
+    for event in events {
+        assert_expected_event_emitted(
+            spied_event: @event,
+            :expected_event,
+            expected_event_selector: @selector!("ViewingKeySet"),
+            expected_event_name: "ViewingKeySet",
+        );
+    }
 
     // Test CreateNote writes.
     user.increase_token_balance(:token, :amount);
