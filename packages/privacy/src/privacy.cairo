@@ -17,15 +17,14 @@ pub mod Privacy {
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        EncChannelInfo, EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo, TokenBalances,
-        TokenBalancesTrait,
+        EncChannelInfo, EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo, Note, NoteTrait,
+        TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::constants::{ERROR_WRAPPER, OK_WRAPPER, TWO_POW_120};
     use privacy::utils::{
-        StoragePathIntoFelt, assert_valid_signature, decrypt_note_amount, derive_public_key,
-        encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, is_canonical_key, send_message_to_server,
-        unwrap_execute_and_panic_result,
+        StoragePathIntoFelt, assert_valid_signature, derive_public_key, encrypt_channel_info,
+        encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, is_canonical_key,
+        send_message_to_server, unwrap_execute_and_panic_result,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -68,8 +67,8 @@ pub mod Privacy {
         subchannel_tokens: Map<felt252, EncSubchannelInfo>,
         /// Map of subchannel id to whether it exists.
         subchannel_exists: Map<felt252, bool>,
-        /// Map of note ids to their encrypted values.
-        notes: Map<felt252, felt252>,
+        /// Map of note ids to their note information.
+        notes: Map<felt252, Note>,
         /// Map of nullifier to whether it exists.
         nullifiers: Map<felt252, bool>,
         /// Map of user addresses to their public viewing keys.
@@ -451,11 +450,12 @@ pub mod Privacy {
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
-            let enc_note_value = self.notes.read(note_id);
-            assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
+            let note = self.notes.read(note_id);
+            assert(note.enc_value.is_non_zero(), errors::NOTE_NOT_FOUND);
+            assert(note.token.is_zero(), internal_errors::ENC_NOTE_NON_ZERO_TOKEN);
 
             // Decrypt note amount.
-            let amount = decrypt_note_amount(:enc_note_value, :channel_key, :token, :index);
+            let amount = note.decrypt(:channel_key, :token, :index);
             // TODO: Sanity assert amount is non zero?
 
             // Compute nullifier.
@@ -522,23 +522,24 @@ pub mod Privacy {
                     || self
                         .notes
                         .read(compute_note_id(:channel_key, :token, index: index - 1))
+                        .enc_value
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
             );
 
             // Compute note values.
             let note_id = compute_note_id(:channel_key, :token, :index);
-            let enc_amount = encrypt_note_amount(:channel_key, :token, :index, :salt, :amount);
+            let note = NoteTrait::encrypt(:channel_key, :token, :index, :salt, :amount);
 
             assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
-            assert(enc_amount.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
+            assert(note.enc_value.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
 
             token_balances.subtract_balance(:token, :amount);
 
             array![
-                ServerAction::WriteIfZero(
+                ServerAction::WriteIfZeroNote(
                     WriteIfZeroInput {
-                        storage_address: self.notes.entry(note_id).into(), value: enc_amount,
+                        storage_address: self.notes.entry(note_id).into(), value: note,
                     },
                 ),
             ]
@@ -569,6 +570,12 @@ pub mod Privacy {
                     ServerAction::WriteIfZeroPrivateKey(input) => {
                         self
                             ._execute_write_private_key(
+                                storage_address: input.storage_address, new_value: input.value,
+                            );
+                    },
+                    ServerAction::WriteIfZeroNote(input) => {
+                        self
+                            ._execute_write_note(
                                 storage_address: input.storage_address, new_value: input.value,
                             );
                     },
@@ -654,6 +661,16 @@ pub mod Privacy {
             target.write(new_value);
         }
 
+        // TODO: Make generic and consider merging this with `_execute_write` function.
+        // TODO: Better naming for this function.
+        fn _execute_write_note(ref self: ContractState, storage_address: felt252, new_value: Note) {
+            let mut target = StorageBase::<Mutable<Note>> { __base_address__: storage_address };
+            let current_value = target.read();
+            // TODO: Consider revising to use `enc_value.is_zero()` once open notes are implemented.
+            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
+            target.write(new_value);
+        }
+
         // TODO: Make generic.
         fn _execute_append_to_vector(
             ref self: ContractState, key: ContractAddress, value: EncChannelInfo,
@@ -723,7 +740,7 @@ pub mod Privacy {
         }
 
         fn get_note(self: @ContractState, note_id: felt252) -> felt252 {
-            self.notes.read(note_id)
+            self.notes.read(note_id).enc_value
         }
 
         fn nullifier_exists(self: @ContractState, nullifier: felt252) -> bool {

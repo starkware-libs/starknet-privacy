@@ -1,4 +1,4 @@
-use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
+use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo, Note};
 use privacy::{errors, events};
 use starknet::ContractAddress;
 
@@ -224,6 +224,10 @@ pub enum ServerAction {
     // TODO: Better naming for this action.
     /// Verify that a storage value is zero/empty and then write to it.
     WriteIfZeroPrivateKey: WriteIfZeroInput<EncPrivateKey>,
+    // TODO: Generalize to any type, Merge with WriteIfZero.
+    // TODO: Better naming for this action.
+    /// Verify that a storage value is zero/empty and then write to it.
+    WriteIfZeroNote: WriteIfZeroInput<Note>,
     // TODO: Generalize to any vector.
     /// Append a `EncChannelInfo` value to `recipient_addr`'s vector in storage.
     AppendToVec: AppendToVecInput,
