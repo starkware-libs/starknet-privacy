@@ -4,6 +4,7 @@ use privacy::actions::{
     WriteIfZeroInput,
 };
 use privacy::errors;
+use privacy::objects::Note;
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
 };
@@ -147,7 +148,8 @@ fn test_get_note() {
     let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
     assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
     test.privacy.cheat_create_note(:note);
-    assert_eq!(test.privacy.get_note(note_id: note.id), note.enc_amount);
+    let enc_value = test.privacy.get_note(note_id: note.id);
+    assert_eq!(enc_value, note.enc_amount);
 }
 
 #[test]
@@ -313,15 +315,17 @@ fn test_execute_write_if_zero() {
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
     assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
+    let note_value = Note { enc_value: note.enc_amount, token: Zero::zero() };
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: note.enc_amount },
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: storage_path_felt, value: note_value },
         ),
     ];
     test.privacy.execute_actions(actions.span());
 
     // Verify note was written.
-    assert_eq!(test.privacy.get_note(note_id: note.id), note.enc_amount);
+    let enc_value = test.privacy.get_note(note_id: note.id);
+    assert_eq!(enc_value, note.enc_amount);
 
     // Verify nullifier doesn't exist and write.
     let nullifier = test.mock_new_nullifier();
@@ -388,16 +392,18 @@ fn test_execute_write_if_zero_assertions() {
     let storage_path_felt = map_entry_address(
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
+    let note_value = Note { enc_value: note.enc_amount, token: Zero::zero() };
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: note.enc_amount },
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: storage_path_felt, value: note_value },
         ),
     ];
     test.privacy.execute_actions(actions.span());
-    let current_value: felt252 = generic_load(
+    let current_value: Note = generic_load(
         target: test.privacy.address, storage_address: storage_path_felt,
     );
-    assert_eq!(current_value, note.enc_amount);
+    assert_eq!(current_value.enc_value, note.enc_amount);
+    assert_eq!(current_value.token, Zero::zero());
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
@@ -514,6 +520,63 @@ fn test_execute_write_if_zero_private_key_assertions() {
         target: test.privacy.address, storage_address: storage_path_felt,
     );
     assert_eq!(current_value, enc_private_key);
+    let result = test.privacy.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+}
+
+#[test]
+fn test_execute_write_if_zero_note() {
+    let mut test: Test = Default::default();
+    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    let note_value = Note { enc_value: note.enc_amount, token: Zero::zero() };
+    assert!(note.enc_amount.is_non_zero());
+
+    // Verify stored note is zero before writing.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("notes"), keys: [note.id].span(),
+    );
+    let current_value: Note = generic_load(
+        target: test.privacy.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, Zero::zero());
+
+    // Write stored note.
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: storage_path_felt, value: note_value },
+        ),
+    ];
+    test.privacy.execute_actions(actions.span());
+
+    // Verify stored note was written.
+    let written_value: Note = generic_load(
+        target: test.privacy.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(written_value, note_value);
+}
+
+#[test]
+fn test_execute_write_if_zero_note_assertions() {
+    let mut test: Test = Default::default();
+    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    let note_value = Note { enc_value: note.enc_amount, token: Zero::zero() };
+    assert!(note.enc_amount.is_non_zero());
+
+    // Catch NON_ZERO_VALUE.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("notes"), keys: [note.id].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: storage_path_felt, value: note_value },
+        ),
+    ];
+    test.privacy.execute_actions(actions.span());
+    let current_value: Note = generic_load(
+        target: test.privacy.address, storage_address: storage_path_felt,
+    );
+    // Verify the value was written
+    assert_eq!(current_value, note_value);
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
