@@ -188,9 +188,9 @@ theorem spend_all_props
     ∃ rm': ReachableMemory crypto,
     rm'.extends rm ∧
     ∀ token,
-      sum_create_note_amounts crypto rm' addrbob kbob token
-      + sum_deposit_amounts crypto rm' addrbob kbob token =
-      sum_cancel_note_amounts crypto rm' addrbob kbob token := by
+      sum_create_note_amounts crypto rm' addrbob token
+      + sum_deposit_amounts crypto rm' addrbob token =
+      sum_cancel_note_amounts crypto rm' addrbob token := by
   let sns := scan_notes_for_recipient (.from rm) addrbob kbob
     |>.filter (λ sn ↦ rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] = 0)
     |>.filter (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c ≠ 0)

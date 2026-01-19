@@ -12,7 +12,7 @@ structure CancelImplies₀
   h_action: .CancelNote inp ∈ rm.actions
   (addralice kalice r_create amount_create: ℕ)
   amount_nz: inp.amount ≠ 0
-  h_kbob: inp.kbob ∈ crypto.PrivateKeys
+  kbob_priv: inp.kbob ∈ crypto.PrivateKeys
 
 abbrev CancelImplies₀.inp_create
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CancelNoteInput}
@@ -35,12 +35,18 @@ theorem CancelImplies.h_note_exists
   simp only [cancel_imp.h_c] at this
   exact this
 
-theorem CancelImplies.h_kbob'
+theorem CancelImplies.h_kbob₀
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CancelNoteInput}
     (cancel_imp: CancelImplies rm inp) :
     cancel_imp.note_created.subchannel.channel.kbob = inp.kbob := by
-  apply crypto.priv_to_pub_inj cancel_imp.note_created.subchannel.channel.kbob.prop cancel_imp.h_kbob
+  apply crypto.priv_to_pub_inj cancel_imp.note_created.subchannel.channel.kbob.prop cancel_imp.kbob_priv
   rw [cancel_imp.note_created.h_Kbob]
+
+theorem CancelImplies.h_kbob₁
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CancelNoteInput}
+    (cancel_imp: CancelImplies rm inp) :
+    rm.m .PublicKeys [inp.addrbob] = crypto.priv_to_pub inp.kbob := by
+  rw [cancel_imp.note_created.subchannel.channel.bob_registered.public_key, ←h_kbob₀]
 
 theorem CancelImplies.next
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CancelNoteInput}
@@ -54,7 +60,7 @@ theorem CancelImplies.next
     r_create := cancel_imp.r_create
     amount_create := cancel_imp.amount_create
     amount_nz := cancel_imp.amount_nz
-    h_kbob := cancel_imp.h_kbob
+    kbob_priv := cancel_imp.kbob_priv
   }
 
   cases action
@@ -105,7 +111,7 @@ theorem CancelImplies.from_action
       r_create := inp_create.r
       amount_create := inp_create.amount
       amount_nz := info.amount_ne_zero
-      h_kbob := info.kbob_private_key
+      kbob_priv := info.kbob_private_key
     }
 
     have h_inp_create: inp.c = inp_create.c crypto ∧ inp_create = res.inp_create := by
