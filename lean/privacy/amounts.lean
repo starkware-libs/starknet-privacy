@@ -284,9 +284,12 @@ theorem sum_deposit_amounts_eq
       intro a h_a
       rw [List.mem_filter] at h_a
       rw [List.mem_map]
-      have note_exists := deposit_action_implies h_a.1
-      have ⟨inp_create, note_imp, h_note_id⟩ := NoteImplies.from_note_exists note_exists
-      use inp_create, note_imp.in_create_note_actions
+      have ⟨open_deposit_imp⟩ := OpenDepositImplies.from_open_deposit_actions h_a.1
+      exact ⟨
+        open_deposit_imp.inp_create,
+        open_deposit_imp.created.in_create_note_actions,
+        open_deposit_imp.h_note_id
+      ⟩
     )
     (h_nodup:=by
       apply List.nodup_iff_count_le_one.2
@@ -316,13 +319,14 @@ theorem sum_deposit_amounts_eq
     apply congrArg
     apply List.filter_congr
     intro inp_deposit h_inp_deposit
+    have ⟨open_deposit_imp⟩ := OpenDepositImplies.from_open_deposit_actions h_inp_deposit
     rw [←Bool.decide_and, ←Bool.decide_and, decide_eq_decide]
     constructor
     · intro h
       exact h.1
     · intro h
       refine ⟨h, ?_, ?_⟩
-      · rw [deposit_action_token h_inp_deposit (sn:=inp.to_scanned_note crypto) (by rw [h])]
+      · rw [open_deposit_imp.token_eq_sn (sn:=inp.to_scanned_note crypto) (by rw [h])]
         exact h_inp.2.1
       · simp only [eq_iff_iff, iff_true]
         use inp.to_scanned_note crypto, inp.addralice, inp.kalice, inp.Kbob
@@ -348,9 +352,10 @@ theorem sum_deposit_amounts_eq
     have ⟨note_imp⟩ := NoteImplies.from_create_note_actions h_inp.1
     have h_note_owner' := note_owner_of_create_note crypto inp
     have h_addrbob_kbob := unique_note_owner h_note_owner h_note_owner'
+    have ⟨open_deposit_imp⟩ := OpenDepositImplies.from_open_deposit_actions h_inp_deposit
 
     have h_inp_token : inp.token = token := by
-      have := deposit_action_token h_inp_deposit (sn:=inp.to_scanned_note crypto) (by rw [h_note_id])
+      have := open_deposit_imp.token_eq_sn (sn:=inp.to_scanned_note crypto) (by rw [h_note_id])
       rw [←h_token]
       exact Eq.symm this
 

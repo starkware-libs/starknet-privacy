@@ -175,3 +175,12 @@ abbrev filter_CancelNote (action: Action) : Option CancelNoteInput :=
 theorem filter_CancelNote_some (action: Action) :
     filter_CancelNote action = some inp ↔ action = .CancelNote inp := by
   cases action; all_goals simp
+
+abbrev filter_OpenDeposit (action: Action) : Option OpenDepositInput :=
+  match action with
+    | .OpenDeposit inp => some inp
+    | _ => none
+
+theorem filter_OpenDeposit_some (action: Action) :
+    filter_OpenDeposit action = some inp ↔ action = .OpenDeposit inp := by
+  cases action; all_goals simp
