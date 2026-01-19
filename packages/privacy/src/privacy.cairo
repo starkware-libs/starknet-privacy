@@ -132,6 +132,13 @@ pub mod Privacy {
         ) {
             assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            let server_actions = self.execute_view(:user_addr, :client_actions);
+            send_message_to_server(:server_actions);
+        }
+
+        fn execute_view(
+            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) -> Span<ServerAction> {
             let mut calldata = array![];
             user_addr.serialize(ref calldata);
             client_actions.serialize(ref calldata);
@@ -142,9 +149,8 @@ pub mod Privacy {
             );
 
             let mut serialized_server_actions = unwrap_execute_and_panic_result(:syscall_result);
-            let server_actions = Serde::deserialize(ref serialized_server_actions)
-                .expect(internal_errors::DESERIALIZE_FAILED);
-            send_message_to_server(:server_actions);
+            Serde::deserialize(ref serialized_server_actions)
+                .expect(internal_errors::DESERIALIZE_FAILED)
         }
 
         /// Panics directly for internal errors; external calls are wrapped via syscall
