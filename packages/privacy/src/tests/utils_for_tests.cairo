@@ -5,8 +5,7 @@ use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTr
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
     OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
-    UseNoteInput, WithdrawInput, WriteIfZeroInput, WriteIfZeroPrivateKeyInput,
-    WriteIfZeroSubchannelInput,
+    UseNoteInput, WithdrawInput, WriteIfZeroInput,
 };
 use privacy::hashes::{
     compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
@@ -912,13 +911,13 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                 ServerAction::WriteIfZero(WriteIfZeroInput {
                     storage_address, ..,
                 }) => { self.store_zero(:storage_address); },
-                ServerAction::WriteIfZeroSubchannel(WriteIfZeroSubchannelInput {
+                ServerAction::WriteIfZeroSubchannel(WriteIfZeroInput {
                     storage_address, ..,
                 }) => {
                     self.store_zero(:storage_address);
                     self.store_zero(storage_address: storage_address + 1);
                 },
-                ServerAction::WriteIfZeroPrivateKey(WriteIfZeroPrivateKeyInput {
+                ServerAction::WriteIfZeroPrivateKey(WriteIfZeroInput {
                     storage_address, ..,
                 }) => {
                     self.store_zero(:storage_address);
