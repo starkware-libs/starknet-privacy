@@ -26,7 +26,7 @@ const BOB_PRIVATE_KEY = 67890n;
 
 // Default options for auto-discovery and auto-setup
 const AUTO_OPTIONS = {
-  autoDiscover: { recipient: "refresh" as const },
+  autoDiscover: { channels: "refresh" as const, notes: "refresh" as const },
   autoSetup: true,
 };
 
@@ -280,7 +280,7 @@ describe("MockPrivateTransfers", () => {
           .with(STRK)
           .deposit({ amount: -100n, recipient: ALICE_ADDRESS })
           .execute()
-      ).rejects.toThrow(/Deposit amount must be non-negative/);
+      ).rejects.toThrow(/Deposit amount must be positive/);
     });
 
     it("rejects negative withdraw amounts", async () => {
@@ -312,7 +312,7 @@ describe("MockPrivateTransfers", () => {
           .inputs(...notes)
           .withdraw({ amount: -50n })
           .execute()
-      ).rejects.toThrow(/Withdraw amount must be non-negative/);
+      ).rejects.toThrow(/Withdraw amount must be positive/);
     });
   });
 });

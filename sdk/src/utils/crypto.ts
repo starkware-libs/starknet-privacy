@@ -222,14 +222,26 @@ export function derivePublicKey(privateKey: PrivateKey): bigint {
 }
 
 // ============ Symmetric Encryption ============
+/** Generate a random bigint for use in encryption */
+export function generateRandom(): bigint {
+  // Generate a 252-bit random value (valid felt252)
+  return encode.uint8ArrayToBigInt(starkCurve.utils.randomPrivateKey());
+}
 
 export type SymmetricEncryption = {
   r: bigint;
   enc: bigint;
 };
 
-export function encryptSymmetric(shared: bigint, data: BigNumberish): SymmetricEncryption {
-  const r = encode.uint8ArrayToBigInt(starkCurve.utils.randomPrivateKey());
+export function encryptSymmetric(
+  shared: bigint,
+  data: BigNumberish,
+  r: bigint
+): SymmetricEncryption {
+  // make sure r is  a felt252
+  if (r < 0n || r >= starkCurve.CURVE.n) {
+    throw new Error(`r must be a felt252, got ${r}`);
+  }
   return {
     r,
     enc: (hash(shared, r) + num.toBigInt(data)) % starkCurve.CURVE.n,

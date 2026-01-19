@@ -31,7 +31,7 @@ export class ERC20 implements MockContract {
   constructor(public address: StarknetAddress) {}
 
   transfer(from: StarknetAddress, to: StarknetAddress, amount: Amount): void {
-    assert(this.balances.get(from)! >= amount, `Insufficient balance`);
+    assert(this.balances.get(from)! >= amount, () => `Insufficient balance`);
     this.balances.set(from, this.balances.get(from)! - amount);
     this.balances.set(to, this.balances.get(to)! + amount);
   }
@@ -42,6 +42,11 @@ export class ERC20 implements MockContract {
 
   setBalance(address: StarknetAddress, amount: Amount): void {
     this.balances.set(address, amount);
+  }
+
+  increaseBalance(address: StarknetAddress, amount: Amount): void {
+    const current = this.balances.get(address) ?? 0n;
+    this.balances.set(address, current + amount);
   }
 
   /** Create a snapshot of the current balance state */
@@ -83,7 +88,7 @@ export class MockSwapHelper implements MockContract {
     noteId: NoteId
   ): void {
     const balance = this.contracts.get(fromToken).balanceOf(this.address)!;
-    assert(balance == amount, `Balance mismatch: ${balance} != ${amount}`);
+    assert(balance == amount, () => `Balance mismatch: ${balance} != ${amount}`);
     this.contracts.get(fromToken).setBalance(this.address, 0n);
     this.contracts.get(toToken).setBalance(this.address, amount * 2n);
     this.contracts.get<PrivacyPool>(poolAddress).openDeposit(noteId, toToken, amount * 2n);

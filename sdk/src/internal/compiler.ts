@@ -18,36 +18,40 @@
 
 import type {
   Actions,
+  Amount,
   DiscoveryProviderInterface,
   ExecuteOptions,
   Note,
+  OpenChannelAction,
   PrivateRegistry,
   StarknetAddress,
-  UseNoteAction,
   ViewingKey,
 } from "../interfaces.js";
 import { Channel, createEmptyRegistry } from "../interfaces.js";
-import { AddressMap } from "../utils/maps.js";
+import { AddressMap, AdvancedMap } from "../utils/maps.js";
 import type { ClientAction } from "../client-actions.js";
+import { PrivacyPool } from "../testing/pool.js";
+import { MockContracts } from "../testing/contracts.js";
+import { assert, isOpen } from "../utils/validation.js";
+import { BigNumberish } from "starknet";
+import { generateRandom, toBigInt } from "../utils/crypto.js";
+import { consoleLogCallback, withLogging, debugLog } from "../utils/logging.js";
 
 export type CompileResult = {
   clientActions: ClientAction[];
   registry: PrivateRegistry;
 };
 
-/** Generate a random bigint for use in encryption */
-function generateRandom(): bigint {
-  // Generate a 252-bit random value (valid felt252)
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  // Clear top 4 bits to ensure < 2^252
-  bytes[0] &= 0x0f;
-  let result = 0n;
-  for (const byte of bytes) {
-    result = (result << 8n) | BigInt(byte);
-  }
-  return result;
-}
+type ClientActions = {
+  setViewingKey?: Extract<ClientAction, { type: "SetViewingKey" }>;
+  openChannels: Extract<ClientAction, { type: "OpenChannel" }>[];
+  openTokenChannels: Extract<ClientAction, { type: "OpenSubchannel" }>[];
+  deposits: Extract<ClientAction, { type: "Deposit" }>[];
+  useNotes: Extract<ClientAction, { type: "UseNote" }>[];
+  createNotes: Extract<ClientAction, { type: "CreateNote" }>[];
+  withdraws: Extract<ClientAction, { type: "Withdraw" }>[];
+  followupCall?: Extract<ClientAction, { type: "FollowupCall" }>;
+};
 
 /** Generate a 120-bit random value for note encryption */
 function generateRandom120(): bigint {
@@ -71,174 +75,291 @@ export class ActionCompiler {
    * Compile actions by resolving contexts, updating the registry, and producing ClientAction[].
    */
   compile(actions: Actions, options?: ExecuteOptions): CompileResult {
-    // Get or create registry
-    const inputRegistry = options?.registry ?? createEmptyRegistry();
-    const registry = options?.registryConst ? this.cloneRegistry(inputRegistry) : inputRegistry;
+    const registry_ = options?.registry ?? createEmptyRegistry();
+    const registry = options?.registryConst ? this.cloneRegistry(registry_) : registry_;
 
     // Phase 1: Resolve recipient channels
-    this.resolveRecipientChannels(actions, options, registry);
+    const channels = this.resolveRecipientChannels(actions, options, registry);
 
     // Phase 2: Resolve notes (discover and/or auto-select)
-    this.resolveNotes(actions, options, registry);
+    this.resolveNotes(actions, registry, options);
+
+    // debugLog("compiler", "registry notes after resolve", registry?.notes?.size);
+
+    // create a pool to simulate the execution of the actions
+    const pool = this.createPool(actions, registry, channels, options);
 
     // Phase 3: Transform Actions to ClientAction[]
-    const clientActions = this.transformToClientActions(actions, registry);
+    const clientActions = this.transformToClientActions(actions, pool, options);
 
-    return { clientActions, registry };
+    return { clientActions, registry: pool.updateRegistry(this.userAddress, registry) };
+  }
+
+  private createPool(
+    actions: Actions,
+    registry?: PrivateRegistry,
+    channels?: AddressMap<Channel>,
+    options?: ExecuteOptions
+  ) {
+    const contracts = new MockContracts();
+
+    const pool = withLogging(
+      new PrivacyPool(this.userAddress, contracts, false /* don't validate execution balances */),
+      "CompilerPool",
+      consoleLogCallback
+    );
+    contracts.register(pool);
+
+    // go over deposit actions and instantiate balances
+    if (actions.deposits) {
+      for (const deposit of actions.deposits) {
+        contracts.get(deposit.token).increaseBalance(this.userAddress, deposit.amount);
+      }
+    }
+
+    if (actions.withdraws) {
+      for (const withdraw of actions.withdraws) {
+        contracts.get(withdraw.token).increaseBalance(pool.address, withdraw.amount);
+      }
+    }
+
+    if (!options?.autoRegister) {
+      // won't add an action but the internal pool requires it
+      pool.execute(this.userAddress, {
+        type: "SetViewingKey",
+        input: { privateKey: this.userViewingKey, random: generateRandom() },
+      });
+    }
+
+    debugLog("compiler", "setup discovered channels", channels);
+
+    for (const [addr, channel] of channels?.entries() ?? []) {
+      pool.setupChannel(this.userAddress, this.userViewingKey, addr, channel);
+    }
+
+    debugLog("compiler", "setup registry channels", registry?.channels);
+
+    for (const [addr, channel] of registry?.channels?.entries() ?? []) {
+      if (channels?.has(addr)) continue; // skip channels that were already set up in the previous step
+      pool.setupChannel(this.userAddress, this.userViewingKey, addr, channel);
+    }
+
+    debugLog("compiler", "setup notes", registry?.notes);
+
+    if (registry?.notes) {
+      for (const [token, notes] of registry.notes.entries()) {
+        for (const note of notes) {
+          pool.setupNote(this.userAddress, note, token);
+        }
+      }
+    }
+
+    return pool;
   }
 
   /**
    * Transform high-level Actions to low-level ClientAction[] using registry context.
    */
-  private transformToClientActions(actions: Actions, registry: PrivateRegistry): ClientAction[] {
-    const clientActions: ClientAction[] = [];
+  private transformToClientActions(
+    actions: Actions,
+    pool: PrivacyPool,
+    options?: ExecuteOptions
+  ): ClientAction[] {
+    const clientActions: ClientActions = {
+      setViewingKey: undefined,
+      openChannels: [],
+      openTokenChannels: [],
+      deposits: [],
+      useNotes: [],
+      createNotes: [],
+      withdraws: [],
+      followupCall: undefined,
+    };
 
-    // Track nonces locally to handle multiple actions to the same recipient in one batch
-    const tokenNonceDeltas = new AddressMap<number>(() => 0);
-    const noteNonceDeltas = new AddressMap<AddressMap<number>>(
-      () => new AddressMap<number>(() => 0)
-    );
+    if (options?.autoRegister && !options?.registry?.channels?.has(this.userAddress)) {
+      actions.setViewingKey = {
+        type: "SetViewingKey",
+        input: { privateKey: this.userViewingKey, random: generateRandom() },
+      };
+    }
 
-    // Helper to get channel and validate it exists
-    const getChannel = (recipient: StarknetAddress): Channel => {
-      const channel = registry.channels.get(recipient);
-      if (!channel) {
-        throw new Error(`No channel found for recipient ${recipient} in registry`);
-      }
-      return channel;
+    const execute = <T extends ClientAction>(input: T, arr: T[] = []): T => {
+      pool.execute(this.userAddress, input); // no need to run the callbacks since there's no state restore
+      arr.push(input);
+      return input;
     };
 
     // 1. SetViewingKey
     if (actions.setViewingKey) {
-      clientActions.push({
+      const input = {
         type: "SetViewingKey",
         input: {
           privateKey: this.userViewingKey,
           random: generateRandom(),
         },
-      });
+      } as const; // typescipt magic
+      clientActions.setViewingKey = execute(input);
     }
 
     // 2. OpenChannel
+    const transformOpenChannel = (channel: Channel, action: OpenChannelAction) => {
+      const input = {
+        type: "OpenChannel",
+        input: {
+          senderPrivateKey: this.userViewingKey,
+          recipientAddr: action.recipient,
+          recipientPublicKey: channel.publicKey as bigint,
+          random: generateRandom(),
+        },
+      } as const; // typescipt magic
+      execute(input, clientActions.openChannels);
+    };
+
     if (actions.openChannels) {
       for (const action of actions.openChannels) {
-        const channel = getChannel(action.recipient);
-        clientActions.push({
-          type: "OpenChannel",
-          input: {
-            senderPrivateKey: this.userViewingKey,
-            recipientAddr: action.recipient,
-            recipientPublicKey: channel.recipientPublicKey,
-            random: generateRandom(),
-          },
-        });
+        const channel = pool.getUsersChannel(action.recipient);
+        assert(channel, () => `Missing channel context for recipient ${action.recipient}`);
+        transformOpenChannel(channel, action);
       }
     }
 
     // 3. OpenSubchannel (OpenTokenChannel)
+    const transformOpenSubchannel = (action: {
+      recipient: StarknetAddress;
+      token: StarknetAddress;
+    }) => {
+      const channel = pool.getUsersChannel(action.recipient);
+      assert(channel, () => `Channel not found for recipient ${action.recipient}`);
+      if (!channel.key && options?.autoSetup) {
+        transformOpenChannel(channel, { recipient: action.recipient });
+      }
+
+      // console.log(`[compiler] checking token ${action.token} in channel ${action.recipient}: ${channel.tokens.has(action.token)}`);
+
+      if (channel.tokens.has(action.token)) {
+        return channel;
+      }
+
+      const input = {
+        type: "OpenSubchannel",
+        input: {
+          recipientAddr: action.recipient,
+          recipientPublicKey: channel.publicKey as bigint,
+          channelKey: channel.key as bigint,
+          index: channel.tokens.size,
+          token: action.token,
+          random: generateRandom(),
+        },
+      } as const; // typescipt magic
+      execute(input, clientActions.openTokenChannels);
+
+      return pool.getUsersChannel(action.recipient)!; // on the safe side, the pool is not supposed to create a new Channel object
+    };
+
     if (actions.openTokenChannels) {
       for (const action of actions.openTokenChannels) {
-        const channel = getChannel(action.recipient);
-        const currentDelta = tokenNonceDeltas.get(action.recipient)!;
-        const index = channel.tokenNonce.sequence + currentDelta;
-        tokenNonceDeltas.set(action.recipient, currentDelta + 1);
-
-        clientActions.push({
-          type: "OpenSubchannel",
-          input: {
-            recipientAddr: action.recipient,
-            recipientPublicKey: channel.recipientPublicKey,
-            channelKey: channel.key,
-            index,
-            token: action.token,
-            random: generateRandom(),
-          },
-        });
+        transformOpenSubchannel(action);
       }
     }
 
     // 4. Deposit (token transfer + optional note creation)
     if (actions.deposits) {
       for (const action of actions.deposits) {
-        clientActions.push({
+        const input = {
           type: "Deposit",
           input: {
             token: action.token,
             amount: action.amount,
             noteId: action.noteId,
           },
-        });
+        } as const; // typescipt magic
+        if (action.noteId && !pool.hasNoteById(action.noteId)) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (pool as any).notes.set(toBigInt(action.noteId), {
+            r: 1n,
+            amount: 0n,
+            token: toBigInt(action.token),
+          });
+        }
+        execute(input, clientActions.deposits);
       }
     }
 
     // 5. UseNote
     if (actions.useNotes) {
       for (const action of actions.useNotes) {
-        clientActions.push({
+        const input = {
           type: "UseNote",
           input: {
             ownerPrivateKey: this.userViewingKey,
             channelKey: action.note.witness.channelKey,
             token: action.token,
-            noteIndex: action.note.witness.nonce.sequence,
+            noteIndex: action.note.witness.nonce,
           },
-        });
+        } as const; // typescipt magic
+        if (!pool.hasNoteById(action.note.id)) {
+          // this means the note is not in the registry, trust the user knows it exists
+          pool.setupNote(this.userAddress, action.note, action.token); // add it to the registry
+        }
+        execute(input, clientActions.useNotes);
       }
     }
 
     // 6. CreateNote (non-deposit notes)
     if (actions.createNotes) {
       for (const action of actions.createNotes) {
-        const channel = getChannel(action.recipient);
+        const channel = transformOpenSubchannel({
+          recipient: action.recipient,
+          token: action.token,
+        });
 
-        // Get note nonce delta map for this recipient
-        const recipientDeltas = noteNonceDeltas.get(action.recipient)!;
-
-        const currentDelta = recipientDeltas.get(action.token)!;
-        const noteNonce = channel.tokens.get(action.token);
-        const index = (noteNonce?.sequence ?? 0) + currentDelta;
-        recipientDeltas.set(action.token, currentDelta + 1);
-
-        clientActions.push({
+        const input = {
           type: "CreateNote",
           input: {
             senderPrivateKey: this.userViewingKey,
             recipientAddr: action.recipient,
-            recipientPublicKey: channel.recipientPublicKey,
+            recipientPublicKey: channel.publicKey as bigint,
             token: action.token,
             amount: action.amount,
-            index,
+            index: channel.tokens.get(action.token)!.noteNonce,
             random: generateRandom120(),
           },
-        });
+        } as const; // typescipt magic
+        execute(input, clientActions.createNotes);
       }
     }
 
     // 7. Withdraw
     if (actions.withdraws) {
       for (const action of actions.withdraws) {
-        clientActions.push({
+        const input = {
           type: "Withdraw",
           input: {
             withdrawalTarget: action.recipient,
             token: action.token,
             amount: action.amount,
           },
-        });
+        } as const; // typescipt magic
+        execute(input, clientActions.withdraws);
       }
     }
 
+    // surpluses were handled in resolveNotes
+
     // 8. FollowupCall
     if (actions.followupCall) {
-      clientActions.push({
+      const input = {
         type: "FollowupCall",
         input: {
           call: actions.followupCall.call,
         },
-      });
+      } as const; // typescipt magic
+      clientActions.followupCall = execute(input);
     }
 
-    return clientActions;
+    return Object.values(clientActions)
+      .filter((action) => action !== undefined)
+      .flat();
   }
 
   /**
@@ -248,9 +369,19 @@ export class ActionCompiler {
     actions: Actions,
     options: ExecuteOptions | undefined,
     registry: PrivateRegistry
-  ): void {
+  ): AddressMap<Channel> | undefined {
+    const recipientDiscoveryLevel = options?.autoDiscover?.channels;
+
+    if (!recipientDiscoveryLevel) {
+      // Allow discovery for OpenChannel actions as they require fetching the recipient's public key
+      const hasOpenChannels = actions.openChannels && actions.openChannels.length > 0;
+      if (!hasOpenChannels) {
+        return undefined;
+      }
+    }
+
     // Collect ALL recipients that need a channel (from any action type)
-    const recipientsNeeded = new AddressMap<boolean>();
+    const recipientsNeeded = new AddressMap<boolean>([[this.userAddress, true]]);
 
     // If a channel is to be opened, need to discover the recipient's public key
     // to calculate the channel key for further actions.
@@ -266,13 +397,23 @@ export class ActionCompiler {
       }
     }
 
+    if (actions.openTokenChannels) {
+      for (const action of actions.openTokenChannels) {
+        recipientsNeeded.set(action.recipient, true);
+      }
+    }
+
     if (actions.createNotes) {
       for (const action of actions.createNotes) {
         recipientsNeeded.set(action.recipient, true);
       }
     }
 
-    const recipientDiscoveryLevel = options?.autoDiscover?.recipient ?? "none";
+    if (actions.surpluses) {
+      for (const surplus of actions.surpluses) {
+        recipientsNeeded.set(surplus.recipient, true);
+      }
+    }
 
     // Determine which recipients to discover based on discovery level
     let recipientsToDiscover: StarknetAddress[];
@@ -286,38 +427,7 @@ export class ActionCompiler {
     }
 
     if (recipientsToDiscover.length === 0) {
-      return;
-    }
-
-    // Check which recipients have explicit OpenChannelActions
-    const openChannelRecipients = new AddressMap<boolean>();
-    for (const action of actions.openChannels ?? []) {
-      openChannelRecipients.set(action.recipient, true);
-    }
-
-    // Recipients that need context but don't have an explicit OpenChannelAction
-    const recipientsWithoutOpenChannel = recipientsToDiscover.filter(
-      (r) => !openChannelRecipients.has(r) && !registry.channels.has(r)
-    );
-
-    // Handle recipients without explicit OpenChannelAction
-    if (recipientsWithoutOpenChannel.length > 0) {
-      if (recipientDiscoveryLevel === "none" && !options?.autoSetup) {
-        // No way to resolve - error
-        const missing = recipientsWithoutOpenChannel.join(", ");
-        throw new Error(
-          `Missing channel context for recipients: ${missing}. ` +
-            `Provide registry, add OpenChannelAction, enable autoSetup, or enable autoDiscover.`
-        );
-      }
-
-      if (options?.autoSetup) {
-        // AutoSetup: implicitly add OpenChannelActions for missing recipients
-        actions.openChannels = actions.openChannels ?? [];
-        for (const recipient of recipientsWithoutOpenChannel) {
-          actions.openChannels.push({ recipient });
-        }
-      }
+      return undefined;
     }
 
     // Discover channels for all recipients that need discovery in a single call
@@ -327,9 +437,8 @@ export class ActionCompiler {
       this.userViewingKey,
       ...recipientsToDiscover
     );
-    for (const [addr, channel] of channels.entries()) {
-      registry.channels.set(addr, channel);
-    }
+
+    return channels;
   }
 
   /**
@@ -337,105 +446,126 @@ export class ActionCompiler {
    */
   private resolveNotes(
     actions: Actions,
-    options: ExecuteOptions | undefined,
-    registry: PrivateRegistry
+    registry: PrivateRegistry,
+    options?: ExecuteOptions
   ): void {
-    const notesDiscoveryLevel = options?.autoDiscover?.notes ?? "none";
+    if (!actions.surpluses && !options?.autoSelectNotes) return;
 
-    // Discover notes if requested
-    if (notesDiscoveryLevel !== "none") {
-      const shouldDiscover = notesDiscoveryLevel === "refresh" || registry.notes.size === 0;
+    // Calculate token balances (inputs - outputs)
+    // Positive balance = surplus (needs change note)
+    // Negative balance = deficit (needs input notes)
+    const balances = new AddressMap(() => 0n);
 
-      if (shouldDiscover) {
-        const { notes } = this.discoveryProvider.discoverNotes(
-          this.userAddress,
-          this.userViewingKey,
-          { known: registry.notes }
-        );
+    const update = (token: StarknetAddress, amount: Amount) => {
+      const current = balances.get(token)!;
+      balances.set(token, current + amount);
+    };
 
-        // Replace registry notes (don't merge - some may have been spent)
-        registry.notes = notes;
+    // Inputs: Deposits (without noteId)
+    if (actions.deposits) {
+      for (const d of actions.deposits) {
+        assert(d.amount > 0n, () => `Deposit amount must be positive`);
+        if (d.noteId === undefined) {
+          // a deposit to an open note immediately cancels the balance
+          update(d.token, d.amount);
+        }
       }
     }
 
-    // Auto-select notes if enabled
-    if (options?.autoSelectNotes) {
-      // Calculate token balances (inputs - outputs)
-      // Positive balance = surplus (needs change note)
-      // Negative balance = deficit (needs input notes)
-      const balances = new AddressMap<bigint>(() => 0n);
+    // Inputs: Existing UseNotes
+    const usedNoteIds = new AdvancedMap<BigNumberish, boolean, string>({
+      keyConverter: (key: BigNumberish) => String(key),
+    });
 
-      // Inputs: Deposits (without noteId)
-      if (actions.deposits) {
-        for (const d of actions.deposits) {
-          if (d.noteId === undefined) {
-            const current = balances.get(d.token)!;
-            balances.set(d.token, current + d.amount);
-          }
+    if (actions.useNotes) {
+      for (const u of actions.useNotes) {
+        assert(u.note.amount > 0n, () => `Note ${u.note.id}: amount must be positive`);
+        update(u.token, u.note.amount);
+        usedNoteIds.set(u.note.id, true);
+      }
+    }
+
+    // Outputs: Withdraws
+    if (actions.withdraws) {
+      for (const w of actions.withdraws) {
+        assert(w.amount > 0n, () => `Withdraw amount must be positive`);
+        update(w.token, -w.amount);
+      }
+    }
+
+    // Outputs: CreateNotes (ignore Open amounts)
+    if (actions.createNotes) {
+      for (const c of actions.createNotes) {
+        assert(
+          isOpen(c.amount) || c.amount > 0n,
+          () => `Created note amount must be positive (token: ${c.token})`
+        );
+        if (!isOpen(c.amount)) {
+          update(c.token, -c.amount);
+        }
+      }
+    }
+
+    const notesDiscoveryLevel = options?.autoDiscover?.notes;
+    // discover notes if requested
+    if (notesDiscoveryLevel !== undefined) {
+      const tokensToDiscover =
+        notesDiscoveryLevel === "all"
+          ? undefined
+          : [...balances.keys()].filter(
+              (token) =>
+                balances.get(token)! < 0n &&
+                (notesDiscoveryLevel === "refresh" || !registry.notes.has(token))
+            );
+      debugLog("compiler", "discovering notes", tokensToDiscover);
+
+      if (!tokensToDiscover || tokensToDiscover.length > 0) {
+        const { notes } = this.discoveryProvider.discoverNotes(
+          this.userAddress,
+          this.userViewingKey,
+          { known: registry.notes, tokens: tokensToDiscover }
+        );
+
+        // Replace registry notes (don't merge - some may have been spent)
+        for (const [token, discoveredNotes] of notes.entries()) {
+          registry.notes.set(token, discoveredNotes);
+        }
+      }
+    }
+
+    // Resolve deficits and surpluses
+    for (const token of balances.keys()) {
+      let balance = balances.get(token)!;
+
+      // If deficit, try to cover with notes from registry
+      if (balance < 0n && options?.autoSelectNotes) {
+        const availableNotes = registry.notes.get(token) ?? [];
+        actions.useNotes ??= [];
+
+        // naively select unused notes from registry (may create surplus)
+        // TODO: Implement an 'exact' strategy that selects notes exactly to cover the deficit
+        for (const note of availableNotes) {
+          if (usedNoteIds.has(note.id)) continue; // Skip used notes
+
+          actions.useNotes.push({ token, note });
+          balance += note.amount;
+          if (balance >= 0n || options?.autoSelectNotes === "naive") break; // Deficit covered
         }
       }
 
-      // Inputs: Existing UseNotes
-      const usedNoteIds = new Set<string>();
-      if (actions.useNotes) {
-        for (const u of actions.useNotes) {
-          const current = balances.get(u.token)!;
-          balances.set(u.token, current + u.note.amount);
-          usedNoteIds.add(String(u.note.id));
-        }
-      }
-
-      // Outputs: Withdraws
-      if (actions.withdraws) {
-        for (const w of actions.withdraws) {
-          const current = balances.get(w.token)!;
-          balances.set(w.token, current - w.amount);
-        }
-      }
-
-      // Outputs: CreateNotes (ignore Open amounts)
-      if (actions.createNotes) {
-        for (const c of actions.createNotes) {
-          if (typeof c.amount === "bigint") {
-            const current = balances.get(c.token)!;
-            balances.set(c.token, current - c.amount);
-          }
-        }
-      }
-
-      // Resolve deficits and surpluses
-      for (const token of balances.keys()) {
-        let balance = balances.get(token)!;
-
-        // If deficit, try to cover with notes from registry
-        if (balance < 0n) {
-          const availableNotes = registry.notes.get(token) ?? [];
-          const newUseNotes: UseNoteAction[] = [];
-
-          for (const note of availableNotes) {
-            if (balance >= 0n) break; // Deficit covered
-            if (usedNoteIds.has(String(note.id))) continue; // Skip used notes
-
-            balance += note.amount;
-            newUseNotes.push({ token, note });
-            usedNoteIds.add(String(note.id));
-          }
-
-          if (newUseNotes.length > 0) {
-            actions.useNotes = actions.useNotes ?? [];
-            actions.useNotes.push(...newUseNotes);
-          }
-        }
-
-        // If surplus (after adding notes or initially), create change note
-        if (balance > 0n) {
-          actions.createNotes = actions.createNotes ?? [];
-          actions.createNotes.push({
-            recipient: this.userAddress,
-            token,
-            amount: balance,
-          });
-        }
+      // If surplus (after adding notes or initially), create change note
+      if (balance > 0n) {
+        const surplusRecipient = actions.surpluses?.find((s) => s.token === token)?.recipient;
+        if (!surplusRecipient)
+          throw new Error(
+            `Surplus of ${balance} found for token ${token} but no surplus recipient found`
+          );
+        actions.createNotes ??= [];
+        actions.createNotes.push({
+          recipient: surplusRecipient,
+          token,
+          amount: balance,
+        });
       }
     }
   }

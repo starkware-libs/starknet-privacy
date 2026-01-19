@@ -17,15 +17,57 @@ import { num, BigNumberish } from "starknet";
  */
 export class AdvancedMap<K, V, InternalK = K> {
   private map = new Map<InternalK, V>();
+  private options: {
+    /** Convert external key K to internal key InternalK */
+    keyConverter?: (key: K) => InternalK;
+    /** Create default value when key is missing (makes get() always return V) */
+    defaultFactory?: (key: K) => V;
+  };
+
+  // Overload 1: Just options
+  constructor(options?: { keyConverter?: (key: K) => InternalK; defaultFactory?: (key: K) => V });
+
+  // Overload 2: Entries + options
+  constructor(
+    entries: readonly (readonly [K, V])[] | null,
+    options?: {
+      keyConverter?: (key: K) => InternalK;
+      defaultFactory?: (key: K) => V;
+    }
+  );
 
   constructor(
-    private options: {
-      /** Convert external key K to internal key InternalK */
+    entriesOrOptions?:
+      | readonly (readonly [K, V])[]
+      | null
+      | {
+          keyConverter?: (key: K) => InternalK;
+          defaultFactory?: (key: K) => V;
+        },
+    options?: {
       keyConverter?: (key: K) => InternalK;
-      /** Create default value when key is missing (makes get() always return V) */
       defaultFactory?: (key: K) => V;
-    } = {}
-  ) {}
+    }
+  ) {
+    let initialEntries: readonly (readonly [K, V])[] | null = null;
+
+    if (Array.isArray(entriesOrOptions) || entriesOrOptions === null) {
+      initialEntries = entriesOrOptions;
+      this.options = options || {};
+    } else {
+      this.options =
+        (entriesOrOptions as {
+          keyConverter?: (key: K) => InternalK;
+          defaultFactory?: (key: K) => V;
+        }) || {};
+    }
+
+    if (initialEntries) {
+      for (const [key, value] of initialEntries) {
+        this.set(key, value);
+      }
+    }
+  }
 
   private toInternalKey(key: K): InternalK {
     return this.options.keyConverter
@@ -33,10 +75,13 @@ export class AdvancedMap<K, V, InternalK = K> {
       : (key as unknown as InternalK);
   }
 
-  get(key: K): V | undefined {
+  get(key: K, defaultValue?: (key: K) => V): V | undefined {
     const internalKey = this.toInternalKey(key);
-    if (!this.map.has(internalKey) && this.options.defaultFactory) {
-      this.map.set(internalKey, this.options.defaultFactory(key));
+    if (!this.map.has(internalKey) && (defaultValue || this.options.defaultFactory)) {
+      this.map.set(
+        internalKey,
+        defaultValue ? defaultValue(key) : this.options.defaultFactory!(key)
+      );
     }
     return this.map.get(internalKey);
   }
@@ -105,10 +150,35 @@ export class AdvancedMap<K, V, InternalK = K> {
  * mapWithDefault.get("0x1")!.push(42); // safe when defaultFactory provided
  */
 export class AddressMap<V> extends AdvancedMap<BigNumberish, V, bigint> {
-  constructor(defaultFactory?: (key: BigNumberish) => V) {
-    super({
+  // Overload 1: Just a default factory (or nothing)
+  constructor(defaultFactory?: (key: BigNumberish) => V);
+
+  // Overload 2: Initial entries + optional default factory
+  constructor(
+    entries: readonly (readonly [BigNumberish, V])[] | null,
+    defaultFactory?: (key: BigNumberish) => V
+  );
+
+  constructor(
+    entriesOrDefaultFactory?:
+      | ((key: BigNumberish) => V)
+      | readonly (readonly [BigNumberish, V])[]
+      | null,
+    defaultFactory?: (key: BigNumberish) => V
+  ) {
+    let initialEntries: readonly (readonly [BigNumberish, V])[] | null = null;
+    let factory: ((key: BigNumberish) => V) | undefined;
+
+    if (typeof entriesOrDefaultFactory === "function") {
+      factory = entriesOrDefaultFactory;
+    } else {
+      initialEntries = entriesOrDefaultFactory ?? null;
+      factory = defaultFactory;
+    }
+
+    super(initialEntries, {
       keyConverter: (key: BigNumberish): bigint => num.toBigInt(key),
-      defaultFactory,
+      defaultFactory: factory,
     });
   }
 }
