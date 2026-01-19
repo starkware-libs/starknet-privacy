@@ -3,7 +3,7 @@ use privacy::actions::{
     AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
     WriteIfZeroInput,
 };
-use privacy::objects::Note;
+use privacy::objects::{Note, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
 };
@@ -309,7 +309,7 @@ fn test_execute_write_if_zero() {
     // Verify channel doesn't exist and write.
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: true.into() },
+            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -323,7 +323,7 @@ fn test_execute_write_if_zero() {
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: true.into() },
+            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -337,31 +337,15 @@ fn test_execute_write_if_zero() {
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: user.public_key },
+            WriteIfZeroInput {
+                storage_address: storage_path_felt, value: [user.public_key].span(),
+            },
         ),
     ];
     test.privacy.execute_actions(actions.span());
 
     // Verify public key was written.
     assert_eq!(user.get_public_key(), user.public_key);
-
-    // Verify note doesn't exist and write.
-    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("notes"), keys: [note.id].span(),
-    );
-    assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
-    let note_value = note.into();
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: note_value },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
-
-    // Verify note was written.
-    let enc_value = test.privacy.get_note(note_id: note.id);
-    assert_eq!(enc_value, note.enc_amount);
 
     // Verify nullifier doesn't exist and write.
     let nullifier = test.mock_new_nullifier();
@@ -374,7 +358,7 @@ fn test_execute_write_if_zero() {
     assert_eq!(current_value, false);
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: true.into() },
+            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -386,6 +370,7 @@ fn test_execute_write_if_zero() {
 #[test]
 fn test_execute_write_if_zero_assertions() {
     let mut test: Test = Default::default();
+    let user = test.new_user();
     let (_, channel_id) = test.mock_new_channel();
     let (subchannel_id, _, _) = test.mock_new_subchannel();
 
@@ -395,7 +380,7 @@ fn test_execute_write_if_zero_assertions() {
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: true.into() },
+            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -412,7 +397,7 @@ fn test_execute_write_if_zero_assertions() {
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: true.into() },
+            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -423,23 +408,22 @@ fn test_execute_write_if_zero_assertions() {
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
-    // Catch NON_ZERO_VALUE for notes.
-    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    // Catch NON_ZERO_VALUE for public key.
     let storage_path_felt = map_entry_address(
-        map_selector: selector!("notes"), keys: [note.id].span(),
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
-    let note_value = note.into();
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: note_value },
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput {
+                storage_address: storage_path_felt, value: [user.public_key].span(),
+            },
         ),
     ];
     test.privacy.execute_actions(actions.span());
-    let current_value: Note = generic_load(
+    let current_value: felt252 = generic_load(
         target: test.privacy.address, storage_address: storage_path_felt,
     );
-    assert_eq!(current_value.enc_value, note.enc_amount);
-    assert_eq!(current_value.token, Zero::zero());
+    assert_eq!(current_value, user.public_key);
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
@@ -450,7 +434,7 @@ fn test_execute_write_if_zero_assertions() {
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: true.into() },
+            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -472,15 +456,11 @@ fn test_execute_write_if_zero_subchannel() {
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
 
     // Verify subchannel doesn't exist and write.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: enc_subchannel_info },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
+    let actions = [enc_subchannel_info.to_write_if_zero_action(:storage_address)].span();
+    test.privacy.execute_actions(:actions);
 
     // Verify subchannel exists.
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), enc_subchannel_info);
@@ -493,20 +473,14 @@ fn test_execute_write_if_zero_subchannel_assertions() {
     assert!(enc_subchannel_info.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: enc_subchannel_info },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
-    let current_value = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
+    let actions = [enc_subchannel_info.to_write_if_zero_action(:storage_address)].span();
+    test.privacy.execute_actions(:actions);
+    let current_value = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(current_value, enc_subchannel_info);
-    let result = test.privacy.safe_execute_actions(actions.span());
+    let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -521,15 +495,11 @@ fn test_execute_write_if_zero_private_key() {
     assert_eq!(user.get_enc_private_key(), Zero::zero());
 
     // Write private key.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroPrivateKey(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: enc_private_key },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
+    let actions = [enc_private_key.to_write_if_zero_action(:storage_address)].span();
+    test.privacy.execute_actions(:actions);
 
     // Verify private key exists.
     assert_eq!(user.get_enc_private_key(), enc_private_key);
@@ -543,31 +513,24 @@ fn test_execute_write_if_zero_private_key_assertions() {
     assert!(enc_private_key.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroPrivateKey(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: enc_private_key },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
-    let current_value = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
+    let actions = [enc_private_key.to_write_if_zero_action(:storage_address)].span();
+    test.privacy.execute_actions(:actions);
+    let current_value = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(current_value, enc_private_key);
-    let result = test.privacy.safe_execute_actions(actions.span());
+    let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
 fn test_execute_write_if_zero_outgoing_channel() {
     let mut test: Test = Default::default();
-    let mut user = test.new_user();
+    let user = test.new_user();
     let outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
-    let salt = user.get_salt().into();
     let enc_outgoing_channel_info = user
-        .compute_enc_outgoing_channel_info(recipient: user, index: 0, :salt);
+        .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: Zero::zero());
     assert!(outgoing_channel_key.is_non_zero());
     assert!(enc_outgoing_channel_info.is_non_zero());
 
@@ -575,52 +538,36 @@ fn test_execute_write_if_zero_outgoing_channel() {
     assert_eq!(test.privacy.get_outgoing_channel_info(:outgoing_channel_key), Zero::zero());
 
     // Write outgoing channel info.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroOutgoingChannel(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt, value: enc_outgoing_channel_info,
-            },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
+    let actions = [enc_outgoing_channel_info.to_write_if_zero_action(:storage_address)].span();
+    test.privacy.execute_actions(:actions);
 
-    // Verify outgoing channel.
+    // Verify outgoing channel info exists.
     assert_eq!(
         test.privacy.get_outgoing_channel_info(:outgoing_channel_key), enc_outgoing_channel_info,
     );
 }
-
 #[test]
 fn test_execute_write_if_zero_outgoing_channel_assertions() {
     let mut test: Test = Default::default();
-    let mut user = test.new_user();
+    let user = test.new_user();
     let outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
-    let salt = user.get_salt().into();
     let enc_outgoing_channel_info = user
-        .compute_enc_outgoing_channel_info(recipient: user, index: 0, :salt);
+        .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: Zero::zero());
     assert!(outgoing_channel_key.is_non_zero());
     assert!(enc_outgoing_channel_info.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroOutgoingChannel(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt, value: enc_outgoing_channel_info,
-            },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
-    let current_value = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
+    let actions = [enc_outgoing_channel_info.to_write_if_zero_action(:storage_address)].span();
+    test.privacy.execute_actions(:actions);
+    let current_value = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(current_value, enc_outgoing_channel_info);
-    let result = test.privacy.safe_execute_actions(actions.span());
+    let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -632,26 +579,18 @@ fn test_execute_write_if_zero_note() {
     assert!(note.enc_amount.is_non_zero());
 
     // Verify stored note is zero before writing.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
-    let current_value: Note = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
+    let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(current_value, Zero::zero());
 
     // Write stored note.
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: note_value },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![note_value.to_write_if_zero_action(:storage_address)];
     test.privacy.execute_actions(actions.span());
 
     // Verify stored note was written.
-    let written_value: Note = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
+    let written_value: Note = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(written_value, note_value);
     assert_eq!(test.privacy.get_note(note_id: note.id), note_value.enc_value);
 }
@@ -664,18 +603,12 @@ fn test_execute_write_if_zero_note_assertions() {
     assert!(note.enc_amount.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: note_value },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![note_value.to_write_if_zero_action(:storage_address)];
     test.privacy.execute_actions(actions.span());
-    let current_value: Note = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
+    let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
     // Verify the value was written
     assert_eq!(current_value, note_value);
     let result = test.privacy.safe_execute_actions(actions.span());
@@ -824,7 +757,9 @@ fn test_execute_verify_value() {
     );
     let actions = array![
         ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: user.public_key },
+            WriteIfZeroInput {
+                storage_address: storage_path_felt, value: [user.public_key].span(),
+            },
         ),
     ];
     test.privacy.execute_actions(actions.span());
