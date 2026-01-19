@@ -1038,6 +1038,12 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.client.__validate__(:user_addr, :client_actions)
     }
 
+    fn execute_view(
+        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+    ) -> Span<ServerAction> {
+        self.client.execute_view(:user_addr, :client_actions)
+    }
+
     /// Asserts the message from the spy is valid.
     fn general_assert_spy_messages(self: @PrivacyCfg, ref spy: MessageToL1Spy) {
         assert_eq!(spy.get_messages().messages.len(), 1);

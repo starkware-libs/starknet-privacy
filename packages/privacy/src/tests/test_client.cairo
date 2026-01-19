@@ -2981,15 +2981,11 @@ fn test_compile_client_actions_set_viewing_key() {
     let mut user_1 = test.new_user();
 
     let random = user_1.get_random();
-    let actions = user_1
-        .compile_client_actions(
-            client_actions: [
-                ClientAction::SetViewingKey(
-                    SetViewingKeyInput { private_key: user_1.private_key, random },
-                )
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { private_key: user_1.private_key, random })
+    ]
+        .span();
+    let actions = user_1.compile_client_actions(:client_actions);
     let enc_private_key = user_1.compute_enc_private_key(:random);
     let public_key_storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
@@ -3015,6 +3011,8 @@ fn test_compile_client_actions_set_viewing_key() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    let view_actions = test.privacy.execute_view(user_addr: user_1.address, :client_actions);
+    assert_eq!(view_actions, actions);
     assert_eq!(user_1.get_public_key(), Zero::zero());
     assert_eq!(user_1.get_enc_private_key(), Zero::zero());
     // TODO: Verify no events emitted (after snforge revert bug is resolved).
@@ -3044,22 +3042,20 @@ fn test_compile_client_actions_open_channel() {
     user_2.set_viewing_key_e2e();
     let random = user_1.get_random();
     let salt = user_1.get_salt().into();
-    let actions = user_1
-        .compile_client_actions(
-            client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        sender_private_key: user_1.private_key,
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        index: 0,
-                        random,
-                        salt,
-                    },
-                )
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::OpenChannel(
+            OpenChannelInput {
+                sender_private_key: user_1.private_key,
+                recipient_addr: user_2.address,
+                recipient_public_key: user_2.public_key,
+                index: 0,
+                random,
+                salt,
+            },
+        )
+    ]
+        .span();
+    let actions = user_1.compile_client_actions(:client_actions);
     let expected_channel_id = user_1.compute_channel_id(recipient: user_2);
     let expected_channel_key = user_1.compute_channel_key(recipient: user_2);
     let expected_enc_channel_info = encrypt_channel_info(
@@ -3103,6 +3099,8 @@ fn test_compile_client_actions_open_channel() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    let view_actions = test.privacy.execute_view(user_addr: user_1.address, :client_actions);
+    assert_eq!(view_actions, actions);
     assert!(!test.privacy.channel_exists(channel_id: expected_channel_id));
     assert_eq!(user_2.get_num_of_channels(), 0);
     let result = user_2.safe_get_channel_info(channel_index: 0);
@@ -3132,22 +3130,20 @@ fn test_compile_client_actions_open_subchannel() {
 
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let salt = user_1.get_salt().into();
-    let actions = user_1
-        .compile_client_actions(
-            client_actions: [
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        channel_key,
-                        index: 0,
-                        token: token_address,
-                        salt,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::OpenSubchannel(
+            OpenSubchannelInput {
+                recipient_addr: user_2.address,
+                recipient_public_key: user_2.public_key,
+                channel_key,
+                index: 0,
+                token: token_address,
+                salt,
+            },
+        ),
+    ]
+        .span();
+    let actions = user_1.compile_client_actions(:client_actions);
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
@@ -3173,6 +3169,8 @@ fn test_compile_client_actions_open_subchannel() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    let view_actions = test.privacy.execute_view(user_addr: user_1.address, :client_actions);
+    assert_eq!(view_actions, actions);
     assert!(!test.privacy.subchannel_exists(subchannel_id: expected_subchannel_id));
     assert_eq!(
         test.privacy.get_subchannel_info(subchannel_key: expected_subchannel_key), Zero::zero(),
@@ -3203,14 +3201,12 @@ fn test_compile_client_actions_deposit_create_note() {
     user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
     user_1.increase_token_balance(:token, :amount);
     user_1.approve(:token, amount: amount.into());
-    let actions = user_1
-        .compile_client_actions(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::CreateNote(note),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::CreateNote(note),
+    ]
+        .span();
+    let actions = user_1.compile_client_actions(:client_actions);
     let expected_enc_note = user_1
         .compute_enc_note(recipient: user_2, :token_address, index: 0, :amount, salt: note.salt);
     let note_storage_path = map_entry_address(
@@ -3230,6 +3226,8 @@ fn test_compile_client_actions_deposit_create_note() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    let view_actions = test.privacy.execute_view(user_addr: user_1.address, :client_actions);
+    assert_eq!(view_actions, actions);
     assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), Zero::zero());
     assert_eq!(token.balance_of(address: user_1.address), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
@@ -3265,13 +3263,11 @@ fn test_compile_client_actions_use_note_create_note() {
         .new_note_with_generated_salt(recipient: user_1, :token_address, :amount, index: 0);
     user_2.open_channel_e2e(recipient: user_1, index: 0);
     user_2.open_subchannel_e2e(recipient: user_1, :token_address, index: 0);
-    let actions = user_2
-        .compile_client_actions(
-            client_actions: [
-                ClientAction::UseNote(use_note_input), ClientAction::CreateNote(create_note_input),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::UseNote(use_note_input), ClientAction::CreateNote(create_note_input),
+    ]
+        .span();
+    let actions = user_2.compile_client_actions(:client_actions);
     let expected_enc_note = user_2
         .compute_enc_note(
             recipient: user_1,
@@ -3300,6 +3296,8 @@ fn test_compile_client_actions_use_note_create_note() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    let view_actions = test.privacy.execute_view(user_addr: user_2.address, :client_actions);
+    assert_eq!(view_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
     assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), Zero::zero());
 
@@ -3332,18 +3330,16 @@ fn test_compile_client_actions_use_note_withdraw() {
         note_index: note.index,
     };
     let random = user_2.get_random().into();
-    let actions = user_2
-        .compile_client_actions(
-            client_actions: [
-                ClientAction::UseNote(use_note_input),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user_1.address, token: token_address, amount, random,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::UseNote(use_note_input),
+        ClientAction::Withdraw(
+            WithdrawInput {
+                withdrawal_target: user_1.address, token: token_address, amount, random,
+            },
+        ),
+    ]
+        .span();
+    let actions = user_2.compile_client_actions(:client_actions);
     let nullifier = user_2
         .compute_nullifier(sender: user_1, :token_address, note_index: note.index);
     let nullifier_path = map_entry_address(
@@ -3364,6 +3360,8 @@ fn test_compile_client_actions_use_note_withdraw() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    let view_actions = test.privacy.execute_view(user_addr: user_2.address, :client_actions);
+    assert_eq!(view_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
