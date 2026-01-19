@@ -1,7 +1,8 @@
 use core::dict::{Felt252Dict, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
+use privacy::actions::{ServerAction, WriteIfZeroInput};
 use privacy::errors;
-use starknet::ContractAddress;
+use starknet::{ContractAddress, Store};
 
 pub(crate) type TokenBalances = Felt252Dict<u128>;
 pub(crate) type SquashedTokenBalances = SquashedFelt252Dict<u128>;
@@ -131,5 +132,17 @@ pub impl EncOutgoingChannelInfoZero of Zero<EncOutgoingChannelInfo> {
     /// Check if `enc_recipient_addr` field is non-zero.
     fn is_non_zero(self: @EncOutgoingChannelInfo) -> bool {
         !self.is_zero()
+    }
+}
+
+#[generate_trait]
+pub(crate) impl ToServerActionsImpl<T, +Serde<T>, +Store<T>> of ToServerActionsTrait<T> {
+    /// IMPORTANT: This function only works for types whose serialization format
+    /// exactly matches their in-storage representation.
+    /// Use with care.
+    fn to_write_if_zero_action(self: @T, storage_address: felt252) -> ServerAction {
+        let mut value = array![];
+        self.serialize(ref output: value);
+        ServerAction::WriteIfZero(WriteIfZeroInput { storage_address, value: value.span() })
     }
 }

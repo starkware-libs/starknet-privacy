@@ -1,9 +1,14 @@
 use core::num::traits::Zero;
+use privacy::actions::{ServerAction, WriteIfZeroInput};
 use privacy::objects::{
-    EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncSubchannelInfo, TokenBalances,
-    TokenBalancesTrait,
+    EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo,
+    ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
 };
-use starknet::ContractAddress;
+use privacy::tests::test_objects::MockContract::deploy_for_test as deploy_mock_contract_for_test;
+use snforge_std::{DeclareResultTrait, declare, map_entry_address};
+use starknet::deployment::DeploymentParams;
+use starknet::{ContractAddress, SyscallResultTrait};
+
 
 #[test]
 fn test_enc_channel_info_is_non_zero() {
@@ -169,4 +174,193 @@ fn test_token_balances_final_balance_must_be_zero() {
     token_balances.subtract_balance(token: token_2, amount: 1);
 
     token_balances.squash().assert_valid();
+}
+
+#[test]
+fn test_enc_private_key_to_write_if_zero_action() {
+    let ephemeral_pubkey = 'EPHEMERAL_PUBKEY';
+    let enc_private_key = 'ENC_PRIVATE_KEY';
+    let enc_private_key_obj = EncPrivateKey { ephemeral_pubkey, enc_private_key };
+    let key = 'KEY';
+    let storage_address = map_entry_address(
+        map_selector: selector!("enc_private_key"), keys: [key].span(),
+    );
+    let action = enc_private_key_obj.to_write_if_zero_action(:storage_address);
+    assert_eq!(
+        action,
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address, value: [ephemeral_pubkey, enc_private_key].span() },
+        ),
+    );
+}
+
+#[test]
+fn test_enc_subchannel_info_to_write_if_zero_action() {
+    let salt = 'SALT';
+    let enc_token = 'ENC_TOKEN';
+    let enc_subchannel_info = EncSubchannelInfo { salt, enc_token };
+    let key = 'KEY';
+    let storage_address = map_entry_address(
+        map_selector: selector!("subchannel_tokens"), keys: [key].span(),
+    );
+    let action = enc_subchannel_info.to_write_if_zero_action(:storage_address);
+    assert_eq!(
+        action,
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address, value: [salt, enc_token].span() },
+        ),
+    );
+}
+
+#[test]
+fn test_enc_outgoing_channel_info_to_write_if_zero_action() {
+    let salt = 'SALT';
+    let enc_recipient_addr = 'ENC_RECIPIENT_ADDR';
+    let enc_outgoing_channel_info = EncOutgoingChannelInfo { salt, enc_recipient_addr };
+    let key = 'KEY';
+    let storage_address = map_entry_address(
+        map_selector: selector!("outgoing_channels"), keys: [key].span(),
+    );
+    let action = enc_outgoing_channel_info.to_write_if_zero_action(:storage_address);
+    assert_eq!(
+        action,
+        ServerAction::WriteIfZero(
+            WriteIfZeroInput { storage_address, value: [salt, enc_recipient_addr].span() },
+        ),
+    );
+}
+
+/// Interface for `MockContract`.
+#[starknet::interface]
+trait IMockContract<T> {
+    fn get_enc_private_key(self: @T) -> EncPrivateKey;
+    fn get_enc_subchannel_info(self: @T) -> EncSubchannelInfo;
+    fn get_enc_outgoing_channel_info(self: @T) -> EncOutgoingChannelInfo;
+    fn write_serialized_enc_private_key(ref self: T, serialized_value: Span<felt252>);
+    fn write_serialized_enc_subchannel_info(ref self: T, serialized_value: Span<felt252>);
+    fn write_serialized_enc_outgoing_channel_info(ref self: T, serialized_value: Span<felt252>);
+}
+
+/// Mock contract to test serialization format exactly matches in-storage representation for
+/// structs: EncPrivateKey, EncSubchannelInfo, EncOutgoingChannelInfo.
+#[starknet::contract]
+mod MockContract {
+    use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo};
+    use privacy::tests::test_objects::IMockContract;
+    use starknet::SyscallResultTrait;
+    use starknet::storage::StoragePointerReadAccess;
+    use starknet::storage_access::{
+        storage_address_from_base_and_offset, storage_base_address_from_felt252,
+    };
+    use starknet::syscalls::storage_write_syscall;
+
+    #[storage]
+    struct Storage {
+        enc_private_key: EncPrivateKey,
+        enc_subchannel_info: EncSubchannelInfo,
+        enc_outgoing_channel_info: EncOutgoingChannelInfo,
+    }
+
+    #[constructor]
+    fn constructor(ref self: ContractState) {}
+
+    #[abi(embed_v0)]
+    impl MockContractViewsImpl of IMockContract<ContractState> {
+        fn get_enc_private_key(self: @ContractState) -> EncPrivateKey {
+            self.enc_private_key.read()
+        }
+        fn get_enc_subchannel_info(self: @ContractState) -> EncSubchannelInfo {
+            self.enc_subchannel_info.read()
+        }
+        fn get_enc_outgoing_channel_info(self: @ContractState) -> EncOutgoingChannelInfo {
+            self.enc_outgoing_channel_info.read()
+        }
+        fn write_serialized_enc_private_key(
+            ref self: ContractState, serialized_value: Span<felt252>,
+        ) {
+            let storage_address = self.enc_private_key.__base_address__;
+            self._write(:storage_address, :serialized_value);
+        }
+        fn write_serialized_enc_subchannel_info(
+            ref self: ContractState, serialized_value: Span<felt252>,
+        ) {
+            let storage_address = self.enc_subchannel_info.__base_address__;
+            self._write(:storage_address, :serialized_value);
+        }
+        fn write_serialized_enc_outgoing_channel_info(
+            ref self: ContractState, serialized_value: Span<felt252>,
+        ) {
+            let storage_address = self.enc_outgoing_channel_info.__base_address__;
+            self._write(:storage_address, :serialized_value);
+        }
+    }
+
+    #[generate_trait]
+    impl InternalImpl of InternalTrait {
+        fn _write(
+            ref self: ContractState, storage_address: felt252, serialized_value: Span<felt252>,
+        ) {
+            assert(serialized_value.len() == 2, 'EXPECTED_LENGTH_2');
+            let base = storage_base_address_from_felt252(addr: storage_address);
+            let addr_0 = storage_address_from_base_and_offset(:base, offset: 0);
+            let addr_1 = storage_address_from_base_and_offset(:base, offset: 1);
+            storage_write_syscall(address_domain: 0, address: addr_0, value: *serialized_value[0])
+                .unwrap_syscall();
+            storage_write_syscall(address_domain: 0, address: addr_1, value: *serialized_value[1])
+                .unwrap_syscall();
+        }
+    }
+}
+
+fn deploy_mock_contract() -> ContractAddress {
+    let class_hash = *declare(contract: "MockContract")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (mock_contract_address, _) = deploy_mock_contract_for_test(:class_hash, :deployment_params)
+        .expect('MockContract deployment failed');
+    mock_contract_address
+}
+
+#[test]
+fn enc_private_key_serialization_format() {
+    let mock_contract_address = deploy_mock_contract();
+    let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
+    let enc_private_key = EncPrivateKey {
+        ephemeral_pubkey: 'EPHEMERAL_PUBKEY'.try_into().unwrap(),
+        enc_private_key: 'ENC_PRIVATE_KEY'.try_into().unwrap(),
+    };
+    let mut serialized_value = array![];
+    enc_private_key.serialize(ref output: serialized_value);
+    mock_contract.write_serialized_enc_private_key(serialized_value: serialized_value.span());
+    assert_eq!(mock_contract.get_enc_private_key(), enc_private_key);
+}
+
+#[test]
+fn enc_subchannel_info_serialization_format() {
+    let mock_contract_address = deploy_mock_contract();
+    let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
+    let enc_subchannel_info = EncSubchannelInfo {
+        salt: 'SALT'.try_into().unwrap(), enc_token: 'ENC_TOKEN'.try_into().unwrap(),
+    };
+    let mut serialized_value = array![];
+    enc_subchannel_info.serialize(ref output: serialized_value);
+    mock_contract.write_serialized_enc_subchannel_info(serialized_value: serialized_value.span());
+    assert_eq!(mock_contract.get_enc_subchannel_info(), enc_subchannel_info);
+}
+
+#[test]
+fn enc_outgoing_channel_info_serialization_format() {
+    let mock_contract_address = deploy_mock_contract();
+    let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
+    let enc_outgoing_channel_info = EncOutgoingChannelInfo {
+        salt: 'SALT'.try_into().unwrap(),
+        enc_recipient_addr: 'ENC_RECIPIENT_ADDR'.try_into().unwrap(),
+    };
+    let mut serialized_value = array![];
+    enc_outgoing_channel_info.serialize(ref output: serialized_value);
+    mock_contract
+        .write_serialized_enc_outgoing_channel_info(serialized_value: serialized_value.span());
+    assert_eq!(mock_contract.get_enc_outgoing_channel_info(), enc_outgoing_channel_info);
 }
