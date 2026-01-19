@@ -9,11 +9,11 @@ use privacy::errors;
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
 use privacy::tests::utils_for_tests::{
     EncNoteTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, decrypt_channel_info,
-    decrypt_private_key, decrypt_subchannel_token, spy_messages_to_server_actions,
+    decrypt_private_key, decrypt_subchannel_token,
 };
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
-use snforge_std::{TokenTrait, map_entry_address, spy_messages_to_l1};
+use snforge_std::{TokenTrait, map_entry_address};
 use starknet::VALIDATED;
 use starkware_utils_testing::test_utils::assert_panic_with_felt_error;
 
@@ -2586,10 +2586,7 @@ fn test_compile_client_actions_empty() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
 
-    let mut spy = spy_messages_to_l1();
-    user_1.compile_client_actions(client_actions: [].span());
-    test.privacy.general_assert_spy_messages(ref :spy);
-    let actions = spy_messages_to_server_actions(ref :spy);
+    let actions = user_1.compile_client_actions(client_actions: [].span());
     let expected_actions = [].span();
     assert_eq!(actions, expected_actions);
 }
@@ -2600,8 +2597,7 @@ fn test_compile_client_actions_set_viewing_key() {
     let mut user_1 = test.new_user();
 
     let random = user_1.get_random().into();
-    let mut spy = spy_messages_to_l1();
-    user_1
+    let actions = user_1
         .compile_client_actions(
             client_actions: [
                 ClientAction::SetViewingKey(
@@ -2610,8 +2606,6 @@ fn test_compile_client_actions_set_viewing_key() {
             ]
                 .span(),
         );
-    test.privacy.general_assert_spy_messages(ref :spy);
-    let actions = spy_messages_to_server_actions(ref :spy);
     let enc_private_key = user_1.compute_enc_private_key(:random);
     let public_key_storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
@@ -2647,8 +2641,7 @@ fn test_compile_client_actions_open_channel() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let random = user_1.get_random().into();
-    let mut spy = spy_messages_to_l1();
-    user_1
+    let actions = user_1
         .compile_client_actions(
             client_actions: [
                 ClientAction::OpenChannel(
@@ -2662,8 +2655,6 @@ fn test_compile_client_actions_open_channel() {
             ]
                 .span(),
         );
-    test.privacy.general_assert_spy_messages(ref :spy);
-    let actions = spy_messages_to_server_actions(ref :spy);
     let expected_channel_id = user_1.compute_channel_id(recipient: user_2);
     let expected_channel_key = user_1.compute_channel_key(recipient: user_2);
     let expected_enc_channel_info = encrypt_channel_info(
@@ -2714,8 +2705,7 @@ fn test_compile_client_actions_open_subchannel() {
     let random = user_1.open_channel_e2e(recipient: user_2);
 
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let mut spy = spy_messages_to_l1();
-    user_1
+    let actions = user_1
         .compile_client_actions(
             client_actions: [
                 ClientAction::OpenSubchannel(
@@ -2731,8 +2721,6 @@ fn test_compile_client_actions_open_subchannel() {
             ]
                 .span(),
         );
-    test.privacy.general_assert_spy_messages(ref :spy);
-    let actions = spy_messages_to_server_actions(ref :spy);
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
@@ -2782,8 +2770,7 @@ fn test_compile_client_actions_deposit_create_note() {
     user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
     user_1.increase_token_balance(:token, :amount);
     user_1.approve(:token, amount: amount.into());
-    let mut spy = spy_messages_to_l1();
-    user_1
+    let actions = user_1
         .compile_client_actions(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
@@ -2791,8 +2778,6 @@ fn test_compile_client_actions_deposit_create_note() {
             ]
                 .span(),
         );
-    test.privacy.general_assert_spy_messages(ref :spy);
-    let actions = spy_messages_to_server_actions(ref :spy);
     let expected_enc_note = user_1
         .compute_enc_note(
             recipient: user_2, :token_address, index: 0, :amount, random: note.random,
@@ -2828,8 +2813,7 @@ fn test_compile_client_actions_deposit_withdraw() {
     let amount = 100;
     user_1.increase_token_balance(:token, :amount);
     user_1.approve(:token, amount: amount.into());
-    let mut spy = spy_messages_to_l1();
-    user_1
+    let actions = user_1
         .compile_client_actions(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
@@ -2841,8 +2825,6 @@ fn test_compile_client_actions_deposit_withdraw() {
             ]
                 .span(),
         );
-    test.privacy.general_assert_spy_messages(ref :spy);
-    let actions = spy_messages_to_server_actions(ref :spy);
     let expected_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput {
@@ -2884,16 +2866,13 @@ fn test_compile_client_actions_use_note_create_note() {
         .new_note_with_generated_random(recipient: user_1, :token_address, :amount, index: 0);
     user_2.open_channel_e2e(recipient: user_1);
     user_2.open_subchannel_e2e(recipient: user_1, :token_address, index: 0);
-    let mut spy = spy_messages_to_l1();
-    user_2
+    let actions = user_2
         .compile_client_actions(
             client_actions: [
                 ClientAction::UseNote(use_note_input), ClientAction::CreateNote(create_note_input),
             ]
                 .span(),
         );
-    test.privacy.general_assert_spy_messages(ref :spy);
-    let actions = spy_messages_to_server_actions(ref :spy);
     let expected_enc_note = user_2
         .compute_enc_note(
             recipient: user_1,
@@ -2949,8 +2928,7 @@ fn test_compile_client_actions_use_note_withdraw() {
         token: token_address,
         note_index: note.index,
     };
-    let mut spy = spy_messages_to_l1();
-    user_2
+    let actions = user_2
         .compile_client_actions(
             client_actions: [
                 ClientAction::UseNote(use_note_input),
@@ -2962,8 +2940,6 @@ fn test_compile_client_actions_use_note_withdraw() {
             ]
                 .span(),
         );
-    test.privacy.general_assert_spy_messages(ref :spy);
-    let actions = spy_messages_to_server_actions(ref :spy);
     let nullifier = user_2
         .compute_nullifier(sender: user_1, :token_address, note_index: note.index);
     let nullifier_path = map_entry_address(
@@ -3569,10 +3545,7 @@ fn test_compile_client_actions_writes() {
     user.increase_token_balance(:token, :amount);
     user.approve(:token, amount: amount.into());
     // Compile client actions.
-    let mut spy = spy_messages_to_l1();
-    user.compile_client_actions(:client_actions);
-    test.privacy.general_assert_spy_messages(ref :spy);
-    let server_actions = spy_messages_to_server_actions(ref :spy);
+    let server_actions = user.compile_client_actions(:client_actions);
     // Expected server actions.
     let address = user.address;
     let public_key_storage_path = map_entry_address(
