@@ -24,6 +24,7 @@ pub const FINAL_BALANCE_MUST_BE_ZERO: felt252 = 'FINAL_BALANCE_MUST_BE_ZERO';
 pub const INVALID_CALLER: felt252 = 'INVALID_CALLER';
 // TODO: Remove zero salt - salt can be zero.
 pub const ZERO_SALT: felt252 = 'ZERO_SALT';
+pub const NO_PRIVACY_ACTIONS: felt252 = 'NO_PRIVACY_ACTIONS';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';
