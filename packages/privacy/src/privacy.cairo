@@ -13,18 +13,19 @@ pub mod Privacy {
     use privacy::errors::internal_errors;
     use privacy::hashes::{
         compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
-        compute_subchannel_id, compute_subchannel_key,
+        compute_outgoing_channel_key, compute_subchannel_id, compute_subchannel_key,
     };
     use privacy::interface::{IClient, IServer, IViews};
     use privacy::objects::{
-        EncChannelInfo, EncChannelInfoTrait, EncPrivateKey, EncSubchannelInfo, TokenBalances,
-        TokenBalancesTrait,
+        EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
+        EncSubchannelInfo, TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::constants::TWO_POW_120;
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_signature, decrypt_note_amount, derive_public_key,
-        encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, is_canonical_key, send_message_to_server,
+        encrypt_channel_info, encrypt_note_amount, encrypt_outgoing_channel_info,
+        encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, is_canonical_key,
+        send_message_to_server,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -59,6 +60,9 @@ pub mod Privacy {
         src5: SRC5Component::Storage,
         /// Map of recipient_addr to a list of their encrypted channels.
         recipient_channels: Map<ContractAddress, Vec<EncChannelInfo>>,
+        /// Map of outgoing-channel keys to their encrypted recipient addresses.
+        // TODO: Rename to sender_channels?
+        outgoing_channels: Map<felt252, EncOutgoingChannelInfo>,
         /// Map of channel id to whether it exists.
         // TODO: Rename storage var / abi function to not have the same name?
         channel_exists: Map<felt252, bool>,
@@ -222,7 +226,9 @@ pub mod Privacy {
             let sender_private_key = input.sender_private_key;
             let recipient_addr = input.recipient_addr;
             let recipient_public_key = input.recipient_public_key;
+            let index = input.index;
             let random = input.random;
+            let salt = input.salt;
             assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
@@ -239,19 +245,45 @@ pub mod Privacy {
                 errors::SENDER_NOT_AUTHENTICATED,
             );
 
+            // Assert index is sequential, i.e. the previous channel exists.
+            assert(
+                index.is_zero()
+                    || self
+                        .outgoing_channels
+                        .read(
+                            compute_outgoing_channel_key(
+                                :sender_addr, :sender_private_key, index: index - 1,
+                            ),
+                        )
+                        .is_non_zero(),
+                errors::INDEX_NOT_SEQUENTIAL,
+            );
+
             // Compute the output values.
             let channel_key = compute_channel_key(
                 :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key,
             );
+            // TODO: Sanity assert channel key is non-zero.
             let enc_channel_info = encrypt_channel_info(
                 ephemeral_secret: random, :recipient_public_key, :channel_key, :sender_addr,
             );
             let channel_id = compute_channel_id(
                 :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
             );
+            let outgoing_channel_key = compute_outgoing_channel_key(
+                :sender_addr, :sender_private_key, :index,
+            );
+            let enc_outgoing_channel_info = encrypt_outgoing_channel_info(
+                :sender_addr, :sender_private_key, :index, :recipient_addr, :salt,
+            );
 
             assert(channel_id.is_non_zero(), internal_errors::ZERO_CHANNEL_ID);
             assert(enc_channel_info.is_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
+            assert(outgoing_channel_key.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_KEY);
+            assert(
+                enc_outgoing_channel_info.is_non_zero(),
+                internal_errors::ZERO_ENC_OUTGOING_CHANNEL_INFO,
+            );
 
             array![
                 ServerAction::VerifyValue(
@@ -267,6 +299,12 @@ pub mod Privacy {
                     },
                 ),
                 ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
+                ServerAction::WriteIfZeroOutgoingChannel(
+                    WriteIfZeroInput {
+                        storage_address: self.outgoing_channels.entry(outgoing_channel_key).into(),
+                        value: enc_outgoing_channel_info,
+                    },
+                ),
             ]
         }
 
@@ -526,6 +564,12 @@ pub mod Privacy {
                                 storage_address: input.storage_address, new_value: input.value,
                             );
                     },
+                    ServerAction::WriteIfZeroOutgoingChannel(input) => {
+                        self
+                            ._execute_write_outgoing_channel(
+                                storage_address: input.storage_address, new_value: input.value,
+                            );
+                    },
                     ServerAction::WriteIfZeroPrivateKey(input) => {
                         self
                             ._execute_write_private_key(
@@ -594,6 +638,20 @@ pub mod Privacy {
             // TODO: Require zero as param?
             // Require zero.
             // TODO: Fix is zero, should check all fields are non zero.
+            assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
+            target.write(new_value);
+        }
+
+        // TODO: Merge with `_execute_write_subchannel` function.
+        fn _execute_write_outgoing_channel(
+            ref self: ContractState, storage_address: felt252, new_value: EncOutgoingChannelInfo,
+        ) {
+            let mut target = StorageBase::<
+                Mutable<EncOutgoingChannelInfo>,
+            > { __base_address__: storage_address };
+            let current_value = target.read();
+            // TODO: Require zero as param?
+            // Require zero.
             assert(current_value.is_zero(), errors::NON_ZERO_VALUE);
             target.write(new_value);
         }
@@ -669,6 +727,12 @@ pub mod Privacy {
             // TODO: Restrict access to `recipient_addr`?
             // TODO: Assert `recipient_addr` is registered?
             self.recipient_channels.entry(recipient_addr).at(channel_index).read()
+        }
+
+        fn get_outgoing_channel_info(
+            self: @ContractState, outgoing_channel_key: felt252,
+        ) -> EncOutgoingChannelInfo {
+            self.outgoing_channels.read(outgoing_channel_key)
         }
 
         fn subchannel_exists(self: @ContractState, subchannel_id: felt252) -> bool {
