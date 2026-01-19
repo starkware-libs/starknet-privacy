@@ -68,6 +68,8 @@ pub trait IClient<T> {
     /// - TODO
     fn __execute__(ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
 
+    fn execute_panic(ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
+
     fn __validate__(
         self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> felt252;
