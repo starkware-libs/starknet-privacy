@@ -5,7 +5,7 @@ use privacy::actions::{
     UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
-use privacy::objects::{EncUserAddr, Note};
+use privacy::objects::EncUserAddr;
 use privacy::tests::utils_for_tests::{
     EncNoteTrait, PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait,
     decrypt_channel_info, decrypt_enc_user_addr, decrypt_private_key, decrypt_subchannel_token,
@@ -153,16 +153,11 @@ fn test_transfer() {
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
-    let storage_path_felt_note = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note.id].span(),
-    );
     let expected_actions = array![
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier, value: true.into() },
         ),
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: storage_path_felt_note, value: enc_note.into() },
-        ),
+        enc_note.to_server_action(),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -211,16 +206,11 @@ fn test_transfer_to_self() {
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
-    let storage_path_felt_note = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note.id].span(),
-    );
     let expected_actions = array![
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier, value: true.into() },
         ),
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: storage_path_felt_note, value: enc_note.into() },
-        ),
+        enc_note.to_server_action(),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -289,26 +279,11 @@ fn test_transfer_one_to_many() {
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
-    let storage_path_felt_note_1 = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note_1.id].span(),
-    );
-    let storage_path_felt_note_2 = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note_2.id].span(),
-    );
     let expected_actions = array![
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier, value: true.into() },
         ),
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt_note_1, value: enc_note_1.into(),
-            },
-        ),
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt_note_2, value: enc_note_2.into(),
-            },
-        ),
+        enc_note_1.to_server_action(), enc_note_2.to_server_action(),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -390,9 +365,6 @@ fn test_transfer_many_to_one() {
     let storage_path_felt_nullifier_2 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_2].span(),
     );
-    let storage_path_felt_note = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note.id].span(),
-    );
     let expected_actions = array![
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier_1, value: true.into() },
@@ -400,9 +372,7 @@ fn test_transfer_many_to_one() {
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier_2, value: true.into() },
         ),
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: storage_path_felt_note, value: enc_note.into() },
-        ),
+        enc_note.to_server_action(),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -493,12 +463,6 @@ fn test_transfer_many_to_many() {
     let storage_path_felt_nullifier_2 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_2].span(),
     );
-    let storage_path_felt_note_1 = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note_1.id].span(),
-    );
-    let storage_path_felt_note_2 = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note_2.id].span(),
-    );
     let expected_actions = array![
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier_1, value: true.into() },
@@ -506,16 +470,7 @@ fn test_transfer_many_to_many() {
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier_2, value: true.into() },
         ),
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt_note_1, value: enc_note_1.into(),
-            },
-        ),
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt_note_2, value: enc_note_2.into(),
-            },
-        ),
+        enc_note_1.to_server_action(), enc_note_2.to_server_action(),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -2913,20 +2868,13 @@ fn test_compile_client_actions_deposit_create_note() {
         );
     let expected_enc_note = user_1
         .compute_enc_note(recipient: user_2, :token_address, index: 0, :amount, salt: note.salt);
-    let note_storage_path = map_entry_address(
-        map_selector: selector!("notes"), keys: [expected_enc_note.id].span(),
-    );
     let expected_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput {
                 sender_addr: user_1.address, token: token_address, amount: amount.into(),
             },
         ),
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput {
-                storage_address: note_storage_path, value: expected_enc_note.into(),
-            },
-        ),
+        expected_enc_note.to_server_action(),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -3026,9 +2974,6 @@ fn test_compile_client_actions_use_note_create_note() {
             :amount,
             salt: create_note_input.salt,
         );
-    let note_storage_path = map_entry_address(
-        map_selector: selector!("notes"), keys: [expected_enc_note.id].span(),
-    );
     let nullifier = user_2
         .compute_nullifier(sender: user_1, :token_address, note_index: note.index);
     let nullifier_storage_path = map_entry_address(
@@ -3038,11 +2983,7 @@ fn test_compile_client_actions_use_note_create_note() {
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: nullifier_storage_path, value: true.into() },
         ),
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput {
-                storage_address: note_storage_path, value: expected_enc_note.into(),
-            },
-        ),
+        expected_enc_note.to_server_action(),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -3764,9 +3705,6 @@ fn test_compile_client_actions_writes() {
     let enc_subchannel_info = user
         .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, salt: salt.into());
     let enc_note = user.compute_enc_note(recipient: user, :token_address, :index, :amount, :salt);
-    let note_storage_path = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note.id].span(),
-    );
     let expected_event = events::ViewingKeySet { user_addr: address, public_key, enc_private_key };
     let expected_sevrer_actions = [
         // Set viewing key.
@@ -3803,9 +3741,7 @@ fn test_compile_client_actions_writes() {
             TransferFromInput { sender_addr: address, token: token_address, amount: amount.into() },
         ),
         // Create note.
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: note_storage_path, value: enc_note.into() },
-        ),
+        enc_note.to_server_action(),
     ]
         .span();
     // Assert server actions.
@@ -3893,18 +3829,13 @@ fn test_client_transfers_dont_execute() {
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
 
     let enc_note = user.compute_enc_note(recipient: user, :token_address, index: 0, :amount, :salt);
-    let note_storage_path = map_entry_address(
-        map_selector: selector!("notes"), keys: [enc_note.id].span(),
-    );
     let expected_server_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput {
                 sender_addr: user.address, token: token_address, amount: amount.into(),
             },
         ),
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: note_storage_path, value: enc_note.into() },
-        ),
+        enc_note.to_server_action(),
     ]
         .span();
     assert_eq!(server_actions, expected_server_actions);
