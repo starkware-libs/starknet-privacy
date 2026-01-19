@@ -134,6 +134,13 @@ pub mod Privacy {
         ) {
             assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            let server_actions = self.execute_view(:user_addr, :client_actions);
+            send_message_to_server(:server_actions);
+        }
+
+        fn execute_view(
+            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) -> Span<ServerAction> {
             let mut calldata = array![];
             user_addr.serialize(ref calldata);
             client_actions.serialize(ref calldata);
@@ -152,9 +159,8 @@ pub mod Privacy {
 
             let _ = message.pop_front();
             let mut serialized_server_actions = message.span();
-            let server_actions = Serde::deserialize(ref serialized_server_actions)
-                .expect(internal_errors::FAILED_DESERIALIZE);
-            send_message_to_server(:server_actions);
+            Serde::deserialize(ref serialized_server_actions)
+                .expect(internal_errors::FAILED_DESERIALIZE)
         }
 
         // Assumes all panics that may occur before the end of this function are from this contract.
