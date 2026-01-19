@@ -1,5 +1,5 @@
 use privacy::actions::{ClientAction, ServerAction};
-use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
+use privacy::objects::{EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use starknet::ContractAddress;
 
 // TODO: Rename interface.
@@ -224,6 +224,8 @@ pub trait IViews<T> {
     /// #### Access Control
     /// - Any address can call this function.
     fn get_subchannel_info(self: @T, subchannel_key: felt252) -> EncSubchannelInfo;
+
+    fn get_outgoing_channel_info(self: @T, outgoing_channel_key: felt252) -> EncOutgoingChannelInfo;
 
     /// Returns the encrypted note value for a given note id.
     ///
