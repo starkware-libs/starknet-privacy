@@ -68,12 +68,12 @@ fn test_get_num_of_channels() {
     user.set_viewing_key_e2e();
     assert_eq!(user.get_num_of_channels(), 0);
     // After opening a channel.
-    user.open_channel_e2e(recipient: user);
+    user.open_channel_e2e(recipient: user, index: 0);
     assert_eq!(user.get_num_of_channels(), 1);
     // After opening a second channel.
     let mut different_user = test.new_user();
     different_user.set_viewing_key_e2e();
-    different_user.open_channel_e2e(recipient: user);
+    different_user.open_channel_e2e(recipient: user, index: 0);
     assert_eq!(user.get_num_of_channels(), 2);
     assert_eq!(different_user.get_num_of_channels(), 0);
 }
@@ -130,6 +130,54 @@ fn test_get_channel_info_index_out_of_bounds() {
 }
 
 #[test]
+fn test_get_outgoing_channel_info() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    let outgoing_channel_key_1 = user_1.compute_outgoing_channel_key(index: 0);
+    let outgoing_channel_key_2 = user_1.compute_outgoing_channel_key(index: 1);
+    let enc_outgoing_channel_info_1 = user_1
+        .compute_enc_outgoing_channel_info(recipient: user_1, index: 0, salt: Zero::zero());
+    let enc_outgoing_channel_info_2 = user_1
+        .compute_enc_outgoing_channel_info(recipient: user_2, index: 1, salt: Zero::zero());
+    assert_ne!(outgoing_channel_key_1, outgoing_channel_key_2);
+    assert_ne!(enc_outgoing_channel_info_1, enc_outgoing_channel_info_2);
+    assert_eq!(
+        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_1),
+        Zero::zero(),
+    );
+    assert_eq!(
+        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
+        Zero::zero(),
+    );
+    let (_, salt_channel_1) = user_1.open_channel_e2e(recipient: user_1, index: 0);
+    let enc_outgoing_channel_info_1 = user_1
+        .compute_enc_outgoing_channel_info(recipient: user_1, index: 0, salt: salt_channel_1);
+    assert_eq!(
+        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_1),
+        enc_outgoing_channel_info_1,
+    );
+    assert_eq!(
+        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
+        Zero::zero(),
+    );
+    let (_, salt_channel_2) = user_1.open_channel_e2e(recipient: user_2, index: 1);
+    let enc_outgoing_channel_info_2 = user_1
+        .compute_enc_outgoing_channel_info(recipient: user_2, index: 1, salt: salt_channel_2);
+    assert_ne!(enc_outgoing_channel_info_1, enc_outgoing_channel_info_2);
+    assert_eq!(
+        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_1),
+        enc_outgoing_channel_info_1,
+    );
+    assert_eq!(
+        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
+        enc_outgoing_channel_info_2,
+    );
+}
+
+#[test]
 fn test_get_note() {
     let mut test: Test = Default::default();
     let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
@@ -168,7 +216,7 @@ fn test_subchannel_exists() {
     assert_eq!(test.privacy.subchannel_exists(:subchannel_id), false);
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1.open_channel_e2e(recipient: user_2);
+    user_1.open_channel_e2e(recipient: user_2, index: 0);
     user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_id), true);
 }
@@ -183,7 +231,7 @@ fn test_get_subchannel_info() {
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1.open_channel_e2e(recipient: user_2);
+    user_1.open_channel_e2e(recipient: user_2, index: 0);
     let salt = user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
     let expected_subchannel_info = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :salt);
@@ -502,6 +550,70 @@ fn test_execute_write_if_zero_private_key_assertions() {
         target: test.privacy.address, storage_address: storage_path_felt,
     );
     assert_eq!(current_value, enc_private_key);
+    let result = test.privacy.safe_execute_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+}
+
+#[test]
+fn test_execute_write_if_zero_outgoing_channel() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
+    let salt = user.get_salt().into();
+    let enc_outgoing_channel_info = user
+        .compute_enc_outgoing_channel_info(recipient: user, index: 0, :salt);
+    assert!(outgoing_channel_key.is_non_zero());
+    assert!(enc_outgoing_channel_info.is_non_zero());
+
+    // Verify outgoing channel info is zero before writing.
+    assert_eq!(test.privacy.get_outgoing_channel_info(:outgoing_channel_key), Zero::zero());
+
+    // Write outgoing channel info.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZeroOutgoingChannel(
+            WriteIfZeroInput {
+                storage_address: storage_path_felt, value: enc_outgoing_channel_info,
+            },
+        ),
+    ];
+    test.privacy.execute_actions(actions.span());
+
+    // Verify outgoing channel.
+    assert_eq!(
+        test.privacy.get_outgoing_channel_info(:outgoing_channel_key), enc_outgoing_channel_info,
+    );
+}
+
+#[test]
+fn test_execute_write_if_zero_outgoing_channel_assertions() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
+    let salt = user.get_salt().into();
+    let enc_outgoing_channel_info = user
+        .compute_enc_outgoing_channel_info(recipient: user, index: 0, :salt);
+    assert!(outgoing_channel_key.is_non_zero());
+    assert!(enc_outgoing_channel_info.is_non_zero());
+
+    // Catch NON_ZERO_VALUE.
+    let storage_path_felt = map_entry_address(
+        map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        ServerAction::WriteIfZeroOutgoingChannel(
+            WriteIfZeroInput {
+                storage_address: storage_path_felt, value: enc_outgoing_channel_info,
+            },
+        ),
+    ];
+    test.privacy.execute_actions(actions.span());
+    let current_value = generic_load(
+        target: test.privacy.address, storage_address: storage_path_felt,
+    );
+    assert_eq!(current_value, enc_outgoing_channel_info);
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
