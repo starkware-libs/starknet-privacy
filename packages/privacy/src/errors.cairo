@@ -38,4 +38,5 @@ pub(crate) mod internal_errors {
     pub const UNEXPECTED_ZERO_AMOUNT: felt252 = 'UNEXPECTED_ZERO_AMOUNT';
     pub const DESERIALIZE_FAILED: felt252 = 'DESERIALIZE_FAILED';
     pub const EXPECTED_PANIC: felt252 = 'EXPECTED_PANIC';
+    pub const ENC_NOTE_NON_ZERO_TOKEN: felt252 = 'ENC_NOTE_NON_ZERO_TOKEN';
 }
