@@ -7,16 +7,14 @@ theorem notes_contiguous {crypto: Crypto} {rm: ReachableMemory crypto} (c token 
   ∃ i₁_bound, ∀ i₁, i₁ < i₁_bound ↔ note_exists rm (crypto.hash [c, token, i₀, i₁]) := by
   revert rm
   apply ReachableMemory.induction
-  case inv₀ => use 0; intros; simp [note_exists]
+  case inv₀ => use 0; intros; simp [ReachableMemory.m, note_exists]
 
   intro action rm ih success
   cases action
   case CreateNote inp =>
     obtain ⟨i₁_bound, ih⟩ := ih
     let info := create_note_info crypto inp rm success
-    unfold ReachableMemory.add run_action
-    dsimp only
-    rw [←info.h_m']
+    rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
     by_cases h₀ : c = inp.c crypto ∧ token = inp.token ∧ i₀ = inp.i₀
     case pos =>

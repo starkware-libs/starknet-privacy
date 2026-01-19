@@ -104,7 +104,7 @@ pub struct WithdrawInput {
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ClientAction {
-    // TODO: Consider renaming to SetKey.
+    // TODO: Consider renaming to SetKey/Register.
     /// Register a user with a viewing key, or replace the user's viewing key if already registered.
     SetViewingKey: SetViewingKeyInput,
     /// Open a new channel from the user to a recipient.
@@ -176,18 +176,9 @@ pub struct WriteIfZeroSubchannelInput {
     pub value: EncSubchannelInfo,
 }
 
-/// Input for the `Write` action.
+/// Input for the `WriteIfZeroPrivateKey` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct WriteInput {
-    /// The storage address to write to.
-    pub storage_address: felt252,
-    /// The value to write.
-    pub value: felt252,
-}
-
-/// Input for the `WritePrivateKey` action.
-#[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct WritePrivateKeyInput {
+pub struct WriteIfZeroPrivateKeyInput {
     /// The storage address to write to.
     pub storage_address: felt252,
     /// The value to write.
@@ -244,12 +235,10 @@ pub enum ServerAction {
     // TODO: Better naming for this action.
     /// Verify that a storage value is zero/empty and then write to it.
     WriteIfZeroSubchannel: WriteIfZeroSubchannelInput,
-    /// Write a value to storage.
-    Write: WriteInput,
-    // TODO: Generalize to any type, Merge with Write.
+    // TODO: Generalize to any type, Merge with WriteIfZero.
     // TODO: Better naming for this action.
-    /// Write an `EncPrivateKey` value to storage.
-    WritePrivateKey: WritePrivateKeyInput,
+    /// Verify that a storage value is zero/empty and then write to it.
+    WriteIfZeroPrivateKey: WriteIfZeroPrivateKeyInput,
     // TODO: Generalize to any vector.
     /// Append a `EncChannelInfo` value to (`recipient_addr`, `recipient_public_key`)'s vector in
     /// storage.

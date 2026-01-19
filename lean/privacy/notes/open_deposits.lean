@@ -4,43 +4,88 @@ import privacy.notes.notes
 import privacy.notes.scanned_note
 import privacy.notes.create_note_actions
 
-def open_deposit_actions (crypto: Crypto) (rm: ReachableMemory crypto) : List OpenDepositInput :=
-  rm.actions.flatMap (λ action ↦ match action with
-    | .OpenDeposit inp => [inp]
-    | _ => []
-  )
+structure OpenDepositImplies
+    {crypto: Crypto} (rm: ReachableMemory crypto) (inp: OpenDepositInput) where
+  h_action: .OpenDeposit inp ∈ rm.actions
+  inp_create: CreateNoteInput
+  created: NoteImplies rm inp_create
+  h_note_id: inp_create.note_id crypto = inp.note_id
+  h_r : inp_create.r = 1
+  h_token: inp_create.token = inp.token
 
--- Deposit action implies the note exists.
-theorem deposit_action_implies
+theorem OpenDepositImplies.token_eq_sn
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp_deposit: OpenDepositInput}
+    (open_deposit_imp: OpenDepositImplies rm inp_deposit)
+    {sn: ScannedNote}
+    (h_note_id: inp_deposit.note_id = sn.note_id crypto) :
+    inp_deposit.token = sn.token := by
+  rw [←open_deposit_imp.h_note_id] at h_note_id
+  have := CreateNoteInput.to_scanned_note_eq h_note_id
+  rw [←this, ←open_deposit_imp.h_token]
+
+theorem OpenDepositImplies.next
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenDepositInput}
-    (h_inp: inp ∈ open_deposit_actions crypto rm) :
-    note_exists rm inp.note_id := by
+    {action: Action} (success: (run_action crypto action rm.m).success)
+    (open_deposit_imp: OpenDepositImplies rm inp) :
+    Nonempty (OpenDepositImplies (rm.add action success) inp) := by
+  exact ⟨{
+    h_action := by simp [open_deposit_imp.h_action],
+    inp_create := open_deposit_imp.inp_create,
+    created := open_deposit_imp.created.next success |>.some,
+    h_note_id := open_deposit_imp.h_note_id,
+    h_r := open_deposit_imp.h_r,
+    h_token := open_deposit_imp.h_token,
+  }⟩
+
+theorem OpenDepositImplies.from_action
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenDepositInput}
+    (h: .OpenDeposit inp ∈ rm.actions) :
+    Nonempty (OpenDepositImplies rm inp) := by
   revert rm
   apply ReachableMemory.induction
   case inv₀ => intro h; contradiction
 
-  intro action rm ih success h_inp
-  cases action
-  all_goals simp only [open_deposit_actions, ReachableMemory.add, List.flatMap_cons, List.cons_append,
-      List.nil_append, List.mem_cons, List.mem_flatMap] at h_inp ih
-  case OpenDeposit inp' =>
-    let info := open_deposit_info crypto inp' rm success
-    cases h_inp
+  intro action rm ih success h
+  cases h
 
-    case inl h_inp =>
-      -- inp is the new action
-      dsimp only [note_exists, ReachableMemory.add, run_action]
-      rw [←info.h_m', h_inp, info.memory_diff₀]
+  case head =>
+    let info := open_deposit_info crypto inp rm success
+
+    have h_note_exists : rm.m MemoryType.Notes [inp.note_id, 0] ≠ 0 := by
+      rw [info.old_value]
       exact crypto.pack_nz (by simp)
 
-    case inr h_inp =>
-      -- inp is an old action
-      exact note_exists_monotone success (ih h_inp)
+    have ⟨create_inp, note_imp, h_note_id⟩ := NoteImplies.from_note_exists h_note_exists
 
-  case CreateNote inp' =>
-    exact note_exists_monotone success (ih h_inp)
+    have h_r : create_inp.r = 1 := by
+      have := note_imp.h_r.symm
+      rw [h_note_id, info.old_value, crypto.unpack_pack] at this
+      exact this
 
-  all_goals exact ih h_inp
+    exact ⟨{
+      h_action := by simp,
+      inp_create := create_inp,
+      created := note_imp.next success |>.some,
+      h_note_id := h_note_id,
+      h_r := h_r,
+      h_token := by
+        rw [←info.open_note_token, ←h_note_id, note_imp.h_open_note h_r]
+    }⟩
+
+  case tail h =>
+    have ⟨ih⟩ := ih h
+    exact ih.next success
+
+def open_deposit_actions (crypto: Crypto) (rm: ReachableMemory crypto) : List OpenDepositInput :=
+  rm.actions.filterMap filter_OpenDeposit
+
+-- Deposit action implies the note exists.
+theorem OpenDepositImplies.from_open_deposit_actions
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenDepositInput}
+    (h: inp ∈ open_deposit_actions crypto rm) :
+    Nonempty (OpenDepositImplies rm inp) := by
+  simp only [open_deposit_actions, List.mem_filterMap, filter_OpenDeposit_some, exists_eq_right] at h
+  exact OpenDepositImplies.from_action h
 
 def sum_deposits_for_note_id (crypto: Crypto) (rm: ReachableMemory crypto) (note_id: ℕ): ℕ :=
   open_deposit_actions crypto rm
@@ -56,55 +101,20 @@ theorem sum_deposits_for_note_id_eq_zero
   convert List.sum_nil
   simp only [List.map_eq_nil_iff, List.filter_eq_nil_iff, decide_eq_true_eq]
   intro inp_deposit h'
-  exact λ h'' ↦ h (h'' ▸ deposit_action_implies h')
+  have ⟨open_deposit_imp⟩ := OpenDepositImplies.from_open_deposit_actions h'
+  exact λ h'' ↦ h (h'' ▸ open_deposit_imp.h_note_id ▸ open_deposit_imp.created.h_note_exists)
 
 theorem sum_deposits_for_note_id_next
     {crypto: Crypto} {rm: ReachableMemory crypto} {note_id: ℕ}
-    (success: (run_action crypto (.OpenDeposit inp) rm.m).2) :
+    (success: (run_action crypto (.OpenDeposit inp) rm.m).success) :
     sum_deposits_for_note_id crypto (rm.add (.OpenDeposit inp) success) note_id =
     sum_deposits_for_note_id crypto rm note_id +
     (if inp.note_id = note_id then inp.amount else 0) := by
-  simp only [sum_deposits_for_note_id, ReachableMemory.add, open_deposit_actions, List.flatMap_cons,
-    List.filter_append, List.map_append, List.sum_append]
+  simp only [sum_deposits_for_note_id, ReachableMemory.add, open_deposit_actions]
+  simp only [List.filter_filterMap, List.map_filterMap]
+  rw [←List.singleton_append, List.filterMap_append, List.sum_append]
   conv => lhs; rw [add_comm]
   simp only [Nat.add_left_cancel_iff]
   by_cases h : inp.note_id = note_id
   case pos => simp [h]
   case neg => simp [h]
-
-theorem deposit_action_token
-    {crypto: Crypto} {rm: ReachableMemory crypto} {inp_deposit: OpenDepositInput}
-    (h_inp_deposit: inp_deposit ∈ open_deposit_actions crypto rm)
-    {sn: ScannedNote}
-    (h_note_id: inp_deposit.note_id = sn.note_id crypto) :
-    inp_deposit.token = sn.token := by
-  revert rm
-  apply ReachableMemory.induction
-  case inv₀ => intro h_inp_deposit; contradiction
-
-  intro action rm ih success h_inp_deposit
-  cases action
-  case OpenDeposit inp_deposit' =>
-    let info := open_deposit_info crypto inp_deposit' rm success
-
-    simp only [open_deposit_actions, ReachableMemory.add, List.flatMap_cons, List.cons_append,
-      List.nil_append, List.mem_cons, List.mem_flatMap] at h_inp_deposit ih
-
-    cases h_inp_deposit
-    case inl h_inp_deposit =>
-      rw [h_inp_deposit, ←info.open_note_token]
-      have h_note_exists : note_exists rm inp_deposit'.note_id := by
-        simp [note_exists, info.old_value, crypto.pack_nz]
-      have ⟨inp, h_inp, h_inp_note_id⟩ := create_note_actions_iff_note_exists.1 h_note_exists
-      rw [←h_inp_note_id]
-      have ⟨_, _, h_open_note, h_r⟩ := create_note_actions_implies h_inp
-      have := info.old_value
-      rw [h_inp_note_id, info.old_value, crypto.unpack_pack] at h_r
-      rw [h_open_note (by simp [←h_r])]
-      rw [←h_inp_deposit, h_note_id] at h_inp_note_id
-      rw [←CreateNoteInput.to_scanned_note_eq h_inp_note_id]
-
-    case inr h_inp_deposit =>
-      exact ih h_inp_deposit
-
-  all_goals exact ih h_inp_deposit

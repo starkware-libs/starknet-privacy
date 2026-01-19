@@ -7,14 +7,17 @@ import privacy.notes.note_owner
 import privacy.utils
 
 theorem filtered_scan_notes_eq_notes_from_actions
-    (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) :
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ):
     (
-      scan_notes_for_recipient crypto rm addrbob kbob
+      scan_notes_for_recipient (.from rm) addrbob kbob
       |>.filter (λ sn ↦ sn.token = token)
       |>.toFinset
     ) = (
       create_note_actions crypto rm
-      |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob ∧ inp.Kbob = crypto.priv_to_pub kbob)
+      |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob)
       |>.map (λ inp ↦ inp.to_scanned_note crypto)
       |>.toFinset
     ) := by
@@ -23,24 +26,29 @@ theorem filtered_scan_notes_eq_notes_from_actions
     decide_eq_true_eq]
   constructor
   · intro ⟨h₀, h_token⟩
-    apply (create_note_actions_iff_note_discoverable addrbob kbob sn).1 at h₀
-    obtain ⟨inp, h₀, h₁, h₂, h₃⟩ := h₀
-    rw [←h₁] at h_token
-    use inp, ⟨h₀, by omega, h₂, h₃⟩, h₁
+    have ⟨inp, note_imp, h_sn, h_addrbob, h_kbob⟩ := NoteImplies.from_scan_notes_for_recipient h_kbob h₀
+    rw [←h_sn] at h_token
+    use inp, ⟨note_imp.in_create_note_actions, by omega, h_addrbob⟩, h_sn
   · intro h
-    obtain ⟨inp, ⟨h₀₀, h₀₁, h₀₂, h₀₃⟩, h₁⟩ := h
+    obtain ⟨inp, ⟨h₀₀, h₀₁, h₀₂⟩, h₁⟩ := h
+    have ⟨note_imp⟩ := NoteImplies.from_create_note_actions h₀₀
 
-    use (create_note_actions_iff_note_discoverable addrbob kbob sn).2
-      ⟨inp, h₀₀, h₁, h₀₂, h₀₃⟩
-    rwa [←h₁]
+    have : note_imp.subchannel.channel.kbob = kbob := by
+      apply Subtype.coe_inj.1
+      apply crypto.priv_to_pub_inj (by simp) (by simp)
+      rw [←note_imp.subchannel.channel.bob_registered.public_key, ←h_kbob, ←h₀₂]
+
+    have h_scan := note_imp.scan_for_recipient
+    simp only [*] at h_scan
+    refine ⟨h_scan, by rw [←h₁]; omega⟩
 
 -- Non-zero note amount stays non-zero.
 theorem note_amount_nz_immutable
     {crypto: Crypto} {rm rm': ReachableMemory crypto}
     (h_extends: rm'.extends rm)
     (sn: ScannedNote)
-    (h_nonzero: note_amount crypto rm (sn.note_id crypto) sn.c ≠ 0) :
-    note_amount crypto rm' (sn.note_id crypto) sn.c ≠ 0 := by
+    (h_nonzero: sn.amount crypto rm ≠ 0) :
+    sn.amount crypto rm' ≠ 0 := by
   revert rm'
   apply invariant_induction_for_extends rm
 
@@ -57,7 +65,7 @@ theorem note_amount_nz_immutable
     case pos =>
       simp [note_amount, h_note_id, info.old_value_was_zero, crypto.unpack_zero] at h
     case neg =>
-      simp only [note_amount, ReachableMemory.add, run_action, ←info.h_m']
+      simp only [note_amount, ReachableMemory.add_m, run_action, ←info.h_m']
       rw [info.no_change _ _ (by simp [h_note_id]) (by simp)]
       exact h
 
@@ -69,7 +77,7 @@ theorem note_amount_nz_immutable
       have := info.old_value
       simp [note_amount, h_note_id, this, crypto.unpack_pack] at h
     case neg =>
-      simp only [note_amount, ReachableMemory.add, run_action, ←info.h_m']
+      simp only [note_amount, ReachableMemory.add_m, run_action, ←info.h_m']
       rw [info.no_change _ _ (by simp [h_note_id])]
       exact h
 
@@ -81,83 +89,81 @@ theorem note_amount_eq_amount
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
     (h: inp ∈ create_note_actions crypto rm) :
     rm.m .Notes [inp.note_id crypto, 0] ≠ 0 ∧
-    note_amount crypto rm (inp.note_id crypto) (inp.c crypto) =
+    (inp.to_scanned_note crypto).amount crypto rm =
       inp.amount + sum_deposits_for_note_id crypto rm (inp.note_id crypto) := by
   revert rm
   apply ReachableMemory.induction
 
   case inv₀ => intro h; trivial
   intro action rm ih success h₀
-  simp only [create_note_actions, ReachableMemory.add, List.flatMap_cons, List.mem_append,
-    List.mem_flatMap] at h₀
-  cases h₀
-  case inl h₀ =>
-    cases action
-    case CreateNote inp' =>
-      simp at h₀
-      let info := create_note_info crypto inp' rm success
-      have note_didnt_exist : ¬note_exists rm.m (inp'.note_id crypto) := by
+
+  cases action
+  case CreateNote inp' =>
+    rw [create_note_actions_add] at h₀
+    cases h₀
+    case head =>
+      let info := create_note_info crypto inp rm success
+      have note_didnt_exist : ¬note_exists rm.m (inp.note_id crypto) := by
         simp [note_exists, info.old_value_was_zero]
-      unfold note_amount ReachableMemory.add run_action
+      unfold CreateNoteInput.to_scanned_note ScannedNote.amount note_amount
       dsimp only
       refine ⟨?_, ?_⟩
-      · rw [←info.h_m']
-        simp [h₀, CreateNoteInput.note_id, CreateNoteInput.c, info.memory_diff₀]
+      · rw [ReachableMemory.add_m, run_action, ←info.h_m']
+        simp [CreateNoteInput.note_id, CreateNoteInput.c, info.memory_diff₀]
         exact crypto.pack_nz info.r_ne_zero
-      · conv => lhs; rw [←info.h_m']
-        rw [h₀, CreateNoteInput.note_id, CreateNoteInput.c, info.memory_diff₀]
+      · conv => lhs; rw [ReachableMemory.add_m, run_action, ←info.h_m']
+        rw [CreateNoteInput.note_id, CreateNoteInput.c, info.memory_diff₀]
         rw [crypto.unpack_pack]
         simp only [add_tsub_cancel_left, Nat.left_eq_add]
         apply Eq.trans (by
-          show _ = sum_deposits_for_note_id crypto rm (inp'.note_id crypto)
+          show _ = sum_deposits_for_note_id crypto rm (inp.note_id crypto)
           simp [sum_deposits_for_note_id, open_deposit_actions]
         )
 
         rw [sum_deposits_for_note_id_eq_zero note_didnt_exist]
 
-    repeat trivial
-  case inr h₀ =>
-    have ⟨h₀, h₁⟩ := ih (by simp [create_note_actions, h₀])
-    cases action
-    case CreateNote inp' =>
+    case tail h₀ =>
+      have ⟨h₀, h₁⟩ := ih h₀
       let info := create_note_info crypto inp' rm success
-      unfold note_amount ReachableMemory.add run_action
-      dsimp only
+      rw [CreateNoteInput.to_scanned_note, ScannedNote.amount, note_amount,
+        ReachableMemory.add_m, run_action, ←info.h_m']
       have h_note_id : inp.note_id crypto ≠ inp'.note_id crypto :=
           λ h' ↦ h₀ (h' ▸ info.old_value_was_zero)
 
       refine ⟨?_, ?_⟩
-      · rw [←info.h_m', info.no_change _ _ (by simp [h_note_id]) (by simp)]
+      · rw [info.no_change _ _ (by simp [h_note_id]) (by simp)]
         exact h₀
-      · conv => lhs; rw [←info.h_m']
-        rw [info.no_change _ _ (by simp [h_note_id]) (by simp)]
+      · rw [info.no_change _ _ (by simp [h_note_id]) (by simp)]
         exact h₁
 
-    case OpenDeposit inp' =>
-      let info := open_deposit_info crypto inp' rm success
-      use note_exists_monotone _ h₀
+  case OpenDeposit inp' =>
+    let info := open_deposit_info crypto inp' rm success
+    rw [create_note_actions_add' _ (by trivial)] at h₀
+    have ⟨h₀, h₁⟩ := ih h₀
 
-      rw [sum_deposits_for_note_id_next success]
+    use note_exists_monotone _ h₀
 
-      dsimp only [note_amount, ReachableMemory.add, run_action] at h₁ ⊢
+    rw [sum_deposits_for_note_id_next success]
+    rw [CreateNoteInput.to_scanned_note, ScannedNote.amount, note_amount,
+      ReachableMemory.add_m, run_action, ←info.h_m']
 
-      by_cases h_note_id: inp.note_id crypto = inp'.note_id
-      case pos =>
-        simp only [h_note_id, ↓reduceIte] at h₁ ⊢
-        conv => lhs; rw [←info.h_m']
-        rw [info.memory_diff₀]
-        rw [info.old_value] at h₁
-        rw [crypto.unpack_pack] at h₁ ⊢
-        simp only [↓reduceIte, tsub_zero] at h₁ ⊢
-        rw [←add_assoc, ←h₁]
-        simp
-      case neg =>
-        conv => lhs; rw [←info.h_m']
-        rw [info.no_change _ _ (by simp [h_note_id])]
-        simp [Ne.symm h_note_id]
-        exact h₁
+    by_cases h_note_id: inp.note_id crypto = inp'.note_id
+    case pos =>
+      simp only [ScannedNote.amount, ScannedNote.note_id] at h₁
+      simp only [h_note_id, ↓reduceIte] at h₁ ⊢
 
-    repeat trivial
+      rw [info.memory_diff₀]
+      rw [note_amount, info.old_value] at h₁
+      rw [crypto.unpack_pack] at h₁ ⊢
+      simp only [↓reduceIte, tsub_zero] at h₁ ⊢
+      rw [←add_assoc, ←h₁]
+      simp
+    case neg =>
+      rw [info.no_change _ _ (by simp [h_note_id])]
+      simp [Ne.symm h_note_id]
+      exact h₁
+
+  repeat exact ih h₀
 
 theorem create_note_actions_note_id_nodup (crypto: Crypto) (note_id: ℕ) :
     ∀ rm, (create_note_actions crypto rm |>.map (λ inp ↦ inp.note_id crypto) |>.count note_id) ≤ 1 := by
@@ -177,44 +183,64 @@ theorem create_note_actions_note_id_nodup (crypto: Crypto) (note_id: ℕ) :
       simp only [List.mem_map]
       by_contra h₀
       obtain ⟨inp', h₀⟩ := h₀
-      have := (create_note_actions_iff_note_exists).2 ⟨inp', h₀⟩
-      unfold note_exists at this
-      rw [←h_note_id, CreateNoteInput.note_id, CreateNoteInput.c] at this
-      have := info.old_value_was_zero
-      contradiction
+      have ⟨note_imp⟩ := NoteImplies.from_create_note_actions h₀.1
+      exact note_imp.h_note_exists (h₀.2 ▸ h_note_id ▸ info.old_value_was_zero)
     case neg =>
       simpa only [List.map_cons, ne_eq, h_note_id, not_false_eq_true, List.count_cons_of_ne,
         ge_iff_le];
   repeat exact ih
 
-abbrev sum_create_note_amounts (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) : ℕ :=
+abbrev sum_create_note_amounts (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (token: ℕ) : ℕ :=
   create_note_actions crypto rm
-  |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob ∧ inp.Kbob = crypto.priv_to_pub kbob)
+  |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob)
   |>.map (λ inp ↦ inp.amount)
   |>.sum
 
-abbrev sum_deposits_for_create_note_amounts (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) : ℕ :=
+theorem create_note_actions_not_registered
+    {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} (token: ℕ)
+    (h: rm.m .PublicKeys [addrbob] = 0) :
+    (
+      create_note_actions crypto rm
+      |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob)
+    ) = [] := by
+  simp only [Bool.decide_and, List.filter_eq_nil_iff, Bool.and_eq_true, decide_eq_true_eq, not_and]
+  intro inp h_inp h_token h_addrbob
+  have := (NoteImplies.from_create_note_actions h_inp |>.some).subchannel.channel.bob_registered.public_key
+  conv at this => lhs; simp only [h_addrbob, h]
+  exact crypto.zero_not_public_key _ this.symm
+
+theorem sum_create_note_amounts_zero
+    {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} (token: ℕ)
+    (h: rm.m .PublicKeys [addrbob] = 0) :
+    sum_create_note_amounts crypto rm addrbob token = 0 := by
+  rw [sum_create_note_amounts, create_note_actions_not_registered token h]
+  simp
+
+abbrev sum_deposits_for_create_note_amounts (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (token: ℕ) : ℕ :=
   create_note_actions crypto rm
-  |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob ∧ inp.Kbob = crypto.priv_to_pub kbob)
+  |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob)
   |>.map (λ inp ↦ sum_deposits_for_note_id crypto rm (inp.note_id crypto))
   |>.sum
 
 theorem sum_of_created_notes_to_scanned_notes₀
-    (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
-    sum_create_note_amounts crypto rm addrbob kbob token +
-    sum_deposits_for_create_note_amounts crypto rm addrbob kbob token =
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
+    sum_create_note_amounts crypto rm addrbob token +
+    sum_deposits_for_create_note_amounts crypto rm addrbob token =
     (
-      scan_notes_for_recipient crypto rm addrbob kbob
+      scan_notes_for_recipient (.from rm) addrbob kbob
       |>.filter (λ sn ↦ sn.token = token)
       |>.dedup
-      |>.map (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c)
+      |>.map (λ sn ↦ sn.amount crypto rm)
       |>.sum
     ) := by
 
   have : ∀ ℓ: List ScannedNote, ℓ.dedup.toFinset = ℓ.toFinset := by
     intro ℓ; ext x; simp [List.mem_toFinset, List.mem_dedup]
 
-  rw [←List.sum_toFinset _ (List.nodup_dedup _), this, filtered_scan_notes_eq_notes_from_actions]
+  rw [←List.sum_toFinset _ (List.nodup_dedup _), this, filtered_scan_notes_eq_notes_from_actions h_kbob]
 
   rw [List.sum_toFinset _ (by
     apply filter_map_nodup
@@ -234,23 +260,23 @@ theorem sum_of_created_notes_to_scanned_notes₀
   apply congrArg
   simp only [Bool.decide_and, List.map_map, List.map_inj_left, List.mem_filter, Bool.and_eq_true,
     decide_eq_true_eq, Function.comp_apply, and_imp]
-  intro inp h₀ h₁ h₂ h₃
+  intro inp h₀ h₁ h₂
   simp [(note_amount_eq_amount h₀).2]
 
 -------------------------------
 
 noncomputable def sum_deposit_amounts
     (crypto: Crypto) (rm: ReachableMemory crypto)
-    (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) : ℕ :=
+    (addrbob: ℕ) (token: ℕ) : ℕ :=
   open_deposit_actions crypto rm
-  |>.filter (λ inp ↦ inp.token = token ∧ (note_owner crypto inp.note_id addrbob kbob = true))
+  |>.filter (λ inp ↦ inp.token = token ∧ (note_owner crypto inp.note_id addrbob = true))
   |>.map (λ inp ↦ inp.amount)
   |>.sum
 
 theorem sum_deposit_amounts_eq
-    (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) :
-    sum_deposit_amounts crypto rm addrbob kbob token =
-    sum_deposits_for_create_note_amounts crypto rm addrbob kbob token := by
+    (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (token: ℕ) :
+    sum_deposit_amounts crypto rm addrbob token =
+    sum_deposits_for_create_note_amounts crypto rm addrbob token := by
   rw [sum_deposit_amounts]
   rw [fiber_sum (f:=OpenDepositInput.note_id)
     (img:=create_note_actions crypto rm |>.map (λ inp ↦ inp.note_id crypto))
@@ -258,9 +284,12 @@ theorem sum_deposit_amounts_eq
       intro a h_a
       rw [List.mem_filter] at h_a
       rw [List.mem_map]
-      have note_exists := deposit_action_implies h_a.1
-      have ⟨inp_create, h_inp_create⟩ := create_note_actions_iff_note_exists.1 note_exists
-      use inp_create
+      have ⟨open_deposit_imp⟩ := OpenDepositImplies.from_open_deposit_actions h_a.1
+      exact ⟨
+        open_deposit_imp.inp_create,
+        open_deposit_imp.created.in_create_note_actions,
+        open_deposit_imp.h_note_id
+      ⟩
     )
     (h_nodup:=by
       apply List.nodup_iff_count_le_one.2
@@ -271,7 +300,7 @@ theorem sum_deposit_amounts_eq
 
   set ℓ := create_note_actions crypto rm
   set f_note_id := λ inp: CreateNoteInput ↦ inp.note_id crypto
-  set f_token_bob := λ inp: CreateNoteInput ↦ inp.token = token ∧ inp.addrbob = addrbob ∧ inp.Kbob = crypto.priv_to_pub ↑kbob
+  set f_token_bob := λ inp: CreateNoteInput ↦ inp.token = token ∧ inp.addrbob = addrbob
   show  (ℓ |>.map f_note_id |>.map _ |>.sum) = (ℓ |>.filter f_token_bob |>.map _ |>.sum)
 
   rw [List.map_map]
@@ -290,19 +319,20 @@ theorem sum_deposit_amounts_eq
     apply congrArg
     apply List.filter_congr
     intro inp_deposit h_inp_deposit
+    have ⟨open_deposit_imp⟩ := OpenDepositImplies.from_open_deposit_actions h_inp_deposit
     rw [←Bool.decide_and, ←Bool.decide_and, decide_eq_decide]
     constructor
     · intro h
       exact h.1
     · intro h
       refine ⟨h, ?_, ?_⟩
-      · rw [deposit_action_token h_inp_deposit (sn:=inp.to_scanned_note crypto) (by rw [h])]
+      · rw [open_deposit_imp.token_eq_sn (sn:=inp.to_scanned_note crypto) (by rw [h])]
         exact h_inp.2.1
       · simp only [eq_iff_iff, iff_true]
-        use inp.to_scanned_note crypto, inp.addralice, inp.kalice
+        use inp.to_scanned_note crypto, inp.addralice, inp.kalice, inp.Kbob
         constructor
         · rw [h]
-        · rw [←h_inp.2.2.1, ←h_inp.2.2.2]
+        · rw [←h_inp.2.2]
 
   · apply List.sum_eq_zero
     intro amount h_amount
@@ -319,118 +349,104 @@ theorem sum_deposit_amounts_eq
     replace ⟨⟨h_inp_deposit, h_token, h_note_owner⟩, h_note_id⟩ := h_inp_deposit
 
     simp only [h_note_id, f_note_id] at h_note_owner
-    have ⟨kbob', h_note_owner', h_kbob'⟩ := note_owner_of_create_note h_inp.1
+    have ⟨note_imp⟩ := NoteImplies.from_create_note_actions h_inp.1
+    have h_note_owner' := note_owner_of_create_note crypto inp
     have h_addrbob_kbob := unique_note_owner h_note_owner h_note_owner'
+    have ⟨open_deposit_imp⟩ := OpenDepositImplies.from_open_deposit_actions h_inp_deposit
 
     have h_inp_token : inp.token = token := by
-      have := deposit_action_token h_inp_deposit (sn:=inp.to_scanned_note crypto) (by rw [h_note_id])
+      have := open_deposit_imp.token_eq_sn (sn:=inp.to_scanned_note crypto) (by rw [h_note_id])
       rw [←h_token]
       exact Eq.symm this
 
     have := h_inp.2
     unfold f_token_bob at this
-    simp [h_addrbob_kbob, h_inp_token, h_kbob'] at this
+    simp [h_addrbob_kbob, h_inp_token] at this
+
+theorem sum_deposit_amounts_zero
+    {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} (token: ℕ)
+    (h: rm.m .PublicKeys [addrbob] = 0) :
+    sum_deposit_amounts crypto rm addrbob token = 0 := by
+  rw [sum_deposit_amounts_eq, sum_deposits_for_create_note_amounts]
+  rw [create_note_actions_not_registered token h]
+  simp
 
 theorem sum_of_created_notes_to_scanned_notes
-    (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
-    sum_create_note_amounts crypto rm addrbob kbob token +
-    sum_deposit_amounts crypto rm addrbob kbob token =
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
+    sum_create_note_amounts crypto rm addrbob token +
+    sum_deposit_amounts crypto rm addrbob token =
     (
-      scan_notes_for_recipient crypto rm addrbob kbob
+      scan_notes_for_recipient (.from rm) addrbob kbob
       |>.filter (λ sn ↦ sn.token = token)
       |>.dedup
-      |>.map (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c)
+      |>.map (λ sn ↦ sn.amount crypto rm)
       |>.sum
     ) := by
-  rw [sum_deposit_amounts_eq, sum_of_created_notes_to_scanned_notes₀]
+  rw [sum_deposit_amounts_eq, sum_of_created_notes_to_scanned_notes₀ h_kbob]
 
 -------------------------------
 
-theorem create_cancel_actions
-    {crypto: Crypto} {rm: ReachableMemory crypto} (inp_create: CreateNoteInput) (inp_cancel: CancelNoteInput)
-    (inp_cancel_action: inp_cancel ∈ cancel_note_actions crypto rm)
-    (h_note_id: inp_create.note_id crypto = inp_cancel.note_id crypto) :
-    inp_create.c crypto = inp_cancel.c ∧
-    inp_create.token = inp_cancel.token ∧
-    inp_create.addrbob = inp_cancel.addrbob ∧
-    inp_create.Kbob = inp_cancel.Kbob crypto ∧
-    inp_create.i₀ = inp_cancel.i₀ ∧
-    inp_create.i₁ = inp_cancel.i₁ := by
-  apply crypto.h_hash at h_note_id
-  repeat injection h_note_id with _ h_note_id
-
-  have h_inp_create_c : inp_create.c crypto = inp_cancel.c := by assumption
-  have ⟨addralice, kalice, inp_cancel_c⟩ := (note_cancel_action_implies inp_cancel_action).1
-
-  rw [inp_cancel_c] at h_inp_create_c
-  apply crypto.h_hash at h_inp_create_c
-  repeat injection h_inp_create_c with _ h_inp_create_c
-  simp [*]
-
-noncomputable def spent_notes_from_scan (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) : Finset ScannedNote :=
-  scan_notes_for_recipient crypto rm addrbob kbob
+def spent_notes_from_scan
+  {crypto: Crypto} {m: Memory} (context: ScanNoteContext crypto m)
+  (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) : Finset ScannedNote :=
+  scan_notes_for_recipient context addrbob kbob
   |>.filter (λ sn ↦ sn.token = token)
-  |>.filter (λ sn ↦ note_canceled_by_id crypto rm.m (sn.note_id crypto) = true)
+  |>.filter (λ sn ↦ m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] ≠ 0)
   |>.toFinset
 
-theorem spent_notes_from_scan' (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
-    spent_notes_from_scan crypto addrbob kbob token rm =
+theorem spent_notes_from_scan' {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
+    spent_notes_from_scan (.from rm) addrbob kbob token =
     (
        cancel_note_actions crypto rm
-       |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob ∧ inp.kbob = ↑kbob)
+       |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob)
        |>.map (λ inp ↦ inp.to_scanned_note)
        |>.toFinset
     ) := by
-  rw [spent_notes_from_scan, List.toFinset_filter, filtered_scan_notes_eq_notes_from_actions]
+  rw [spent_notes_from_scan, List.toFinset_filter, filtered_scan_notes_eq_notes_from_actions h_kbob]
 
   ext sn
-  simp only [eq_iff_iff, iff_true, Bool.decide_and, Finset.mem_filter, List.mem_toFinset,
+  simp only [Bool.decide_and, Finset.mem_filter, List.mem_toFinset,
     List.mem_map, List.mem_filter, Bool.and_eq_true, decide_eq_true_eq]
   constructor
-  ·
-    intro h
-    obtain ⟨⟨inp_create, ⟨h₀₀, h₀₁, h₀₂, h₀₃⟩ , h₁, h₂, h₃⟩, h_canceled⟩ := h
+  · intro h
+    obtain ⟨⟨inp_create, ⟨h₀₀, h₀₁, h₀₂⟩, h₁⟩, h_canceled⟩ := h
 
-    obtain ⟨c', token', i₀, i₁, kbob', h_note_id, h_note_canceled⟩ := h_canceled
-    have ⟨inp_cancel, h₀, h₁, h₂⟩ := cancel_note_actions_iff_note_canceled.1 h_note_canceled
-    use inp_cancel
-    have : (inp_cancel.kbob = ↑kbob) ↔ (crypto.priv_to_pub inp_cancel.kbob = crypto.priv_to_pub kbob) := by
-      constructor
-      · intro h; simp [h]
-      · intro h
-        exact crypto.priv_to_pub_inj (by
-          simp [h₂, canceled_note_implies_kbob_private_key h_note_canceled]
-        ) (by simp) h
-    rw [←h₀₁, ←h₀₂, this, ←h₀₃]
+    have ⟨addrbob', amount, ⟨cancel_imp⟩⟩ := CancelImplies.from_note_canceled h_canceled
+    refine ⟨_, ⟨cancel_imp.in_cancel_note_actions, h₁ ▸ h₀₁, ?_⟩, by rfl⟩
+    dsimp only
 
-    have h_note_ids : inp_create.note_id crypto = inp_cancel.note_id crypto := by simp [*]
-    have := create_cancel_actions inp_create inp_cancel h₀ h_note_ids
+    have : cancel_imp.note_created.subchannel.channel.c = inp_create.c crypto := by
+      rw [←cancel_imp.note_created.subchannel.h_c, cancel_imp.h_c, ←h₁]
+    have ⟨_, _, h_addrbob, h_kbob⟩ := cancel_imp.note_created.subchannel.channel.same_c this
+    simp only at h_addrbob h_kbob
+    rw [←h_addrbob, h₀₂]
+  · intro ⟨inp_cancel, ⟨h₀₀, h₀₁, h₀₂⟩, h₁⟩
+    have ⟨cancel_imp⟩ := CancelImplies.from_cancel_note_actions h₀₀
 
-    simp [h₀, this]
-  ·
-    intro ⟨inp_cancel, ⟨h₀₀, h₀₁, h₀₂, h₀₃⟩, h₁⟩
-    have h_note_canceled := cancel_note_actions_iff_note_canceled.2 ⟨inp_cancel, h₀₀, by rfl, by rfl⟩
-    have h_note_exists := canceled_note_implies_exists h_note_canceled
-
-    have ⟨inp_create, h₀, h₁'⟩ := create_note_actions_iff_note_exists.1 h_note_exists
-
-    have h_note_ids : inp_create.note_id crypto = inp_cancel.note_id crypto := by rw [h₁']
-    have := create_cancel_actions inp_create inp_cancel h₀₀ h_note_ids
-
-    have : CancelNoteInput.Kbob crypto inp_cancel = crypto.priv_to_pub ↑kbob := by
-      unfold CancelNoteInput.Kbob
-      apply congrArg
-      assumption
-
-    have : inp_create.to_scanned_note crypto = sn := by rw [←h₁]; ext; repeat simp [*]
-    use ⟨inp_create, by simp [*]⟩
-    use inp_cancel.c, inp_cancel.token, inp_cancel.i₀, inp_cancel.i₁, inp_cancel.kbob
-    constructor
+    refine ⟨⟨cancel_imp.inp_create, ⟨⟨cancel_imp.note_created.in_create_note_actions, ?_⟩, ?_⟩⟩, ?_⟩
+    · simp only [*, true_and]
     · rw [←h₁]
-    · exact h_note_canceled
+      ext
+      · exact cancel_imp.h_c
+      all_goals simp
+    · have h_kbob' : inp_cancel.kbob = kbob := by
+        apply crypto.priv_to_pub_inj cancel_imp.kbob_priv (by simp)
+        rw [←h_kbob, ←cancel_imp.h_kbob₁, h₀₂]
+      have := cancel_imp.h_note_canceled
+      rw [←h₁, ←h_kbob']
+      simp only [note_canceled, *] at this ⊢
+      exact this
 
-theorem cancel_note_actions_note_id_nodup (crypto: Crypto) (note_id: ℕ) :
-    ∀ rm, (cancel_note_actions crypto rm |>.map (λ inp ↦ inp.note_id crypto) |>.count note_id) ≤ 1 := by
+theorem cancel_note_actions_note_id_nodup
+    {crypto: Crypto} (rm: ReachableMemory crypto) (note_id: ℕ) :
+    (cancel_note_actions crypto rm |>.map (λ inp ↦ inp.note_id crypto) |>.count note_id) ≤ 1 := by
+  revert rm
   apply ReachableMemory.induction
 
   case inv₀ => show List.count _ [] ≤ 1; simp
@@ -446,6 +462,11 @@ theorem cancel_note_actions_note_id_nodup (crypto: Crypto) (note_id: ℕ) :
         add_le_iff_nonpos_left, nonpos_iff_eq_zero, List.count_eq_zero, BEq.rfl, List.mem_map]
       by_contra h₀
       obtain ⟨inp', h₀⟩ := h₀
+
+      have cancel_imp: CancelImplies (rm.add (.CancelNote inp) success) inp :=
+        (CancelImplies.from_action (by simp) |>.some)
+      have ⟨cancel_imp'⟩ := CancelImplies.from_cancel_note_actions h₀.1
+
       have h_nullifiers : inp'.nullifier crypto = inp.nullifier crypto := by
         have h_note_id : inp'.note_id crypto = inp.note_id crypto := by simp [*]
         apply crypto.h_hash at h_note_id
@@ -453,125 +474,96 @@ theorem cancel_note_actions_note_id_nodup (crypto: Crypto) (note_id: ℕ) :
 
         have h_same_c : inp'.c = inp.c := by assumption
 
-        have ⟨⟨addralice, kalice, h_c⟩, h_kbob_private_key, _⟩ := note_cancel_action_implies h₀.1
-        have ⟨addralice', kalice', h_c'⟩ := subchannel_hash_exists_implies_hash info.subchannel_exists
-        rw [h_same_c,  h_c'] at h_c
-        apply crypto.h_hash at h_c
-        repeat injection h_c with _ h_c
+        have := cancel_imp.h_c
+        rw [←h_same_c, ←cancel_imp'.h_c, cancel_imp.note_created.subchannel.h_c] at this
+        have := crypto.priv_to_pub_inj
+          cancel_imp'.kbob_priv
+          cancel_imp.kbob_priv
+          (cancel_imp.note_created.subchannel.channel.same_c this).2.2.2
 
         unfold CancelNoteInput.nullifier
-        have : inp.kbob = inp'.kbob := by
-          apply crypto.priv_to_pub_inj
-          exact info.kbob_private_key
-          exact h_kbob_private_key
-          assumption
         simp [*]
-      have := info.nullifier_didnt_exist
-      rw [←h_nullifiers] at this
-      have : ¬note_canceled crypto rm.m inp'.c inp'.token inp'.i₀ inp'.i₁ inp'.kbob := by
-        unfold note_canceled
-        unfold CancelNoteInput.nullifier at this
-        simp [this]
-      have : note_canceled crypto rm.m inp'.c inp'.token inp'.i₀ inp'.i₁ inp'.kbob := by
-        apply cancel_note_actions_iff_note_canceled.2
-        use inp'
-        simp [h₀]
-      contradiction
+
+      have := h_nullifiers ▸ info.nullifier_didnt_exist
+      exact cancel_imp'.h_note_canceled this
     case neg =>
       simpa only [List.map_cons, ne_eq, h_note_id, not_false_eq_true, List.count_cons_of_ne,
         ge_iff_le]
-  repeat exact ih
+  all_goals exact ih
 
-theorem canceled_note_amount_eq_amount (crypto: Crypto) (inp: CancelNoteInput) :
-    ∀ (rm: ReachableMemory crypto),
-    (h: inp ∈ cancel_note_actions crypto rm) →
-    rm.m .Notes [inp.note_id crypto, 0] ≠ 0 ∧
-    note_amount crypto rm (inp.note_id crypto) inp.c = inp.amount := by
+theorem CancelImplies.amount_eq
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CancelNoteInput}
+    (cancel_imp: CancelImplies rm inp) :
+    inp.to_scanned_note.amount crypto rm = inp.amount := by
+  revert rm
   apply ReachableMemory.induction
-  case inv₀ => intro h; trivial
+  case inv₀ => intro h; have := h.h_action; contradiction
 
-  intro action rm ih success h₀
-  have h_amount_ne_zero := (note_cancel_action_implies h₀).2.2
+  intro action rm ih success cancel_imp
 
-  simp only [cancel_note_actions, ReachableMemory.add, List.flatMap_cons, List.mem_append,
-    List.mem_flatMap] at h₀
-  cases h₀
-  case inl h₀ =>
+  cases cancel_imp.h_action
+  case head =>
+    let info := cancel_note_info crypto inp rm success
+    rw [CancelNoteInput.to_scanned_note, ScannedNote.amount, note_amount,
+      ReachableMemory.add_m, run_action, ←info.h_m']
+    rw [info.no_change _ _ (by simp)]
+    rw [←note_amount, info.h_amount]
+  case tail h =>
+    have ⟨cancel_imp₀⟩ := CancelImplies.from_action h
+    have ih := ih cancel_imp₀
     cases action
-    case CancelNote inp' =>
-      simp at h₀
-      let info := cancel_note_info crypto inp' rm success
-      unfold note_amount ReachableMemory.add run_action
-      dsimp only
-      rw [←info.h_m']
-      rw [h₀, CancelNoteInput.note_id]
-      rw [info.no_change _ _ (by simp)]
-
-      constructor
-      · exact info.r_ne_zero
-      · have := info.h_amount
-        unfold note_amount at this
-        rw [this]
-
-    repeat trivial
-  case inr h₀ =>
-    replace ih := ih (by simp [cancel_note_actions, h₀])
-    cases action
-    case CancelNote inp' =>
-      let info := cancel_note_info crypto inp' rm success
-      unfold note_amount ReachableMemory.add run_action
-      dsimp only
-      rw [←info.h_m']
-      rw [info.no_change _ _ (by simp)]
-      exact ih
-
     case CreateNote inp' =>
       let info := create_note_info crypto inp' rm success
-      unfold note_amount ReachableMemory.add run_action
-      dsimp only
-      rw [←info.h_m']
-      have h_note_id : inp.note_id crypto ≠ inp'.note_id crypto := by
-        by_contra h_note_id
-        have := info.old_value_was_zero
-        rw [←h_note_id] at this
-        omega
-
-      rw [info.no_change _ _ (by simp [h_note_id]) (by simp)]
+      have : inp.note_id crypto ≠ inp'.note_id crypto :=
+        λ h' ↦ (h' ▸ cancel_imp₀.h_note_exists) info.old_value_was_zero
+      rw [CancelNoteInput.to_scanned_note, ScannedNote.amount, note_amount,
+        ReachableMemory.add_m, run_action, ←info.h_m']
+      rw [info.no_change _ _ (by simp [this]) (by simp)]
       exact ih
-
     case OpenDeposit inp' =>
       let info := open_deposit_info crypto inp' rm success
-
-      unfold note_amount ReachableMemory.add run_action
-      dsimp only
-      rw [←info.h_m']
-      have h_note_id : inp.note_id crypto ≠ inp'.note_id := by
-        by_contra h_note_id
-        have h_amount := ih.2
-        simp only [note_amount, h_note_id, info.old_value, crypto.unpack_pack, reduceIte, tsub_self] at h_amount
-        rw [h_amount] at h_amount_ne_zero
-        contradiction
-
-      rw [info.no_change _ _ (by simp [h_note_id])]
+      have : inp.note_id crypto ≠ inp'.note_id := by
+        by_contra h'
+        have note_amount_zero : inp.to_scanned_note.amount crypto rm = 0 := by
+          simp [note_amount, h' ▸ info.old_value, crypto.unpack_pack]
+        exact cancel_imp₀.amount_nz (ih ▸ note_amount_zero)
+      rw [CancelNoteInput.to_scanned_note, ScannedNote.amount, note_amount,
+        ReachableMemory.add_m, run_action, ←info.h_m']
+      rw [info.no_change _ _ (by simp [this])]
       exact ih
 
-    repeat trivial
+    all_goals try exact ih
 
-abbrev sum_cancel_note_amounts (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) : ℕ :=
+abbrev sum_cancel_note_amounts (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob token: ℕ) : ℕ :=
   cancel_note_actions crypto rm
-  |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob ∧ inp.kbob = ↑kbob)
+  |>.filter (λ inp ↦ inp.token = token ∧ inp.addrbob = addrbob)
   |>.map (λ inp ↦ inp.amount)
   |>.sum
 
+theorem sum_cancel_note_amounts_zero
+    {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} (token: ℕ)
+    (h: rm.m .PublicKeys [addrbob] = 0) :
+    sum_cancel_note_amounts crypto rm addrbob token = 0 := by
+  convert List.sum_nil
+  convert List.map_nil
+  simp only [Bool.decide_and, List.filter_eq_nil_iff, Bool.and_eq_true, decide_eq_true_eq, not_and]
+  intro inp h_inp h_token h_addrbob
+  have := (CancelImplies.from_cancel_note_actions h_inp |>.some).note_created.subchannel.channel.bob_registered.public_key
+  conv at this => lhs; simp only [h_addrbob, h]
+  exact crypto.zero_not_public_key _ this.symm
+
 theorem sum_of_canceled_notes_to_scanned_notes
-    (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
-    sum_cancel_note_amounts crypto rm addrbob kbob token =
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
+    sum_cancel_note_amounts crypto rm addrbob token =
     (
-      scan_notes_for_recipient crypto rm addrbob kbob
+      scan_notes_for_recipient (.from rm) addrbob kbob
       |>.filter (λ sn ↦ sn.token = token)
       |>.dedup
-      |>.filter (λ sn ↦ note_canceled_by_id crypto rm.m (sn.note_id crypto) = true)
-      |>.map (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c)
+      |>.filter (λ sn ↦ rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] ≠ 0)
+      |>.map (λ sn ↦ sn.amount crypto rm)
       |>.sum
     ) := by
 
@@ -583,7 +575,7 @@ theorem sum_of_canceled_notes_to_scanned_notes
     apply List.nodup_dedup
   )]
 
-  rw [this, ←spent_notes_from_scan, spent_notes_from_scan']
+  rw [this, ←spent_notes_from_scan, spent_notes_from_scan' h_kbob]
 
   rw [List.sum_toFinset _ (by
     apply filter_map_nodup
@@ -604,51 +596,60 @@ theorem sum_of_canceled_notes_to_scanned_notes
   simp only [Bool.decide_and, List.map_map, List.map_inj_left, List.mem_filter, Bool.and_eq_true,
     decide_eq_true_eq, Function.comp_apply, and_imp]
 
-  intro inp h₀ h₁ h₂ h₃
-  simp [(canceled_note_amount_eq_amount crypto inp rm h₀).2]
+  intro inp h₀ h₁ h₂
+  simp [(CancelImplies.from_cancel_note_actions h₀ |>.some).amount_eq]
 
--- For any recipient (addrbob, kbob) and token:
+-- For any recipient `addrbob` and token `token`:
 --   created notes + deposited notes = canceled notes + unspent notes.
 theorem sum_create_note_cancel_note
-    (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
-    sum_create_note_amounts crypto rm addrbob kbob token +
-    sum_deposit_amounts crypto rm addrbob kbob token =
-    sum_cancel_note_amounts crypto rm addrbob kbob token +
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (token: ℕ) :
+    sum_create_note_amounts crypto rm addrbob token +
+    sum_deposit_amounts crypto rm addrbob token =
+    sum_cancel_note_amounts crypto rm addrbob token +
     (
-      scan_notes_for_recipient crypto rm addrbob kbob
+      scan_notes_for_recipient (.from rm) addrbob kbob
       |>.filter (λ sn ↦ sn.token = token)
       |>.dedup
-      |>.filter (λ sn ↦ note_canceled_by_id crypto rm.m (sn.note_id crypto) = false)
-      |>.map (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c)
+      |>.filter (λ sn ↦ rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] = 0)
+      |>.map (λ sn ↦ sn.amount crypto rm)
       |>.sum
     ) := by
   -- Define abbreviations for readability
-  set ℓ := scan_notes_for_recipient crypto rm addrbob kbob
+  set ℓ := scan_notes_for_recipient (.from rm) addrbob kbob
   set f_token := λ sn: ScannedNote ↦ sn.token = token
-  set amount := λ sn: ScannedNote ↦ note_amount crypto rm (sn.note_id crypto) sn.c
-  let f_spent := λ sn: ScannedNote ↦ (note_canceled_by_id crypto rm.m (sn.note_id crypto) = true)
-  let f_unspent := λ sn: ScannedNote ↦ (note_canceled_by_id crypto rm.m (sn.note_id crypto) = false)
+  set amount := λ sn: ScannedNote ↦ sn.amount crypto rm
+  let f_spent := λ sn: ScannedNote ↦ (rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] ≠ 0)
+  let f_unspent := λ sn: ScannedNote ↦ (rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] = 0)
 
   have neg_f_spent : (λ sn ↦ decide ¬f_spent sn) = (λ sn ↦ decide (f_unspent sn)) := by
     ext x; classical simp [f_spent, f_unspent]
 
-  calc sum_create_note_amounts crypto rm addrbob kbob token +
-       sum_deposit_amounts crypto rm addrbob kbob token
+  calc sum_create_note_amounts crypto rm addrbob token +
+       sum_deposit_amounts crypto rm addrbob token
     _ = (ℓ |>.filter f_token |>.dedup |>.map amount |>.sum) :=
-        sum_of_created_notes_to_scanned_notes crypto addrbob kbob token rm
+        sum_of_created_notes_to_scanned_notes h_kbob token
     -- Split sum into spent + unspent.
     _ = (ℓ |>.filter f_token |>.dedup |>.filter f_spent |>.map amount |>.sum) +
         (ℓ |>.filter f_token |>.dedup |>.filter (¬f_spent ·) |>.map amount |>.sum) := by
         rw [←List.sum_map_filter_add_sum_map_filter_not f_spent]
-    _ = sum_cancel_note_amounts crypto rm addrbob kbob token +
+    _ = sum_cancel_note_amounts crypto rm addrbob token +
         (ℓ |>.filter f_token |>.dedup |>.filter (¬f_spent ·) |>.map amount |>.sum) := by
-        rw [sum_of_canceled_notes_to_scanned_notes]
+        rw [sum_of_canceled_notes_to_scanned_notes h_kbob]
     _ = _ := by rw [neg_f_spent]
 
 -- Can't spend more than created + deposited.
 theorem sum_cancel_note_le_sum_create_note
-    (crypto: Crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) (token: ℕ) (rm: ReachableMemory crypto) :
-    sum_cancel_note_amounts crypto rm addrbob kbob token ≤
-    sum_create_note_amounts crypto rm addrbob kbob token +
-    sum_deposit_amounts crypto rm addrbob kbob token := by
-  simp [sum_create_note_cancel_note]
+    {crypto: Crypto} (rm: ReachableMemory crypto) (addrbob: ℕ) (token: ℕ) :
+    sum_cancel_note_amounts crypto rm addrbob token ≤
+    sum_create_note_amounts crypto rm addrbob token +
+    sum_deposit_amounts crypto rm addrbob token := by
+  by_cases h: rm.m .PublicKeys [addrbob] = 0
+  case pos =>
+    rw [sum_create_note_amounts_zero token h, sum_deposit_amounts_zero token h,
+      sum_cancel_note_amounts_zero token h]
+  case neg =>
+    have ⟨kbob, h_kbob⟩ := public_keys h
+    simp [sum_create_note_cancel_note h_kbob]

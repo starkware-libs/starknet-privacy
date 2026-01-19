@@ -15,7 +15,7 @@ import type { Amount, NoteId, Open, StarknetAddress, ViewingKey } from "./interf
 export type SetViewingKeyInput = {
   /** The viewing key (private key) to set */
   privateKey: ViewingKey;
-  /** Random value used to encrypt the private key for compliance */
+  /** Random value use to encrypt the private key for compliance */
   random: bigint;
 };
 
@@ -113,16 +113,12 @@ export type FollowupCallInput = {
   call: Call;
 };
 
-/**
- * Union type representing all possible client action inputs.
- * Matches Cairo's ClientAction enum.
- */
 export type ClientAction =
   | { type: "SetViewingKey"; input: SetViewingKeyInput }
   | { type: "OpenChannel"; input: OpenChannelInput }
   | { type: "OpenSubchannel"; input: OpenSubchannelInput }
-  | { type: "CreateNote"; input: CreateNoteInput }
   | { type: "Deposit"; input: DepositInput }
   | { type: "UseNote"; input: UseNoteInput }
+  | { type: "CreateNote"; input: CreateNoteInput }
   | { type: "Withdraw"; input: WithdrawInput }
   | { type: "FollowupCall"; input: FollowupCallInput };

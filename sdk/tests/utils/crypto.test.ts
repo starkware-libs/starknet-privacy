@@ -93,7 +93,7 @@ describe("encryption", () => {
       const sharedSecret = hash(ALICE_PRIVATE_KEY, BOB_PRIVATE_KEY);
       const data = 42n;
 
-      const encrypted = encryptSymmetric(sharedSecret, data);
+      const encrypted = encryptSymmetric(sharedSecret, data, 666n);
       const decrypted = decryptSymmetric(encrypted, sharedSecret);
 
       expect(decrypted).toBe(data);
@@ -104,7 +104,7 @@ describe("encryption", () => {
       const wrongSecret = hash(3n, 4n);
       const data = 12345n;
 
-      const encrypted = encryptSymmetric(sharedSecret, data);
+      const encrypted = encryptSymmetric(sharedSecret, data, 666n);
       const wrongDecrypt = decryptSymmetric(encrypted, wrongSecret);
 
       expect(wrongDecrypt).not.toBe(data);
@@ -114,8 +114,8 @@ describe("encryption", () => {
       const sharedSecret = hash(100n);
       const data = 999n;
 
-      const enc1 = encryptSymmetric(sharedSecret, data);
-      const enc2 = encryptSymmetric(sharedSecret, data);
+      const enc1 = encryptSymmetric(sharedSecret, data, 666n);
+      const enc2 = encryptSymmetric(sharedSecret, data, 777n);
 
       // Different random r each time
       expect(enc1.r).not.toBe(enc2.r);

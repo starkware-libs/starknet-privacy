@@ -5,8 +5,9 @@ import {
   MockPrivateTransfers,
   applyStateChanges,
 } from "../../src/testing/index.js";
-import { Channel, createEmptyRegistry } from "../../src/interfaces.js";
+import { Channel, createEmptyRegistry, ExecuteOptions } from "../../src/interfaces.js";
 import { consoleLogCallback, withLogging } from "../../src/utils/index.js";
+import { debugLog } from "../../src/utils/logging.js";
 
 // Test addresses (must be valid hex)
 const POOL_ADDRESS = "0x1";
@@ -19,10 +20,10 @@ const STRK = "0x534752";
 const ETH = "0x455448";
 
 // Default options for auto-discovery, auto-setup, and auto-select notes
-const AUTO_OPTIONS = {
-  autoDiscover: { recipient: "refresh" as const, notes: "refresh" as const },
+const AUTO_OPTIONS: ExecuteOptions = {
+  autoDiscover: { channels: "refresh" as const, notes: "refresh" as const },
   autoSetup: true,
-  autoSelectNotes: true,
+  autoSelectNotes: "naive",
 };
 
 describe("ActionCompiler (via builder)", () => {
@@ -72,11 +73,11 @@ describe("ActionCompiler (via builder)", () => {
 
       await expect(
         alice
-          .build({ registry: emptyRegistry, autoDiscover: { recipient: "none" }, autoSetup: false })
+          .build({ registry: emptyRegistry, autoSetup: false })
           .with(STRK)
           .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .execute()
-      ).rejects.toThrow(/Missing channel context for recipients/);
+      ).rejects.toThrow(/Channel not found for recipient/);
     });
 
     it("none: succeeds when channel exists in registry", async () => {
@@ -88,7 +89,7 @@ describe("ActionCompiler (via builder)", () => {
       // Should succeed using registry data
       applyStateChanges(
         await alice
-          .build({ registry, autoDiscover: { recipient: "none" } })
+          .build({ registry })
           .with(STRK)
           .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .execute()
@@ -121,7 +122,7 @@ describe("ActionCompiler (via builder)", () => {
       // explicit: should discover Carol (missing) but use registry for Bob
       const result = applyStateChanges(
         await alice
-          .build({ registry, autoDiscover: { recipient: "explicit" } })
+          .build({ registry, autoDiscover: { channels: "explicit" } })
           .with(STRK)
           .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .deposit({ amount: 50n, recipient: CAROL_ADDRESS })
@@ -129,8 +130,8 @@ describe("ActionCompiler (via builder)", () => {
       );
 
       // Both should be in registry now
-      expect(result.registry.channels.has(BOB_ADDRESS)).toBe(true);
-      expect(result.registry.channels.has(CAROL_ADDRESS)).toBe(true);
+      expect(result.channels.has(BOB_ADDRESS)).toBe(true);
+      expect(result.channels.has(CAROL_ADDRESS)).toBe(true);
 
       // Verify deposits worked
       const bobNotes = bob.discoverNotes().notes.get(STRK) ?? [];
@@ -142,13 +143,13 @@ describe("ActionCompiler (via builder)", () => {
     it("refresh: discovers all recipients, updates registry with fresh nonces", async () => {
       // Start with an outdated registry (nonces at 0)
       const staleRegistry = createEmptyRegistry();
-      const staleChannel = new Channel(aliceToBobChannel.key, aliceToBobChannel.recipientPublicKey); // fresh channel with nonce 0
+      const staleChannel = new Channel(aliceToBobChannel.publicKey, aliceToBobChannel.key); // fresh channel with nonce 0
       staleRegistry.channels.set(BOB_ADDRESS, staleChannel);
 
       // Do first deposit - this advances nonces in the pool
       applyStateChanges(
         await alice
-          .build({ registry: staleRegistry, autoDiscover: { recipient: "refresh" } })
+          .build({ registry: staleRegistry, autoDiscover: { channels: "refresh" } })
           .with(STRK)
           .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .execute()
@@ -157,7 +158,7 @@ describe("ActionCompiler (via builder)", () => {
       // Do second deposit - refresh should get the updated nonces
       applyStateChanges(
         await alice
-          .build({ registry: staleRegistry, autoDiscover: { recipient: "refresh" } })
+          .build({ registry: staleRegistry, autoDiscover: { channels: "refresh" } })
           .with(STRK)
           .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .execute()
@@ -203,8 +204,8 @@ describe("ActionCompiler (via builder)", () => {
         alice
           .build({
             registry: emptyRegistry,
-            autoDiscover: { notes: "none", recipient: "refresh" },
-            autoSelectNotes: true,
+            autoDiscover: { channels: "refresh" },
+            autoSelectNotes: "all",
           })
           .with(STRK)
           .withdraw({ amount: 50n })
@@ -227,8 +228,8 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({
             registry,
-            autoDiscover: { notes: "none", recipient: "refresh" },
-            autoSelectNotes: true,
+            autoDiscover: { channels: "refresh" },
+            autoSelectNotes: "naive",
           })
           .with(STRK)
           .withdraw({ amount: 100n })
@@ -252,8 +253,8 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({
             registry,
-            autoDiscover: { notes: "explicit", recipient: "refresh" },
-            autoSelectNotes: true,
+            autoDiscover: { notes: "explicit", channels: "refresh" },
+            autoSelectNotes: "naive",
           })
           .with(STRK)
           .withdraw({ amount: 100n })
@@ -283,8 +284,8 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({
             registry,
-            autoDiscover: { notes: "explicit", recipient: "refresh" },
-            autoSelectNotes: true,
+            autoDiscover: { notes: "explicit", channels: "refresh" },
+            autoSelectNotes: "naive",
           })
           .with(STRK)
           .withdraw({ amount: 100n })
@@ -308,8 +309,8 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({
             registry,
-            autoDiscover: { notes: "refresh", recipient: "refresh" },
-            autoSelectNotes: true,
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+            autoSelectNotes: "naive",
           })
           .with(STRK)
           .withdraw({ amount: 100n })
@@ -340,17 +341,17 @@ describe("ActionCompiler (via builder)", () => {
       registry.channels.set(BOB_ADDRESS, aliceToBobChannel);
       applyStateChanges(await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute());
 
-      // Deposit without explicit setup() - autoSetup should add OpenChannelAction
+      // True: adds OpenChannelAction when deposit recipient has no channel setup
       const result = applyStateChanges(
         await alice
-          .build({ autoSetup: true, autoDiscover: { recipient: "refresh" } })
+          .build({ autoSetup: true, autoDiscover: { channels: "refresh" } })
           .with(STRK)
           .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .execute()
       );
 
       // Channel should be in registry
-      expect(result.registry.channels.has(BOB_ADDRESS)).toBe(true);
+      expect(result.channels.has(BOB_ADDRESS)).toBe(true);
 
       // Bob should have the note
       const bobNotes = bob.discoverNotes().notes.get(STRK) ?? [];
@@ -387,15 +388,15 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({
             autoSetup: true,
-            autoDiscover: { recipient: "refresh", notes: "refresh" },
-            autoSelectNotes: true,
+            autoDiscover: { channels: "refresh", notes: "refresh" },
+            autoSelectNotes: "naive",
           })
           .with(STRK)
           .transfer({ recipient: BOB_ADDRESS, amount: 100n })
           .execute()
       );
 
-      expect(result.registry.channels.has(BOB_ADDRESS)).toBe(true);
+      expect(result.channels.has(BOB_ADDRESS)).toBe(true);
       const bobNotes = bob.discoverNotes().notes.get(STRK) ?? [];
       expect(bobNotes.length).toBe(1);
     });
@@ -403,11 +404,11 @@ describe("ActionCompiler (via builder)", () => {
     it("false: throws error when channel not in registry and no explicit setup", async () => {
       await expect(
         alice
-          .build({ autoSetup: false, autoDiscover: { recipient: "none" } })
+          .build({ autoSetup: false })
           .with(STRK)
           .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .execute()
-      ).rejects.toThrow(/Missing channel context for recipients/);
+      ).rejects.toThrow(/Channel not found for recipient/);
     });
 
     it("false: succeeds when explicit setup() is called", async () => {
@@ -446,8 +447,8 @@ describe("ActionCompiler (via builder)", () => {
       applyStateChanges(
         await alice
           .build({
-            autoDiscover: { notes: "refresh", recipient: "refresh" },
-            autoSelectNotes: true,
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+            autoSelectNotes: "naive",
           })
           .with(STRK)
           .withdraw({ amount: 100n })
@@ -468,8 +469,8 @@ describe("ActionCompiler (via builder)", () => {
       applyStateChanges(
         await alice
           .build({
-            autoDiscover: { notes: "refresh", recipient: "refresh" },
-            autoSelectNotes: true,
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+            autoSelectNotes: "naive",
           })
           .with(STRK)
           .inputs(note)
@@ -485,8 +486,7 @@ describe("ActionCompiler (via builder)", () => {
       await expect(
         alice
           .build({
-            autoDiscover: { notes: "refresh", recipient: "refresh" },
-            autoSelectNotes: false,
+            autoDiscover: { notes: "refresh", channels: "refresh" },
           })
           .with(STRK)
           .withdraw({ amount: 100n })
@@ -500,8 +500,7 @@ describe("ActionCompiler (via builder)", () => {
       applyStateChanges(
         await alice
           .build({
-            autoDiscover: { notes: "refresh", recipient: "refresh" },
-            autoSelectNotes: false,
+            autoDiscover: { notes: "refresh", channels: "refresh" },
           })
           .with(STRK)
           .inputs(note)
@@ -529,29 +528,29 @@ describe("ActionCompiler (via builder)", () => {
       // First deposit
       const result1 = applyStateChanges(
         await alice
-          .build({ registry, autoDiscover: { recipient: "refresh" } })
+          .build({ registry, autoDiscover: { channels: "refresh" } })
           .with(STRK)
           .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .execute()
       );
 
-      const channelAfter1 = result1.registry.channels.get(BOB_ADDRESS)!;
+      const channelAfter1 = result1.channels.get(BOB_ADDRESS)!;
       const nonce1 = channelAfter1.tokens.get(STRK)!;
 
       // Second deposit
       const result2 = applyStateChanges(
         await alice
-          .build({ registry, autoDiscover: { recipient: "refresh" } })
+          .build({ registry, autoDiscover: { channels: "refresh" } })
           .with(STRK)
           .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .execute()
       );
 
-      const channelAfter2 = result2.registry.channels.get(BOB_ADDRESS)!;
+      const channelAfter2 = result2.channels.get(BOB_ADDRESS)!;
       const nonce2 = channelAfter2.tokens.get(STRK)!;
 
       // Nonces should have advanced
-      expect(nonce2.sequence).toBeGreaterThan(nonce1.sequence);
+      expect(nonce2.noteNonce).toBeGreaterThan(nonce1.noteNonce);
 
       // Both notes should exist
       const bobNotes = bob.discoverNotes().notes.get(STRK) ?? [];
@@ -586,8 +585,8 @@ describe("ActionCompiler (via builder)", () => {
         await alice
           .build({
             registry,
-            autoDiscover: { notes: "refresh", recipient: "refresh" },
-            autoSelectNotes: true,
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+            autoSelectNotes: "naive",
           })
           .with(STRK)
           .withdraw({ amount: 100n })
@@ -620,24 +619,24 @@ describe("ActionCompiler (via builder)", () => {
       applyStateChanges(await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute());
 
       // Record initial note nonce
-      const initialNonce = registry.channels.get(BOB_ADDRESS)!.tokens.get(STRK)!.sequence;
+      const initialNonce = registry.channels.get(BOB_ADDRESS)!.tokens.get(STRK)!.noteNonce;
 
       // Deposit to Bob
       applyStateChanges(
         await alice
-          .build({ registry, autoDiscover: { recipient: "none" } })
+          .build({ registry })
           .with(STRK)
           .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .execute()
       );
 
       // Channel note nonce should be incremented
-      const updatedNonce = registry.channels.get(BOB_ADDRESS)!.tokens.get(STRK)!.sequence;
+      const updatedNonce = registry.channels.get(BOB_ADDRESS)!.tokens.get(STRK)!.noteNonce;
       expect(updatedNonce).toBe(initialNonce + 1);
 
       // Registry channel should match discovery
       const discoveredChannel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
-      expect(updatedNonce).toBe(discoveredChannel.tokens.get(STRK)!.sequence);
+      expect(updatedNonce).toBe(discoveredChannel.tokens.get(STRK)!.noteNonce);
     });
 
     it("spent notes are removed from registry after use", async () => {
@@ -647,7 +646,7 @@ describe("ActionCompiler (via builder)", () => {
       applyStateChanges(await alice.build().setup(ALICE_ADDRESS).execute());
       aliceSelfChannel = alice.discoverChannels(ALICE_ADDRESS).channels.get(ALICE_ADDRESS)!;
 
-      const registry = createEmptyRegistry();
+      let registry = createEmptyRegistry();
       registry.channels.set(ALICE_ADDRESS, aliceSelfChannel);
       applyStateChanges(await alice.build({ registry }).with(STRK).setup(ALICE_ADDRESS).execute());
 
@@ -666,12 +665,11 @@ describe("ActionCompiler (via builder)", () => {
       expect(registry.notes.get(STRK)?.length).toBe(1);
 
       // Use the note in a withdraw
-      const result = applyStateChanges(
+      registry = applyStateChanges(
         await alice
           .build({
             registry,
-            autoDiscover: { notes: "none", recipient: "none" },
-            autoSelectNotes: true,
+            autoSelectNotes: "naive",
           })
           .with(STRK)
           .withdraw({ amount: 100n })
@@ -679,7 +677,7 @@ describe("ActionCompiler (via builder)", () => {
       );
 
       // Registry should have no notes (spent note removed)
-      expect(result.registry.notes.get(STRK)?.length ?? 0).toBe(0);
+      expect(registry.notes.get(STRK)?.length ?? 0).toBe(0);
     });
 
     it("multiple deposits update channel note nonce correctly", async () => {
@@ -695,12 +693,12 @@ describe("ActionCompiler (via builder)", () => {
       applyStateChanges(await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute());
 
       // Record initial note nonce
-      const initialNonce = registry.channels.get(BOB_ADDRESS)!.tokens.get(STRK)!.sequence;
+      const initialNonce = registry.channels.get(BOB_ADDRESS)!.tokens.get(STRK)!.noteNonce;
 
       // Two deposits in one execute
       applyStateChanges(
         await alice
-          .build({ registry, autoDiscover: { recipient: "none" } })
+          .build({ registry })
           .with(STRK)
           .deposit({ amount: 50n, recipient: BOB_ADDRESS })
           .deposit({ amount: 30n, recipient: BOB_ADDRESS })
@@ -708,7 +706,7 @@ describe("ActionCompiler (via builder)", () => {
       );
 
       // Channel note nonce should be incremented by 2
-      const updatedNonce = registry.channels.get(BOB_ADDRESS)!.tokens.get(STRK)!.sequence;
+      const updatedNonce = registry.channels.get(BOB_ADDRESS)!.tokens.get(STRK)!.noteNonce;
       expect(updatedNonce).toBe(initialNonce + 2);
 
       // Bob should have 2 notes via discovery
@@ -756,9 +754,9 @@ describe("ActionCompiler (via builder)", () => {
       const notes = registry.notes.get(STRK)!;
       const note100 = notes.find((n) => n.amount === 100n)!;
 
-      const result = applyStateChanges(
+      applyStateChanges(
         await alice
-          .build({ registry, autoDiscover: { notes: "none", recipient: "none" } })
+          .build({ registry })
           .with(STRK)
           .inputs(note100)
           .withdraw({ amount: 70n })
@@ -766,10 +764,11 @@ describe("ActionCompiler (via builder)", () => {
           .execute()
       );
 
-      // Registry should have only the unused 50n note (spent note removed, remainder not added)
-      const updatedNotes = result.registry.notes.get(STRK) ?? [];
-      expect(updatedNotes.length).toBe(1);
+      // Registry should have the unused 50n note and the 30n remainder note
+      const updatedNotes = registry.notes.get(STRK) ?? [];
+      expect(updatedNotes.length).toBe(2);
       expect(updatedNotes[0].amount).toBe(50n);
+      expect(updatedNotes[1].amount).toBe(30n);
 
       // After discovery, Alice should have both the 50n and the 30n remainder
       const freshNotes = alice.discoverNotes().notes.get(STRK) ?? [];
@@ -788,19 +787,19 @@ describe("ActionCompiler (via builder)", () => {
       const registry = createEmptyRegistry();
       registry.channels.set(BOB_ADDRESS, aliceToBobChannel);
 
-      // Record initial token nonce
-      const initialTokenNonce = registry.channels.get(BOB_ADDRESS)!.tokenNonce.sequence;
+      // Record initial token count (effectively the token nonce)
+      const initialTokenCount = registry.channels.get(BOB_ADDRESS)!.tokens.size;
 
       // Setup token channel
       applyStateChanges(await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute());
 
-      // Token nonce should be incremented
-      const updatedTokenNonce = registry.channels.get(BOB_ADDRESS)!.tokenNonce.sequence;
-      expect(updatedTokenNonce).toBe(initialTokenNonce + 1);
+      // Token count should be incremented
+      const updatedTokenCount = registry.channels.get(BOB_ADDRESS)!.tokens.size;
+      expect(updatedTokenCount).toBe(initialTokenCount + 1);
 
       // Registry should match discovery
       const discoveredChannel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
-      expect(updatedTokenNonce).toBe(discoveredChannel.tokenNonce.sequence);
+      expect(updatedTokenCount).toBe(discoveredChannel.tokens.size);
     });
 
     it("registry channel matches discovery after multiple operations", async () => {
@@ -828,7 +827,7 @@ describe("ActionCompiler (via builder)", () => {
       // Multiple deposits to both tokens
       applyStateChanges(
         await alice
-          .build({ registry, autoDiscover: { recipient: "none" } })
+          .build({ registry })
           .with(STRK)
           .deposit({ amount: 100n, recipient: BOB_ADDRESS })
           .deposit({ amount: 50n, recipient: BOB_ADDRESS })
@@ -844,15 +843,15 @@ describe("ActionCompiler (via builder)", () => {
       // Compare channel key
       expect(registryChannel.key).toBe(discoveredChannel.key);
 
-      // Compare token nonce
-      expect(registryChannel.tokenNonce.sequence).toBe(discoveredChannel.tokenNonce.sequence);
+      // Compare token nonce (implicitly via size)
+      expect(registryChannel.tokens.size).toBe(discoveredChannel.tokens.size);
 
       // Compare note nonces for each token
-      expect(registryChannel.tokens.get(STRK)!.sequence).toBe(
-        discoveredChannel.tokens.get(STRK)!.sequence
+      expect(registryChannel.tokens.get(STRK)!.noteNonce).toBe(
+        discoveredChannel.tokens.get(STRK)!.noteNonce
       );
-      expect(registryChannel.tokens.get(ETH)!.sequence).toBe(
-        discoveredChannel.tokens.get(ETH)!.sequence
+      expect(registryChannel.tokens.get(ETH)!.noteNonce).toBe(
+        discoveredChannel.tokens.get(ETH)!.noteNonce
       );
     });
 
@@ -903,7 +902,7 @@ describe("ActionCompiler (via builder)", () => {
 
       applyStateChanges(
         await alice
-          .build({ registry, autoDiscover: { notes: "none", recipient: "none" } })
+          .build({ registry })
           .with(STRK)
           .inputs(note50)
           .withdraw({ amount: 50n })
@@ -912,6 +911,7 @@ describe("ActionCompiler (via builder)", () => {
 
       // Registry should have 2 notes
       const registryNotes = registry.notes.get(STRK) ?? [];
+      debugLog("test", "registry", registry);
       expect(registryNotes.length).toBe(2);
       const sortBigint = (a: bigint, b: bigint) => (a < b ? -1 : a > b ? 1 : 0);
       expect(registryNotes.map((n) => n.amount).sort(sortBigint)).toEqual([25n, 100n]);

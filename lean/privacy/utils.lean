@@ -5,8 +5,9 @@ inductive MemoryType where
   | ChannelsJ
   | Channels
   | ChannelHashes
+  | OutgoingChannels
   | SubchannelHashes
-  | Tokens
+  | SubchannelTokens
   | Notes
   | Nullifiers
   | OpenNoteToken
@@ -42,6 +43,9 @@ structure Crypto where
   unpack_zero: unpack 0 = (0, 0)
   MAX_I₀ : ℕ
   MAX_K₀ : ℕ
+  council_priv_key: PrivateKeys
+  council_pub_key: ℕ
+  h_council_priv_key: council_pub_key = priv_to_pub council_priv_key
 
 def Crypto.pack_nz (crypto: Crypto) {x y: ℕ} (h: x ≠ 0) : crypto.pack x y ≠ 0 := by
   by_contra h'
@@ -49,9 +53,9 @@ def Crypto.pack_nz (crypto: Crypto) {x y: ℕ} (h: x ≠ 0) : crypto.pack x y �
   rw [crypto.unpack_zero, crypto.unpack_pack] at h'
   exact h (Prod.ext_iff.1 h').1
 
-def note_amount (crypto: Crypto) (m: Memory) (note_id c: ℕ) : ℕ :=
+def note_amount (crypto: Crypto) (m: Memory) (note_id c token i₀ i₁: ℕ) : ℕ :=
   let w := crypto.unpack (m .Notes [note_id, 0])
-  w.2 - (if w.1 = 1 then 0 else crypto.hash [c, w.1])
+  w.2 - (if w.1 = 1 then 0 else crypto.hash [c, token, i₀, i₁, w.1])
 
 -----------------
 -- List lemmas --
@@ -59,7 +63,7 @@ def note_amount (crypto: Crypto) (m: Memory) (note_id c: ℕ) : ℕ :=
 
 -- Partition a list sum by the image of a given function.
 theorem fiber_sum
-    (α β: Type) [DecidableEq β] (ℓ: List α)
+    {α β: Type} [DecidableEq β] (ℓ: List α)
     (img: List β) (f: α → β)
     (h_img: ∀ a ∈ ℓ, f a ∈ img)
     (h_nodup: img.Nodup)
@@ -108,3 +112,105 @@ theorem filter_map_nodup (α β: Type) [DecidableEq β] (ℓ: List α) (f: α �
   intro x' x'_in_ℓ h
   simp at h
   simp [h]
+
+theorem map_maxFinIdx {α β γ: Type} {ℓ: List α} (f: (i: ℕ) → α → (i < ℓ.length) → β) (g: β → γ) :
+    (ℓ |>.mapFinIdx f |>.map g) = (ℓ |>.mapFinIdx (λ idx x h_idx ↦ g (f idx x h_idx))) := by
+  induction ℓ
+  case nil => simp
+  case cons x xs ih => simp [ih]
+
+theorem mapIdx_eq_map {α β: Type} {ℓ: List α} (f:  α → β) :
+    (ℓ |>.mapIdx (λ _ x ↦ f x)) = (ℓ |>.map f) := by
+  induction ℓ
+  case nil => simp
+  case cons x xs ih => simp [ih]
+
+theorem mapFinIdx_eq_map {α β: Type} {ℓ: List α} (f:  α → β) :
+    (ℓ |>.mapFinIdx (λ _ x _ ↦ f x)) = (ℓ |>.map f) := by
+  simp only [List.mapFinIdx_eq_mapIdx, mapIdx_eq_map]
+
+theorem filter_map_sum_to_ite {α: Type} {ℓ: List α} (f: α → Bool) (g: α → ℕ) :
+    (ℓ |>.filter f |>.map g |>.sum) =
+    (ℓ |>.map (λ x ↦ if f x then g x else 0) |>.sum) := by
+  induction ℓ
+  case nil => simp
+  case cons x xs ih =>
+    rw [List.filter_cons, List.map_cons]
+    by_cases h: f x
+    case pos => simp [h, ih]
+    case neg => simp [h, ih]
+
+theorem filterMap_map_sum_to_getD {α β: Type} {ℓ: List α} (f: α → Option β) (g: β → ℕ) :
+    (ℓ |>.filterMap f |>.map g |>.sum) =
+    (ℓ |>.map (λ x ↦ (f x).map g |>.getD 0) |>.sum) := by
+  induction ℓ
+  case nil => simp
+  case cons x xs ih =>
+    rw [List.filterMap_cons, List.map_cons]
+    cases f x
+    case none => simp [ih]
+    case some y => simp [ih]
+
+def list_to_fin_equiv
+    {α: Type} [DecidableEq α]
+    (ℓ: List α)
+    (h_nodup: ℓ.Nodup) :
+    ℓ.toFinset ≃ Fin ℓ.length := by
+  constructor
+  case toFun =>
+    intro ⟨x, h_x⟩
+    simp only [List.mem_toFinset] at h_x
+    let i := List.idxOf x ℓ
+    exact ⟨i, List.idxOf_lt_length_iff.2 h_x⟩
+  case invFun =>
+    intro ⟨i, h_i⟩
+    let val := ℓ.get ⟨i, by simp [h_i]⟩
+    exact ⟨val, by simp [val]⟩
+  case left_inv =>
+    intro ⟨x, h_x⟩
+    simp
+  case right_inv =>
+    intro ⟨i, h_i⟩
+    simp only [List.get_eq_getElem, Fin.mk.injEq]
+    apply List.Nodup.idxOf_getElem h_nodup
+
+def two_lists_equiv
+    {α: Type} [DecidableEq α]
+    (ℓ₀ ℓ₁: List α)
+    (h: ℓ₀.length = ℓ₁.length)
+    (h_nodup₀: ℓ₀.Nodup)
+    (h_nodup₁: ℓ₁.Nodup) :
+    ℓ₀.toFinset ≃ ℓ₁.toFinset :=
+  (list_to_fin_equiv ℓ₀ h_nodup₀).trans (h ▸ (list_to_fin_equiv ℓ₁ h_nodup₁).symm)
+
+theorem mapFinIdx_flatMap_Nodup
+    {α β γ: Type} [DecidableEq γ]
+    (ℓ: List α)
+    (f: (i: ℕ) → α → (i < ℓ.length) → β)
+    (g: β → List γ)
+    (g_nodup: ∀ b: β, (g b).Nodup)
+    (j: γ → ℕ)
+    (h_j: ∀ i x y, ∀ res ∈ g (f i x y), j res = i)
+    : ℓ |>.mapFinIdx f |>.flatMap g |>.Nodup := by
+  induction ℓ using List.reverseRecOn
+  case nil => simp
+  case append_singleton xs x ih =>
+    rw [List.mapFinIdx_append, List.flatMap_append]
+    apply List.Nodup.append
+    · exact ih
+        (λ i a h => f i a (by simp; omega))
+        (λ i x y res h_res => h_j i x (by simp; omega) res h_res)
+    · rw [List.mapFinIdx_singleton, List.flatMap_singleton]
+      apply g_nodup
+    · intro v h₀ h₁
+      simp only [List.mapFinIdx_singleton, List.flatMap_singleton, zero_add] at h₁
+      have h_j_v := h_j xs.length x (by simp) v h₁
+
+      rw [List.mem_flatMap] at h₀
+      have ⟨y, h_y, h₀⟩ := h₀
+      rw [List.mem_mapFinIdx] at h_y
+      have ⟨i, h_i, h_f⟩ := h_y
+
+      rw [←h_f] at h₀
+      have := h_j i xs[i] (by simp; omega) v h₀
+      omega
