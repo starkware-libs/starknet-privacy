@@ -21,7 +21,7 @@ structure SubchannelImplies
     extends SubchannelImplies₀ rm c addralice addrbob Kbob token where
   subchannel_hash: rm.m .SubchannelHashes [toSubchannelImplies₀.subchannel_input.subchannel_hash crypto] ≠ 0
   subchannel_tokens₀ : rm.m .SubchannelTokens [toSubchannelImplies₀.subchannel_input.subchannel_id crypto, 0] = r
-  subchannel_tokens₁ : rm.m .SubchannelTokens [toSubchannelImplies₀.subchannel_input.subchannel_id crypto, 1] = crypto.hash [c, r] + token
+  subchannel_tokens₁ : rm.m .SubchannelTokens [toSubchannelImplies₀.subchannel_input.subchannel_id crypto, 1] = crypto.hash [c, k₀, k₁, r] + token
   prev_subchannel_exists: k₁ = 0 ∨ rm.m .SubchannelTokens [crypto.hash [c, k₀, k₁ - 1], 0] ≠ 0
 
 theorem SubchannelImplies.h_channel_exists

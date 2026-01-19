@@ -32,7 +32,7 @@ def scan_tokens_for_channel_k₀
     let k₁ ← (List.range bound)
     let enc_token := m .SubchannelTokens [crypto.hash [c, k₀, k₁], 1]
     let r := m .SubchannelTokens [crypto.hash [c, k₀, k₁], 0]
-    let sym_key := crypto.hash [c, r]
+    let sym_key := crypto.hash [c, k₀, k₁, r]
     return enc_token - sym_key
 
 theorem scan_tokens_for_channel_k₀_monotone

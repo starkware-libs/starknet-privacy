@@ -47,8 +47,8 @@ theorem note_amount_nz_immutable
     {crypto: Crypto} {rm rm': ReachableMemory crypto}
     (h_extends: rm'.extends rm)
     (sn: ScannedNote)
-    (h_nonzero: note_amount crypto rm (sn.note_id crypto) sn.c ≠ 0) :
-    note_amount crypto rm' (sn.note_id crypto) sn.c ≠ 0 := by
+    (h_nonzero: sn.amount crypto rm ≠ 0) :
+    sn.amount crypto rm' ≠ 0 := by
   revert rm'
   apply invariant_induction_for_extends rm
 
@@ -89,7 +89,7 @@ theorem note_amount_eq_amount
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
     (h: inp ∈ create_note_actions crypto rm) :
     rm.m .Notes [inp.note_id crypto, 0] ≠ 0 ∧
-    note_amount crypto rm (inp.note_id crypto) (inp.c crypto) =
+    (inp.to_scanned_note crypto).amount crypto rm =
       inp.amount + sum_deposits_for_note_id crypto rm (inp.note_id crypto) := by
   revert rm
   apply ReachableMemory.induction
@@ -105,7 +105,7 @@ theorem note_amount_eq_amount
       let info := create_note_info crypto inp rm success
       have note_didnt_exist : ¬note_exists rm.m (inp.note_id crypto) := by
         simp [note_exists, info.old_value_was_zero]
-      unfold note_amount
+      unfold CreateNoteInput.to_scanned_note ScannedNote.amount note_amount
       dsimp only
       refine ⟨?_, ?_⟩
       · rw [ReachableMemory.add_m, run_action, ←info.h_m']
@@ -125,7 +125,8 @@ theorem note_amount_eq_amount
     case tail h₀ =>
       have ⟨h₀, h₁⟩ := ih h₀
       let info := create_note_info crypto inp' rm success
-      rw [note_amount, ReachableMemory.add_m, run_action, ←info.h_m']
+      rw [CreateNoteInput.to_scanned_note, ScannedNote.amount, note_amount,
+        ReachableMemory.add_m, run_action, ←info.h_m']
       have h_note_id : inp.note_id crypto ≠ inp'.note_id crypto :=
           λ h' ↦ h₀ (h' ▸ info.old_value_was_zero)
 
@@ -143,10 +144,12 @@ theorem note_amount_eq_amount
     use note_exists_monotone _ h₀
 
     rw [sum_deposits_for_note_id_next success]
-    rw [note_amount, ReachableMemory.add_m, run_action, ←info.h_m']
+    rw [CreateNoteInput.to_scanned_note, ScannedNote.amount, note_amount,
+      ReachableMemory.add_m, run_action, ←info.h_m']
 
     by_cases h_note_id: inp.note_id crypto = inp'.note_id
     case pos =>
+      simp only [ScannedNote.amount, ScannedNote.note_id] at h₁
       simp only [h_note_id, ↓reduceIte] at h₁ ⊢
 
       rw [info.memory_diff₀]
@@ -230,7 +233,7 @@ theorem sum_of_created_notes_to_scanned_notes₀
       scan_notes_for_recipient (.from rm) addrbob kbob
       |>.filter (λ sn ↦ sn.token = token)
       |>.dedup
-      |>.map (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c)
+      |>.map (λ sn ↦ sn.amount crypto rm)
       |>.sum
     ) := by
 
@@ -374,7 +377,7 @@ theorem sum_of_created_notes_to_scanned_notes
       scan_notes_for_recipient (.from rm) addrbob kbob
       |>.filter (λ sn ↦ sn.token = token)
       |>.dedup
-      |>.map (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c)
+      |>.map (λ sn ↦ sn.amount crypto rm)
       |>.sum
     ) := by
   rw [sum_deposit_amounts_eq, sum_of_created_notes_to_scanned_notes₀ h_kbob]
@@ -486,7 +489,7 @@ theorem cancel_note_actions_note_id_nodup
 theorem CancelImplies.amount_eq
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CancelNoteInput}
     (cancel_imp: CancelImplies rm inp) :
-    note_amount crypto rm (inp.note_id crypto) inp.c = inp.amount := by
+    inp.to_scanned_note.amount crypto rm = inp.amount := by
   revert rm
   apply ReachableMemory.induction
   case inv₀ => intro h; have := h.h_action; contradiction
@@ -496,8 +499,8 @@ theorem CancelImplies.amount_eq
   cases cancel_imp.h_action
   case head =>
     let info := cancel_note_info crypto inp rm success
-    rw [note_amount, ReachableMemory.add_m, run_action, ←info.h_m']
-    rw [CancelNoteInput.note_id]
+    rw [CancelNoteInput.to_scanned_note, ScannedNote.amount, note_amount,
+      ReachableMemory.add_m, run_action, ←info.h_m']
     rw [info.no_change _ _ (by simp)]
     rw [←note_amount, info.h_amount]
   case tail h =>
@@ -508,17 +511,19 @@ theorem CancelImplies.amount_eq
       let info := create_note_info crypto inp' rm success
       have : inp.note_id crypto ≠ inp'.note_id crypto :=
         λ h' ↦ (h' ▸ cancel_imp₀.h_note_exists) info.old_value_was_zero
-      rw [note_amount, ReachableMemory.add_m, run_action, ←info.h_m']
+      rw [CancelNoteInput.to_scanned_note, ScannedNote.amount, note_amount,
+        ReachableMemory.add_m, run_action, ←info.h_m']
       rw [info.no_change _ _ (by simp [this]) (by simp)]
       exact ih
     case OpenDeposit inp' =>
       let info := open_deposit_info crypto inp' rm success
       have : inp.note_id crypto ≠ inp'.note_id := by
         by_contra h'
-        have note_amount_zero : note_amount crypto rm (inp.note_id crypto) inp.c = 0 := by
+        have note_amount_zero : inp.to_scanned_note.amount crypto rm = 0 := by
           simp [note_amount, h' ▸ info.old_value, crypto.unpack_pack]
         exact cancel_imp₀.amount_nz (ih ▸ note_amount_zero)
-      rw [note_amount, ReachableMemory.add_m, run_action, ←info.h_m']
+      rw [CancelNoteInput.to_scanned_note, ScannedNote.amount, note_amount,
+        ReachableMemory.add_m, run_action, ←info.h_m']
       rw [info.no_change _ _ (by simp [this])]
       exact ih
 
@@ -553,7 +558,7 @@ theorem sum_of_canceled_notes_to_scanned_notes
       |>.filter (λ sn ↦ sn.token = token)
       |>.dedup
       |>.filter (λ sn ↦ rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] ≠ 0)
-      |>.map (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c)
+      |>.map (λ sn ↦ sn.amount crypto rm)
       |>.sum
     ) := by
 
@@ -604,13 +609,13 @@ theorem sum_create_note_cancel_note
       |>.filter (λ sn ↦ sn.token = token)
       |>.dedup
       |>.filter (λ sn ↦ rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] = 0)
-      |>.map (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c)
+      |>.map (λ sn ↦ sn.amount crypto rm)
       |>.sum
     ) := by
   -- Define abbreviations for readability
   set ℓ := scan_notes_for_recipient (.from rm) addrbob kbob
   set f_token := λ sn: ScannedNote ↦ sn.token = token
-  set amount := λ sn: ScannedNote ↦ note_amount crypto rm (sn.note_id crypto) sn.c
+  set amount := λ sn: ScannedNote ↦ sn.amount crypto rm
   let f_spent := λ sn: ScannedNote ↦ (rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] ≠ 0)
   let f_unspent := λ sn: ScannedNote ↦ (rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] = 0)
 

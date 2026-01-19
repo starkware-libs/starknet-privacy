@@ -26,7 +26,7 @@ def scan_outgoing_channels
   (List.range bound).map (λ s ↦
     let addrbob_enc := m .OutgoingChannels [crypto.hash [addralice, kalice, s], 1]
     let r := m .OutgoingChannels [crypto.hash [addralice, kalice, s], 0]
-    let sym_key_addrbob := crypto.hash [addralice, kalice, r]
+    let sym_key_addrbob := crypto.hash [addralice, kalice, s, r]
 
     addrbob_enc - sym_key_addrbob
   )

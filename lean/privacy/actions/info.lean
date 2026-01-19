@@ -237,7 +237,7 @@ structure CancelNoteInfo (crypto: Crypto) (inp: CancelNoteInput) (m: Memory) whe
   subchannel_exists: m .SubchannelHashes [crypto.hash [inp.c, inp.addrbob, inp.Kbob crypto, inp.token]] ≠ 0
   nullifier_didnt_exist: m .Nullifiers [inp.nullifier crypto] = 0
   r_ne_zero: m .Notes [inp.note_id crypto, 0] ≠ 0
-  h_amount: note_amount crypto m (inp.note_id crypto) inp.c = inp.amount
+  h_amount: note_amount crypto m (inp.note_id crypto) inp.c inp.token inp.i₀ inp.i₁= inp.amount
   kbob_private_key: inp.kbob ∈ crypto.PrivateKeys
   amount_ne_zero: inp.amount ≠ 0
   no_change: ∀ t, ∀ x,
