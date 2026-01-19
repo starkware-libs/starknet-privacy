@@ -37,4 +37,5 @@ pub(crate) mod internal_errors {
     pub const ZERO_ENC_SUBCHANNEL_TOKEN: felt252 = 'ZERO_ENC_SUBCHANNEL_TOKEN';
     pub const ZERO_DERIVED_PUBLIC_KEY: felt252 = 'ZERO_DERIVED_PUBLIC_KEY';
     pub const ZERO_ENC_PRIVATE_KEY: felt252 = 'ZERO_ENC_PRIVATE_KEY';
+    pub const ENC_NOTE_NON_ZERO_TOKEN: felt252 = 'ENC_NOTE_NON_ZERO_TOKEN';
 }
