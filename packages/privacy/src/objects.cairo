@@ -1,6 +1,7 @@
 use core::dict::{Felt252Dict, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
 use privacy::errors;
+use privacy::utils::{decrypt_note_amount, encrypt_note_amount};
 use starknet::ContractAddress;
 
 pub(crate) type TokenBalances = Felt252Dict<u128>;
@@ -95,6 +96,47 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
     }
     /// Check if `enc_token` field is non-zero.
     fn is_non_zero(self: @EncSubchannelInfo) -> bool {
+        !self.is_zero()
+    }
+}
+
+/// A note containing encrypted value and token information.
+#[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
+pub(crate) struct Note {
+    /// The encrypted value of the note.
+    // TODO: Implement open notes.
+    pub enc_value: felt252,
+    /// The token address of the note (zero for encrypted notes).
+    pub token: ContractAddress,
+}
+
+#[generate_trait]
+pub impl NoteImpl of NoteTrait {
+    fn encrypt(
+        channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
+    ) -> Note {
+        Note {
+            enc_value: encrypt_note_amount(:channel_key, :token, :index, :salt, :amount),
+            token: Zero::zero(),
+        }
+    }
+
+    fn decrypt(self: @Note, channel_key: felt252, token: ContractAddress, index: usize) -> u128 {
+        decrypt_note_amount(*self.enc_value, :channel_key, :token, :index)
+    }
+}
+
+pub impl NoteZero of Zero<Note> {
+    fn zero() -> Note {
+        Note { enc_value: Zero::zero(), token: Zero::zero() }
+    }
+
+    // A note is considered zero iff both the `enc_value` and `token` fields are zero.
+    fn is_zero(self: @Note) -> bool {
+        return self.enc_value.is_zero() && self.token.is_zero();
+    }
+
+    fn is_non_zero(self: @Note) -> bool {
         !self.is_zero()
     }
 }
