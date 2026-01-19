@@ -70,6 +70,10 @@ pub trait IClient<T> {
 
     fn execute_panic(ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
 
+    fn execute_view(
+        self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+    ) -> Span<ServerAction>;
+
     fn __validate__(
         self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> felt252;
