@@ -48,7 +48,7 @@ theorem immutability₀ (crypto: Crypto) (m: Memory) (action: Action) (t: Memory
     let info := create_channel_info crypto inp m success
     rw [run_action, ←info.h_m', info.no_change _ _ (by
       simp only [ne_eq, Prod.mk.injEq, h_t, false_and, not_false_eq_true, not_and, true_and]
-      refine ⟨?_, ?_, ?_, ?_⟩
+      refine ⟨?_, ?_, ?_⟩
 
       · intro h₀ h₁
         rw [h₀, h₁, info.channel_didnt_exist] at h_nonzero
@@ -56,7 +56,6 @@ theorem immutability₀ (crypto: Crypto) (m: Memory) (action: Action) (t: Memory
       · intro h₀ h₁
         rw [h₀, h₁, info.outgoing_channel_didnt_exist] at h_nonzero
         contradiction
-      · intro h₀ h₁; simp [h₀, h₁] at h_t
       · intro h₀ h₁; simp [h₀, h₁] at h_t
     )]
 
