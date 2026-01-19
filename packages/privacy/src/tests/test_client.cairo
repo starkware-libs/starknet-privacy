@@ -167,6 +167,10 @@ fn test_transfer() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
+    assert_eq!(test.privacy.get_note(note_id: enc_note.id), Zero::zero());
+
+    test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
 }
@@ -223,6 +227,10 @@ fn test_transfer_to_self() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
+    assert_eq!(test.privacy.get_note(note_id: enc_note.id), Zero::zero());
+
+    test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
 }
@@ -307,6 +315,11 @@ fn test_transfer_one_to_many() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
+    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), Zero::zero());
+    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), Zero::zero());
+
+    test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_amount);
     assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), enc_note_2.enc_amount);
@@ -398,6 +411,11 @@ fn test_transfer_many_to_one() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
+    assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
+    assert_eq!(test.privacy.get_note(note_id: enc_note.id), Zero::zero());
+
+    test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
     assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
@@ -506,6 +524,12 @@ fn test_transfer_many_to_many() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
+    assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
+    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), Zero::zero());
+    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), Zero::zero());
+
+    test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
     assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_amount);
@@ -2618,7 +2642,6 @@ fn test_compile_client_actions_set_viewing_key() {
     let mut user_1 = test.new_user();
 
     let random = user_1.get_random();
-    let mut spy_events = spy_events();
     let actions = user_1
         .compile_client_actions(
             client_actions: [
@@ -2653,6 +2676,11 @@ fn test_compile_client_actions_set_viewing_key() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert_eq!(user_1.get_public_key(), Zero::zero());
+    assert_eq!(user_1.get_enc_private_key(), Zero::zero());
+
+    let mut spy_events = spy_events();
+    test.privacy.execute_actions(:actions);
     assert_eq!(user_1.get_public_key(), user_1.public_key);
     assert_eq!(user_1.get_enc_private_key(), enc_private_key);
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
@@ -2720,6 +2748,13 @@ fn test_compile_client_actions_open_channel() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(!test.privacy.channel_exists(channel_id: expected_channel_id));
+    assert_eq!(user_2.get_num_of_channels(), 0);
+    let result = user_2.safe_get_channel_info(channel_index: 0);
+    assert_panic_with_error(:result, expected_error: "Index out of bounds");
+    assert_eq!(user_1.get_num_of_channels(), 0);
+
+    test.privacy.execute_actions(:actions);
     assert!(test.privacy.channel_exists(channel_id: expected_channel_id));
     assert_eq!(user_2.get_num_of_channels(), 1);
     assert_eq!(user_2.get_channel_info(channel_index: 0), expected_enc_channel_info);
@@ -2778,6 +2813,12 @@ fn test_compile_client_actions_open_subchannel() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(!test.privacy.subchannel_exists(subchannel_id: expected_subchannel_id));
+    assert_eq!(
+        test.privacy.get_subchannel_info(subchannel_key: expected_subchannel_key), Zero::zero(),
+    );
+
+    test.privacy.execute_actions(:actions);
     assert!(test.privacy.subchannel_exists(subchannel_id: expected_subchannel_id));
     assert_eq!(
         test.privacy.get_subchannel_info(subchannel_key: expected_subchannel_key),
@@ -2829,7 +2870,14 @@ fn test_compile_client_actions_deposit_create_note() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), Zero::zero());
+    assert_eq!(token.balance_of(address: user_1.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+
+    test.privacy.execute_actions(:actions);
     assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount);
+    assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
 
 #[test]
@@ -2931,6 +2979,10 @@ fn test_compile_client_actions_use_note_create_note() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(!test.privacy.nullifier_exists(:nullifier));
+    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), Zero::zero());
+
+    test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
     assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount);
 }
@@ -2987,7 +3039,14 @@ fn test_compile_client_actions_use_note_withdraw() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    assert!(!test.privacy.nullifier_exists(:nullifier));
+    assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+
+    test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
+    assert_eq!(token.balance_of(address: user_1.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 }
 
 #[test]
@@ -3664,7 +3723,10 @@ fn test_compile_client_actions_writes() {
     );
 
     // Test CreateNote writes.
-    // TODO: Execute actions when client reverts properly.
+    user.increase_token_balance(:token, :amount);
+    user.approve(:token, amount: amount.into());
+    test.privacy.execute_actions(actions: server_actions);
+
     let create_note = ClientAction::CreateNote(
         CreateNoteInput {
             sender_private_key: user.private_key,
@@ -3751,7 +3813,17 @@ fn test_client_transfers_dont_execute() {
     let result = test.privacy.safe_execute_actions(actions: server_actions);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 
-    // TODO: Actual deposit when snforge fix the storage revert bug.
+    // Execute deposit.
+    user.increase_token_balance(:token, :amount);
+    user.approve(:token, amount: amount.into());
+
+    assert_eq!(token.balance_of(address: user.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+
+    test.privacy.execute_actions(actions: server_actions);
+
+    assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 
     // Withdraw.
     token.set_balance(address: test.privacy.address, amount: Zero::zero());
@@ -3796,9 +3868,6 @@ fn test_client_transfers_dont_execute() {
     ]
         .span();
     assert_eq!(server_actions, expected_server_actions);
-
-    // TODO: Remove when client reverts by itself.
-    test.privacy.revert_actions_for_testing(actions: server_actions);
 
     let result = test.privacy.safe_execute_actions(actions: server_actions);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
