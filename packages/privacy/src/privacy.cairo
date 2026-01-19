@@ -138,21 +138,32 @@ pub mod Privacy {
             let mut token_balances: TokenBalances = Default::default();
             for client_action in client_actions {
                 client_action.assert_and_set_phase(ref :current_phase);
-                let actions = match *client_action {
-                    ClientAction::SetViewingKey(input) => self.set_viewing_key(:user_addr, :input),
-                    ClientAction::OpenChannel(input) => self
-                        .open_channel(sender_addr: user_addr, :input),
-                    ClientAction::OpenSubchannel(input) => self
-                        .open_subchannel(sender_addr: user_addr, :input),
-                    ClientAction::Deposit(input) => self
-                        .deposit(:user_addr, :input, ref :token_balances),
-                    ClientAction::CreateNote(input) => self
-                        .create_note(owner_addr: user_addr, :input, ref :token_balances),
-                    ClientAction::UseNote(input) => self
-                        .use_note(owner_addr: user_addr, :input, ref :token_balances),
-                    ClientAction::Withdraw(input) => self.withdraw(:input, ref :token_balances),
+                let (actions, should_execute) = match *client_action {
+                    ClientAction::SetViewingKey(input) => (
+                        self.set_viewing_key(:user_addr, :input), true,
+                    ),
+                    ClientAction::OpenChannel(input) => (
+                        self.open_channel(sender_addr: user_addr, :input), true,
+                    ),
+                    ClientAction::OpenSubchannel(input) => (
+                        self.open_subchannel(sender_addr: user_addr, :input), true,
+                    ),
+                    ClientAction::Deposit(input) => (
+                        self.deposit(:user_addr, :input, ref :token_balances), false,
+                    ),
+                    ClientAction::CreateNote(input) => (
+                        self.create_note(owner_addr: user_addr, :input, ref :token_balances), true,
+                    ),
+                    ClientAction::UseNote(input) => (
+                        self.use_note(owner_addr: user_addr, :input, ref :token_balances), true,
+                    ),
+                    ClientAction::Withdraw(input) => (
+                        self.withdraw(:input, ref :token_balances), false,
+                    ),
                 };
-                self.execute_actions(actions.span());
+                if should_execute {
+                    self.execute_actions(actions.span());
+                }
                 server_actions.extend(actions);
             }
             token_balances.squash().assert_valid();
