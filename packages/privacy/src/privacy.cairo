@@ -24,13 +24,14 @@ pub mod Privacy {
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_signature, decrypt_note_amount, derive_public_key,
         encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
-        is_canonical_key, send_message_to_server,
+        is_canonical_key, send_message_to_server, unwrap_execute_panic_result,
     };
     use privacy::{errors, events};
     use starknet::storage::{
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
+    use starknet::syscalls::call_contract_syscall;
     use starknet::{ContractAddress, VALIDATED, get_caller_address, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -44,6 +45,10 @@ pub mod Privacy {
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
+
+    // TODO: Create consts file?
+    pub(crate) const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
+    const ERROR_WRAPPER: felt252 = 'PRIVACY_ERROR_WRAPPER';
 
     #[storage]
     struct Storage {
@@ -130,6 +135,27 @@ pub mod Privacy {
         ) {
             assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            let mut calldata = array![];
+            user_addr.serialize(ref calldata);
+            client_actions.serialize(ref calldata);
+            let result = call_contract_syscall(
+                address: get_contract_address(),
+                entry_point_selector: selector!("execute_panic"),
+                calldata: calldata.span(),
+            );
+
+            let mut serialized_server_actions = unwrap_execute_panic_result(:result);
+            let server_actions = Serde::deserialize(ref serialized_server_actions)
+                .expect(internal_errors::DESERIALIZE_FAILED);
+            send_message_to_server(:server_actions);
+        }
+
+        // Assumes all panics that may occur before the end of this function are from this contract.
+        // Wraps all external calls with syscall to wrap possible panics with `ERROR_WRAPPER`.
+        fn execute_panic(
+            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) {
+            // TODO: Consider extracting logic to internal `main` function.
             // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
             let mut server_actions: Array<ServerAction> = array![];
@@ -165,9 +191,21 @@ pub mod Privacy {
                 }
                 server_actions.extend(actions);
             }
-            token_balances.squash().assert_valid();
-            assert_valid_signature(:user_addr);
-            send_message_to_server(server_actions.span());
+
+            let mut message = array![];
+            // `assert_valid_signature` must be the last call before panicking, to ensure contract
+            // storage is not modified.
+            if let Err(err) = assert_valid_signature(:user_addr) {
+                message.append(ERROR_WRAPPER);
+                message.extend(err);
+                message.append(ERROR_WRAPPER);
+            } else {
+                token_balances.squash().assert_valid();
+                message.append(OK_WRAPPER);
+                server_actions.serialize(ref message);
+                message.append(OK_WRAPPER);
+            }
+            panic(message);
         }
     }
 
