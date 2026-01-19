@@ -3,13 +3,15 @@ use core::ec::{EcPoint, EcPointTrait};
 use core::num::traits::Zero;
 use privacy::actions::ServerAction;
 use privacy::errors;
+use privacy::errors::internal_errors;
 use privacy::hashes::{
     compute_enc_address_hash, compute_enc_amount_hash, compute_enc_channel_key_hash,
     compute_enc_private_key_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
 };
 use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr};
+use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER};
 use starknet::storage::{StorageAsPointer, StoragePath};
-use starknet::syscalls::send_message_to_l1_syscall;
+use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
 use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_tx_info};
 use starkware_utils::constants::TWO_POW_128;
 
@@ -17,6 +19,9 @@ pub mod constants {
     use core::num::traits::Pow;
 
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
+    pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
+    pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
+    pub const ERROR_WRAPPER: felt252 = 'PRIVACY_ERROR_WRAPPER';
 }
 
 // TODO: Test the util and hash functions.
@@ -230,22 +235,45 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
     (value_1.try_into().expect('UNPACK1_OVERFLOW'), value_2.try_into().expect('UNPACK2_OVERFLOW'))
 }
 
-#[starknet::interface]
-pub(crate) trait AccountABI<TState> {
-    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
-}
-
-pub(crate) fn assert_valid_signature(user_addr: ContractAddress) {
+pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<(), Array<felt252>> {
     let tx_info = get_tx_info().unbox();
     let tx_hash = tx_info.transaction_hash;
     let signature = tx_info.signature;
-    let account_abi = AccountABIDispatcher { contract_address: user_addr };
-    let is_valid = account_abi.is_valid_signature(hash: tx_hash, signature: signature.into());
+
+    // Use syscall to wrap possible panics with `ERROR_WRAPPER`.
+    let mut calldata = array![];
+    tx_hash.serialize(ref calldata);
+    signature.serialize(ref calldata);
+    let mut serialized_result = call_contract_syscall(
+        address: user_addr,
+        entry_point_selector: selector!("is_valid_signature"),
+        calldata: calldata.span(),
+    )?;
+
+    let is_valid: felt252 = Serde::deserialize(ref serialized_result)
+        .expect(internal_errors::DESERIALIZE_FAILED);
     assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
+    Ok(())
 }
 
 pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
     let mut payload = array![];
     server_actions.serialize(ref payload);
     send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
+}
+
+pub(crate) fn unwrap_execute_and_panic_result(
+    syscall_result: Result<Span<felt252>, Array<felt252>>,
+) -> Span<felt252> {
+    let mut panic_message = syscall_result.expect_err(internal_errors::EXPECTED_PANIC);
+    let message_len = panic_message.len();
+    assert(*panic_message[message_len - 1] == ENTRYPOINT_FAILED, internal_errors::EXPECTED_PANIC);
+    #[allow(manual_assert)]
+    if *panic_message[0] != OK_WRAPPER || *panic_message[message_len - 2] != OK_WRAPPER {
+        panic(panic_message);
+    }
+
+    let _ = panic_message.pop_front();
+    // TODO: Consider also popping the last 2 elements.
+    panic_message.span()
 }
