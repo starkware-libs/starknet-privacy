@@ -2,7 +2,7 @@
  * Shared helpers for testing utilities.
  */
 
-import type { CallAndProof, ExecuteResult, Proof } from "../interfaces.js";
+import type { CallAndProof, ExecuteResult, PrivateRegistry, Proof } from "../interfaces.js";
 import { StateCallback } from "./pool.js";
 
 // ============ Mock Helpers ============
@@ -38,7 +38,7 @@ export const Withdrawal = Symbol("Withdrawal");
  * This executes the callbacks returned from PrivacyPool.execute() to actually
  * apply the state changes to the pool.
  */
-export function applyStateChanges(result: ExecuteResult): ExecuteResult {
+export function applyStateChanges(result: ExecuteResult): PrivateRegistry {
   const { callAndProof } = result;
   if (
     callAndProof.call &&
@@ -48,5 +48,5 @@ export function applyStateChanges(result: ExecuteResult): ExecuteResult {
   ) {
     callAndProof.call.call();
   }
-  return result;
+  return result.registry;
 }

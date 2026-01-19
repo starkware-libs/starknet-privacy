@@ -25,7 +25,7 @@ const ALICE_ADDRESS = "0xA11CE";
 const ALICE_PRIVATE_KEY = 12345n;
 
 const AUTO_OPTIONS = {
-  autoDiscover: { recipient: "refresh" as const },
+  autoDiscover: { channels: "refresh" as const },
   autoSetup: true,
 };
 
@@ -78,11 +78,11 @@ describe("Swap Scenario", () => {
     // 2. Prepare the swap transaction
     // Get fresh channel state to calculate note ID
     const channel = alice.discoverChannels(ALICE_ADDRESS).channels.get(ALICE_ADDRESS)!;
-    const ethNonce = channel.tokens.get(ETH)!.sequence;
+    const ethNonce = channel.tokens.get(ETH)!.noteNonce;
 
     // Calculate note ID for the upcoming ETH open note
     // noteId = h(channelKey, token, index)
-    const ethNoteId = hashes.noteId(channel.key, ETH, ethNonce);
+    const ethNoteId = hashes.noteId(channel.key!, ETH, ethNonce);
 
     // Construct raw actions
     // - CreateNote (ETH, open)

@@ -1,0 +1,55 @@
+# Privacy Pool Discovery Service
+
+The Privacy Pool Discovery Service is a dedicated indexing layer that enables wallets to efficiently discover encrypted channels and notes from the privacy pool smart contract. It maintains a hot cache of on-chain state and serves decrypted, filtered results to clients through a simple, paginated API.
+
+Core value: transform expensive on-chain storage reads into fast local database lookups with a simple, paginated API.
+
+## Architecture
+- Discovery API: stateless HTTP API with cursor-based pagination.
+- Discovery engine: traversal logic, decryption, nullifier filtering.
+- Hot cache: SQLite database populated from on-chain storage diffs.
+- Indexer: ingests blocks from RPC and extracts storage diffs relevant to the pool contract.
+- RPC fallback (optional): direct reads during cold start or reorgs.
+
+## Key design decisions
+- Hybrid hot cache + RPC fallback: cache for most reads; RPC for ingestion and edge cases.
+- Per-request decryption keys: keys provided per request, never stored; decrypted data is request-scoped.
+- Bounded synchronous requests: capped read budget with cursor-based pagination.
+- Soft finality: operates against ACCEPTED_ON_L2 blocks; clients handle reorgs (reindex from scratch).
+
+## API endpoints (planned)
+- POST /v1/discovery/incoming/channels
+- POST /v1/discovery/incoming/subchannels
+- POST /v1/discovery/incoming/notes
+- POST /v1/discovery/incoming/sync
+- POST /v1/discovery/outgoing/sync
+- GET /health
+- GET /status
+
+## Operational characteristics (planned)
+- SLO: indexer within 1 block of chain head 99.9% of the time.
+- Storage: SQLite WAL mode, append-only entries, snapshot support for cold start.
+- Security: TLS termination, per-IP rate limiting, input validation, sensitive field filtering in logs.
+- Resilience: arbitrary reorg depth, RPC health monitoring with failover, graceful backfill.
+- Compatibility: allowlisted contract, block-height-based layout versioning for upgrades.
+
+## Error handling (planned)
+- BLOCK_REORGED: re-sync from scratch.
+- DECRYPTION_FAILED: check key, retry with correct key.
+- RATE_LIMITED: retry after Retry-After header.
+- SERVICE_UNAVAILABLE: retry with exponential backoff.
+
+## Technology stack (target)
+Rust with Tokio runtime and Axum HTTP server. SQLite in WAL mode for storage. Packaged as static binaries (Linux x86, macOS ARM) and Docker image.
+
+## Run
+From the repo root:
+```bash
+cargo run -p discovery-service -- --log-level info
+```
+
+## Test
+From the repo root:
+```bash
+cargo test -p discovery-service
+```

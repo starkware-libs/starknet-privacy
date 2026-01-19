@@ -42,10 +42,7 @@ abbrev CreateChannelInput.outgoing_channel_id (crypto: Crypto) (inp: CreateChann
   crypto.hash [inp.addralice, inp.kalice, inp.s]
 
 abbrev CreateChannelInput.enc_addrbob (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
-  crypto.hash [inp.addralice, inp.kalice, inp.r, 0] + inp.addrbob
-
-abbrev CreateChannelInput.enc_Kbob (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
-  crypto.hash [inp.addralice, inp.kalice, inp.r, 1] + inp.Kbob
+  crypto.hash [inp.addralice, inp.kalice, inp.s, inp.r] + inp.addrbob
 
 def create_channel (crypto: Crypto) (inp: CreateChannelInput) (m: Memory) : List ServerAction × Bool :=
   let alice_registered := m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
@@ -56,7 +53,6 @@ def create_channel (crypto: Crypto) (inp: CreateChannelInput) (m: Memory) : List
     .ReadAssert .PublicKeys [inp.addrbob] inp.Kbob,
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 0] inp.r,
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 1] (inp.enc_addrbob crypto),
-    .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 2] (inp.enc_Kbob crypto),
   ], inp.Kbob ≠ 0 ∧ alice_registered ∧ inp.kalice ∈ crypto.PrivateKeys ∧ inp.r ≠ 0 ∧ prev_outgoing_exists)
 
 -----------------------
@@ -70,7 +66,7 @@ abbrev CreateSubchannelInput.subchannel_id (crypto: Crypto) (inp: CreateSubchann
   crypto.hash [inp.c, inp.k₀, inp.k₁]
 
 abbrev CreateSubchannelInput.enc (crypto: Crypto) (inp: CreateSubchannelInput) : ℕ :=
-  crypto.hash [inp.c, inp.r] + inp.token
+  crypto.hash [inp.c, inp.k₀, inp.k₁, inp.r] + inp.token
 
 abbrev CreateSubchannelInput.subchannel_hash (crypto: Crypto) (inp: CreateSubchannelInput) : ℕ :=
   crypto.hash [inp.c, inp.addrbob, inp.Kbob, inp.token]
@@ -98,7 +94,7 @@ abbrev CreateNoteInput.note_id (crypto: Crypto) (inp: CreateNoteInput) : ℕ :=
   crypto.hash [inp.c crypto, inp.token, inp.i₀, inp.i₁]
 
 abbrev CreateNoteInput.enc (crypto: Crypto) (inp: CreateNoteInput) : ℕ :=
-  (if inp.r = 1 then 0 else crypto.hash [inp.c crypto, inp.r]) + inp.amount
+  (if inp.r = 1 then 0 else crypto.hash [inp.c crypto, inp.token, inp.i₀, inp.i₁, inp.r]) + inp.amount
 
 def create_note (crypto: Crypto) (inp: CreateNoteInput) (m: Memory) : List ServerAction × Bool :=
   let c := inp.c crypto
@@ -132,7 +128,7 @@ abbrev CancelNoteInput.Kbob (crypto: Crypto) (inp: CancelNoteInput) : ℕ :=
 def cancel_note (crypto: Crypto) (inp: CancelNoteInput) (m: Memory) : List ServerAction × Bool :=
   let subchannel_exists := m .SubchannelHashes [crypto.hash [inp.c, inp.addrbob, inp.Kbob crypto, inp.token]] ≠ 0
   let r := m .Notes [inp.note_id crypto, 0]
-  let dec_amount := note_amount crypto m (inp.note_id crypto) inp.c
+  let dec_amount := note_amount crypto m (inp.note_id crypto) inp.c inp.token inp.i₀ inp.i₁
   ([
     .WriteOnce .Nullifiers [inp.nullifier crypto] 1,
   ], subchannel_exists ∧ r ≠ 0 ∧ dec_amount = inp.amount ∧ inp.kbob ∈ crypto.PrivateKeys ∧ inp.amount ≠ 0)
@@ -178,4 +174,13 @@ abbrev filter_CancelNote (action: Action) : Option CancelNoteInput :=
 
 theorem filter_CancelNote_some (action: Action) :
     filter_CancelNote action = some inp ↔ action = .CancelNote inp := by
+  cases action; all_goals simp
+
+abbrev filter_OpenDeposit (action: Action) : Option OpenDepositInput :=
+  match action with
+    | .OpenDeposit inp => some inp
+    | _ => none
+
+theorem filter_OpenDeposit_some (action: Action) :
+    filter_OpenDeposit action = some inp ↔ action = .OpenDeposit inp := by
   cases action; all_goals simp

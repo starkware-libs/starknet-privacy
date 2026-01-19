@@ -20,7 +20,6 @@ import type { PrivacyPool } from "./pool.js";
 import { MockDiscoveryProvider } from "./discovery.js";
 import { PrivateTransfersBuilderImpl } from "../internal/builders.js";
 import { ActionCompiler } from "../internal/compiler.js";
-import { applyOptimisticUpdate } from "../internal/registry-updater.js";
 import { MockContracts } from "./contracts.js";
 
 export class MockPrivateTransfers implements PrivateTransfers {
@@ -64,11 +63,11 @@ export class MockPrivateTransfers implements PrivateTransfers {
 
     const snapshot = this.contracts.snapshot();
     // 2. Execute client actions on the pool (returns callbacks, state is restored)
-    const callbacks = this.pool.execute(this.userAddress, clientActions);
+    const callbacks = this.pool.execute(this.userAddress, ...clientActions);
 
     this.contracts.restore(snapshot);
     // 3. Apply optimistic updates - update channel nonces, remove spent notes
-    applyOptimisticUpdate(clientActions, registry);
+    //applyOptimisticUpdate(clientActions, registry);
 
     return {
       callAndProof: createMockCallAndProof(callbacks),

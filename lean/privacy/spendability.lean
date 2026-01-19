@@ -14,7 +14,7 @@ def spend_note (crypto: Crypto) (m: Memory) (addrbob: ℕ) (kbob: crypto.Private
     i₁ := sn.i₁,
     kbob := kbob,
     addrbob := addrbob,
-    amount := note_amount crypto m (sn.note_id crypto) sn.c,
+    amount := sn.amount crypto m,
   }
 
 -- A discoverable, uncanceled note with non-zero amount can be spent.
@@ -23,7 +23,7 @@ theorem spendable_note
     (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
     (h_note_in_scan: sn ∈ scan_notes_for_recipient (.from rm) addrbob kbob)
     (h_not_canceled: ¬note_canceled crypto rm.m sn.c sn.token sn.i₀ sn.i₁ kbob)
-    (h_amount_ne_zero: note_amount crypto rm (sn.note_id crypto) sn.c ≠ 0) :
+    (h_amount_ne_zero: sn.amount crypto rm.m ≠ 0) :
     let inp := spend_note crypto rm addrbob kbob sn
     (cancel_note crypto inp rm |> process_action crypto rm).success := by
   have ⟨inp_create, note_imp, h_sn, h_addrbob, h_Kbob⟩ := NoteImplies.from_scan_notes_for_recipient h_kbob h_note_in_scan
@@ -91,7 +91,7 @@ theorem spendable_notes
     (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
     (h_note_in_scan: sns ⊆ scan_notes_for_recipient (.from rm) addrbob kbob)
     (h_not_canceled: ∀ sn ∈ sns, ¬note_canceled crypto rm.m sn.c sn.token sn.i₀ sn.i₁ kbob)
-    (h_amount_ne_zero: ∀ sn ∈ sns, note_amount crypto rm (sn.note_id crypto) sn.c ≠ 0)
+    (h_amount_ne_zero: ∀ sn ∈ sns, sn.amount crypto rm ≠ 0)
     (h_nodup: sns.Nodup) :
     let res := spend_notes crypto rm addrbob kbob sns
     (∃ rm': ReachableMemory crypto,
@@ -99,7 +99,7 @@ theorem spendable_notes
       scan_notes_for_recipient (.from rm') addrbob kbob = scan_notes_for_recipient (.from rm) addrbob kbob ∧
       rm'.actions = res.1.map (λ inp ↦ Action.CancelNote inp) ++ rm.actions ∧
       (∀ sn ∈ sns, note_canceled crypto rm'.m sn.c sn.token sn.i₀ sn.i₁ kbob) ∧
-      (∀ note_id c, note_amount crypto rm' note_id c = note_amount crypto rm note_id c)
+      (∀ sn: ScannedNote, sn.amount crypto rm' = sn.amount crypto rm)
     ) := by
   induction sns
   case nil => use rm; simp [spend_notes]
@@ -188,12 +188,12 @@ theorem spend_all_props
     ∃ rm': ReachableMemory crypto,
     rm'.extends rm ∧
     ∀ token,
-      sum_create_note_amounts crypto rm' addrbob kbob token
-      + sum_deposit_amounts crypto rm' addrbob kbob token =
-      sum_cancel_note_amounts crypto rm' addrbob kbob token := by
+      sum_create_note_amounts crypto rm' addrbob token
+      + sum_deposit_amounts crypto rm' addrbob token =
+      sum_cancel_note_amounts crypto rm' addrbob token := by
   let sns := scan_notes_for_recipient (.from rm) addrbob kbob
     |>.filter (λ sn ↦ rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] = 0)
-    |>.filter (λ sn ↦ note_amount crypto rm (sn.note_id crypto) sn.c ≠ 0)
+    |>.filter (λ sn ↦ sn.amount crypto rm.m ≠ 0)
     |>.dedup
   let cancel_note_inps := spend_all crypto rm addrbob kbob
 
@@ -209,7 +209,7 @@ theorem spend_all_props
     simp only [ne_eq, Decidable.not_not]
     exact h_sn.1.2
 
-  have h_amount_ne_zero: ∀ sn ∈ sns, note_amount crypto rm (sn.note_id crypto) sn.c ≠ 0 := by
+  have h_amount_ne_zero: ∀ sn ∈ sns, sn.amount crypto rm.m ≠ 0 := by
     intro sn h_sn
     rw [List.mem_dedup, List.mem_filter, List.mem_filter, decide_eq_true_eq, decide_eq_true_eq] at h_sn
     simp only [ne_eq]

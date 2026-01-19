@@ -12,6 +12,7 @@ import {
   isDebugEnabled,
 } from "../../src/utils/index.js";
 import { Channel, createEmptyRegistry, Open, SetupRequirement } from "../../src/interfaces.js";
+import { debugLog } from "../../src/utils/logging.js";
 
 // Test addresses and keys (must be valid hex addresses convertible to BigInt)
 const POOL_ADDRESS = "0x1";
@@ -26,7 +27,7 @@ const BOB_PRIVATE_KEY = 67890n;
 
 // Default options for auto-discovery and auto-setup
 const AUTO_OPTIONS = {
-  autoDiscover: { recipient: "refresh" as const },
+  autoDiscover: { channels: "refresh" as const },
   autoSetup: true,
 };
 
@@ -71,7 +72,12 @@ describe("PrivateTransfersBuilder", () => {
 
     // Alice registers and sets up channel to Bob
     applyStateChanges(await alice.build().register().execute());
-    applyStateChanges(await alice.build().setup(BOB_ADDRESS).execute());
+    applyStateChanges(
+      await alice
+        .build({ autoDiscover: { channels: "explicit" } })
+        .setup(BOB_ADDRESS)
+        .execute()
+    );
     aliceToBobChannel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
 
     // Setup token
@@ -79,10 +85,12 @@ describe("PrivateTransfersBuilder", () => {
     registry.channels.set(BOB_ADDRESS, aliceToBobChannel);
     applyStateChanges(await alice.build({ registry }).with(STRK).setup(BOB_ADDRESS).execute());
 
+    debugLog("test", "registry", registry);
+
     // Use builder to deposit
     applyStateChanges(
       await alice
-        .build(AUTO_OPTIONS)
+        .build({ ...AUTO_OPTIONS, registry })
         .with(STRK)
         .deposit({ amount: 100n, recipient: BOB_ADDRESS })
         .execute()
@@ -90,6 +98,7 @@ describe("PrivateTransfersBuilder", () => {
 
     // Bob should have a note
     const bobNotes = bob.discoverNotes().notes.get(STRK) ?? [];
+    debugLog("test", "bobNotes", bobNotes);
     expect(bobNotes.length).toBe(1);
     expect(bobNotes[0].amount).toBe(100n);
   });
@@ -97,21 +106,20 @@ describe("PrivateTransfersBuilder", () => {
   it("example: transfer to multiple recipients with multiple tokens", async () => {
     // Both users register first
     applyStateChanges(await bob.build().register().execute());
-    applyStateChanges(await alice.build().register().execute());
+    let registry = applyStateChanges(await alice.build().register().execute());
 
-    // Alice sets up channels
-    applyStateChanges(await alice.build().setup(ALICE_ADDRESS).setup(BOB_ADDRESS).execute());
-    aliceSelfChannel = alice.discoverChannels(ALICE_ADDRESS).channels.get(ALICE_ADDRESS)!;
-    aliceToBobChannel = alice.discoverChannels(BOB_ADDRESS).channels.get(BOB_ADDRESS)!;
-
-    // Setup tokens
-    const registry = createEmptyRegistry();
-    registry.channels.set(ALICE_ADDRESS, aliceSelfChannel);
-    registry.channels.set(BOB_ADDRESS, aliceToBobChannel);
-
-    applyStateChanges(
+    // discover channels     // Alice sets up channels
+    registry = applyStateChanges(
       await alice
-        .build({ registry })
+        .build({ ...AUTO_OPTIONS, registry })
+        .setup(ALICE_ADDRESS)
+        .setup(BOB_ADDRESS)
+        .execute()
+    );
+
+    registry = applyStateChanges(
+      await alice
+        .build({ ...AUTO_OPTIONS, registry })
         .with(STRK)
         .setup(ALICE_ADDRESS)
         .setup(BOB_ADDRESS)
@@ -122,9 +130,9 @@ describe("PrivateTransfersBuilder", () => {
     );
 
     // Deposit to self
-    applyStateChanges(
+    registry = applyStateChanges(
       await alice
-        .build(AUTO_OPTIONS)
+        .build({ ...AUTO_OPTIONS, registry })
         .with(STRK)
         .deposit({ amount: 100n, recipient: ALICE_ADDRESS })
         .with(ETH)
@@ -143,7 +151,7 @@ describe("PrivateTransfersBuilder", () => {
     // Now use builder to transfer to Bob (must use full amounts)
     applyStateChanges(
       await alice
-        .build(AUTO_OPTIONS)
+        .build({ ...AUTO_OPTIONS, registry })
         .with(STRK)
         .inputs(strkNote)
         .transfer({ recipient: BOB_ADDRESS, amount: 100n })
@@ -200,7 +208,7 @@ describe("PrivateTransfersBuilder", () => {
         applyStateChanges(result);
         return result;
       })()
-    ).rejects.toThrow(/Final total for token.*is 50.*expected 0/);
+    ).rejects.toThrow(/Surplus of 50 found/);
   });
 
   it("builder: register, setup channel, and deposit in one batch", async () => {
@@ -485,7 +493,7 @@ describe("PrivateTransfersBuilder", () => {
       // 100n in, 50n out, no surplusTo -> should fail validation
       await expect(
         alice.build(AUTO_OPTIONS).with(STRK).inputs(note).withdraw({ amount: 50n }).execute()
-      ).rejects.toThrow(/Final total for token.*is 50.*expected 0/);
+      ).rejects.toThrow(/Surplus of 50 found/);
     });
   });
 });
