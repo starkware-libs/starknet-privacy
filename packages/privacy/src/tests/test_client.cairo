@@ -2588,7 +2588,7 @@ fn test_compile_client_actions_empty() {
 
     let mut spy = spy_messages_to_l1();
     user_1.compile_client_actions(client_actions: [].span());
-    test.general_assert_spy_messages(ref :spy);
+    test.privacy.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
     let expected_actions = [].span();
     assert_eq!(actions, expected_actions);
@@ -2610,7 +2610,7 @@ fn test_compile_client_actions_set_viewing_key() {
             ]
                 .span(),
         );
-    test.general_assert_spy_messages(ref :spy);
+    test.privacy.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
     let enc_private_key = user_1.compute_enc_private_key(:random);
     let public_key_storage_path_felt = map_entry_address(
@@ -2662,7 +2662,7 @@ fn test_compile_client_actions_open_channel() {
             ]
                 .span(),
         );
-    test.general_assert_spy_messages(ref :spy);
+    test.privacy.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
     let expected_channel_id = user_1.compute_channel_id(recipient: user_2);
     let expected_channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -2731,7 +2731,7 @@ fn test_compile_client_actions_open_subchannel() {
             ]
                 .span(),
         );
-    test.general_assert_spy_messages(ref :spy);
+    test.privacy.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
@@ -2791,7 +2791,7 @@ fn test_compile_client_actions_deposit_create_note() {
             ]
                 .span(),
         );
-    test.general_assert_spy_messages(ref :spy);
+    test.privacy.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
     let expected_enc_note = user_1
         .compute_enc_note(
@@ -2841,7 +2841,7 @@ fn test_compile_client_actions_deposit_withdraw() {
             ]
                 .span(),
         );
-    test.general_assert_spy_messages(ref :spy);
+    test.privacy.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
     let expected_actions = array![
         ServerAction::TransferFrom(
@@ -2892,7 +2892,7 @@ fn test_compile_client_actions_use_note_create_note() {
             ]
                 .span(),
         );
-    test.general_assert_spy_messages(ref :spy);
+    test.privacy.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
     let expected_enc_note = user_2
         .compute_enc_note(
@@ -2962,7 +2962,7 @@ fn test_compile_client_actions_use_note_withdraw() {
             ]
                 .span(),
         );
-    test.general_assert_spy_messages(ref :spy);
+    test.privacy.general_assert_spy_messages(ref :spy);
     let actions = spy_messages_to_server_actions(ref :spy);
     let nullifier = user_2
         .compute_nullifier(sender: user_1, :token_address, note_index: note.index);
@@ -3571,7 +3571,7 @@ fn test_compile_client_actions_writes() {
     // Compile client actions.
     let mut spy = spy_messages_to_l1();
     user.compile_client_actions(:client_actions);
-    test.general_assert_spy_messages(ref :spy);
+    test.privacy.general_assert_spy_messages(ref :spy);
     let server_actions = spy_messages_to_server_actions(ref :spy);
     // Expected server actions.
     let address = user.address;
