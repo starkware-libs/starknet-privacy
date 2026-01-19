@@ -979,7 +979,10 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let mut spy = spy_messages_to_l1();
         self.client.__execute__(:user_addr, :client_actions);
         self.general_assert_spy_messages(ref :spy);
-        spy_messages_to_server_actions(ref :spy)
+        let server_actions = spy_messages_to_server_actions(ref :spy);
+        let view_server_actions = self.client.execute_view(:user_addr, :client_actions);
+        assert_eq!(server_actions, view_server_actions);
+        server_actions
     }
 
     #[feature("safe_dispatcher")]
