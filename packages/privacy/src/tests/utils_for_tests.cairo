@@ -72,16 +72,17 @@ pub(crate) impl EncNoteIntoNoteImpl of Into<EncNote, Note> {
 
 #[generate_trait]
 pub(crate) impl EncNoteImpl of EncNoteTrait {
-    fn to_server_actions(self: @EncNote) -> Span<ServerAction> {
+    fn to_server_action(self: @EncNote) -> ServerAction {
         let storage_path = map_entry_address(
             map_selector: selector!("notes"), keys: [*self.id].span(),
         );
-        [
-            ServerAction::WriteIfZeroNote(
-                WriteIfZeroInput { storage_address: storage_path, value: (*self).into() },
-            ),
-        ]
-            .span()
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: storage_path, value: (*self).into() },
+        )
+    }
+
+    fn to_server_actions(self: @EncNote) -> Span<ServerAction> {
+        [self.to_server_action()].span()
     }
 }
 
@@ -698,14 +699,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn cheat_deposit(self: @User, token: Token, amount: u128, note: EncNote) {
         self.approve(:token, amount: amount.into());
         let actions = [
-            ServerAction::WriteIfZeroNote(
-                WriteIfZeroInput {
-                    storage_address: map_entry_address(
-                        map_selector: selector!("notes"), keys: [note.id].span(),
-                    ),
-                    value: note.into(),
-                },
-            ),
+            note.to_server_action(),
             ServerAction::TransferFrom(
                 TransferFromInput {
                     sender_addr: *self.address, token: token.contract_address(), amount,
@@ -907,19 +901,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     /// Cheat create a note in the server side (no client side).
     fn cheat_create_note(self: @PrivacyCfg, note: EncNote) {
-        let storage_path_felt = map_entry_address(
-            map_selector: selector!("notes"), keys: [note.id].span(),
-        );
-        self
-            .server
-            .execute_actions(
-                actions: array![
-                    ServerAction::WriteIfZeroNote(
-                        WriteIfZeroInput { storage_address: storage_path_felt, value: note.into() },
-                    ),
-                ]
-                    .span(),
-            )
+        self.server.execute_actions(actions: note.to_server_actions())
     }
 
     fn get_note(self: @PrivacyCfg, note_id: felt252) -> felt252 {
