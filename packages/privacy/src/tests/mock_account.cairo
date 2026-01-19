@@ -1,7 +1,13 @@
+#[starknet::interface]
+pub(crate) trait AccountABI<TState> {
+    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
+}
+
+
 #[starknet::contract]
 pub mod MockAccount {
-    use privacy::utils::AccountABI;
     use starknet::VALIDATED;
+    use super::AccountABI;
 
     #[storage]
     struct Storage {}

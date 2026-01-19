@@ -32,7 +32,6 @@ use privacy::utils::{
 use snforge_std::{
     CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait, Token,
     TokenTrait, declare, interact_with_state, map_entry_address, set_balance, spy_messages_to_l1,
-    store,
 };
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
@@ -41,7 +40,7 @@ use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
 use starkware_utils_testing::test_utils::{
-    Deployable, TokenConfig, cheat_caller_address_once, generic_load, set_account_as_security_agent,
+    Deployable, TokenConfig, cheat_caller_address_once, set_account_as_security_agent,
 };
 
 pub(crate) mod constants {
@@ -176,7 +175,6 @@ pub(crate) impl UserImpl of UserTrait {
                 ]
                     .span(),
             );
-        self.privacy.revert_actions_for_testing(actions: server_actions);
         self.privacy.execute_actions(actions: server_actions);
     }
 
@@ -279,7 +277,6 @@ pub(crate) impl UserImpl of UserTrait {
     fn open_channel_e2e(ref self: User, recipient: User) -> felt252 {
         let random = self.get_random();
         let actions = self.open_channel(:recipient, :random);
-        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
         random
     }
@@ -378,7 +375,6 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> felt252 {
         let salt = self.get_salt().into();
         let actions = self.open_subchannel(:recipient, :token_address, :index, :salt);
-        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
         salt
     }
@@ -570,7 +566,6 @@ pub(crate) impl UserImpl of UserTrait {
                 [ClientAction::Deposit(deposit_input), ClientAction::CreateNote(create_note_input)]
                     .span(),
             );
-        self.privacy.revert_actions_for_testing(actions: server_actions);
         self.privacy.execute_actions(actions: server_actions);
     }
 
@@ -647,7 +642,6 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn set_viewing_key_e2e_with_random(ref self: User, random: felt252) {
         let actions = self.set_viewing_key(:random);
-        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
     }
 
@@ -968,57 +962,6 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             contract_address: *self.address, caller_address: *self.governance_admin,
         );
         IPausableDispatcher { contract_address: *self.address }.pause();
-    }
-
-    fn revert_actions_for_testing(self: @PrivacyCfg, actions: Span<ServerAction>) {
-        for action in actions {
-            match *action {
-                ServerAction::WriteIfZero(WriteIfZeroInput {
-                    storage_address, ..,
-                }) => { self.store_zero(:storage_address); },
-                ServerAction::WriteIfZeroSubchannel(WriteIfZeroInput {
-                    storage_address, ..,
-                }) => {
-                    self.store_zero(:storage_address);
-                    self.store_zero(storage_address: storage_address + 1);
-                },
-                ServerAction::WriteIfZeroPrivateKey(WriteIfZeroInput {
-                    storage_address, ..,
-                }) => {
-                    self.store_zero(:storage_address);
-                    self.store_zero(storage_address: storage_address + 1);
-                },
-                ServerAction::AppendToVec(AppendToVecInput {
-                    recipient_addr, ..,
-                }) => { self.pop_from_vec(:recipient_addr); },
-                _ => {},
-            }
-        }
-    }
-
-    fn store_zero(self: @PrivacyCfg, storage_address: felt252) {
-        store(target: *self.address, :storage_address, serialized_value: [Zero::zero()].span());
-    }
-
-    fn pop_from_vec(self: @PrivacyCfg, recipient_addr: ContractAddress) {
-        let target = *self.address;
-        let vector_storage_address = map_entry_address(
-            map_selector: selector!("recipient_channels"), keys: [recipient_addr.into()].span(),
-        );
-        let length: u64 = generic_load(:target, storage_address: vector_storage_address);
-        let new_length = length - 1;
-        // Store new length.
-        store(
-            :target,
-            storage_address: vector_storage_address,
-            serialized_value: [new_length.into()].span(),
-        );
-        // Store Zero.
-        let storage_address = map_entry_address(
-            map_selector: vector_storage_address, keys: [new_length.into()].span(),
-        );
-        self.store_zero(:storage_address);
-        self.store_zero(storage_address: storage_address + 1);
     }
 
     fn increase_token_balance(self: @PrivacyCfg, token: Token, amount: u128) {

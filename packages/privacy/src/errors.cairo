@@ -35,4 +35,6 @@ pub(crate) mod internal_errors {
     pub const ZERO_ENC_SUBCHANNEL_TOKEN: felt252 = 'ZERO_ENC_SUBCHANNEL_TOKEN';
     pub const ZERO_DERIVED_PUBLIC_KEY: felt252 = 'ZERO_DERIVED_PUBLIC_KEY';
     pub const ZERO_ENC_PRIVATE_KEY: felt252 = 'ZERO_ENC_PRIVATE_KEY';
+    pub const DESERIALIZE_FAILED: felt252 = 'DESERIALIZE_FAILED';
+    pub const EXPECTED_PANIC: felt252 = 'EXPECTED_PANIC';
 }
