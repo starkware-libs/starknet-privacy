@@ -5,8 +5,7 @@ use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTr
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
     OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
-    UseNoteInput, WithdrawInput, WriteIfZeroInput, WriteIfZeroPrivateKeyInput,
-    WriteIfZeroSubchannelInput,
+    UseNoteInput, WithdrawInput, WriteIfZeroInput,
 };
 use privacy::hashes::{
     compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
@@ -241,7 +240,6 @@ pub(crate) impl UserImpl of UserTrait {
     fn open_channel_e2e(ref self: User, recipient: User) -> felt252 {
         let random = self.get_random();
         let actions = self.open_channel(:recipient, :random);
-        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
         random
     }
@@ -340,7 +338,6 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> felt252 {
         let salt = self.get_salt().into();
         let actions = self.open_subchannel(:recipient, :token_address, :index, :salt);
-        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
         salt
     }
@@ -583,7 +580,6 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn set_viewing_key_e2e_with_random(ref self: User, random: felt252) {
         let actions = self.set_viewing_key(:random);
-        self.privacy.revert_actions_for_testing(:actions);
         self.privacy.server.execute_actions(:actions);
     }
 
@@ -895,32 +891,6 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             contract_address: *self.address, caller_address: *self.governance_admin,
         );
         IPausableDispatcher { contract_address: *self.address }.pause();
-    }
-
-    fn revert_actions_for_testing(self: @PrivacyCfg, actions: Span<ServerAction>) {
-        for action in actions {
-            match *action {
-                ServerAction::WriteIfZero(WriteIfZeroInput {
-                    storage_address, ..,
-                }) => { self.store_zero(:storage_address); },
-                ServerAction::WriteIfZeroSubchannel(WriteIfZeroSubchannelInput {
-                    storage_address, ..,
-                }) => {
-                    self.store_zero(:storage_address);
-                    self.store_zero(storage_address: storage_address + 1);
-                },
-                ServerAction::WriteIfZeroPrivateKey(WriteIfZeroPrivateKeyInput {
-                    storage_address, ..,
-                }) => {
-                    self.store_zero(:storage_address);
-                    self.store_zero(storage_address: storage_address + 1);
-                },
-                ServerAction::AppendToVec(AppendToVecInput {
-                    recipient_addr, ..,
-                }) => { self.pop_from_vec(:recipient_addr); },
-                _ => {},
-            }
-        }
     }
 
     fn store_zero(self: @PrivacyCfg, storage_address: felt252) {

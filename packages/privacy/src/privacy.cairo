@@ -32,6 +32,7 @@ pub mod Privacy {
         Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
+    use starknet::syscalls::call_contract_syscall;
     use starknet::{ContractAddress, VALIDATED, get_caller_address, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -45,6 +46,9 @@ pub mod Privacy {
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
+
+    const ERROR_PREFIX: felt252 = 'ERROR';
+    const OK_PREFIX: felt252 = 'OK';
 
     #[storage]
     struct Storage {
@@ -130,6 +134,34 @@ pub mod Privacy {
         ) {
             assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            let mut calldata = array![];
+            user_addr.serialize(ref calldata);
+            client_actions.serialize(ref calldata);
+            let result = call_contract_syscall(
+                address: get_contract_address(),
+                entry_point_selector: selector!("execute_panic"),
+                calldata: calldata.span(),
+            );
+
+            let mut message = result.expect_err(internal_errors::EXPECTED_PANIC);
+            // TODO: Consider wrapping privacy contract panics as well, then using `pop_front` here.
+            #[allow(manual_assert)]
+            if *message[0] != OK_PREFIX {
+                panic(message);
+            }
+
+            let _ = message.pop_front();
+            let mut serialized_server_actions = message.span();
+            let server_actions = Serde::deserialize(ref serialized_server_actions)
+                .expect(internal_errors::FAILED_DESERIALIZE);
+            send_message_to_server(:server_actions);
+        }
+
+        // Assumes all panics that may occur before the end of this function are from this contract.
+        // Wraps all external calls with syscall to prefix ERROR_PREFIX to the error message.
+        fn execute_panic(
+            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) {
             // TODO: Consider asserting that `client_actions` is not empty.
             // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
             let mut server_actions: Array<ServerAction> = array![];
@@ -165,9 +197,17 @@ pub mod Privacy {
                 }
                 server_actions.extend(actions);
             }
-            token_balances.squash().assert_valid();
-            assert_valid_signature(:user_addr);
-            send_message_to_server(server_actions.span());
+
+            let mut message = array![];
+            if let Err(err) = assert_valid_signature(:user_addr) {
+                message.append(ERROR_PREFIX);
+                message.extend(err);
+            } else {
+                token_balances.squash().assert_valid();
+                message.append(OK_PREFIX);
+                server_actions.serialize(ref message);
+            }
+            panic(message);
         }
     }
 

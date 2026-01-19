@@ -3,13 +3,14 @@ use core::ec::{EcPoint, EcPointTrait};
 use core::num::traits::Zero;
 use privacy::actions::ServerAction;
 use privacy::errors;
+use privacy::errors::internal_errors;
 use privacy::hashes::{
     compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_private_key_hash,
     compute_enc_sender_addr_hash, compute_enc_token_hash,
 };
 use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use starknet::storage::{StorageAsPointer, StoragePath};
-use starknet::syscalls::send_message_to_l1_syscall;
+use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
 use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_tx_info};
 use starkware_utils::constants::TWO_POW_128;
 
@@ -181,18 +182,33 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
     (value_1.try_into().expect('UNPACK1_OVERFLOW'), value_2.try_into().expect('UNPACK2_OVERFLOW'))
 }
 
-#[starknet::interface]
-pub(crate) trait AccountABI<TState> {
-    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
-}
-
-pub(crate) fn assert_valid_signature(user_addr: ContractAddress) {
+pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<bool, Array<felt252>> {
     let tx_info = get_tx_info().unbox();
     let tx_hash = tx_info.transaction_hash;
     let signature = tx_info.signature;
-    let account_abi = AccountABIDispatcher { contract_address: user_addr };
-    let is_valid = account_abi.is_valid_signature(hash: tx_hash, signature: signature.into());
-    assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
+
+    let mut calldata = array![];
+    tx_hash.serialize(ref calldata);
+    signature.serialize(ref calldata);
+
+    let result = call_contract_syscall(
+        address: user_addr,
+        entry_point_selector: selector!("is_valid_signature"),
+        calldata: calldata.span(),
+    );
+
+    match result {
+        Ok(mut serialized_result) => {
+            let is_valid = Serde::deserialize(ref serialized_result)
+                .expect(internal_errors::FAILED_DESERIALIZE);
+            if is_valid == VALIDATED {
+                Ok(true)
+            } else {
+                Err(array![errors::INVALID_SIGNATURE])
+            }
+        },
+        Err(err) => Err(err),
+    }
 }
 
 pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
