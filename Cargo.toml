@@ -3,3 +3,46 @@ resolver = "2"
 members = [
     "crates/discovery-service",
 ]
+
+[workspace.dependencies]
+# Apollo/Papyrus crates - using git dependencies
+apollo_central_sync_config = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_class_manager_types = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_infra = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_network = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_p2p_sync = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_p2p_sync_config = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_reverts = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_rpc = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_state_sync = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_state_sync_config = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_state_sync_types = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+apollo_storage = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+
+# Starknet API types
+starknet_api = { git = "https://github.com/starkware-libs/sequencer", branch = "main" }
+starknet-types-core = "=0.2.3"
+
+# Async runtime
+tokio = { version = "1.47.1", features = ["full"] }
+futures = "0.3.21"
+async-trait = "0.1.79"
+
+# CLI and config
+clap = { version = "4.5.4", features = ["derive"] }
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.116"
+
+# RPC
+jsonrpsee = { version = "0.20.3", features = ["server"] }
+
+# Error handling
+anyhow = "1.0.44"
+thiserror = "1.0.37"
+
+# URL parsing
+url = "2.5.0"
+
+# Logging
+tracing = "0.1.37"
+tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
