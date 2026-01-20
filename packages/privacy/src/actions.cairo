@@ -1,6 +1,6 @@
 use privacy::errors;
 use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
-use starknet::{ContractAddress, Store};
+use starknet::ContractAddress;
 
 /// Input for the `SetViewingKey` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
@@ -160,7 +160,7 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
 
 /// Input for the `WriteIfZero` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct WriteIfZeroInput<T, +Store<T>> {
+pub struct WriteIfZeroInput<T> {
     /// The storage address to write to.
     pub storage_address: felt252,
     /// The value to write.
