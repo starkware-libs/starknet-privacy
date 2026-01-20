@@ -137,7 +137,7 @@ fn test_get_note() {
     assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
     test.privacy.cheat_create_note(:note);
     let enc_value = test.privacy.get_note(note_id: note.id);
-    assert_eq!(enc_value, note.enc_amount);
+    assert_eq!(enc_value, note.enc_value);
 }
 
 #[test]
@@ -303,7 +303,7 @@ fn test_execute_write_if_zero() {
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
     assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
-    let note_value = Note { enc_value: note.enc_amount, token: Zero::zero() };
+    let note_value = Note { enc_value: note.enc_value, token: Zero::zero() };
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZeroNote(
             WriteIfZeroInput { storage_address: storage_path_felt, value: note_value },
@@ -313,7 +313,7 @@ fn test_execute_write_if_zero() {
 
     // Verify note was written.
     let enc_value = test.privacy.get_note(note_id: note.id);
-    assert_eq!(enc_value, note.enc_amount);
+    assert_eq!(enc_value, note.enc_value);
 
     // Verify nullifier doesn't exist and write.
     let nullifier = test.mock_new_nullifier();
@@ -380,7 +380,7 @@ fn test_execute_write_if_zero_assertions() {
     let storage_path_felt = map_entry_address(
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
-    let note_value = Note { enc_value: note.enc_amount, token: Zero::zero() };
+    let note_value = Note { enc_value: note.enc_value, token: Zero::zero() };
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZeroNote(
             WriteIfZeroInput { storage_address: storage_path_felt, value: note_value },
@@ -390,7 +390,7 @@ fn test_execute_write_if_zero_assertions() {
     let current_value: Note = generic_load(
         target: test.privacy.address, storage_address: storage_path_felt,
     );
-    assert_eq!(current_value.enc_value, note.enc_amount);
+    assert_eq!(current_value.enc_value, note.enc_value);
     assert_eq!(current_value.token, Zero::zero());
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
@@ -516,8 +516,8 @@ fn test_execute_write_if_zero_private_key_assertions() {
 fn test_execute_write_if_zero_note() {
     let mut test: Test = Default::default();
     let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    let note_value = Note { enc_value: note.enc_amount, token: Zero::zero() };
-    assert!(note.enc_amount.is_non_zero());
+    let note_value = Note { enc_value: note.enc_value, token: Zero::zero() };
+    assert!(note.enc_value.is_non_zero());
 
     // Verify stored note is zero before writing.
     let storage_path_felt = map_entry_address(
@@ -547,8 +547,8 @@ fn test_execute_write_if_zero_note() {
 fn test_execute_write_if_zero_note_assertions() {
     let mut test: Test = Default::default();
     let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    let note_value = Note { enc_value: note.enc_amount, token: Zero::zero() };
-    assert!(note.enc_amount.is_non_zero());
+    let note_value = Note { enc_value: note.enc_value, token: Zero::zero() };
+    assert!(note.enc_value.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_path_felt = map_entry_address(
