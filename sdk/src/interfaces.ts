@@ -19,8 +19,11 @@ export type Amount = bigint;
 export const MAX_VIEWING_KEY = ec.starkCurve.CURVE.n / 2n;
 
 /** Marker for creating an open note (a note whose amount is open and can be filled later with a deposit) */
-export type Open = { readonly __marker: "open" };
-export const Open: Open = { __marker: "open" };
+export const Open = Symbol("Open");
+export type Open = typeof Open;
+
+export const All = Symbol("All");
+export type All = typeof All;
 
 /**
  * Union that allows both the concrete Account class as well as the lighter AccountInterface.
@@ -114,40 +117,41 @@ export interface ProveInterface {
 export type SetViewingKeyAction = {};
 
 export type OpenChannelAction = {
-  recipient: StarknetAddress;
+  recipient: StarknetAddressBigint;
 };
 
 export type OpenTokenChannelAction = {
-  recipient: StarknetAddress;
-  token: StarknetAddress;
+  recipient: StarknetAddressBigint;
+  token: StarknetAddressBigint;
 };
 
 export type DepositAction = {
-  token: StarknetAddress;
+  token: StarknetAddressBigint;
   amount: Amount;
   noteId?: NoteId;
 };
 
 export type UseNoteAction = {
-  token: StarknetAddress;
+  token: StarknetAddressBigint;
   note: Note;
 };
 
 export type CreateNoteAction = {
-  recipient: StarknetAddress;
-  token: StarknetAddress;
+  recipient: StarknetAddressBigint;
+  token: StarknetAddressBigint;
   amount: Amount | Open;
 };
 
 export type WithdrawAction = {
-  recipient: StarknetAddress;
-  token: StarknetAddress;
+  recipient: StarknetAddressBigint;
+  token: StarknetAddressBigint;
   amount: Amount;
 };
 
 export type SurplusAction = {
-  recipient: StarknetAddress;
-  token: StarknetAddress;
+  recipient: StarknetAddressBigint;
+  token: StarknetAddressBigint;
+  withdraw?: boolean;
 };
 
 export type FollowupCallAction = {
@@ -172,10 +176,10 @@ export type Actions = {
 /**
  * Discovery level controls when/whether to call the discovery service.
  * - 'none': Never call discovery. Missing data → error.
- * - 'explicit': Only discover when data is missing. Trust registry contents.
+ * - 'missing': Only discover when data is missing from registry. Trust existing registry contents.
  * - 'refresh': Always discover. Use registry as optimization hint.
  */
-export type DiscoveryLevel = "explicit" | "refresh";
+export type DiscoveryLevel = "missing" | "refresh";
 
 /**
  * Options for automatic discovery during execute.
@@ -241,6 +245,66 @@ export type ExecuteResult = {
 };
 
 /**
+ * Simple interface for simple private transfer scenarios
+ */
+export interface SimplePrivateTransfers {
+  readonly user: StarknetAddress;
+  readonly registry: PrivateRegistry;
+
+  /**
+   * deposit tokens into the privacy pool
+   *
+   * v1: the recipient is the same as the account address or has setup a semi transparent note for the deposit.
+   */
+  deposit(token: StarknetAddress, amount: Amount): Promise<ExecuteResult>;
+
+  /**
+   * Withdraw tokens from the privacy pool
+   */
+  withdraw(
+    token: StarknetAddress,
+    recipient: StarknetAddress,
+    amount: Amount | All
+  ): Promise<ExecuteResult>;
+
+  /**
+   * transfer tokens from the privacy pool to a single recipient.
+   */
+  transfer(
+    token: StarknetAddress,
+    recipient: StarknetAddress,
+    amount: Amount | All
+  ): Promise<ExecuteResult>;
+
+  /**
+   * will withdraw to the contract in `helperCall` and then deposit to the privacy pool in `toToken`
+   * Note: a noteid will be added to the helper calldata
+   */
+  swap(
+    fromToken: StarknetAddress,
+    fromAmount: Amount,
+    toToken: StarknetAddress,
+    helperCall: Call
+  ): Promise<ExecuteResult>;
+
+  /**
+   * Discover unspent notes per token
+   */
+  discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): {
+    timestamp: BlockIdentifier;
+    notes: AddressMap<Note[]>;
+  };
+
+  /**
+   * Discover channels for one or more recipients
+   */
+  discoverChannels(...recipients: StarknetAddress[]): {
+    timestamp: BlockIdentifier;
+    channels: AddressMap<Channel>;
+  };
+}
+
+/**
  * Main interface for clients to use. It is stateless.
  * The methods call the proof provider to generate a proof and prepare a public call to send to Starknet.
  *
@@ -263,8 +327,8 @@ export interface PrivateTransfers {
   readonly viewingSigner: ViewingKey;
   readonly discoveryProvider: DiscoveryProviderInterface;
   readonly pool: StarknetAddress;
-  readonly user: StarknetAddress;
   */
+  readonly user: StarknetAddress;
 
   /**
    * given a recipient and token, check if the recipient has a Channel associated with it and if the token is in the channel.
@@ -315,7 +379,7 @@ export interface PrivateTransfers {
  */
 export type TransferOutput = { recipient: StarknetAddress; amount: Amount | Open };
 export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
-export type DepositInput = ({ recipient?: StarknetAddress } | { noteId: NoteId }) & {
+export type DepositInput = { recipient?: StarknetAddress } & {
   amount: Amount;
 };
 
@@ -356,12 +420,14 @@ export interface TokenOperationsBuilder {
    * Overrides the top-level surplusTo for this specific token.
    * If inputs exceed outputs, a CreateNoteAction is automatically added for the difference.
    */
-  surplusTo(recipient: StarknetAddress | Channel): this;
+  surplusTo(recipient: StarknetAddress, withdraw?: boolean): this;
 
-  /** Switch to another token */
+  /** Switch to another token (fluent style) */
   with(token: StarknetAddress): TokenOperationsBuilder;
+  /** Switch to another token with callback (block style, prettier-friendly) */
+  with(token: StarknetAddress, ops: (t: TokenOperationsBuilder) => void): this;
 
-  /** Return to main builder (for non-token operations like register) */
+  /** End the token-specific operations and return the builder */
   done(): PrivateTransfersBuilder;
 
   /** Execute all queued operations */
@@ -373,11 +439,16 @@ export interface TokenOperationsBuilder {
  *
  * Use `.with(token)` to start token-specific operations.
  *
- * @example Simple deposit
+ * @example Simple deposit (fluent style - good for one-liners)
+ * ```ts
+ * await transfers.build().with(STRK).deposit(100n).execute();
+ * ```
+ *
+ * @example Simple deposit (block style - prettier-friendly)
  * ```ts
  * await transfers.build()
- *   .with(STRK)
- *     .deposit(100n)
+ *   .with(STRK, t => t
+ *     .deposit(100n))
  *   .execute();
  * ```
  *
@@ -386,33 +457,33 @@ export interface TokenOperationsBuilder {
  * await transfers.build({ autoSetup: true })
  *   .register()
  *   .setup(BOB_ADDRESS)
- *   .with(STRK)
+ *   .with(STRK, t => t
  *     .setup(BOB_ADDRESS)
- *     .deposit(100n, BOB_ADDRESS)
+ *     .deposit(100n, BOB_ADDRESS))
  *   .execute();
  * ```
  *
- * @example Transfer to multiple recipients (adapted from composite)
+ * @example Transfer to multiple recipients
  * ```ts
  * // Transfer 10 STRK to Alice and 20 ETH to Bob using 3 notes
  * await transfers.build()
- *   .with(STRK)
+ *   .with(STRK, t => t
  *     .inputs(strkNote)
- *     .transfer({ recipient: alice, amount: 10n })
- *   .with(ETH)
+ *     .transfer({ recipient: alice, amount: 10n }))
+ *   .with(ETH, t => t
  *     .inputs(ethNote1, ethNote2)
- *     .transfer({ recipient: bob, amount: 20n })
+ *     .transfer({ recipient: bob, amount: 20n }))
  *   .execute();
  * ```
  *
  * @example Partial withdrawal with remainder
  * ```ts
  * await transfers.build()
- *   .with(STRK)
+ *   .with(STRK, t => t
  *     .inputs(note100Strk)
  *     .withdraw({ recipient: self, amount: 50n })
  *     .transfer({ recipient: self, amount: 25n })
- *     .transfer({ recipient: self, amount: 25n })
+ *     .transfer({ recipient: self, amount: 25n }))
  *   .execute();
  * ```
  *
@@ -420,11 +491,11 @@ export interface TokenOperationsBuilder {
  * ```ts
  * // Prepare for swap: withdraw STRK to swap helper, deposit result back
  * await transfers.build()
- *   .with(STRK)
+ *   .with(STRK, t => t
  *     .inputs(strkNote)
- *     .withdraw({ recipient: swapHelper, amount: 10n }) // helper does the swap and deposits the result
- *   .with(BTC)
- *     .deposit(open) // semi-transparent note for swap result
+ *     .withdraw({ recipient: swapHelper, amount: 10n }))
+ *   .with(BTC, t => t
+ *     .deposit(open)) // semi-transparent note for swap result
  *   .call({ contractAddress: swapHelper, entrypoint: "swap", calldata: [...] })
  *   .execute();
  * ```
@@ -444,10 +515,12 @@ export interface PrivateTransfersBuilder {
    * If inputs exceed outputs for a token, a CreateNoteAction is automatically added for the difference.
    * Can be overridden per-token using TokenOperationsBuilder.surplusTo().
    */
-  surplusTo(recipient: StarknetAddress | Channel): this;
+  surplusTo(recipient: StarknetAddress, withdraw?: boolean): this;
 
-  /** Start token-specific operations */
+  /** Start token-specific operations (fluent style) */
   with(token: StarknetAddress): TokenOperationsBuilder;
+  /** Start token-specific operations with callback (block style, prettier-friendly) */
+  with(token: StarknetAddress, ops: (t: TokenOperationsBuilder) => void): this;
 
   /** Execute all queued operations and return the results */
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
@@ -470,9 +543,9 @@ export interface DiscoveryProviderInterface {
    * Discover unspent notes per token
    */
   discoverNotes(
-    address: StarknetAddress,
+    address: bigint,
     viewingKey: ViewingKey,
-    params?: { since?: BlockIdentifier; known?: AddressMap<Note[]>; tokens?: StarknetAddress[] }
+    params?: { since?: BlockIdentifier; known?: AddressMap<Note[]>; tokens?: bigint[] }
   ): {
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
@@ -482,9 +555,9 @@ export interface DiscoveryProviderInterface {
    * Discover channels for one or more recipients
    */
   discoverChannels(
-    address: StarknetAddress,
+    address: bigint,
     viewingKey: ViewingKey,
-    ...recipients: StarknetAddress[]
+    ...recipients: bigint[]
   ): {
     timestamp: BlockIdentifier;
     channels: AddressMap<Channel>;
@@ -496,10 +569,10 @@ export interface DiscoveryProviderInterface {
    * @param recipient - The recipient to check the setup requirements for. if self, check for 'address'
    */
   discoverRequirement(
-    address: StarknetAddress,
+    address: bigint,
     viewingKey: ViewingKey,
-    recipient: StarknetAddress,
-    token: StarknetAddress
+    recipient: bigint,
+    token: bigint
   ): Promise<SetupRequirement>;
 }
 

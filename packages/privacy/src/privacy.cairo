@@ -58,9 +58,8 @@ pub mod Privacy {
         accesscontrol: AccessControlComponent::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
-        /// Map of (recipient_addr, recipient_public_key) to a list of their encrypted channels.
-        // TODO: Consider refactoring the tuple to a struct.
-        recipient_channels: Map<(ContractAddress, felt252), Vec<EncChannelInfo>>,
+        /// Map of recipient_addr to a list of their encrypted channels.
+        recipient_channels: Map<ContractAddress, Vec<EncChannelInfo>>,
         /// Map of channel id to whether it exists.
         // TODO: Rename storage var / abi function to not have the same name?
         channel_exists: Map<felt252, bool>,
@@ -269,9 +268,7 @@ pub mod Privacy {
                         value: true.into(),
                     },
                 ),
-                ServerAction::AppendToVec(
-                    AppendToVecInput { recipient_addr, recipient_public_key, enc_channel_info },
-                ),
+                ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
             ]
         }
 
@@ -532,8 +529,7 @@ pub mod Privacy {
                     ServerAction::AppendToVec(input) => {
                         self
                             ._execute_append_to_vector(
-                                key: (input.recipient_addr, input.recipient_public_key),
-                                value: input.enc_channel_info,
+                                key: input.recipient_addr, value: input.enc_channel_info,
                             );
                     },
                     ServerAction::TransferFrom(input) => {
@@ -613,7 +609,7 @@ pub mod Privacy {
 
         // TODO: Make generic.
         fn _execute_append_to_vector(
-            ref self: ContractState, key: (ContractAddress, felt252), value: EncChannelInfo,
+            ref self: ContractState, key: ContractAddress, value: EncChannelInfo,
         ) {
             self.recipient_channels.entry(key).push(value);
         }
@@ -655,29 +651,20 @@ pub mod Privacy {
             self.channel_exists.read(channel_id)
         }
 
-        fn get_num_of_channels(
-            self: @ContractState, recipient_addr: ContractAddress, recipient_public_key: felt252,
-        ) -> u64 {
+        fn get_num_of_channels(self: @ContractState, recipient_addr: ContractAddress) -> u64 {
             // TODO: Restrict access to `recipient_addr`?
             // TODO: Assert `recipient_addr` is registered?
-            self.recipient_channels.entry((recipient_addr, recipient_public_key)).len()
+            self.recipient_channels.entry(recipient_addr).len()
         }
 
         fn get_channel_info(
-            self: @ContractState,
-            recipient_addr: ContractAddress,
-            recipient_public_key: felt252,
-            channel_index: u64,
+            self: @ContractState, recipient_addr: ContractAddress, channel_index: u64,
         ) -> EncChannelInfo {
             // TODO: Restrict access to `recipient_addr`?
             // TODO: Assert `recipient_addr` is registered?
             // TODO: Consider defining custom error instead of using `at` (with "Index out of
             // bounds" error)?
-            self
-                .recipient_channels
-                .entry((recipient_addr, recipient_public_key))
-                .at(channel_index)
-                .read()
+            self.recipient_channels.entry(recipient_addr).at(channel_index).read()
         }
 
         fn subchannel_exists(self: @ContractState, subchannel_id: felt252) -> bool {

@@ -824,9 +824,7 @@ fn test_open_channel() {
         ),
         ServerAction::AppendToVec(
             AppendToVecInput {
-                recipient_addr: user_2.address,
-                recipient_public_key: user_2.public_key,
-                enc_channel_info: expected_enc_channel_info,
+                recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
     ]
@@ -865,9 +863,7 @@ fn test_open_channel_self_channel() {
         ),
         ServerAction::AppendToVec(
             AppendToVecInput {
-                recipient_addr: user.address,
-                recipient_public_key: user.public_key,
-                enc_channel_info: expected_enc_channel_info,
+                recipient_addr: user.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
     ]
@@ -997,9 +993,7 @@ fn test_open_channel_multiple_channels_same_sender() {
         ),
         ServerAction::AppendToVec(
             AppendToVecInput {
-                recipient_addr: user_2.address,
-                recipient_public_key: user_2.public_key,
-                enc_channel_info: expected_enc_channel_info_1,
+                recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info_1,
             },
         ),
     ]
@@ -1015,9 +1009,7 @@ fn test_open_channel_multiple_channels_same_sender() {
         ),
         ServerAction::AppendToVec(
             AppendToVecInput {
-                recipient_addr: user_3.address,
-                recipient_public_key: user_3.public_key,
-                enc_channel_info: expected_enc_channel_info_2,
+                recipient_addr: user_3.address, enc_channel_info: expected_enc_channel_info_2,
             },
         ),
     ]
@@ -1092,9 +1084,7 @@ fn test_open_channel_multiple_channels_same_recipient() {
         ),
         ServerAction::AppendToVec(
             AppendToVecInput {
-                recipient_addr: user_1.address,
-                recipient_public_key: user_1.public_key,
-                enc_channel_info: expected_enc_channel_info_1,
+                recipient_addr: user_1.address, enc_channel_info: expected_enc_channel_info_1,
             },
         ),
     ]
@@ -1110,9 +1100,7 @@ fn test_open_channel_multiple_channels_same_recipient() {
         ),
         ServerAction::AppendToVec(
             AppendToVecInput {
-                recipient_addr: user_1.address,
-                recipient_public_key: user_1.public_key,
-                enc_channel_info: expected_enc_channel_info_2,
+                recipient_addr: user_1.address, enc_channel_info: expected_enc_channel_info_2,
             },
         ),
     ]
@@ -2704,9 +2692,7 @@ fn test_compile_client_actions_open_channel() {
         ),
         ServerAction::AppendToVec(
             AppendToVecInput {
-                recipient_addr: user_2.address,
-                recipient_public_key: user_2.public_key,
-                enc_channel_info: expected_enc_channel_info,
+                recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
     ]
@@ -3623,11 +3609,7 @@ fn test_compile_client_actions_writes() {
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: channel_exists_storage_path, value: true.into() },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
-                recipient_addr: address, recipient_public_key: public_key, enc_channel_info,
-            },
-        ),
+        ServerAction::AppendToVec(AppendToVecInput { recipient_addr: address, enc_channel_info }),
         // Open subchannel.
         ServerAction::WriteIfZero(
             WriteIfZeroInput {

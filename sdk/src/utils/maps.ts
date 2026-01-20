@@ -29,7 +29,7 @@ export class AdvancedMap<K, V, InternalK = K> {
 
   // Overload 2: Entries + options
   constructor(
-    entries: readonly (readonly [K, V])[] | null,
+    entries: Iterable<readonly [K, V]> | null,
     options?: {
       keyConverter?: (key: K) => InternalK;
       defaultFactory?: (key: K) => V;
@@ -38,7 +38,7 @@ export class AdvancedMap<K, V, InternalK = K> {
 
   constructor(
     entriesOrOptions?:
-      | readonly (readonly [K, V])[]
+      | Iterable<readonly [K, V]>
       | null
       | {
           keyConverter?: (key: K) => InternalK;
@@ -49,10 +49,12 @@ export class AdvancedMap<K, V, InternalK = K> {
       defaultFactory?: (key: K) => V;
     }
   ) {
-    let initialEntries: readonly (readonly [K, V])[] | null = null;
+    let initialEntries: Iterable<readonly [K, V]> | null = null;
 
-    if (Array.isArray(entriesOrOptions) || entriesOrOptions === null) {
-      initialEntries = entriesOrOptions;
+    if (entriesOrOptions === null || entriesOrOptions === undefined) {
+      this.options = options || {};
+    } else if (Symbol.iterator in Object(entriesOrOptions)) {
+      initialEntries = entriesOrOptions as Iterable<readonly [K, V]>;
       this.options = options || {};
     } else {
       this.options =
@@ -149,29 +151,32 @@ export class AdvancedMap<K, V, InternalK = K> {
  * const mapWithDefault = new AddressMap<number[]>(() => []);
  * mapWithDefault.get("0x1")!.push(42); // safe when defaultFactory provided
  */
-export class AddressMap<V> extends AdvancedMap<BigNumberish, V, bigint> {
+export class BigNumberishMap<V> extends AdvancedMap<BigNumberish, V, bigint> {
   // Overload 1: Just a default factory (or nothing)
   constructor(defaultFactory?: (key: BigNumberish) => V);
 
   // Overload 2: Initial entries + optional default factory
   constructor(
-    entries: readonly (readonly [BigNumberish, V])[] | null,
+    entries: Iterable<readonly [BigNumberish, V]> | null,
     defaultFactory?: (key: BigNumberish) => V
   );
 
   constructor(
     entriesOrDefaultFactory?:
       | ((key: BigNumberish) => V)
-      | readonly (readonly [BigNumberish, V])[]
+      | Iterable<readonly [BigNumberish, V]>
       | null,
     defaultFactory?: (key: BigNumberish) => V
   ) {
-    let initialEntries: readonly (readonly [BigNumberish, V])[] | null = null;
+    let initialEntries: Iterable<readonly [BigNumberish, V]> | null = null;
     let factory: ((key: BigNumberish) => V) | undefined;
 
     if (typeof entriesOrDefaultFactory === "function") {
       factory = entriesOrDefaultFactory;
-    } else {
+    } else if (
+      Symbol.iterator in Object(entriesOrDefaultFactory) ||
+      entriesOrDefaultFactory === null
+    ) {
       initialEntries = entriesOrDefaultFactory ?? null;
       factory = defaultFactory;
     }
@@ -182,3 +187,6 @@ export class AddressMap<V> extends AdvancedMap<BigNumberish, V, bigint> {
     });
   }
 }
+
+export const AddressMap = BigNumberishMap;
+export type AddressMap<V> = BigNumberishMap<V>;
