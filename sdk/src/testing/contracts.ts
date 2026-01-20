@@ -7,6 +7,10 @@ import type { Amount, NoteId, StarknetAddress } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { assert } from "../utils/validation.js";
 import type { PrivacyPool } from "./pool.js";
+import { num } from "starknet";
+
+/** Normalize BigNumberish to bigint */
+const toBigInt = (value: StarknetAddress): bigint => num.toBigInt(value);
 
 /** Interface for any mock contract */
 export interface MockContract {
@@ -91,7 +95,9 @@ export class MockSwapHelper implements MockContract {
     assert(balance == amount, () => `Balance mismatch: ${balance} != ${amount}`);
     this.contracts.get(fromToken).setBalance(this.address, 0n);
     this.contracts.get(toToken).setBalance(this.address, amount * 2n);
-    this.contracts.get<PrivacyPool>(poolAddress).openDeposit(noteId, toToken, amount * 2n);
+    this.contracts
+      .get<PrivacyPool>(toBigInt(poolAddress))
+      .openDeposit(toBigInt(noteId), toBigInt(toToken), amount * 2n);
   }
 }
 

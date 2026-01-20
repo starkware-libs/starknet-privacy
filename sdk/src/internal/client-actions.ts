@@ -7,7 +7,7 @@
  */
 
 import { Call } from "starknet";
-import type { Amount, NoteId, Open, StarknetAddress, ViewingKey } from "./interfaces.js";
+import type { Amount, Open, ViewingKey } from "../interfaces.js";
 
 /**
  * Input for the SetViewingKey action.
@@ -26,7 +26,7 @@ export type OpenChannelInput = {
   /** The sender's private key (viewing key) */
   senderPrivateKey: ViewingKey;
   /** The recipient's address */
-  recipientAddr: StarknetAddress;
+  recipientAddr: bigint;
   /** The recipient's public key */
   recipientPublicKey: bigint;
   /** Random value used to encrypt the channel info for the recipient */
@@ -38,7 +38,7 @@ export type OpenChannelInput = {
  */
 export type OpenSubchannelInput = {
   /** The recipient's address */
-  recipientAddr: StarknetAddress;
+  recipientAddr: bigint;
   /** The recipient's public key */
   recipientPublicKey: bigint;
   /** The channel key of the subchannel */
@@ -46,7 +46,7 @@ export type OpenSubchannelInput = {
   /** The index of the subchannel within the channel (token nonce) */
   index: number;
   /** The token address */
-  token: StarknetAddress;
+  token: bigint;
   /** Random value used to encrypt the subchannel token */
   random: bigint;
 };
@@ -58,11 +58,11 @@ export type CreateNoteInput = {
   /** The sender's private key (viewing key) */
   senderPrivateKey: ViewingKey;
   /** The recipient's address */
-  recipientAddr: StarknetAddress;
+  recipientAddr: bigint;
   /** The recipient's public key */
   recipientPublicKey: bigint;
   /** The token's address */
-  token: StarknetAddress;
+  token: bigint;
   /** The amount the note represents */
   amount: Amount | Open;
   /** The index of the note within the channel (note nonce) */
@@ -76,11 +76,11 @@ export type CreateNoteInput = {
  */
 export type DepositInput = {
   /** The token's address */
-  token: StarknetAddress;
+  token: bigint;
   /** The amount to deposit */
   amount: Amount;
   /** The note id to deposit to (open note) */
-  noteId?: NoteId;
+  noteId?: bigint;
 };
 
 /**
@@ -92,7 +92,7 @@ export type UseNoteInput = {
   /** The channel key of the note's channel */
   channelKey: bigint;
   /** The note's token address */
-  token: StarknetAddress;
+  token: bigint;
   /** The index of the note within the channel (note nonce) */
   noteIndex: number;
 };
@@ -102,9 +102,9 @@ export type UseNoteInput = {
  */
 export type WithdrawInput = {
   /** The target of the withdrawal */
-  withdrawalTarget: StarknetAddress;
+  withdrawalTarget: bigint;
   /** The token's address */
-  token: StarknetAddress;
+  token: bigint;
   /** The amount to withdraw */
   amount: Amount;
 };
