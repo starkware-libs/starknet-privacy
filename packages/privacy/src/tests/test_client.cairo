@@ -173,7 +173,7 @@ fn test_transfer() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_value);
 }
 
 #[test]
@@ -232,7 +232,7 @@ fn test_transfer_to_self() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_value);
 }
 
 #[test]
@@ -315,8 +315,8 @@ fn test_transfer_one_to_many() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_amount);
-    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), enc_note_2.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_value);
+    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), enc_note_2.enc_value);
 }
 
 #[test]
@@ -414,7 +414,7 @@ fn test_transfer_many_to_one() {
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
-    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_value);
 }
 
 #[test]
@@ -499,7 +499,7 @@ fn test_transfer_many_to_many() {
             recipient: user_2, :token_address, index: note_index, :amount, salt: note_2.salt,
         );
     assert_ne!(enc_note_1.id, enc_note_2.id);
-    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    assert_ne!(enc_note_1.enc_value, enc_note_2.enc_value);
     let storage_path_felt_nullifier_1 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
     );
@@ -525,8 +525,8 @@ fn test_transfer_many_to_many() {
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
-    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_amount);
-    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), enc_note_2.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_value);
+    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), enc_note_2.enc_value);
 }
 
 // TODO: Fix this test. Now failing because storage writings are not reverted when panicking.
@@ -1920,7 +1920,7 @@ fn test_create_note_twice() {
             salt: note_2.salt,
         );
     assert_ne!(expected_note_1.id, expected_note_2.id);
-    assert_ne!(expected_note_1.enc_amount, expected_note_2.enc_amount);
+    assert_ne!(expected_note_1.enc_value, expected_note_2.enc_value);
     assert_eq!(create_note_1_actions, expected_note_1.to_server_actions());
     assert_eq!(create_note_2_actions, expected_note_2.to_server_actions());
 }
@@ -1960,7 +1960,7 @@ fn test_create_note_twice_same_amount() {
             recipient: user_2, :token_address, index: note_index_2, :amount, salt: note_2.salt,
         );
     assert_ne!(expected_enc_note_1.id, expected_enc_note_2.id);
-    assert_ne!(expected_enc_note_1.enc_amount, expected_enc_note_2.enc_amount);
+    assert_ne!(expected_enc_note_1.enc_value, expected_enc_note_2.enc_value);
     assert_eq!(create_note_1_actions, expected_enc_note_1.to_server_actions());
     assert_eq!(create_note_2_actions, expected_enc_note_2.to_server_actions());
 }
@@ -2231,9 +2231,9 @@ fn test_create_note_decrypt_amount() {
         :enc_channel_info, recipient_private_key: user_2.private_key,
     );
     let note_id = compute_note_id(:channel_key, token: token_address, index: note_index);
-    let enc_amount = user_2.privacy.get_note(:note_id);
+    let enc_value = user_2.privacy.get_note(:note_id);
     let decrypted_amount = decrypt_note_amount(
-        enc_note_value: enc_amount, :channel_key, token: token_address, index: note_index,
+        enc_note_value: enc_value, :channel_key, token: token_address, index: note_index,
     );
     assert_eq!(decrypted_amount, amount);
 }
@@ -2750,7 +2750,7 @@ fn test_use_note_find_nullifier() {
 // TODO: Test use note with all fields of note same but one field different, for each field - test
 // nullifier are different.
 // TODO: Test create note with all fields of note same but one field different, for each field -
-// test note_ids (and maybe enc_amount) are different.
+// test note_ids (and maybe enc_value) are different.
 // TODO: Same for subchannels, channels, etc.
 
 #[test]
@@ -3178,7 +3178,7 @@ fn test_compile_client_actions_deposit_create_note() {
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 
     test.privacy.execute_actions(:actions);
-    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_value);
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
@@ -3241,7 +3241,7 @@ fn test_compile_client_actions_use_note_create_note() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
-    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_value);
 }
 
 #[test]

@@ -196,7 +196,7 @@ fn test_note_encrypt_decrypt() {
 fn test_note_zero() {
     let mut test: Test = Default::default();
     let token = test.mock_new_token();
-    let enc_value = test.mock_new_note(amount: constants::DEFAULT_AMOUNT).enc_amount;
+    let enc_value = test.mock_new_note(amount: constants::DEFAULT_AMOUNT).enc_value;
     let zero_note: Note = Zero::zero();
 
     assert_eq!(zero_note, Note { enc_value: Zero::zero(), token: Zero::zero() });
