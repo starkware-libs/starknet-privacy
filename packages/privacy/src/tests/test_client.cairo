@@ -4,7 +4,6 @@ use privacy::actions::{
     OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
     UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput,
 };
-use privacy::errors;
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
 use privacy::tests::utils_for_tests::{
     EncNoteTrait, PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait,
@@ -12,11 +11,14 @@ use privacy::tests::utils_for_tests::{
 };
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
-use snforge_std::{TokenTrait, map_entry_address};
+use privacy::{errors, events};
+use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
 use starknet::VALIDATED;
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
-use starkware_utils_testing::test_utils::{assert_panic_with_error, assert_panic_with_felt_error};
+use starkware_utils_testing::test_utils::{
+    assert_expected_event_emitted, assert_panic_with_error, assert_panic_with_felt_error,
+};
 
 // TODO: Catch server errors in the client side.
 
@@ -57,6 +59,11 @@ fn test_set_viewing_key() {
         ServerAction::WriteIfZeroPrivateKey(
             WriteIfZeroInput {
                 storage_address: enc_private_key_storage_path_felt, value: enc_private_key,
+            },
+        ),
+        ServerAction::EmitViewingKeySet(
+            events::ViewingKeySet {
+                user_addr: user.address, public_key: user.public_key, enc_private_key,
             },
         ),
     ]
@@ -2578,6 +2585,7 @@ fn test_compile_client_actions_set_viewing_key() {
     let mut user_1 = test.new_user();
 
     let random = user_1.get_random();
+    let mut spy_events = spy_events();
     let actions = user_1
         .compile_client_actions(
             client_actions: [
@@ -2594,6 +2602,9 @@ fn test_compile_client_actions_set_viewing_key() {
     let enc_private_key_storage_path_felt = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [user_1.address.into()].span(),
     );
+    let expected_event = events::ViewingKeySet {
+        user_addr: user_1.address, public_key: user_1.public_key, enc_private_key,
+    };
     let expected_actions = [
         ServerAction::WriteIfZero(
             WriteIfZeroInput {
@@ -2605,11 +2616,20 @@ fn test_compile_client_actions_set_viewing_key() {
                 storage_address: enc_private_key_storage_path_felt, value: enc_private_key,
             },
         ),
+        ServerAction::EmitViewingKeySet(expected_event),
     ]
         .span();
     assert_eq!(actions, expected_actions);
     assert_eq!(user_1.get_public_key(), user_1.public_key);
     assert_eq!(user_1.get_enc_private_key(), enc_private_key);
+    let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("ViewingKeySet"),
+        expected_event_name: "ViewingKeySet",
+    );
 }
 
 #[test]
@@ -3524,6 +3544,7 @@ fn test_compile_client_actions_writes() {
     let client_actions = [set_viewing_key, open_channel, open_subchannel, deposit, create_note]
         .span();
     // Compile client actions.
+    let mut spy_events = spy_events();
     let server_actions = user.compile_client_actions(:client_actions);
     // Expected server actions.
     let address = user.address;
@@ -3556,6 +3577,7 @@ fn test_compile_client_actions_writes() {
     let note_storage_path = map_entry_address(
         map_selector: selector!("notes"), keys: [enc_note.id].span(),
     );
+    let expected_event = events::ViewingKeySet { user_addr: address, public_key, enc_private_key };
     let expected_sevrer_actions = [
         // Set viewing key.
         ServerAction::WriteIfZero(
@@ -3566,6 +3588,7 @@ fn test_compile_client_actions_writes() {
                 storage_address: enc_private_key_storage_path, value: enc_private_key,
             },
         ),
+        ServerAction::EmitViewingKeySet(expected_event),
         // Open channel.
         ServerAction::VerifyValue(
             VerifyValueInput { storage_address: public_key_storage_path, value: public_key },
@@ -3597,6 +3620,15 @@ fn test_compile_client_actions_writes() {
         .span();
     // Assert server actions.
     assert_eq!(server_actions, expected_sevrer_actions);
+    // Assert events.
+    let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("ViewingKeySet"),
+        expected_event_name: "ViewingKeySet",
+    );
 
     // Test CreateNote writes.
     // TODO: Execute actions when client reverts properly.
