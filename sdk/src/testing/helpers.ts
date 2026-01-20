@@ -4,6 +4,7 @@
 
 import type { CallAndProof, ExecuteResult, PrivateRegistry, Proof } from "../interfaces.js";
 import { StateCallback } from "./pool.js";
+import { debugLog } from "../utils/logging.js";
 
 // ============ Mock Helpers ============
 
@@ -40,12 +41,22 @@ export const Withdrawal = Symbol("Withdrawal");
  */
 export function applyStateChanges(result: ExecuteResult): PrivateRegistry {
   const { callAndProof } = result;
+  debugLog("applyStateChanges", "checking callAndProof.call", {
+    hasCall: !!callAndProof.call,
+    isObject: typeof callAndProof.call === "object",
+    hasCallCall: callAndProof.call && "call" in callAndProof.call,
+    callCallType:
+      callAndProof.call && "call" in callAndProof.call
+        ? typeof (callAndProof.call as any).call
+        : "N/A",
+  });
   if (
     callAndProof.call &&
     typeof callAndProof.call === "object" &&
     "call" in callAndProof.call &&
     typeof callAndProof.call.call === "function"
   ) {
+    debugLog("applyStateChanges", "calling callbacks");
     callAndProof.call.call();
   }
   return result.registry;

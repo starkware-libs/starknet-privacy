@@ -1,6 +1,6 @@
 import { num } from "starknet";
-import type { Amount, Open, PrivateRecipient, StarknetAddress, ViewingKey } from "../interfaces.js";
-import { MAX_VIEWING_KEY } from "../interfaces.js";
+import type { Amount, PrivateRecipient, StarknetAddress, ViewingKey } from "../interfaces.js";
+import { All, MAX_VIEWING_KEY, Open } from "../interfaces.js";
 
 // ============ Validation Utilities ============
 
@@ -48,5 +48,14 @@ export function assertRecipientAddress(
  * @returns true if the value is an Open marker, false if it's an Amount
  */
 export function isOpen(value: Amount | Open): value is Open {
-  return typeof value !== "bigint";
+  return value === Open;
+}
+
+/**
+ * Type guard to check if a value is an All marker (for all notes).
+ * @param value - The value to check (Amount or All)
+ * @returns true if the value is an All marker, false if it's an Amount
+ */
+export function isAll(value: Amount | All): value is All {
+  return value === All;
 }

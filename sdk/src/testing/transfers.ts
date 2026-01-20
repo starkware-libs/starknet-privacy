@@ -13,6 +13,7 @@ import type {
 } from "../interfaces.js";
 import { Channel, SetupRequirement } from "../interfaces.js";
 import type { BlockIdentifier } from "starknet";
+import { num } from "starknet";
 import type { PrivateKey } from "../utils/crypto.js";
 import { AddressMap } from "../utils/maps.js";
 import { createMockCallAndProof } from "./helpers.js";
@@ -21,16 +22,18 @@ import { MockDiscoveryProvider } from "./discovery.js";
 import { PrivateTransfersBuilderImpl } from "../internal/builders.js";
 import { ActionCompiler } from "../internal/compiler.js";
 import { MockContracts } from "./contracts.js";
+import { debugLog } from "../utils/logging.js";
+
+/** Normalize BigNumberish to bigint */
+const toBigInt = (value: StarknetAddress): bigint => num.toBigInt(value);
 
 export class MockPrivateTransfers implements PrivateTransfers {
-  private pool: PrivacyPool;
-  private _currentBlock: BlockIdentifier = 0;
-
   // User credentials (set via configure)
-  private userAddress: StarknetAddress = "0x0";
+  readonly user: bigint;
   private userViewingKey: PrivateKey = 0n;
   private discoveryProvider: MockDiscoveryProvider;
   private compiler: ActionCompiler;
+  private pool: PrivacyPool;
 
   constructor(
     private contracts: MockContracts,
@@ -38,11 +41,11 @@ export class MockPrivateTransfers implements PrivateTransfers {
     userAddress: StarknetAddress,
     userPrivateKey: PrivateKey
   ) {
-    this.pool = this.contracts.get<PrivacyPool>(poolAddress);
+    this.pool = this.contracts.get<PrivacyPool>(toBigInt(poolAddress));
     this.discoveryProvider = new MockDiscoveryProvider(this.pool);
-    this.userAddress = userAddress;
+    this.user = toBigInt(userAddress);
     this.userViewingKey = userPrivateKey;
-    this.compiler = new ActionCompiler(userAddress, userPrivateKey, this.discoveryProvider);
+    this.compiler = new ActionCompiler(this.user, userPrivateKey, this.discoveryProvider);
   }
 
   async discoverRequirement(
@@ -50,20 +53,23 @@ export class MockPrivateTransfers implements PrivateTransfers {
     token: StarknetAddress
   ): Promise<SetupRequirement> {
     return this.discoveryProvider.discoverRequirement(
-      this.userAddress,
+      this.user,
       this.userViewingKey,
-      recipient,
-      token
+      toBigInt(recipient),
+      toBigInt(token)
     );
   }
 
   async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
+    debugLog("private-transfers", "execute", actions);
     // 1. Compile actions - resolves contexts and produces clientActions
     const { clientActions, registry } = this.compiler.compile(actions, options);
 
+    debugLog("private-transfers", "clientActions", clientActions);
+
     const snapshot = this.contracts.snapshot();
     // 2. Execute client actions on the pool (returns callbacks, state is restored)
-    const callbacks = this.pool.execute(this.userAddress, ...clientActions);
+    const callbacks = this.pool.execute(this.user, ...clientActions);
 
     this.contracts.restore(snapshot);
     // 3. Apply optimistic updates - update channel nonces, remove spent notes
@@ -76,14 +82,14 @@ export class MockPrivateTransfers implements PrivateTransfers {
   }
 
   build(options?: ExecuteOptions): PrivateTransfersBuilder {
-    return new PrivateTransfersBuilderImpl(this, this.userAddress, options);
+    return new PrivateTransfersBuilderImpl(this, this.user, options);
   }
 
   discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> } = {}): {
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
   } {
-    return this.discoveryProvider.discoverNotes(this.userAddress, this.userViewingKey, params);
+    return this.discoveryProvider.discoverNotes(this.user, this.userViewingKey, params);
   }
 
   discoverChannels(...recipients: StarknetAddress[]): {
@@ -91,9 +97,9 @@ export class MockPrivateTransfers implements PrivateTransfers {
     channels: AddressMap<Channel>;
   } {
     return this.discoveryProvider.discoverChannels(
-      this.userAddress,
+      this.user,
       this.userViewingKey,
-      ...recipients
+      ...recipients.map(toBigInt)
     );
   }
 }

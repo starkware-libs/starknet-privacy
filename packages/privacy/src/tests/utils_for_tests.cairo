@@ -534,37 +534,18 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn get_num_of_channels(self: @User) -> u64 {
-        self
-            .privacy
-            .views
-            .get_num_of_channels(
-                recipient_addr: *self.address, recipient_public_key: *self.public_key,
-            )
+        self.privacy.views.get_num_of_channels(recipient_addr: *self.address)
     }
 
     fn get_channel_info(self: @User, channel_index: u64) -> EncChannelInfo {
-        self
-            .privacy
-            .views
-            .get_channel_info(
-                recipient_addr: *self.address,
-                recipient_public_key: *self.public_key,
-                :channel_index,
-            )
+        self.privacy.views.get_channel_info(recipient_addr: *self.address, :channel_index)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_get_channel_info(
         self: @User, channel_index: u64,
     ) -> Result<EncChannelInfo, Array<felt252>> {
-        self
-            .privacy
-            .safe_views
-            .get_channel_info(
-                recipient_addr: *self.address,
-                recipient_public_key: *self.public_key,
-                :channel_index,
-            )
+        self.privacy.safe_views.get_channel_info(recipient_addr: *self.address, :channel_index)
     }
 
     fn set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
@@ -820,7 +801,6 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn cheat_open_channel(
         self: @PrivacyCfg,
         recipient_addr: ContractAddress,
-        recipient_public_key: felt252,
         enc_channel_info: EncChannelInfo,
         channel_id: felt252,
     ) {
@@ -833,9 +813,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                     value: true.into(),
                 },
             ),
-            ServerAction::AppendToVec(
-                AppendToVecInput { recipient_addr, recipient_public_key, enc_channel_info },
-            ),
+            ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
         ]
             .span();
         self.execute_actions(:actions);
@@ -938,8 +916,8 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                     self.store_zero(storage_address: storage_address + 1);
                 },
                 ServerAction::AppendToVec(AppendToVecInput {
-                    recipient_addr, recipient_public_key, ..,
-                }) => { self.pop_from_vec(:recipient_addr, :recipient_public_key); },
+                    recipient_addr, ..,
+                }) => { self.pop_from_vec(:recipient_addr); },
                 _ => {},
             }
         }
@@ -949,13 +927,10 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         store(target: *self.address, :storage_address, serialized_value: [Zero::zero()].span());
     }
 
-    fn pop_from_vec(
-        self: @PrivacyCfg, recipient_addr: ContractAddress, recipient_public_key: felt252,
-    ) {
+    fn pop_from_vec(self: @PrivacyCfg, recipient_addr: ContractAddress) {
         let target = *self.address;
         let vector_storage_address = map_entry_address(
-            map_selector: selector!("recipient_channels"),
-            keys: [recipient_addr.into(), recipient_public_key].span(),
+            map_selector: selector!("recipient_channels"), keys: [recipient_addr.into()].span(),
         );
         let length: u64 = generic_load(:target, storage_address: vector_storage_address);
         let new_length = length - 1;

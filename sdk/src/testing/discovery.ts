@@ -7,15 +7,13 @@ import type {
   DiscoveryProviderInterface,
   Note,
   NoteId,
-  StarknetAddress,
-  StarknetAddressBigint,
   ViewingKey,
 } from "../interfaces.js";
 import { Channel, SetupRequirement, Witness } from "../interfaces.js";
 import type { BlockIdentifier } from "starknet";
-import { decryptChannelInfo, toBigInt } from "../utils/crypto.js";
+import { decryptChannelInfo } from "../utils/crypto.js";
 import { AddressMap } from "../utils/maps.js";
-import { assertRecipientAddress, assertViewingKey } from "../utils/validation.js";
+import { assertViewingKey } from "../utils/validation.js";
 import type { PrivacyPool } from "./pool.js";
 import { hashes } from "../utils/hashes.js";
 import { debugLog } from "../utils/logging.js";
@@ -25,9 +23,9 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
   constructor(private pool: PrivacyPool) {}
 
   discoverNotes(
-    address: StarknetAddress,
+    address: bigint,
     viewingKey: ViewingKey,
-    params: { since?: BlockIdentifier; known?: AddressMap<Note[]>; tokens?: StarknetAddress[] } = {}
+    params: { since?: BlockIdentifier; known?: AddressMap<Note[]>; tokens?: bigint[] } = {}
   ): { timestamp: BlockIdentifier; notes: AddressMap<Note[]> } {
     // TODO(ittay): Add usage of 'since' and 'known'
     assertViewingKey(viewingKey);
@@ -36,14 +34,15 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
 
     const channels = this.pool.getChannels(address);
 
-    debugLog("discovery", "discovering notes address", address);
+    debugLog("discovery", "discovering notes address", address, "channelCount:", channels.length);
     for (const encryptedChannel of channels) {
       const channel = decryptChannelInfo(encryptedChannel, viewingKey);
+      debugLog("discovery", "processing channel key:", channel.key, "sender:", channel.sender);
       const key = channel.key;
 
       // Iterate token sequences
       let tokenSequence = 0;
-      let token: StarknetAddressBigint | false;
+      let token: bigint | false;
       while ((token = this.pool.getToken(key, tokenSequence++)) !== false) {
         if (params.tokens && !params.tokens.includes(token)) {
           continue;
@@ -55,14 +54,24 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
         while ((note = this.pool.getNote(key, noteSequence, token)) !== false) {
           //TODO: cleanup
           const nonce = noteSequence;
-          if (
-            this.pool.getNullifier(new Witness(key, nonce, note.r), token, viewingKey) !== false
-          ) {
+          const nullifierResult = this.pool.getNullifier(
+            new Witness(key, nonce, note.r),
+            token,
+            viewingKey
+          );
+          debugLog("discovery", "checking nullifier", { nonce, noteId: note.id, nullifierResult });
+          if (nullifierResult !== false) {
+            debugLog("discovery", "skipping nullified note", { nonce, noteId: note.id });
             noteSequence++;
             continue;
           }
 
-          debugLog("discovery", "discovering notes note", note);
+          debugLog("discovery", "discovering notes note", {
+            token,
+            nonce,
+            noteId: note.id,
+            amount: note.amount,
+          });
           result.get(token)!.push({
             id: note.id,
             amount: note.amount,
@@ -82,24 +91,27 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
   }
 
   discoverChannels(
-    address: StarknetAddress,
+    address: bigint,
     viewingKey: ViewingKey,
-    ...recipients: StarknetAddress[]
+    ...recipients: bigint[]
   ): { timestamp: BlockIdentifier; channels: AddressMap<Channel> } {
     assertViewingKey(viewingKey);
 
     const result = new AddressMap<Channel>();
     for (const recipient of recipients) {
-      const addr = assertRecipientAddress(recipient);
-      if (!this.pool.isRegistered(addr)) {
+      if (!this.pool.isRegistered(recipient)) {
         continue;
       }
-      const publicKey = toBigInt(this.pool.getPublicKey(addr));
-      const key = hashes.channelKey(address, viewingKey, addr, publicKey);
+      const publicKey = this.pool.getPublicKey(recipient);
+      const key = hashes.channelKey(address, viewingKey, recipient, publicKey);
+      if (!this.pool.doesChannelExist(key, address, recipient)) {
+        result.set(recipient, new Channel(publicKey));
+        continue;
+      }
 
       // Find the highest token nonce sequence
       let tokenSequence = 0;
-      let token: StarknetAddress | false;
+      let token: bigint | false;
       const tokens = new AddressMap<{ tokenNonce: number; noteNonce: number }>();
 
       while ((token = this.pool.getToken(key, tokenSequence)) !== false) {
@@ -115,29 +127,33 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
         tokenSequence++;
       }
 
-      result.set(addr, new Channel(publicKey, key, tokens.entries()));
+      result.set(recipient, new Channel(publicKey, key, tokens.entries()));
     }
 
     return { timestamp: this._currentBlock, channels: result };
   }
 
   async discoverRequirement(
-    address: StarknetAddress,
+    address: bigint,
     viewingKey: ViewingKey,
-    recipient: StarknetAddress,
-    token: StarknetAddress
+    recipient: bigint,
+    token: bigint
   ): Promise<SetupRequirement> {
     assertViewingKey(viewingKey);
-    const addr = assertRecipientAddress(recipient);
-    if (!this.pool.isRegistered(addr)) {
+    if (!this.pool.isRegistered(recipient)) {
       return SetupRequirement.Register;
     }
-    const key = hashes.channelKey(address, viewingKey, addr, this.pool.getPublicKey(addr));
+    const key = hashes.channelKey(
+      address,
+      viewingKey,
+      recipient,
+      this.pool.getPublicKey(recipient)
+    );
 
-    if (!this.pool.doesChannelExist(key, address, addr)) {
+    if (!this.pool.doesChannelExist(key, address, recipient)) {
       return SetupRequirement.SetupChannel;
     }
-    if (!this.pool.doesSubchannelExist(key, addr, token)) {
+    if (!this.pool.doesSubchannelExist(key, recipient, token)) {
       return SetupRequirement.SetupToken;
     }
     return SetupRequirement.Ready;

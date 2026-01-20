@@ -147,9 +147,7 @@ pub trait IViews<T> {
     ///
     /// #### Access Control
     /// - Any address can call this function.
-    fn get_num_of_channels(
-        self: @T, recipient_addr: ContractAddress, recipient_public_key: felt252,
-    ) -> u64;
+    fn get_num_of_channels(self: @T, recipient_addr: ContractAddress) -> u64;
 
     // TODO: add "Index out of bounds" in reverts?
     /// Returns the encrepted channel information for a given (recipient_addr, recipient_public_key)
@@ -176,10 +174,7 @@ pub trait IViews<T> {
     /// #### Access Control
     /// - Any address can call this function.
     fn get_channel_info(
-        self: @T,
-        recipient_addr: ContractAddress,
-        recipient_public_key: felt252,
-        channel_index: u64,
+        self: @T, recipient_addr: ContractAddress, channel_index: u64,
     ) -> EncChannelInfo;
 
     /// Checks if a subchannel exists.
