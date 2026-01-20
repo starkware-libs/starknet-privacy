@@ -1,7 +1,7 @@
 use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
-    WriteIfZeroInput, WriteIfZeroPrivateKeyInput, WriteIfZeroSubchannelInput,
+    WriteIfZeroInput,
 };
 use privacy::errors;
 use privacy::tests::utils_for_tests::{
@@ -422,9 +422,7 @@ fn test_execute_write_if_zero_subchannel() {
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
-                storage_address: storage_path_felt, value: enc_subchannel_info,
-            },
+            WriteIfZeroInput { storage_address: storage_path_felt, value: enc_subchannel_info },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -445,9 +443,7 @@ fn test_execute_write_if_zero_subchannel_assertions() {
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
-                storage_address: storage_path_felt, value: enc_subchannel_info,
-            },
+            WriteIfZeroInput { storage_address: storage_path_felt, value: enc_subchannel_info },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -475,9 +471,7 @@ fn test_execute_write_if_zero_private_key() {
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZeroPrivateKey(
-            WriteIfZeroPrivateKeyInput {
-                storage_address: storage_path_felt, value: enc_private_key,
-            },
+            WriteIfZeroInput { storage_address: storage_path_felt, value: enc_private_key },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -499,9 +493,7 @@ fn test_execute_write_if_zero_private_key_assertions() {
     );
     let actions: Array<ServerAction> = array![
         ServerAction::WriteIfZeroPrivateKey(
-            WriteIfZeroPrivateKeyInput {
-                storage_address: storage_path_felt, value: enc_private_key,
-            },
+            WriteIfZeroInput { storage_address: storage_path_felt, value: enc_private_key },
         ),
     ];
     test.privacy.execute_actions(actions.span());

@@ -9,7 +9,6 @@ pub mod Privacy {
         AppendToVecInput, ClientAction, ClientActionTrait, CreateNoteInput, DepositInput,
         OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
         TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput,
-        WriteIfZeroPrivateKeyInput, WriteIfZeroSubchannelInput,
     };
     use privacy::errors;
     use privacy::errors::internal_errors;
@@ -203,7 +202,7 @@ pub mod Privacy {
                     },
                 ),
                 ServerAction::WriteIfZeroPrivateKey(
-                    WriteIfZeroPrivateKeyInput {
+                    WriteIfZeroInput {
                         storage_address: self.enc_private_key.entry(user_addr).into(),
                         value: enc_private_key,
                     },
@@ -316,7 +315,7 @@ pub mod Privacy {
                     },
                 ),
                 ServerAction::WriteIfZeroSubchannel(
-                    WriteIfZeroSubchannelInput {
+                    WriteIfZeroInput {
                         storage_address: self.subchannel_tokens.entry(subchannel_key).into(),
                         value: enc_subchannel_info,
                     },

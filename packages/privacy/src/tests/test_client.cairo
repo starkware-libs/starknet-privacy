@@ -2,8 +2,7 @@ use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
     OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
-    UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput, WriteIfZeroPrivateKeyInput,
-    WriteIfZeroSubchannelInput,
+    UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput,
 };
 use privacy::errors;
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
@@ -56,7 +55,7 @@ fn test_set_viewing_key() {
             WriteIfZeroInput { storage_address: public_key_storage_path_felt, value: public_key },
         ),
         ServerAction::WriteIfZeroPrivateKey(
-            WriteIfZeroPrivateKeyInput {
+            WriteIfZeroInput {
                 storage_address: enc_private_key_storage_path_felt, value: enc_private_key,
             },
         ),
@@ -1158,7 +1157,7 @@ fn test_open_subchannel() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt,
                 value: expected_enc_subchannel_info,
             },
@@ -1196,7 +1195,7 @@ fn test_open_subchannel_self_channel() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt,
                 value: expected_enc_subchannel_info,
             },
@@ -1365,7 +1364,7 @@ fn test_open_subchannel_multiple() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt_1,
                 value: expected_enc_subchannel_info_1,
             },
@@ -1379,7 +1378,7 @@ fn test_open_subchannel_multiple() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt_2,
                 value: expected_enc_subchannel_info_2,
             },
@@ -1428,7 +1427,7 @@ fn test_open_subchannel_multiple() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt_1,
                 value: expected_enc_subchannel_info_1,
             },
@@ -1442,7 +1441,7 @@ fn test_open_subchannel_multiple() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt_2,
                 value: expected_enc_subchannel_info_2,
             },
@@ -1500,7 +1499,7 @@ fn test_open_subchannel_multiple() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt,
                 value: expected_enc_subchannel_info_1,
             },
@@ -1514,7 +1513,7 @@ fn test_open_subchannel_multiple() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt,
                 value: expected_enc_subchannel_info_2,
             },
@@ -1581,7 +1580,7 @@ fn test_open_subchannel_multiple_self_channel() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt_1,
                 value: expected_enc_subchannel_info_1,
             },
@@ -1595,7 +1594,7 @@ fn test_open_subchannel_multiple_self_channel() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt_2,
                 value: expected_enc_subchannel_info_2,
             },
@@ -2602,7 +2601,7 @@ fn test_compile_client_actions_set_viewing_key() {
             },
         ),
         ServerAction::WriteIfZeroPrivateKey(
-            WriteIfZeroPrivateKeyInput {
+            WriteIfZeroInput {
                 storage_address: enc_private_key_storage_path_felt, value: enc_private_key,
             },
         ),
@@ -2718,7 +2717,7 @@ fn test_compile_client_actions_open_subchannel() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path_felt,
                 value: expected_enc_subchannel_info,
             },
@@ -3563,7 +3562,7 @@ fn test_compile_client_actions_writes() {
             WriteIfZeroInput { storage_address: public_key_storage_path, value: public_key },
         ),
         ServerAction::WriteIfZeroPrivateKey(
-            WriteIfZeroPrivateKeyInput {
+            WriteIfZeroInput {
                 storage_address: enc_private_key_storage_path, value: enc_private_key,
             },
         ),
@@ -3582,7 +3581,7 @@ fn test_compile_client_actions_writes() {
             },
         ),
         ServerAction::WriteIfZeroSubchannel(
-            WriteIfZeroSubchannelInput {
+            WriteIfZeroInput {
                 storage_address: subchannel_tokens_storage_path, value: enc_subchannel_info,
             },
         ),
