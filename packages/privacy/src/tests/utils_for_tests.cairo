@@ -60,13 +60,12 @@ pub struct EncNote {
     /// The note's id.
     pub id: felt252,
     /// The encrypted amount of the note.
-    // TODO: Rename.
-    pub enc_amount: felt252,
+    pub enc_value: felt252,
 }
 
 pub(crate) impl EncNoteIntoNoteImpl of Into<EncNote, Note> {
     fn into(self: EncNote) -> Note {
-        Note { enc_value: self.enc_amount, token: Zero::zero() }
+        Note { enc_value: self.enc_value, token: Zero::zero() }
     }
 }
 
@@ -488,10 +487,10 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> EncNote {
         let channel_key = self.compute_channel_key(:recipient);
         let note_id = compute_note_id(:channel_key, token: token_address, :index);
-        let enc_amount = encrypt_note_amount(
+        let enc_value = encrypt_note_amount(
             :channel_key, token: token_address, :index, :salt, :amount,
         );
-        EncNote { id: note_id, enc_amount }
+        EncNote { id: note_id, enc_value }
     }
 
     fn compute_enc_user_addr(self: @User, random: felt252) -> EncUserAddr {
@@ -816,8 +815,8 @@ pub(crate) impl TestImpl of TestTrait {
     fn mock_new_note(ref self: Test, amount: u128) -> EncNote {
         self.nonce += 1;
         let id = 'NOTE_ID' + self.nonce.into();
-        let enc_amount = 'ENC_AMOUNT' + amount.into() + self.nonce.into();
-        EncNote { id, enc_amount }
+        let enc_value = 'ENC_VALUE' + amount.into() + self.nonce.into();
+        EncNote { id, enc_value }
     }
 
     /// Mock function to generate a new nullifier.
