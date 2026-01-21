@@ -158,8 +158,11 @@ pub mod Privacy {
             let mut server_actions: Array<ServerAction> = array![];
             let mut current_phase = ClientActionTrait::ACCOUNT_PHASE;
             let mut token_balances: TokenBalances = Default::default();
+            // Used to make sure a storage action was included in the client actions.
+            let mut has_privacy_action = false;
             for client_action in client_actions {
                 client_action.assert_and_set_phase(ref :current_phase);
+                // TODO: Consider renaming `should_execute`.
                 let (actions, should_execute) = match *client_action {
                     ClientAction::SetViewingKey(input) => (
                         self.set_viewing_key(:user_addr, :input), true,
@@ -184,12 +187,14 @@ pub mod Privacy {
                     ),
                 };
                 if should_execute {
+                    has_privacy_action = true;
                     self.execute_actions(actions.span());
                 }
                 server_actions.extend(actions);
             }
-
+            assert(has_privacy_action, errors::NO_PRIVACY_ACTIONS);
             token_balances.squash().assert_valid();
+
             let mut panic_message = array![];
             // `assert_valid_signature` must be the last call before panicking, to ensure contract
             // storage is not modified.
