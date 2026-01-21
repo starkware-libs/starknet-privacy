@@ -757,6 +757,10 @@ pub(crate) struct Test {
 #[generate_trait]
 pub(crate) impl TestImpl of TestTrait {
     fn new_user(ref self: Test) -> User {
+        self.new_user_with_is_valid(is_valid: true)
+    }
+
+    fn new_user_with_is_valid(ref self: Test, is_valid: bool) -> User {
         self.nonce += 1;
         let mut private_key = 'PRIVATE_KEY' + self.nonce.into();
         if !is_canonical_key(key: private_key) {
@@ -764,7 +768,7 @@ pub(crate) impl TestImpl of TestTrait {
         }
         let public_key = derive_public_key(:private_key);
         self.nonce += 1;
-        let address = deploy_mock_account(salt: self.nonce.into());
+        let address = deploy_mock_account(salt: self.nonce.into(), :is_valid);
         User { address, privacy: self.privacy, private_key, public_key, nonce: Zero::zero() }
     }
 
@@ -1099,14 +1103,14 @@ pub(crate) fn deploy_privacy(
     }
 }
 
-pub(crate) fn deploy_mock_account(salt: felt252) -> ContractAddress {
+pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddress {
     let contract_class_hash = declare(contract: "MockAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
     let (contract_address, _) = deploy_mock_account_for_test(
-        class_hash: *contract_class_hash, :deployment_params,
+        class_hash: *contract_class_hash, :deployment_params, :is_valid,
     )
         .expect('MockAccount deployment failed');
     contract_address
