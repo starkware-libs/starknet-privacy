@@ -3163,7 +3163,10 @@ fn test_compile_client_actions_assertions() {
     };
     let note_2 = CreateNoteInput { index: 1, ..note_1 };
 
-    // TODO: Catch INVALID_SIGNATURE.
+    // Catch INVALID_SIGNATURE.
+    let user_invalid = test.new_user_with_is_valid(is_valid: false);
+    let result = user_invalid.safe_compile_client_actions(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
 
     // TODO: Catch server errors.
 
