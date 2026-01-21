@@ -31,7 +31,7 @@ def ServerAction.run (crypto: Crypto) (action: ServerAction) (m: Memory) : Memor
   | .OpenDeposit note_id amount token =>
     let old_value := m .Notes [note_id, 0]
     let m := write .Notes [note_id, 0] (crypto.pack 1 amount) m
-    (m, old_value = crypto.pack 1 0 ∧ m .OpenNoteToken [note_id] = token)
+    (m, old_value = crypto.pack 1 0 ∧ m .OpenNoteToken [note_id] = token ∧ amount ≠ 0)
   | .Event _event => (m, true)
 
 def ServerAction.run_all (crypto: Crypto) (actions: List ServerAction) (m: Memory) : Memory × Bool :=

@@ -12,6 +12,8 @@ structure OpenDepositImplies
   h_note_id: inp_create.note_id crypto = inp.note_id
   h_r : inp_create.r = 1
   h_token: inp_create.token = inp.token
+  value: rm.m .Notes [inp_create.note_id crypto, 0] = crypto.pack 1 inp.amount
+  amount_nz: inp.amount ≠ 0
 
 theorem OpenDepositImplies.token_eq_sn
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp_deposit: OpenDepositInput}
@@ -28,14 +30,45 @@ theorem OpenDepositImplies.next
     {action: Action} (success: (run_action crypto action rm.m).success)
     (open_deposit_imp: OpenDepositImplies rm inp) :
     Nonempty (OpenDepositImplies (rm.add action success) inp) := by
-  exact ⟨{
+  refine ⟨{
     h_action := by simp [open_deposit_imp.h_action],
     inp_create := open_deposit_imp.inp_create,
     created := open_deposit_imp.created.next success |>.some,
     h_note_id := open_deposit_imp.h_note_id,
     h_r := open_deposit_imp.h_r,
     h_token := open_deposit_imp.h_token,
+    value := ?_,
+    amount_nz := open_deposit_imp.amount_nz,
   }⟩
+
+  cases action
+  case CreateNote inp' =>
+    let info := create_note_info crypto inp' rm success
+    have : inp.note_id ≠ inp'.note_id crypto := by
+      intro h_note_id
+      have := open_deposit_imp.value
+      rw [open_deposit_imp.h_note_id, h_note_id, info.old_value_was_zero] at this
+      exact crypto.pack_nz (by simp) this.symm
+
+    rw [ReachableMemory.add_m, run_action, ←info.h_m']
+    rw [info.no_change _ _ (by simp [open_deposit_imp.h_note_id ▸ this]) (by simp)]
+    exact open_deposit_imp.value
+
+  case OpenDeposit inp' =>
+    let info := open_deposit_info crypto inp' rm success
+    have : inp.note_id ≠ inp'.note_id := by
+      intro h_note_id
+      have := open_deposit_imp.value
+      rw [open_deposit_imp.h_note_id, h_note_id, info.old_value] at this
+      apply congrArg crypto.unpack at this
+      simp only [crypto.unpack_pack, Prod.mk.injEq, true_and] at this
+      exact open_deposit_imp.amount_nz this.symm
+
+    rw [ReachableMemory.add_m, run_action, ←info.h_m']
+    rw [info.no_change _ _ (by simp [open_deposit_imp.h_note_id ▸ this])]
+    exact open_deposit_imp.value
+
+  all_goals exact open_deposit_imp.value
 
 theorem OpenDepositImplies.from_action
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenDepositInput}
@@ -70,6 +103,10 @@ theorem OpenDepositImplies.from_action
       h_r := h_r,
       h_token := by
         rw [←info.open_note_token, ←h_note_id, note_imp.h_open_note h_r]
+      value := by
+        rw [ReachableMemory.add_m, run_action, ←info.h_m']
+        rw [h_note_id, info.memory_diff₀]
+      amount_nz := info.amount_ne_zero
     }⟩
 
   case tail h =>

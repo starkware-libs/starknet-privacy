@@ -284,6 +284,7 @@ structure OpenDepositInfo (crypto: Crypto) (inp: OpenDepositInput) (m: Memory) w
   h_m': m' = (open_deposit crypto inp m |> process_action crypto m).m
   old_value: m .Notes [inp.note_id, 0] = crypto.pack 1 0
   open_note_token: m .OpenNoteToken [inp.note_id] = inp.token
+  amount_ne_zero: inp.amount ≠ 0
   no_change: ∀ t, ∀ x,
     (t, x) ≠ (.Notes, [inp.note_id, 0]) →
     m' t x = m t x
@@ -298,13 +299,14 @@ def open_deposit_info
   have ⟨_, success₁⟩ := success
 
   simp [open_deposit, ServerAction.run_all, ServerAction.run] at success₁
-  have ⟨old_value, open_note_token⟩ := success₁
+  have ⟨old_value, open_note_token, amount_ne_zero⟩ := success₁
 
   exact {
     m' := m'
     h_m':= by rfl
     old_value := old_value,
     open_note_token := open_note_token,
+    amount_ne_zero := amount_ne_zero,
     no_change := by
       intro t x h₀
       simp [m', h₀, open_deposit, ServerAction.run_all, ServerAction.run]
