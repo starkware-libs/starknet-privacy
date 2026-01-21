@@ -224,7 +224,6 @@ pub enum ServerAction {
     // TODO: Better naming for this action.
     /// Verify that a storage value is zero/empty and then write to it.
     WriteIfZeroPrivateKey: WriteIfZeroInput<EncPrivateKey>,
-    // TODO: Generalize to any vector.
     /// Append a `EncChannelInfo` value to `recipient_addr`'s vector in storage.
     AppendToVec: AppendToVecInput,
     /// Transfer tokens from a user to the contract (ERC20 transfer_from).
