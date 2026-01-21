@@ -1,0 +1,10 @@
+[package]
+name = "discovery-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+starknet-core = "0.16"
+starknet-crypto = "0.8"
+starknet-types-core = "0.2"
