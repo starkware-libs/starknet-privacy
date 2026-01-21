@@ -418,7 +418,7 @@ pub mod Privacy {
 
             // Decrypt note amount.
             let amount = decrypt_note_amount(:enc_note_value, :channel_key, :token, :index);
-            // TODO: Sanity assert amount is non zero?
+            assert(amount.is_non_zero(), internal_errors::UNEXPECTED_ZERO_AMOUNT);
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
