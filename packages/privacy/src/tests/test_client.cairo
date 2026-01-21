@@ -3826,11 +3826,6 @@ fn test_client_transfers_dont_execute() {
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 
     // Withdraw.
-    token.set_balance(address: test.privacy.address, amount: Zero::zero());
-
-    assert_eq!(token.balance_of(address: user.address), Zero::zero());
-    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
-
     let server_actions = user
         .compile_client_actions(
             client_actions: [
@@ -3849,8 +3844,8 @@ fn test_client_transfers_dont_execute() {
                 .span(),
         );
 
-    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 
     let nullifier = user.compute_nullifier(sender: user, :token_address, note_index: 0);
     let nullifier_path = map_entry_address(
@@ -3869,6 +3864,7 @@ fn test_client_transfers_dont_execute() {
         .span();
     assert_eq!(server_actions, expected_server_actions);
 
-    let result = test.privacy.safe_execute_actions(actions: server_actions);
-    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
+    test.privacy.execute_actions(actions: server_actions);
+    assert_eq!(token.balance_of(address: user.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 }
