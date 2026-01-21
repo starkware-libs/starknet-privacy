@@ -37,7 +37,6 @@ pub struct OpenSubchannelInput {
     /// The channel key of the subchannel.
     pub channel_key: felt252,
     /// The index of the subchannel within the channel.
-    // TODO: Consider changing type to u64.
     pub index: usize,
     /// The token of the subchannel.
     pub token: ContractAddress,
@@ -87,7 +86,6 @@ pub struct UseNoteInput {
     /// The note's token address.
     pub token: ContractAddress,
     /// The index of the note within the channel.
-    // TODO: Consider changing type to u64.
     pub note_index: usize,
 }
 
