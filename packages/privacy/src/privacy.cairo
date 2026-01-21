@@ -73,7 +73,6 @@ pub mod Privacy {
         /// Map of user addresses to their public viewing keys.
         public_key: Map<ContractAddress, felt252>,
         /// Map of user addresses to their encrypted private key.
-        // TODO: Consider vector with the history?
         enc_private_key: Map<ContractAddress, EncPrivateKey>,
         // TODO: Do we need setter for this?
         /// Public key of the compliance used for private key encryptions.
@@ -132,7 +131,6 @@ pub mod Privacy {
             assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Consider asserting that `client_actions` is not empty.
-            // TODO: Consider refactoring internal functions to return `Span<ServerAction>`.
             let mut server_actions: Array<ServerAction> = array![];
             let mut current_phase = ClientActionTrait::ACCOUNT_PHASE;
             let mut token_balances: TokenBalances = Default::default();
@@ -336,7 +334,6 @@ pub mod Privacy {
             input: DepositInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            // TODO: Consider checking that `user_addr` is registered.
             // Assert input is valid.
             let token = input.token;
             let amount = input.amount;
@@ -464,8 +461,6 @@ pub mod Privacy {
             assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
             // Assert salt is 120 bits.
             assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
-
-            // TODO: Consider impl helper function for common code.
 
             // Compute channel key.
             let channel_key = compute_channel_key(
@@ -619,7 +614,6 @@ pub mod Privacy {
             target.write(new_value);
         }
 
-        // TODO: Make generic.
         fn _execute_append_to_vector(
             ref self: ContractState, key: ContractAddress, value: EncChannelInfo,
         ) {
@@ -674,8 +668,6 @@ pub mod Privacy {
         ) -> EncChannelInfo {
             // TODO: Restrict access to `recipient_addr`?
             // TODO: Assert `recipient_addr` is registered?
-            // TODO: Consider defining custom error instead of using `at` (with "Index out of
-            // bounds" error)?
             self.recipient_channels.entry(recipient_addr).at(channel_index).read()
         }
 
