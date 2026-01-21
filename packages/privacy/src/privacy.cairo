@@ -701,16 +701,12 @@ pub mod Privacy {
         }
 
         fn get_num_of_channels(self: @ContractState, recipient_addr: ContractAddress) -> u64 {
-            // TODO: Restrict access to `recipient_addr`?
-            // TODO: Assert `recipient_addr` is registered?
             self.recipient_channels.entry(recipient_addr).len()
         }
 
         fn get_channel_info(
             self: @ContractState, recipient_addr: ContractAddress, channel_index: u64,
         ) -> EncChannelInfo {
-            // TODO: Restrict access to `recipient_addr`?
-            // TODO: Assert `recipient_addr` is registered?
             self.recipient_channels.entry(recipient_addr).at(channel_index).read()
         }
 
@@ -735,8 +731,6 @@ pub mod Privacy {
         }
 
         fn get_enc_private_key(self: @ContractState, user_addr: ContractAddress) -> EncPrivateKey {
-            // TODO: Restrict access to compliance?
-            // TODO: Assert `user_addr` is registered?
             self.enc_private_key.read(user_addr)
         }
 
