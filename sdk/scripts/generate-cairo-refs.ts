@@ -5,7 +5,7 @@
  *
  * This script:
  * 1. Runs Cairo code that outputs key-value pairs like "path.to.key: 0x123"
- * 2. Parses these into a JSON structure and updates tests/fixtures/cairo-reference-hashes.json
+ * 2. Parses these into a JSON structure and updates tests/fixtures/cairo-reference-data.json
  *
  * The TypeScript tests will automatically call this if values are stale.
  */
@@ -16,7 +16,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const fixturesPath = join(__dirname, "../tests/fixtures/cairo-reference-hashes.json");
+const fixturesPath = join(__dirname, "../tests/fixtures/cairo-reference-data.json");
 const cairoProjectPath = join(__dirname, "../../packages/privacy");
 
 // Load current fixtures (for metadata like _comment, _ttl_days)
@@ -58,7 +58,7 @@ function runCairo(): Record<string, unknown> | null {
     console.log("Running Cairo in:", cairoProjectPath);
 
     const result = execSync(
-      `cd ${cairoProjectPath} && snforge test generate_reference_hashes --include-ignored 2>&1`,
+      `cd ${cairoProjectPath} && snforge test generate_reference_data --include-ignored 2>&1`,
       { encoding: "utf-8", timeout: 120000 }
     );
 
