@@ -2696,16 +2696,6 @@ fn test_set_viewing_key_to_other_user_key() {
 }
 
 #[test]
-fn test_compile_client_actions_empty() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-
-    let actions = user_1.compile_client_actions(client_actions: [].span());
-    let expected_actions = [].span();
-    assert_eq!(actions, expected_actions);
-}
-
-#[test]
 fn test_compile_client_actions_set_viewing_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -2948,52 +2938,6 @@ fn test_compile_client_actions_deposit_create_note() {
     assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount);
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
-}
-
-#[test]
-fn test_compile_client_actions_deposit_withdraw() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    let token = test.new_token();
-    let token_address = token.contract_address();
-
-    let amount = 100;
-    user_1.increase_token_balance(:token, :amount);
-    user_1.approve(:token, amount: amount.into());
-    let random = user_1.get_random().into();
-    let actions = user_1
-        .compile_client_actions(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user_2.address, token: token_address, amount, random,
-                    },
-                ),
-            ]
-                .span(),
-        );
-    // Assert server actions.
-    let enc_user_addr = user_1.compute_enc_user_addr(:random);
-    let expected_event = events::Withdrawal {
-        enc_user_addr, withdrawal_target: user_2.address, token: token_address, amount,
-    };
-    let expected_actions = array![
-        ServerAction::TransferFrom(
-            TransferFromInput {
-                sender_addr: user_1.address, token: token_address, amount: amount.into(),
-            },
-        ),
-        ServerAction::TransferTo(
-            TransferToInput {
-                recipient_addr: user_2.address, token: token_address, amount: amount.into(),
-            },
-        ),
-        ServerAction::EmitWithdrawal(expected_event),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -3988,4 +3932,43 @@ fn test_client_transfers_dont_execute() {
     test.privacy.execute_actions(actions: server_actions);
     assert_eq!(token.balance_of(address: user.address), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+}
+
+#[test]
+fn test_no_privacy_actions() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let token = test.new_token();
+    let token_address = token.contract_address();
+    let amount = 100;
+
+    user.set_viewing_key_e2e();
+    user.open_channel_e2e(recipient: user);
+    user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
+
+    // Empty client actions.
+    let result = user.safe_compile_client_actions(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+
+    // Deposit only.
+    let deposit_action = ClientAction::Deposit(DepositInput { token: token_address, amount });
+    let result = user.safe_compile_client_actions(client_actions: [deposit_action,].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+
+    // Withdraw only.
+    let withdraw_action = ClientAction::Withdraw(
+        WithdrawInput {
+            withdrawal_target: user.address,
+            token: token_address,
+            amount,
+            random: user.get_random(),
+        },
+    );
+    let result = user.safe_compile_client_actions(client_actions: [withdraw_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
+
+    // Deposit and Withdraw.
+    let result = user
+        .safe_compile_client_actions(client_actions: [deposit_action, withdraw_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 }
