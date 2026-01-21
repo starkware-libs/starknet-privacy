@@ -41,6 +41,10 @@ pub mod domain_separation {
     pub mod enc_private_key {
         pub const ENC_PRIVATE_KEY_TAG: felt252 = 'private_key:enc_private_key:v1';
     }
+    /// Tags for the `EncUserAddr` struct.
+    pub mod enc_user_addr {
+        pub const ENC_USER_ADDR_TAG: felt252 = 'enc_user_addr:enc_user_addr:v1';
+    }
 }
 
 
@@ -55,6 +59,13 @@ pub(crate) fn hash(data: Span<felt252>) -> felt252 {
 /// Returns `h(ENC_PRIVATE_KEY_TAG, shared_x)`
 pub(crate) fn compute_enc_private_key_hash(shared_x: felt252) -> felt252 {
     hash([enc_private_key::ENC_PRIVATE_KEY_TAG, shared_x].span())
+}
+
+/// Computes the hash used to encrypt the address in `EncUserAddr`.
+///
+/// Returns `h(ENC_ADDRESS_TAG, shared_x)`
+pub(crate) fn compute_enc_address_hash(shared_x: felt252) -> felt252 {
+    hash([enc_user_addr::ENC_USER_ADDR_TAG, shared_x].span())
 }
 
 /// Computes the hash used to encrypt the token in `EncSubchannelInfo`.
