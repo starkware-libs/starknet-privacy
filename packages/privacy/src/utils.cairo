@@ -247,6 +247,5 @@ pub(crate) fn assert_valid_signature(user_addr: ContractAddress) {
 pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
     let mut payload = array![];
     server_actions.serialize(ref payload);
-    // TODO: Different to_address?
     send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
 }
