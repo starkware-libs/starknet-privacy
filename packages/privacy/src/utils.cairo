@@ -25,7 +25,6 @@ pub mod constants {
 }
 
 // TODO: Test the util and hash functions.
-// TODO: Define internal errors for errors in this file.
 
 /// Returns the generator point.
 pub fn GEN_P() -> EcPoint {
@@ -188,7 +187,9 @@ pub(crate) fn encrypt_note_amount(
 ) -> felt252 {
     let enc_amount = (compute_enc_amount_hash(:channel_key, :token, :index, :salt) + amount.into())
         .into() % TWO_POW_128;
-    packing(value_1: salt, value_2: enc_amount.try_into().expect('ENC_AMOUNT_OVERFLOW'))
+    packing(
+        value_1: salt, value_2: enc_amount.try_into().expect(internal_errors::ENC_AMOUNT_OVERFLOW),
+    )
 }
 
 /// Decrypts the note amount from `enc_note_value`.
@@ -201,7 +202,7 @@ pub(crate) fn decrypt_note_amount(
     let pad: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt)
         .into() % TWO_POW_128;
     let amount: u256 = (enc_amount_u256 + TWO_POW_128 - pad) % TWO_POW_128;
-    amount.try_into().expect('AMOUNT_OVERFLOW')
+    amount.try_into().expect(internal_errors::AMOUNT_OVERFLOW)
 }
 
 pub(crate) impl StoragePathIntoFelt<
@@ -218,7 +219,9 @@ pub(crate) impl StoragePathIntoFelt<
 /// Equivalent to (value_1 << 128) | value_2.
 /// Assumes: value_1 is 120 bits, value_2 is 128 bits.
 pub(crate) fn packing(value_1: u128, value_2: felt252) -> felt252 {
-    (value_1.into() * TWO_POW_128 + value_2.into()).try_into().expect('PACK_OVERFLOW')
+    (value_1.into() * TWO_POW_128 + value_2.into())
+        .try_into()
+        .expect(internal_errors::PACK_OVERFLOW)
 }
 
 
@@ -232,7 +235,10 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
     let value_2 = packed_u256 % TWO_POW_128;
     // TODO: Assert bounds?
     // TODO: Assert value_1 is 120 bits?
-    (value_1.try_into().expect('UNPACK1_OVERFLOW'), value_2.try_into().expect('UNPACK2_OVERFLOW'))
+    (
+        value_1.try_into().expect(internal_errors::UNPACK1_OVERFLOW),
+        value_2.try_into().expect(internal_errors::UNPACK2_OVERFLOW),
+    )
 }
 
 pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<(), Array<felt252>> {
