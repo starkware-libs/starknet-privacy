@@ -1140,7 +1140,7 @@ fn test_open_channel_decrypt_channel_info() {
     assert_eq!(user_2.get_num_of_channels(), 1);
     let enc_channel_info = user_2.get_channel_info(channel_index: 0);
     let (decrypted_channel_key, decrypted_sender_addr) = decrypt_channel_info(
-        :enc_channel_info, private_key: user_2.private_key,
+        :enc_channel_info, recipient_private_key: user_2.private_key,
     );
 
     // Verify decrypted channel key.
@@ -1680,7 +1680,7 @@ fn test_open_subchannel_decrypt_subchannel_info() {
     // User 2 decrypts the channel_key.
     let enc_channel_info = user_2.get_channel_info(channel_index: 0);
     let (decrypted_channel_key, _) = decrypt_channel_info(
-        :enc_channel_info, private_key: user_2.private_key,
+        :enc_channel_info, recipient_private_key: user_2.private_key,
     );
     // User 2 decrypts the subchannel token.
     let subchannel_key = compute_subchannel_key(channel_key: decrypted_channel_key, index: 0);
@@ -2034,7 +2034,9 @@ fn test_create_note_decrypt_amount() {
     // User 2 should be able to decrypt the amount.
     // Decrypt channel key.
     let enc_channel_info = user_2.get_channel_info(channel_index: 0);
-    let (channel_key, _) = decrypt_channel_info(:enc_channel_info, private_key: user_2.private_key);
+    let (channel_key, _) = decrypt_channel_info(
+        :enc_channel_info, recipient_private_key: user_2.private_key,
+    );
     let note_id = compute_note_id(:channel_key, token: token_address, index: note_index);
     let enc_amount = user_2.privacy.get_note(:note_id);
     let decrypted_amount = decrypt_note_amount(
@@ -2492,7 +2494,9 @@ fn test_use_note_find_nullifier() {
 
     // User 2 should be able to find the nullifier.
     let enc_channel_info = user_2.get_channel_info(channel_index: 0);
-    let (channel_key, _) = decrypt_channel_info(:enc_channel_info, private_key: user_2.private_key);
+    let (channel_key, _) = decrypt_channel_info(
+        :enc_channel_info, recipient_private_key: user_2.private_key,
+    );
     let expected_nullifier = compute_nullifier(
         :channel_key,
         token: token_address,

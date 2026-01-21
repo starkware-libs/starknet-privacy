@@ -1075,14 +1075,14 @@ pub(crate) fn decrypt_private_key(
 }
 
 /// Returns (channel_key, sender_addr) decrypted from the given `enc_channel_info` and
-/// recipient's `private_key`.
+/// `recipient_private_key`.
 pub(crate) fn decrypt_channel_info(
-    enc_channel_info: EncChannelInfo, private_key: felt252,
+    enc_channel_info: EncChannelInfo, recipient_private_key: felt252,
 ) -> (felt252, ContractAddress) {
     // Find shared point.
     let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_channel_info.ephemeral_pubkey)
         .unwrap();
-    let shared_point = ephemeral_pubkey_point.mul(scalar: private_key);
+    let shared_point = ephemeral_pubkey_point.mul(scalar: recipient_private_key);
     let shared_x = shared_point.try_into().unwrap().x();
 
     // Decrypt channel key.

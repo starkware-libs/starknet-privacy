@@ -24,7 +24,6 @@ pub mod constants {
     pub const ERROR_WRAPPER: felt252 = 'PRIVACY_ERROR_WRAPPER';
 }
 
-// TODO: Test the util and hash functions.
 // TODO: Define internal errors for errors in this file.
 
 /// Returns the generator point.
