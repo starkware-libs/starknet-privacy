@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { encryptions } from "../../src/utils/encryptions.js";
-import referenceHashes from "../fixtures/cairo-reference-hashes.json" with { type: "json" };
+import referenceHashes from "../fixtures/cairo-reference-data.json" with { type: "json" };
 
 describe("Encryption Compatibility with Cairo", () => {
   const { inputs, outputs } = referenceHashes;

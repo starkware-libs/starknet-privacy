@@ -21,7 +21,7 @@ import {
   compute_enc_recipient_addr_hash,
   compute_outgoing_channel_key,
 } from "../../src/utils/hashes.js";
-import referenceHashes from "../fixtures/cairo-reference-hashes.json" with { type: "json" };
+import referenceHashes from "../fixtures/cairo-reference-data.json" with { type: "json" };
 
 describe("Hash Compatibility with Cairo", () => {
   const { inputs, outputs } = referenceHashes;

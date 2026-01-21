@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference hash values from Cairo implementation. Regenerate by running Cairo and updating this file.",
+  "_comment": "Reference values from Cairo implementation. Regenerate with: npx tsx scripts/generate-cairo-refs.ts",
   "_ttl_days": 1,
   "inputs": {
     "sender": "0x123",
@@ -18,7 +18,27 @@
     "compliancePrivateKey": "0x54321",
     "compliancePublicKey": "0x61d0f6b01e5696a475786dbbd6de15f984b23a553be50018489781de416140",
     "userAddr": "0x999",
-    "userPrivateKey": "0x888"
+    "userPrivateKey": "0x888",
+    "channelId": "0x7309a89bdfa0bb6b922eacee506760a8b68c53256b4ef7dd0181181f6671bcb",
+    "subchannelKey": "0x3a8c0e4f11d30d06a65772a5ddbf598f40446d41dede067aaa9b321b79dc90a",
+    "subchannelId": "0x5d017d0ab753ba429478f7b484cd49ec19f15d272272de7ebd5c2051822d959",
+    "noteId": "0x70221e8eadc952c74cf4cb481069330705bccd96dcfb9cabbf0bbb301fdf9f5",
+    "nullifier": "0x6934fcf1d982c246779f75fda7340a81592af6bc1ea4f627ae67a41bceca0fc"
+  },
+  "slots": {
+    "compliancePublicKeyAddress": "0xf8612cacb74429aab92a1b3e95db91c6a0c6e6436b0777064ed21bb4ecb0ed",
+    "senderPublicKeyAddress": "0x5935778edf7d690937af7b24298a23b064e54fcfd2e01e181ba011593a848bf",
+    "recipientPublicKeyAddress": "0x703dc5fd86f5987705cf14bd6c50c0e55120f37a0ecac2d8895ccd7e909e62f",
+    "encPrivateKeyEphemeralAddress": "0x440935e6c56281ba4630e9e15910ccb4b8e586b78caa00aee2dab9027248aac",
+    "encPrivateKeyEncKeyAddress": "0x440935e6c56281ba4630e9e15910ccb4b8e586b78caa00aee2dab9027248aad",
+    "channelExistsAddress": "0x6bbc6fc39c5a0cb5f933973721507ada6cebf16fc0871d5867c22ded6acb942",
+    "recipientChannelsBaseAddress": "0x5039a0f3a2efd831149644f87a421ded13d54721469cd2a552d761d2f523646",
+    "recipientChannelsElementAddress": "0x1964d92b29305036d5487cc7726d73ef02560413e3cb5a8358009f7651eeb6e",
+    "subchannelExistsAddress": "0x44fe24f62aea383cf5113a3a10767a29d70951d3d003b492b35ef1188586d24",
+    "subchannelTokensSaltAddress": "0x5f9e2041e312007e495740073f749dabf1e3a66badbca56daaf34ee887e0177",
+    "subchannelTokensEncTokenAddress": "0x5f9e2041e312007e495740073f749dabf1e3a66badbca56daaf34ee887e0178",
+    "notesAddress": "0x31a26a8a4a17cebab81d6bff13db6d53a45c5fcd059fbaba84d1e2b68506d17",
+    "nullifiersAddress": "0x74d2869e4d7e4bfde6ed569ba47e8e8773952ab689eeb85d8f6a263c0c77f6b"
   },
   "outputs": {
     "channelKey": "0x67db9bd0362ca14c4418ecd78e743d96b069a24c0a5abe7cdb01f95cd0174e",

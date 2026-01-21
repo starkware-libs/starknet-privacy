@@ -1,4 +1,4 @@
-pub mod generate_reference_hashes;
+pub mod generate_reference_data;
 pub mod mock_account;
 pub mod test_client;
 pub mod test_compliance;
