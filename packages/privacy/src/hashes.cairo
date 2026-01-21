@@ -6,45 +6,32 @@ use starknet::ContractAddress;
 
 /// Domain-separation tags for contract hashes.
 ///
-/// Template (stable, lowercase):
-/// <object_name>:<field_name>:v<major_version>'.
-// TODO: Find good template for a single felt.
-// TODO: Find better naming convention for tags.
+/// Template (uppercase): `<VAR_NAME>:V<VERSION>`.
 pub mod domain_separation {
     /// Tag for `channel_id`.
-    pub const CHANNEL_ID_TAG: felt252 = 'channel_id:v1';
+    pub const CHANNEL_ID_TAG: felt252 = 'CHANNEL_ID_TAG:V1';
     /// Tag for `channel_key`.
-    pub const CHANNEL_KEY_TAG: felt252 = 'channel_key:v1';
+    pub const CHANNEL_KEY_TAG: felt252 = 'CHANNEL_KEY_TAG:V1';
     /// Tag for `subchannel_id`.
-    pub const SUBCHANNEL_ID_TAG: felt252 = 'subchannel_id:v1';
+    pub const SUBCHANNEL_ID_TAG: felt252 = 'SUBCHANNEL_ID_TAG:V1';
     /// Tag for `subchannel_key`.
-    pub const SUBCHANNEL_KEY_TAG: felt252 = 'subchannel_key:v1';
+    pub const SUBCHANNEL_KEY_TAG: felt252 = 'SUBCHANNEL_KEY_TAG:V1';
     /// Tag for `nullifier`.
-    pub const NULLIFIER_TAG: felt252 = 'nullifier:v1';
-    /// Tags for the `EncChannelInfo` struct.
-    // TODO: Now using "channel_info" instead of "enc_channel_info" to fit in a single felt.
-    pub mod enc_channel_info {
-        pub const ENC_CHANNEL_KEY_TAG: felt252 = 'channel_info:enc_channel_key:v1';
-        pub const ENC_SENDER_ADDR_TAG: felt252 = 'channel_info:enc_sender_addr:v1';
-    }
+    pub const NULLIFIER_TAG: felt252 = 'NULLIFIER_TAG:V1';
+    /// Tag for the `EncChannelInfo.enc_channel_key`.
+    pub const ENC_CHANNEL_KEY_TAG: felt252 = 'ENC_CHANNEL_KEY_TAG:V1';
+    /// Tag for the `EncChannelInfo.enc_sender_addr`.
+    pub const ENC_SENDER_ADDR_TAG: felt252 = 'ENC_SENDER_ADDR_TAG:V1';
     /// Tag for `note_id`.
-    pub const NOTE_ID_TAG: felt252 = 'enc_note:id:v1';
+    pub const NOTE_ID_TAG: felt252 = 'NOTE_ID_TAG:V1';
     /// Tag for encrypted amount of the note.
-    pub const ENC_AMOUNT_TAG: felt252 = 'enc_note:enc_amount:v1';
-    /// Tags for the `EncSubchannelInfo` struct.
-    // TODO: Now using "subchannel_info" instead of "enc_subchannel_info" to fit in a single felt.
-    pub mod enc_subchannel_info {
-        pub const ENC_TOKEN_TAG: felt252 = 'subchannel_info:enc_token:v1';
-    }
-    /// Tags for the `EncPrivateKey` struct.
-    // TODO: Now using "private_key" instead of "enc_private_key" to fit in a single felt.
-    pub mod enc_private_key {
-        pub const ENC_PRIVATE_KEY_TAG: felt252 = 'private_key:enc_private_key:v1';
-    }
-    /// Tags for the `EncUserAddr` struct.
-    pub mod enc_user_addr {
-        pub const ENC_USER_ADDR_TAG: felt252 = 'enc_user_addr:enc_user_addr:v1';
-    }
+    pub const ENC_AMOUNT_TAG: felt252 = 'ENC_AMOUNT_TAG:V1';
+    /// Tag for the `EncSubchannelInfo.enc_token`.
+    pub const ENC_TOKEN_TAG: felt252 = 'ENC_TOKEN_TAG:V1';
+    /// Tag for the `EncPrivateKey.enc_private_key`.
+    pub const ENC_PRIVATE_KEY_TAG: felt252 = 'ENC_PRIVATE_KEY_TAG:V1';
+    /// Tag for the `EncUserAddr.enc_user_addr`.
+    pub const ENC_USER_ADDR_TAG: felt252 = 'ENC_USER_ADDR_TAG:V1';
 }
 
 
@@ -58,21 +45,21 @@ pub(crate) fn hash(data: Span<felt252>) -> felt252 {
 ///
 /// Returns `h(ENC_PRIVATE_KEY_TAG, shared_x)`
 pub(crate) fn compute_enc_private_key_hash(shared_x: felt252) -> felt252 {
-    hash([enc_private_key::ENC_PRIVATE_KEY_TAG, shared_x].span())
+    hash([ENC_PRIVATE_KEY_TAG, shared_x].span())
 }
 
 /// Computes the hash used to encrypt the address in `EncUserAddr`.
 ///
 /// Returns `h(ENC_ADDRESS_TAG, shared_x)`
 pub(crate) fn compute_enc_address_hash(shared_x: felt252) -> felt252 {
-    hash([enc_user_addr::ENC_USER_ADDR_TAG, shared_x].span())
+    hash([ENC_USER_ADDR_TAG, shared_x].span())
 }
 
 /// Computes the hash used to encrypt the token in `EncSubchannelInfo`.
 ///
 /// Returns `h(ENC_TOKEN_TAG, channel_key, index, 0, salt)`
 pub(crate) fn compute_enc_token_hash(channel_key: felt252, index: usize, salt: felt252) -> felt252 {
-    hash([enc_subchannel_info::ENC_TOKEN_TAG, channel_key, index.into(), Zero::zero(), salt].span())
+    hash([ENC_TOKEN_TAG, channel_key, index.into(), Zero::zero(), salt].span())
 }
 
 
@@ -80,14 +67,14 @@ pub(crate) fn compute_enc_token_hash(channel_key: felt252, index: usize, salt: f
 ///
 /// Returns `h(ENC_CHANNEL_KEY_TAG, shared_x)`
 pub(crate) fn compute_enc_channel_key_hash(shared_x: felt252) -> felt252 {
-    hash([enc_channel_info::ENC_CHANNEL_KEY_TAG, shared_x].span())
+    hash([ENC_CHANNEL_KEY_TAG, shared_x].span())
 }
 
 /// Computes the hash used to encrypt the sender address in `EncChannelInfo`.
 ///
 /// Returns `h(ENC_SENDER_ADDR_TAG, shared_x)`
 pub(crate) fn compute_enc_sender_addr_hash(shared_x: felt252) -> felt252 {
-    hash([enc_channel_info::ENC_SENDER_ADDR_TAG, shared_x].span())
+    hash([ENC_SENDER_ADDR_TAG, shared_x].span())
 }
 
 
