@@ -10,7 +10,7 @@ pub mod Privacy {
         OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
         TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput,
     };
-    use privacy::errors::internal_errors;
+    use privacy::errors::{assert_with_context, internal_errors};
     use privacy::hashes::{
         compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
         compute_subchannel_id, compute_subchannel_key,
@@ -221,9 +221,15 @@ pub mod Privacy {
         ) -> Array<ServerAction> {
             let private_key = input.private_key;
             let random = input.random;
-            assert(private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
-            assert(is_canonical_key(key: private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+
+            let mut err_ctx = array!['SET_VIEWING_KEY_INPUT'];
+            input.serialize(ref err_ctx);
+            let err_ctx_span: Span<felt252> = err_ctx.span();
+            assert_with_context(private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY, err_ctx_span);
+            assert_with_context(random.is_non_zero(), errors::ZERO_RANDOM, err_ctx_span);
+            assert_with_context(
+                is_canonical_key(key: private_key), errors::PRIVATE_KEY_NOT_CANONICAL, err_ctx_span,
+            );
 
             // Derive the public key from the private key.
             let user_public_key = derive_public_key(:private_key);
@@ -266,20 +272,37 @@ pub mod Privacy {
             let recipient_addr = input.recipient_addr;
             let recipient_public_key = input.recipient_public_key;
             let random = input.random;
-            assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+
+            let mut err_ctx = array!['OPEN_CHANNEL_INPUT'];
+            input.serialize(ref err_ctx);
+            let err_ctx_span: Span<felt252> = err_ctx.span();
+            assert_with_context(
+                sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY, err_ctx_span,
+            );
+            assert_with_context(
+                recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR, err_ctx_span,
+            );
+            assert_with_context(
+                recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY, err_ctx_span,
+            );
+            assert_with_context(random.is_non_zero(), errors::ZERO_RANDOM, err_ctx_span);
 
             // Assert sender private key is canonical.
-            assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+            assert_with_context(
+                is_canonical_key(key: sender_private_key),
+                errors::PRIVATE_KEY_NOT_CANONICAL,
+                err_ctx_span,
+            );
 
             // Assert sender is registered with the given private key.
             let sender_public_key = self.public_key.read(sender_addr);
-            assert(sender_public_key.is_non_zero(), errors::SENDER_NOT_REGISTERED);
-            assert(
+            assert_with_context(
+                sender_public_key.is_non_zero(), errors::SENDER_NOT_REGISTERED, err_ctx_span,
+            );
+            assert_with_context(
                 sender_public_key == derive_public_key(private_key: sender_private_key),
                 errors::SENDER_NOT_AUTHENTICATED,
+                err_ctx_span,
             );
 
             // Compute the output values.
@@ -323,25 +346,36 @@ pub mod Privacy {
             let index = input.index;
             let token = input.token;
             let salt = input.salt;
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
-            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+
+            let mut err_ctx = array!['OPEN_SUBCHANNEL_INPUT'];
+            input.serialize(ref err_ctx);
+            let err_ctx_span: Span<felt252> = err_ctx.span();
+            assert_with_context(
+                recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR, err_ctx_span,
+            );
+            assert_with_context(
+                recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY, err_ctx_span,
+            );
+            assert_with_context(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY, err_ctx_span);
+            assert_with_context(token.is_non_zero(), errors::ZERO_TOKEN, err_ctx_span);
 
             // Assert channel key is valid for the given sender and recipient.
             let channel_id = compute_channel_id(
                 :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
             );
-            assert(self.channel_exists.read(channel_id), errors::INVALID_CHANNEL);
+            assert_with_context(
+                self.channel_exists.read(channel_id), errors::INVALID_CHANNEL, err_ctx_span,
+            );
 
             // Assert index is sequential, i.e. the previous subchannel exists.
-            assert(
+            assert_with_context(
                 index.is_zero()
                     || self
                         .subchannel_tokens
                         .read(compute_subchannel_key(:channel_key, index: index - 1))
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
+                err_ctx_span,
             );
 
             // Compute subchannel values.
@@ -439,25 +473,37 @@ pub mod Privacy {
             let channel_key = input.channel_key;
             let token = input.token;
             let index = input.note_index;
-            // TODO: Consider adding context to the errors (which note is causing the error).
-            assert(owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
-            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(is_canonical_key(key: owner_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+            let mut err_ctx = array!['USE_NOTE_INPUT'];
+            input.serialize(ref err_ctx);
+            let err_ctx_span: Span<felt252> = err_ctx.span();
+            assert_with_context(
+                owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY, err_ctx_span,
+            );
+            assert_with_context(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY, err_ctx_span);
+            assert_with_context(token.is_non_zero(), errors::ZERO_TOKEN, err_ctx_span);
+            assert_with_context(
+                is_canonical_key(key: owner_private_key),
+                errors::PRIVATE_KEY_NOT_CANONICAL,
+                err_ctx_span,
+            );
 
             // Assert subchannel exists and is connected to owner's address and public key.
             let recipient_public_key = derive_public_key(private_key: owner_private_key);
             let subchannel_id = compute_subchannel_id(
                 :channel_key, recipient_addr: owner_addr, :recipient_public_key, :token,
             );
-            assert(self.subchannel_exists.read(subchannel_id), errors::SUBCHANNEL_NOT_FOUND);
+            assert_with_context(
+                self.subchannel_exists.read(subchannel_id),
+                errors::SUBCHANNEL_NOT_FOUND,
+                err_ctx_span,
+            );
 
             // Compute note id.
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
             let enc_note_value = self.notes.read(note_id);
-            assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
+            assert_with_context(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND, err_ctx_span);
 
             // Decrypt note amount.
             let amount = decrypt_note_amount(:enc_note_value, :channel_key, :token, :index);
@@ -495,15 +541,28 @@ pub mod Privacy {
             let amount = input.amount;
             let index = input.index;
             let salt = input.salt;
-            // TODO: Consider adding context to the errors (which note is causing the error).
-            assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-            assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+
+            let mut err_ctx = array!['CREATE_NOTE_INPUT'];
+            input.serialize(ref err_ctx);
+            let err_ctx_span: Span<felt252> = err_ctx.span();
+            assert_with_context(
+                sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY, err_ctx_span,
+            );
+            assert_with_context(
+                recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR, err_ctx_span,
+            );
+            assert_with_context(
+                recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY, err_ctx_span,
+            );
+            assert_with_context(token.is_non_zero(), errors::ZERO_TOKEN, err_ctx_span);
+            assert_with_context(amount.is_non_zero(), errors::ZERO_AMOUNT, err_ctx_span);
+            assert_with_context(
+                is_canonical_key(key: sender_private_key),
+                errors::PRIVATE_KEY_NOT_CANONICAL,
+                err_ctx_span,
+            );
             // Assert salt is 120 bits.
-            assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
+            assert_with_context(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS, err_ctx_span);
 
             // Compute channel key.
             let channel_key = compute_channel_key(
@@ -517,16 +576,21 @@ pub mod Privacy {
             let subchannel_id = compute_subchannel_id(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
-            assert(self.subchannel_exists.read(subchannel_id), errors::SUBCHANNEL_NOT_FOUND);
+            assert_with_context(
+                self.subchannel_exists.read(subchannel_id),
+                errors::SUBCHANNEL_NOT_FOUND,
+                err_ctx_span,
+            );
 
             // Assert index is sequential, i.e. the previous note exists.
-            assert(
+            assert_with_context(
                 index.is_zero()
                     || self
                         .notes
                         .read(compute_note_id(:channel_key, :token, index: index - 1))
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
+                err_ctx_span,
             );
 
             // Compute note values.
