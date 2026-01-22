@@ -1,0 +1,141 @@
+/**
+ * Tests for encryption/decryption compatibility between TypeScript and Cairo implementations.
+ *
+ * These tests validate that the TypeScript encryption functions produce the same results
+ * as the Cairo implementation to ensure cross-language compatibility.
+ */
+
+import { describe, it, expect } from "vitest";
+import { encryptions } from "../../src/utils/encryptions.js";
+import referenceHashes from "../fixtures/cairo-reference-hashes.json" with { type: "json" };
+
+describe("Encryption Compatibility with Cairo", () => {
+  const { inputs, outputs } = referenceHashes;
+
+  // Parse inputs
+  const channelKey = BigInt(inputs.channelKey);
+  const token = BigInt(inputs.token);
+  const index = inputs.index;
+  const salt = BigInt(inputs.salt);
+  const sender = BigInt(inputs.sender);
+  const amount = BigInt(inputs.amount);
+  const recipientPrivateKey = BigInt(inputs.recipientPrivateKey);
+  const recipientPublicKeyDerived = BigInt(inputs.recipientPublicKeyDerived);
+  const ephemeralSecret = BigInt(inputs.ephemeralSecret);
+
+  describe("Public Key Derivation", () => {
+    it("derivePublicKey matches Cairo", () => {
+      const result = encryptions.derivePublicKey(recipientPrivateKey);
+      expect(result.toString(16)).toBe(recipientPublicKeyDerived.toString(16));
+    });
+  });
+
+  describe("Subchannel Encryption", () => {
+    it("encryptSubchannelInfo salt matches Cairo", () => {
+      const result = encryptions.encryptSubchannelInfo(channelKey, index, token, salt);
+      expect(result.salt.toString(16)).toBe(BigInt(outputs.encSubchannelSalt).toString(16));
+    });
+
+    it("encryptSubchannelInfo enc_token matches Cairo", () => {
+      const result = encryptions.encryptSubchannelInfo(channelKey, index, token, salt);
+      expect(result.enc_token.toString(16)).toBe(BigInt(outputs.encSubchannelToken).toString(16));
+    });
+
+    it("decryptSubchannelInfo recovers original token", () => {
+      const encrypted = {
+        salt,
+        enc_token: BigInt(outputs.encSubchannelToken),
+      };
+      const decrypted = encryptions.decryptSubchannelInfo(encrypted, channelKey, index);
+      expect(decrypted.token.toString(16)).toBe(token.toString(16));
+      expect(decrypted.salt).toBe(salt);
+    });
+
+    it("encrypt then decrypt recovers original token", () => {
+      const encrypted = encryptions.encryptSubchannelInfo(channelKey, index, token, salt);
+      const decrypted = encryptions.decryptSubchannelInfo(encrypted, channelKey, index);
+      expect(decrypted.token.toString(16)).toBe(token.toString(16));
+      expect(decrypted.salt).toBe(salt);
+    });
+  });
+
+  describe("Note Amount Encryption", () => {
+    it("encryptNoteAmount matches Cairo", () => {
+      const result = encryptions.encryptNoteAmount(channelKey, token, index, salt, amount);
+      expect(result.toString(16)).toBe(BigInt(outputs.encNoteAmount).toString(16));
+    });
+
+    it("decryptNoteAmount matches Cairo", () => {
+      const encNoteValue = BigInt(outputs.encNoteAmount);
+      const result = encryptions.decryptNoteAmount(encNoteValue, channelKey, token, index);
+      expect(Number(result.amount)).toBe(outputs.decNoteAmount);
+      expect(result.salt).toBe(salt);
+    });
+
+    it("encrypt then decrypt recovers original amount", () => {
+      const encrypted = encryptions.encryptNoteAmount(channelKey, token, index, salt, amount);
+      const decrypted = encryptions.decryptNoteAmount(encrypted, channelKey, token, index);
+      expect(decrypted.amount).toBe(amount);
+      expect(decrypted.salt).toBe(salt);
+    });
+  });
+
+  describe("Channel Info Encryption (ECDH)", () => {
+    it("ephemeral pubkey matches Cairo", () => {
+      const result = encryptions.encryptChannelInfo(
+        ephemeralSecret,
+        recipientPublicKeyDerived,
+        channelKey,
+        sender
+      );
+      expect(result.ephemeral_pubkey.toString(16)).toBe(
+        BigInt(outputs.encChannelEphemeralPubkey).toString(16)
+      );
+    });
+
+    it("encrypted channel key matches Cairo", () => {
+      const result = encryptions.encryptChannelInfo(
+        ephemeralSecret,
+        recipientPublicKeyDerived,
+        channelKey,
+        sender
+      );
+      expect(result.enc_channel_key.toString(16)).toBe(BigInt(outputs.encChannelKey).toString(16));
+    });
+
+    it("encrypted sender addr matches Cairo", () => {
+      const result = encryptions.encryptChannelInfo(
+        ephemeralSecret,
+        recipientPublicKeyDerived,
+        channelKey,
+        sender
+      );
+      expect(result.enc_sender_addr.toString(16)).toBe(
+        BigInt(outputs.encChannelSenderAddr).toString(16)
+      );
+    });
+
+    it("decrypt channel info recovers original values", () => {
+      const encrypted = {
+        ephemeral_pubkey: BigInt(outputs.encChannelEphemeralPubkey),
+        enc_channel_key: BigInt(outputs.encChannelKey),
+        enc_sender_addr: BigInt(outputs.encChannelSenderAddr),
+      };
+      const decrypted = encryptions.decryptChannelInfo(encrypted, recipientPrivateKey);
+      expect(decrypted.key.toString(16)).toBe(channelKey.toString(16));
+      expect(decrypted.sender.toString(16)).toBe(sender.toString(16));
+    });
+
+    it("encrypt then decrypt recovers original channel info", () => {
+      const encrypted = encryptions.encryptChannelInfo(
+        ephemeralSecret,
+        recipientPublicKeyDerived,
+        channelKey,
+        sender
+      );
+      const decrypted = encryptions.decryptChannelInfo(encrypted, recipientPrivateKey);
+      expect(decrypted.key.toString(16)).toBe(channelKey.toString(16));
+      expect(decrypted.sender.toString(16)).toBe(sender.toString(16));
+    });
+  });
+});
