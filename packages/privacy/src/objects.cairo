@@ -55,6 +55,8 @@ pub impl EncChannelInfoImpl of EncChannelInfoTrait {
 /// Used for compliance to be able to decrypt the private key.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
 pub(crate) struct EncPrivateKey {
+    /// Compliance public key used for encryption.
+    pub compliance_public_key: felt252,
     /// Ephemeral ECDH public key x-coordinate (rG.x). Used by the compliance to derive rK.
     pub ephemeral_pubkey: felt252,
     /// Encrypted private key.
@@ -64,7 +66,8 @@ pub(crate) struct EncPrivateKey {
 
 #[generate_trait]
 pub impl EncPrivateKeyImpl of EncPrivateKeyTrait {
-    /// Check if all the `EncPrivateKey`'s fields are non-zero.
+    /// Check if all the `EncPrivateKey`'s fields, except `compliance_public_key_version`, are
+    /// non-zero.
     fn is_all_non_zero(self: @EncPrivateKey) -> bool {
         return self.ephemeral_pubkey.is_non_zero() && self.enc_private_key.is_non_zero();
     }
@@ -97,6 +100,8 @@ pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
 /// Used for compliance to be able to decrypt the user address when withdrawing.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
 pub(crate) struct EncUserAddr {
+    /// Compliance public key used for encryption.
+    pub compliance_public_key: felt252,
     /// Ephemeral ECDH public key x-coordinate (rG.x). Used by the compliance to derive rK.
     pub ephemeral_pubkey: felt252,
     /// Encrypted user address.
@@ -106,7 +111,8 @@ pub(crate) struct EncUserAddr {
 
 #[generate_trait]
 pub impl EncUserAddrImpl of EncUserAddrTrait {
-    /// Check if all the `EncUserAddr`'s fields are non-zero.
+    /// Check if all the `EncUserAddr`'s fields, except `compliance_public_key_version`, are
+    /// non-zero.
     fn is_all_non_zero(self: @EncUserAddr) -> bool {
         return self.ephemeral_pubkey.is_non_zero() && self.enc_user_addr.is_non_zero();
     }

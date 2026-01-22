@@ -2864,7 +2864,9 @@ fn test_withdraw_decrypt_user_addr() {
     assert_eq!(events.len(), 1);
     let (_, event) = events[0];
     let enc_user_addr = EncUserAddr {
-        ephemeral_pubkey: *event.data[0], enc_user_addr: *event.data[1],
+        compliance_public_key: *event.data[0],
+        ephemeral_pubkey: *event.data[1],
+        enc_user_addr: *event.data[2],
     };
     let decrypted_user_addr = decrypt_enc_user_addr(
         :enc_user_addr, compliance_private_key: test.compliance_private_key,

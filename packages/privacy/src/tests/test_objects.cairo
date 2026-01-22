@@ -78,13 +78,14 @@ fn test_enc_subchannel_info_is_non_zero() {
 #[test]
 fn test_enc_private_key_is_all_non_zero() {
     let mut enc_private_key = EncPrivateKey {
-        ephemeral_pubkey: 'EPHEMERAL_PUBKEY'.try_into().unwrap(),
-        enc_private_key: 'ENC_PRIVATE_KEY'.try_into().unwrap(),
+        compliance_public_key: 'COMPLIANCE_PUBLIC_KEY',
+        ephemeral_pubkey: 'EPHEMERAL_PUBKEY',
+        enc_private_key: 'ENC_PRIVATE_KEY',
     };
     assert_eq!(enc_private_key.is_all_non_zero(), true);
     enc_private_key.ephemeral_pubkey = Zero::zero();
     assert_eq!(enc_private_key.is_all_non_zero(), false);
-    enc_private_key.ephemeral_pubkey = 'EPHEMERAL_PUBKEY'.try_into().unwrap();
+    enc_private_key.ephemeral_pubkey = 'EPHEMERAL_PUBKEY';
     enc_private_key.enc_private_key = Zero::zero();
     assert_eq!(enc_private_key.is_all_non_zero(), false);
     enc_private_key.ephemeral_pubkey = Zero::zero();
@@ -232,9 +233,12 @@ fn test_note_zero() {
 
 #[test]
 fn test_enc_private_key_to_write_if_zero_action() {
+    let compliance_public_key = 'COMPLIANCE_PUBLIC_KEY';
     let ephemeral_pubkey = 'EPHEMERAL_PUBKEY';
     let enc_private_key = 'ENC_PRIVATE_KEY';
-    let enc_private_key_obj = EncPrivateKey { ephemeral_pubkey, enc_private_key };
+    let enc_private_key_obj = EncPrivateKey {
+        compliance_public_key, ephemeral_pubkey, enc_private_key,
+    };
     let key = 'KEY';
     let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [key].span(),
@@ -243,7 +247,10 @@ fn test_enc_private_key_to_write_if_zero_action() {
     assert_eq!(
         action,
         ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address, value: [ephemeral_pubkey, enc_private_key].span() },
+            WriteIfZeroInput {
+                storage_address,
+                value: [compliance_public_key, ephemeral_pubkey, enc_private_key].span(),
+            },
         ),
     );
 }
@@ -380,7 +387,8 @@ mod MockContract {
         fn _write(
             ref self: ContractState, storage_address: felt252, serialized_value: Span<felt252>,
         ) {
-            assert(serialized_value.len() == 2, 'EXPECTED_LENGTH_2');
+            let len = serialized_value.len();
+            assert(len == 2 || len == 3, 'EXPECTED_LENGTH_2_OR_3');
             let base = storage_base_address_from_felt252(addr: storage_address);
             let addr_0 = storage_address_from_base_and_offset(:base, offset: 0);
             let addr_1 = storage_address_from_base_and_offset(:base, offset: 1);
@@ -388,6 +396,13 @@ mod MockContract {
                 .unwrap_syscall();
             storage_write_syscall(address_domain: 0, address: addr_1, value: *serialized_value[1])
                 .unwrap_syscall();
+            if len == 3 {
+                let addr_2 = storage_address_from_base_and_offset(:base, offset: 2);
+                storage_write_syscall(
+                    address_domain: 0, address: addr_2, value: *serialized_value[2],
+                )
+                    .unwrap_syscall();
+            }
         }
     }
 }
@@ -408,8 +423,9 @@ fn enc_private_key_serialization_format() {
     let mock_contract_address = deploy_mock_contract();
     let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
     let enc_private_key = EncPrivateKey {
-        ephemeral_pubkey: 'EPHEMERAL_PUBKEY'.try_into().unwrap(),
-        enc_private_key: 'ENC_PRIVATE_KEY'.try_into().unwrap(),
+        compliance_public_key: 'COMPLIANCE_PUBLIC_KEY',
+        ephemeral_pubkey: 'EPHEMERAL_PUBKEY',
+        enc_private_key: 'ENC_PRIVATE_KEY',
     };
     let mut serialized_value = array![];
     enc_private_key.serialize(ref output: serialized_value);
