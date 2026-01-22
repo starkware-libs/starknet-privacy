@@ -10,7 +10,7 @@ async-trait = "0.1"
 num-traits = "0.2"
 starknet-core = "0.16"
 starknet-crypto = "0.8"
-starknet-types-core = "0.2"
+starknet-types-core = { version = "0.2", features = ["curve"] }
 starknet-providers = "0.16"
 url = "2"
 
