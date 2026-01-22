@@ -14,7 +14,7 @@
 //!    cargo test -p discovery-core --test integration -- --ignored --nocapture
 //!    ```
 
-use discovery_core::rpc_backend::{RpcBackend, RpcConfig};
+use discovery_core::backends::{RpcBackend, RpcConfig};
 use discovery_core::storage::{IViews, StorageBackend};
 use starknet_core::types::Felt;
 use url::Url;
