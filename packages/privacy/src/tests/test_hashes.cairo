@@ -128,7 +128,7 @@ fn test_compute_subchannel_key_different_inputs() {
     assert_ne!(channel_key, other_channel_key);
     assert_ne!(index, other_index);
     let subchannel_key_diff_channel_key = compute_subchannel_key(
-        channel_key: other_channel_key, index: index,
+        channel_key: other_channel_key, :index,
     );
     let subchannel_key_diff_index = compute_subchannel_key(:channel_key, index: other_index);
     assert_ne!(subchannel_key, subchannel_key_diff_channel_key);
