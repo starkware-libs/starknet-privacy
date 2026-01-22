@@ -288,6 +288,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "num-traits",
  "starknet-core",
  "starknet-crypto",
  "starknet-types-core",
