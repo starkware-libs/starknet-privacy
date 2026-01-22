@@ -11,3 +11,8 @@ num-traits = "0.2"
 starknet-core = "0.16"
 starknet-crypto = "0.8"
 starknet-types-core = "0.2"
+starknet-providers = "0.16"
+url = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
