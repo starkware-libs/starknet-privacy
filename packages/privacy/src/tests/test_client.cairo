@@ -167,10 +167,8 @@ fn test_transfer() {
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier, value: true.into() },
         ),
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt_note, value: enc_note.enc_amount,
-            },
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: storage_path_felt_note, value: enc_note.into() },
         ),
     ]
         .span();
@@ -233,10 +231,8 @@ fn test_transfer_to_self() {
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier, value: true.into() },
         ),
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt_note, value: enc_note.enc_amount,
-            },
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: storage_path_felt_note, value: enc_note.into() },
         ),
     ]
         .span();
@@ -325,14 +321,14 @@ fn test_transfer_one_to_many() {
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier, value: true.into() },
         ),
-        ServerAction::WriteIfZero(
+        ServerAction::WriteIfZeroNote(
             WriteIfZeroInput {
-                storage_address: storage_path_felt_note_1, value: enc_note_1.enc_amount,
+                storage_address: storage_path_felt_note_1, value: enc_note_1.into(),
             },
         ),
-        ServerAction::WriteIfZero(
+        ServerAction::WriteIfZeroNote(
             WriteIfZeroInput {
-                storage_address: storage_path_felt_note_2, value: enc_note_2.enc_amount,
+                storage_address: storage_path_felt_note_2, value: enc_note_2.into(),
             },
         ),
     ]
@@ -435,10 +431,8 @@ fn test_transfer_many_to_one() {
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier_2, value: true.into() },
         ),
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt_note, value: enc_note.enc_amount,
-            },
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: storage_path_felt_note, value: enc_note.into() },
         ),
     ]
         .span();
@@ -555,14 +549,14 @@ fn test_transfer_many_to_many() {
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: storage_path_felt_nullifier_2, value: true.into() },
         ),
-        ServerAction::WriteIfZero(
+        ServerAction::WriteIfZeroNote(
             WriteIfZeroInput {
-                storage_address: storage_path_felt_note_1, value: enc_note_1.enc_amount,
+                storage_address: storage_path_felt_note_1, value: enc_note_1.into(),
             },
         ),
-        ServerAction::WriteIfZero(
+        ServerAction::WriteIfZeroNote(
             WriteIfZeroInput {
-                storage_address: storage_path_felt_note_2, value: enc_note_2.enc_amount,
+                storage_address: storage_path_felt_note_2, value: enc_note_2.into(),
             },
         ),
     ]
@@ -3222,9 +3216,9 @@ fn test_compile_client_actions_deposit_create_note() {
                 sender_addr: user_1.address, token: token_address, amount: amount.into(),
             },
         ),
-        ServerAction::WriteIfZero(
+        ServerAction::WriteIfZeroNote(
             WriteIfZeroInput {
-                storage_address: note_storage_path, value: expected_enc_note.enc_amount,
+                storage_address: note_storage_path, value: expected_enc_note.into(),
             },
         ),
     ]
@@ -3292,9 +3286,9 @@ fn test_compile_client_actions_use_note_create_note() {
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: nullifier_storage_path, value: true.into() },
         ),
-        ServerAction::WriteIfZero(
+        ServerAction::WriteIfZeroNote(
             WriteIfZeroInput {
-                storage_address: note_storage_path, value: expected_enc_note.enc_amount,
+                storage_address: note_storage_path, value: expected_enc_note.into(),
             },
         ),
     ]
@@ -4083,8 +4077,8 @@ fn test_compile_client_actions_writes() {
             TransferFromInput { sender_addr: address, token: token_address, amount: amount.into() },
         ),
         // Create note.
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: note_storage_path, value: enc_note.enc_amount },
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: note_storage_path, value: enc_note.into() },
         ),
     ]
         .span();
@@ -4182,8 +4176,8 @@ fn test_client_transfers_dont_execute() {
                 sender_addr: user.address, token: token_address, amount: amount.into(),
             },
         ),
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: note_storage_path, value: enc_note.enc_amount },
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: note_storage_path, value: enc_note.into() },
         ),
     ]
         .span();

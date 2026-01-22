@@ -19,7 +19,7 @@ use privacy::interface::{
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
-    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr,
+    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
     TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
@@ -61,7 +61,14 @@ pub struct EncNote {
     /// The note's id.
     pub id: felt252,
     /// The encrypted amount of the note.
+    // TODO: Rename.
     pub enc_amount: felt252,
+}
+
+pub(crate) impl EncNoteIntoNoteImpl of Into<EncNote, Note> {
+    fn into(self: EncNote) -> Note {
+        Note { enc_value: self.enc_amount, token: Zero::zero() }
+    }
 }
 
 #[generate_trait]
@@ -71,8 +78,8 @@ pub(crate) impl EncNoteImpl of EncNoteTrait {
             map_selector: selector!("notes"), keys: [*self.id].span(),
         );
         [
-            ServerAction::WriteIfZero(
-                WriteIfZeroInput { storage_address: storage_path, value: *self.enc_amount },
+            ServerAction::WriteIfZeroNote(
+                WriteIfZeroInput { storage_address: storage_path, value: (*self).into() },
             ),
         ]
             .span()
@@ -727,12 +734,12 @@ pub(crate) impl UserImpl of UserTrait {
     fn cheat_deposit(self: @User, token: Token, amount: u128, note: EncNote) {
         self.approve(:token, amount: amount.into());
         let actions = [
-            ServerAction::WriteIfZero(
+            ServerAction::WriteIfZeroNote(
                 WriteIfZeroInput {
                     storage_address: map_entry_address(
                         map_selector: selector!("notes"), keys: [note.id].span(),
                     ),
-                    value: note.enc_amount,
+                    value: note.into(),
                 },
             ),
             ServerAction::TransferFrom(
@@ -953,10 +960,8 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             .server
             .execute_actions(
                 actions: array![
-                    ServerAction::WriteIfZero(
-                        WriteIfZeroInput {
-                            storage_address: storage_path_felt, value: note.enc_amount,
-                        },
+                    ServerAction::WriteIfZeroNote(
+                        WriteIfZeroInput { storage_address: storage_path_felt, value: note.into() },
                     ),
                 ]
                     .span(),

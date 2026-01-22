@@ -1,8 +1,10 @@
 use core::num::traits::Zero;
 use privacy::objects::{
-    EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncSubchannelInfo, TokenBalances,
-    TokenBalancesTrait,
+    EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncSubchannelInfo, Note, NoteTrait,
+    TokenBalances, TokenBalancesTrait,
 };
+use privacy::tests::utils_for_tests::{Test, TestTrait, UserTrait, constants};
+use privacy::utils::encrypt_note_amount;
 use starknet::ContractAddress;
 
 #[test]
@@ -169,4 +171,37 @@ fn test_token_balances_final_balance_must_be_zero() {
     token_balances.subtract_balance(token: token_2, amount: 1);
 
     token_balances.squash().assert_valid();
+}
+
+#[test]
+fn test_note_encrypt_decrypt() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let token_address = test.mock_new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let salt = user.get_salt();
+    let channel_key = user.compute_channel_key(recipient: user);
+    let index = 0;
+
+    let note = NoteTrait::encrypt(:channel_key, token: token_address, :index, :salt, :amount);
+    let expected_note = Note {
+        enc_value: encrypt_note_amount(:channel_key, token: token_address, :index, :salt, :amount),
+        token: Zero::zero(),
+    };
+    assert_eq!(note, expected_note);
+    assert_eq!(note.decrypt_amount(:channel_key, token: token_address, :index), amount);
+}
+
+#[test]
+fn test_note_zero() {
+    let mut test: Test = Default::default();
+    let token = test.mock_new_token();
+    let enc_value = test.mock_new_note(amount: constants::DEFAULT_AMOUNT).enc_amount;
+    let zero_note: Note = Zero::zero();
+
+    assert_eq!(zero_note, Note { enc_value: Zero::zero(), token: Zero::zero() });
+    assert!(zero_note.is_zero());
+    assert!(!zero_note.is_non_zero());
+    assert!(Note { enc_value, token: Zero::zero() }.is_non_zero());
+    assert!(Note { enc_value: Zero::zero(), token }.is_non_zero());
 }
