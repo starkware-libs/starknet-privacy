@@ -1,8 +1,15 @@
-import { BlockNumber } from "starknet";
-import type { Blob, ChannelSerde, StarknetAddress, WitnessSerde } from "../interfaces.js";
+import { BlockIdentifier, BlockNumber } from "starknet";
+import {
+  SetupRequirement,
+  StarknetAddressBigint,
+  type Blob,
+  type ChannelSerde,
+  type StarknetAddress,
+  type WitnessSerde,
+} from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { jsonStringify, jsonParse } from "../utils/json.js";
-import { PublicKey } from "../utils/crypto.js";
+import { ChannelKey, PublicKey } from "../utils/crypto.js";
 
 /** Type guard for non-negative integers */
 function isUint(value: unknown): value is number {
@@ -13,6 +20,18 @@ function isUint(value: unknown): value is number {
 function assert(condition: unknown, message: () => string): asserts condition {
   if (!condition) throw new Error(message());
 }
+
+export type SenderCursor = {
+  /** @internal */ channelKey: ChannelKey;
+  /** @internal */ subchannelKeyIndex: number;
+  /** @internal */ noteIndexes: AddressMap<number>; // token -> i
+};
+
+export type NotesCursor = {
+  /** @internal */ timestamp: BlockIdentifier;
+  /** @internal */ channelKeyIndex: number;
+  /** @internal */ senders: AddressMap<SenderCursor>; // sender -> cursor
+};
 
 // Base nonce class with shared logic and methods.
 class Nonce {
@@ -50,16 +69,11 @@ export class NoteNonce extends Nonce {
   }
 }
 
-type ChannelKey = bigint;
-
 /** Channel containing nonces for token and note creation. */
 export class Channel {
   /** @internal */ readonly publicKey: PublicKey;
   /** @internal */ key?: ChannelKey;
-  /** @internal */ readonly tokens: AddressMap<{
-    tokenNonce: number;
-    noteNonce: number;
-  }>; // for the next note for each token
+  /** @internal */ readonly tokens: AddressMap<{ tokenNonce: number; noteNonce: number }>; // for the next note for each token
 
   constructor(
     publicKey: PublicKey,
@@ -86,6 +100,19 @@ export class Channel {
     current.noteNonce += 1;
     this.tokens.set(token, current);
     return current.noteNonce;
+  }
+
+  toSetupRequirement(token: StarknetAddressBigint): SetupRequirement {
+    if (!this.publicKey) {
+      return SetupRequirement.Register;
+    }
+    if (!this.key) {
+      return SetupRequirement.SetupChannel;
+    }
+    if (!this.tokens.has(token)) {
+      return SetupRequirement.SetupToken;
+    }
+    return SetupRequirement.Ready;
   }
 
   /** Create a deep clone of this channel */

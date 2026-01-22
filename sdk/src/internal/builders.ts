@@ -25,13 +25,8 @@ import type {
   FollowupCallAction,
 } from "../interfaces.js";
 import type { Call } from "starknet";
-import { num } from "starknet";
-import { AddressMap } from "../utils/maps.js";
-
+import { AddressMap, toBigInt } from "../utils/index.js";
 import { debugLog } from "../utils/logging.js";
-
-/** Normalize BigNumberish to bigint */
-const toBigInt = (value: StarknetAddress): bigint => num.toBigInt(value);
 
 // ============ Token Operations Builder ============
 
