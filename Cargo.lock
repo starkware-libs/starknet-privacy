@@ -295,6 +295,7 @@ dependencies = [
  "starknet-crypto",
  "starknet-types-core",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
