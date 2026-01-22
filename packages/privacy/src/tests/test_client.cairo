@@ -3973,7 +3973,7 @@ fn test_compile_client_actions_writes() {
         .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, salt: salt.into());
     let enc_note = user.compute_enc_note(recipient: user, :token_address, :index, :amount, :salt);
     let expected_event = events::ViewingKeySet { user_addr: address, public_key, enc_private_key };
-    let expected_sevrer_actions = [
+    let expected_server_actions = [
         // Set viewing key.
         ServerAction::WriteIfZero(
             WriteIfZeroInput { storage_address: public_key_storage_path, value: public_key },
@@ -4017,7 +4017,7 @@ fn test_compile_client_actions_writes() {
     ]
         .span();
     // Assert server actions.
-    assert_eq!(server_actions, expected_sevrer_actions);
+    assert_eq!(server_actions, expected_server_actions);
     // Assert events.
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 1);
