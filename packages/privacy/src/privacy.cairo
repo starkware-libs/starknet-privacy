@@ -98,6 +98,7 @@ pub mod Privacy {
         SRC5Event: SRC5Component::Event,
         ViewingKeySet: events::ViewingKeySet,
         Withdrawal: events::Withdrawal,
+        Deposit: events::Deposit,
     }
 
     #[constructor]
@@ -431,6 +432,7 @@ pub mod Privacy {
                 ServerAction::TransferFrom(
                     TransferFromInput { sender_addr: user_addr, token, amount },
                 ),
+                ServerAction::EmitDeposit(events::Deposit { user_addr, token, amount }),
             ]
         }
 
@@ -659,6 +661,7 @@ pub mod Privacy {
                     },
                     ServerAction::EmitViewingKeySet(event) => { self.emit(event); },
                     ServerAction::EmitWithdrawal(event) => { self.emit(event); },
+                    ServerAction::EmitDeposit(event) => { self.emit(event); },
                 };
             };
         }

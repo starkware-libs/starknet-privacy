@@ -3158,13 +3158,16 @@ fn test_compile_client_actions_deposit_create_note() {
     let actions = user_1.compile_client_actions(:client_actions);
     let expected_enc_note = user_1
         .compute_enc_note(recipient: user_2, :token_address, index: 0, :amount, salt: note.salt);
+    let expected_event = events::Deposit {
+        user_addr: user_1.address, token: token_address, amount,
+    };
     let expected_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput {
                 sender_addr: user_1.address, token: token_address, amount: amount.into(),
             },
         ),
-        expected_enc_note.to_server_action(),
+        ServerAction::EmitDeposit(expected_event), expected_enc_note.to_server_action(),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -3337,10 +3340,14 @@ fn test_internal_actions() {
 
     // Deposit action.
     let actions = user_1.internal_deposit(:token_address, :amount);
+    let expected_event = events::Deposit {
+        user_addr: user_1.address, token: token_address, amount,
+    };
     let expected_actions = [
         ServerAction::TransferFrom(
             TransferFromInput { sender_addr: user_1.address, token: token_address, amount: amount },
-        )
+        ),
+        ServerAction::EmitDeposit(expected_event),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -3972,7 +3979,12 @@ fn test_compile_client_actions_writes() {
     let enc_subchannel_info = user
         .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, salt: salt.into());
     let enc_note = user.compute_enc_note(recipient: user, :token_address, :index, :amount, :salt);
-    let expected_event = events::ViewingKeySet { user_addr: address, public_key, enc_private_key };
+    let expected_event_viewing_key_set = events::ViewingKeySet {
+        user_addr: address, public_key, enc_private_key,
+    };
+    let expected_event_deposit = events::Deposit {
+        user_addr: address, token: token_address, amount,
+    };
     let expected_server_actions = [
         // Set viewing key.
         ServerAction::WriteIfZero(
@@ -3983,7 +3995,7 @@ fn test_compile_client_actions_writes() {
                 storage_address: enc_private_key_storage_path, value: enc_private_key,
             },
         ),
-        ServerAction::EmitViewingKeySet(expected_event),
+        ServerAction::EmitViewingKeySet(expected_event_viewing_key_set),
         // Open channel.
         ServerAction::VerifyValue(
             VerifyValueInput { storage_address: public_key_storage_path, value: public_key },
@@ -4012,22 +4024,22 @@ fn test_compile_client_actions_writes() {
         ServerAction::TransferFrom(
             TransferFromInput { sender_addr: address, token: token_address, amount: amount.into() },
         ),
-        // Create note.
+        ServerAction::EmitDeposit(expected_event_deposit), // Create note.
         enc_note.to_server_action(),
     ]
         .span();
     // Assert server actions.
     assert_eq!(server_actions, expected_server_actions);
-    // Assert events.
+    // Assert events. (Deposit event is not emitted since the client do not execute the deposit
+    // action.)
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 1);
     assert_expected_event_emitted(
         spied_event: events[0],
-        :expected_event,
+        expected_event: expected_event_viewing_key_set,
         expected_event_selector: @selector!("ViewingKeySet"),
         expected_event_name: "ViewingKeySet",
     );
-
     // Assert view actions are the same.
     let view_actions = user.execute_view(:client_actions);
     assert_eq!(view_actions, server_actions);
@@ -4082,6 +4094,7 @@ fn test_client_transfers_dont_execute() {
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
 
     let salt = user.get_salt();
+    let mut spy_events_deposit = spy_events();
     let server_actions = user
         .compile_client_actions(
             client_actions: [
@@ -4103,15 +4116,25 @@ fn test_client_transfers_dont_execute() {
 
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
+    // Assert no events were emitted.
+    assert_eq!(
+        spy_events_deposit
+            .get_events()
+            .emitted_by(contract_address: test.privacy.address)
+            .events
+            .len(),
+        0,
+    );
 
     let enc_note = user.compute_enc_note(recipient: user, :token_address, index: 0, :amount, :salt);
+    let expected_event = events::Deposit { user_addr: user.address, token: token_address, amount };
     let expected_server_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput {
                 sender_addr: user.address, token: token_address, amount: amount.into(),
             },
         ),
-        enc_note.to_server_action(),
+        ServerAction::EmitDeposit(expected_event), enc_note.to_server_action(),
     ]
         .span();
     assert_eq!(server_actions, expected_server_actions);
@@ -4132,7 +4155,7 @@ fn test_client_transfers_dont_execute() {
 
     // Withdraw.
     let random = user.get_random().into();
-    let mut spy_events = spy_events();
+    let mut spy_events_withdraw = spy_events();
     let server_actions = user
         .compile_client_actions(
             client_actions: [
@@ -4157,7 +4180,12 @@ fn test_client_transfers_dont_execute() {
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
     // Assert no events were emitted.
     assert_eq!(
-        spy_events.get_events().emitted_by(contract_address: test.privacy.address).events.len(), 0,
+        spy_events_withdraw
+            .get_events()
+            .emitted_by(contract_address: test.privacy.address)
+            .events
+            .len(),
+        0,
     );
 
     let nullifier = user.compute_nullifier(sender: user, :token_address, note_index: 0);

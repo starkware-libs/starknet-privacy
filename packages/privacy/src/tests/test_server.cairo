@@ -910,6 +910,25 @@ fn test_execute_emit_withdrawal() {
 }
 
 #[test]
+fn test_execute_emit_deposit() {
+    let mut test: Test = Default::default();
+    let user = test.new_user();
+    let token = test.mock_new_token();
+    let expected_event = events::Deposit { user_addr: user.address, token, amount: 1 };
+    let actions = array![ServerAction::EmitDeposit(expected_event)];
+    let mut spy = spy_events();
+    test.privacy.execute_actions(actions.span());
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("Deposit"),
+        expected_event_name: "Deposit",
+    );
+}
+
+#[test]
 fn test_execute_actions_paused() {
     let mut test: Test = Default::default();
     test.privacy.pause();

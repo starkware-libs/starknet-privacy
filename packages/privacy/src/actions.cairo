@@ -249,4 +249,6 @@ pub enum ServerAction {
     EmitViewingKeySet: events::ViewingKeySet,
     /// Emit [`Withdrawal`](privacy::events::Withdrawal) event.
     EmitWithdrawal: events::Withdrawal,
+    /// Emit [`Deposit`](privacy::events::Deposit) event.
+    EmitDeposit: events::Deposit,
 }
