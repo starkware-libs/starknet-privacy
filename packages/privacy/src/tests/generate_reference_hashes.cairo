@@ -5,8 +5,9 @@
 ///
 /// The output should be used to update: sdk/tests/fixtures/cairo-reference-hashes.json
 use privacy::hashes::{
-    compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
-    compute_subchannel_id, compute_subchannel_key, domain_separation::*,
+    compute_channel_id, compute_channel_key, compute_enc_channel_key_hash,
+    compute_enc_sender_addr_hash, compute_note_id, compute_nullifier, compute_subchannel_id,
+    compute_subchannel_key, domain_separation::*,
 };
 use snforge_std::map_entry_address;
 use starknet::ContractAddress;
@@ -19,6 +20,7 @@ const RECIPIENT_PUBLIC_KEY: felt252 = 0xabc;
 const CHANNEL_KEY: felt252 = 0xdef;
 const TOKEN: felt252 = 0x1234;
 const INDEX: usize = 5;
+const SHARED_X: felt252 = 0xaaa;
 
 fn to_address(addr: felt252) -> ContractAddress {
     addr.try_into().unwrap()
@@ -40,6 +42,8 @@ fn generate_reference_hashes() {
     let subchannel_id = compute_subchannel_id(CHANNEL_KEY, recipient, RECIPIENT_PUBLIC_KEY, token);
     let note_id = compute_note_id(CHANNEL_KEY, token, INDEX);
     let nullifier = compute_nullifier(CHANNEL_KEY, token, INDEX, SENDER_PRIVATE_KEY);
+    let enc_channel_key_hash = compute_enc_channel_key_hash(SHARED_X);
+    let enc_sender_addr_hash = compute_enc_sender_addr_hash(SHARED_X);
 
     // Print in format parseable by sdk/scripts/generate-cairo-refs.ts
     println!("=== CAIRO REFERENCE HASHES ===");
@@ -52,6 +56,7 @@ fn generate_reference_hashes() {
     println!("inputs.channelKey: 0x{:x}", CHANNEL_KEY);
     println!("inputs.token: 0x{:x}", TOKEN);
     println!("inputs.index: {}", INDEX);
+    println!("inputs.sharedX: 0x{:x}", SHARED_X);
 
     // Outputs (computed hashes)
     println!("outputs.channelKey: 0x{:x}", channel_key);
@@ -60,6 +65,8 @@ fn generate_reference_hashes() {
     println!("outputs.subchannelId: 0x{:x}", subchannel_id);
     println!("outputs.noteId: 0x{:x}", note_id);
     println!("outputs.nullifier: 0x{:x}", nullifier);
+    println!("outputs.encChannelKeyHash: 0x{:x}", enc_channel_key_hash);
+    println!("outputs.encSenderAddrHash: 0x{:x}", enc_sender_addr_hash);
     println!("==============================");
 }
 
