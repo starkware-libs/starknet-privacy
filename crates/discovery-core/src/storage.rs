@@ -1,9 +1,12 @@
 //! Storage interface for the privacy contract.
 
 use async_trait::async_trait;
+use num_traits::ToPrimitive;
 use starknet_core::types::BlockId;
 use starknet_types_core::felt::Felt;
 use thiserror::Error;
+
+use crate::storage_slots;
 
 /// Ciphertext for an ECDH-based encryption of channel data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -46,6 +49,9 @@ pub enum StorageError {
     /// Failed to establish connection.
     #[error("connection failed: {0}")]
     Connection(String),
+    /// Failed to convert value to u64.
+    #[error("value is too large to convert to u64: {0}")]
+    CastToU64Error(Felt),
 }
 
 /// Factory for creating storage snapshots bound to a specific block.
@@ -105,4 +111,100 @@ pub trait IViews: Send + Sync {
 
     /// Returns the compliance public key.
     async fn get_compliance_public_key(&self) -> Result<Felt, StorageError>;
+}
+
+/// Low-level storage access for reading raw storage slots.
+#[async_trait]
+pub trait RawStorageAccess: Send + Sync {
+    /// Reads a single storage slot.
+    async fn read_slot(&self, slot: Felt) -> Result<Felt, StorageError>;
+
+    /// Reads multiple storage slots.
+    async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError>;
+}
+
+/// Blanket implementation of `PrivacyContractStorage` for any type implementing `RawStorageAccess`.
+#[async_trait]
+impl<T: RawStorageAccess> IViews for T {
+    async fn channel_exists(&self, channel_id: Felt) -> Result<bool, StorageError> {
+        let slot = storage_slots::channel_exists(channel_id)?;
+        let value = self.read_slot(slot).await?;
+        Ok(value != Felt::ZERO)
+    }
+
+    async fn get_num_of_channels(&self, recipient_addr: Felt) -> Result<u64, StorageError> {
+        let slot = storage_slots::recipient_channels_base(recipient_addr)?;
+        let value = self.read_slot(slot).await?;
+        Ok(value.to_u64().ok_or(StorageError::CastToU64Error(value))?)
+    }
+
+    async fn get_channel_info(
+        &self,
+        recipient_addr: Felt,
+        channel_index: u64,
+    ) -> Result<EncChannelInfo, StorageError> {
+        let slots = storage_slots::recipient_channels_element(recipient_addr, channel_index)?;
+        let values = self
+            .read_slots(vec![
+                slots.ephemeral_pubkey,
+                slots.enc_channel_key,
+                slots.enc_sender_addr,
+            ])
+            .await?;
+        Ok(EncChannelInfo {
+            ephemeral_pubkey: values[0],
+            enc_channel_key: values[1],
+            enc_sender_addr: values[2],
+        })
+    }
+
+    async fn subchannel_exists(&self, subchannel_id: Felt) -> Result<bool, StorageError> {
+        let slot = storage_slots::subchannel_exists(subchannel_id)?;
+        let value = self.read_slot(slot).await?;
+        Ok(value != Felt::ZERO)
+    }
+
+    async fn get_subchannel_info(
+        &self,
+        subchannel_key: Felt,
+    ) -> Result<EncSubchannelInfo, StorageError> {
+        let slots = storage_slots::subchannel_tokens(subchannel_key)?;
+        let values = self.read_slots(vec![slots.salt, slots.enc_token]).await?;
+        Ok(EncSubchannelInfo {
+            salt: values[0],
+            enc_token: values[1],
+        })
+    }
+
+    async fn get_note(&self, note_id: Felt) -> Result<Felt, StorageError> {
+        let slot = storage_slots::notes(note_id)?;
+        self.read_slot(slot).await
+    }
+
+    async fn nullifier_exists(&self, nullifier: Felt) -> Result<bool, StorageError> {
+        let slot = storage_slots::nullifiers(nullifier)?;
+        let value = self.read_slot(slot).await?;
+        Ok(value != Felt::ZERO)
+    }
+
+    async fn get_public_key(&self, user_addr: Felt) -> Result<Felt, StorageError> {
+        let slot = storage_slots::public_key(user_addr)?;
+        self.read_slot(slot).await
+    }
+
+    async fn get_enc_private_key(&self, user_addr: Felt) -> Result<EncPrivateKey, StorageError> {
+        let slots = storage_slots::enc_private_key(user_addr)?;
+        let values = self
+            .read_slots(vec![slots.ephemeral_pubkey, slots.enc_private_key])
+            .await?;
+        Ok(EncPrivateKey {
+            ephemeral_pubkey: values[0],
+            enc_private_key: values[1],
+        })
+    }
+
+    async fn get_compliance_public_key(&self) -> Result<Felt, StorageError> {
+        let slot = storage_slots::compliance_public_key()?;
+        self.read_slot(slot).await
+    }
 }
