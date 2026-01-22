@@ -2,6 +2,20 @@
   "_comment": "Reference values from Cairo implementation. Regenerate with: npx tsx scripts/generate-cairo-refs.ts",
   "_ttl_days": 1,
   "_generated": "2026-01-25",
+  "encryption": {
+    "inputs": {
+      "recipientPrivateKey": "0xccc",
+      "recipientPublicKey": "0x4ec807dcbd93ce9705ba98de01f49aff9f1f9c344845f6b5190a9d3f36e6d77",
+      "ephemeralSecret": "0xbbb",
+      "channelKey": "0xdef",
+      "sender": "0x123"
+    },
+    "outputs": {
+      "ephemeralPubkey": "0x1a959d111bcc9d7961e6bf6a111a0a3b1b8d753e3e693c7d9ce367c5acc9677",
+      "encChannelKey": "0x2851b5533ab04d127cf39ce6e8ef380a369f0b26281fe696737e9f0a3c8fabc",
+      "encSenderAddr": "0x32ad4a0c1a4cc51e7ca735fd27cc9bb5ddefb70411978a74ef2dadc966c1090"
+    }
+  },
   "inputs": {
     "sender": "0x123",
     "recipient": "0x456",
@@ -17,16 +31,6 @@
     "noteId": "0x70221e8eadc952c74cf4cb481069330705bccd96dcfb9cabbf0bbb301fdf9f5",
     "nullifier": "0x6934fcf1d982c246779f75fda7340a81592af6bc1ea4f627ae67a41bceca0fc"
   },
-  "outputs": {
-    "channelKey": "0x67db9bd0362ca14c4418ecd78e743d96b069a24c0a5abe7cdb01f95cd0174e",
-    "channelId": "0x7309a89bdfa0bb6b922eacee506760a8b68c53256b4ef7dd0181181f6671bcb",
-    "subchannelKey": "0x3a8c0e4f11d30d06a65772a5ddbf598f40446d41dede067aaa9b321b79dc90a",
-    "subchannelId": "0x5d017d0ab753ba429478f7b484cd49ec19f15d272272de7ebd5c2051822d959",
-    "noteId": "0x70221e8eadc952c74cf4cb481069330705bccd96dcfb9cabbf0bbb301fdf9f5",
-    "nullifier": "0x6934fcf1d982c246779f75fda7340a81592af6bc1ea4f627ae67a41bceca0fc",
-    "encChannelKeyHash": "0xb55dfa5d9ab64940f495878f20f8a38f71180b9d5a15288f897f443078ba04",
-    "encSenderAddrHash": "0x6cf18657a71b146c29f2448d75dd899b57085759e6b1e06090d96c18f77d4b9"
-  },
   "slots": {
     "compliancePublicKeyAddress": "0xf8612cacb74429aab92a1b3e95db91c6a0c6e6436b0777064ed21bb4ecb0ed",
     "senderPublicKeyAddress": "0x5935778edf7d690937af7b24298a23b064e54fcfd2e01e181ba011593a848bf",
@@ -41,5 +45,15 @@
     "subchannelTokensEncTokenAddress": "0x5f9e2041e312007e495740073f749dabf1e3a66badbca56daaf34ee887e0178",
     "notesAddress": "0x31a26a8a4a17cebab81d6bff13db6d53a45c5fcd059fbaba84d1e2b68506d17",
     "nullifiersAddress": "0x74d2869e4d7e4bfde6ed569ba47e8e8773952ab689eeb85d8f6a263c0c77f6b"
+  },
+  "outputs": {
+    "channelKey": "0x67db9bd0362ca14c4418ecd78e743d96b069a24c0a5abe7cdb01f95cd0174e",
+    "channelId": "0x7309a89bdfa0bb6b922eacee506760a8b68c53256b4ef7dd0181181f6671bcb",
+    "subchannelKey": "0x3a8c0e4f11d30d06a65772a5ddbf598f40446d41dede067aaa9b321b79dc90a",
+    "subchannelId": "0x5d017d0ab753ba429478f7b484cd49ec19f15d272272de7ebd5c2051822d959",
+    "noteId": "0x70221e8eadc952c74cf4cb481069330705bccd96dcfb9cabbf0bbb301fdf9f5",
+    "nullifier": "0x6934fcf1d982c246779f75fda7340a81592af6bc1ea4f627ae67a41bceca0fc",
+    "encChannelKeyHash": "0xb55dfa5d9ab64940f495878f20f8a38f71180b9d5a15288f897f443078ba04",
+    "encSenderAddrHash": "0x6cf18657a71b146c29f2448d75dd899b57085759e6b1e06090d96c18f77d4b9"
   }
 }

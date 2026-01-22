@@ -180,3 +180,40 @@ fn generate_storage_slots() {
 
     println!("==============================");
 }
+
+use privacy::utils::{encrypt_channel_info, derive_public_key};
+
+/// Encryption test vector generator for discovery service decryption testing.
+///
+/// Run explicitly with:
+///   snforge test generate_encryption_vectors --include-ignored
+#[test]
+#[ignore]
+fn generate_encryption_vectors() {
+    // Inputs
+    const RECIPIENT_PRIVATE_KEY: felt252 = 0xccc;
+    const EPHEMERAL_SECRET: felt252 = 0xbbb;
+    const CHANNEL_KEY: felt252 = 0xdef;
+    const SENDER: felt252 = 0x123;
+
+    let recipient_public_key = derive_public_key(RECIPIENT_PRIVATE_KEY);
+    let sender_addr: ContractAddress = SENDER.try_into().unwrap();
+
+    let enc = encrypt_channel_info(
+        ephemeral_secret: EPHEMERAL_SECRET,
+        recipient_public_key: recipient_public_key,
+        channel_key: CHANNEL_KEY,
+        sender_addr: sender_addr,
+    );
+
+    println!("=== ENCRYPTION TEST VECTORS ===");
+    println!("encryption.inputs.recipientPrivateKey: 0x{:x}", RECIPIENT_PRIVATE_KEY);
+    println!("encryption.inputs.recipientPublicKey: 0x{:x}", recipient_public_key);
+    println!("encryption.inputs.ephemeralSecret: 0x{:x}", EPHEMERAL_SECRET);
+    println!("encryption.inputs.channelKey: 0x{:x}", CHANNEL_KEY);
+    println!("encryption.inputs.sender: 0x{:x}", SENDER);
+    println!("encryption.outputs.ephemeralPubkey: 0x{:x}", enc.ephemeral_pubkey);
+    println!("encryption.outputs.encChannelKey: 0x{:x}", enc.enc_channel_key);
+    println!("encryption.outputs.encSenderAddr: 0x{:x}", enc.enc_sender_addr);
+    println!("================================");
+}
