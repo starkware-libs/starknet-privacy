@@ -224,7 +224,7 @@ pub mod Privacy {
 
     #[generate_trait]
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
-        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `user_addr` is non-zero (checked in `__execute__`).
         fn set_viewing_key(
             self: @ContractState, user_addr: ContractAddress, input: SetViewingKeyInput,
         ) -> Array<ServerAction> {
@@ -267,7 +267,7 @@ pub mod Privacy {
             ]
         }
 
-        /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `sender_addr` is non-zero (checked in `__execute__`).
         fn open_channel(
             self: @ContractState, sender_addr: ContractAddress, input: OpenChannelInput,
         ) -> Array<ServerAction> {
@@ -356,7 +356,7 @@ pub mod Privacy {
             ]
         }
 
-        /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `sender_addr` is non-zero (checked in `__execute__`).
         fn open_subchannel(
             self: @ContractState, sender_addr: ContractAddress, input: OpenSubchannelInput,
         ) -> Array<ServerAction> {
@@ -413,7 +413,7 @@ pub mod Privacy {
             ]
         }
 
-        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `user_addr` is non-zero (checked in `__execute__`).
         fn deposit(
             self: @ContractState,
             user_addr: ContractAddress,
@@ -472,7 +472,7 @@ pub mod Privacy {
         }
 
         /// Returns the server action to use a note.
-        /// Assumes `owner_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `owner_addr` is non-zero (checked in `__execute__`).
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
@@ -525,7 +525,7 @@ pub mod Privacy {
         }
 
         /// Returns the server action to create a note.
-        /// Assumes `owner_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `owner_addr` is non-zero (checked in `__execute__`).
         fn create_note(
             self: @ContractState,
             owner_addr: ContractAddress,
