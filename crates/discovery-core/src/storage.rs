@@ -98,18 +98,21 @@ pub trait RawStorageAccess: Send + Sync {
 /// Blanket implementation of `IViews` for any type implementing `RawStorageAccess`.
 #[async_trait]
 impl<T: RawStorageAccess> IViews for T {
+    #[tracing::instrument(name = "channel_exists", level = "debug", skip(self))]
     async fn channel_exists(&self, channel_id: Felt) -> Result<bool, StorageError> {
         let slot = storage_slots::channel_exists(channel_id)?;
         let value = self.read_slot(slot).await?;
         Ok(value != Felt::ZERO)
     }
 
+    #[tracing::instrument(name = "get_num_of_channels", level = "debug", skip(self))]
     async fn get_num_of_channels(&self, recipient_addr: Felt) -> Result<u64, StorageError> {
         let slot = storage_slots::recipient_channels_base(recipient_addr)?;
         let value = self.read_slot(slot).await?;
         Ok(value.to_u64().ok_or(StorageError::CastToU64Error(value))?)
     }
 
+    #[tracing::instrument(name = "get_channel_info", level = "debug", skip(self))]
     async fn get_channel_info(
         &self,
         recipient_addr: Felt,
@@ -130,12 +133,14 @@ impl<T: RawStorageAccess> IViews for T {
         })
     }
 
+    #[tracing::instrument(name = "subchannel_exists", level = "debug", skip(self))]
     async fn subchannel_exists(&self, subchannel_id: Felt) -> Result<bool, StorageError> {
         let slot = storage_slots::subchannel_exists(subchannel_id)?;
         let value = self.read_slot(slot).await?;
         Ok(value != Felt::ZERO)
     }
 
+    #[tracing::instrument(name = "get_subchannel_info", level = "debug", skip(self))]
     async fn get_subchannel_info(
         &self,
         subchannel_key: Felt,
@@ -148,22 +153,26 @@ impl<T: RawStorageAccess> IViews for T {
         })
     }
 
+    #[tracing::instrument(name = "get_note", level = "debug", skip(self))]
     async fn get_note(&self, note_id: Felt) -> Result<Felt, StorageError> {
         let slot = storage_slots::notes(note_id)?;
         self.read_slot(slot).await
     }
 
+    #[tracing::instrument(name = "nullifier_exists", level = "debug", skip(self))]
     async fn nullifier_exists(&self, nullifier: Felt) -> Result<bool, StorageError> {
         let slot = storage_slots::nullifiers(nullifier)?;
         let value = self.read_slot(slot).await?;
         Ok(value != Felt::ZERO)
     }
 
+    #[tracing::instrument(name = "get_public_key", level = "debug", skip(self))]
     async fn get_public_key(&self, user_addr: Felt) -> Result<Felt, StorageError> {
         let slot = storage_slots::public_key(user_addr)?;
         self.read_slot(slot).await
     }
 
+    #[tracing::instrument(name = "get_enc_private_key", level = "debug", skip(self))]
     async fn get_enc_private_key(&self, user_addr: Felt) -> Result<EncPrivateKey, StorageError> {
         let slots = storage_slots::enc_private_key(user_addr)?;
         let values = self
@@ -175,6 +184,7 @@ impl<T: RawStorageAccess> IViews for T {
         })
     }
 
+    #[tracing::instrument(name = "get_compliance_public_key", level = "debug", skip(self))]
     async fn get_compliance_public_key(&self) -> Result<Felt, StorageError> {
         let slot = storage_slots::compliance_public_key()?;
         self.read_slot(slot).await
