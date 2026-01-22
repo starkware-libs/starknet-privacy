@@ -1,4 +1,5 @@
 pub mod decryption;
+pub mod discovery;
 pub mod hashes;
 pub mod mock_backend;
 pub mod storage;
