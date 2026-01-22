@@ -12,7 +12,7 @@ use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUser
 use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER};
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
-use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_tx_info};
+use starknet::{ContractAddress, SyscallResultTrait, TxInfo, VALIDATED, get_tx_info};
 use starkware_utils::constants::TWO_POW_128;
 
 pub mod constants {
@@ -239,6 +239,13 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
         value_1.try_into().expect(internal_errors::UNPACK1_OVERFLOW),
         value_2.try_into().expect(internal_errors::UNPACK2_OVERFLOW),
     )
+}
+
+pub(crate) fn assert_valid_tx_info(tx_info: Box<TxInfo>) {
+    assert(tx_info.version.is_non_zero(), errors::ZERO_TX_VERSION);
+    for resource_bounds in tx_info.resource_bounds {
+        assert(resource_bounds.max_price_per_unit.is_zero(), errors::NON_ZERO_RESOURCE_PRICE);
+    }
 }
 
 pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<(), Array<felt252>> {

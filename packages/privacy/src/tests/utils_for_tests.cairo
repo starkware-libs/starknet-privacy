@@ -30,12 +30,13 @@ use privacy::utils::{
     encrypt_user_addr, is_canonical_key,
 };
 use snforge_std::{
-    CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait, Token,
-    TokenTrait, declare, interact_with_state, map_entry_address, set_balance, spy_messages_to_l1,
+    CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
+    Token, TokenTrait, cheat_resource_bounds, declare, interact_with_state, map_entry_address,
+    set_balance, spy_messages_to_l1,
 };
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
-use starknet::{ContractAddress, SyscallResultTrait};
+use starknet::{ContractAddress, ResourcesBounds, SyscallResultTrait};
 use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
@@ -117,7 +118,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_compile_client_actions_without_cheat_caller(
+    fn safe_compile_client_actions_without_cheat(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
         self.privacy.safe_client.__execute__(user_addr: *self.address, :client_actions)
@@ -975,7 +976,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn execute(
         self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
-        cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
+        self.cheat_before_execute();
         let mut spy = spy_messages_to_l1();
         self.client.__execute__(:user_addr, :client_actions);
         self.general_assert_spy_messages(ref :spy);
@@ -986,7 +987,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn safe_execute(
         self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
-        cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
+        self.cheat_before_execute();
         self.safe_client.__execute__(:user_addr, :client_actions)
     }
 
@@ -1002,6 +1003,26 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let (from, message) = spy.get_messages().messages.at(0);
         assert_eq!(*from, *self.address);
         assert_eq!(*message.to_address, Zero::zero());
+    }
+
+    fn cheat_before_execute(self: @PrivacyCfg) {
+        self.cheat_zero_caller_address();
+        self.cheat_zero_resource_bounds();
+    }
+
+    fn cheat_zero_caller_address(self: @PrivacyCfg) {
+        cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
+    }
+
+    fn cheat_zero_resource_bounds(self: @PrivacyCfg) {
+        let resource_bounds = ResourcesBounds {
+            resource: Zero::zero(), max_amount: Zero::zero(), max_price_per_unit: Zero::zero(),
+        };
+        cheat_resource_bounds(
+            contract_address: *self.address,
+            resource_bounds: array![resource_bounds].span(),
+            span: CheatSpan::TargetCalls(1),
+        );
     }
 }
 

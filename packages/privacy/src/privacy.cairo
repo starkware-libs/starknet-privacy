@@ -22,9 +22,9 @@ pub mod Privacy {
     };
     use privacy::utils::constants::{ERROR_WRAPPER, OK_WRAPPER, TWO_POW_120};
     use privacy::utils::{
-        StoragePathIntoFelt, assert_valid_signature, decrypt_note_amount, derive_public_key,
-        encrypt_channel_info, encrypt_note_amount, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, is_canonical_key, send_message_to_server,
+        StoragePathIntoFelt, assert_valid_signature, assert_valid_tx_info, decrypt_note_amount,
+        derive_public_key, encrypt_channel_info, encrypt_note_amount, encrypt_private_key,
+        encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, send_message_to_server,
         unwrap_execute_and_panic_result,
     };
     use privacy::{errors, events};
@@ -33,7 +33,7 @@ pub mod Privacy {
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::syscalls::call_contract_syscall;
-    use starknet::{ContractAddress, VALIDATED, get_caller_address, get_contract_address};
+    use starknet::{ContractAddress, VALIDATED, get_contract_address, get_execution_info};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
@@ -130,7 +130,9 @@ pub mod Privacy {
         fn __execute__(
             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
-            assert(get_caller_address().is_zero(), errors::INVALID_CALLER);
+            let execution_info = get_execution_info();
+            assert(execution_info.caller_address.is_zero(), errors::INVALID_CALLER);
+            assert_valid_tx_info(tx_info: execution_info.tx_info);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             let mut calldata = array![];
             user_addr.serialize(ref calldata);
