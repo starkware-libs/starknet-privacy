@@ -5,7 +5,7 @@ use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTr
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
     OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
-    UseNoteInput, WithdrawInput, WriteIfZeroInput,
+    UseNoteInput, WithdrawInput, WriteOnceInput,
 };
 use privacy::hashes::{
     compute_channel_id, compute_channel_key, compute_enc_address_hash, compute_enc_channel_key_hash,
@@ -78,7 +78,7 @@ pub(crate) impl EncNoteImpl of EncNoteTrait {
             map_selector: selector!("notes"), keys: [*self.id].span(),
         );
         let note: Note = (*self).into();
-        note.to_write_if_zero_action(:storage_address)
+        note.to_write_once_action(:storage_address)
     }
 
     fn to_server_actions(self: @EncNote) -> Span<ServerAction> {
@@ -754,8 +754,8 @@ pub(crate) impl UserImpl of UserTrait {
         nullifier: felt252,
     ) {
         let actions = [
-            ServerAction::WriteIfZero(
-                WriteIfZeroInput {
+            ServerAction::WriteOnce(
+                WriteOnceInput {
                     storage_address: map_entry_address(
                         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
                     ),
@@ -912,8 +912,8 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         channel_id: felt252,
     ) {
         let actions = [
-            ServerAction::WriteIfZero(
-                WriteIfZeroInput {
+            ServerAction::WriteOnce(
+                WriteOnceInput {
                     storage_address: map_entry_address(
                         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
                     ),
@@ -962,8 +962,8 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             .server
             .execute_actions(
                 actions: array![
-                    ServerAction::WriteIfZero(
-                        WriteIfZeroInput {
+                    ServerAction::WriteOnce(
+                        WriteOnceInput {
                             storage_address: storage_path_felt, value: [true.into()].span(),
                         },
                     ),

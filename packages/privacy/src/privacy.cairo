@@ -8,7 +8,7 @@ pub mod Privacy {
     use privacy::actions::{
         AppendToVecInput, ClientAction, ClientActionTrait, CreateNoteInput, DepositInput,
         OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
-        TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput, WriteIfZeroInput,
+        TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput, WriteOnceInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -245,14 +245,14 @@ pub mod Privacy {
             assert(enc_private_key.is_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
             array![
-                ServerAction::WriteIfZero(
-                    WriteIfZeroInput {
+                ServerAction::WriteOnce(
+                    WriteOnceInput {
                         storage_address: self.public_key.entry(user_addr).into(),
                         value: [user_public_key].span(),
                     },
                 ),
                 enc_private_key
-                    .to_write_if_zero_action(
+                    .to_write_once_action(
                         storage_address: self.enc_private_key.entry(user_addr).into(),
                     ),
                 ServerAction::EmitViewingKeySet(
@@ -336,15 +336,15 @@ pub mod Privacy {
                         value: recipient_public_key,
                     },
                 ),
-                ServerAction::WriteIfZero(
-                    WriteIfZeroInput {
+                ServerAction::WriteOnce(
+                    WriteOnceInput {
                         storage_address: self.channel_exists.entry(channel_id).into(),
                         value: [true.into()].span(),
                     },
                 ),
                 ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
                 enc_outgoing_channel_info
-                    .to_write_if_zero_action(
+                    .to_write_once_action(
                         storage_address: self.outgoing_channels.entry(outgoing_channel_key).into(),
                     ),
             ]
@@ -392,14 +392,14 @@ pub mod Privacy {
             assert(enc_subchannel_info.is_non_zero(), internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN);
 
             array![
-                ServerAction::WriteIfZero(
-                    WriteIfZeroInput {
+                ServerAction::WriteOnce(
+                    WriteOnceInput {
                         storage_address: self.subchannel_exists.entry(subchannel_id).into(),
                         value: [true.into()].span(),
                     },
                 ),
                 enc_subchannel_info
-                    .to_write_if_zero_action(
+                    .to_write_once_action(
                         storage_address: self.subchannel_tokens.entry(subchannel_key).into(),
                     ),
             ]
@@ -507,8 +507,8 @@ pub mod Privacy {
             token_balances.add_balance(:token, :amount);
 
             array![
-                ServerAction::WriteIfZero(
-                    WriteIfZeroInput {
+                ServerAction::WriteOnce(
+                    WriteOnceInput {
                         storage_address: self.nullifiers.entry(nullifier).into(),
                         value: [true.into()].span(),
                     },
@@ -575,7 +575,7 @@ pub mod Privacy {
 
             token_balances.subtract_balance(:token, :amount);
 
-            array![note.to_write_if_zero_action(storage_address: self.notes.entry(note_id).into())]
+            array![note.to_write_once_action(storage_address: self.notes.entry(note_id).into())]
         }
     }
 
@@ -586,7 +586,7 @@ pub mod Privacy {
             // TODO: Verify client proof.
             for action in actions {
                 match *action {
-                    ServerAction::WriteIfZero(input) => {
+                    ServerAction::WriteOnce(input) => {
                         self
                             ._execute_write(
                                 storage_address: input.storage_address,

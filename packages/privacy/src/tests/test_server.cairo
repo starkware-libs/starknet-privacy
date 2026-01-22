@@ -1,7 +1,7 @@
 use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
-    WriteIfZeroInput,
+    WriteOnceInput,
 };
 use privacy::objects::{Note, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
@@ -295,7 +295,7 @@ fn test_set_viewing_key_multiple_users_same_public_key() {
 }
 
 #[test]
-fn test_execute_write_if_zero() {
+fn test_execute_write_once() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let (_, channel_id) = test.mock_new_channel();
@@ -308,8 +308,8 @@ fn test_execute_write_if_zero() {
 
     // Verify channel doesn't exist and write.
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -322,8 +322,8 @@ fn test_execute_write_if_zero() {
         map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -336,10 +336,8 @@ fn test_execute_write_if_zero() {
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt, value: [user.public_key].span(),
-            },
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: storage_path_felt, value: [user.public_key].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -357,8 +355,8 @@ fn test_execute_write_if_zero() {
     );
     assert_eq!(current_value, false);
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -368,7 +366,7 @@ fn test_execute_write_if_zero() {
 }
 
 #[test]
-fn test_execute_write_if_zero_assertions() {
+fn test_execute_write_once_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let (_, channel_id) = test.mock_new_channel();
@@ -379,8 +377,8 @@ fn test_execute_write_if_zero_assertions() {
         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -396,8 +394,8 @@ fn test_execute_write_if_zero_assertions() {
         map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -433,8 +431,8 @@ fn test_execute_write_if_zero_assertions() {
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput { storage_address: storage_path_felt, value: [true.into()].span() },
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -447,7 +445,7 @@ fn test_execute_write_if_zero_assertions() {
 }
 
 #[test]
-fn test_execute_write_if_zero_subchannel() {
+fn test_execute_write_once_subchannel() {
     let mut test: Test = Default::default();
     let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
     assert!(enc_subchannel_info.is_non_zero());
@@ -459,7 +457,7 @@ fn test_execute_write_if_zero_subchannel() {
     let storage_address = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
-    let actions = [enc_subchannel_info.to_write_if_zero_action(:storage_address)].span();
+    let actions = [enc_subchannel_info.to_write_once_action(:storage_address)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify subchannel exists.
@@ -467,7 +465,7 @@ fn test_execute_write_if_zero_subchannel() {
 }
 
 #[test]
-fn test_execute_write_if_zero_subchannel_assertions() {
+fn test_execute_write_once_subchannel_assertions() {
     let mut test: Test = Default::default();
     let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
     assert!(enc_subchannel_info.is_non_zero());
@@ -476,7 +474,7 @@ fn test_execute_write_if_zero_subchannel_assertions() {
     let storage_address = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
-    let actions = [enc_subchannel_info.to_write_if_zero_action(:storage_address)].span();
+    let actions = [enc_subchannel_info.to_write_once_action(:storage_address)].span();
     test.privacy.execute_actions(:actions);
     let current_value = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(current_value, enc_subchannel_info);
@@ -485,7 +483,7 @@ fn test_execute_write_if_zero_subchannel_assertions() {
 }
 
 #[test]
-fn test_execute_write_if_zero_private_key() {
+fn test_execute_write_once_private_key() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let enc_private_key = test.mock_new_enc_private_key();
@@ -498,7 +496,7 @@ fn test_execute_write_if_zero_private_key() {
     let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
-    let actions = [enc_private_key.to_write_if_zero_action(:storage_address)].span();
+    let actions = [enc_private_key.to_write_once_action(:storage_address)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify private key exists.
@@ -506,7 +504,7 @@ fn test_execute_write_if_zero_private_key() {
 }
 
 #[test]
-fn test_execute_write_if_zero_private_key_assertions() {
+fn test_execute_write_once_private_key_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let enc_private_key = test.mock_new_enc_private_key();
@@ -516,7 +514,7 @@ fn test_execute_write_if_zero_private_key_assertions() {
     let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
-    let actions = [enc_private_key.to_write_if_zero_action(:storage_address)].span();
+    let actions = [enc_private_key.to_write_once_action(:storage_address)].span();
     test.privacy.execute_actions(:actions);
     let current_value = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(current_value, enc_private_key);
@@ -525,7 +523,7 @@ fn test_execute_write_if_zero_private_key_assertions() {
 }
 
 #[test]
-fn test_execute_write_if_zero_outgoing_channel() {
+fn test_execute_write_once_outgoing_channel() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
@@ -541,7 +539,7 @@ fn test_execute_write_if_zero_outgoing_channel() {
     let storage_address = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
     );
-    let actions = [enc_outgoing_channel_info.to_write_if_zero_action(:storage_address)].span();
+    let actions = [enc_outgoing_channel_info.to_write_once_action(:storage_address)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify outgoing channel info exists.
@@ -550,7 +548,7 @@ fn test_execute_write_if_zero_outgoing_channel() {
     );
 }
 #[test]
-fn test_execute_write_if_zero_outgoing_channel_assertions() {
+fn test_execute_write_once_outgoing_channel_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
@@ -563,7 +561,7 @@ fn test_execute_write_if_zero_outgoing_channel_assertions() {
     let storage_address = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
     );
-    let actions = [enc_outgoing_channel_info.to_write_if_zero_action(:storage_address)].span();
+    let actions = [enc_outgoing_channel_info.to_write_once_action(:storage_address)].span();
     test.privacy.execute_actions(:actions);
     let current_value = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(current_value, enc_outgoing_channel_info);
@@ -572,7 +570,7 @@ fn test_execute_write_if_zero_outgoing_channel_assertions() {
 }
 
 #[test]
-fn test_execute_write_if_zero_note() {
+fn test_execute_write_once_note() {
     let mut test: Test = Default::default();
     let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
     let note_value = note.into();
@@ -586,7 +584,7 @@ fn test_execute_write_if_zero_note() {
     assert_eq!(current_value, Zero::zero());
 
     // Write stored note.
-    let actions: Array<ServerAction> = array![note_value.to_write_if_zero_action(:storage_address)];
+    let actions: Array<ServerAction> = array![note_value.to_write_once_action(:storage_address)];
     test.privacy.execute_actions(actions.span());
 
     // Verify stored note was written.
@@ -596,7 +594,7 @@ fn test_execute_write_if_zero_note() {
 }
 
 #[test]
-fn test_execute_write_if_zero_note_assertions() {
+fn test_execute_write_once_note_assertions() {
     let mut test: Test = Default::default();
     let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
     let note_value = note.into();
@@ -606,7 +604,7 @@ fn test_execute_write_if_zero_note_assertions() {
     let storage_address = map_entry_address(
         map_selector: selector!("notes"), keys: [note.id].span(),
     );
-    let actions: Array<ServerAction> = array![note_value.to_write_if_zero_action(:storage_address)];
+    let actions: Array<ServerAction> = array![note_value.to_write_once_action(:storage_address)];
     test.privacy.execute_actions(actions.span());
     let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
     // Verify the value was written
@@ -756,10 +754,8 @@ fn test_execute_verify_value() {
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions = array![
-        ServerAction::WriteIfZero(
-            WriteIfZeroInput {
-                storage_address: storage_path_felt, value: [user.public_key].span(),
-            },
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: storage_path_felt, value: [user.public_key].span() },
         ),
     ];
     test.privacy.execute_actions(actions.span());

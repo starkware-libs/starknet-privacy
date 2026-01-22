@@ -21,7 +21,7 @@ pub trait IClient<T> {
     /// client action may compile to multiple server actions.
     ///
     /// Returns a span containing server actions:
-    /// - For `Register`: [`WriteIfZero`](privacy::objects::ServerAction::WriteIfZero) verifies
+    /// - For `Register`: [`WriteOnce`](privacy::objects::ServerAction::WriteOnce) verifies
     ///   that the caller's public key is not already registered (storage value is zero) and writes
     ///   the public key to storage.
     /// - For `ReplacePublicKey`: [`WriteIfNonZero`](privacy::objects::ServerAction::WriteIfNonZero)
@@ -29,7 +29,7 @@ pub trait IClient<T> {
     ///   and writes the new public key to storage.
     /// - For `OpenChannel`: [`VerifyValue`](privacy::objects::ServerAction::VerifyValue) verifies
     ///   that the channel key is valid for the given sender and recipient,
-    ///   [`WriteIfZero`](privacy::objects::ServerAction::WriteIfZero) verifies that the channel id
+    ///   [`WriteOnce`](privacy::objects::ServerAction::WriteOnce) verifies that the channel id
     ///   does not already exist (storage value is zero) and writes `true` to mark it as existing,
     ///   [`AppendToVec`](privacy::objects::ServerAction::AppendToVec) stores the encrypted channel
     ///   info.
@@ -96,7 +96,7 @@ pub trait IServer<T> {
     ///
     /// #### Reverts
     /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if
-    /// `WriteIfZero` action is executed and the value at the specified storage path already exists.
+    /// `WriteOnce` action is executed and the value at the specified storage path already exists.
     /// - [`INSUFFICIENT_BALANCE`]: Thrown if `TransferFrom` action is executed and the sender has
     /// insufficient balance.
     /// - [`INSUFFICIENT_ALLOWANCE`]: Thrown if `TransferFrom` action is executed and the sender has
