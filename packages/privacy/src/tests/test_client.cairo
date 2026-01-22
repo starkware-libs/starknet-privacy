@@ -7,8 +7,8 @@ use privacy::actions::{
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
 use privacy::objects::{EncUserAddr, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
-    EncNoteTrait, PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait,
-    decrypt_channel_info, decrypt_enc_user_addr, decrypt_outgoing_channel_info, decrypt_private_key,
+    PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, decrypt_channel_info,
+    decrypt_enc_user_addr, decrypt_outgoing_channel_info, decrypt_private_key,
     decrypt_subchannel_token,
 };
 use privacy::utils::constants::TWO_POW_120;
@@ -154,10 +154,7 @@ fn test_transfer() {
         .transfer(notes_to_use: [use_note_input].span(), notes_to_create: [note].span());
 
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token_address, :note_index);
-    let enc_note = user_1
-        .compute_enc_note(
-            recipient: user_2, :token_address, index: note_index, :amount, salt: note.salt,
-        );
+    let (note_id, expected_note) = user_1.compute_note(:note);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
@@ -167,16 +164,16 @@ fn test_transfer() {
                 storage_address: storage_path_felt_nullifier, value: [true.into()].span(),
             },
         ),
-        enc_note.to_server_action(),
+        user_1.note_to_server_action(:note),
     ]
         .span();
     assert_eq!(actions, expected_actions);
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: enc_note.id), Zero::zero());
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note.enc_value);
 }
 
 #[test]
@@ -215,10 +212,7 @@ fn test_transfer_to_self() {
     let actions = user_1
         .transfer(notes_to_use: [use_note_input].span(), notes_to_create: [note].span());
     let expected_nullifier = user_1.compute_nullifier(sender: user_2, :token_address, :note_index);
-    let enc_note = user_1
-        .compute_enc_note(
-            recipient: user_1, :token_address, index: note_index, :amount, salt: note.salt,
-        );
+    let (note_id, expected_note) = user_1.compute_note(:note);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
@@ -228,16 +222,16 @@ fn test_transfer_to_self() {
                 storage_address: storage_path_felt_nullifier, value: [true.into()].span(),
             },
         ),
-        enc_note.to_server_action(),
+        user_1.note_to_server_action(:note),
     ]
         .span();
     assert_eq!(actions, expected_actions);
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: enc_note.id), Zero::zero());
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note.enc_value);
 }
 
 #[test]
@@ -287,22 +281,8 @@ fn test_transfer_one_to_many() {
     let actions = user_1
         .transfer(notes_to_use: [use_note_input].span(), notes_to_create: [note_1, note_2].span());
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token_address, :note_index);
-    let enc_note_1 = user_1
-        .compute_enc_note(
-            recipient: user_2,
-            :token_address,
-            index: note_index,
-            amount: amount_1,
-            salt: note_1.salt,
-        );
-    let enc_note_2 = user_1
-        .compute_enc_note(
-            recipient: user_3,
-            :token_address,
-            index: note_index,
-            amount: amount_2,
-            salt: note_2.salt,
-        );
+    let (note_id_1, expected_note_1) = user_1.compute_note(note: note_1);
+    let (note_id_2, expected_note_2) = user_1.compute_note(note: note_2);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
@@ -312,18 +292,18 @@ fn test_transfer_one_to_many() {
                 storage_address: storage_path_felt_nullifier, value: [true.into()].span(),
             },
         ),
-        enc_note_1.to_server_action(), enc_note_2.to_server_action(),
+        user_1.note_to_server_action(note: note_1), user_1.note_to_server_action(note: note_2),
     ]
         .span();
     assert_eq!(actions, expected_actions);
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), Zero::zero());
-    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), Zero::zero());
+    assert_eq!(test.privacy.get_note(note_id: note_id_1), Zero::zero());
+    assert_eq!(test.privacy.get_note(note_id: note_id_2), Zero::zero());
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_amount);
-    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), enc_note_2.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1.enc_value);
+    assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2.enc_value);
 }
 
 #[test]
@@ -393,10 +373,7 @@ fn test_transfer_many_to_one() {
     let expected_nullifier_2 = user_1
         .compute_nullifier(sender: user_3, :token_address, :note_index);
     assert_ne!(expected_nullifier_1, expected_nullifier_2);
-    let enc_note = user_1
-        .compute_enc_note(
-            recipient: user_2, :token_address, index: note_index, :amount, salt: note.salt,
-        );
+    let (note_id, expected_note) = user_1.compute_note(:note);
     let storage_path_felt_nullifier_1 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
     );
@@ -414,18 +391,18 @@ fn test_transfer_many_to_one() {
                 storage_address: storage_path_felt_nullifier_2, value: [true.into()].span(),
             },
         ),
-        enc_note.to_server_action(),
+        user_1.note_to_server_action(:note),
     ]
         .span();
     assert_eq!(actions, expected_actions);
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
-    assert_eq!(test.privacy.get_note(note_id: enc_note.id), Zero::zero());
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
-    assert_eq!(test.privacy.get_note(note_id: enc_note.id), enc_note.enc_amount);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note.enc_value);
 }
 
 #[test]
@@ -501,16 +478,10 @@ fn test_transfer_many_to_many() {
     let expected_nullifier_2 = user_3
         .compute_nullifier(sender: user_2, :token_address, :note_index);
     assert_ne!(expected_nullifier_1, expected_nullifier_2);
-    let enc_note_1 = user_3
-        .compute_enc_note(
-            recipient: user_1, :token_address, index: note_index, :amount, salt: note_1.salt,
-        );
-    let enc_note_2 = user_3
-        .compute_enc_note(
-            recipient: user_2, :token_address, index: note_index, :amount, salt: note_2.salt,
-        );
-    assert_ne!(enc_note_1.id, enc_note_2.id);
-    assert_ne!(enc_note_1.enc_amount, enc_note_2.enc_amount);
+    let (note_id_1, expected_note_1) = user_3.compute_note(note: note_1);
+    let (note_id_2, expected_note_2) = user_3.compute_note(note: note_2);
+    assert_ne!(note_id_1, note_id_2);
+    assert_ne!(expected_note_1.enc_value, expected_note_2.enc_value);
     let storage_path_felt_nullifier_1 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
     );
@@ -528,20 +499,20 @@ fn test_transfer_many_to_many() {
                 storage_address: storage_path_felt_nullifier_2, value: [true.into()].span(),
             },
         ),
-        enc_note_1.to_server_action(), enc_note_2.to_server_action(),
+        user_3.note_to_server_action(note: note_1), user_3.note_to_server_action(note: note_2),
     ]
         .span();
     assert_eq!(actions, expected_actions);
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
-    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), Zero::zero());
-    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), Zero::zero());
+    assert_eq!(test.privacy.get_note(note_id: note_id_1), Zero::zero());
+    assert_eq!(test.privacy.get_note(note_id: note_id_2), Zero::zero());
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
-    assert_eq!(test.privacy.get_note(note_id: enc_note_1.id), enc_note_1.enc_amount);
-    assert_eq!(test.privacy.get_note(note_id: enc_note_2.id), enc_note_2.enc_amount);
+    assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1.enc_value);
+    assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2.enc_value);
 }
 
 // TODO: Fix this test. Now failing because storage writings are not reverted when panicking.
@@ -1841,11 +1812,7 @@ fn test_create_note_self_note() {
     let note = user
         .new_note_with_generated_salt(recipient: user, :token_address, :amount, index: note_index);
     let actions = user.internal_create_note(:note);
-    let expected_enc_note = user
-        .compute_enc_note(
-            recipient: user, :token_address, index: note_index, :amount, salt: note.salt,
-        );
-    assert_eq!(actions, expected_enc_note.to_server_actions());
+    assert_eq!(actions, user.note_to_server_actions(:note));
 }
 
 #[test]
@@ -1875,26 +1842,12 @@ fn test_create_note_twice() {
             recipient: user_2, :token_address, amount: amount_2, index: note_index_2,
         );
     let create_note_2_actions = user_1.internal_create_note(note: note_2);
-    let expected_note_1 = user_1
-        .compute_enc_note(
-            recipient: user_2,
-            :token_address,
-            index: note_index_1,
-            amount: amount_1,
-            salt: note_1.salt,
-        );
-    let expected_note_2 = user_1
-        .compute_enc_note(
-            recipient: user_2,
-            :token_address,
-            index: note_index_2,
-            amount: amount_2,
-            salt: note_2.salt,
-        );
-    assert_ne!(expected_note_1.id, expected_note_2.id);
-    assert_ne!(expected_note_1.enc_amount, expected_note_2.enc_amount);
-    assert_eq!(create_note_1_actions, expected_note_1.to_server_actions());
-    assert_eq!(create_note_2_actions, expected_note_2.to_server_actions());
+    let (note_id_1, expected_note_1) = user_1.compute_note(note: note_1);
+    let (note_id_2, expected_note_2) = user_1.compute_note(note: note_2);
+    assert_ne!(note_id_1, note_id_2);
+    assert_ne!(expected_note_1.enc_value, expected_note_2.enc_value);
+    assert_eq!(create_note_1_actions, user_1.note_to_server_actions(note: note_1));
+    assert_eq!(create_note_2_actions, user_1.note_to_server_actions(note: note_2));
 }
 
 #[test]
@@ -1923,18 +1876,12 @@ fn test_create_note_twice_same_amount() {
             recipient: user_2, :token_address, :amount, index: note_index_2,
         );
     let create_note_2_actions = user_1.internal_create_note(note: note_2);
-    let expected_enc_note_1 = user_1
-        .compute_enc_note(
-            recipient: user_2, :token_address, index: note_index_1, :amount, salt: note_1.salt,
-        );
-    let expected_enc_note_2 = user_1
-        .compute_enc_note(
-            recipient: user_2, :token_address, index: note_index_2, :amount, salt: note_2.salt,
-        );
-    assert_ne!(expected_enc_note_1.id, expected_enc_note_2.id);
-    assert_ne!(expected_enc_note_1.enc_amount, expected_enc_note_2.enc_amount);
-    assert_eq!(create_note_1_actions, expected_enc_note_1.to_server_actions());
-    assert_eq!(create_note_2_actions, expected_enc_note_2.to_server_actions());
+    let (note_id_1, expected_note_1) = user_1.compute_note(note: note_1);
+    let (note_id_2, expected_note_2) = user_1.compute_note(note: note_2);
+    assert_ne!(note_id_1, note_id_2);
+    assert_ne!(expected_note_1.enc_value, expected_note_2.enc_value);
+    assert_eq!(create_note_1_actions, user_1.note_to_server_actions(note: note_1));
+    assert_eq!(create_note_2_actions, user_1.note_to_server_actions(note: note_2));
 }
 
 #[test]
@@ -1983,16 +1930,13 @@ fn test_create_note_use_note_zero_amount() {
     let note = user_1
         .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 0);
     let server_actions = user_1.create_note(:note);
-    let expected_enc_note = user_1
-        .compute_enc_note(recipient: user_2, :token_address, index: 0, amount: 0, salt: note.salt);
-    assert_ne!(expected_enc_note.id, Zero::zero());
-    assert_ne!(expected_enc_note.enc_amount, Zero::zero());
-    assert_eq!(server_actions, expected_enc_note.to_server_actions());
-    assert_eq!(user_1.privacy.get_note(note_id: expected_enc_note.id), Zero::zero());
+    let (note_id, expected_note) = user_1.compute_note(:note);
+    assert_ne!(note_id, Zero::zero());
+    assert_ne!(expected_note.enc_value, Zero::zero());
+    assert_eq!(server_actions, user_1.note_to_server_actions(:note));
+    assert_eq!(user_1.privacy.get_note(:note_id), Zero::zero());
     user_1.privacy.execute_actions(actions: server_actions);
-    assert_eq!(
-        user_1.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount,
-    );
+    assert_eq!(user_1.privacy.get_note(:note_id), expected_note.enc_value);
     // Use note with zero amount.
     let use_note_input = UseNoteInput {
         owner_private_key: user_2.private_key,
@@ -2013,27 +1957,22 @@ fn test_create_note_use_note_zero_amount() {
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
-    let expected_enc_note = user_2
-        .compute_enc_note(
-            recipient: user_2, :token_address, index: 0, amount: 0, salt: create_note_input.salt,
-        );
-    assert_ne!(expected_enc_note.id, Zero::zero());
-    assert_ne!(expected_enc_note.enc_amount, Zero::zero());
+    let (note_id, expected_note) = user_2.compute_note(note: create_note_input);
+    assert_ne!(note_id, Zero::zero());
+    assert_ne!(expected_note.enc_value, Zero::zero());
     let expected_server_actions = [
         ServerAction::WriteOnce(
             WriteOnceInput { storage_address: nullifier_storage_path, value: [true.into()].span() },
         ),
-        expected_enc_note.to_server_action(),
+        user_2.note_to_server_action(note: create_note_input),
     ]
         .span();
     assert_eq!(server_actions, expected_server_actions);
     assert!(!user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(user_2.privacy.get_note(note_id: expected_enc_note.id), Zero::zero());
+    assert_eq!(user_2.privacy.get_note(:note_id), Zero::zero());
     user_2.privacy.execute_actions(actions: server_actions);
     assert!(user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(
-        user_2.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount,
-    );
+    assert_eq!(user_2.privacy.get_note(:note_id), expected_note.enc_value);
 }
 
 #[test]
@@ -3207,8 +3146,7 @@ fn test_compile_client_actions_deposit_create_note() {
     ]
         .span();
     let actions = user_1.compile_client_actions(:client_actions);
-    let expected_enc_note = user_1
-        .compute_enc_note(recipient: user_2, :token_address, index: 0, :amount, salt: note.salt);
+    let (note_id, expected_note) = user_1.compute_note(:note);
     let expected_event = events::Deposit {
         user_addr: user_1.address, token: token_address, amount,
     };
@@ -3218,18 +3156,18 @@ fn test_compile_client_actions_deposit_create_note() {
                 sender_addr: user_1.address, token: token_address, amount: amount.into(),
             },
         ),
-        ServerAction::EmitDeposit(expected_event), expected_enc_note.to_server_action(),
+        ServerAction::EmitDeposit(expected_event), user_1.note_to_server_action(:note),
     ]
         .span();
     assert_eq!(actions, expected_actions);
     let view_actions = user_1.execute_view(:client_actions);
     assert_eq!(view_actions, actions);
-    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), Zero::zero());
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
     assert_eq!(token.balance_of(address: user_1.address), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 
     test.privacy.execute_actions(:actions);
-    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note.enc_value);
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
@@ -3264,14 +3202,7 @@ fn test_compile_client_actions_use_note_create_note() {
     ]
         .span();
     let actions = user_2.compile_client_actions(:client_actions);
-    let expected_enc_note = user_2
-        .compute_enc_note(
-            recipient: user_1,
-            :token_address,
-            index: create_note_input.index,
-            :amount,
-            salt: create_note_input.salt,
-        );
+    let (note_id, expected_note) = user_2.compute_note(note: create_note_input);
     let nullifier = user_2
         .compute_nullifier(sender: user_1, :token_address, note_index: note.index);
     let nullifier_storage_path = map_entry_address(
@@ -3281,18 +3212,18 @@ fn test_compile_client_actions_use_note_create_note() {
         ServerAction::WriteOnce(
             WriteOnceInput { storage_address: nullifier_storage_path, value: [true.into()].span() },
         ),
-        expected_enc_note.to_server_action(),
+        user_2.note_to_server_action(note: create_note_input),
     ]
         .span();
     assert_eq!(actions, expected_actions);
     let view_actions = user_2.execute_view(:client_actions);
     assert_eq!(view_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
-    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), Zero::zero());
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
-    assert_eq!(test.privacy.get_note(note_id: expected_enc_note.id), expected_enc_note.enc_amount);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note.enc_value);
 }
 
 #[test]
@@ -3383,11 +3314,7 @@ fn test_internal_actions() {
         );
     user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: subchannel_index);
     let actions = user_1.internal_create_note(:note);
-    let expected_enc_note = user_1
-        .compute_enc_note(
-            recipient: user_2, :token_address, index: note_index, :amount, salt: note.salt,
-        );
-    assert_eq!(actions, expected_enc_note.to_server_actions());
+    assert_eq!(actions, user_1.note_to_server_actions(:note));
 
     // TODO: Test writing only `enc_value` to storage when open notes are implemented.
 
@@ -4015,17 +3942,16 @@ fn test_compile_client_actions_writes() {
         },
     );
     let deposit = ClientAction::Deposit(DepositInput { token: token_address, amount });
-    let create_note = ClientAction::CreateNote(
-        CreateNoteInput {
-            sender_private_key: private_key,
-            recipient_addr,
-            recipient_public_key,
-            token: token_address,
-            amount,
-            index,
-            salt,
-        },
-    );
+    let create_note_input = CreateNoteInput {
+        sender_private_key: private_key,
+        recipient_addr,
+        recipient_public_key,
+        token: token_address,
+        amount,
+        index,
+        salt,
+    };
+    let create_note = ClientAction::CreateNote(create_note_input);
     let client_actions = [set_viewing_key, open_channel, open_subchannel, deposit, create_note]
         .span();
     // Compile client actions.
@@ -4064,7 +3990,6 @@ fn test_compile_client_actions_writes() {
     );
     let enc_subchannel_info = user
         .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, salt: salt.into());
-    let enc_note = user.compute_enc_note(recipient: user, :token_address, :index, :amount, :salt);
     let expected_event_viewing_key_set = events::ViewingKeySet {
         user_addr: address, public_key, enc_private_key,
     };
@@ -4102,7 +4027,7 @@ fn test_compile_client_actions_writes() {
             TransferFromInput { sender_addr: address, token: token_address, amount },
         ),
         ServerAction::EmitDeposit(expected_event_deposit), // Create note.
-        enc_note.to_server_action(),
+        user.note_to_server_action(note: create_note_input),
     ]
         .span();
     // Assert server actions.
@@ -4138,7 +4063,7 @@ fn test_compile_client_actions_writes() {
         },
     );
     let client_actions = [deposit, create_note, create_note].span();
-    let result = user.safe_compile_client_actions(client_actions: client_actions);
+    let result = user.safe_compile_client_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Test UseNote writes.
@@ -4203,7 +4128,15 @@ fn test_client_transfers_dont_execute() {
         0,
     );
 
-    let enc_note = user.compute_enc_note(recipient: user, :token_address, index: 0, :amount, :salt);
+    let create_note_input = CreateNoteInput {
+        sender_private_key: user.private_key,
+        recipient_addr: user.address,
+        recipient_public_key: user.public_key,
+        token: token_address,
+        amount,
+        index: 0,
+        salt,
+    };
     let expected_event = events::Deposit { user_addr: user.address, token: token_address, amount };
     let expected_server_actions = array![
         ServerAction::TransferFrom(
@@ -4211,7 +4144,8 @@ fn test_client_transfers_dont_execute() {
                 sender_addr: user.address, token: token_address, amount: amount.into(),
             },
         ),
-        ServerAction::EmitDeposit(expected_event), enc_note.to_server_action(),
+        ServerAction::EmitDeposit(expected_event),
+        user.note_to_server_action(note: create_note_input),
     ]
         .span();
     assert_eq!(server_actions, expected_server_actions);
