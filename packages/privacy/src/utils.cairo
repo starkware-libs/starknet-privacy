@@ -242,7 +242,7 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
 }
 
 pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<(), Array<felt252>> {
-    let tx_info = get_tx_info().unbox();
+    let tx_info = get_tx_info();
     let tx_hash = tx_info.transaction_hash;
     let signature = tx_info.signature;
 
