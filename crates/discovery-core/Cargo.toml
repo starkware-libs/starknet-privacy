@@ -5,6 +5,8 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0"
+thiserror = "1.0"
+async-trait = "0.1"
 starknet-core = "0.16"
 starknet-crypto = "0.8"
 starknet-types-core = "0.2"
