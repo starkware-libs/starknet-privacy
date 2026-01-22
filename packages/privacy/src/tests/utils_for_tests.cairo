@@ -19,7 +19,7 @@ use privacy::interface::{
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
-    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr,
+    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
     TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
@@ -61,21 +61,29 @@ pub struct EncNote {
     /// The note's id.
     pub id: felt252,
     /// The encrypted amount of the note.
+    // TODO: Rename.
     pub enc_amount: felt252,
+}
+
+pub(crate) impl EncNoteIntoNoteImpl of Into<EncNote, Note> {
+    fn into(self: EncNote) -> Note {
+        Note { enc_value: self.enc_amount, token: Zero::zero() }
+    }
 }
 
 #[generate_trait]
 pub(crate) impl EncNoteImpl of EncNoteTrait {
-    fn to_server_actions(self: @EncNote) -> Span<ServerAction> {
+    fn to_server_action(self: @EncNote) -> ServerAction {
         let storage_path = map_entry_address(
             map_selector: selector!("notes"), keys: [*self.id].span(),
         );
-        [
-            ServerAction::WriteIfZero(
-                WriteIfZeroInput { storage_address: storage_path, value: *self.enc_amount },
-            ),
-        ]
-            .span()
+        ServerAction::WriteIfZeroNote(
+            WriteIfZeroInput { storage_address: storage_path, value: (*self).into() },
+        )
+    }
+
+    fn to_server_actions(self: @EncNote) -> Span<ServerAction> {
+        [self.to_server_action()].span()
     }
 }
 
@@ -727,14 +735,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn cheat_deposit(self: @User, token: Token, amount: u128, note: EncNote) {
         self.approve(:token, amount: amount.into());
         let actions = [
-            ServerAction::WriteIfZero(
-                WriteIfZeroInput {
-                    storage_address: map_entry_address(
-                        map_selector: selector!("notes"), keys: [note.id].span(),
-                    ),
-                    value: note.enc_amount,
-                },
-            ),
+            note.to_server_action(),
             ServerAction::TransferFrom(
                 TransferFromInput {
                     sender_addr: *self.address, token: token.contract_address(), amount,
@@ -946,21 +947,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     /// Cheat create a note in the server side (no client side).
     fn cheat_create_note(self: @PrivacyCfg, note: EncNote) {
-        let storage_path_felt = map_entry_address(
-            map_selector: selector!("notes"), keys: [note.id].span(),
-        );
-        self
-            .server
-            .execute_actions(
-                actions: array![
-                    ServerAction::WriteIfZero(
-                        WriteIfZeroInput {
-                            storage_address: storage_path_felt, value: note.enc_amount,
-                        },
-                    ),
-                ]
-                    .span(),
-            )
+        self.server.execute_actions(actions: note.to_server_actions())
     }
 
     fn get_note(self: @PrivacyCfg, note_id: felt252) -> felt252 {
@@ -1117,14 +1104,14 @@ pub(crate) fn decrypt_private_key(
 }
 
 /// Returns (channel_key, sender_addr) decrypted from the given `enc_channel_info` and
-/// recipient's `private_key`.
+/// `recipient_private_key`.
 pub(crate) fn decrypt_channel_info(
-    enc_channel_info: EncChannelInfo, private_key: felt252,
+    enc_channel_info: EncChannelInfo, recipient_private_key: felt252,
 ) -> (felt252, ContractAddress) {
     // Find shared point.
     let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_channel_info.ephemeral_pubkey)
         .unwrap();
-    let shared_point = ephemeral_pubkey_point.mul(scalar: private_key);
+    let shared_point = ephemeral_pubkey_point.mul(scalar: recipient_private_key);
     let shared_x = shared_point.try_into().unwrap().x();
 
     // Decrypt channel key.

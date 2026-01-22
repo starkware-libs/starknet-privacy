@@ -27,8 +27,6 @@ pub mod constants {
     pub const ERROR_WRAPPER: felt252 = 'PRIVACY_ERROR_WRAPPER';
 }
 
-// TODO: Test the util and hash functions.
-
 /// Returns the generator point.
 pub fn GEN_P() -> EcPoint {
     EcPointTrait::new(x: GEN_X, y: GEN_Y).unwrap()
