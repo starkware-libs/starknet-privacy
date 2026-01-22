@@ -249,7 +249,8 @@ export function encryptSymmetric(
 }
 
 export function decryptSymmetric(encryption: SymmetricEncryption, shared: bigint): bigint {
-  return encryption.enc - (hash(shared, encryption.r) % starkCurve.CURVE.n);
+  const diff = encryption.enc - (hash(shared, encryption.r) % starkCurve.CURVE.n);
+  return ((diff % starkCurve.CURVE.n) + starkCurve.CURVE.n) % starkCurve.CURVE.n;
 }
 
 // ============ Conversion Utilities ============
