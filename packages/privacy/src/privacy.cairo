@@ -475,7 +475,6 @@ pub mod Privacy {
             let channel_key = input.channel_key;
             let token = input.token;
             let index = input.note_index;
-            // TODO: Consider adding context to the errors (which note is causing the error).
             assert(owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
@@ -531,7 +530,6 @@ pub mod Privacy {
             let amount = input.amount;
             let index = input.index;
             let salt = input.salt;
-            // TODO: Consider adding context to the errors (which note is causing the error).
             assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);

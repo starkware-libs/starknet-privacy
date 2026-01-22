@@ -21,7 +21,6 @@ pub(crate) impl TokenBalancesImpl of TokenBalancesTrait {
     }
     fn assert_valid(self: SquashedTokenBalances) {
         for (_token, _, balance) in self.into_entries() {
-            // TODO: Add context (token) to the error.
             assert(balance.is_zero(), errors::FINAL_BALANCE_MUST_BE_ZERO);
         }
     }
