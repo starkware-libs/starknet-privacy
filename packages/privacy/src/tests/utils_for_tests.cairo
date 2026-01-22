@@ -132,6 +132,10 @@ pub(crate) impl UserImpl of UserTrait {
         self.privacy.safe_client.__execute__(user_addr: *self.address, :client_actions)
     }
 
+    fn execute_view(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
+        self.privacy.execute_view(user_addr: *self.address, :client_actions)
+    }
+
     fn transfer(
         self: @User, notes_to_use: Span<UseNoteInput>, notes_to_create: Span<CreateNoteInput>,
     ) -> Span<ServerAction> {
@@ -1023,6 +1027,12 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> felt252 {
         self.client.__validate__(:user_addr, :client_actions)
+    }
+
+    fn execute_view(
+        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+    ) -> Span<ServerAction> {
+        self.client.execute_view(:user_addr, :client_actions)
     }
 
     /// Asserts the message from the spy is valid.
