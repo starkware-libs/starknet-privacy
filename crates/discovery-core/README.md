@@ -7,7 +7,11 @@ Core discovery logic for the privacy pool, including storage slot computation an
 Test vectors are generated from the Cairo contract. To regenerate:
 
 ```bash
-cd packages/privacy && snforge test generate_storage_slots --include-ignored
+# Generate and update the JSON fixture
+cd sdk && npx tsx scripts/generate-cairo-refs.ts
+
+# Copy to discovery-core
+cp sdk/tests/fixtures/cairo-reference-data.json crates/discovery-core/tests/fixtures/
 ```
 
-See `packages/privacy/src/tests/generate_reference_data.cairo` for the generation code.
+This runs the Cairo tests in `packages/privacy/src/tests/generate_reference_data.cairo` and updates `tests/fixtures/cairo-reference-data.json` with reference hash values.
