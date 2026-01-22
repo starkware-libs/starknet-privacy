@@ -12,4 +12,17 @@ export {
   Withdrawal,
   applyStateChanges,
 } from "./helpers.js";
-export { hashes } from "../utils/hashes.js";
+export {
+  compute_channel_key,
+  compute_channel_id,
+  compute_subchannel_key,
+  compute_subchannel_id,
+  compute_note_id,
+  compute_nullifier,
+  compute_enc_amount_hash,
+  compute_enc_token_hash,
+  compute_enc_private_key_hash,
+  compute_enc_address_hash,
+  compute_enc_channel_key_hash,
+  compute_enc_sender_addr_hash,
+} from "../utils/hashes.js";
