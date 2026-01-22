@@ -10,6 +10,7 @@ import type {
   ViewingKey,
 } from "../interfaces.js";
 import { Channel, SetupRequirement, Witness } from "../interfaces.js";
+import { TokenChannel } from "../internal/channel.js";
 import type { BlockIdentifier } from "starknet";
 import { decryptChannelInfo } from "../utils/crypto.js";
 import { AddressMap } from "../utils/maps.js";
@@ -112,7 +113,7 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
       // Find the highest token nonce sequence
       let tokenSequence = 0;
       let token: bigint | false;
-      const tokens = new AddressMap<{ tokenNonce: number; noteNonce: number }>();
+      const tokens = new AddressMap<TokenChannel>();
 
       while ((token = this.pool.getToken(key, tokenSequence)) !== false) {
         // Find the highest note nonce sequence for this token
@@ -121,7 +122,7 @@ export class MockDiscoveryProvider implements DiscoveryProviderInterface {
           noteSequence++;
         }
         tokens.set(token, {
-          tokenNonce: tokenSequence,
+          tokenIndex: tokenSequence,
           noteNonce: noteSequence,
         });
         tokenSequence++;

@@ -395,7 +395,7 @@ export class PrivacyPool implements MockContract {
         channel.publicKey,
         channel.key,
         token,
-        nonces.tokenNonce,
+        nonces.tokenIndex,
         generateRandom()
       )();
 
@@ -524,7 +524,7 @@ export class PrivacyPool implements MockContract {
       !userChannel.tokens.has(token),
       () =>
         `Token ${hex(token)} already exists in channel with index ${
-          userChannel.tokens.get(token)!.tokenNonce
+          userChannel.tokens.get(token)!.tokenIndex
         }`
     );
 
@@ -543,14 +543,14 @@ export class PrivacyPool implements MockContract {
       // this method may run from setupToken, so the channel is already set
       if (!userChannel.tokens.has(token)) {
         userChannel.tokens.set(token, {
-          tokenNonce: index,
+          tokenIndex: index,
           noteNonce: 0,
         });
       } else {
         assert(
-          userChannel.tokens.get(token)!.tokenNonce == index,
+          userChannel.tokens.get(token)!.tokenIndex == index,
           () =>
-            `Channel with ${to}: Token ${token} nonce mismatch between the user channel and arguments ${userChannel.tokens.get(token)!.tokenNonce} != ${index}`
+            `Channel with ${to}: Token ${token} nonce mismatch between the user channel and arguments ${userChannel.tokens.get(token)!.tokenIndex} != ${index}`
         );
       }
     };
