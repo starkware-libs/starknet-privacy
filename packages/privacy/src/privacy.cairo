@@ -15,7 +15,7 @@ pub mod Privacy {
         compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
         compute_outgoing_channel_key, compute_subchannel_id, compute_subchannel_key,
     };
-    use privacy::interface::{IClient, IServer, IViews};
+    use privacy::interface::{IClient, ICompliance, IServer, IViews};
     use privacy::objects::{
         EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, NoteTrait,
@@ -82,7 +82,6 @@ pub mod Privacy {
         public_key: Map<ContractAddress, felt252>,
         /// Map of user addresses to their encrypted private key.
         enc_private_key: Map<ContractAddress, EncPrivateKey>,
-        // TODO: Do we need setter for this?
         /// Public key of the compliance used for private key encryptions.
         compliance_public_key: felt252,
     }
@@ -103,6 +102,7 @@ pub mod Privacy {
         ViewingKeySet: events::ViewingKeySet,
         Withdrawal: events::Withdrawal,
         Deposit: events::Deposit,
+        CompliancePublicKeySet: events::CompliancePublicKeySet,
     }
 
     #[constructor]
@@ -111,7 +111,7 @@ pub mod Privacy {
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(upgrade_delay: Zero::zero());
-        self.compliance_public_key.write(compliance_public_key);
+        self._set_compliance_public_key(:compliance_public_key);
     }
 
     #[abi(embed_v0)]
@@ -746,6 +746,24 @@ pub mod Privacy {
 
         fn get_compliance_public_key(self: @ContractState) -> felt252 {
             self.compliance_public_key.read()
+        }
+    }
+
+    #[abi(embed_v0)]
+    pub impl ComplianceImpl of ICompliance<ContractState> {
+        fn set_compliance_public_key(ref self: ContractState, compliance_public_key: felt252) {
+            // TODO: Change to the real role.
+            self.roles.only_token_admin();
+            self._set_compliance_public_key(:compliance_public_key);
+        }
+    }
+
+    #[generate_trait]
+    impl ComplianceInternalImpl of ComplianceInternalTrait {
+        fn _set_compliance_public_key(ref self: ContractState, compliance_public_key: felt252) {
+            assert(compliance_public_key.is_non_zero(), errors::ZERO_COMPLIANCE_PUBLIC_KEY);
+            self.compliance_public_key.write(compliance_public_key);
+            self.emit(events::CompliancePublicKeySet { compliance_public_key });
         }
     }
 }

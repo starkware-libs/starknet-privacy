@@ -298,3 +298,8 @@ pub trait IViews<T> {
     // TODO: Do we need this function?
     fn get_compliance_public_key(self: @T) -> felt252;
 }
+
+#[starknet::interface]
+pub trait ICompliance<T> {
+    fn set_compliance_public_key(ref self: T, compliance_public_key: felt252);
+}

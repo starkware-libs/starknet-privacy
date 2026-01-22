@@ -149,7 +149,7 @@ pub(crate) fn encrypt_private_key(
     );
     // Encrypt channel information.
     let enc_private_key = compute_enc_private_key_hash(:shared_x) + private_key;
-    EncPrivateKey { ephemeral_pubkey: ephemeral_pub_x, enc_private_key }
+    EncPrivateKey { compliance_public_key, ephemeral_pubkey: ephemeral_pub_x, enc_private_key }
 }
 
 /// Encrypts the user address when withdrawing for the compliance using ECDH.
@@ -178,7 +178,7 @@ pub(crate) fn encrypt_user_addr(
     );
     // Encrypt address.
     let enc_user_addr = compute_enc_address_hash(:shared_x) + user_addr.into();
-    EncUserAddr { ephemeral_pubkey: ephemeral_pub_x, enc_user_addr }
+    EncUserAddr { compliance_public_key, ephemeral_pubkey: ephemeral_pub_x, enc_user_addr }
 }
 
 
