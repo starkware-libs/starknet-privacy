@@ -2,7 +2,7 @@ use core::dict::{Felt252Dict, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::errors;
-use privacy::utils::{decrypt_note_amount, encrypt_note_amount};
+use privacy::utils::encrypt_note_amount;
 use starknet::{ContractAddress, Store};
 
 pub(crate) type TokenBalances = Felt252Dict<u128>;
@@ -163,12 +163,6 @@ pub impl NoteImpl of NoteTrait {
             enc_value: encrypt_note_amount(:channel_key, :token, :index, :salt, :amount),
             token: Zero::zero(),
         }
-    }
-
-    fn decrypt_amount(
-        self: @Note, channel_key: felt252, token: ContractAddress, index: usize,
-    ) -> u128 {
-        decrypt_note_amount(enc_note_value: *self.enc_value, :channel_key, :token, :index)
     }
 }
 
