@@ -2446,7 +2446,7 @@ fn test_use_same_note_twice() {
     let use_note_action = ClientAction::UseNote(use_note_input);
     let client_actions = [use_note_action, use_note_action].span();
     // Should panic on the second use.
-    user_2.compile_client_actions(:client_actions);
+    user_2.execute(:client_actions);
 }
 
 #[test]
@@ -2925,13 +2925,13 @@ fn test_set_viewing_key_to_other_user_key() {
 }
 
 #[test]
-fn test_compile_client_actions_set_viewing_key() {
+fn test_execute_set_viewing_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
 
     let random = user_1.get_random();
     let actions = user_1
-        .compile_client_actions(
+        .execute(
             client_actions: [
                 ClientAction::SetViewingKey(
                     SetViewingKeyInput { private_key: user_1.private_key, random },
@@ -2983,7 +2983,7 @@ fn test_compile_client_actions_set_viewing_key() {
 }
 
 #[test]
-fn test_compile_client_actions_open_channel() {
+fn test_execute_open_channel() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -2994,7 +2994,7 @@ fn test_compile_client_actions_open_channel() {
     let random = user_1.get_random();
     let salt = user_1.get_salt().into();
     let actions = user_1
-        .compile_client_actions(
+        .execute(
             client_actions: [
                 ClientAction::OpenChannel(
                     OpenChannelInput {
@@ -3070,7 +3070,7 @@ fn test_compile_client_actions_open_channel() {
 }
 
 #[test]
-fn test_compile_client_actions_open_subchannel() {
+fn test_execute_open_subchannel() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -3082,7 +3082,7 @@ fn test_compile_client_actions_open_subchannel() {
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let salt = user_1.get_salt().into();
     let actions = user_1
-        .compile_client_actions(
+        .execute(
             client_actions: [
                 ClientAction::OpenSubchannel(
                     OpenSubchannelInput {
@@ -3136,7 +3136,7 @@ fn test_compile_client_actions_open_subchannel() {
 }
 
 #[test]
-fn test_compile_client_actions_deposit_create_note() {
+fn test_execute_deposit_create_note() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -3153,7 +3153,7 @@ fn test_compile_client_actions_deposit_create_note() {
     user_1.increase_token_balance(:token, :amount);
     user_1.approve(:token, amount: amount.into());
     let actions = user_1
-        .compile_client_actions(
+        .execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::CreateNote(note),
@@ -3183,7 +3183,7 @@ fn test_compile_client_actions_deposit_create_note() {
 }
 
 #[test]
-fn test_compile_client_actions_use_note_create_note() {
+fn test_execute_use_note_create_note() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -3208,7 +3208,7 @@ fn test_compile_client_actions_use_note_create_note() {
     user_2.open_channel_e2e(recipient: user_1, index: 0);
     user_2.open_subchannel_e2e(recipient: user_1, :token_address, index: 0);
     let actions = user_2
-        .compile_client_actions(
+        .execute(
             client_actions: [
                 ClientAction::UseNote(use_note_input), ClientAction::CreateNote(create_note_input),
             ]
@@ -3244,7 +3244,7 @@ fn test_compile_client_actions_use_note_create_note() {
 }
 
 #[test]
-fn test_compile_client_actions_use_note_withdraw() {
+fn test_execute_use_note_withdraw() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -3268,7 +3268,7 @@ fn test_compile_client_actions_use_note_withdraw() {
     };
     let random = user_2.get_random().into();
     let actions = user_2
-        .compile_client_actions(
+        .execute(
             client_actions: [
                 ClientAction::UseNote(use_note_input),
                 ClientAction::Withdraw(
@@ -3390,7 +3390,7 @@ fn test_internal_actions() {
 // TODO: Fix this test. Now failing because storage writings are not reverted when panicking.
 #[test]
 #[ignore]
-fn test_compile_client_actions_assertions() {
+fn test_execute_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token_address = test.mock_new_token();
@@ -3408,25 +3408,25 @@ fn test_compile_client_actions_assertions() {
 
     // Catch INVALID_SIGNATURE.
     let user_invalid = test.new_user_with_is_valid(is_valid: false);
-    let result = user_invalid.safe_compile_client_actions(client_actions: [].span());
+    let result = user_invalid.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
 
     // TODO: Catch server errors.
 
     // Catch INVALID_CALLER.
-    let result = user.safe_compile_client_actions_without_cheat_caller(client_actions: [].span());
+    let result = user.safe_execute_without_cheat_caller(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLER);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
-    let result = user_zero_addr.safe_compile_client_actions(client_actions: [].span());
+    let result = user_zero_addr.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ACTIONS_OUT_OF_ORDER (set viewing key twice).
     let random = user.get_random();
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::SetViewingKey(
                     SetViewingKeyInput { private_key: user.private_key, random },
@@ -3442,7 +3442,7 @@ fn test_compile_client_actions_assertions() {
     // Catch ACTIONS_OUT_OF_ORDER (open channel -> set viewing key).
     let salt = user.get_salt().into();
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::OpenChannel(
                     OpenChannelInput {
@@ -3467,7 +3467,7 @@ fn test_compile_client_actions_assertions() {
     let channel_key = user.compute_channel_key(recipient: user);
     let salt = user.get_salt().into();
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::OpenSubchannel(
                     OpenSubchannelInput {
@@ -3489,7 +3489,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (open subchannel -> open channel).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::OpenSubchannel(
                     OpenSubchannelInput {
@@ -3518,7 +3518,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> set viewing key).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::SetViewingKey(
@@ -3531,7 +3531,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> open channel).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::OpenChannel(
@@ -3551,7 +3551,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> open subchannel).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::OpenSubchannel(
@@ -3573,7 +3573,7 @@ fn test_compile_client_actions_assertions() {
     user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
     user.cheat_create_note_e2e(note: note_1);
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::UseNote(note_1_path),
                 ClientAction::SetViewingKey(
@@ -3586,7 +3586,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> open channel).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::UseNote(note_1_path),
                 ClientAction::OpenChannel(
@@ -3606,7 +3606,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> open subchannel).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::UseNote(note_1_path),
                 ClientAction::OpenSubchannel(
@@ -3626,7 +3626,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> deposit).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::UseNote(note_1_path),
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
@@ -3637,7 +3637,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create note -> set viewing key).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::CreateNote(note_2),
@@ -3651,7 +3651,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create note -> open channel).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::CreateNote(note_2),
@@ -3672,7 +3672,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create note -> open subchannel).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::CreateNote(note_2),
@@ -3693,7 +3693,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create note -> deposit).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::CreateNote(note_2),
@@ -3705,7 +3705,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create note -> use note).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::CreateNote(note_2), ClientAction::UseNote(note_1_path),
@@ -3716,7 +3716,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> set viewing key).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::Withdraw(
@@ -3734,7 +3734,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open channel).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::Withdraw(
@@ -3759,7 +3759,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open subchannel).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::Withdraw(
@@ -3784,7 +3784,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> deposit).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::Withdraw(
@@ -3800,7 +3800,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> use note).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::Withdraw(
@@ -3816,7 +3816,7 @@ fn test_compile_client_actions_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create note).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::Withdraw(
@@ -3832,20 +3832,19 @@ fn test_compile_client_actions_assertions() {
 
     // Catch FINAL_BALANCE_MUST_BE_ZERO (deposit).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [ClientAction::Deposit(DepositInput { token: token_address, amount }),]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
 
     // Catch FINAL_BALANCE_MUST_BE_ZERO (use note).
-    let result = user
-        .safe_compile_client_actions(client_actions: [ClientAction::UseNote(note_1_path),].span());
+    let result = user.safe_execute(client_actions: [ClientAction::UseNote(note_1_path),].span());
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE (withdraw).
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Withdraw(
                     WithdrawInput {
@@ -3858,13 +3857,12 @@ fn test_compile_client_actions_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE (create note).
-    let result = user
-        .safe_compile_client_actions(client_actions: [ClientAction::CreateNote(note_2),].span());
+    let result = user.safe_execute(client_actions: [ClientAction::CreateNote(note_2),].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE (wrong order)
     let result = user
-        .safe_compile_client_actions(
+        .safe_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::Withdraw(
@@ -3885,7 +3883,7 @@ fn test_compile_client_actions_assertions() {
 // that gets a private key as an input.
 
 #[test]
-fn test_compile_client_actions_writes() {
+fn test_execute_writes() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token = test.new_token();
@@ -3939,7 +3937,7 @@ fn test_compile_client_actions_writes() {
         .span();
     // Compile client actions.
     let mut spy_events = spy_events();
-    let server_actions = user.compile_client_actions(:client_actions);
+    let server_actions = user.execute(:client_actions);
     // Expected server actions.
     let address = user.address;
     let public_key_storage_path = map_entry_address(
@@ -4047,7 +4045,7 @@ fn test_compile_client_actions_writes() {
         },
     );
     let client_actions = [deposit, create_note, create_note].span();
-    let result = user.safe_compile_client_actions(client_actions: client_actions);
+    let result = user.safe_execute(client_actions: client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Test UseNote writes.
@@ -4059,7 +4057,7 @@ fn test_compile_client_actions_writes() {
             note_index: index,
         },
     );
-    let result = user.safe_compile_client_actions(client_actions: [use_note, use_note].span());
+    let result = user.safe_execute(client_actions: [use_note, use_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -4081,7 +4079,7 @@ fn test_client_transfers_dont_execute() {
 
     let salt = user.get_salt();
     let server_actions = user
-        .compile_client_actions(
+        .execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
                 ClientAction::CreateNote(
@@ -4132,7 +4130,7 @@ fn test_client_transfers_dont_execute() {
     let random = user.get_random().into();
     let mut spy_events = spy_events();
     let server_actions = user
-        .compile_client_actions(
+        .execute(
             client_actions: [
                 ClientAction::UseNote(
                     UseNoteInput {
@@ -4198,12 +4196,12 @@ fn test_no_privacy_actions() {
     user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
 
     // Empty client actions.
-    let result = user.safe_compile_client_actions(client_actions: [].span());
+    let result = user.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 
     // Deposit only.
     let deposit_action = ClientAction::Deposit(DepositInput { token: token_address, amount });
-    let result = user.safe_compile_client_actions(client_actions: [deposit_action,].span());
+    let result = user.safe_execute(client_actions: [deposit_action,].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 
     // Withdraw only.
@@ -4215,11 +4213,10 @@ fn test_no_privacy_actions() {
             random: user.get_random(),
         },
     );
-    let result = user.safe_compile_client_actions(client_actions: [withdraw_action].span());
+    let result = user.safe_execute(client_actions: [withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
     // Deposit and Withdraw.
-    let result = user
-        .safe_compile_client_actions(client_actions: [deposit_action, withdraw_action].span());
+    let result = user.safe_execute(client_actions: [deposit_action, withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 }
