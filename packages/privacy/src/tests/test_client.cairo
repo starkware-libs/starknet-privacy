@@ -3389,6 +3389,8 @@ fn test_internal_actions() {
         );
     assert_eq!(actions, expected_enc_note.to_server_actions());
 
+    // TODO: Test writing only `enc_value` to storage when open notes are implemented.
+
     // Deposit action.
     let actions = user_1.internal_deposit(:token_address, :amount);
     let expected_event = events::Deposit {

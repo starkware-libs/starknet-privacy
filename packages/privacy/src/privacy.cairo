@@ -574,7 +574,12 @@ pub mod Privacy {
 
             token_balances.subtract_balance(:token, :amount);
 
-            array![note.to_write_once_action(storage_address: self.notes.entry(note_id).into())]
+            // Only `enc_value` needs to be written, `token` is initialized to zero.
+            array![
+                note
+                    .enc_value
+                    .to_write_once_action(storage_address: self.notes.entry(note_id).into()),
+            ]
         }
     }
 

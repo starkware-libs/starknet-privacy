@@ -82,7 +82,7 @@ pub(crate) impl EncNoteImpl of EncNoteTrait {
             map_selector: selector!("notes"), keys: [*self.id].span(),
         );
         let note: Note = (*self).into();
-        note.to_write_once_action(:storage_address)
+        note.enc_value.to_write_once_action(:storage_address)
     }
 
     fn to_server_actions(self: @EncNote) -> Span<ServerAction> {
