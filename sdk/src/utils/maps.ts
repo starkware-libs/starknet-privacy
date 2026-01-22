@@ -1,4 +1,5 @@
-import { num, BigNumberish } from "starknet";
+import type { BigNumberish } from "starknet";
+import { toBigInt } from "./crypto.js";
 
 // ============ Utility Classes ============
 
@@ -182,7 +183,7 @@ export class BigNumberishMap<V> extends AdvancedMap<BigNumberish, V, bigint> {
     }
 
     super(initialEntries, {
-      keyConverter: (key: BigNumberish): bigint => num.toBigInt(key),
+      keyConverter: (key: BigNumberish): bigint => toBigInt(key),
       defaultFactory: factory,
     });
   }
