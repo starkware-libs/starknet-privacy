@@ -13,7 +13,7 @@ import {
 } from "../helpers/test-fixtures.js";
 import { Open } from "../../src/interfaces.js";
 import { debugHint, derivePublicKey, isDebugEnabled } from "../../src/utils/index.js";
-import { hashes } from "../../src/utils/hashes.js";
+import { compute_channel_key, compute_note_id } from "../../src/utils/hashes.js";
 import { debugLog, hex } from "../../src/utils/logging.js";
 import { MockSwapHelper } from "../../src/testing/contracts.js";
 
@@ -65,7 +65,7 @@ describe("Private Transfers Integration", () => {
       // prettier-ignore
       applyStateChanges(
         await alice
-          .build({registry})
+          .build({ registry })
           .surplusTo(ALICE.address)
           .with(ACE)
             .inputs(note)
@@ -114,13 +114,13 @@ describe("Private Transfers Integration", () => {
       // prettier-ignore
       const registry = applyStateChanges(
         await alice
-          .build({ ...AUTO_ALL, autoRegister: true, autoSelectNotes: "naive"})
+          .build({ ...AUTO_ALL, autoRegister: true, autoSelectNotes: "naive" })
           .with(ACE)
             .deposit({ amount: 100n, recipient: ALICE.address })
             .transfer({ recipient: BOB.address, amount: 50n })
             .surplusTo(ALICE.address, true)
           .with(BEE)
-            .deposit({ amount: 100n})
+            .deposit({ amount: 100n })
             .transfer({ recipient: BOB.address, amount: 50n })
             .transfer({ recipient: ALICE.address, amount: 50n })
           .execute()
@@ -172,6 +172,7 @@ describe("Private Transfers Integration", () => {
       // - registryConst: true (don't mutate channelOnly)
       // - autoDiscover: { notes: "missing" } (discover ACE notes since not in registry)
       // - surplusTo triggers the "sweeping" code path for discovery
+      debugLog("test", "main");
       const result = applyStateChanges(
         await alice
           .build({
@@ -242,19 +243,19 @@ describe("Private Transfers Integration", () => {
     const swapHelper = new MockSwapHelper(SWAP_HELPER_ADDRESS, contracts);
     contracts.register(swapHelper);
 
-    const key = hashes.channelKey(
+    const key = compute_channel_key(
       ALICE.address,
       ALICE.privateKey,
       ALICE.address,
       derivePublicKey(ALICE.privateKey)
     );
-    const beeNoteId = hashes.noteId(key, BEE, 0);
+    const beeNoteId = compute_note_id(key, BEE, 0);
 
     // 1. Setup self-channel and deposit ACE (autoSetup handles token subchannel setup)
     // prettier-ignore
     applyStateChanges(
       await alice
-        .build({...AUTO_ALL, autoRegister: true})
+        .build({ ...AUTO_ALL, autoRegister: true })
         .with(ACE)
           .deposit({ amount: 100n, recipient: ALICE.address })
           .withdraw({ recipient: swapHelper.address, amount: 10n })
