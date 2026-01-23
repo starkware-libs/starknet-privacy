@@ -80,7 +80,7 @@ describe("Private Transfers Integration", () => {
       expect(aliceNotes.length).toBe(1);
       expect(aliceNotes[0].amount).toBe(25n);
 
-      const bobNotes = bob.discoverNotes().notes.get(ACE) ?? [];
+      const bobNotes = (await bob.discoverNotes()).notes.get(ACE) ?? [];
       expect(bobNotes.length).toBe(1);
       expect(bobNotes[0].amount).toBe(50n);
 
@@ -129,7 +129,7 @@ describe("Private Transfers Integration", () => {
       expect(registry.notes.get(ACE)?.length).toBe(0);
       expect(registry.notes.get(BEE)?.length).toBe(1);
 
-      const bobNotes = bob.discoverNotes().notes;
+      const bobNotes = (await bob.discoverNotes()).notes;
       expect(bobNotes.get(ACE)?.length).toBe(1);
       expect(bobNotes.get(ACE)?.[0].amount).toBe(50n);
       expect(bobNotes.get(BEE)?.length).toBe(1);
@@ -164,7 +164,7 @@ describe("Private Transfers Integration", () => {
       // Phase 2: Use registry with channels but WITHOUT notes
       // This tests autoDiscover: "missing" (discovers notes not in registry)
       const channelOnly = createEmptyRegistry();
-      const channel = alice.discoverChannels(ALICE.address).channels.get(ALICE.address)!;
+      const channel = (await alice.discoverChannels([ALICE.address])).channels.get(ALICE.address)!;
       channelOnly.channels.set(ALICE.address, channel);
 
       // Deposit 30n with:
@@ -223,7 +223,7 @@ describe("Private Transfers Integration", () => {
       expect(result.notes.get(ACE)?.[0].amount).toBe(70n);
 
       // Bob got his 30n
-      const bobNotes = bob.discoverNotes().notes.get(ACE) ?? [];
+      const bobNotes = (await bob.discoverNotes()).notes.get(ACE) ?? [];
       expect(bobNotes.length).toBe(1);
       expect(bobNotes[0].amount).toBe(30n);
 
@@ -270,12 +270,12 @@ describe("Private Transfers Integration", () => {
     );
 
     // 4. Verify: Alice has 90n ACE change note
-    const aceNotes = alice.discoverNotes().notes.get(ACE) ?? [];
+    const aceNotes = (await alice.discoverNotes()).notes.get(ACE) ?? [];
     expect(aceNotes.length).toBe(1);
     expect(aceNotes[0].amount).toBe(90n);
 
     // Alice has 20n BEE note (swap helper gives 2x)
-    const beeNotes = alice.discoverNotes().notes.get(BEE) ?? [];
+    const beeNotes = (await alice.discoverNotes()).notes.get(BEE) ?? [];
     expect(beeNotes.length).toBe(1);
     expect(beeNotes[0].amount).toBe(20n);
     expect(beeNotes[0].open).toBe(true);
