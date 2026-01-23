@@ -33,7 +33,8 @@
     "test:fast": "vitest run --exclude '**/devnet.test.ts'",
     "test:watch": "vitest watch",
     "all": "npm run build && npm run lint && npm run format && npm run test",
-    "check": "npm run build && npm run lint:check && npm run format:check && npm run test:fast",
+    "check": "npm run build && npm run lint:check && npm run format:check && npm run test",
+    "check:fast": "npm run build && npm run lint:check && npm run format:check && npm run test:fast",
     "ci": "npm run generate && npm run check",
     "clean": "rm -rf dist",
     "prepare": "cd .. && git config core.hooksPath .husky || true"
