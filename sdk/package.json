@@ -37,6 +37,7 @@
     "check:fast": "npm run build && npm run lint:check && npm run format:check && npm run test:fast",
     "ci": "npm run generate && npm run check",
     "clean": "rm -rf dist",
+    "decode-error": "node scripts/decode-error.js",
     "prepare": "cd .. && git config core.hooksPath .husky || true"
   },
   "lint-staged": {
