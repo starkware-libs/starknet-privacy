@@ -37,22 +37,22 @@ export type StarknetAddress = BigNumberish;
  * Values are ordered by priority (higher value = more setup needed).
  */
 export enum SetupRequirement {
-  /** Ready to transfer - no setup needed */
-  Ready = 0,
+  /** Recipient is not registered */
+  Register = 0,
+  /** Need to setup initial channel*/
+  SetupChannel = 1,
   /** Need to setup the token subchannel */
-  SetupToken = 1,
-  /** Need to setup initial channel (and token) */
-  SetupChannel = 2,
-  /** Need to register (and setup channel and token) */
-  Register = 3,
+  SetupToken = 2,
+  /** Ready to transfer - no setup needed */
+  Ready = 3,
 }
 
 /** A Starknet address normalized to bigint (for use as Map keys, etc.) */
 export type StarknetAddressBigint = bigint;
 
 // Import and re-export Witness class from internal.ts
-import { Witness, Channel } from "./internal/channel.js";
-export { Witness, Channel };
+import { Witness, Channel, NotesCursor } from "./internal/channel.js";
+export { Witness, Channel, NotesCursor as DiscoveryCursor };
 
 export type Note = {
   readonly id: NoteId;
@@ -219,6 +219,8 @@ export type PrivateRegistry = {
   channels: AddressMap<Channel>;
   /** Notes by token address */
   notes: AddressMap<Note[]>;
+  /** Cursor for discovery */
+  cursor?: NotesCursor;
 };
 
 /** Create an empty private registry */
@@ -302,18 +304,18 @@ export interface SimplePrivateTransfers {
   /**
    * Discover unspent notes per token
    */
-  discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): {
+  discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
-  };
+  }>;
 
   /**
    * Discover channels for one or more recipients
    */
-  discoverChannels(...recipients: StarknetAddress[]): {
+  discoverChannels(...recipients: StarknetAddress[]): Promise<{
     timestamp: BlockIdentifier;
     channels: AddressMap<Channel>;
-  };
+  }>;
 }
 
 /**
@@ -358,18 +360,21 @@ export interface PrivateTransfers {
    * Discover unspent notes per token
    *
    */
-  discoverNotes(params?: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): {
+  discoverNotes(params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
-  };
+  }>;
 
   /**
    * Discover channels for one or more recipients
    */
-  discoverChannels(...recipients: StarknetAddress[]): {
+  discoverChannels(
+    recipients: StarknetAddress[],
+    params?: { cursor?: AddressMap<Channel> }
+  ): Promise<{
     timestamp: BlockIdentifier;
     channels: AddressMap<Channel>;
-  };
+  }>;
 
   /**
    * Execute raw actions. The implementation:
@@ -555,25 +560,24 @@ export interface DiscoveryProviderInterface {
    * Discover unspent notes per token
    */
   discoverNotes(
-    address: bigint,
+    address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    params?: { since?: BlockIdentifier; known?: AddressMap<Note[]>; tokens?: bigint[] }
-  ): {
+    params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }
+  ): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
-  };
+    cursor: NotesCursor;
+  }>;
 
   /**
    * Discover channels for one or more recipients
    */
   discoverChannels(
-    address: bigint,
+    address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    ...recipients: bigint[]
-  ): {
-    timestamp: BlockIdentifier;
-    channels: AddressMap<Channel>;
-  };
+    recipients: StarknetAddressBigint[],
+    params?: { cursor?: AddressMap<Channel> }
+  ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }>;
 
   /**
    * Check the setup requirements for a recipient.
@@ -581,10 +585,10 @@ export interface DiscoveryProviderInterface {
    * @param recipient - The recipient to check the setup requirements for. if self, check for 'address'
    */
   discoverRequirement(
-    address: bigint,
+    address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipient: bigint,
-    token: bigint
+    recipient: StarknetAddressBigint,
+    token: StarknetAddressBigint
   ): Promise<SetupRequirement>;
 }
 

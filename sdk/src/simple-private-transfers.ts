@@ -68,17 +68,20 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfers {
       .execute();
   }
 
-  discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): {
+  async discoverNotes(_params: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
-  } {
-    return this.inner.discoverNotes(params);
+  }> {
+    // Note: SimplePrivateTransfers uses since/known params but PrivateTransfers uses cursor/tokens
+    // For now, we don't convert - just use the cursor stored in registry
+    return this.inner.discoverNotes({ cursor: this.registry.cursor });
   }
-  discoverChannels(...recipients: StarknetAddress[]): {
+
+  async discoverChannels(...recipients: StarknetAddress[]): Promise<{
     timestamp: BlockIdentifier;
     channels: AddressMap<Channel>;
-  } {
-    return this.inner.discoverChannels(...recipients);
+  }> {
+    return this.inner.discoverChannels(recipients);
   }
 
   private build(token: StarknetAddress) {
