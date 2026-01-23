@@ -11,8 +11,8 @@ import { debugLog } from "../utils/logging.js";
 export function createMockProof(overrides?: Partial<Proof>): Proof {
   return {
     data: new Uint8Array([0, 1, 2, 3]),
-    outputHash: 0n,
-    output: [0n],
+    outputHash: "0x0",
+    output: ["0x0"],
     ...overrides,
   };
 }
