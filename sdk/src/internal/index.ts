@@ -7,3 +7,4 @@ export * from "./channel.js";
 export { TokenOperationsBuilderImpl, PrivateTransfersBuilderImpl } from "./builders.js";
 export { ActionCompiler } from "./compiler.js";
 export { AbstractDiscoveryProvider } from "./abstract-discovery.js";
+export { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
