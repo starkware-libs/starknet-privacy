@@ -12,6 +12,7 @@ import type {
   StarknetAddress,
 } from "../interfaces.js";
 import { Channel, SetupRequirement } from "../interfaces.js";
+import type { NotesCursor } from "../internal/channel.js";
 import type { BlockIdentifier } from "starknet";
 import { num } from "starknet";
 import type { PrivateKey } from "../utils/crypto.js";
@@ -63,7 +64,7 @@ export class MockPrivateTransfers implements PrivateTransfers {
   async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
     debugLog("private-transfers", "execute", actions);
     // 1. Compile actions - resolves contexts and produces clientActions
-    const { clientActions, registry } = this.compiler.compile(actions, options);
+    const { clientActions, registry } = await this.compiler.compile(actions, options);
 
     debugLog("private-transfers", "clientActions", clientActions);
 
@@ -85,21 +86,30 @@ export class MockPrivateTransfers implements PrivateTransfers {
     return new PrivateTransfersBuilderImpl(this, this.user, options);
   }
 
-  discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> } = {}): {
+  async discoverNotes(params?: { cursor?: NotesCursor; tokens?: bigint[] }): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
-  } {
-    return this.discoveryProvider.discoverNotes(this.user, this.userViewingKey, params);
+  }> {
+    const result = await this.discoveryProvider.discoverNotes(
+      this.user,
+      this.userViewingKey,
+      params
+    );
+    return { timestamp: result.timestamp, notes: result.notes };
   }
 
-  discoverChannels(...recipients: StarknetAddress[]): {
+  async discoverChannels(
+    recipients: StarknetAddress[],
+    params?: { cursor?: AddressMap<Channel> }
+  ): Promise<{
     timestamp: BlockIdentifier;
     channels: AddressMap<Channel>;
-  } {
+  }> {
     return this.discoveryProvider.discoverChannels(
       this.user,
       this.userViewingKey,
-      ...recipients.map(toBigInt)
+      recipients.map(toBigInt),
+      params
     );
   }
 }
