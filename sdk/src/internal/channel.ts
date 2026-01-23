@@ -9,7 +9,7 @@ import {
 } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { jsonStringify, jsonParse } from "../utils/json.js";
-import { ChannelKey, PublicKey } from "../utils/crypto.js";
+import { PublicKey } from "../utils/crypto.js";
 
 /** Type guard for non-negative integers */
 function isUint(value: unknown): value is number {
@@ -72,6 +72,8 @@ export class NoteNonce extends Nonce {
   }
 }
 
+type ChannelKey = bigint;
+
 /** Channel containing nonces for token and note creation. */
 export class Channel {
   /** @internal */ readonly publicKey: PublicKey;
@@ -105,6 +107,11 @@ export class Channel {
     return current.noteNonce;
   }
 
+  /** Create a deep clone of this channel */
+  clone(): Channel {
+    return new Channel(this.publicKey, this.key, this.tokens.entries());
+  }
+
   toSetupRequirement(token: StarknetAddressBigint): SetupRequirement {
     if (!this.publicKey) {
       return SetupRequirement.Register;
@@ -116,11 +123,6 @@ export class Channel {
       return SetupRequirement.SetupToken;
     }
     return SetupRequirement.Ready;
-  }
-
-  /** Create a deep clone of this channel */
-  clone(): Channel {
-    return new Channel(this.publicKey, this.key, this.tokens.entries());
   }
 }
 
