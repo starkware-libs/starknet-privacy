@@ -2,37 +2,19 @@
  * Mock PrivateTransfers implementation for testing.
  */
 
-import type {
-  Actions,
-  ExecuteOptions,
-  ExecuteResult,
-  Note,
-  PrivateTransfers,
-  PrivateTransfersBuilder,
-  StarknetAddress,
-} from "../interfaces.js";
-import { Channel, SetupRequirement } from "../interfaces.js";
-import type { NotesCursor } from "../internal/channel.js";
-import type { BlockIdentifier } from "starknet";
-import { num } from "starknet";
+import type { Actions, ExecuteOptions, ExecuteResult, StarknetAddress } from "../interfaces.js";
 import type { PrivateKey } from "../utils/crypto.js";
-import { AddressMap } from "../utils/maps.js";
+import { toBigInt } from "../utils/index.js";
 import { createMockCallAndProof } from "./helpers.js";
 import type { PrivacyPool } from "./pool.js";
 import { MockDiscoveryProvider } from "./discovery.js";
-import { PrivateTransfersBuilderImpl } from "../internal/builders.js";
 import { ActionCompiler } from "../internal/compiler.js";
 import { MockContracts } from "./contracts.js";
-import { debugLog } from "../utils/logging.js";
+import { consoleLogCallback, debugLog, withLogging } from "../utils/logging.js";
+import { AbstractPrivateTransfers } from "../internal/abstract-private-transfers.js";
 
-/** Normalize BigNumberish to bigint */
-const toBigInt = (value: StarknetAddress): bigint => num.toBigInt(value);
-
-export class MockPrivateTransfers implements PrivateTransfers {
+export class MockPrivateTransfers extends AbstractPrivateTransfers {
   // User credentials (set via configure)
-  readonly user: bigint;
-  private userViewingKey: PrivateKey = 0n;
-  private discoveryProvider: MockDiscoveryProvider;
   private compiler: ActionCompiler;
   private pool: PrivacyPool;
 
@@ -42,22 +24,16 @@ export class MockPrivateTransfers implements PrivateTransfers {
     userAddress: StarknetAddress,
     userPrivateKey: PrivateKey
   ) {
-    this.pool = this.contracts.get<PrivacyPool>(toBigInt(poolAddress));
-    this.discoveryProvider = new MockDiscoveryProvider(this.pool);
-    this.user = toBigInt(userAddress);
-    this.userViewingKey = userPrivateKey;
-    this.compiler = new ActionCompiler(this.user, userPrivateKey, this.discoveryProvider);
-  }
-
-  async discoverRequirement(
-    recipient: StarknetAddress,
-    token: StarknetAddress
-  ): Promise<SetupRequirement> {
-    return this.discoveryProvider.discoverRequirement(
-      this.user,
-      this.userViewingKey,
-      toBigInt(recipient),
-      toBigInt(token)
+    super(
+      userAddress,
+      { getViewingKey: () => userPrivateKey },
+      new MockDiscoveryProvider(contracts.get<PrivacyPool>(toBigInt(poolAddress)))
+    );
+    this.pool = contracts.get<PrivacyPool>(toBigInt(poolAddress));
+    this.compiler = withLogging(
+      new ActionCompiler(this.user, userPrivateKey, this.discoveryProvider),
+      "Compiler",
+      consoleLogCallback
     );
   }
 
@@ -80,36 +56,5 @@ export class MockPrivateTransfers implements PrivateTransfers {
       callAndProof: createMockCallAndProof(callbacks),
       registry,
     };
-  }
-
-  build(options?: ExecuteOptions): PrivateTransfersBuilder {
-    return new PrivateTransfersBuilderImpl(this, this.user, options);
-  }
-
-  async discoverNotes(params?: { cursor?: NotesCursor; tokens?: bigint[] }): Promise<{
-    timestamp: BlockIdentifier;
-    notes: AddressMap<Note[]>;
-  }> {
-    const result = await this.discoveryProvider.discoverNotes(
-      this.user,
-      this.userViewingKey,
-      params
-    );
-    return { timestamp: result.timestamp, notes: result.notes };
-  }
-
-  async discoverChannels(
-    recipients: StarknetAddress[],
-    params?: { cursor?: AddressMap<Channel> }
-  ): Promise<{
-    timestamp: BlockIdentifier;
-    channels: AddressMap<Channel>;
-  }> {
-    return this.discoveryProvider.discoverChannels(
-      this.user,
-      this.userViewingKey,
-      recipients.map(toBigInt),
-      params
-    );
   }
 }
