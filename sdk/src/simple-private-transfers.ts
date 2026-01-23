@@ -10,7 +10,7 @@ import {
   StarknetAddress,
   All,
   ExecuteResult,
-} from "./interfaces.js";
+} from "./interfaces.js"; // Assuming you moved interfaces
 import { AddressMap } from "./utils/maps.js";
 import { isAll } from "./utils/validation.js";
 

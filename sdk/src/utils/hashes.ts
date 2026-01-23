@@ -4,7 +4,6 @@
  * To regenerate: npx tsx scripts/generate-hashes.ts
  */
 
-import type { BigNumberish } from "starknet";
 import { hash } from "./crypto.js";
 
 // Domain separation tags (from Cairo domain_separation module)
@@ -132,45 +131,3 @@ export function compute_nullifier(
 ): bigint {
   return hash(NULLIFIER_TAG, channel_key, token, index, 0n, owner_private_key);
 }
-
-/**
- * @deprecated Use the individual compute_* functions instead.
- * This object is kept for backwards compatibility.
- */
-export const hashes = {
-  /** @deprecated Use compute_channel_key instead */
-  channelKey: (
-    sender_addr: BigNumberish,
-    sender_private_key: BigNumberish,
-    recipient_addr: BigNumberish,
-    recipient_public_key: BigNumberish
-  ): bigint =>
-    hash(CHANNEL_KEY_TAG, sender_addr, sender_private_key, recipient_addr, recipient_public_key),
-  /** @deprecated Use compute_channel_id instead */
-  channelId: (
-    channel_key: BigNumberish,
-    sender_addr: BigNumberish,
-    recipient_addr: BigNumberish,
-    recipient_public_key: BigNumberish
-  ): bigint => hash(CHANNEL_ID_TAG, channel_key, sender_addr, recipient_addr, recipient_public_key),
-  /** @deprecated Use compute_subchannel_key instead */
-  subchannelKey: (channel_key: BigNumberish, index: number): bigint =>
-    hash(SUBCHANNEL_KEY_TAG, channel_key, index, 0n),
-  /** @deprecated Use compute_subchannel_id instead */
-  subchannelId: (
-    channel_key: BigNumberish,
-    recipient_addr: BigNumberish,
-    recipient_public_key: BigNumberish,
-    token: BigNumberish
-  ): bigint => hash(SUBCHANNEL_ID_TAG, channel_key, recipient_addr, recipient_public_key, token),
-  /** @deprecated Use compute_note_id instead */
-  noteId: (channel_key: BigNumberish, token: BigNumberish, index: number): bigint =>
-    hash(NOTE_ID_TAG, channel_key, token, index, 0n),
-  /** @deprecated Use compute_nullifier instead */
-  nullifier: (
-    channel_key: BigNumberish,
-    token: BigNumberish,
-    index: number,
-    owner_private_key: BigNumberish
-  ): bigint => hash(NULLIFIER_TAG, channel_key, token, index, 0n, owner_private_key),
-};

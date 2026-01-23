@@ -122,7 +122,6 @@ tsLines.push(`/**
  * To regenerate: npx tsx scripts/generate-hashes.ts
  */
 
-import type { BigNumberish } from "starknet";
 import { hash } from "./crypto.js";
 `);
 
@@ -163,44 +162,6 @@ for (const func of functions) {
   tsLines.push("}");
   tsLines.push("");
 }
-
-// ============ Generate deprecated hashes object for backwards compatibility ============
-// Map compute_X functions to their short names
-const deprecatedMapping: Record<string, string> = {
-  compute_channel_key: "channelKey",
-  compute_channel_id: "channelId",
-  compute_subchannel_key: "subchannelKey",
-  compute_subchannel_id: "subchannelId",
-  compute_note_id: "noteId",
-  compute_nullifier: "nullifier",
-};
-
-tsLines.push("/**");
-tsLines.push(" * @deprecated Use the individual compute_* functions instead.");
-tsLines.push(" * This object is kept for backwards compatibility.");
-tsLines.push(" */");
-tsLines.push("export const hashes = {");
-
-for (const func of functions) {
-  const shortName = deprecatedMapping[func.name];
-  if (shortName) {
-    // Convert params to BigNumberish for the deprecated interface
-    const tsParams = func.params
-      .map((p) => {
-        const tsType = p.cairoType === "usize" ? "number" : "BigNumberish";
-        return `${p.name}: ${tsType}`;
-      })
-      .join(", ");
-    const argNames = func.params.map((p) => p.name).join(", ");
-
-    tsLines.push(`  /** @deprecated Use ${func.name} instead */`);
-    tsLines.push(`  ${shortName}: (${tsParams}): bigint =>`);
-    tsLines.push(`    hash(${func.hashArgs.map(translateArg).join(", ")}),`);
-  }
-}
-
-tsLines.push("};");
-tsLines.push("");
 
 const tsContent = tsLines.join("\n");
 
