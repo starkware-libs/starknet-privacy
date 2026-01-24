@@ -14,7 +14,11 @@
     "ephemeralSecret": "0xabcd",
     "amount": 1000,
     "recipientPrivateKey": "0x12345",
-    "recipientPublicKeyDerived": "0x2f8ffcb446d2a062ef18561eb507b08ea01d52d4c594e90cfca47f075cb952"
+    "recipientPublicKeyDerived": "0x2f8ffcb446d2a062ef18561eb507b08ea01d52d4c594e90cfca47f075cb952",
+    "compliancePrivateKey": "0x54321",
+    "compliancePublicKey": "0x61d0f6b01e5696a475786dbbd6de15f984b23a553be50018489781de416140",
+    "userAddr": "0x999",
+    "userPrivateKey": "0x888"
   },
   "outputs": {
     "channelKey": "0x67db9bd0362ca14c4418ecd78e743d96b069a24c0a5abe7cdb01f95cd0174e",
@@ -36,6 +40,12 @@
     "encChannelKey": "0x7eaa38a527e70c99d613e27b4a869ff8014c4a6d48747935be6f8d6bd438ee4",
     "encChannelSenderAddr": "0x126179bd879f2b3e1f5b475211bd36a59ebbf95a980f58355882563f1bc9a97",
     "encNoteAmount": "0x56783a87f2a9a38084b01a2bdfadc68a0f46",
-    "decNoteAmount": 1000
+    "decNoteAmount": 1000,
+    "encOutgoingSalt": "0x5678",
+    "encOutgoingRecipientAddr": "0x92f3d5665196247dcc74ce8870e4e6f32a6ab61bd2073c589d553cf1be9f12",
+    "encPrivateKeyEphemeralPubkey": "0x43299cc92ce884c67fa0353094e10e3d80b77f10607f266c79972941a42518a",
+    "encPrivateKeyValue": "0x504b7c4a2644b422c371db6f65cb24775c40a6cae2b36701a70073122463fea",
+    "encUserAddrEphemeralPubkey": "0x43299cc92ce884c67fa0353094e10e3d80b77f10607f266c79972941a42518a",
+    "encUserAddrValue": "0xc45038c16fb79d8db9a211879eab281bb0ba26838c15bf5b9b90642a239bc6"
   }
 }

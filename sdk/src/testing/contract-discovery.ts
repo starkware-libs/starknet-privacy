@@ -10,6 +10,7 @@ import {
   compute_channel_id,
   compute_subchannel_key,
   compute_note_id,
+  compute_outgoing_channel_key,
 } from "../utils/hashes.js";
 import { encryptions } from "../utils/encryptions.js";
 import { NotesCursor } from "../internal/channel.js";
@@ -107,10 +108,26 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
   async discoverChannels(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipients: StarknetAddressBigint[],
+    _recipients: StarknetAddressBigint[] | "all",
     params?: { cursor?: AddressMap<Channel> }
   ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }> {
+    const recipients = _recipients === "all" ? [] : [..._recipients];
     const channels = new AddressMap([...(params?.cursor?.entries() ?? [])]);
+    if (_recipients === "all") {
+      for (let s = 0; ; s++) {
+        const encOutgoingChannelInfo = await this.pool.get_outgoing_channel_info(
+          compute_outgoing_channel_key(address, toBigInt(viewingKey), s)
+        );
+        if (toBigInt(encOutgoingChannelInfo.salt) === 0n) break;
+        const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
+          encOutgoingChannelInfo,
+          address,
+          viewingKey,
+          s
+        );
+        recipients.push(recipientAddr);
+      }
+    }
 
     // discover channel
     for (const recipient of recipients) {

@@ -15,7 +15,12 @@ import {
   generateRandom,
   toBigInt,
 } from "../utils/crypto.js";
-import { encryptions, type EncChannelInfo, type EncSubchannelInfo } from "../utils/encryptions.js";
+import {
+  encryptions,
+  type EncChannelInfo,
+  type EncSubchannelInfo,
+  type EncOutgoingChannelInfo,
+} from "../utils/encryptions.js";
 import { AdvancedMap, AddressMap } from "../utils/maps.js";
 import { assert, isOpen } from "../utils/validation.js";
 import type { MockContracts, MockContract } from "./contracts.js";
@@ -26,6 +31,7 @@ import {
   compute_subchannel_id,
   compute_note_id,
   compute_nullifier,
+  compute_outgoing_channel_key,
 } from "../utils/hashes.js";
 import { ClientAction } from "../internal/client-actions.js";
 import { debugLog, hex } from "../utils/logging.js";
@@ -53,6 +59,8 @@ export type PrivacyPoolSnapshot = {
   subchannelIds: Set<Hash>;
   notes: Map<Hash, EncryptedNote | OpenNote>;
   nullifiers: Set<Hash>;
+  outgoingChannels: Map<bigint, EncOutgoingChannelInfo>;
+  outgoingChannelCounters: Map<bigint, number>;
   tracking: Map<bigint, TrackingState>;
 };
 
@@ -81,6 +89,10 @@ export class PrivacyPool implements MockContract {
   private subchannelIds = new Set<Hash>();
   private notes = new Map<Hash, EncryptedNote | OpenNote>();
   private nullifiers = new Set<Hash>();
+  // Outgoing channels: key = h(sender_addr, sender_private_key, s) -> EncOutgoingChannelInfo
+  private outgoingChannels = new Map<bigint, EncOutgoingChannelInfo>();
+  // Track sequential counter s per sender for outgoing channels
+  private outgoingChannelCounters = new AddressMap<number>(() => 0);
 
   // state tracking, not part of the official spec
   private tracking = new AddressMap<TrackingState>(() => ({
@@ -141,6 +153,8 @@ export class PrivacyPool implements MockContract {
       subchannelIds: new Set(this.subchannelIds),
       notes: notesSnapshot,
       nullifiers: new Set(this.nullifiers),
+      outgoingChannels: new Map(this.outgoingChannels),
+      outgoingChannelCounters: new Map(this.outgoingChannelCounters.entries()),
       tracking: trackingSnapshot,
     };
   }
@@ -164,6 +178,11 @@ export class PrivacyPool implements MockContract {
     this.subchannelIds = new Set(s.subchannelIds);
     this.notes = new Map(s.notes);
     this.nullifiers = new Set(s.nullifiers);
+    this.outgoingChannels = new Map(s.outgoingChannels);
+
+    // Restore outgoing channel counters (AddressMap)
+    this.outgoingChannelCounters.clear();
+    for (const [k, v] of s.outgoingChannelCounters) this.outgoingChannelCounters.set(k, v);
 
     // Restore tracking by deep cloning the snapshot's structure
     this.tracking.clear();
@@ -257,6 +276,10 @@ export class PrivacyPool implements MockContract {
     return this.nullifiers.has(
       compute_nullifier(witness.channelKey, token, witness.nonce, toBigInt(ownerPrivateKey))
     );
+  }
+
+  getOutgoingChannelInfo(key: bigint): EncOutgoingChannelInfo | undefined {
+    return this.outgoingChannels.get(key);
   }
 
   getUsersChannel(sender: bigint, recipient: bigint): Channel | undefined {
@@ -517,11 +540,41 @@ export class PrivacyPool implements MockContract {
       channelKey,
       from
     );
+
+    // Outgoing channel info for sender discovery
+    const s = this.outgoingChannelCounters.get(from)!;
+    // Verify sequential check: s = 0 or previous outgoing channel exists
+    if (s > 0) {
+      const prevOutgoingChannelKey = compute_outgoing_channel_key(
+        from,
+        toBigInt(fromPrivateKey),
+        s - 1
+      );
+      assert(
+        this.outgoingChannels.has(prevOutgoingChannelKey),
+        () => `Outgoing channel index ${s} is not sequential for sender ${hex(from)}`
+      );
+    }
+    const outgoingChannelKey = compute_outgoing_channel_key(from, toBigInt(fromPrivateKey), s);
+    const outgoingSalt = generateRandom();
+    const encOutgoingChannelInfo = encryptions.encryptOutgoingChannelInfo(
+      from,
+      toBigInt(fromPrivateKey),
+      s,
+      to,
+      outgoingSalt
+    );
+
     return () => {
       debugLog("pool.callback", "setChannel callback executing from:", hex(from), "to:", hex(to));
       this.tracking.get(from)!.channels.get(to, () => new Channel(toPublicKey))!.key = channelKey;
       this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
       this.channelIds.add(compute_channel_id(channelKey, from, to, toBigInt(toPublicKey)));
+
+      // Store outgoing channel info
+      this.outgoingChannels.set(outgoingChannelKey, encOutgoingChannelInfo);
+      this.outgoingChannelCounters.set(from, s + 1);
+
       debugLog("pool.callback", "channels after setChannel", {
         to: hex(to),
         channelsLength: this.channels.get({ address: to, publicKey: toPublicKey })!.length,
