@@ -10,7 +10,7 @@ import { encryptions } from "../utils/encryptions.js";
 import { AddressMap } from "../utils/maps.js";
 import { assertViewingKey } from "../utils/validation.js";
 import type { PrivacyPool } from "./pool.js";
-import { compute_channel_key } from "../utils/hashes.js";
+import { compute_channel_key, compute_outgoing_channel_key } from "../utils/hashes.js";
 import { toBigInt } from "../utils/crypto.js";
 import { debugLog } from "../utils/logging.js";
 import { AbstractDiscoveryProvider } from "../internal/abstract-discovery.js";
@@ -27,17 +27,22 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
     viewingKey: ViewingKey,
     params: { since?: BlockIdentifier; cursor?: NotesCursor; tokens?: bigint[] } = {}
   ): Promise<{ timestamp: BlockIdentifier; notes: AddressMap<Note[]>; cursor: NotesCursor }> {
-    // TODO(ittay): Add usage of 'since' and 'known'
     assertViewingKey(viewingKey);
 
     const result = new AddressMap<Note[]>(() => []);
 
     const channels = this.pool.getChannels(address);
 
-    debugLog("discovery", "discovering notes address", address, "channelCount:", channels.length);
+    debugLog(
+      "mock-discovery",
+      "discovering notes address",
+      address,
+      "channelCount:",
+      channels.length
+    );
     for (const encryptedChannel of channels) {
       const channel = encryptions.decryptChannelInfo(encryptedChannel, toBigInt(viewingKey));
-      debugLog("discovery", "processing channel key:", channel.key, "sender:", channel.sender);
+      debugLog("mock-discovery", "processing channel key:", channel.key, "sender:", channel.sender);
       const key = channel.key;
 
       // Iterate token sequences
@@ -47,7 +52,7 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
         if (params.tokens && !params.tokens.includes(token)) {
           continue;
         }
-        debugLog("discovery", "discovering notes token", token, tokenSequence - 1);
+        debugLog("mock-discovery", "discovering notes token", token, tokenSequence - 1);
         // Iterate note sequences for this token
         let noteSequence = 0;
         let note: { id: NoteId; amount: Amount; r: bigint; open: boolean } | false; // TODO: add explicit type name
@@ -59,14 +64,18 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
             token,
             viewingKey
           );
-          debugLog("discovery", "checking nullifier", { nonce, noteId: note.id, nullifierResult });
+          debugLog("mock-discovery", "checking nullifier", {
+            nonce,
+            noteId: note.id,
+            nullifierResult,
+          });
           if (nullifierResult !== false) {
-            debugLog("discovery", "skipping nullified note", { nonce, noteId: note.id });
+            debugLog("mock-discovery", "skipping nullified note", { nonce, noteId: note.id });
             noteSequence++;
             continue;
           }
 
-          debugLog("discovery", "discovering notes note", {
+          debugLog("mock-discovery", "discovering notes note", {
             token,
             nonce,
             noteId: note.id,
@@ -98,14 +107,40 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
   async discoverChannels(
     address: bigint,
     viewingKey: ViewingKey,
-    recipients: StarknetAddressBigint[],
+    recipients: StarknetAddressBigint[] | "all",
     _params?: { cursor?: AddressMap<Channel> }
   ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }> {
     assertViewingKey(viewingKey);
 
+    // If "all", discover recipients from outgoing channels
+    let recipientList: StarknetAddressBigint[];
+    if (recipients === "all") {
+      recipientList = [];
+      for (let s = 0; ; s++) {
+        const outgoingChannelKey = compute_outgoing_channel_key(address, toBigInt(viewingKey), s);
+        const encOutgoingChannelInfo = this.pool.getOutgoingChannelInfo(outgoingChannelKey);
+        if (!encOutgoingChannelInfo) break;
+        const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
+          encOutgoingChannelInfo,
+          address,
+          viewingKey,
+          s
+        );
+        recipientList.push(recipientAddr);
+      }
+    } else {
+      recipientList = recipients;
+    }
+
     const result = new AddressMap<Channel>();
-    for (const recipient of recipients) {
+    for (const recipient of recipientList) {
       if (!this.pool.isRegistered(recipient)) {
+        debugLog(
+          "mock-discovery",
+          "discoverChannels",
+          "skipping unregistered recipient",
+          recipient
+        );
         continue;
       }
       const publicKey = this.pool.getPublicKey(recipient);
