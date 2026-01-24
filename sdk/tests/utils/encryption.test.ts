@@ -22,6 +22,12 @@ describe("Encryption Compatibility with Cairo", () => {
   const recipientPrivateKey = BigInt(inputs.recipientPrivateKey);
   const recipientPublicKeyDerived = BigInt(inputs.recipientPublicKeyDerived);
   const ephemeralSecret = BigInt(inputs.ephemeralSecret);
+  const senderPrivateKey = BigInt(inputs.senderPrivateKey);
+  const recipient = BigInt(inputs.recipient);
+  const compliancePrivateKey = BigInt(inputs.compliancePrivateKey);
+  const compliancePublicKey = BigInt(inputs.compliancePublicKey);
+  const userAddr = BigInt(inputs.userAddr);
+  const userPrivateKey = BigInt(inputs.userPrivateKey);
 
   describe("Public Key Derivation", () => {
     it("derivePublicKey matches Cairo", () => {
@@ -136,6 +142,137 @@ describe("Encryption Compatibility with Cairo", () => {
       const decrypted = encryptions.decryptChannelInfo(encrypted, recipientPrivateKey);
       expect(decrypted.key.toString(16)).toBe(channelKey.toString(16));
       expect(decrypted.sender.toString(16)).toBe(sender.toString(16));
+    });
+  });
+
+  describe("Outgoing Channel Info Encryption", () => {
+    it("encryptOutgoingChannelInfo salt matches Cairo", () => {
+      const result = encryptions.encryptOutgoingChannelInfo(
+        sender,
+        senderPrivateKey,
+        index,
+        recipient,
+        salt
+      );
+      expect(result.salt.toString(16)).toBe(BigInt(outputs.encOutgoingSalt).toString(16));
+    });
+
+    it("encryptOutgoingChannelInfo enc_recipient_addr matches Cairo", () => {
+      const result = encryptions.encryptOutgoingChannelInfo(
+        sender,
+        senderPrivateKey,
+        index,
+        recipient,
+        salt
+      );
+      expect(result.enc_recipient_addr.toString(16)).toBe(
+        BigInt(outputs.encOutgoingRecipientAddr).toString(16)
+      );
+    });
+
+    it("decryptOutgoingChannelInfo recovers original recipient", () => {
+      const encrypted = {
+        salt,
+        enc_recipient_addr: BigInt(outputs.encOutgoingRecipientAddr),
+      };
+      const decrypted = encryptions.decryptOutgoingChannelInfo(
+        encrypted,
+        sender,
+        senderPrivateKey,
+        index
+      );
+      expect(decrypted.recipientAddr.toString(16)).toBe(recipient.toString(16));
+      expect(decrypted.salt).toBe(salt);
+    });
+
+    it("encrypt then decrypt recovers original recipient", () => {
+      const encrypted = encryptions.encryptOutgoingChannelInfo(
+        sender,
+        senderPrivateKey,
+        index,
+        recipient,
+        salt
+      );
+      const decrypted = encryptions.decryptOutgoingChannelInfo(
+        encrypted,
+        sender,
+        senderPrivateKey,
+        index
+      );
+      expect(decrypted.recipientAddr.toString(16)).toBe(recipient.toString(16));
+      expect(decrypted.salt).toBe(salt);
+    });
+  });
+
+  describe("Private Key Encryption (ECDH)", () => {
+    it("ephemeral pubkey matches Cairo", () => {
+      const result = encryptions.encryptPrivateKey(
+        ephemeralSecret,
+        compliancePublicKey,
+        userPrivateKey
+      );
+      expect(result.ephemeralPubkey.toString(16)).toBe(
+        BigInt(outputs.encPrivateKeyEphemeralPubkey).toString(16)
+      );
+    });
+
+    it("encrypted private key matches Cairo", () => {
+      const result = encryptions.encryptPrivateKey(
+        ephemeralSecret,
+        compliancePublicKey,
+        userPrivateKey
+      );
+      expect(result.encPrivateKey.toString(16)).toBe(
+        BigInt(outputs.encPrivateKeyValue).toString(16)
+      );
+    });
+
+    it("decryptPrivateKey recovers original private key", () => {
+      const encrypted = {
+        ephemeralPubkey: BigInt(outputs.encPrivateKeyEphemeralPubkey),
+        encPrivateKey: BigInt(outputs.encPrivateKeyValue),
+      };
+      const decrypted = encryptions.decryptPrivateKey(encrypted, compliancePrivateKey);
+      expect(decrypted.toString(16)).toBe(userPrivateKey.toString(16));
+    });
+
+    it("encrypt then decrypt recovers original private key", () => {
+      const encrypted = encryptions.encryptPrivateKey(
+        ephemeralSecret,
+        compliancePublicKey,
+        userPrivateKey
+      );
+      const decrypted = encryptions.decryptPrivateKey(encrypted, compliancePrivateKey);
+      expect(decrypted.toString(16)).toBe(userPrivateKey.toString(16));
+    });
+  });
+
+  describe("User Address Encryption (ECDH)", () => {
+    it("ephemeral pubkey matches Cairo", () => {
+      const result = encryptions.encryptUserAddr(ephemeralSecret, compliancePublicKey, userAddr);
+      expect(result.ephemeralPubkey.toString(16)).toBe(
+        BigInt(outputs.encUserAddrEphemeralPubkey).toString(16)
+      );
+    });
+
+    it("encrypted user addr matches Cairo", () => {
+      const result = encryptions.encryptUserAddr(ephemeralSecret, compliancePublicKey, userAddr);
+      expect(result.encUserAddr.toString(16)).toBe(BigInt(outputs.encUserAddrValue).toString(16));
+    });
+
+    it("decryptUserAddr recovers original user addr", () => {
+      const encrypted = {
+        ephemeralPubkey: BigInt(outputs.encUserAddrEphemeralPubkey),
+        encUserAddr: BigInt(outputs.encUserAddrValue),
+      };
+      const decrypted = encryptions.decryptUserAddr(encrypted, compliancePrivateKey);
+      expect(decrypted.toString(16)).toBe(userAddr.toString(16));
+    });
+
+    it("encrypt then decrypt recovers original user addr", () => {
+      const encrypted = encryptions.encryptUserAddr(ephemeralSecret, compliancePublicKey, userAddr);
+      const decrypted = encryptions.decryptUserAddr(encrypted, compliancePrivateKey);
+      expect(decrypted.toString(16)).toBe(userAddr.toString(16));
     });
   });
 });
