@@ -1,6 +1,6 @@
 use privacy::hashes::{
     compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
-    compute_subchannel_id, compute_subchannel_key, hash,
+    compute_outgoing_channel_key, compute_subchannel_id, compute_subchannel_key, hash,
 };
 use starkware_utils::constants::MAX_U32;
 
@@ -46,6 +46,36 @@ fn test_compute_channel_key_different_inputs() {
     assert_ne!(channel_key, channel_key_diff_sender_private_key);
     assert_ne!(channel_key, channel_key_diff_recipient_addr);
     assert_ne!(channel_key, channel_key_diff_recipient_public_key);
+}
+
+#[test]
+fn test_compute_outgoing_channel_key_different_inputs() {
+    let sender_addr = hash(['SENDER_ADDR'].span()).try_into().unwrap();
+    let sender_private_key = hash(['SENDER_PRIVATE_KEY'].span());
+    let index_u256: u256 = hash(['INDEX'].span()).into();
+    let index: usize = (index_u256 % MAX_U32.into()).try_into().unwrap();
+    let outgoing_channel_key = compute_outgoing_channel_key(
+        :sender_addr, :sender_private_key, :index,
+    );
+    let other_sender_addr = hash(['OTHER_SENDER_ADDR'].span()).try_into().unwrap();
+    let other_sender_private_key = hash(['OTHER_SENDER_PRIVATE_KEY'].span());
+    let other_index_u256: u256 = hash(['OTHER_INDEX'].span()).into();
+    let other_index: usize = (other_index_u256 % MAX_U32.into()).try_into().unwrap();
+    assert_ne!(sender_addr, other_sender_addr);
+    assert_ne!(sender_private_key, other_sender_private_key);
+    assert_ne!(index, other_index);
+    let outgoing_channel_key_diff_sender_addr = compute_outgoing_channel_key(
+        sender_addr: other_sender_addr, :sender_private_key, :index,
+    );
+    let outgoing_channel_key_diff_sender_private_key = compute_outgoing_channel_key(
+        :sender_addr, sender_private_key: other_sender_private_key, :index,
+    );
+    let outgoing_channel_key_diff_index = compute_outgoing_channel_key(
+        :sender_addr, :sender_private_key, index: other_index,
+    );
+    assert_ne!(outgoing_channel_key, outgoing_channel_key_diff_sender_addr);
+    assert_ne!(outgoing_channel_key, outgoing_channel_key_diff_sender_private_key);
+    assert_ne!(outgoing_channel_key, outgoing_channel_key_diff_index);
 }
 
 #[test]
