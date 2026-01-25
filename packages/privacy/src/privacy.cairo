@@ -163,7 +163,6 @@ pub mod Privacy {
             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
             // TODO: Consider extracting logic to internal `main` function.
-            // TODO: Consider asserting that `client_actions` is not empty.
             let mut server_actions: Array<ServerAction> = array![];
             let mut current_phase = ClientActionTrait::ACCOUNT_PHASE;
             let mut token_balances: TokenBalances = Default::default();
@@ -171,7 +170,6 @@ pub mod Privacy {
             let mut has_privacy_action = false;
             for client_action in client_actions {
                 client_action.assert_and_set_phase(ref :current_phase);
-                // TODO: Consider renaming `should_execute`.
                 let (actions, should_execute) = match *client_action {
                     ClientAction::SetViewingKey(input) => (
                         self.set_viewing_key(:user_addr, :input), true,
