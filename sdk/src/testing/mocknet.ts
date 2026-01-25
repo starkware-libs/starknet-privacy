@@ -11,7 +11,7 @@ import { MockContracts } from "./contracts.js";
 import { MockPoolContract } from "./mock-pool-contract.js";
 import { MockProofProvider } from "./mock-proof-provider.js";
 import { MockProofInvocationFactory } from "./mock-proof-invocation-factory.js";
-import { MockDiscoveryProvider } from "./discovery.js";
+import { ContractDiscoveryProvider } from "./contract-discovery.js";
 
 /**
  * Mock account with address and private key.
@@ -137,7 +137,7 @@ export class Mocknet {
       account: { address: `0x${userAddress.toString(16)}` } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
       viewingKeyProvider: { getViewingKey: () => viewingKey },
       provingProvider: new MockProofProvider(pool),
-      discoveryProvider: new MockDiscoveryProvider(pool),
+      discoveryProvider: new ContractDiscoveryProvider(pool),
       proofInvocationFactory: new MockProofInvocationFactory(),
       poolContractAddress: `0x${this.poolAddress.toString(16)}`,
     });
