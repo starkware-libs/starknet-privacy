@@ -1,2 +1,4 @@
-cd sdk && npx lint-staged
-
+# Check if any sdk files are staged
+if git diff --cached --name-only | grep -q '^sdk/'; then
+  cd sdk && npm run check
+fi
