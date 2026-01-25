@@ -3,7 +3,7 @@
  */
 
 export { ERC20, MockContracts, MockSwapHelper } from "./contracts.js";
-export { PrivacyPool } from "./pool.js";
+export { MockPoolContract } from "./mock-pool-contract.js";
 export { MockDiscoveryProvider } from "./discovery.js";
 export { MockPrivateTransfers } from "./transfers.js";
 export {

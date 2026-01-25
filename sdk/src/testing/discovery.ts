@@ -9,7 +9,7 @@ import type { BlockIdentifier } from "starknet";
 import { encryptions } from "../utils/encryptions.js";
 import { AddressMap } from "../utils/maps.js";
 import { assertViewingKey } from "../utils/validation.js";
-import type { PrivacyPool } from "./pool.js";
+import type { MockPoolContract } from "./mock-pool-contract.js";
 import { compute_channel_key, compute_outgoing_channel_key } from "../utils/hashes.js";
 import { toBigInt } from "../utils/crypto.js";
 import { debugLog } from "../utils/logging.js";
@@ -18,7 +18,7 @@ import { NotesCursor, IncomingChannelCursor } from "../internal/channel.js";
 
 export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
   private _currentBlock: BlockIdentifier = 0; // TODO: allow block advancement
-  constructor(private pool: PrivacyPool) {
+  constructor(private pool: MockPoolContract) {
     super();
   }
 
