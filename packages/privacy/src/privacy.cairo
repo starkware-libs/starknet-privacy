@@ -502,7 +502,6 @@ pub mod Privacy {
 
             // Decrypt note amount.
             let amount = note.decrypt_amount(:channel_key, :token, :index);
-            assert(amount.is_non_zero(), internal_errors::UNEXPECTED_ZERO_AMOUNT);
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
@@ -540,7 +539,6 @@ pub mod Privacy {
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
             assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
             // Assert salt is 120 bits.
             assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
