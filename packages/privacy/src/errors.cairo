@@ -26,6 +26,7 @@ pub const NO_PRIVACY_ACTIONS: felt252 = 'NO_PRIVACY_ACTIONS';
 pub const INVALID_TX_VERSION: felt252 = 'INVALID_TX_VERSION';
 pub const NON_ZERO_RESOURCE_PRICE: felt252 = 'NON_ZERO_RESOURCE_PRICE';
 pub const NON_ZERO_TIP: felt252 = 'NON_ZERO_TIP';
+pub const SALT_TOO_SMALL: felt252 = 'SALT_TOO_SMALL';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';
