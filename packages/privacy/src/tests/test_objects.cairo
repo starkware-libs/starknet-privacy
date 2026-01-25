@@ -1,8 +1,8 @@
 use core::num::traits::Zero;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::objects::{
-    EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo,
-    Note, NoteTrait, ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
+    EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey, EncPrivateKeyTrait,
+    EncSubchannelInfo, Note, NoteTrait, ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
 };
 use privacy::tests::test_objects::MockContract::deploy_for_test as deploy_mock_contract_for_test;
 use privacy::tests::utils_for_tests::{Test, TestTrait, UserTrait, constants};
@@ -13,29 +13,28 @@ use starknet::{ContractAddress, SyscallResultTrait};
 
 
 #[test]
-fn test_enc_channel_info_is_non_zero() {
+fn test_enc_channel_info_is_all_non_zero() {
     let mut enc_channel_info = EncChannelInfo {
         ephemeral_pubkey: 'EPHEMERAL_PUBKEY'.try_into().unwrap(),
         enc_channel_key: 'ENC_CHANNEL_KEY'.try_into().unwrap(),
         enc_sender_addr: 'ENC_SENDER_ADDR'.try_into().unwrap(),
     };
-    assert_eq!(enc_channel_info.is_non_zero(), true);
+    assert_eq!(enc_channel_info.is_all_non_zero(), true);
     enc_channel_info.ephemeral_pubkey = Zero::zero();
-    assert_eq!(enc_channel_info.is_non_zero(), false);
+    assert_eq!(enc_channel_info.is_all_non_zero(), false);
     enc_channel_info.ephemeral_pubkey = 'EPHEMERAL_PUBKEY'.try_into().unwrap();
     enc_channel_info.enc_channel_key = Zero::zero();
-    assert_eq!(enc_channel_info.is_non_zero(), false);
+    assert_eq!(enc_channel_info.is_all_non_zero(), false);
     enc_channel_info.enc_channel_key = 'ENC_CHANNEL_KEY'.try_into().unwrap();
     enc_channel_info.enc_sender_addr = Zero::zero();
-    assert_eq!(enc_channel_info.is_non_zero(), false);
+    assert_eq!(enc_channel_info.is_all_non_zero(), false);
     let enc_channel_info_zero = EncChannelInfo {
         ephemeral_pubkey: Zero::zero(),
         enc_channel_key: Zero::zero(),
         enc_sender_addr: Zero::zero(),
     };
-    assert_eq!(enc_channel_info_zero.is_non_zero(), false);
+    assert_eq!(enc_channel_info_zero.is_all_non_zero(), false);
 }
-
 #[test]
 fn test_enc_subchannel_info_zero() {
     let enc_subchannel_info_zero: EncSubchannelInfo = Zero::zero();
@@ -74,6 +73,22 @@ fn test_enc_subchannel_info_is_non_zero() {
     assert_eq!(enc_subchannel_info.is_non_zero(), false);
     enc_subchannel_info.salt = Zero::zero();
     assert_eq!(enc_subchannel_info.is_non_zero(), false);
+}
+
+#[test]
+fn test_enc_private_key_is_all_non_zero() {
+    let mut enc_private_key = EncPrivateKey {
+        ephemeral_pubkey: 'EPHEMERAL_PUBKEY'.try_into().unwrap(),
+        enc_private_key: 'ENC_PRIVATE_KEY'.try_into().unwrap(),
+    };
+    assert_eq!(enc_private_key.is_all_non_zero(), true);
+    enc_private_key.ephemeral_pubkey = Zero::zero();
+    assert_eq!(enc_private_key.is_all_non_zero(), false);
+    enc_private_key.ephemeral_pubkey = 'EPHEMERAL_PUBKEY'.try_into().unwrap();
+    enc_private_key.enc_private_key = Zero::zero();
+    assert_eq!(enc_private_key.is_all_non_zero(), false);
+    enc_private_key.ephemeral_pubkey = Zero::zero();
+    assert_eq!(enc_private_key.is_all_non_zero(), false);
 }
 
 #[test]
@@ -195,20 +210,6 @@ fn test_note_encrypt_decrypt() {
     };
     assert_eq!(note, expected_note);
     assert_eq!(note.decrypt_amount(:channel_key, token: token_address, :index), amount);
-}
-
-#[test]
-fn test_note_zero() {
-    let mut test: Test = Default::default();
-    let token = test.mock_new_token();
-    let enc_value = test.mock_new_note(amount: constants::DEFAULT_AMOUNT).enc_amount;
-    let zero_note: Note = Zero::zero();
-
-    assert_eq!(zero_note, Note { enc_value: Zero::zero(), token: Zero::zero() });
-    assert!(zero_note.is_zero());
-    assert!(!zero_note.is_non_zero());
-    assert!(Note { enc_value, token: Zero::zero() }.is_non_zero());
-    assert!(Note { enc_value: Zero::zero(), token }.is_non_zero());
 }
 
 #[test]
