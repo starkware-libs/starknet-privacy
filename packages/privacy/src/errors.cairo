@@ -45,6 +45,7 @@ pub(crate) mod internal_errors {
     pub const ENC_AMOUNT_OVERFLOW: felt252 = 'ENC_AMOUNT_OVERFLOW';
     pub const AMOUNT_OVERFLOW: felt252 = 'AMOUNT_OVERFLOW';
     pub const PACK_OVERFLOW: felt252 = 'PACK_OVERFLOW';
+    pub const UNPACK1_OUT_OF_BOUNDS: felt252 = 'UNPACK1_OUT_OF_BOUNDS';
     pub const UNPACK1_OVERFLOW: felt252 = 'UNPACK1_OVERFLOW';
     pub const UNPACK2_OVERFLOW: felt252 = 'UNPACK2_OVERFLOW';
     pub const ZERO_OUTGOING_CHANNEL_KEY: felt252 = 'ZERO_OUTGOING_CHANNEL_KEY';

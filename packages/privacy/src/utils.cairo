@@ -12,7 +12,7 @@ use privacy::hashes::{
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr,
 };
-use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, TX_V3};
+use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, TWO_POW_120, TX_V3};
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
 use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_execution_info, get_tx_info};
@@ -254,8 +254,8 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
     let packed_u256: u256 = packed_value.into();
     let value_1 = packed_u256 / TWO_POW_128;
     let value_2 = packed_u256 % TWO_POW_128;
-    // TODO: Assert bounds?
-    // TODO: Assert value_1 is 120 bits?
+    // Sanity check that value_1 is 120 bits.
+    assert(value_1 < TWO_POW_120.into(), internal_errors::UNPACK1_OUT_OF_BOUNDS);
     (
         value_1.try_into().expect(internal_errors::UNPACK1_OVERFLOW),
         value_2.try_into().expect(internal_errors::UNPACK2_OVERFLOW),
