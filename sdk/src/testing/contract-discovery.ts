@@ -2,7 +2,6 @@ import { BlockIdentifier } from "starknet";
 import { ViewingKey, Note, Channel, StarknetAddressBigint } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { AbstractDiscoveryProvider } from "../internal/abstract-discovery.js";
-import { PrivacyPoolContract } from "../internal/private-transfers.js";
 import { debugLog, hex } from "../utils/logging.js";
 import { toBigInt } from "../utils/crypto.js";
 import {
@@ -12,11 +11,35 @@ import {
   compute_note_id,
   compute_outgoing_channel_key,
 } from "../utils/hashes.js";
-import { encryptions } from "../utils/encryptions.js";
+import {
+  encryptions,
+  type EncChannelInfo,
+  type EncSubchannelInfo,
+  type EncOutgoingChannelInfo,
+} from "../utils/encryptions.js";
 import { NotesCursor } from "../internal/channel.js";
 
+/**
+ * Interface for pool contract view methods used by ContractDiscoveryProvider.
+ * Both MockPoolContract and PrivacyPoolContract satisfy this interface.
+ * Uses bigint for addresses/keys to align with Cairo felts.
+ */
+export interface IPoolContract {
+  get_public_key(userAddr: bigint): bigint | Promise<bigint>;
+  get_num_of_channels(recipientAddr: bigint): bigint | Promise<bigint>;
+  get_channel_info(recipientAddr: bigint, index: number): EncChannelInfo | Promise<EncChannelInfo>;
+  get_subchannel_info(subchannelKey: bigint): EncSubchannelInfo | Promise<EncSubchannelInfo>;
+  get_outgoing_channel_info(
+    outgoingChannelKey: bigint
+  ): EncOutgoingChannelInfo | Promise<EncOutgoingChannelInfo>;
+  get_note(noteId: bigint): bigint | Promise<bigint>;
+  channel_exists(channelId: bigint): boolean | Promise<boolean>;
+  /** Check if a note is an open note (for swap helper deposits) */
+  is_note_open?(noteId: bigint): boolean | Promise<boolean>;
+}
+
 export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
-  constructor(private readonly pool: PrivacyPoolContract) {
+  constructor(private readonly pool: IPoolContract) {
     super();
   }
 
@@ -28,15 +51,14 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
     const tokens = new Set([...(params?.tokens ?? [])]);
     const notes = new AddressMap<Note[]>(() => []);
     const cursor: NotesCursor = this.cloneNotesCursor(params?.cursor);
-    const addressStr = hex(address);
 
     // identify channels
     debugLog("contract-discovery", "discoverNotes", "start", cursor);
-    const nc = await this.pool.get_num_of_channels(addressStr);
+    const nc = await this.pool.get_num_of_channels(address);
     debugLog("contract-discovery", "discoverNotes", "num of channels", nc);
     let c;
     for (c = cursor.incomingChannelsCount ?? 0; c < nc; c++) {
-      const encryptedChannel = await this.pool.get_channel_info(addressStr, c);
+      const encryptedChannel = await this.pool.get_channel_info(address, c);
       const channel = encryptions.decryptChannelInfo(encryptedChannel, viewingKey);
       debugLog("contract-discovery", "discoverNotes", "channel", channel);
       cursor.incomingChannels.set(channel.sender, {
@@ -84,19 +106,35 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
           const noteId = compute_note_id(channelKey, token, i);
           const encAmount = await this.pool.get_note(noteId);
           if (toBigInt(encAmount) === 0n) break;
-          const { amount, salt } = encryptions.decryptNoteAmount(
-            toBigInt(encAmount),
-            channelKey,
-            token,
-            i
-          );
-          debugLog("contract-discovery", "discoverNotes", "note", sender, token, i, amount);
+
+          // Check if this is an open note (for swap helper deposits)
+          const isOpen = this.pool.is_note_open ? await this.pool.is_note_open(noteId) : false;
+
+          let amount: bigint;
+          let salt: bigint;
+          if (isOpen) {
+            // Open notes store the raw amount, not encrypted
+            amount = toBigInt(encAmount);
+            salt = 1n; // Open note marker
+          } else {
+            const decrypted = encryptions.decryptNoteAmount(
+              toBigInt(encAmount),
+              channelKey,
+              token,
+              i
+            );
+            amount = decrypted.amount;
+            salt = decrypted.salt;
+          }
+
+          debugLog("contract-discovery", "discoverNotes", "note", sender, token, i, amount, isOpen);
           notes.get(token)!.push({
             id: noteId,
             amount,
             created: 0,
             witness: { channelKey, nonce: i, r: salt },
             sender,
+            open: isOpen,
           });
         }
         incomingChannelCursor.noteIndexes.set(token, i);
@@ -138,7 +176,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
       debugLog("contract-discovery", "discoverChannels", "recipient", hex(recipient));
       if (channels.has(recipient) && channels.get(recipient)!.key !== 0n) continue;
       const publicKey =
-        channels.get(recipient)?.publicKey ?? (await this.pool.get_public_key(hex(recipient)));
+        channels.get(recipient)?.publicKey ?? (await this.pool.get_public_key(recipient));
       debugLog("contract-discovery", "discoverChannels", "publicKey", publicKey);
       if (!publicKey) continue;
       const channel = channels.get(recipient, () => new Channel(publicKey))!;

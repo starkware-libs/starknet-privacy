@@ -150,6 +150,12 @@ export class MockPoolContract implements MockContract {
     return this.nullifiers.has(nullifier);
   }
 
+  is_note_open(noteId: bigint): boolean {
+    const note = this.notes.get(noteId);
+    if (!note) return false;
+    return "r" in note && note.r === 1n;
+  }
+
   // ============ Helper Methods for Discovery ============
 
   /**
