@@ -155,6 +155,13 @@ export class MockPoolContract implements MockContract {
     return this.nullifiers.has(BigInt(nullifier));
   }
 
+  async is_note_open(noteId: string): Promise<boolean> {
+    const id = BigInt(noteId);
+    const note = this.notes.get(id);
+    if (!note) return false;
+    return "r" in note && note.r === 1n;
+  }
+
   // ============ Sync Methods (for MockDiscoveryProvider compatibility) ============
 
   isRegistered(address: bigint): boolean {

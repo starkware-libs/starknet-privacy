@@ -4,7 +4,6 @@
 
 export { ERC20, MockContracts, MockSwapHelper } from "./contracts.js";
 export { MockPoolContract } from "./mock-pool-contract.js";
-export { MockDiscoveryProvider } from "./discovery.js";
 export { MockPrivateTransfers } from "./transfers.js";
 export {
   createMockProof,
@@ -28,5 +27,5 @@ export {
 } from "../utils/hashes.js";
 export { CallMockProofProvider } from "./proving.js";
 export { TracingRpcProvider, TracedRpcError, type DecodedError } from "./tracing-provider.js";
-export { ContractDiscoveryProvider } from "./contract-discovery.js";
+export { ContractDiscoveryProvider, type IPoolContract } from "./contract-discovery.js";
 export { Devnet, type DevnetEnvironment } from "./devnet.js";

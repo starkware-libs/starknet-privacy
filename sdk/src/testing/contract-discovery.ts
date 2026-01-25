@@ -2,7 +2,6 @@ import { BlockIdentifier } from "starknet";
 import { ViewingKey, Note, Channel, StarknetAddressBigint } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { AbstractDiscoveryProvider } from "../internal/abstract-discovery.js";
-import { PrivacyPoolContract } from "../internal/private-transfers.js";
 import { debugLog, hex } from "../utils/logging.js";
 import { toBigInt } from "../utils/crypto.js";
 import {
@@ -12,11 +11,32 @@ import {
   compute_note_id,
   compute_outgoing_channel_key,
 } from "../utils/hashes.js";
-import { encryptions } from "../utils/encryptions.js";
+import {
+  encryptions,
+  type EncChannelInfo,
+  type EncSubchannelInfo,
+  type EncOutgoingChannelInfo,
+} from "../utils/encryptions.js";
 import { NotesCursor } from "../internal/channel.js";
 
+/**
+ * Interface for pool contract view methods used by ContractDiscoveryProvider.
+ * Both MockPoolContract and PrivacyPoolContract satisfy this interface.
+ */
+export interface IPoolContract {
+  get_public_key(userAddr: string): Promise<bigint>;
+  get_num_of_channels(recipientAddr: string): Promise<bigint>;
+  get_channel_info(recipientAddr: string, index: number): Promise<EncChannelInfo>;
+  get_subchannel_info(subchannelKey: string): Promise<EncSubchannelInfo>;
+  get_outgoing_channel_info(outgoingChannelKey: string): Promise<EncOutgoingChannelInfo>;
+  get_note(noteId: string): Promise<bigint>;
+  channel_exists(channelId: string): Promise<boolean>;
+  /** Check if a note is an open note (for swap helper deposits) */
+  is_note_open?(noteId: string): Promise<boolean>;
+}
+
 export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
-  constructor(private readonly pool: PrivacyPoolContract) {
+  constructor(private readonly pool: IPoolContract) {
     super();
   }
 
@@ -54,7 +74,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
       let k: number;
       for (k = senderCursor.subchannelKeyIndex; ; k++) {
         const encSubchannel = await this.pool.get_subchannel_info(
-          compute_subchannel_key(channelKey, k)
+          hex(compute_subchannel_key(channelKey, k))
         );
         if (toBigInt(encSubchannel.salt) === 0n) break;
         debugLog(
@@ -81,21 +101,39 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
       for (const [token, nonce] of senderCursor.noteIndexes) {
         let i;
         for (i = nonce; ; i++) {
-          const encAmount = await this.pool.get_note(compute_note_id(channelKey, token, i));
+          const noteId = compute_note_id(channelKey, token, i);
+          const noteIdHex = hex(noteId);
+          const encAmount = await this.pool.get_note(noteIdHex);
           if (toBigInt(encAmount) === 0n) break;
-          const { amount, salt } = encryptions.decryptNoteAmount(
-            toBigInt(encAmount),
-            channelKey,
-            token,
-            i
-          );
-          debugLog("contract-discovery", "discoverNotes", "note", sender, token, i, amount);
+
+          // Check if this is an open note (for swap helper deposits)
+          const isOpen = this.pool.is_note_open ? await this.pool.is_note_open(noteIdHex) : false;
+
+          let amount: bigint;
+          let salt: bigint;
+          if (isOpen) {
+            // Open notes store the raw amount, not encrypted
+            amount = toBigInt(encAmount);
+            salt = 1n; // Open note marker
+          } else {
+            const decrypted = encryptions.decryptNoteAmount(
+              toBigInt(encAmount),
+              channelKey,
+              token,
+              i
+            );
+            amount = decrypted.amount;
+            salt = decrypted.salt;
+          }
+
+          debugLog("contract-discovery", "discoverNotes", "note", sender, token, i, amount, isOpen);
           notes.get(token)!.push({
-            id: compute_note_id(channelKey, token, i),
+            id: noteId,
             amount,
             created: 0,
             witness: { channelKey, nonce: i, r: salt },
             sender,
+            open: isOpen,
           });
         }
         senderCursor.noteIndexes.set(token, i);
@@ -119,7 +157,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
     if (_recipients === "all") {
       for (let s = 0; ; s++) {
         const encOutgoingChannelInfo = await this.pool.get_outgoing_channel_info(
-          compute_outgoing_channel_key(address, toBigInt(viewingKey), s)
+          hex(compute_outgoing_channel_key(address, toBigInt(viewingKey), s))
         );
         if (toBigInt(encOutgoingChannelInfo.salt) === 0n) break;
         const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
@@ -149,7 +187,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
       );
       const channelId = compute_channel_id(channelKey, address, recipient, toBigInt(publicKey));
 
-      if (await this.pool.channel_exists(channelId)) {
+      if (await this.pool.channel_exists(hex(channelId))) {
         channel.key = channelKey;
       }
     }
@@ -159,7 +197,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
       if (!channel.key) continue;
       for (let k = channel.tokens.size ?? 0; ; k++) {
         const encSubchannel = await this.pool.get_subchannel_info(
-          compute_subchannel_key(channel.key, k)
+          hex(compute_subchannel_key(channel.key, k))
         );
         if (toBigInt(encSubchannel.salt) === 0n) break;
         const { token } = encryptions.decryptSubchannelInfo(encSubchannel, channel.key, k);
@@ -170,7 +208,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
       for (const [token, nonces] of channel.tokens) {
         let i;
         for (i = nonces.noteNonce; ; i++) {
-          const encAmount = await this.pool.get_note(compute_note_id(channel.key, token, i));
+          const encAmount = await this.pool.get_note(hex(compute_note_id(channel.key, token, i)));
           if (toBigInt(encAmount) === 0n) break;
         }
         nonces.noteNonce = i;
