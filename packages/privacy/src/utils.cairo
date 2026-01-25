@@ -12,10 +12,10 @@ use privacy::hashes::{
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr,
 };
-use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER};
+use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, TX_V3};
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
-use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_tx_info};
+use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_execution_info, get_tx_info};
 use starkware_utils::constants::TWO_POW_128;
 
 pub mod constants {
@@ -25,6 +25,7 @@ pub mod constants {
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
     pub const ERROR_WRAPPER: felt252 = 'PRIVACY_ERROR_WRAPPER';
+    pub const TX_V3: u64 = 3;
 }
 
 /// Returns the generator point.
@@ -235,11 +236,10 @@ pub(crate) impl StoragePathIntoFelt<
 }
 
 // TODO: Move to utils repo?
-// TODO: Consider change type of value_2 to u128.
 /// Packing two felt252 values into a single felt252 value.
 /// Equivalent to (value_1 << 128) | value_2.
 /// Assumes: value_1 is 120 bits, value_2 is 128 bits.
-pub(crate) fn packing(value_1: u128, value_2: felt252) -> felt252 {
+pub(crate) fn packing(value_1: u128, value_2: u128) -> felt252 {
     (value_1.into() * TWO_POW_128 + value_2.into())
         .try_into()
         .expect(internal_errors::PACK_OVERFLOW)
@@ -247,10 +247,9 @@ pub(crate) fn packing(value_1: u128, value_2: felt252) -> felt252 {
 
 
 // TODO: Move to utils repo?
-// TODO: Consider change type of value_2 to u128.
 /// Unpacking a single felt252 into two felt252 values (120 bits for value_1, 128 bits for value_2).
 /// Inverse of `packing`: `packed_value = value_1 * 2^128 + value_2`
-pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
+pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
     let packed_u256: u256 = packed_value.into();
     let value_1 = packed_u256 / TWO_POW_128;
     let value_2 = packed_u256 % TWO_POW_128;
@@ -260,6 +259,21 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
         value_1.try_into().expect(internal_errors::UNPACK1_OVERFLOW),
         value_2.try_into().expect(internal_errors::UNPACK2_OVERFLOW),
     )
+}
+
+pub(crate) fn assert_valid_execution_info() {
+    let execution_info = get_execution_info();
+    // Ensure that the current call is the first of the transaction,
+    // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
+    assert(execution_info.caller_address.is_zero(), errors::INVALID_CALLER);
+    let tx_info = execution_info.tx_info;
+    assert(tx_info.version.try_into().unwrap() >= TX_V3, errors::INVALID_TX_VERSION);
+    // Ensure that the effective fee of the transaction is zero; this is a sanity check,
+    // to prevent the execution of this code over Starknet.
+    assert(tx_info.tip.is_zero(), errors::NON_ZERO_TIP);
+    for resource_bounds in tx_info.resource_bounds {
+        assert(resource_bounds.max_price_per_unit.is_zero(), errors::NON_ZERO_RESOURCE_PRICE);
+    }
 }
 
 pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<(), Array<felt252>> {
