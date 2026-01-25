@@ -167,9 +167,9 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
     }
 }
 
-/// Input for the `WriteIfZero` action.
+/// Input for the `WriteOnce` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct WriteIfZeroInput {
+pub struct WriteOnceInput {
     /// The (base) storage address to write to.
     pub storage_address: felt252,
     /// The value to write, stored sequentially starting at the given storage address.
@@ -220,7 +220,7 @@ pub struct VerifyValueInput {
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ServerAction {
     /// Verify that a storage value is zero/empty and then write to it.
-    WriteIfZero: WriteIfZeroInput,
+    WriteOnce: WriteOnceInput,
     /// Append a `EncChannelInfo` value to `recipient_addr`'s vector in storage.
     AppendToVec: AppendToVecInput,
     /// Transfer tokens from a user to the contract (ERC20 transfer_from).
