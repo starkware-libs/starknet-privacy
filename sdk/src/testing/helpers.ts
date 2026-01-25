@@ -47,7 +47,7 @@ export function applyStateChanges(result: ExecuteResult): PrivateRegistry {
     hasCallCall: callAndProof.call && "call" in callAndProof.call,
     callCallType:
       callAndProof.call && "call" in callAndProof.call
-        ? typeof (callAndProof.call as any).call
+        ? typeof (callAndProof.call as Record<string, unknown>).call
         : "N/A",
   });
   if (
