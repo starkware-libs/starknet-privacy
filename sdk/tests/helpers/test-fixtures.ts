@@ -80,14 +80,14 @@ export async function setupSelfChannel(
   applyStateChanges(await user.build().register().execute());
   applyStateChanges(await user.build().setup(userAddress).execute());
 
-  let channel = user.discoverChannels(userAddress).channels.get(userAddress)!;
+  let channel = (await user.discoverChannels([userAddress])).channels.get(userAddress)!;
   const registry = createEmptyRegistry();
   registry.channels.set(userAddress, channel);
 
   applyStateChanges(await user.build({ registry }).with(token).setup(userAddress).execute());
 
   // Refresh channel to include token info
-  channel = user.discoverChannels(userAddress).channels.get(userAddress)!;
+  channel = (await user.discoverChannels([userAddress])).channels.get(userAddress)!;
   registry.channels.set(userAddress, channel);
 
   return registry;
@@ -107,14 +107,14 @@ export async function setupRecipientChannel(
   // Sender sets up channel to recipient
   applyStateChanges(await sender.build().setup(recipientAddress).execute());
 
-  let channel = sender.discoverChannels(recipientAddress).channels.get(recipientAddress)!;
+  let channel = (await sender.discoverChannels([recipientAddress])).channels.get(recipientAddress)!;
   const registry = createEmptyRegistry();
   registry.channels.set(recipientAddress, channel);
 
   applyStateChanges(await sender.build({ registry }).with(token).setup(recipientAddress).execute());
 
   // Refresh channel to include token info
-  channel = sender.discoverChannels(recipientAddress).channels.get(recipientAddress)!;
+  channel = (await sender.discoverChannels([recipientAddress])).channels.get(recipientAddress)!;
   registry.channels.set(recipientAddress, channel);
 
   return registry;
