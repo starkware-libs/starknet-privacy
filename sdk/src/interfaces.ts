@@ -86,6 +86,18 @@ export type PrivateInvocationResult = {
   readonly remainder?: Note;
 };
 
+export interface ViewingKeyProvider {
+  getViewingKey(): Promise<ViewingKey> | ViewingKey;
+}
+
+export type ProofProviderConfig = {
+  url: string;
+};
+
+export type DiscoveryProviderConfig = {
+  url: string;
+};
+
 export type PrivateTransfersConfig = {
   account: AccountInterface;
   viewingSigner: ViewingKey;
