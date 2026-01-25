@@ -112,10 +112,10 @@ pub struct WithdrawInput {
 
 
 // TODO: Gets a single random and generate from it new randoms for each action that needs a random.
+// TODO: Consider all randoms to be u128/120 bits.
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ClientAction {
-    // TODO: Consider renaming to SetKey/Register.
     /// Register a user with a viewing key, or replace the user's viewing key if already registered.
     SetViewingKey: SetViewingKeyInput,
     /// Open a new channel from the user to a recipient.
