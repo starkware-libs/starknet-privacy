@@ -14,7 +14,10 @@ use privacy::tests::utils_for_tests::{
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
 use privacy::{errors, events};
-use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
+use snforge_std::{
+    CheatSpan, EventSpyTrait, EventsFilterTrait, TokenTrait, cheat_tip, cheat_transaction_version,
+    map_entry_address, spy_events,
+};
 use starknet::VALIDATED;
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
@@ -3412,15 +3415,46 @@ fn test_compile_client_actions_assertions() {
     let note_2 = CreateNoteInput { index: 1, ..note_1 };
 
     // Catch INVALID_SIGNATURE.
-    let user_invalid = test.new_user_with_is_valid(is_valid: false);
-    let result = user_invalid.safe_compile_client_actions(client_actions: [].span());
+    let mut user_invalid = test.new_user_with_is_valid(is_valid: false);
+    let result = user_invalid
+        .safe_compile_client_actions(
+            client_actions: [
+                ClientAction::SetViewingKey(
+                    SetViewingKeyInput {
+                        private_key: user_invalid.private_key, random: user_invalid.get_random(),
+                    },
+                ),
+            ]
+                .span(),
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
 
     // TODO: Catch server errors.
 
     // Catch INVALID_CALLER.
-    let result = user.safe_compile_client_actions_without_cheat_caller(client_actions: [].span());
+    let result = user.safe_compile_client_actions_without_cheat(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLER);
+
+    // Catch INVALID_TX_VERSION.
+    user.privacy.cheat_zero_caller_address();
+    cheat_transaction_version(
+        contract_address: user.privacy.address,
+        version: Zero::zero(),
+        span: CheatSpan::TargetCalls(1),
+    );
+    let result = user.safe_compile_client_actions_without_cheat(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_TX_VERSION);
+
+    // Catch NOV_ZERO_TIP.
+    user.privacy.cheat_zero_caller_address();
+    cheat_tip(contract_address: user.privacy.address, tip: 1, span: CheatSpan::TargetCalls(1));
+    let result = user.safe_compile_client_actions_without_cheat(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_TIP);
+
+    // Catch NON_ZERO_RESOURCE_PRICE.
+    user.privacy.cheat_zero_caller_address();
+    let result = user.safe_compile_client_actions_without_cheat(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_RESOURCE_PRICE);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
