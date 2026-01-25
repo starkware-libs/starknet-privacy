@@ -95,3 +95,6 @@
 - After each `execute_actions` call, verify internal (privacy) balances.
 - Try to modularize flows, so we can share modules across different flows (i.e. merging notes, depositing to a single note).
 - Use test parameters to create multiple similar tests at once.
+
+# Set compliance public key
+- register+withdraw (enc with compliance pub key), set compliance pub key, register+withdraw, test its the right compliance key + right encryption (try to decrypt) for both before and after the set.
