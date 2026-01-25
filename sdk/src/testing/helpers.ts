@@ -41,15 +41,6 @@ export const Withdrawal = Symbol("Withdrawal");
  */
 export function applyStateChanges(result: ExecuteResult): PrivateRegistry {
   const { callAndProof } = result;
-  debugLog("applyStateChanges", "checking callAndProof.call", {
-    hasCall: !!callAndProof.call,
-    isObject: typeof callAndProof.call === "object",
-    hasCallCall: callAndProof.call && "call" in callAndProof.call,
-    callCallType:
-      callAndProof.call && "call" in callAndProof.call
-        ? typeof (callAndProof.call as Record<string, unknown>).call
-        : "N/A",
-  });
   if (
     callAndProof.call &&
     typeof callAndProof.call === "object" &&

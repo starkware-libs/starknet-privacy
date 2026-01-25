@@ -6,11 +6,12 @@ import type { Amount, Note, NoteId, StarknetAddressBigint, ViewingKey } from "..
 import { Channel, Witness } from "../interfaces.js";
 import { TokenChannel } from "../internal/channel.js";
 import type { BlockIdentifier } from "starknet";
-import { decryptChannelInfo } from "../utils/crypto.js";
+import { encryptions } from "../utils/encryptions.js";
 import { AddressMap } from "../utils/maps.js";
 import { assertViewingKey } from "../utils/validation.js";
 import type { PrivacyPool } from "./pool.js";
-import { hashes } from "../utils/hashes.js";
+import { compute_channel_key } from "../utils/hashes.js";
+import { toBigInt } from "../utils/crypto.js";
 import { debugLog } from "../utils/logging.js";
 import { AbstractDiscoveryProvider } from "../internal/abstract-discovery.js";
 import { NotesCursor, IncomingChannelCursor } from "../internal/channel.js";
@@ -35,7 +36,7 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
 
     debugLog("discovery", "discovering notes address", address, "channelCount:", channels.length);
     for (const encryptedChannel of channels) {
-      const channel = decryptChannelInfo(encryptedChannel, viewingKey);
+      const channel = encryptions.decryptChannelInfo(encryptedChannel, toBigInt(viewingKey));
       debugLog("discovery", "processing channel key:", channel.key, "sender:", channel.sender);
       const key = channel.key;
 
@@ -108,7 +109,12 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
         continue;
       }
       const publicKey = this.pool.getPublicKey(recipient);
-      const key = hashes.channelKey(address, viewingKey, recipient, publicKey);
+      const key = compute_channel_key(
+        address,
+        toBigInt(viewingKey),
+        recipient,
+        toBigInt(publicKey)
+      );
       if (!this.pool.doesChannelExist(key, address, recipient)) {
         result.set(recipient, new Channel(publicKey));
         continue;

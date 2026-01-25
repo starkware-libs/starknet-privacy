@@ -4,13 +4,9 @@
  */
 
 import type { Amount, NoteId, StarknetAddress } from "../interfaces.js";
-import { AddressMap } from "../utils/maps.js";
+import { AddressMap, toBigInt } from "../utils/index.js";
 import { assert } from "../utils/validation.js";
 import type { PrivacyPool } from "./pool.js";
-import { num } from "starknet";
-
-/** Normalize BigNumberish to bigint */
-const toBigInt = (value: StarknetAddress): bigint => num.toBigInt(value);
 
 /** Interface for any mock contract */
 export interface MockContract {

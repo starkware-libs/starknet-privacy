@@ -29,9 +29,7 @@ export {
   type ChannelInfo,
   type SymmetricEncryption,
 } from "./crypto.js";
-// Hash functions - both new snake_case API and deprecated hashes object
 export {
-  // New API (snake_case, matches Cairo 1:1)
   compute_channel_key,
   compute_channel_id,
   compute_subchannel_key,
@@ -44,6 +42,5 @@ export {
   compute_enc_address_hash,
   compute_enc_channel_key_hash,
   compute_enc_sender_addr_hash,
-  // Deprecated backwards-compatible API
-  hashes,
 } from "./hashes.js";
+export { encryptions, type EncSubchannelInfo, type SubchannelInfo } from "./encryptions.js";
