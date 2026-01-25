@@ -20,7 +20,7 @@ use privacy::interface::{
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
-    TokenBalances, TokenBalancesTrait,
+    ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
@@ -75,12 +75,11 @@ pub(crate) impl EncNoteIntoNoteImpl of Into<EncNote, Note> {
 #[generate_trait]
 pub(crate) impl EncNoteImpl of EncNoteTrait {
     fn to_server_action(self: @EncNote) -> ServerAction {
-        let storage_path = map_entry_address(
+        let storage_address = map_entry_address(
             map_selector: selector!("notes"), keys: [*self.id].span(),
         );
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: storage_path, value: (*self).into() },
-        )
+        let note: Note = (*self).into();
+        note.to_write_if_zero_action(:storage_address)
     }
 
     fn to_server_actions(self: @EncNote) -> Span<ServerAction> {
@@ -765,7 +764,7 @@ pub(crate) impl UserImpl of UserTrait {
                     storage_address: map_entry_address(
                         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
                     ),
-                    value: true.into(),
+                    value: [true.into()].span(),
                 },
             ),
             ServerAction::TransferTo(
@@ -923,7 +922,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                     storage_address: map_entry_address(
                         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
                     ),
-                    value: true.into(),
+                    value: [true.into()].span(),
                 },
             ),
             ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
@@ -969,7 +968,9 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             .execute_actions(
                 actions: array![
                     ServerAction::WriteIfZero(
-                        WriteIfZeroInput { storage_address: storage_path_felt, value: true.into() },
+                        WriteIfZeroInput {
+                            storage_address: storage_path_felt, value: [true.into()].span(),
+                        },
                     ),
                 ]
                     .span(),
