@@ -29,3 +29,4 @@ export {
 export { CallMockProofProvider } from "./proving.js";
 export { TracingRpcProvider, TracedRpcError, type DecodedError } from "./tracing-provider.js";
 export { ContractDiscoveryProvider } from "./contract-discovery.js";
+export { Devnet, type DevnetEnvironment } from "./devnet.js";
