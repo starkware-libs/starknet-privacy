@@ -710,6 +710,20 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
+    // Catch SALT_TOO_SMALL.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [use_note_input].span(),
+            notes_to_create: [CreateNoteInput { salt: 0, ..create_note_input }].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [use_note_input].span(),
+            notes_to_create: [CreateNoteInput { salt: 1, ..create_note_input }].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+
     // Catch SALT_EXCEEDS_120_BITS.
     let result = user_1
         .safe_transfer(
@@ -2065,6 +2079,7 @@ fn test_create_note_use_note_zero_amount() {
 }
 
 #[test]
+#[should_panic(expected: 'SALT_TOO_SMALL')]
 fn test_create_note_zero_salt() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
@@ -2078,10 +2093,24 @@ fn test_create_note_zero_salt() {
         );
     let note = user_1
         .new_note(recipient: user_2, :token_address, amount: 1, index: 0, salt: Zero::zero());
-    let actions = user_1.internal_create_note(:note);
-    let expected_enc_note = user_1
-        .compute_enc_note(recipient: user_2, :token_address, index: 0, amount: 1, salt: note.salt);
-    assert_eq!(actions, expected_enc_note.to_server_actions());
+    user_1.create_note(:note);
+}
+
+#[test]
+#[should_panic(expected: 'SALT_TOO_SMALL')]
+fn test_create_note_salt_too_small() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token_address = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1
+        .open_channel_with_token_e2e(
+            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+    let note = user_1.new_note(recipient: user_2, :token_address, amount: 1, index: 0, salt: 1);
+    user_1.create_note(:note);
 }
 
 #[test]
