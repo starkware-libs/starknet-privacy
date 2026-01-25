@@ -3,7 +3,7 @@
  */
 
 import type { CallAndProof, ExecuteResult, PrivateRegistry, Proof } from "../interfaces.js";
-import { StateCallback } from "./pool.js";
+import type { MockServerAction } from "./mock-server-action.js";
 import { debugLog } from "../utils/logging.js";
 
 // ============ Mock Helpers ============
@@ -17,13 +17,15 @@ export function createMockProof(overrides?: Partial<Proof>): Proof {
   };
 }
 
-export function createMockCallAndProof(callbacks?: StateCallback[]): CallAndProof {
+export function createMockCallAndProof(actions?: MockServerAction[]): CallAndProof {
   return {
     call: {
       contractAddress: "0x0",
       entrypoint: "execute_writes",
       calldata: [],
-      ...(typeof callbacks !== "undefined" ? { call: () => callbacks.map((cb) => cb()) } : {}),
+      ...(typeof actions !== "undefined"
+        ? { call: () => actions.map((action) => action.apply()) }
+        : {}),
     } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
     proof: createMockProof(),
   };

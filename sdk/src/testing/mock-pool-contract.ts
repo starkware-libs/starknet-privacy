@@ -1,9 +1,15 @@
 /**
- * Mock PrivacyPool implementation for testing.
- * Consumes ClientAction[] (the unwrapped action inputs from the compiler).
+ * MockPoolContract - Mock implementation of the privacy pool contract.
+ *
+ * This class provides:
+ * 1. Async view methods matching PrivacyPoolContract signatures (for ContractDiscoveryProvider)
+ * 2. Sync methods matching old PrivacyPool API (for MockDiscoveryProvider - to be removed in Branch 3)
+ * 3. execute_view() returns MockServerAction[] for state mutations
+ * 4. execute_actions() applies the mutations
+ * 5. snapshot()/restore() for validation pattern
  */
 
-import type { Amount, Note, Open, PrivateRegistry, StarknetAddressBigint } from "../interfaces.js";
+import type { Amount, Note, Open, StarknetAddressBigint } from "../interfaces.js";
 import { Witness } from "../interfaces.js";
 import { Channel } from "../internal/channel.js";
 import {
@@ -35,6 +41,7 @@ import {
 } from "../utils/hashes.js";
 import { ClientAction } from "../internal/client-actions.js";
 import { debugLog, hex } from "../utils/logging.js";
+import type { MockServerAction } from "./mock-server-action.js";
 
 type OpenNote = {
   r: bigint;
@@ -47,11 +54,9 @@ type TrackingState = {
   notes: AddressMap<Map<bigint, Note>>;
 };
 
-/** Snapshot of PrivacyPool state */
-/** Encrypted note: either packed encrypted amount or open note */
 type EncryptedNote = { packed: bigint; token: bigint; index: number };
 
-export type PrivacyPoolSnapshot = {
+export type MockPoolContractSnapshot = {
   publicKeys: Map<bigint, PublicKey>;
   channels: Map<string, EncChannelInfo[]>;
   channelIds: Set<Hash>;
@@ -77,11 +82,7 @@ class ChannelsMap extends AdvancedMap<
   }
 }
 
-/** Callback that performs a state change */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type StateCallback = () => any;
-
-export class PrivacyPool implements MockContract {
+export class MockPoolContract implements MockContract {
   private publicKeys = new AddressMap<PublicKey>();
   private channels = new ChannelsMap();
   private channelIds = new Set<Hash>();
@@ -89,12 +90,10 @@ export class PrivacyPool implements MockContract {
   private subchannelIds = new Set<Hash>();
   private notes = new Map<Hash, EncryptedNote | OpenNote>();
   private nullifiers = new Set<Hash>();
-  // Outgoing channels: key = h(sender_addr, sender_private_key, s) -> EncOutgoingChannelInfo
   private outgoingChannels = new Map<bigint, EncOutgoingChannelInfo>();
-  // Track sequential counter s per sender for outgoing channels
   private outgoingChannelCounters = new AddressMap<number>(() => 0);
 
-  // state tracking, not part of the official spec
+  // State tracking (not part of contract state, but needed for compiler/testing)
   private tracking = new AddressMap<TrackingState>(() => ({
     channels: new AddressMap<Channel>(),
     notes: new AddressMap<Map<bigint, Note>>(() => new Map<bigint, Note>()),
@@ -106,105 +105,57 @@ export class PrivacyPool implements MockContract {
   constructor(
     public address: bigint,
     private contracts: MockContracts,
-    private validateExecutionBalances: boolean = true
+    private validateBalances: boolean = true
   ) {}
 
-  // ============ Snapshot/Restore ============
+  // ============ Async View Methods (matching PrivacyPoolContract) ============
 
-  /** Create a snapshot of the current pool state */
-  snapshot(): PrivacyPoolSnapshot {
-    // Deep copy channels arrays to prevent mutation affecting snapshot
-    const channelsSnapshot = new Map<string, EncChannelInfo[]>();
-    for (const [key, arr] of this.channels.entries()) {
-      channelsSnapshot.set(key, [...arr]);
-    }
-
-    // Deep copy notes objects to prevent mutation affecting snapshot
-    const notesSnapshot = new Map<Hash, EncryptedNote | OpenNote>();
-    for (const [key, note] of this.notes) {
-      notesSnapshot.set(key, { ...note });
-    }
-
-    // Deep copy tracking data
-    const trackingSnapshot = new Map<bigint, TrackingState>();
-
-    for (const [user, data] of this.tracking.entries()) {
-      const channelsCopy = new AddressMap<Channel>();
-      for (const [addr, channel] of data.channels.entries()) {
-        channelsCopy.set(addr, channel.clone());
-      }
-
-      const notesCopy = new AddressMap<Map<bigint, Note>>(() => new Map<bigint, Note>());
-      for (const [token, notesMap] of data.notes.entries()) {
-        notesCopy.set(token, new Map<bigint, Note>(notesMap.entries()));
-      }
-
-      trackingSnapshot.set(user, {
-        channels: channelsCopy,
-        notes: notesCopy,
-      });
-    }
-
-    return {
-      publicKeys: new Map(this.publicKeys.entries()),
-      channels: channelsSnapshot,
-      channelIds: new Set(this.channelIds),
-      subchannels: new Map(this.subchannels),
-      subchannelIds: new Set(this.subchannelIds),
-      notes: notesSnapshot,
-      nullifiers: new Set(this.nullifiers),
-      outgoingChannels: new Map(this.outgoingChannels),
-      outgoingChannelCounters: new Map(this.outgoingChannelCounters.entries()),
-      tracking: trackingSnapshot,
-    };
+  async get_public_key(userAddr: string): Promise<bigint> {
+    const addr = BigInt(userAddr);
+    return this.publicKeys.has(addr) ? toBigInt(this.publicKeys.get(addr)!) : 0n;
   }
 
-  /** Restore pool state from a snapshot */
-  restore(snapshot: unknown): void {
-    const s = snapshot as PrivacyPoolSnapshot;
-    // AdvancedMaps need clear + refill (can't replace internal map)
-    this.publicKeys.clear();
-    for (const [k, v] of s.publicKeys) this.publicKeys.set(k, v);
-
-    this.channels.clear();
-    for (const [strKey, value] of s.channels) {
-      const [address, publicKey] = strKey.split(":");
-      this.channels.set({ address: BigInt(address), publicKey: BigInt(publicKey) }, value);
-    }
-
-    // Regular Maps/Sets can be replaced directly
-    this.channelIds = new Set(s.channelIds);
-    this.subchannels = new Map(s.subchannels);
-    this.subchannelIds = new Set(s.subchannelIds);
-    this.notes = new Map(s.notes);
-    this.nullifiers = new Set(s.nullifiers);
-    this.outgoingChannels = new Map(s.outgoingChannels);
-
-    // Restore outgoing channel counters (AddressMap)
-    this.outgoingChannelCounters.clear();
-    for (const [k, v] of s.outgoingChannelCounters) this.outgoingChannelCounters.set(k, v);
-
-    // Restore tracking by deep cloning the snapshot's structure
-    this.tracking.clear();
-    for (const [user, data] of s.tracking) {
-      const channelsMap = new AddressMap<Channel>();
-      for (const [addr, channel] of data.channels) {
-        channelsMap.set(addr, channel.clone());
-      }
-
-      const notesMap = new AddressMap<Map<bigint, Note>>(() => new Map<bigint, Note>());
-      for (const [token, notes] of data.notes) {
-        notesMap.set(token, new Map(notes.entries()));
-      }
-
-      this.tracking.set(user, {
-        channels: channelsMap,
-        notes: notesMap,
-      });
-    }
+  async get_num_of_channels(recipientAddr: string): Promise<bigint> {
+    const addr = BigInt(recipientAddr);
+    if (!this.publicKeys.has(addr)) return 0n;
+    const pk = this.publicKeys.get(addr)!;
+    return BigInt(this.channels.get({ address: addr, publicKey: pk })?.length ?? 0);
   }
 
-  // ============ Public Methods ============
+  async get_channel_info(recipientAddr: string, index: number): Promise<EncChannelInfo> {
+    const addr = BigInt(recipientAddr);
+    const pk = this.publicKeys.get(addr)!;
+    const channelList = this.channels.get({ address: addr, publicKey: pk }) ?? [];
+    return channelList[index] ?? { ephemeral_pubkey: 0n, enc_channel_key: 0n, enc_sender_addr: 0n };
+  }
+
+  async get_subchannel_info(subchannelKey: string): Promise<EncSubchannelInfo> {
+    const key = BigInt(subchannelKey);
+    return this.subchannels.get(key) ?? { salt: 0n, enc_token: 0n };
+  }
+
+  async get_outgoing_channel_info(outgoingChannelKey: string): Promise<EncOutgoingChannelInfo> {
+    const key = BigInt(outgoingChannelKey);
+    return this.outgoingChannels.get(key) ?? { salt: 0n, enc_recipient_addr: 0n };
+  }
+
+  async get_note(noteId: string): Promise<bigint> {
+    const id = BigInt(noteId);
+    const note = this.notes.get(id);
+    if (!note) return 0n;
+    if ("packed" in note) return note.packed;
+    return note.amount as bigint; // For open notes, return amount directly
+  }
+
+  async channel_exists(channelId: string): Promise<boolean> {
+    return this.channelIds.has(BigInt(channelId));
+  }
+
+  async nullifier_exists(nullifier: string): Promise<boolean> {
+    return this.nullifiers.has(BigInt(nullifier));
+  }
+
+  // ============ Sync Methods (for MockDiscoveryProvider compatibility) ============
 
   isRegistered(address: bigint): boolean {
     return this.publicKeys.has(address);
@@ -217,14 +168,7 @@ export class PrivacyPool implements MockContract {
 
   getChannels(address: bigint): EncChannelInfo[] {
     const pk = this.getPublicKey(address);
-    const result = this.channels.get({ address, publicKey: pk })!;
-    debugLog("pool", "getChannels debug", {
-      address: hex(address),
-      publicKey: hex(pk),
-      resultLength: result?.length ?? 0,
-      allKeys: [...this.channels.keys()],
-    });
-    return result;
+    return this.channels.get({ address, publicKey: pk })!;
   }
 
   doesChannelExist(channelKey: bigint, from: bigint, to: bigint): boolean {
@@ -238,12 +182,6 @@ export class PrivacyPool implements MockContract {
     const encrypted = this.subchannels.get(subchannelKey);
     if (!encrypted) return false;
     return encryptions.decryptSubchannelInfo(encrypted, channelKey, nonce).token;
-  }
-
-  doesSubchannelExist(channelKey: bigint, address: bigint, token: bigint): boolean {
-    return this.subchannelIds.has(
-      compute_subchannel_id(channelKey, address, toBigInt(this.getPublicKey(address)), token)
-    );
   }
 
   getNote(channelKey: ChannelKey, index: number, token: bigint) {
@@ -260,12 +198,7 @@ export class PrivacyPool implements MockContract {
       packed.token,
       packed.index
     );
-    return {
-      id: noteId,
-      amount,
-      r: salt,
-      open: false,
-    };
+    return { id: noteId, amount, r: salt, open: false };
   }
 
   hasNoteById(noteId: bigint) {
@@ -286,131 +219,60 @@ export class PrivacyPool implements MockContract {
     return this.tracking.get(sender)?.channels.get(recipient);
   }
 
-  openDeposit(noteId: bigint, token: bigint, amount: Amount): void {
-    this.fillOpenNote(noteId, token, amount);
-    this.deposit(this.address, token, amount);
-  }
+  // ============ Execute Methods ============
 
   /**
-   * Execute client actions. Actions must be in the correct order:
-   * 1. SetViewingKey (optional, at most 1)
-   * 2. OpenChannel (any number)
-   * 3. OpenSubchannel (any number)
-   * 4. Deposit (any number)
-   * 5. UseNote (any number)
-   * 6. CreateNote (any number)
-   * 7. Withdraw (any number)
-   *
-   * Returns callbacks that can replay the state changes.
-   * The pool state is restored after validation, so the callbacks
-   * must be invoked to actually apply the changes.
-   *
-   * @param sender The sender's address
-   * @param clientActions The array of client action inputs from the compiler
-   * @returns Array of callbacks that perform the state changes
+   * Execute client actions and return MockServerAction[] that can be replayed.
+   * Actions are applied immediately (like the original PrivacyPool), except
+   * FollowupCall which is only applied during replay.
+   * Validates token totals if validateBalances is true.
    */
-  execute(sender: bigint, ...clientActions: ClientAction[]): StateCallback[] {
-    // Validate token totals before mutating state
-    if (this.validateExecutionBalances) {
+  execute_view(sender: bigint, clientActions: ClientAction[]): MockServerAction[] {
+    if (this.validateBalances) {
       this.validateTokenTotals(sender, clientActions);
     }
 
-    const callbacks: StateCallback[] = [];
+    const serverActions: MockServerAction[] = [];
 
-    // Process actions in order
     for (const action of clientActions) {
-      let callback: StateCallback | undefined = undefined;
-
-      switch (action.type) {
-        case "SetViewingKey":
-          callback = this.register(sender, action.input.privateKey, action.input.random);
-          break;
-
-        case "OpenChannel":
-          callback = this.setChannel(
-            sender,
-            action.input.senderPrivateKey,
-            action.input.recipientAddr,
-            action.input.recipientPublicKey,
-            action.input.random
-          );
-          break;
-
-        case "OpenSubchannel":
-          callback = this.setToken(
-            sender,
-            action.input.recipientAddr,
-            action.input.recipientPublicKey,
-            action.input.channelKey,
-            action.input.token,
-            action.input.index,
-            action.input.random
-          );
-          break;
-
-        case "Deposit":
-          callback = this.deposit(sender, action.input.token, action.input.amount);
-          if (action.input.noteId !== undefined) {
-            const noteId = action.input.noteId;
-            const token = action.input.token;
-            const amount = action.input.amount;
-            callback = () => {
-              this.openDeposit(noteId, token, amount);
-            };
-          }
-          break;
-
-        case "UseNote":
-          callback = this.useNote(
-            sender,
-            action.input.ownerPrivateKey,
-            action.input.token,
-            action.input.channelKey,
-            action.input.noteIndex
-          );
-          break;
-
-        case "CreateNote":
-          callback = this.createNote(
-            sender,
-            action.input.senderPrivateKey,
-            action.input.recipientAddr,
-            action.input.recipientPublicKey,
-            action.input.token,
-            action.input.index,
-            action.input.amount,
-            action.input.random
-          );
-          break;
-
-        case "Withdraw":
-          callback = this.withdraw(
-            action.input.token,
-            action.input.withdrawalTarget,
-            action.input.amount
-          );
-          break;
-
-        case "FollowupCall":
-          callbacks.push(() => {
-            this.contracts.call(
-              action.input.call.contractAddress,
-              action.input.call.entrypoint,
-              ...(action.input.call.calldata ? (action.input.call.calldata as unknown[]) : [])
-            );
-          });
-          break;
-      }
-
-      // Execute callback and store it
-      if (callback) {
-        callback();
-        callbacks.push(callback);
+      const actions = this.compileAction(sender, action);
+      // Apply each action immediately (required for assertions in subsequent actions)
+      // Exception: FollowupCall is deferred - only applied during replay
+      for (const serverAction of actions) {
+        if (serverAction.type !== "FollowupCall") {
+          serverAction.apply();
+        }
+        serverActions.push(serverAction);
       }
     }
 
-    return callbacks;
+    return serverActions;
   }
+
+  /**
+   * Apply server actions to mutate state.
+   */
+  execute_actions(actions: MockServerAction[]): void {
+    for (const action of actions) {
+      action.apply();
+    }
+  }
+
+  /**
+   * Execute client actions immediately (for backward compatibility).
+   * Returns MockServerAction[] that have already been applied.
+   */
+  execute(sender: bigint, ...clientActions: ClientAction[]): MockServerAction[] {
+    return this.execute_view(sender, clientActions);
+  }
+
+  openDeposit(noteId: bigint, token: bigint, amount: Amount): void {
+    this.fillOpenNote(noteId, token, amount);
+    // Note: The original PrivacyPool doesn't actually execute the deposit transfer here.
+    // The swap helper is expected to have already handled the token transfer.
+  }
+
+  // ============ Setup Methods (for compiler) ============
 
   setupChannel(
     userAddress: bigint,
@@ -424,9 +286,8 @@ export class PrivacyPool implements MockContract {
       .channels.set(address, new Channel(channel.publicKey, channel.key));
 
     if (!channel.key) return;
-    this.setChannel(userAddress, viewingKey, address, channel.publicKey, generateRandom())();
+    this.setChannel(userAddress, viewingKey, address, channel.publicKey, generateRandom()).apply();
 
-    // Use tokenNonce from the channel object
     for (const [token, nonces] of channel.tokens.entries()) {
       this.setToken(
         userAddress,
@@ -436,9 +297,8 @@ export class PrivacyPool implements MockContract {
         token,
         nonces.tokenNonce,
         generateRandom()
-      )();
+      ).apply();
 
-      // create an open note for the previous note nonce to pass assertion on creation of new one
       if (nonces.noteNonce > 0) {
         this.notes.set(compute_note_id(channel.key, token, nonces.noteNonce - 1), {
           r: 1n,
@@ -447,7 +307,6 @@ export class PrivacyPool implements MockContract {
         });
       }
 
-      // Restore the nonces
       this.tracking.get(userAddress)!.channels.get(address)!.tokens.set(token, nonces);
     }
   }
@@ -485,7 +344,10 @@ export class PrivacyPool implements MockContract {
       .set(note.id as bigint, note);
   }
 
-  updateRegistry(userAddress: bigint, registry: PrivateRegistry): PrivateRegistry {
+  updateRegistry(
+    userAddress: bigint,
+    registry: { channels: AddressMap<Channel>; notes: AddressMap<Note[]> }
+  ) {
     for (const [address, channel] of this.tracking.get(userAddress)!.channels.entries()) {
       registry.channels.set(address, channel);
     }
@@ -495,28 +357,188 @@ export class PrivacyPool implements MockContract {
     return registry;
   }
 
+  // ============ Snapshot/Restore ============
+
+  snapshot(): MockPoolContractSnapshot {
+    const channelsSnapshot = new Map<string, EncChannelInfo[]>();
+    for (const [key, arr] of this.channels.entries()) {
+      channelsSnapshot.set(key, [...arr]);
+    }
+
+    const notesSnapshot = new Map<Hash, EncryptedNote | OpenNote>();
+    for (const [key, note] of this.notes) {
+      notesSnapshot.set(key, { ...note });
+    }
+
+    const trackingSnapshot = new Map<bigint, TrackingState>();
+    for (const [user, data] of this.tracking.entries()) {
+      const channelsCopy = new AddressMap<Channel>();
+      for (const [addr, channel] of data.channels.entries()) {
+        channelsCopy.set(addr, channel.clone());
+      }
+      const notesCopy = new AddressMap<Map<bigint, Note>>(() => new Map<bigint, Note>());
+      for (const [token, notesMap] of data.notes.entries()) {
+        notesCopy.set(token, new Map<bigint, Note>(notesMap.entries()));
+      }
+      trackingSnapshot.set(user, { channels: channelsCopy, notes: notesCopy });
+    }
+
+    return {
+      publicKeys: new Map(this.publicKeys.entries()),
+      channels: channelsSnapshot,
+      channelIds: new Set(this.channelIds),
+      subchannels: new Map(this.subchannels),
+      subchannelIds: new Set(this.subchannelIds),
+      notes: notesSnapshot,
+      nullifiers: new Set(this.nullifiers),
+      outgoingChannels: new Map(this.outgoingChannels),
+      outgoingChannelCounters: new Map(this.outgoingChannelCounters.entries()),
+      tracking: trackingSnapshot,
+    };
+  }
+
+  restore(snapshot: unknown): void {
+    const s = snapshot as MockPoolContractSnapshot;
+
+    this.publicKeys.clear();
+    for (const [k, v] of s.publicKeys) this.publicKeys.set(k, v);
+
+    this.channels.clear();
+    for (const [strKey, value] of s.channels) {
+      const [address, publicKey] = strKey.split(":");
+      this.channels.set({ address: BigInt(address), publicKey: BigInt(publicKey) }, value);
+    }
+
+    this.channelIds = new Set(s.channelIds);
+    this.subchannels = new Map(s.subchannels);
+    this.subchannelIds = new Set(s.subchannelIds);
+    this.notes = new Map(s.notes);
+    this.nullifiers = new Set(s.nullifiers);
+    this.outgoingChannels = new Map(s.outgoingChannels);
+
+    this.outgoingChannelCounters.clear();
+    for (const [k, v] of s.outgoingChannelCounters) this.outgoingChannelCounters.set(k, v);
+
+    this.tracking.clear();
+    for (const [user, data] of s.tracking) {
+      const channelsMap = new AddressMap<Channel>();
+      for (const [addr, channel] of data.channels) {
+        channelsMap.set(addr, channel.clone());
+      }
+      const notesMap = new AddressMap<Map<bigint, Note>>(() => new Map<bigint, Note>());
+      for (const [token, notes] of data.notes) {
+        notesMap.set(token, new Map(notes.entries()));
+      }
+      this.tracking.set(user, { channels: channelsMap, notes: notesMap });
+    }
+  }
+
   // ============ Private Methods ============
 
   private assertRegistered(address: bigint): void {
-    debugLog(
-      "pool",
-      "assertRegistered",
-      hex(address),
-      "has?",
-      this.publicKeys.has(address),
-      "keys:",
-      [...this.publicKeys.keys()].map(hex)
-    );
     if (!this.publicKeys.has(address)) {
       throw new Error(`Address ${hex(address)} is not registered`);
     }
   }
 
-  private register(address: bigint, privateKey: ViewingKey, _random: bigint): StateCallback {
+  private compileAction(sender: bigint, action: ClientAction): MockServerAction[] {
+    switch (action.type) {
+      case "SetViewingKey":
+        return [this.register(sender, action.input.privateKey, action.input.random)];
+
+      case "OpenChannel":
+        return [
+          this.setChannel(
+            sender,
+            action.input.senderPrivateKey,
+            action.input.recipientAddr,
+            action.input.recipientPublicKey,
+            action.input.random
+          ),
+        ];
+
+      case "OpenSubchannel":
+        return [
+          this.setToken(
+            sender,
+            action.input.recipientAddr,
+            action.input.recipientPublicKey,
+            action.input.channelKey,
+            action.input.token,
+            action.input.index,
+            action.input.random
+          ),
+        ];
+
+      case "Deposit": {
+        if (action.input.noteId !== undefined) {
+          const noteId = action.input.noteId;
+          const token = action.input.token;
+          const amount = action.input.amount;
+          return [
+            {
+              type: "OpenDeposit",
+              apply: () => this.openDeposit(noteId, token, amount),
+            },
+          ];
+        }
+        return [this.deposit(sender, action.input.token, action.input.amount)];
+      }
+
+      case "UseNote":
+        return [
+          this.useNote(
+            sender,
+            action.input.ownerPrivateKey,
+            action.input.token,
+            action.input.channelKey,
+            action.input.noteIndex
+          ),
+        ];
+
+      case "CreateNote":
+        return [
+          this.createNote(
+            sender,
+            action.input.senderPrivateKey,
+            action.input.recipientAddr,
+            action.input.recipientPublicKey,
+            action.input.token,
+            action.input.index,
+            action.input.amount,
+            action.input.random
+          ),
+        ];
+
+      case "Withdraw":
+        return [
+          this.withdraw(action.input.token, action.input.withdrawalTarget, action.input.amount),
+        ];
+
+      case "FollowupCall":
+        return [
+          {
+            type: "FollowupCall",
+            apply: () => {
+              this.contracts.call(
+                action.input.call.contractAddress,
+                action.input.call.entrypoint,
+                ...(action.input.call.calldata ? (action.input.call.calldata as unknown[]) : [])
+              );
+            },
+          },
+        ];
+    }
+  }
+
+  private register(address: bigint, privateKey: ViewingKey, _random: bigint): MockServerAction {
     const publicKey = derivePublicKey(privateKey);
-    return () => {
-      this.publicKeys.set(address, publicKey);
-      this.tracking.get(address)!.channels.set(address, new Channel(publicKey));
+    return {
+      type: "SetViewingKey",
+      apply: () => {
+        this.publicKeys.set(address, publicKey);
+        this.tracking.get(address)!.channels.set(address, new Channel(publicKey));
+      },
     };
   }
 
@@ -526,7 +548,7 @@ export class PrivacyPool implements MockContract {
     to: bigint,
     toPublicKey: PublicKey,
     random: bigint
-  ): StateCallback {
+  ): MockServerAction {
     this.assertRegistered(from);
     const channelKey = compute_channel_key(
       from,
@@ -541,9 +563,7 @@ export class PrivacyPool implements MockContract {
       from
     );
 
-    // Outgoing channel info for sender discovery
     const s = this.outgoingChannelCounters.get(from)!;
-    // Verify sequential check: s = 0 or previous outgoing channel exists
     if (s > 0) {
       const prevOutgoingChannelKey = compute_outgoing_channel_key(
         from,
@@ -565,20 +585,15 @@ export class PrivacyPool implements MockContract {
       outgoingSalt
     );
 
-    return () => {
-      debugLog("pool.callback", "setChannel callback executing from:", hex(from), "to:", hex(to));
-      this.tracking.get(from)!.channels.get(to, () => new Channel(toPublicKey))!.key = channelKey;
-      this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
-      this.channelIds.add(compute_channel_id(channelKey, from, to, toBigInt(toPublicKey)));
-
-      // Store outgoing channel info
-      this.outgoingChannels.set(outgoingChannelKey, encOutgoingChannelInfo);
-      this.outgoingChannelCounters.set(from, s + 1);
-
-      debugLog("pool.callback", "channels after setChannel", {
-        to: hex(to),
-        channelsLength: this.channels.get({ address: to, publicKey: toPublicKey })!.length,
-      });
+    return {
+      type: "OpenChannel",
+      apply: () => {
+        this.tracking.get(from)!.channels.get(to, () => new Channel(toPublicKey))!.key = channelKey;
+        this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
+        this.channelIds.add(compute_channel_id(channelKey, from, to, toBigInt(toPublicKey)));
+        this.outgoingChannels.set(outgoingChannelKey, encOutgoingChannelInfo);
+        this.outgoingChannelCounters.set(from, s + 1);
+      },
     };
   }
 
@@ -590,10 +605,9 @@ export class PrivacyPool implements MockContract {
     token: bigint,
     index: number,
     random: bigint
-  ): StateCallback {
+  ): MockServerAction {
     this.assertRegistered(from);
 
-    debugLog("pool", "setToken", { from, to, toPublicKey, channelKey, token, index, random });
     assert(
       this.channelIds.has(compute_channel_id(channelKey, from, to, toBigInt(toPublicKey))),
       () => `Channel does not exist between ${from} and ${to}`
@@ -607,7 +621,6 @@ export class PrivacyPool implements MockContract {
     const subchannelKey = compute_subchannel_key(channelKey, index);
     assert(!this.subchannels.has(subchannelKey), () => `Token ${hex(token)} already exists`);
 
-    // Verify no other subchannel exists for this token in the channel
     const userChannel = this.tracking.get(from)!.channels.get(to)!;
     assert(
       !userChannel.tokens.has(token),
@@ -625,28 +638,26 @@ export class PrivacyPool implements MockContract {
       random
     );
 
-    return () => {
-      assert(
-        !this.subchannelIds.has(subchannelId),
-        () => `Subchannel ${hex(subchannelId)} already exists`
-      );
-      this.subchannels.set(subchannelKey, encryptedSubchannelInfo);
-      this.subchannelIds.add(subchannelId);
-
-      const userChannel = this.tracking.get(from)!.channels.get(to)!;
-      // this method may run from setupToken, so the channel is already set
-      if (!userChannel.tokens.has(token)) {
-        userChannel.tokens.set(token, {
-          tokenNonce: index,
-          noteNonce: 0,
-        });
-      } else {
+    return {
+      type: "OpenSubchannel",
+      apply: () => {
         assert(
-          userChannel.tokens.get(token)!.tokenNonce == index,
-          () =>
-            `Channel with ${to}: Token ${token} nonce mismatch between the user channel and arguments ${userChannel.tokens.get(token)!.tokenNonce} != ${index}`
+          !this.subchannelIds.has(subchannelId),
+          () => `Subchannel ${hex(subchannelId)} already exists`
         );
-      }
+        this.subchannels.set(subchannelKey, encryptedSubchannelInfo);
+        this.subchannelIds.add(subchannelId);
+
+        const userChannel = this.tracking.get(from)!.channels.get(to)!;
+        if (!userChannel.tokens.has(token)) {
+          userChannel.tokens.set(token, { tokenNonce: index, noteNonce: 0 });
+        } else {
+          assert(
+            userChannel.tokens.get(token)!.tokenNonce == index,
+            () => `Token ${token} nonce mismatch`
+          );
+        }
+      },
     };
   }
 
@@ -656,7 +667,7 @@ export class PrivacyPool implements MockContract {
     token: bigint,
     channelKey: Hash,
     noteIndex: number
-  ): StateCallback {
+  ): MockServerAction {
     const ownerPublicKey = this.getPublicKey(owner);
     assert(
       this.subchannelIds.has(
@@ -671,20 +682,16 @@ export class PrivacyPool implements MockContract {
     const nullifier = compute_nullifier(channelKey, token, noteIndex, toBigInt(ownerPrivateKey));
     assert(!this.nullifiers.has(nullifier), () => `Nullifier ${nullifier} already exists`);
 
-    return () => {
-      debugLog("pool.callback", "useNote callback - adding nullifier", {
-        nullifier: hex(nullifier),
-        nullifiersSize: this.nullifiers.size,
-      });
-      this.tracking.get(owner)!.notes.get(token)!.delete(noteId);
-      this.nullifiers.add(nullifier);
-      debugLog("pool.callback", "useNote callback - after add", {
-        nullifiersSize: this.nullifiers.size,
-      });
+    return {
+      type: "UseNote",
+      apply: () => {
+        this.tracking.get(owner)!.notes.get(token)!.delete(noteId);
+        this.nullifiers.add(nullifier);
+      },
     };
   }
 
-  createNote(
+  private createNote(
     sender: bigint,
     senderPrivateKey: ViewingKey,
     to: bigint,
@@ -693,7 +700,7 @@ export class PrivacyPool implements MockContract {
     index: number,
     amount: Amount | Open,
     random: bigint
-  ): StateCallback {
+  ): MockServerAction {
     const channelKey = compute_channel_key(
       sender,
       toBigInt(senderPrivateKey),
@@ -709,7 +716,6 @@ export class PrivacyPool implements MockContract {
     );
 
     const noteId = compute_note_id(channelKey, token, index);
-
     assert(!this.notes.has(noteId), () => `Note ${noteId} already exists`);
 
     const noteData: EncryptedNote | OpenNote = isOpen(amount)
@@ -720,33 +726,39 @@ export class PrivacyPool implements MockContract {
           index,
         };
 
-    return () => {
-      this.tracking.get(sender)!.channels.get(to)!.incrementNoteNonce(token);
-      this.tracking
-        .get(to)!
-        .notes.get(token)!
-        .set(noteId, {
-          id: noteId,
-          amount: amount as bigint,
-          witness: { channelKey, nonce: index, r: random },
-          sender: sender,
-        });
-      this.notes.set(noteId, noteData);
+    return {
+      type: "CreateNote",
+      apply: () => {
+        this.tracking.get(sender)!.channels.get(to)!.incrementNoteNonce(token);
+        this.tracking
+          .get(to)!
+          .notes.get(token)!
+          .set(noteId, {
+            id: noteId,
+            amount: amount as bigint,
+            witness: { channelKey, nonce: index, r: random },
+            sender: sender,
+          });
+        this.notes.set(noteId, noteData);
+      },
     };
   }
 
-  private deposit(from: bigint, token: bigint, amount: Amount): StateCallback {
-    return () => this.contracts.get(token).transfer(from, this.address, amount);
+  private deposit(from: bigint, token: bigint, amount: Amount): MockServerAction {
+    return {
+      type: "Deposit",
+      apply: () => this.contracts.get(token).transfer(from, this.address, amount),
+    };
   }
 
-  private withdraw(token: bigint, recipient: bigint, amount: Amount): StateCallback {
-    return () => this.contracts.get(token).transfer(this.address, recipient, amount);
+  private withdraw(token: bigint, recipient: bigint, amount: Amount): MockServerAction {
+    return {
+      type: "Withdraw",
+      apply: () => this.contracts.get(token).transfer(this.address, recipient, amount),
+    };
   }
 
-  /**
-   * Fill an open note with an amount (for deposits to open notes).
-   */
-  fillOpenNote(noteId: bigint, token: bigint, amount: Amount): void {
+  private fillOpenNote(noteId: bigint, token: bigint, amount: Amount): void {
     const note = this.notes.get(noteId)! as OpenNote;
     assert(note, () => `Note ${hex(noteId)} does not exist`);
     assert(note.r == 1n, () => `Note ${hex(noteId)} is not open`);
@@ -771,20 +783,16 @@ export class PrivacyPool implements MockContract {
     for (const action of clientActions) {
       switch (action.type) {
         case "Deposit":
-          // Validate amount is non-negative
           assert(
             action.input.amount >= 0n,
             () => `Deposit amount must be non-negative: ${action.input.amount}`
           );
-          // If depositing to a specific noteId (open note), it doesn't affect running total
-          // as it's a direct fill, not unallocated funds.
           if (!("noteId" in action.input) || action.input.noteId === undefined) {
             updateTotal(action.input.token, action.input.amount);
           }
           break;
 
         case "UseNote": {
-          // Using a note increases available balance
           const noteData = this.getNote(
             action.input.channelKey,
             action.input.noteIndex,
@@ -797,7 +805,6 @@ export class PrivacyPool implements MockContract {
         }
 
         case "CreateNote": {
-          // Creating a note decreases available balance (0 for open notes)
           const amount = action.input.amount;
           if (!isOpen(amount)) {
             assert(amount >= 0n, () => `CreateNote amount must be non-negative: ${amount}`);
@@ -807,26 +814,19 @@ export class PrivacyPool implements MockContract {
         }
 
         case "Withdraw":
-          // Validate amount is non-negative
           assert(
             action.input.amount >= 0n,
             () => `Withdraw amount must be non-negative: ${action.input.amount}`
           );
-          // Withdrawals decrease available balance
           updateTotal(action.input.token, -action.input.amount);
           break;
 
         default:
-          // Other actions don't affect token totals
           break;
       }
     }
 
-    // Validate all totals end at 0
     for (const [token, total] of runningTotals.entries()) {
-      if (total !== 0n) {
-        debugLog("pool", "validateTokenTotals", hex(token), clientActions);
-      }
       assert(total === 0n, () => `Final total for token ${hex(token)} is ${total}, expected 0`);
     }
   }
