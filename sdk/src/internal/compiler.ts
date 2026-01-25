@@ -276,7 +276,9 @@ export class ActionCompiler {
             senderPrivateKey: this.userViewingKey,
             recipientAddr: action.recipient,
             recipientPublicKey: channel.publicKey as bigint,
+            index: seenRecipients.size - 1, // TODO: track outgoing channel index properly
             random: generateRandom(),
+            salt: generateRandom(),
           },
         } as const; // typescipt magic
         execute(input, clientActions.openChannels);
@@ -406,6 +408,7 @@ export class ActionCompiler {
             withdrawalTarget: action.recipient,
             token: action.token,
             amount: action.amount,
+            random: generateRandom(),
           },
         } as const; // typescipt magic
         execute(input, clientActions.withdraws);
