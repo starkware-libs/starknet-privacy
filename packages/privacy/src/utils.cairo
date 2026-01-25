@@ -236,11 +236,10 @@ pub(crate) impl StoragePathIntoFelt<
 }
 
 // TODO: Move to utils repo?
-// TODO: Consider change type of value_2 to u128.
 /// Packing two felt252 values into a single felt252 value.
 /// Equivalent to (value_1 << 128) | value_2.
 /// Assumes: value_1 is 120 bits, value_2 is 128 bits.
-pub(crate) fn packing(value_1: u128, value_2: felt252) -> felt252 {
+pub(crate) fn packing(value_1: u128, value_2: u128) -> felt252 {
     (value_1.into() * TWO_POW_128 + value_2.into())
         .try_into()
         .expect(internal_errors::PACK_OVERFLOW)
@@ -248,10 +247,9 @@ pub(crate) fn packing(value_1: u128, value_2: felt252) -> felt252 {
 
 
 // TODO: Move to utils repo?
-// TODO: Consider change type of value_2 to u128.
 /// Unpacking a single felt252 into two felt252 values (120 bits for value_1, 128 bits for value_2).
 /// Inverse of `packing`: `packed_value = value_1 * 2^128 + value_2`
-pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
+pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
     let packed_u256: u256 = packed_value.into();
     let value_1 = packed_u256 / TWO_POW_128;
     let value_2 = packed_u256 % TWO_POW_128;
