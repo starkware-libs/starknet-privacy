@@ -68,7 +68,6 @@ pub mod Privacy {
         /// Map of outgoing-channel keys to their encrypted recipient addresses.
         outgoing_channels: Map<felt252, EncOutgoingChannelInfo>,
         /// Map of channel id to whether it exists.
-        // TODO: Rename storage var / abi function to not have the same name?
         channel_exists: Map<felt252, bool>,
         /// Map of subchannel keys to their encrypted tokens.
         subchannel_tokens: Map<felt252, EncSubchannelInfo>,
@@ -123,7 +122,6 @@ pub mod Privacy {
     #[abi(embed_v0)]
     impl RolesImpl = RolesComponent::RolesImpl<ContractState>;
 
-    // TODO: Consider all randoms to be u128/120 bits.
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn __validate__(
@@ -132,8 +130,6 @@ pub mod Privacy {
             VALIDATED
         }
 
-        // TODO: Gets a single random and generate from it new randoms for each action that needs a
-        // random.
         fn __execute__(
             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
