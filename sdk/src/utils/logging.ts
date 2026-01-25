@@ -1,6 +1,7 @@
 // ============ Logging Utilities ============
 import { AsyncLocalStorage } from "async_hooks";
-import { num, BigNumberish } from "starknet";
+import type { BigNumberish } from "starknet";
+import { toBigInt } from "./crypto.js";
 
 // --- Tracing Context ---
 
@@ -45,6 +46,10 @@ export type LogCallback = (
  * @param callback - Function called for each method invocation (with result after execution)
  */
 export function withLogging<T extends object>(target: T, name: string, callback: LogCallback): T {
+  // Skip proxy overhead if debug is not enabled for this target
+  if (!isDebugEnabledForTarget(name)) {
+    return target;
+  }
   return new Proxy(target, {
     get(obj, prop, receiver) {
       const value = Reflect.get(obj, prop, receiver);
@@ -107,6 +112,17 @@ export const isDebugEnabled = (targetName?: string) => {
   return false;
 };
 
+/** Check if debug logging could be enabled for any method of a target */
+const isDebugEnabledForTarget = (name: string) => {
+  const env = process.env[DEBUG_ENV_VAR];
+  if (!env) return false;
+  if (env === "1" || env === "true") return true;
+  const patterns = env.split(",");
+  // Check if any pattern matches this target or is a prefix of target methods
+  // e.g. "foo" or "foo.bar" patterns would enable logging for target "foo"
+  return patterns.some((p) => p === name || p.startsWith(`${name}.`) || name.startsWith(`${p}.`));
+};
+
 // ANSI color codes
 const CYAN = 36;
 const GREEN = 32;
@@ -137,20 +153,37 @@ export const hex = (v: BigNumberish | Uint8Array) => {
         .join("")
     );
   }
-  return `0x${num.toBigInt(v).toString(16).toUpperCase()}`;
+  return `0x${toBigInt(v).toString(16).toUpperCase()}`;
 };
 
-const replacer = (_: string, v: unknown) => {
-  if (typeof v === "bigint") return `0x${v.toString(16)}`;
-  if (typeof v === "function") return "[Function]";
-  if (v instanceof Uint8Array) return hex(v);
-  if (v instanceof Map)
-    return {
-      dataType: "Map",
-      value: Array.from(v.entries()),
-    };
-  if (v instanceof Set) return Array.from(v);
-  return v;
+/** Get current timestamp as HH:MM:SS.mmm */
+const getTimestamp = () => {
+  const now = new Date();
+  const hours = now.getHours().toString().padStart(2, "0");
+  const minutes = now.getMinutes().toString().padStart(2, "0");
+  const seconds = now.getSeconds().toString().padStart(2, "0");
+  const ms = now.getMilliseconds().toString().padStart(3, "0");
+  return `${hours}:${minutes}:${seconds}.${ms}`;
+};
+
+const createReplacer = () => {
+  const seen = new WeakSet();
+  return (_: string, v: unknown) => {
+    if (typeof v === "bigint") return `0x${v.toString(16)}`;
+    if (typeof v === "function") return "[Function]";
+    if (v instanceof Uint8Array) return hex(v);
+    if (typeof v === "object" && v !== null) {
+      if (seen.has(v)) return "[Circular]";
+      seen.add(v);
+      if (v instanceof Map)
+        return {
+          dataType: "Map",
+          value: Array.from(v.entries()),
+        };
+      if (v instanceof Set) return Array.from(v);
+    }
+    return v;
+  };
 };
 
 /**
@@ -170,24 +203,27 @@ export const consoleLogCallback: LogCallback = (
   if (!isDebugEnabled(`${targetName}.${methodName}`)) return;
 
   const format = (value: unknown): string => {
-    return JSON.stringify(value, replacer);
+    return JSON.stringify(value, createReplacer());
   };
 
+  const timestamp = color(`[${getTimestamp()}]`, 90); // Gray color for timestamp
   const prefix = color(`[${traceId}] [${targetName}.${methodName}]`, CYAN);
 
   if (phase === "ENTER") {
     const argsStr = args.map(format).join(", ");
-    console.log(`${prefix} ${color("→", GREEN)} (${argsStr})`);
+    console.log(`${timestamp} ${prefix} ${color("→", GREEN)} (${argsStr})`);
   } else if (phase === "EXIT") {
-    console.log(`${prefix} ${color("←", GREEN)} ${format(result)}`);
+    console.log(`${timestamp} ${prefix} ${color("←", GREEN)} ${format(result)}`);
   } else if (phase === "ERROR") {
     const err = result instanceof Error ? result : new Error(String(result));
-    console.log(`${prefix} ${color("✖", RED)} ${err.message}`);
+    console.log(`${timestamp} ${prefix} ${color("✖", RED)} ${err.message}`);
   }
 };
 
 /**
  * Log arbitrary messages if debug is enabled for the target.
+ * Function arguments are lazily evaluated - they're only called if debug is enabled.
+ * This allows passing expensive computations like: debugLog("x", "y", "msg", () => expensiveCall())
  */
 export const debugLog = (target: string, sub: string, ...args: unknown[]) => {
   if (isDebugEnabled(`${target}.${sub}`)) {
@@ -195,9 +231,17 @@ export const debugLog = (target: string, sub: string, ...args: unknown[]) => {
     const current = traceStorage.getStore();
     const traceId = current ? current.id : "?";
 
+    const timestamp = color(`[${getTimestamp()}]`, 90); // Gray color for timestamp
+
+    // Evaluate function arguments lazily (only now that we know debug is enabled)
+    const evaluatedArgs = args.map((arg) => (typeof arg === "function" ? arg() : arg));
+
     console.log(
+      timestamp,
       color(`[${traceId}] [${target}.${sub}]`, CYAN),
-      ...args.map((arg) => (typeof arg === "string" ? arg : JSON.stringify(arg, replacer, 2)))
+      ...evaluatedArgs.map((arg) =>
+        typeof arg === "string" ? arg : JSON.stringify(arg, createReplacer(), 2)
+      )
     );
   }
 };
