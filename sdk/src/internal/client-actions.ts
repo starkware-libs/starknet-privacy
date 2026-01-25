@@ -29,8 +29,12 @@ export type OpenChannelInput = {
   recipientAddr: bigint;
   /** The recipient's public key */
   recipientPublicKey: bigint;
+  /** The channel index within the sender's outgoing channels */
+  index: number;
   /** Random value used to encrypt the channel info for the recipient */
   random: bigint;
+  /** Salt used to guarantee one-time key usage for encrypted outgoing channel info */
+  salt: bigint;
 };
 
 /**
@@ -107,6 +111,8 @@ export type WithdrawInput = {
   token: bigint;
   /** The amount to withdraw */
   amount: Amount;
+  /** Random value used to encrypt the user address for compliance */
+  random: bigint;
 };
 
 export type FollowupCallInput = {
