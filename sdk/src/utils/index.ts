@@ -44,3 +44,11 @@ export {
   compute_enc_sender_addr_hash,
 } from "./hashes.js";
 export { encryptions, type EncSubchannelInfo, type SubchannelInfo } from "./encryptions.js";
+export {
+  decodeError,
+  decodeValue,
+  hexToString,
+  lookupSelector,
+  addSelectors,
+  type DecodedError,
+} from "./error-decoder.js";
