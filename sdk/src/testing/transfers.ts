@@ -6,7 +6,7 @@ import type { Actions, ExecuteOptions, ExecuteResult, StarknetAddress } from "..
 import type { PrivateKey } from "../utils/crypto.js";
 import { toBigInt } from "../utils/index.js";
 import { createMockCallAndProof } from "./helpers.js";
-import type { PrivacyPool } from "./pool.js";
+import type { MockPoolContract } from "./mock-pool-contract.js";
 import { MockDiscoveryProvider } from "./discovery.js";
 import { ActionCompiler } from "../internal/compiler.js";
 import { MockContracts } from "./contracts.js";
@@ -16,7 +16,7 @@ import { AbstractPrivateTransfers } from "../internal/abstract-private-transfers
 export class MockPrivateTransfers extends AbstractPrivateTransfers {
   // User credentials (set via configure)
   private compiler: ActionCompiler;
-  private pool: PrivacyPool;
+  private pool: MockPoolContract;
 
   constructor(
     private contracts: MockContracts,
@@ -27,9 +27,9 @@ export class MockPrivateTransfers extends AbstractPrivateTransfers {
     super(
       userAddress,
       { getViewingKey: () => userPrivateKey },
-      new MockDiscoveryProvider(contracts.get<PrivacyPool>(toBigInt(poolAddress)))
+      new MockDiscoveryProvider(contracts.get<MockPoolContract>(toBigInt(poolAddress)))
     );
-    this.pool = contracts.get<PrivacyPool>(toBigInt(poolAddress));
+    this.pool = contracts.get<MockPoolContract>(toBigInt(poolAddress));
     this.compiler = withLogging(
       new ActionCompiler(this.user, userPrivateKey, this.discoveryProvider),
       "Compiler",
