@@ -5,7 +5,12 @@ import { AbstractDiscoveryProvider } from "../internal/abstract-discovery.js";
 import { PrivacyPoolContract } from "../internal/private-transfers.js";
 import { debugLog, hex } from "../utils/logging.js";
 import { toBigInt } from "../utils/crypto.js";
-import { compute_channel_key, compute_subchannel_key, compute_note_id } from "../utils/hashes.js";
+import {
+  compute_channel_key,
+  compute_channel_id,
+  compute_subchannel_key,
+  compute_note_id,
+} from "../utils/hashes.js";
 import { encryptions } from "../utils/encryptions.js";
 import { NotesCursor } from "../internal/channel.js";
 
@@ -126,8 +131,9 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
         recipient,
         toBigInt(publicKey)
       );
+      const channelId = compute_channel_id(channelKey, address, recipient, toBigInt(publicKey));
 
-      if (await this.pool.channel_exists(channelKey)) {
+      if (await this.pool.channel_exists(channelId)) {
         channel.key = channelKey;
       }
     }
