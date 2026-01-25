@@ -137,12 +137,17 @@ export class MockPoolContract implements MockContract {
     return this.outgoingChannels.get(outgoingChannelKey) ?? { salt: 0n, enc_recipient_addr: 0n };
   }
 
-  get_note(noteId: bigint): { packed_value: bigint; token: StarknetAddressBigint } {
+  get_note(noteId: bigint): { packed_value: bigint; token: StarknetAddressBigint; depositor: StarknetAddressBigint } {
     const note = this.notes.get(noteId);
-    if (!note) return { packed_value: 0n, token: 0n };
-    if ("packed" in note) return { packed_value: note.packed, token: note.token };
-    // For open notes, return amount as packed_value (open notes have r=1n marker)
-    return { packed_value: note.amount as bigint, token: note.token };
+    if (!note) return { packed_value: 0n, token: 0n, depositor: 0n };
+    if ("packed" in note) {
+      // Encrypted note: token/depositor are zero in the Note struct (privacy)
+      return { packed_value: note.packed, token: 0n, depositor: 0n };
+    }
+    // Open note: packed_value = (OPEN_NOTE_SALT << 128) | amount, token/depositor are non-zero
+    const OPEN_NOTE_SALT = 1n;
+    const packedValue = (OPEN_NOTE_SALT << 128n) | (note.amount as bigint);
+    return { packed_value: packedValue, token: note.token, depositor: note.depositor };
   }
 
   channel_exists(channelId: bigint): boolean {
