@@ -21,7 +21,7 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, NoteTrait,
         ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
     };
-    use privacy::utils::constants::{ERROR_WRAPPER, OK_WRAPPER, TWO_POW_120};
+    use privacy::utils::constants::{CREATE_NOTE_MIN_SALT, ERROR_WRAPPER, OK_WRAPPER, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature, derive_public_key,
         encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
@@ -540,7 +540,8 @@ pub mod Privacy {
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
-            // Assert salt is 120 bits.
+            // Assert valid salt.
+            assert(salt >= CREATE_NOTE_MIN_SALT, errors::SALT_TOO_SMALL);
             assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
 
             // Compute channel key.

@@ -21,6 +21,7 @@ use starkware_utils::constants::TWO_POW_128;
 pub mod constants {
     use core::num::traits::Pow;
 
+    pub const CREATE_NOTE_MIN_SALT: u128 = 2;
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
