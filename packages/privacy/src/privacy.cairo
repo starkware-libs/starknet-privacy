@@ -98,6 +98,7 @@ pub mod Privacy {
         SRC5Event: SRC5Component::Event,
         ViewingKeySet: events::ViewingKeySet,
         Withdrawal: events::Withdrawal,
+        Deposit: events::Deposit,
     }
 
     #[constructor]
@@ -134,6 +135,13 @@ pub mod Privacy {
         ) {
             assert_valid_execution_info();
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            let server_actions = self.execute_view(:user_addr, :client_actions);
+            send_message_to_server(:server_actions);
+        }
+
+        fn execute_view(
+            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) -> Span<ServerAction> {
             let mut calldata = array![];
             user_addr.serialize(ref calldata);
             client_actions.serialize(ref calldata);
@@ -144,9 +152,8 @@ pub mod Privacy {
             );
 
             let mut serialized_server_actions = unwrap_execute_and_panic_result(:syscall_result);
-            let server_actions = Serde::deserialize(ref serialized_server_actions)
-                .expect(internal_errors::DESERIALIZE_FAILED);
-            send_message_to_server(:server_actions);
+            Serde::deserialize(ref serialized_server_actions)
+                .expect(internal_errors::DESERIALIZE_FAILED)
         }
 
         /// Panics directly for internal errors; external calls are wrapped via syscall
@@ -217,7 +224,7 @@ pub mod Privacy {
 
     #[generate_trait]
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
-        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `user_addr` is non-zero (checked in `__execute__`).
         fn set_viewing_key(
             self: @ContractState, user_addr: ContractAddress, input: SetViewingKeyInput,
         ) -> Array<ServerAction> {
@@ -260,7 +267,7 @@ pub mod Privacy {
             ]
         }
 
-        /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `sender_addr` is non-zero (checked in `__execute__`).
         fn open_channel(
             self: @ContractState, sender_addr: ContractAddress, input: OpenChannelInput,
         ) -> Array<ServerAction> {
@@ -349,7 +356,7 @@ pub mod Privacy {
             ]
         }
 
-        /// Assumes `sender_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `sender_addr` is non-zero (checked in `__execute__`).
         fn open_subchannel(
             self: @ContractState, sender_addr: ContractAddress, input: OpenSubchannelInput,
         ) -> Array<ServerAction> {
@@ -406,7 +413,7 @@ pub mod Privacy {
             ]
         }
 
-        /// Assumes `user_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `user_addr` is non-zero (checked in `__execute__`).
         fn deposit(
             self: @ContractState,
             user_addr: ContractAddress,
@@ -425,6 +432,7 @@ pub mod Privacy {
                 ServerAction::TransferFrom(
                     TransferFromInput { sender_addr: user_addr, token, amount },
                 ),
+                ServerAction::EmitDeposit(events::Deposit { user_addr, token, amount }),
             ]
         }
 
@@ -464,7 +472,7 @@ pub mod Privacy {
         }
 
         /// Returns the server action to use a note.
-        /// Assumes `owner_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `owner_addr` is non-zero (checked in `__execute__`).
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
@@ -475,7 +483,6 @@ pub mod Privacy {
             let channel_key = input.channel_key;
             let token = input.token;
             let index = input.note_index;
-            // TODO: Consider adding context to the errors (which note is causing the error).
             assert(owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
@@ -518,7 +525,7 @@ pub mod Privacy {
         }
 
         /// Returns the server action to create a note.
-        /// Assumes `owner_addr` is non-zero (checked in `compile_client_actions`).
+        /// Assumes `owner_addr` is non-zero (checked in `__execute__`).
         fn create_note(
             self: @ContractState,
             owner_addr: ContractAddress,
@@ -532,7 +539,6 @@ pub mod Privacy {
             let amount = input.amount;
             let index = input.index;
             let salt = input.salt;
-            // TODO: Consider adding context to the errors (which note is causing the error).
             assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
@@ -655,6 +661,7 @@ pub mod Privacy {
                     },
                     ServerAction::EmitViewingKeySet(event) => { self.emit(event); },
                     ServerAction::EmitWithdrawal(event) => { self.emit(event); },
+                    ServerAction::EmitDeposit(event) => { self.emit(event); },
                 };
             };
         }
