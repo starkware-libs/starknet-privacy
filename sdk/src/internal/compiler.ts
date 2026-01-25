@@ -28,12 +28,11 @@ import type {
 import { Channel, createEmptyRegistry } from "../interfaces.js";
 import { AddressMap, AdvancedMap, toBigInt } from "../utils/index.js";
 import type { ClientAction } from "./client-actions.js";
-import { PrivacyPool } from "../testing/pool.js";
-import { MockContracts } from "../testing/contracts.js";
+import { PoolSimulator } from "./pool-simulator.js";
 import { assert, isOpen } from "../utils/validation.js";
 import type { BigNumberish } from "starknet";
 import { generateRandom } from "../utils/crypto.js";
-import { consoleLogCallback, withLogging, debugLog, hex } from "../utils/logging.js";
+import { debugLog, hex } from "../utils/logging.js";
 
 export type CompileResult = {
   clientActions: ClientAction[];
@@ -139,30 +138,14 @@ export class ActionCompiler {
     return recipientsNeeded;
   }
 
-  private createPool(actions: Actions, registry?: PrivateRegistry, channels?: AddressMap<Channel>) {
-    const contracts = new MockContracts();
+  private createPool(
+    _actions: Actions,
+    registry?: PrivateRegistry,
+    channels?: AddressMap<Channel>
+  ): PoolSimulator {
+    const pool = new PoolSimulator();
 
-    const pool = withLogging(
-      new PrivacyPool(this.userAddress, contracts, false /* don't validate execution balances */),
-      "CompilerPool",
-      consoleLogCallback
-    );
-    contracts.register(pool);
-
-    // go over deposit actions and instantiate balances
-    if (actions.deposits) {
-      for (const deposit of actions.deposits) {
-        contracts.get(deposit.token).increaseBalance(this.userAddress, deposit.amount);
-      }
-    }
-
-    if (actions.withdraws) {
-      for (const withdraw of actions.withdraws) {
-        contracts.get(withdraw.token).increaseBalance(pool.address, withdraw.amount);
-      }
-    }
-
-    // the internal pool needs a viewing key to be set regardless if the already registered
+    // The simulator needs a viewing key to be set regardless if already registered
     pool.execute(this.userAddress, {
       type: "SetViewingKey",
       input: { privateKey: this.userViewingKey, random: generateRandom() },
@@ -206,7 +189,7 @@ export class ActionCompiler {
    */
   private transformToClientActions(
     actions: Actions,
-    pool: PrivacyPool,
+    pool: PoolSimulator,
     recipientsNeeded: AddressMap<boolean>,
     options?: ExecuteOptions
   ): ClientAction[] {
