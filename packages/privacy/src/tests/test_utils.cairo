@@ -94,9 +94,10 @@ fn test_encrypt_decrypt_note_amount() {
 
 #[test]
 fn test_packing_unpacking() {
-    let values: [(u128, felt252); 4] = [
-        (1, 1), (1, TWO_POW_128.try_into().unwrap() - 1), (TWO_POW_120.try_into().unwrap() - 1, 1),
-        (TWO_POW_120.try_into().unwrap() - 1, TWO_POW_128.try_into().unwrap() - 1),
+    let max_120_bits: u128 = TWO_POW_120.try_into().unwrap() - 1;
+    let max_u128: u128 = (TWO_POW_128 - 1).try_into().unwrap();
+    let values: [(u128, u128); 4] = [
+        (1, 1), (1, max_u128), (max_120_bits, 1), (max_120_bits, max_u128),
     ];
     for (value_1, value_2) in values.span() {
         let packed_value = packing(value_1: (*value_1).into(), value_2: *value_2);
@@ -116,8 +117,7 @@ fn test_packing_unpacking_random() {
             .into();
         let value_1_120_bits: u128 = value_1_120_bits_u256.try_into().unwrap();
         nonce += 1;
-        let value_2_128_bits: felt252 = (hash(['VALUE_2', nonce.into()].span())
-            .into() % TWO_POW_128)
+        let value_2_128_bits: u128 = (hash(['VALUE_2', nonce.into()].span()).into() % TWO_POW_128)
             .try_into()
             .unwrap();
         let packed_value = packing(value_1: value_1_120_bits, value_2: value_2_128_bits);

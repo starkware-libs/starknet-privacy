@@ -20,7 +20,7 @@ use privacy::interface::{
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
-    TokenBalances, TokenBalancesTrait,
+    ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
@@ -31,12 +31,13 @@ use privacy::utils::{
     encrypt_subchannel_info, encrypt_user_addr, is_canonical_key,
 };
 use snforge_std::{
-    CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait, Token,
-    TokenTrait, declare, interact_with_state, map_entry_address, set_balance, spy_messages_to_l1,
+    CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
+    Token, TokenTrait, cheat_resource_bounds, declare, interact_with_state, map_entry_address,
+    set_balance, spy_messages_to_l1,
 };
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
-use starknet::{ContractAddress, SyscallResultTrait};
+use starknet::{ContractAddress, ResourcesBounds, SyscallResultTrait};
 use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
@@ -74,12 +75,11 @@ pub(crate) impl EncNoteIntoNoteImpl of Into<EncNote, Note> {
 #[generate_trait]
 pub(crate) impl EncNoteImpl of EncNoteTrait {
     fn to_server_action(self: @EncNote) -> ServerAction {
-        let storage_path = map_entry_address(
+        let storage_address = map_entry_address(
             map_selector: selector!("notes"), keys: [*self.id].span(),
         );
-        ServerAction::WriteIfZeroNote(
-            WriteIfZeroInput { storage_address: storage_path, value: (*self).into() },
-        )
+        let note: Note = (*self).into();
+        note.to_write_if_zero_action(:storage_address)
     }
 
     fn to_server_actions(self: @EncNote) -> Span<ServerAction> {
@@ -126,7 +126,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_compile_client_actions_without_cheat_caller(
+    fn safe_compile_client_actions_without_cheat(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
         self.privacy.safe_client.__execute__(user_addr: *self.address, :client_actions)
@@ -764,7 +764,7 @@ pub(crate) impl UserImpl of UserTrait {
                     storage_address: map_entry_address(
                         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
                     ),
-                    value: true.into(),
+                    value: [true.into()].span(),
                 },
             ),
             ServerAction::TransferTo(
@@ -922,7 +922,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                     storage_address: map_entry_address(
                         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
                     ),
-                    value: true.into(),
+                    value: [true.into()].span(),
                 },
             ),
             ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
@@ -968,7 +968,9 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             .execute_actions(
                 actions: array![
                     ServerAction::WriteIfZero(
-                        WriteIfZeroInput { storage_address: storage_path_felt, value: true.into() },
+                        WriteIfZeroInput {
+                            storage_address: storage_path_felt, value: [true.into()].span(),
+                        },
                     ),
                 ]
                     .span(),
@@ -1008,7 +1010,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn execute(
         self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
-        cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
+        self.cheat_before_execute();
         let mut spy = spy_messages_to_l1();
         self.client.__execute__(:user_addr, :client_actions);
         self.general_assert_spy_messages(ref :spy);
@@ -1019,7 +1021,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn safe_execute(
         self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
-        cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
+        self.cheat_before_execute();
         self.safe_client.__execute__(:user_addr, :client_actions)
     }
 
@@ -1041,6 +1043,26 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let (from, message) = spy.get_messages().messages.at(0);
         assert_eq!(*from, *self.address);
         assert_eq!(*message.to_address, Zero::zero());
+    }
+
+    fn cheat_before_execute(self: @PrivacyCfg) {
+        self.cheat_zero_caller_address();
+        self.cheat_zero_resource_bounds();
+    }
+
+    fn cheat_zero_caller_address(self: @PrivacyCfg) {
+        cheat_caller_address_once(contract_address: *self.address, caller_address: Zero::zero());
+    }
+
+    fn cheat_zero_resource_bounds(self: @PrivacyCfg) {
+        let resource_bounds = ResourcesBounds {
+            resource: Zero::zero(), max_amount: Zero::zero(), max_price_per_unit: Zero::zero(),
+        };
+        cheat_resource_bounds(
+            contract_address: *self.address,
+            resource_bounds: array![resource_bounds].span(),
+            span: CheatSpan::TargetCalls(1),
+        );
     }
 }
 
