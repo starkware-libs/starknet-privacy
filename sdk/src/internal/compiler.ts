@@ -28,12 +28,11 @@ import type {
 import { Channel, createEmptyRegistry } from "../interfaces.js";
 import { AddressMap, AdvancedMap, toBigInt } from "../utils/index.js";
 import type { ClientAction } from "./client-actions.js";
-import { PrivacyPool } from "../testing/pool.js";
-import { MockContracts } from "../testing/contracts.js";
+import { PoolSimulator } from "./pool-simulator.js";
 import { assert, isOpen } from "../utils/validation.js";
 import type { BigNumberish } from "starknet";
 import { generateRandom } from "../utils/crypto.js";
-import { consoleLogCallback, withLogging, debugLog, hex } from "../utils/logging.js";
+import { debugLog, hex } from "../utils/logging.js";
 
 export type CompileResult = {
   clientActions: ClientAction[];
@@ -91,14 +90,14 @@ export class ActionCompiler {
     debugLog("compiler", "compile", "post resolveNotes", registry?.notes?.size, actions);
 
     // create a pool to simulate the execution of the actions
-    const pool = this.createPool(actions, registry, channels);
+    const pool = this.createPool(registry, channels);
 
     // Phase 3: Transform Actions to ClientAction[]
     const clientActions = this.transformToClientActions(actions, pool, recipientsNeeded, options);
 
     debugLog("compiler", "compile", "post transformToClientActions", clientActions);
 
-    return { clientActions, registry: pool.updateRegistry(this.userAddress, registry) };
+    return { clientActions, registry: pool.updateRegistry(registry) };
   }
 
   private getRecipientsNeeded(actions: Actions): AddressMap<boolean> {
@@ -139,53 +138,26 @@ export class ActionCompiler {
     return recipientsNeeded;
   }
 
-  private createPool(actions: Actions, registry?: PrivateRegistry, channels?: AddressMap<Channel>) {
-    const contracts = new MockContracts();
+  private createPool(registry?: PrivateRegistry, channels?: AddressMap<Channel>): PoolSimulator {
+    const pool = new PoolSimulator(this.userAddress);
 
-    const pool = withLogging(
-      new PrivacyPool(this.userAddress, contracts, false /* don't validate execution balances */),
-      "CompilerPool",
-      consoleLogCallback
-    );
-    contracts.register(pool);
-
-    // go over deposit actions and instantiate balances
-    if (actions.deposits) {
-      for (const deposit of actions.deposits) {
-        contracts.get(deposit.token).increaseBalance(this.userAddress, deposit.amount);
-      }
-    }
-
-    if (actions.withdraws) {
-      for (const withdraw of actions.withdraws) {
-        contracts.get(withdraw.token).increaseBalance(pool.address, withdraw.amount);
-      }
-    }
-
-    // the internal pool needs a viewing key to be set regardless if the already registered
-    pool.execute(this.userAddress, {
+    // The simulator needs a viewing key to be set regardless if already registered
+    pool.execute({
       type: "SetViewingKey",
       input: { privateKey: this.userViewingKey, random: generateRandom() },
     });
 
-    debugLog(
-      "compiler",
-      "after SetViewingKey, isRegistered?",
-      pool.isRegistered(this.userAddress),
-      "userAddress:",
-      hex(this.userAddress)
-    );
     debugLog("compiler", "setup discovered channels", channels);
 
     for (const [addr, channel] of channels?.entries() ?? []) {
-      pool.setupChannel(this.userAddress, this.userViewingKey, addr, channel);
+      pool.setupChannel(addr, channel);
     }
 
     debugLog("compiler", "setup registry channels", registry?.channels);
 
     for (const [addr, channel] of registry?.channels?.entries() ?? []) {
       if (channels?.has(addr)) continue; // skip channels that were already set up in the previous step
-      pool.setupChannel(this.userAddress, this.userViewingKey, addr, channel);
+      pool.setupChannel(addr, channel);
     }
 
     debugLog("compiler", "setup notes", registry?.notes);
@@ -193,7 +165,7 @@ export class ActionCompiler {
     if (registry?.notes) {
       for (const [token, notes] of registry.notes.entries()) {
         for (const note of notes) {
-          pool.setupNote(this.userAddress, note, token);
+          pool.setupNote(token, note);
         }
       }
     }
@@ -206,7 +178,7 @@ export class ActionCompiler {
    */
   private transformToClientActions(
     actions: Actions,
-    pool: PrivacyPool,
+    pool: PoolSimulator,
     recipientsNeeded: AddressMap<boolean>,
     options?: ExecuteOptions
   ): ClientAction[] {
@@ -231,7 +203,7 @@ export class ActionCompiler {
     }
 
     for (const recipient of recipientsNeeded.keys()) {
-      const channel = pool.getUsersChannel(this.userAddress, recipient);
+      const channel = pool.getChannel(recipient);
       if (!channel?.key && options?.autoSetup) {
         actions.openChannels ??= [];
         // Check if recipient is already in openChannels to avoid duplicates
@@ -247,7 +219,7 @@ export class ActionCompiler {
     }
 
     const execute = <T extends ClientAction>(input: T, arr: T[] = []): T => {
-      pool.execute(this.userAddress, input); // no need to run the callbacks since there's no state restore
+      pool.execute(input);
       arr.push(input);
       return input;
     };
@@ -272,7 +244,7 @@ export class ActionCompiler {
         if (seenRecipients.has(action.recipient)) continue;
         seenRecipients.add(action.recipient);
         debugLog("compiler", "open channel x", action.recipient);
-        const channel = pool.getUsersChannel(this.userAddress, action.recipient);
+        const channel = pool.getChannel(action.recipient);
         assert(channel, () => `Missing channel context for recipient ${hex(action.recipient)}`);
         const input = {
           type: "OpenChannel",
@@ -296,7 +268,7 @@ export class ActionCompiler {
       },
       force: boolean
     ) => {
-      const channel = pool.getUsersChannel(this.userAddress, action.recipient);
+      const channel = pool.getChannel(action.recipient);
       assert(channel, () => `Channel not found for recipient ${hex(action.recipient)}`);
       debugLog("compiler", "open channel", action.recipient, action, channel);
 
@@ -323,7 +295,7 @@ export class ActionCompiler {
       } as const; // typescipt magic
       execute(input, clientActions.openTokenChannels);
 
-      return pool.getUsersChannel(this.userAddress, action.recipient)!; // on the safe side, the pool is not supposed to create a new Channel object
+      return pool.getChannel(action.recipient)!; // on the safe side, the pool is not supposed to create a new Channel object
     };
 
     if (actions.openTokenChannels) {
@@ -368,9 +340,9 @@ export class ActionCompiler {
             noteIndex: action.note.witness.nonce,
           },
         } as const; // typescipt magic
-        if (!pool.hasNoteById(toBigInt(action.note.id))) {
+        if (!pool.hasNote(action.token, toBigInt(action.note.id))) {
           // this means the note is not in the registry, trust the user knows it exists
-          pool.setupNote(this.userAddress, action.note, action.token); // add it to the registry
+          pool.setupNote(action.token, action.note); // add it to the registry
         }
         execute(input, clientActions.useNotes);
       }
