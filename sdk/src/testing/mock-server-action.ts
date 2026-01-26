@@ -11,4 +11,6 @@ export type MockServerAction = {
   type: string;
   /** Closure that performs the state mutation */
   apply: () => void;
+  /** actions that shouldn't be applied in the private side */
+  deferred?: boolean;
 };

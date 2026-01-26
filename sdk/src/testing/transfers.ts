@@ -14,22 +14,18 @@ import { consoleLogCallback, debugLog, withLogging } from "../utils/logging.js";
 import { AbstractPrivateTransfers } from "../internal/abstract-private-transfers.js";
 
 export class MockPrivateTransfers extends AbstractPrivateTransfers {
-  // User credentials (set via configure)
   private compiler: ActionCompiler;
   private pool: MockPoolContract;
 
   constructor(
-    private contracts: MockContracts,
+    contracts: MockContracts,
     poolAddress: StarknetAddress,
     userAddress: StarknetAddress,
     userPrivateKey: PrivateKey
   ) {
-    super(
-      userAddress,
-      { getViewingKey: () => userPrivateKey },
-      new MockDiscoveryProvider(contracts.get<MockPoolContract>(toBigInt(poolAddress)))
-    );
-    this.pool = contracts.get<MockPoolContract>(toBigInt(poolAddress));
+    const pool = contracts.get<MockPoolContract>(toBigInt(poolAddress));
+    super(userAddress, { getViewingKey: () => userPrivateKey }, new MockDiscoveryProvider(pool));
+    this.pool = pool;
     this.compiler = withLogging(
       new ActionCompiler(this.user, userPrivateKey, this.discoveryProvider),
       "Compiler",
@@ -44,13 +40,8 @@ export class MockPrivateTransfers extends AbstractPrivateTransfers {
 
     debugLog("private-transfers", "clientActions", clientActions);
 
-    const snapshot = this.contracts.snapshot();
-    // 2. Execute client actions on the pool (returns callbacks, state is restored)
+    // 2. Execute client actions (execute_view handles snapshot/restore internally)
     const callbacks = this.pool.execute(this.user, ...clientActions);
-
-    this.contracts.restore(snapshot);
-    // 3. Apply optimistic updates - update channel nonces, remove spent notes
-    //applyOptimisticUpdate(clientActions, registry);
 
     return {
       callAndProof: createMockCallAndProof(callbacks),
