@@ -31,7 +31,7 @@ function isNumericString(str: string): boolean {
 /**
  * Poseidon hash of multiple felts.
  * String arguments are converted as follows:
- * - Numeric strings (hex "0x..." or decimal) are converted via num.toBigInt
+ * - Numeric strings (hex "0x..." or decimal) are converted via toBigInt
  * - Short ASCII strings (domain tags like "channel_key:v1") are converted as Cairo short strings
  *
  * Note: This matches Cairo's hash function which does:

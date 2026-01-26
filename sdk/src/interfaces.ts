@@ -1,4 +1,5 @@
 import type {
+  AccountInvocationsFactoryDetails,
   AllowArray,
   BigNumberish,
   BlockIdentifier,
@@ -522,16 +523,25 @@ export interface PrivateTransfersBuilder {
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
 }
 
-////// The following are more likely to change /////////
+export type ProofInvocation = Invocation;
+
 /**
- * Configuration used to bootstrap the proving provider REST client.
+ * Factory details for creating proof invocations.
+ * Extends AccountInvocationsFactoryDetails with chainId for signing.
  */
+export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
+  chainId: string;
+};
+
+////// The following are more likely to change /////////
 
 /**
  * Operator API contract — the proving service must implement this surface.
  */
 export interface ProofProviderInterface {
-  prove(invocation: Invocation): Promise<Proof>;
+  /** Get the default factory details for creating proof invocations */
+  getDefaultDetails(): ProofInvocationFactoryDetails;
+  prove(invocation: ProofInvocation): Promise<Proof>;
 }
 
 export interface DiscoveryProviderInterface {
