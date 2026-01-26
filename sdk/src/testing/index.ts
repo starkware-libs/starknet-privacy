@@ -21,7 +21,7 @@ export {
   compute_enc_channel_key_hash,
   compute_enc_sender_addr_hash,
 } from "../utils/hashes.js";
-export { CallMockProofProvider } from "./proving.js";
+export { CallMockProofProvider } from "./mock-proving.js";
 export { TracingRpcProvider, TracedRpcError, type DecodedError } from "./tracing-provider.js";
 export { ContractDiscoveryProvider } from "./contract-discovery.js";
 export { Devnet, type DevnetEnvironment } from "./devnet.js";
