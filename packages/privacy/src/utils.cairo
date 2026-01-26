@@ -21,6 +21,7 @@ use starkware_utils::constants::TWO_POW_128;
 pub mod constants {
     use core::num::traits::Pow;
 
+    pub const OPEN_NOTE_SALT: u128 = 1;
     pub const CREATE_NOTE_MIN_SALT: u128 = 2;
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
@@ -217,9 +218,8 @@ pub(crate) fn encrypt_note_amount(
 /// Decrypts the note amount from `enc_note_value`.
 /// This is the inverse of `encrypt_note_amount`.
 pub(crate) fn decrypt_note_amount(
-    enc_note_value: felt252, channel_key: felt252, token: ContractAddress, index: usize,
+    salt: u128, enc_amount: u128, channel_key: felt252, token: ContractAddress, index: usize,
 ) -> u128 {
-    let (salt, enc_amount) = unpacking(packed_value: enc_note_value);
     let enc_amount_u256: u256 = enc_amount.into(); // already < 2^128 by construction
     let pad: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt)
         .into() % TWO_POW_128;
@@ -320,4 +320,18 @@ pub(crate) fn server_actions_to_panic_data(server_actions: Span<ServerAction>) -
     server_actions.serialize(ref panic_data);
     panic_data.append(OK_WRAPPER);
     panic_data
+}
+
+/// Validates common input parameters for note creation.
+pub(crate) fn assert_note_creation_params(
+    sender_private_key: felt252,
+    recipient_addr: ContractAddress,
+    recipient_public_key: felt252,
+    token: ContractAddress,
+) {
+    assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
+    assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+    assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
+    assert(token.is_non_zero(), errors::ZERO_TOKEN);
+    assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
 }

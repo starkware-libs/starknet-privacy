@@ -186,7 +186,7 @@ fn test_get_note() {
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
     test.privacy.cheat_create_note(:note_id, :note);
     let enc_value = test.privacy.get_note(:note_id);
-    assert_eq!(enc_value, note.enc_value);
+    assert_eq!(enc_value, note.value);
 }
 
 #[test]
@@ -578,40 +578,36 @@ fn test_execute_write_once_outgoing_channel_assertions() {
 fn test_execute_write_once_note() {
     let mut test: Test = Default::default();
     let (note_id, note) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    assert!(note.enc_value.is_non_zero());
+    assert!(note.value.is_non_zero());
 
     // Verify stored note is zero before writing.
     let storage_address = map_entry_address(
         map_selector: selector!("notes"), keys: [note_id].span(),
     );
     let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, Note { enc_value: Zero::zero(), token: Zero::zero() });
+    assert_eq!(current_value, Note { value: Zero::zero(), token: Zero::zero() });
 
     // Write stored note.
-    let actions: Array<ServerAction> = array![
-        note.enc_value.to_write_once_action(:storage_address),
-    ];
+    let actions: Array<ServerAction> = array![note.value.to_write_once_action(:storage_address)];
     test.privacy.execute_actions(actions.span());
 
     // Verify stored note was written.
     let written_value: Note = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(written_value, note);
-    assert_eq!(test.privacy.get_note(:note_id), note.enc_value);
+    assert_eq!(test.privacy.get_note(:note_id), note.value);
 }
 
 #[test]
 fn test_execute_write_once_note_assertions() {
     let mut test: Test = Default::default();
     let (note_id, note) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    assert!(note.enc_value.is_non_zero());
+    assert!(note.value.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
         map_selector: selector!("notes"), keys: [note_id].span(),
     );
-    let actions: Array<ServerAction> = array![
-        note.enc_value.to_write_once_action(:storage_address),
-    ];
+    let actions: Array<ServerAction> = array![note.value.to_write_once_action(:storage_address)];
     test.privacy.execute_actions(actions.span());
     let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
     // Verify the value was written
@@ -715,7 +711,7 @@ fn test_execute_transfer_to() {
             recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let note = user
-        .new_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
+        .new_encrypted_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
     user.increase_token_balance(:token, :amount);
     user.cheat_deposit(:token, :amount, :note);
 
