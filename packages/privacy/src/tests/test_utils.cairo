@@ -85,9 +85,8 @@ fn test_encrypt_decrypt_note_amount() {
         let enc_amount = encrypt_note_amount(
             :channel_key, :token, :index, salt: salt_120_bits, amount: *amount,
         );
-        let dec_amount = decrypt_note_amount(
-            enc_note_value: enc_amount, :channel_key, :token, :index,
-        );
+        let (salt, enc_amount) = unpacking(enc_amount);
+        let dec_amount = decrypt_note_amount(:enc_amount, :salt, :channel_key, :token, :index);
         assert_eq!(dec_amount, *amount);
     }
 }

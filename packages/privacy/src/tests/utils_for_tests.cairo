@@ -1,11 +1,12 @@
+use core::dict::Felt252Dict;
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
-    AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
-    OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
-    UseNoteInput, WithdrawInput, WriteOnceInput,
+    AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
+    OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
+    TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
 };
 use privacy::hashes::{
     compute_channel_id, compute_channel_key, compute_enc_address_hash, compute_enc_channel_key_hash,
@@ -22,15 +23,15 @@ use privacy::interface::{
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
-    TokenBalances, TokenBalancesTrait,
+    ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
-use privacy::utils::constants::{OK_WRAPPER, TWO_POW_120};
+use privacy::utils::constants::{OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     derive_public_key, encrypt_note_amount, encrypt_outgoing_channel_info, encrypt_private_key,
-    encrypt_subchannel_info, encrypt_user_addr, is_canonical_key,
+    encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, packing,
 };
 use snforge_std::{
     CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
@@ -48,19 +49,36 @@ use starkware_utils_testing::test_utils::{
     set_account_as_security_agent, set_account_as_token_admin,
 };
 
-#[generate_trait]
-pub(crate) impl CreateNoteInputIntoServerAction of IntoServerActionTrait {
-    fn into_server_action(self: @CreateNoteInput, user: User) -> ServerAction {
-        let (note_id, note_value) = user.compute_note(create_note_input: *self);
+pub(crate) trait IntoServerActionTrait<T> {
+    fn into_server_action(self: @T, user: User) -> ServerAction;
+    fn into_server_actions(self: @T, user: User) -> Span<ServerAction>;
+}
+
+pub(crate) impl CreateEncNoteInputIntoServerAction of IntoServerActionTrait<CreateEncNoteInput> {
+    fn into_server_action(self: @CreateEncNoteInput, user: User) -> ServerAction {
+        let (note_id, note) = user.compute_enc_note(create_note_input: *self);
         let storage_path = map_entry_address(
             map_selector: selector!("notes"), keys: [note_id].span(),
         );
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path, value: [note_value.enc_value].span() },
-        )
+        note.packed_value.to_write_once_action(storage_address: storage_path)
     }
 
-    fn into_server_actions(self: @CreateNoteInput, user: User) -> Span<ServerAction> {
+    fn into_server_actions(self: @CreateEncNoteInput, user: User) -> Span<ServerAction> {
+        [self.into_server_action(:user)].span()
+    }
+}
+
+
+pub(crate) impl CreateOpenNoteInputIntoServerAction of IntoServerActionTrait<CreateOpenNoteInput> {
+    fn into_server_action(self: @CreateOpenNoteInput, user: User) -> ServerAction {
+        let (note_id, note) = user.compute_open_note(create_note_input: *self);
+        let storage_path = map_entry_address(
+            map_selector: selector!("notes"), keys: [note_id].span(),
+        );
+        note.to_write_once_action(storage_address: storage_path)
+    }
+
+    fn into_server_actions(self: @CreateOpenNoteInput, user: User) -> Span<ServerAction> {
         [self.into_server_action(:user)].span()
     }
 }
@@ -200,28 +218,28 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn transfer(
-        self: @User, notes_to_use: Span<UseNoteInput>, notes_to_create: Span<CreateNoteInput>,
+        self: @User, notes_to_use: Span<UseNoteInput>, notes_to_create: Span<CreateEncNoteInput>,
     ) -> Span<ServerAction> {
         let mut client_actions: Array<ClientAction> = array![];
         for note in notes_to_use {
             client_actions.append(ClientAction::UseNote(*note));
         }
         for note in notes_to_create {
-            client_actions.append(ClientAction::CreateNote(*note));
+            client_actions.append(ClientAction::CreateEncNote(*note));
         }
         self.client_execute(client_actions: client_actions.span())
     }
 
     #[feature("safe_dispatcher")]
     fn safe_transfer(
-        self: @User, notes_to_use: Span<UseNoteInput>, notes_to_create: Span<CreateNoteInput>,
+        self: @User, notes_to_use: Span<UseNoteInput>, notes_to_create: Span<CreateEncNoteInput>,
     ) -> Result<(), Array<felt252>> {
         let mut client_actions: Array<ClientAction> = array![];
         for note in notes_to_use {
             client_actions.append(ClientAction::UseNote(*note));
         }
         for note in notes_to_create {
-            client_actions.append(ClientAction::CreateNote(*note));
+            client_actions.append(ClientAction::CreateEncNote(*note));
         }
         self.safe_client_execute(client_actions: client_actions.span())
     }
@@ -590,32 +608,34 @@ pub(crate) impl UserImpl of UserTrait {
         (salt_u256 % TWO_POW_120.into()).try_into().unwrap()
     }
 
-    fn create_note(self: @User, create_note_input: CreateNoteInput) -> Span<ServerAction> {
-        self.client_execute([ClientAction::CreateNote(create_note_input)].span())
+    fn create_enc_note(self: @User, create_note_input: CreateEncNoteInput) -> Span<ServerAction> {
+        self.client_execute([ClientAction::CreateEncNote(create_note_input)].span())
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_create_note(
-        self: @User, create_note_input: CreateNoteInput,
+    fn safe_create_enc_note(
+        self: @User, create_note_input: CreateEncNoteInput,
     ) -> Result<(), Array<felt252>> {
-        self.safe_client_execute([ClientAction::CreateNote(create_note_input)].span())
+        self.safe_client_execute([ClientAction::CreateEncNote(create_note_input)].span())
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_create_note_execute_and_panic(
-        self: @User, create_note_input: CreateNoteInput,
+    fn safe_create_enc_note_execute_and_panic(
+        self: @User, create_note_input: CreateEncNoteInput,
     ) -> Result<(), Array<felt252>> {
-        self.safe_execute_and_panic([ClientAction::CreateNote(create_note_input)].span())
+        self.safe_execute_and_panic([ClientAction::CreateEncNote(create_note_input)].span())
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_create_note_execute_view(
-        self: @User, create_note_input: CreateNoteInput,
+    fn safe_create_enc_note_execute_view(
+        self: @User, create_note_input: CreateEncNoteInput,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.safe_execute_view([ClientAction::CreateNote(create_note_input)].span())
+        self.safe_execute_view([ClientAction::CreateEncNote(create_note_input)].span())
     }
 
-    fn internal_create_note(self: @User, create_note_input: CreateNoteInput) -> Span<ServerAction> {
+    fn internal_create_enc_note(
+        self: @User, create_note_input: CreateEncNoteInput,
+    ) -> Span<ServerAction> {
         interact_with_state(
             *self.privacy.address,
             || {
@@ -624,7 +644,7 @@ pub(crate) impl UserImpl of UserTrait {
                 token_balances
                     .add_balance(token: create_note_input.token, amount: create_note_input.amount);
                 state
-                    .create_note(
+                    .create_enc_note(
                         sender_addr: *self.address,
                         sender_private_key: *self.private_key,
                         input: create_note_input,
@@ -635,8 +655,60 @@ pub(crate) impl UserImpl of UserTrait {
             .span()
     }
 
-    fn cheat_create_note_e2e(self: @User, create_note_input: CreateNoteInput) {
-        self.privacy.server.execute_actions(actions: self.internal_create_note(create_note_input));
+    fn cheat_create_enc_note_e2e(self: @User, create_note_input: CreateEncNoteInput) {
+        self
+            .privacy
+            .server
+            .execute_actions(actions: self.internal_create_enc_note(create_note_input));
+    }
+
+    fn create_open_note(self: @User, create_note_input: CreateOpenNoteInput) -> Span<ServerAction> {
+        self.client_execute([ClientAction::CreateOpenNote(create_note_input)].span())
+    }
+
+    fn safe_create_open_note(
+        self: @User, create_note_input: CreateOpenNoteInput,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_client_execute([ClientAction::CreateOpenNote(create_note_input)].span())
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_create_open_note_execute_and_panic(
+        self: @User, create_note_input: CreateOpenNoteInput,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_execute_and_panic([ClientAction::CreateOpenNote(create_note_input)].span())
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_create_open_note_execute_view(
+        self: @User, create_note_input: CreateOpenNoteInput,
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
+        self.safe_execute_view([ClientAction::CreateOpenNote(create_note_input)].span())
+    }
+
+    fn internal_create_open_note(
+        self: @User, create_note_input: CreateOpenNoteInput,
+    ) -> Span<ServerAction> {
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                state
+                    .create_open_note(
+                        sender_addr: *self.address,
+                        sender_private_key: *self.private_key,
+                        input: create_note_input,
+                    )
+            },
+        )
+            .span()
+    }
+
+    fn cheat_create_open_note_e2e(self: @User, create_note_input: CreateOpenNoteInput) {
+        self
+            .privacy
+            .server
+            .execute_actions(actions: self.internal_create_open_note(create_note_input));
     }
 
     fn compute_channel_key(self: @User, recipient: User) -> felt252 {
@@ -698,9 +770,9 @@ pub(crate) impl UserImpl of UserTrait {
         encrypt_subchannel_info(:channel_key, :index, token: token_address, :salt)
     }
 
-    /// Computes the note ID and Note for a given CreateNoteInput.
+    /// Computes the note ID and Note for a given CreateEncNoteInput.
     /// Returns (note_id, Note).
-    fn compute_note(self: @User, create_note_input: CreateNoteInput) -> (felt252, Note) {
+    fn compute_enc_note(self: @User, create_note_input: CreateEncNoteInput) -> (felt252, Note) {
         let channel_key = compute_channel_key(
             sender_addr: *self.address,
             sender_private_key: *self.private_key,
@@ -710,18 +782,32 @@ pub(crate) impl UserImpl of UserTrait {
         let note_id = compute_note_id(
             :channel_key, token: create_note_input.token, index: create_note_input.index,
         );
-        let note_value = Note {
-            enc_value: encrypt_note_amount(
-                :channel_key,
-                token: create_note_input.token,
-                index: create_note_input.index,
-                salt: create_note_input.salt,
-                amount: create_note_input.amount,
-            ),
-            token: Zero::zero(),
-        };
-        (note_id, note_value)
+        let packed_value = encrypt_note_amount(
+            :channel_key,
+            token: create_note_input.token,
+            index: create_note_input.index,
+            salt: create_note_input.salt,
+            amount: create_note_input.amount,
+        );
+        (note_id, Note { packed_value, token: Zero::zero() })
     }
+
+    /// Computes the note ID and Note for a given CreateOpenNoteInput.
+    /// Returns (note_id, Note).
+    fn compute_open_note(self: @User, create_note_input: CreateOpenNoteInput) -> (felt252, Note) {
+        let channel_key = compute_channel_key(
+            sender_addr: *self.address,
+            sender_private_key: *self.private_key,
+            recipient_addr: create_note_input.recipient_addr,
+            recipient_public_key: create_note_input.recipient_public_key,
+        );
+        let note_id = compute_note_id(
+            :channel_key, token: create_note_input.token, index: create_note_input.index,
+        );
+        let packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: Zero::zero());
+        (note_id, Note { packed_value, token: create_note_input.token })
+    }
+
 
     fn compute_enc_user_addr(self: @User, random: felt252) -> EncUserAddr {
         encrypt_user_addr(
@@ -783,47 +869,61 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    fn new_note(
+    fn new_enc_note(
         self: @User,
         recipient: User,
         token_address: ContractAddress,
         amount: u128,
         index: usize,
         salt: u128,
-    ) -> CreateNoteInput {
-        CreateNoteInput {
+    ) -> CreateEncNoteInput {
+        CreateEncNoteInput {
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             token: token_address,
-            amount,
             index,
+            amount,
             salt,
         }
     }
 
-    fn new_note_with_generated_salt(
+    fn new_enc_note_with_generated_salt(
         ref self: User, recipient: User, token_address: ContractAddress, amount: u128, index: usize,
-    ) -> CreateNoteInput {
+    ) -> CreateEncNoteInput {
         let salt = self.get_salt();
-        self.new_note(:recipient, :token_address, :amount, :index, :salt)
+        self.new_enc_note(:recipient, :token_address, :amount, :index, :salt)
+    }
+
+    fn new_open_note(
+        self: @User, recipient: User, token: ContractAddress, index: usize,
+    ) -> CreateOpenNoteInput {
+        CreateOpenNoteInput {
+            recipient_addr: recipient.address,
+            recipient_public_key: recipient.public_key,
+            token,
+            index,
+        }
     }
 
     fn deposit_and_create_note_e2e(ref self: User, token: Token, amount: u128) {
         let salt = self.get_salt();
         let deposit_input = DepositInput { token: token.contract_address(), amount };
-        let create_note_input = CreateNoteInput {
+        let create_note_input = CreateEncNoteInput {
             recipient_addr: self.address,
             recipient_public_key: self.public_key,
             token: token.contract_address(),
-            amount,
             index: 0,
+            amount,
             salt,
         };
         self.increase_token_balance(:token, :amount);
         self.approve(:token, amount: amount.into());
         let server_actions = self
             .client_execute(
-                [ClientAction::Deposit(deposit_input), ClientAction::CreateNote(create_note_input)]
+                [
+                    ClientAction::Deposit(deposit_input),
+                    ClientAction::CreateEncNote(create_note_input),
+                ]
                     .span(),
             );
         self.privacy.execute_actions(actions: server_actions);
@@ -966,7 +1066,9 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     /// Cheat deposit in the server side (no client side).
-    fn cheat_deposit(self: @User, token: Token, amount: u128, create_note_input: CreateNoteInput) {
+    fn cheat_deposit(
+        self: @User, token: Token, amount: u128, create_note_input: CreateEncNoteInput,
+    ) {
         self.approve(:token, amount: amount.into());
         let actions = [
             create_note_input.into_server_action(user: *self),
@@ -1116,8 +1218,8 @@ pub(crate) impl TestImpl of TestTrait {
     fn mock_new_note(ref self: Test, amount: u128) -> (felt252, Note) {
         self.nonce += 1;
         let note_id = 'NOTE_ID' + self.nonce.into();
-        let enc_value = 'ENC_VALUE' + amount.into() + self.nonce.into();
-        (note_id, Note { enc_value, token: Zero::zero() })
+        let packed_value = 'PACKED_VALUE' + amount.into() + self.nonce.into();
+        (note_id, Note { packed_value, token: Zero::zero() })
     }
 
     /// Mock function to generate a new nullifier.
@@ -1223,7 +1325,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                 actions: [
                     ServerAction::WriteOnce(
                         WriteOnceInput {
-                            storage_address: storage_path, value: [note.enc_value].span(),
+                            storage_address: storage_path, value: [note.packed_value].span(),
                         },
                     ),
                 ]
@@ -1596,4 +1698,13 @@ fn deserialize_server_actions(message: @MessageToL1) -> Span<ServerAction> {
 pub(crate) fn spy_messages_to_server_actions(ref spy: MessageToL1Spy) -> Span<ServerAction> {
     let (_from, message) = spy.get_messages().messages.at(0);
     deserialize_server_actions(:message)
+}
+
+pub(crate) fn assert_unique_felts(felts: Span<felt252>) {
+    let mut buckets: Felt252Dict<usize> = Default::default();
+    for felt in felts {
+        let current_count = buckets[*felt];
+        assert!(current_count.is_zero(), "Duplicate felt found: {:?}", felt);
+        buckets.insert(*felt, value: 1);
+    }
 }

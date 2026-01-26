@@ -28,12 +28,13 @@ pub const NON_ZERO_RESOURCE_PRICE: felt252 = 'NON_ZERO_RESOURCE_PRICE';
 pub const NON_ZERO_TIP: felt252 = 'NON_ZERO_TIP';
 pub const SALT_TOO_SMALL: felt252 = 'SALT_TOO_SMALL';
 pub const ZERO_COMPLIANCE_PUBLIC_KEY: felt252 = 'ZERO_COMPLIANCE_PUBLIC_KEY';
+pub const EMPTY_NOTE_USAGE: felt252 = 'EMPTY_NOTE_USAGE';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';
     pub const ZERO_CHANNEL_ID: felt252 = 'ZERO_CHANNEL_ID';
     pub const ZERO_NOTE_ID: felt252 = 'ZERO_NOTE_ID';
-    pub const ZERO_ENC_NOTE_VALUE: felt252 = 'ZERO_ENC_NOTE_VALUE';
+    pub const ZERO_NOTE_VALUE: felt252 = 'ZERO_NOTE_VALUE';
     pub const ZERO_NULLIFIER: felt252 = 'ZERO_NULLIFIER';
     pub const ZERO_SUBCHANNEL_ID: felt252 = 'ZERO_SUBCHANNEL_ID';
     pub const ZERO_SUBCHANNEL_KEY: felt252 = 'ZERO_SUBCHANNEL_KEY';
@@ -53,4 +54,5 @@ pub(crate) mod internal_errors {
     pub const UNEXPECTED_ZERO_CHANNEL_KEY: felt252 = 'UNEXPECTED_ZERO_CHANNEL_KEY';
     pub const ENC_NOTE_NON_ZERO_TOKEN: felt252 = 'ENC_NOTE_NON_ZERO_TOKEN';
     pub const ZERO_ENC_USER_ADDR: felt252 = 'ZERO_ENC_USER_ADDR';
+    pub const NOTE_TOKEN_MISMATCH: felt252 = 'NOTE_TOKEN_MISMATCH';
 }
