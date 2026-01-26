@@ -21,12 +21,13 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, NoteTrait,
         ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
     };
-    use privacy::utils::constants::{CREATE_NOTE_MIN_SALT, TWO_POW_120};
+    use privacy::utils::constants::{CREATE_NOTE_MIN_SALT, OPEN_NOTE_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
         decrypt_note_amount, derive_public_key, encrypt_channel_info, encrypt_outgoing_channel_info,
         encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, is_canonical_key,
-        send_message_to_server, server_actions_to_panic_data, unwrap_execute_and_panic_result,
+        send_message_to_server, server_actions_to_panic_data, unpacking,
+        unwrap_execute_and_panic_result,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -483,11 +484,20 @@ pub mod Privacy {
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
-            let enc_note_value = self.notes.entry(note_id).enc_value.read();
-            assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
+            let packed_value = self.notes.entry(note_id).value.read();
+            assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             // Decrypt note amount.
-            let amount = decrypt_note_amount(:enc_note_value, :channel_key, :token, :index);
+            let (salt, value) = unpacking(packed_value);
+            // TODO: Test open notes with value when server action is implemented.
+            let amount = if salt == OPEN_NOTE_SALT {
+                assert(value.is_non_zero(), errors::EMPTY_NOTE_USAGE);
+                let note_token = self.notes.entry(note_id).token.read();
+                assert(note_token == token, errors::NOTE_TOKEN_MISMATCH);
+                value
+            } else {
+                decrypt_note_amount(:salt, enc_amount: value, :channel_key, :token, :index)
+            };
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
@@ -518,17 +528,12 @@ pub mod Privacy {
             let recipient_addr = input.recipient_addr;
             let recipient_public_key = input.recipient_public_key;
             let token = input.token;
-            let amount = input.amount;
             let index = input.index;
-            let salt = input.salt;
             assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
-            // Assert valid salt.
-            assert(salt >= CREATE_NOTE_MIN_SALT, errors::SALT_TOO_SMALL);
-            assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
 
             // Compute channel key.
             let channel_key = compute_channel_key(
@@ -550,26 +555,35 @@ pub mod Privacy {
                     || self
                         .notes
                         .read(compute_note_id(:channel_key, :token, index: index - 1))
-                        .enc_value
+                        .value
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
             );
 
             // Compute note values.
             let note_id = compute_note_id(:channel_key, :token, :index);
-            let note = NoteTrait::encrypt(:channel_key, :token, :index, :salt, :amount);
+            let note = if let Some(encryption_payload) = input.encryption_payload {
+                let salt = encryption_payload.salt;
+                // Assert valid salt.
+                assert(salt >= CREATE_NOTE_MIN_SALT, errors::SALT_TOO_SMALL);
+                assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
+                let amount = encryption_payload.amount;
+                token_balances.subtract_balance(:token, :amount);
+                NoteTrait::encrypted_note(:channel_key, :token, :index, :salt, :amount)
+            } else {
+                NoteTrait::open_note(:token)
+            };
 
             assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
-            assert(note.enc_value.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
+            assert(note.value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
 
-            token_balances.subtract_balance(:token, :amount);
-
-            // Only `enc_value` needs to be written, `token` is initialized to zero.
-            array![
-                note
-                    .enc_value
-                    .to_write_once_action(storage_address: self.notes.entry(note_id).into()),
-            ]
+            let storage_address = self.notes.entry(note_id).into();
+            let server_action = if note.token.is_zero() {
+                note.value.to_write_once_action(:storage_address)
+            } else {
+                note.to_write_once_action(:storage_address)
+            };
+            array![server_action]
         }
     }
 
@@ -721,7 +735,7 @@ pub mod Privacy {
             let note = self.notes.read(note_id);
             // TODO: Revise when open notes are implemented.
             assert(note.token.is_zero(), internal_errors::ENC_NOTE_NON_ZERO_TOKEN);
-            self.notes.read(note_id).enc_value
+            self.notes.read(note_id).value
         }
 
         fn nullifier_exists(self: @ContractState, nullifier: felt252) -> bool {
