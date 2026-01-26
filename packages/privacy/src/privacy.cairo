@@ -37,7 +37,9 @@ pub mod Privacy {
         StorageBaseAddress, storage_address_from_base_and_offset, storage_base_address_from_felt252,
     };
     use starknet::syscalls::{call_contract_syscall, storage_read_syscall, storage_write_syscall};
-    use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_contract_address};
+    use starknet::{
+        ContractAddress, SyscallResultTrait, VALIDATED, get_contract_address, get_execution_info,
+    };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
@@ -133,9 +135,12 @@ pub mod Privacy {
         fn __execute__(
             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
-            assert_valid_execution_info();
+            let execution_info = *get_execution_info();
+            assert_valid_execution_info(:execution_info);
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             let server_actions = self.execute_view(:user_addr, :client_actions);
+            // TODO: Test inner `is_valid_signature` panics.
+            assert_valid_signature(:user_addr, tx_info: *execution_info.tx_info);
             send_message_to_server(:server_actions);
         }
 
@@ -156,8 +161,8 @@ pub mod Privacy {
                 .expect(internal_errors::DESERIALIZE_FAILED)
         }
 
-        /// Panics directly for internal errors; external calls are wrapped via syscall
-        /// to wrap their panics with `ERROR_WRAPPER`.
+        /// Panics directly for internal errors; external calls should be wrapped via syscall
+        /// to prevent injection of `OK_WRAPPER` into the panic data.
         // TODO: Add tests (verify always panics with appropriate wrapping).
         fn execute_and_panic(
             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
@@ -202,10 +207,6 @@ pub mod Privacy {
             assert(has_privacy_action, errors::NO_PRIVACY_ACTIONS);
             token_balances.squash().assert_valid();
 
-            // `assert_valid_signature` must be the last call before panicking, to ensure contract
-            // storage is not modified.
-            // TODO: Test wrapped `is_valid_signature` panics.
-            assert_valid_signature(:user_addr);
             panic(server_actions_to_panic_data(server_actions: server_actions.span()));
         }
     }

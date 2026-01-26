@@ -1,7 +1,5 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
-use core::iter::Extend;
-use core::never;
 use core::num::traits::Zero;
 use privacy::actions::ServerAction;
 use privacy::errors;
@@ -14,10 +12,10 @@ use privacy::hashes::{
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr,
 };
-use privacy::utils::constants::{ENTRYPOINT_FAILED, ERROR_WRAPPER, OK_WRAPPER, TWO_POW_120, TX_V3};
+use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, TWO_POW_120, TX_V3};
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
-use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_execution_info, get_tx_info};
+use starknet::{ContractAddress, ExecutionInfo, SyscallResultTrait, TxInfo, VALIDATED};
 use starkware_utils::constants::TWO_POW_128;
 
 pub mod constants {
@@ -27,7 +25,6 @@ pub mod constants {
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
-    pub const ERROR_WRAPPER: felt252 = 'PRIVACY_ERROR_WRAPPER';
     pub const TX_V3: u64 = 3;
 }
 
@@ -261,8 +258,7 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
     )
 }
 
-pub(crate) fn assert_valid_execution_info() {
-    let execution_info = get_execution_info();
+pub(crate) fn assert_valid_execution_info(execution_info: ExecutionInfo) {
     // Ensure that the current call is the first of the transaction,
     // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
     assert(execution_info.caller_address.is_zero(), errors::INVALID_CALLER);
@@ -276,8 +272,7 @@ pub(crate) fn assert_valid_execution_info() {
     }
 }
 
-pub(crate) fn assert_valid_signature(user_addr: ContractAddress) {
-    let tx_info = get_tx_info();
+pub(crate) fn assert_valid_signature(user_addr: ContractAddress, tx_info: TxInfo) {
     let tx_hash = tx_info.transaction_hash;
     let signature = tx_info.signature;
 
@@ -290,7 +285,7 @@ pub(crate) fn assert_valid_signature(user_addr: ContractAddress) {
         entry_point_selector: selector!("is_valid_signature"),
         calldata: calldata.span(),
     );
-    let mut serialized_result = syscall_result.unwrap_or_else(|err| external_panic(:err));
+    let mut serialized_result = syscall_result.unwrap_syscall();
     let is_valid: felt252 = Serde::deserialize(ref serialized_result)
         .expect(internal_errors::DESERIALIZE_FAILED);
     assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
@@ -316,15 +311,6 @@ pub(crate) fn unwrap_execute_and_panic_result(
     let _ = panic_message.pop_front();
     // TODO: Consider also popping the last 2 elements.
     panic_message.span()
-}
-
-/// Wraps an external panic with `ERROR_WRAPPER`.
-pub(crate) fn external_panic(err: Array<felt252>) -> never {
-    let mut panic_data = array![];
-    panic_data.append(ERROR_WRAPPER);
-    panic_data.extend(err);
-    panic_data.append(ERROR_WRAPPER);
-    panic(panic_data);
 }
 
 /// Wraps the server actions with `OK_WRAPPER` in a panic data array.
