@@ -35,7 +35,6 @@ pub(crate) mod internal_errors {
     pub const ZERO_NOTE_ID: felt252 = 'ZERO_NOTE_ID';
     pub const ZERO_ENC_NOTE_VALUE: felt252 = 'ZERO_ENC_NOTE_VALUE';
     pub const ZERO_NULLIFIER: felt252 = 'ZERO_NULLIFIER';
-    pub const ACTIONS_LENGTH_MISMATCH: felt252 = 'ACTIONS_LENGTH_MISMATCH';
     pub const ZERO_SUBCHANNEL_ID: felt252 = 'ZERO_SUBCHANNEL_ID';
     pub const ZERO_SUBCHANNEL_KEY: felt252 = 'ZERO_SUBCHANNEL_KEY';
     pub const ZERO_ENC_SUBCHANNEL_TOKEN: felt252 = 'ZERO_ENC_SUBCHANNEL_TOKEN';
