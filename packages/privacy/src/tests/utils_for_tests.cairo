@@ -1,11 +1,12 @@
+use core::dict::Felt252Dict;
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
-    AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
-    OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
-    UseNoteInput, WithdrawInput, WriteOnceInput,
+    AppendToVecInput, ClientAction, CreateEncryptedNoteInput, CreateOpenNoteInput, DepositInput,
+    OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
+    TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
 };
 use privacy::hashes::{
     compute_channel_id, compute_channel_key, compute_enc_address_hash, compute_enc_channel_key_hash,
@@ -30,7 +31,7 @@ use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_ac
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{
     derive_public_key, encrypt_note_amount, encrypt_outgoing_channel_info, encrypt_private_key,
-    encrypt_subchannel_info, encrypt_user_addr, is_canonical_key,
+    encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, packing,
 };
 use snforge_std::{
     CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
@@ -107,28 +108,32 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn transfer(
-        self: @User, notes_to_use: Span<UseNoteInput>, notes_to_create: Span<CreateNoteInput>,
+        self: @User,
+        notes_to_use: Span<UseNoteInput>,
+        notes_to_create: Span<CreateEncryptedNoteInput>,
     ) -> Span<ServerAction> {
         let mut client_actions: Array<ClientAction> = array![];
         for note in notes_to_use {
             client_actions.append(ClientAction::UseNote(*note));
         }
         for note in notes_to_create {
-            client_actions.append(ClientAction::CreateNote(*note));
+            client_actions.append(ClientAction::CreateEncryptedNote(*note));
         }
         self.client_execute(client_actions: client_actions.span())
     }
 
     #[feature("safe_dispatcher")]
     fn safe_transfer(
-        self: @User, notes_to_use: Span<UseNoteInput>, notes_to_create: Span<CreateNoteInput>,
+        self: @User,
+        notes_to_use: Span<UseNoteInput>,
+        notes_to_create: Span<CreateEncryptedNoteInput>,
     ) -> Result<(), Array<felt252>> {
         let mut client_actions: Array<ClientAction> = array![];
         for note in notes_to_use {
             client_actions.append(ClientAction::UseNote(*note));
         }
         for note in notes_to_create {
-            client_actions.append(ClientAction::CreateNote(*note));
+            client_actions.append(ClientAction::CreateEncryptedNote(*note));
         }
         self.safe_client_execute(client_actions: client_actions.span())
     }
@@ -402,25 +407,59 @@ pub(crate) impl UserImpl of UserTrait {
         (salt_u256 % TWO_POW_120.into()).try_into().unwrap()
     }
 
-    fn create_note(self: @User, note: CreateNoteInput) -> Span<ServerAction> {
-        self.client_execute([ClientAction::CreateNote(note)].span())
+    fn create_encrypted_note(self: @User, note: CreateEncryptedNoteInput) -> Span<ServerAction> {
+        self.client_execute([ClientAction::CreateEncryptedNote(note)].span())
     }
 
-    fn internal_create_note(self: @User, note: CreateNoteInput) -> Span<ServerAction> {
+    fn safe_create_encrypted_note(
+        self: @User, note: CreateEncryptedNoteInput,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_client_execute([ClientAction::CreateEncryptedNote(note)].span())
+    }
+
+    fn internal_create_encrypted_note(
+        self: @User, note: CreateEncryptedNoteInput,
+    ) -> Span<ServerAction> {
         interact_with_state(
             *self.privacy.address,
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
                 token_balances.add_balance(token: note.token, amount: note.amount);
-                state.create_note(owner_addr: *self.address, input: note, ref :token_balances)
+                state
+                    .create_encrypted_note(
+                        owner_addr: *self.address, input: note, ref :token_balances,
+                    )
             },
         )
             .span()
     }
 
-    fn cheat_create_note_e2e(self: @User, note: CreateNoteInput) {
-        self.privacy.server.execute_actions(actions: self.internal_create_note(note));
+    fn cheat_create_encrypted_note_e2e(self: @User, note: CreateEncryptedNoteInput) {
+        self.privacy.server.execute_actions(actions: self.internal_create_encrypted_note(note));
+    }
+
+    fn create_open_note(self: @User, note: CreateOpenNoteInput) -> Span<ServerAction> {
+        self.client_execute([ClientAction::CreateOpenNote(note)].span())
+    }
+
+    fn safe_create_open_note(self: @User, note: CreateOpenNoteInput) -> Result<(), Array<felt252>> {
+        self.safe_client_execute([ClientAction::CreateOpenNote(note)].span())
+    }
+
+    fn internal_create_open_note(self: @User, note: CreateOpenNoteInput) -> Span<ServerAction> {
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                state.create_open_note(owner_addr: *self.address, input: note)
+            },
+        )
+            .span()
+    }
+
+    fn cheat_create_open_note_e2e(self: @User, note: CreateOpenNoteInput) {
+        self.privacy.server.execute_actions(actions: self.internal_create_open_note(note));
     }
 
     fn compute_channel_key(self: @User, recipient: User) -> felt252 {
@@ -484,7 +523,9 @@ pub(crate) impl UserImpl of UserTrait {
 
     /// Computes the note ID and Note for a given CreateNoteInput.
     /// Returns (note_id, Note).
-    fn compute_note(self: @User, note: CreateNoteInput) -> (felt252, Note) {
+    /// Computes the note ID and Note for a given CreateEncryptedNoteInput.
+    /// Returns (note_id, Note).
+    fn compute_encrypted_note(self: @User, note: CreateEncryptedNoteInput) -> (felt252, Note) {
         let channel_key = compute_channel_key(
             sender_addr: *self.address,
             sender_private_key: note.sender_private_key,
@@ -492,31 +533,65 @@ pub(crate) impl UserImpl of UserTrait {
             recipient_public_key: note.recipient_public_key,
         );
         let note_id = compute_note_id(:channel_key, token: note.token, index: note.index);
-        let note_value = Note {
-            enc_value: encrypt_note_amount(
-                :channel_key,
-                token: note.token,
-                index: note.index,
-                salt: note.salt,
-                amount: note.amount,
-            ),
-            token: Zero::zero(),
-        };
-        (note_id, note_value)
+        let value = encrypt_note_amount(
+            :channel_key,
+            token: note.token,
+            index: note.index,
+            salt: note.salt,
+            amount: note.amount,
+        );
+        (note_id, Note { value, token: Zero::zero() })
     }
 
-    fn note_to_server_action(self: @User, note: CreateNoteInput) -> ServerAction {
-        let (note_id, note_value) = self.compute_note(:note);
+    /// Computes the note ID and Note for a given CreateOpenNoteInput.
+    /// Returns (note_id, Note).
+    fn compute_open_note(self: @User, note: CreateOpenNoteInput) -> (felt252, Note) {
+        let channel_key = compute_channel_key(
+            sender_addr: *self.address,
+            sender_private_key: note.sender_private_key,
+            recipient_addr: note.recipient_addr,
+            recipient_public_key: note.recipient_public_key,
+        );
+        let note_id = compute_note_id(:channel_key, token: note.token, index: note.index);
+        let value = packing(value_1: 1, value_2: 0);
+        (note_id, Note { value, token: note.token })
+    }
+
+    fn encrypted_note_to_server_action(
+        self: @User, note: CreateEncryptedNoteInput,
+    ) -> ServerAction {
+        let (note_id, note_value) = self.compute_encrypted_note(:note);
         let storage_path = map_entry_address(
             map_selector: selector!("notes"), keys: [note_id].span(),
         );
+        // Encrypted notes only write value.
         ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path, value: [note_value.enc_value].span() },
+            WriteOnceInput { storage_address: storage_path, value: [note_value.value].span() },
         )
     }
 
-    fn note_to_server_actions(self: @User, note: CreateNoteInput) -> Span<ServerAction> {
-        [self.note_to_server_action(:note)].span()
+    fn encrypted_note_to_server_actions(
+        self: @User, note: CreateEncryptedNoteInput,
+    ) -> Span<ServerAction> {
+        [self.encrypted_note_to_server_action(:note)].span()
+    }
+
+    fn open_note_to_server_action(self: @User, note: CreateOpenNoteInput) -> ServerAction {
+        let (note_id, note_value) = self.compute_open_note(:note);
+        let storage_path = map_entry_address(
+            map_selector: selector!("notes"), keys: [note_id].span(),
+        );
+        // Open notes write value and token.
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: storage_path,
+                value: [note_value.value, note_value.token.into()].span(),
+            },
+        )
+    }
+
+    fn open_note_to_server_actions(self: @User, note: CreateOpenNoteInput) -> Span<ServerAction> {
+        [self.open_note_to_server_action(:note)].span()
     }
 
     fn compute_enc_user_addr(self: @User, random: felt252) -> EncUserAddr {
@@ -554,49 +629,64 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    fn new_note(
+    fn new_encrypted_note(
         self: @User,
         recipient: User,
         token_address: ContractAddress,
         amount: u128,
         index: usize,
         salt: u128,
-    ) -> CreateNoteInput {
-        CreateNoteInput {
+    ) -> CreateEncryptedNoteInput {
+        CreateEncryptedNoteInput {
             sender_private_key: *self.private_key,
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             token: token_address,
-            amount,
             index,
+            amount,
             salt,
         }
     }
 
-    fn new_note_with_generated_salt(
+    fn new_encrypted_note_with_generated_salt(
         ref self: User, recipient: User, token_address: ContractAddress, amount: u128, index: usize,
-    ) -> CreateNoteInput {
+    ) -> CreateEncryptedNoteInput {
         let salt = self.get_salt();
-        self.new_note(:recipient, :token_address, :amount, :index, :salt)
+        self.new_encrypted_note(:recipient, :token_address, :amount, :index, :salt)
+    }
+
+    fn new_open_note(
+        self: @User, recipient: User, token: ContractAddress, index: usize,
+    ) -> CreateOpenNoteInput {
+        CreateOpenNoteInput {
+            sender_private_key: *self.private_key,
+            recipient_addr: recipient.address,
+            recipient_public_key: recipient.public_key,
+            token,
+            index,
+        }
     }
 
     fn deposit_and_create_note_e2e(ref self: User, token: Token, amount: u128) {
         let salt = self.get_salt();
         let deposit_input = DepositInput { token: token.contract_address(), amount };
-        let create_note_input = CreateNoteInput {
+        let create_note_input = CreateEncryptedNoteInput {
             sender_private_key: self.private_key,
             recipient_addr: self.address,
             recipient_public_key: self.public_key,
             token: token.contract_address(),
-            amount,
             index: 0,
+            amount,
             salt,
         };
         self.increase_token_balance(:token, :amount);
         self.approve(:token, amount: amount.into());
         let server_actions = self
             .client_execute(
-                [ClientAction::Deposit(deposit_input), ClientAction::CreateNote(create_note_input)]
+                [
+                    ClientAction::Deposit(deposit_input),
+                    ClientAction::CreateEncryptedNote(create_note_input),
+                ]
                     .span(),
             );
         self.privacy.execute_actions(actions: server_actions);
@@ -718,10 +808,10 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     /// Cheat deposit in the server side (no client side).
-    fn cheat_deposit(self: @User, token: Token, amount: u128, note: CreateNoteInput) {
+    fn cheat_deposit(self: @User, token: Token, amount: u128, note: CreateEncryptedNoteInput) {
         self.approve(:token, amount: amount.into());
         let actions = [
-            self.note_to_server_action(:note),
+            self.encrypted_note_to_server_action(:note),
             ServerAction::TransferFrom(
                 TransferFromInput {
                     sender_addr: *self.address, token: token.contract_address(), amount,
@@ -846,7 +936,7 @@ pub(crate) impl TestImpl of TestTrait {
         self.nonce += 1;
         let note_id = 'NOTE_ID' + self.nonce.into();
         let enc_value = 'ENC_VALUE' + amount.into() + self.nonce.into();
-        (note_id, Note { enc_value, token: Zero::zero() })
+        (note_id, Note { value: enc_value, token: Zero::zero() })
     }
 
     /// Mock function to generate a new nullifier.
@@ -952,7 +1042,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                 actions: [
                     ServerAction::WriteOnce(
                         WriteOnceInput {
-                            storage_address: storage_path, value: [note.enc_value].span(),
+                            storage_address: storage_path, value: [note.value].span(),
                         },
                     ),
                 ]
@@ -1240,4 +1330,13 @@ fn deserialize_server_actions(message: @MessageToL1) -> Span<ServerAction> {
 pub(crate) fn spy_messages_to_server_actions(ref spy: MessageToL1Spy) -> Span<ServerAction> {
     let (_from, message) = spy.get_messages().messages.at(0);
     deserialize_server_actions(:message)
+}
+
+pub(crate) fn assert_unique_felts(felts: Span<felt252>) {
+    let mut buckets: Felt252Dict<usize> = Default::default();
+    for felt in felts {
+        let current_count = buckets[*felt];
+        assert!(current_count.is_zero(), "Duplicate felt found: {:?}", felt);
+        buckets.insert(*felt, value: 1);
+    }
 }
