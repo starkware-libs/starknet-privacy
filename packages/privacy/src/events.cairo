@@ -7,6 +7,7 @@ pub struct ViewingKeySet {
     #[key]
     pub user_addr: ContractAddress,
     /// The public viewing key.
+    #[key]
     pub public_key: felt252,
     /// The encrypted private key.
     pub enc_private_key: EncPrivateKey,
@@ -38,3 +39,9 @@ pub struct Deposit {
     pub amount: u128,
 }
 
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct CompliancePublicKeySet {
+    /// The compliance public key.
+    #[key]
+    pub compliance_public_key: felt252,
+}

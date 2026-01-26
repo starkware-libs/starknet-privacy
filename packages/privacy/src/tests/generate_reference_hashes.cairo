@@ -12,7 +12,7 @@ use privacy::hashes::{
 };
 use privacy::utils::{
     decrypt_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
-    encrypt_subchannel_info,
+    encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
 };
 use starknet::ContractAddress;
 
@@ -29,6 +29,9 @@ const SHARED_X: felt252 = 0x9abc;
 // Additional inputs for encryption tests
 const EPHEMERAL_SECRET: felt252 = 0xabcd;
 const AMOUNT: u128 = 1000;
+const COMPLIANCE_PRIVATE_KEY: felt252 = 0x54321;
+const USER_ADDR: felt252 = 0x999;
+const USER_PRIVATE_KEY: felt252 = 0x888;
 
 fn to_address(addr: felt252) -> ContractAddress {
     addr.try_into().unwrap()
@@ -81,6 +84,23 @@ fn generate_reference_hashes() {
     let enc_note_amount = encrypt_note_amount(CHANNEL_KEY, token, INDEX, SALT, AMOUNT);
     let dec_note_amount = decrypt_note_amount(enc_note_amount, CHANNEL_KEY, token, INDEX);
 
+    // Derive compliance public key for ECDH tests
+    let compliance_public_key = derive_public_key(COMPLIANCE_PRIVATE_KEY);
+    let user_addr = to_address(USER_ADDR);
+
+    // Encrypt outgoing channel info
+    let enc_outgoing = encrypt_outgoing_channel_info(
+        sender, SENDER_PRIVATE_KEY, INDEX, recipient, SALT.into(),
+    );
+
+    // Encrypt private key (for compliance)
+    let enc_private_key = encrypt_private_key(
+        EPHEMERAL_SECRET, compliance_public_key, USER_PRIVATE_KEY,
+    );
+
+    // Encrypt user address (for compliance)
+    let enc_user_addr = encrypt_user_addr(EPHEMERAL_SECRET, compliance_public_key, user_addr);
+
     // Print in format parseable by sdk/scripts/generate-cairo-refs.ts
     println!("=== CAIRO REFERENCE HASHES ===");
 
@@ -98,6 +118,10 @@ fn generate_reference_hashes() {
     println!("inputs.amount: {}", AMOUNT);
     println!("inputs.recipientPrivateKey: 0x{:x}", recipient_private_key);
     println!("inputs.recipientPublicKeyDerived: 0x{:x}", recipient_public_key_derived);
+    println!("inputs.compliancePrivateKey: 0x{:x}", COMPLIANCE_PRIVATE_KEY);
+    println!("inputs.compliancePublicKey: 0x{:x}", compliance_public_key);
+    println!("inputs.userAddr: 0x{:x}", USER_ADDR);
+    println!("inputs.userPrivateKey: 0x{:x}", USER_PRIVATE_KEY);
 
     // Outputs (computed hashes)
     println!("outputs.channelKey: 0x{:x}", channel_key);
@@ -122,6 +146,18 @@ fn generate_reference_hashes() {
     println!("outputs.encChannelSenderAddr: 0x{:x}", enc_channel.enc_sender_addr);
     println!("outputs.encNoteAmount: 0x{:x}", enc_note_amount);
     println!("outputs.decNoteAmount: {}", dec_note_amount);
+
+    // Outgoing channel info outputs
+    println!("outputs.encOutgoingSalt: 0x{:x}", enc_outgoing.salt);
+    println!("outputs.encOutgoingRecipientAddr: 0x{:x}", enc_outgoing.enc_recipient_addr);
+
+    // Encrypt private key outputs
+    println!("outputs.encPrivateKeyEphemeralPubkey: 0x{:x}", enc_private_key.ephemeral_pubkey);
+    println!("outputs.encPrivateKeyValue: 0x{:x}", enc_private_key.enc_private_key);
+
+    // Encrypt user address outputs
+    println!("outputs.encUserAddrEphemeralPubkey: 0x{:x}", enc_user_addr.ephemeral_pubkey);
+    println!("outputs.encUserAddrValue: 0x{:x}", enc_user_addr.enc_user_addr);
     println!("==============================");
 }
 

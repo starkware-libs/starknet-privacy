@@ -1,5 +1,4 @@
 import type {
-  AccountInterface,
   AllowArray,
   BigNumberish,
   BlockIdentifier,
@@ -37,22 +36,22 @@ export type StarknetAddress = BigNumberish;
  * Values are ordered by priority (higher value = more setup needed).
  */
 export enum SetupRequirement {
-  /** Ready to transfer - no setup needed */
-  Ready = 0,
+  /** Recipient is not registered */
+  Register = 0,
+  /** Need to setup initial channel*/
+  SetupChannel = 1,
   /** Need to setup the token subchannel */
-  SetupToken = 1,
-  /** Need to setup initial channel (and token) */
-  SetupChannel = 2,
-  /** Need to register (and setup channel and token) */
-  Register = 3,
+  SetupToken = 2,
+  /** Ready to transfer - no setup needed */
+  Ready = 3,
 }
 
 /** A Starknet address normalized to bigint (for use as Map keys, etc.) */
 export type StarknetAddressBigint = bigint;
 
 // Import and re-export Witness class from internal.ts
-import { Witness, Channel } from "./internal/channel.js";
-export { Witness, Channel };
+import { Witness, Channel, NotesCursor } from "./internal/channel.js";
+export { Witness, Channel, NotesCursor as DiscoveryCursor };
 
 export type Note = {
   readonly id: NoteId;
@@ -69,8 +68,8 @@ export type NoteId = BigNumberish;
 
 export type Proof = {
   readonly data: Uint8Array;
-  readonly outputHash: BigNumberish;
-  readonly output: BigNumberish[]; // array of felts
+  readonly outputHash: string;
+  readonly output: string[]; // array of felts
 };
 
 /**
@@ -96,14 +95,6 @@ export type ProofProviderConfig = {
 
 export type DiscoveryProviderConfig = {
   url: string;
-};
-
-export type PrivateTransfersConfig = {
-  account: AccountInterface;
-  viewingSigner: ViewingKey;
-  provingProvider: ProofProviderInterface;
-  discoveryProvider: DiscoveryProviderInterface;
-  pool: StarknetAddress;
 };
 
 export interface PrivateRecipient {
@@ -219,6 +210,8 @@ export type PrivateRegistry = {
   channels: AddressMap<Channel>;
   /** Notes by token address */
   notes: AddressMap<Note[]>;
+  /** Cursor for discovery */
+  cursor?: NotesCursor;
 };
 
 /** Create an empty private registry */
@@ -259,7 +252,7 @@ export type ExecuteResult = {
 /**
  * Simple interface for simple private transfer scenarios
  */
-export interface SimplePrivateTransfers {
+export interface SimplePrivateTransfersInterface {
   readonly user: StarknetAddress;
   readonly registry: PrivateRegistry;
 
@@ -298,23 +291,10 @@ export interface SimplePrivateTransfers {
     toToken: StarknetAddress,
     helperCall: Call
   ): Promise<ExecuteResult>;
-
-  /**
-   * Discover unspent notes per token
-   */
-  discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): {
-    timestamp: BlockIdentifier;
-    notes: AddressMap<Note[]>;
-  };
-
-  /**
-   * Discover channels for one or more recipients
-   */
-  discoverChannels(...recipients: StarknetAddress[]): {
-    timestamp: BlockIdentifier;
-    channels: AddressMap<Channel>;
-  };
 }
+
+/** @deprecated Use SimplePrivateTransfersInterface instead */
+export type SimplePrivateTransfers = SimplePrivateTransfersInterface;
 
 /**
  * Main interface for clients to use. It is stateless.
@@ -332,7 +312,7 @@ export interface SimplePrivateTransfers {
  *   fn withdraw(addrowner, addrrecipient, kowner, note: (j: channel index, i: note index))
  *   fn transfer(addrowner, kowner, notes_to_use: Span<(j, i)>, notes_to_create: Span<(addrrecipient, token, i, amount)>)
  */
-export interface PrivateTransfers {
+export interface PrivateTransfersInterface {
   /** 
    * expected properties to be set by the implementing object
   readonly prover: ProveInterface;
@@ -343,11 +323,9 @@ export interface PrivateTransfers {
   readonly user: StarknetAddress;
 
   /**
-   * given a recipient and token, check if the recipient has a Channel associated with it and if the token is in the channel.
-   * @returns {initial: boolean, token: boolean}
-   * initial: true if the recipient doesn't have a Channel associated with it
-   * token: true if the token is in the channel
-   * @throws if the account or recipient is not registered
+   * given a recipient and token, check if there needs to be a setup for the recipient and token.
+   * @returns SetupRequirement
+   * @throws if the user is not registered
    */
   discoverRequirement(
     recipient: StarknetAddress,
@@ -358,18 +336,21 @@ export interface PrivateTransfers {
    * Discover unspent notes per token
    *
    */
-  discoverNotes(params?: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): {
+  discoverNotes(params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
-  };
+  }>;
 
   /**
    * Discover channels for one or more recipients
    */
-  discoverChannels(...recipients: StarknetAddress[]): {
+  discoverChannels(
+    recipients: StarknetAddress[],
+    params?: { cursor?: AddressMap<Channel> }
+  ): Promise<{
     timestamp: BlockIdentifier;
     channels: AddressMap<Channel>;
-  };
+  }>;
 
   /**
    * Execute raw actions. The implementation:
@@ -383,6 +364,9 @@ export interface PrivateTransfers {
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
 }
+
+/** @deprecated Use PrivateTransfersInterface instead */
+export type PrivateTransfers = PrivateTransfersInterface;
 
 // ============ Builder Types ============
 
@@ -555,25 +539,25 @@ export interface DiscoveryProviderInterface {
    * Discover unspent notes per token
    */
   discoverNotes(
-    address: bigint,
+    address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    params?: { since?: BlockIdentifier; known?: AddressMap<Note[]>; tokens?: bigint[] }
-  ): {
+    params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }
+  ): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
-  };
+    cursor: NotesCursor;
+  }>;
 
   /**
-   * Discover channels for one or more recipients
+   * Discover channels for one or more recipients.
+   * Pass "all" to discover all outgoing channels by iterating through the outgoing channel map.
    */
   discoverChannels(
-    address: bigint,
+    address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    ...recipients: bigint[]
-  ): {
-    timestamp: BlockIdentifier;
-    channels: AddressMap<Channel>;
-  };
+    recipients: StarknetAddressBigint[] | "all",
+    params?: { cursor?: AddressMap<Channel> }
+  ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }>;
 
   /**
    * Check the setup requirements for a recipient.
@@ -581,10 +565,10 @@ export interface DiscoveryProviderInterface {
    * @param recipient - The recipient to check the setup requirements for. if self, check for 'address'
    */
   discoverRequirement(
-    address: bigint,
+    address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipient: bigint,
-    token: bigint
+    recipient: StarknetAddressBigint,
+    token: StarknetAddressBigint
   ): Promise<SetupRequirement>;
 }
 

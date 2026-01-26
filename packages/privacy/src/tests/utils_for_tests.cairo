@@ -15,8 +15,10 @@ use privacy::hashes::{
 };
 use privacy::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
-    IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
-    IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
+    IComplianceDispatcher, IComplianceDispatcherTrait, IComplianceSafeDispatcher,
+    IComplianceSafeDispatcherTrait, IServerDispatcher, IServerDispatcherTrait,
+    IServerSafeDispatcher, IServerSafeDispatcherTrait, IViewsDispatcher, IViewsDispatcherTrait,
+    IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
@@ -42,7 +44,8 @@ use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
 use starkware_utils_testing::test_utils::{
-    Deployable, TokenConfig, cheat_caller_address_once, set_account_as_security_agent,
+    Deployable, TokenConfig, cheat_caller_address_once, set_account_as_app_role_admin,
+    set_account_as_security_agent, set_account_as_token_admin,
 };
 
 pub(crate) mod constants {
@@ -97,6 +100,8 @@ pub(crate) struct PrivacyCfg {
     safe_client: IClientSafeDispatcher,
     views: IViewsDispatcher,
     safe_views: IViewsSafeDispatcher,
+    compliance: IComplianceDispatcher,
+    safe_compliance: IComplianceSafeDispatcher,
 }
 
 #[derive(Copy, Drop)]
@@ -817,6 +822,7 @@ pub(crate) impl TestImpl of TestTrait {
     fn mock_new_enc_private_key(ref self: Test) -> EncPrivateKey {
         self.nonce += 1;
         EncPrivateKey {
+            compliance_public_key: self.compliance_public_key,
             ephemeral_pubkey: 'EPHEMERAL_PUBKEY' + self.nonce.into(),
             enc_private_key: 'ENC_PRIVATE_KEY' + self.nonce.into(),
         }
@@ -826,6 +832,7 @@ pub(crate) impl TestImpl of TestTrait {
     fn mock_new_enc_address(ref self: Test) -> EncUserAddr {
         self.nonce += 1;
         EncUserAddr {
+            compliance_public_key: self.compliance_public_key,
             ephemeral_pubkey: 'EPHEMERAL_PUBKEY' + self.nonce.into(),
             enc_user_addr: 'ENC_USER_ADDR' + self.nonce.into(),
         }
@@ -887,6 +894,13 @@ pub(crate) impl TestImpl of TestTrait {
                 balances_variable_selector: selector!("ERC20_balances"),
             },
         )
+    }
+
+    fn replace_compliance_key(ref self: Test) {
+        self.nonce += 1;
+        self.compliance_private_key = 'COMPLIANCE_PRIVATE_KEY' + self.nonce.into();
+        self.compliance_public_key = derive_public_key(private_key: self.compliance_private_key);
+        self.privacy.set_compliance_public_key(compliance_public_key: self.compliance_public_key);
     }
 }
 
@@ -1064,6 +1078,20 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             span: CheatSpan::TargetCalls(1),
         );
     }
+
+    fn set_compliance_public_key(self: @PrivacyCfg, compliance_public_key: felt252) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.governance_admin,
+        );
+        self.compliance.set_compliance_public_key(:compliance_public_key);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_set_compliance_public_key(
+        self: @PrivacyCfg, compliance_public_key: felt252,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_compliance.set_compliance_public_key(:compliance_public_key)
+    }
 }
 
 impl DefaultTestImpl of Default<Test> {
@@ -1091,10 +1119,7 @@ pub(crate) fn deploy_privacy(
         :compliance_public_key,
     )
         .expect('Privacy deployment failed');
-    // TODO: Use different address for different roles?
-    set_account_as_security_agent(
-        contract: contract_address, account: governance_admin, security_admin: governance_admin,
-    );
+    _set_privacy_roles(contract: contract_address, :governance_admin);
     PrivacyCfg {
         address: contract_address,
         governance_admin,
@@ -1104,7 +1129,20 @@ pub(crate) fn deploy_privacy(
         safe_client: IClientSafeDispatcher { contract_address },
         views: IViewsDispatcher { contract_address },
         safe_views: IViewsSafeDispatcher { contract_address },
+        compliance: IComplianceDispatcher { contract_address },
+        safe_compliance: IComplianceSafeDispatcher { contract_address },
     }
+}
+
+fn _set_privacy_roles(contract: ContractAddress, governance_admin: ContractAddress) {
+    // TODO: Use different address for different roles?
+    set_account_as_security_agent(
+        :contract, account: governance_admin, security_admin: governance_admin,
+    );
+    set_account_as_app_role_admin(:contract, account: governance_admin, :governance_admin);
+    set_account_as_token_admin(
+        :contract, account: governance_admin, app_role_admin: governance_admin,
+    );
 }
 
 pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddress {
@@ -1125,11 +1163,15 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
 pub(crate) fn decrypt_private_key(
     enc_private_key: EncPrivateKey, compliance_private_key: felt252,
 ) -> felt252 {
+    // Sanity check.
+    assert_eq!(
+        enc_private_key.compliance_public_key,
+        derive_public_key(private_key: compliance_private_key),
+    );
     // Find shared point.
-    let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_private_key.ephemeral_pubkey)
-        .unwrap();
-    let shared_point = ephemeral_pubkey_point.mul(scalar: compliance_private_key);
-    let shared_x = shared_point.try_into().unwrap().x();
+    let shared_x = _find_shared_x(
+        ephemeral_pubkey: enc_private_key.ephemeral_pubkey, private_key: compliance_private_key,
+    );
 
     // Decrypt private key.
     enc_private_key.enc_private_key - compute_enc_private_key_hash(:shared_x)
@@ -1141,10 +1183,9 @@ pub(crate) fn decrypt_channel_info(
     enc_channel_info: EncChannelInfo, recipient_private_key: felt252,
 ) -> (felt252, ContractAddress) {
     // Find shared point.
-    let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_channel_info.ephemeral_pubkey)
-        .unwrap();
-    let shared_point = ephemeral_pubkey_point.mul(scalar: recipient_private_key);
-    let shared_x = shared_point.try_into().unwrap().x();
+    let shared_x = _find_shared_x(
+        ephemeral_pubkey: enc_channel_info.ephemeral_pubkey, private_key: recipient_private_key,
+    );
 
     // Decrypt channel key.
     let decrypted_channel_key = enc_channel_info.enc_channel_key
@@ -1168,10 +1209,14 @@ pub(crate) fn decrypt_subchannel_token(
 pub(crate) fn decrypt_enc_user_addr(
     enc_user_addr: EncUserAddr, compliance_private_key: felt252,
 ) -> ContractAddress {
-    let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: enc_user_addr.ephemeral_pubkey)
-        .unwrap();
-    let shared_point = ephemeral_pubkey_point.mul(scalar: compliance_private_key);
-    let shared_x = shared_point.try_into().unwrap().x();
+    // Sanity check.
+    assert_eq!(
+        enc_user_addr.compliance_public_key, derive_public_key(private_key: compliance_private_key),
+    );
+    // Decrypt user address.
+    let shared_x = _find_shared_x(
+        ephemeral_pubkey: enc_user_addr.ephemeral_pubkey, private_key: compliance_private_key,
+    );
     let user_addr = enc_user_addr.enc_user_addr - compute_enc_address_hash(:shared_x);
     user_addr.try_into().unwrap()
 }
@@ -1187,6 +1232,12 @@ pub(crate) fn decrypt_outgoing_channel_info(
             :sender_addr, :sender_private_key, :index, salt: enc_outgoing_channel_info.salt,
         );
     recipient_addr.try_into().unwrap()
+}
+
+fn _find_shared_x(ephemeral_pubkey: felt252, private_key: felt252) -> felt252 {
+    let ephemeral_pubkey_point = EcPointTrait::new_from_x(x: ephemeral_pubkey).unwrap();
+    let shared_point = ephemeral_pubkey_point.mul(scalar: private_key);
+    shared_point.try_into().unwrap().x()
 }
 
 fn deserialize_server_actions(message: @MessageToL1) -> Span<ServerAction> {

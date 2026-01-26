@@ -11,6 +11,9 @@ import {
   compute_enc_sender_addr_hash,
   compute_enc_token_hash,
   compute_enc_amount_hash,
+  compute_enc_recipient_addr_hash,
+  compute_enc_private_key_hash,
+  compute_enc_address_hash,
 } from "./hashes.js";
 import { toBigInt } from "./crypto.js";
 
@@ -87,6 +90,30 @@ export type EncSubchannelInfo = {
 export type SubchannelInfo = {
   token: bigint;
   salt: bigint;
+};
+
+/** Encrypted outgoing channel information (matches Cairo EncOutgoingChannelInfo struct) */
+export type EncOutgoingChannelInfo = {
+  salt: BigNumberish;
+  enc_recipient_addr: BigNumberish;
+};
+
+/** Decrypted outgoing channel information */
+export type OutgoingChannelInfo = {
+  recipientAddr: bigint;
+  salt: bigint;
+};
+
+/** Encrypted private key (matches Cairo EncPrivateKey struct) */
+export type EncPrivateKey = {
+  ephemeralPubkey: bigint;
+  encPrivateKey: bigint;
+};
+
+/** Encrypted user address (matches Cairo EncUserAddr struct) */
+export type EncUserAddr = {
+  ephemeralPubkey: bigint;
+  encUserAddr: bigint;
 };
 
 // ============ Encryptions Module ============
@@ -278,5 +305,183 @@ export const encryptions = {
     const privateKeyBytes = toBytes32(privateKey);
     const publicKeyBytes = starkCurve.getPublicKey(privateKeyBytes);
     return getXCoordinateFromBytes(publicKeyBytes);
+  },
+
+  // ============ Outgoing Channel Info ============
+
+  /**
+   * Encrypt outgoing channel info.
+   * Matches Cairo's encrypt_outgoing_channel_info in utils.cairo.
+   *
+   * enc_recipient_addr = h(ENC_RECIPIENT_ADDR_TAG, sender_addr, sender_private_key, index, salt) + recipient_addr
+   *
+   * @param senderAddr - The sender's address
+   * @param senderPrivateKey - The sender's private key
+   * @param index - The channel index
+   * @param recipientAddr - The recipient's address to encrypt
+   * @param salt - Random salt for encryption
+   */
+  encryptOutgoingChannelInfo: (
+    senderAddr: bigint,
+    senderPrivateKey: bigint,
+    index: number,
+    recipientAddr: bigint,
+    salt: bigint
+  ): EncOutgoingChannelInfo => {
+    const encRecipientAddrHash = compute_enc_recipient_addr_hash(
+      senderAddr,
+      senderPrivateKey,
+      index,
+      salt
+    );
+    const enc_recipient_addr = (encRecipientAddrHash + recipientAddr) % FIELD_PRIME;
+    return { salt, enc_recipient_addr };
+  },
+
+  /**
+   * Decrypt outgoing channel info.
+   * Inverse of encrypt_outgoing_channel_info.
+   *
+   * @param encrypted - The encrypted outgoing channel info
+   * @param senderAddr - The sender's address
+   * @param senderPrivateKey - The sender's private key
+   * @param index - The channel index
+   */
+  decryptOutgoingChannelInfo: (
+    encrypted: EncOutgoingChannelInfo,
+    senderAddr: BigNumberish,
+    senderPrivateKey: BigNumberish,
+    index: number
+  ): OutgoingChannelInfo => {
+    const salt = toBigInt(encrypted.salt);
+    const enc_recipient_addr = toBigInt(encrypted.enc_recipient_addr);
+    const encRecipientAddrHash = compute_enc_recipient_addr_hash(
+      toBigInt(senderAddr),
+      toBigInt(senderPrivateKey),
+      index,
+      salt
+    );
+    const recipientAddr =
+      (((enc_recipient_addr - encRecipientAddrHash) % FIELD_PRIME) + FIELD_PRIME) % FIELD_PRIME;
+    return { recipientAddr, salt };
+  },
+
+  // ============ Private Key (ECDH) ============
+
+  /**
+   * Encrypt private key using ECDH.
+   * Matches Cairo's encrypt_private_key in utils.cairo.
+   *
+   * @param ephemeralSecret - Random scalar for ECDH
+   * @param compliancePublicKey - Compliance's public key (x-coordinate)
+   * @param privateKey - The private key to encrypt
+   */
+  encryptPrivateKey: (
+    ephemeralSecret: bigint,
+    compliancePublicKey: bigint,
+    privateKey: bigint
+  ): EncPrivateKey => {
+    const ephemeralSecretBytes = toBytes32(ephemeralSecret);
+
+    // Compute ephemeral public key
+    const ephemeralPubPoint = starkCurve.getPublicKey(ephemeralSecretBytes);
+    const ephemeralPubkey = getXCoordinateFromBytes(ephemeralPubPoint);
+
+    // Recover compliance public key point from x-coordinate
+    const compliancePubBytes = recoverPointFromX(compliancePublicKey);
+
+    // Compute shared secret via ECDH
+    const sharedPoint = starkCurve.getSharedSecret(ephemeralSecretBytes, compliancePubBytes);
+    const sharedX = getXCoordinateFromBytes(sharedPoint);
+
+    // Encrypt using field addition (matching Cairo)
+    const encPrivateKey = (compute_enc_private_key_hash(sharedX) + privateKey) % FIELD_PRIME;
+
+    return { ephemeralPubkey, encPrivateKey };
+  },
+
+  /**
+   * Decrypt private key using ECDH.
+   * Inverse of encrypt_private_key.
+   *
+   * @param encrypted - The encrypted private key
+   * @param compliancePrivateKey - The compliance's private key
+   */
+  decryptPrivateKey: (encrypted: EncPrivateKey, compliancePrivateKey: bigint): bigint => {
+    const privateKeyBytes = toBytes32(compliancePrivateKey);
+
+    // Recover ephemeral public key point from x-coordinate
+    const ephemeralPubBytes = recoverPointFromX(encrypted.ephemeralPubkey);
+
+    // Compute shared secret via ECDH
+    const sharedPoint = starkCurve.getSharedSecret(privateKeyBytes, ephemeralPubBytes);
+    const sharedX = getXCoordinateFromBytes(sharedPoint);
+
+    // Decrypt using field subtraction (matching Cairo)
+    const privateKey =
+      (((encrypted.encPrivateKey - compute_enc_private_key_hash(sharedX)) % FIELD_PRIME) +
+        FIELD_PRIME) %
+      FIELD_PRIME;
+
+    return privateKey;
+  },
+
+  // ============ User Address (ECDH) ============
+
+  /**
+   * Encrypt user address using ECDH.
+   * Matches Cairo's encrypt_user_addr in utils.cairo.
+   *
+   * @param ephemeralSecret - Random scalar for ECDH
+   * @param compliancePublicKey - Compliance's public key (x-coordinate)
+   * @param userAddr - The user address to encrypt
+   */
+  encryptUserAddr: (
+    ephemeralSecret: bigint,
+    compliancePublicKey: bigint,
+    userAddr: bigint
+  ): EncUserAddr => {
+    const ephemeralSecretBytes = toBytes32(ephemeralSecret);
+
+    // Compute ephemeral public key
+    const ephemeralPubPoint = starkCurve.getPublicKey(ephemeralSecretBytes);
+    const ephemeralPubkey = getXCoordinateFromBytes(ephemeralPubPoint);
+
+    // Recover compliance public key point from x-coordinate
+    const compliancePubBytes = recoverPointFromX(compliancePublicKey);
+
+    // Compute shared secret via ECDH
+    const sharedPoint = starkCurve.getSharedSecret(ephemeralSecretBytes, compliancePubBytes);
+    const sharedX = getXCoordinateFromBytes(sharedPoint);
+
+    // Encrypt using field addition (matching Cairo)
+    const encUserAddr = (compute_enc_address_hash(sharedX) + userAddr) % FIELD_PRIME;
+
+    return { ephemeralPubkey, encUserAddr };
+  },
+
+  /**
+   * Decrypt user address using ECDH.
+   * Inverse of encrypt_user_addr.
+   *
+   * @param encrypted - The encrypted user address
+   * @param compliancePrivateKey - The compliance's private key
+   */
+  decryptUserAddr: (encrypted: EncUserAddr, compliancePrivateKey: bigint): bigint => {
+    const privateKeyBytes = toBytes32(compliancePrivateKey);
+
+    // Recover ephemeral public key point from x-coordinate
+    const ephemeralPubBytes = recoverPointFromX(encrypted.ephemeralPubkey);
+
+    // Compute shared secret via ECDH
+    const sharedPoint = starkCurve.getSharedSecret(privateKeyBytes, ephemeralPubBytes);
+    const sharedX = getXCoordinateFromBytes(sharedPoint);
+
+    // Decrypt using field subtraction (matching Cairo)
+    const userAddr =
+      (((encrypted.encUserAddr - compute_enc_address_hash(sharedX)) % FIELD_PRIME) + FIELD_PRIME) %
+      FIELD_PRIME;
+
+    return userAddr;
   },
 };

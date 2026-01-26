@@ -7,22 +7,32 @@ import type { Amount, Note, Open, PrivateRegistry, StarknetAddressBigint } from 
 import { Witness } from "../interfaces.js";
 import { Channel } from "../internal/channel.js";
 import {
-  encryptChannelInfo,
-  encryptSymmetric,
-  decryptSymmetric,
-  type EncChannelInfo,
   type Hash,
   type PrivateKey as ViewingKey,
   type PublicKey,
-  type SymmetricEncryption,
   derivePublicKey,
   ChannelKey,
   generateRandom,
+  toBigInt,
 } from "../utils/crypto.js";
+import {
+  encryptions,
+  type EncChannelInfo,
+  type EncSubchannelInfo,
+  type EncOutgoingChannelInfo,
+} from "../utils/encryptions.js";
 import { AdvancedMap, AddressMap } from "../utils/maps.js";
 import { assert, isOpen } from "../utils/validation.js";
 import type { MockContracts, MockContract } from "./contracts.js";
-import { hashes } from "../utils/hashes.js";
+import {
+  compute_channel_key,
+  compute_channel_id,
+  compute_subchannel_key,
+  compute_subchannel_id,
+  compute_note_id,
+  compute_nullifier,
+  compute_outgoing_channel_key,
+} from "../utils/hashes.js";
 import { ClientAction } from "../internal/client-actions.js";
 import { debugLog, hex } from "../utils/logging.js";
 
@@ -38,14 +48,19 @@ type TrackingState = {
 };
 
 /** Snapshot of PrivacyPool state */
+/** Encrypted note: either packed encrypted amount or open note */
+type EncryptedNote = { packed: bigint; token: bigint; index: number };
+
 export type PrivacyPoolSnapshot = {
   publicKeys: Map<bigint, PublicKey>;
   channels: Map<string, EncChannelInfo[]>;
   channelIds: Set<Hash>;
-  subchannels: Map<Hash, SymmetricEncryption>;
+  subchannels: Map<Hash, EncSubchannelInfo>;
   subchannelIds: Set<Hash>;
-  notes: Map<Hash, SymmetricEncryption | OpenNote>;
+  notes: Map<Hash, EncryptedNote | OpenNote>;
   nullifiers: Set<Hash>;
+  outgoingChannels: Map<bigint, EncOutgoingChannelInfo>;
+  outgoingChannelCounters: Map<bigint, number>;
   tracking: Map<bigint, TrackingState>;
 };
 
@@ -70,10 +85,14 @@ export class PrivacyPool implements MockContract {
   private publicKeys = new AddressMap<PublicKey>();
   private channels = new ChannelsMap();
   private channelIds = new Set<Hash>();
-  private subchannels = new Map<Hash, SymmetricEncryption>();
+  private subchannels = new Map<Hash, EncSubchannelInfo>();
   private subchannelIds = new Set<Hash>();
-  private notes = new Map<Hash, SymmetricEncryption | OpenNote>();
+  private notes = new Map<Hash, EncryptedNote | OpenNote>();
   private nullifiers = new Set<Hash>();
+  // Outgoing channels: key = h(sender_addr, sender_private_key, s) -> EncOutgoingChannelInfo
+  private outgoingChannels = new Map<bigint, EncOutgoingChannelInfo>();
+  // Track sequential counter s per sender for outgoing channels
+  private outgoingChannelCounters = new AddressMap<number>(() => 0);
 
   // state tracking, not part of the official spec
   private tracking = new AddressMap<TrackingState>(() => ({
@@ -101,7 +120,7 @@ export class PrivacyPool implements MockContract {
     }
 
     // Deep copy notes objects to prevent mutation affecting snapshot
-    const notesSnapshot = new Map<Hash, SymmetricEncryption | OpenNote>();
+    const notesSnapshot = new Map<Hash, EncryptedNote | OpenNote>();
     for (const [key, note] of this.notes) {
       notesSnapshot.set(key, { ...note });
     }
@@ -134,6 +153,8 @@ export class PrivacyPool implements MockContract {
       subchannelIds: new Set(this.subchannelIds),
       notes: notesSnapshot,
       nullifiers: new Set(this.nullifiers),
+      outgoingChannels: new Map(this.outgoingChannels),
+      outgoingChannelCounters: new Map(this.outgoingChannelCounters.entries()),
       tracking: trackingSnapshot,
     };
   }
@@ -157,6 +178,11 @@ export class PrivacyPool implements MockContract {
     this.subchannelIds = new Set(s.subchannelIds);
     this.notes = new Map(s.notes);
     this.nullifiers = new Set(s.nullifiers);
+    this.outgoingChannels = new Map(s.outgoingChannels);
+
+    // Restore outgoing channel counters (AddressMap)
+    this.outgoingChannelCounters.clear();
+    for (const [k, v] of s.outgoingChannelCounters) this.outgoingChannelCounters.set(k, v);
 
     // Restore tracking by deep cloning the snapshot's structure
     this.tracking.clear();
@@ -202,33 +228,42 @@ export class PrivacyPool implements MockContract {
   }
 
   doesChannelExist(channelKey: bigint, from: bigint, to: bigint): boolean {
-    return this.channelIds.has(hashes.channelId(channelKey, from, to, this.getPublicKey(to)));
+    return this.channelIds.has(
+      compute_channel_id(channelKey, from, to, toBigInt(this.getPublicKey(to)))
+    );
   }
 
   getToken(channelKey: Hash, nonce: number): StarknetAddressBigint | false {
-    const subchannelKey = hashes.subchannelKey(channelKey, nonce);
+    const subchannelKey = compute_subchannel_key(channelKey, nonce);
     const encrypted = this.subchannels.get(subchannelKey);
     if (!encrypted) return false;
-    return decryptSymmetric(encrypted, channelKey);
+    return encryptions.decryptSubchannelInfo(encrypted, channelKey, nonce).token;
   }
 
   doesSubchannelExist(channelKey: bigint, address: bigint, token: bigint): boolean {
     return this.subchannelIds.has(
-      hashes.subchannelId(channelKey, address, this.getPublicKey(address), token)
+      compute_subchannel_id(channelKey, address, toBigInt(this.getPublicKey(address)), token)
     );
   }
 
   getNote(channelKey: ChannelKey, index: number, token: bigint) {
-    const noteId = hashes.noteId(channelKey, token, index);
+    const noteId = compute_note_id(channelKey, token, index);
     const note = this.notes.get(noteId);
     if (note === undefined) return false;
-    if (note.r == 1n) {
+    if ("r" in note && note.r == 1n) {
       return { id: noteId, amount: (note as OpenNote).amount, r: 1n, open: true };
     }
+    const packed = note as { packed: bigint; token: bigint; index: number };
+    const { amount, salt } = encryptions.decryptNoteAmount(
+      packed.packed,
+      channelKey,
+      packed.token,
+      packed.index
+    );
     return {
       id: noteId,
-      amount: decryptSymmetric(note as SymmetricEncryption, channelKey),
-      r: note.r,
+      amount,
+      r: salt,
       open: false,
     };
   }
@@ -239,8 +274,12 @@ export class PrivacyPool implements MockContract {
 
   getNullifier(witness: Witness, token: bigint, ownerPrivateKey: ViewingKey): boolean {
     return this.nullifiers.has(
-      hashes.nullifier(witness.channelKey, token, witness.nonce, ownerPrivateKey)
+      compute_nullifier(witness.channelKey, token, witness.nonce, toBigInt(ownerPrivateKey))
     );
+  }
+
+  getOutgoingChannelInfo(key: bigint): EncOutgoingChannelInfo | undefined {
+    return this.outgoingChannels.get(key);
   }
 
   getUsersChannel(sender: bigint, recipient: bigint): Channel | undefined {
@@ -395,13 +434,13 @@ export class PrivacyPool implements MockContract {
         channel.publicKey,
         channel.key,
         token,
-        nonces.tokenNonce,
+        nonces.tokenIndex,
         generateRandom()
       )();
 
       // create an open note for the previous note nonce to pass assertion on creation of new one
       if (nonces.noteNonce > 0) {
-        this.notes.set(hashes.noteId(channel.key, token, nonces.noteNonce - 1), {
+        this.notes.set(compute_note_id(channel.key, token, nonces.noteNonce - 1), {
           r: 1n,
           amount: 0n,
           token,
@@ -415,18 +454,29 @@ export class PrivacyPool implements MockContract {
 
   setupNote(userAddress: bigint, note: Note, token: bigint) {
     this.subchannelIds.add(
-      hashes.subchannelId(
+      compute_subchannel_id(
         note.witness.channelKey,
         userAddress,
-        this.getPublicKey(userAddress),
+        toBigInt(this.getPublicKey(userAddress)),
         token
       )
     );
+    const noteIndex = note.witness.nonce;
     this.notes.set(
       note.id as bigint,
       note.open
         ? { r: 1n, amount: note.amount, token }
-        : encryptSymmetric(note.witness.channelKey, note.amount as bigint, note.witness.r)
+        : {
+            packed: encryptions.encryptNoteAmount(
+              note.witness.channelKey,
+              token,
+              noteIndex,
+              note.witness.r,
+              note.amount as bigint
+            ),
+            token,
+            index: noteIndex,
+          }
     );
 
     this.tracking
@@ -475,17 +525,56 @@ export class PrivacyPool implements MockContract {
     fromPrivateKey: ViewingKey,
     to: bigint,
     toPublicKey: PublicKey,
-    _random: bigint
+    random: bigint
   ): StateCallback {
     this.assertRegistered(from);
-    const channelKey = hashes.channelKey(from, fromPrivateKey, to, toPublicKey);
-    // TODO: use random argument (not needed for now)
-    const channelInfo = encryptChannelInfo(toPublicKey, channelKey, from);
+    const channelKey = compute_channel_key(
+      from,
+      toBigInt(fromPrivateKey),
+      to,
+      toBigInt(toPublicKey)
+    );
+    const channelInfo = encryptions.encryptChannelInfo(
+      random,
+      toBigInt(toPublicKey),
+      channelKey,
+      from
+    );
+
+    // Outgoing channel info for sender discovery
+    const s = this.outgoingChannelCounters.get(from)!;
+    // Verify sequential check: s = 0 or previous outgoing channel exists
+    if (s > 0) {
+      const prevOutgoingChannelKey = compute_outgoing_channel_key(
+        from,
+        toBigInt(fromPrivateKey),
+        s - 1
+      );
+      assert(
+        this.outgoingChannels.has(prevOutgoingChannelKey),
+        () => `Outgoing channel index ${s} is not sequential for sender ${hex(from)}`
+      );
+    }
+    const outgoingChannelKey = compute_outgoing_channel_key(from, toBigInt(fromPrivateKey), s);
+    const outgoingSalt = generateRandom();
+    const encOutgoingChannelInfo = encryptions.encryptOutgoingChannelInfo(
+      from,
+      toBigInt(fromPrivateKey),
+      s,
+      to,
+      outgoingSalt
+    );
+
     return () => {
       debugLog("pool.callback", "setChannel callback executing from:", hex(from), "to:", hex(to));
       this.tracking.get(from)!.channels.get(to, () => new Channel(toPublicKey))!.key = channelKey;
       this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
-      this.channelIds.add(hashes.channelId(channelKey, from, to, toPublicKey));
+      this.channelIds.add(compute_channel_id(channelKey, from, to, toBigInt(toPublicKey)));
+
+      // Store outgoing channel info
+      this.outgoingChannels.set(outgoingChannelKey, encOutgoingChannelInfo);
+      this.outgoingChannelCounters.set(from, s + 1);
+
       debugLog("pool.callback", "channels after setChannel", {
         to: hex(to),
         channelsLength: this.channels.get({ address: to, publicKey: toPublicKey })!.length,
@@ -506,16 +595,16 @@ export class PrivacyPool implements MockContract {
 
     debugLog("pool", "setToken", { from, to, toPublicKey, channelKey, token, index, random });
     assert(
-      this.channelIds.has(hashes.channelId(channelKey, from, to, toPublicKey)),
+      this.channelIds.has(compute_channel_id(channelKey, from, to, toBigInt(toPublicKey))),
       () => `Channel does not exist between ${from} and ${to}`
     );
 
     assert(
-      index == 0 || this.subchannels.has(hashes.subchannelKey(channelKey, index - 1)),
+      index == 0 || this.subchannels.has(compute_subchannel_key(channelKey, index - 1)),
       () => `Nonce ${index} is not sequential`
     );
 
-    const subchannelKey = hashes.subchannelKey(channelKey, index);
+    const subchannelKey = compute_subchannel_key(channelKey, index);
     assert(!this.subchannels.has(subchannelKey), () => `Token ${hex(token)} already exists`);
 
     // Verify no other subchannel exists for this token in the channel
@@ -524,12 +613,17 @@ export class PrivacyPool implements MockContract {
       !userChannel.tokens.has(token),
       () =>
         `Token ${hex(token)} already exists in channel with index ${
-          userChannel.tokens.get(token)!.tokenNonce
+          userChannel.tokens.get(token)!.tokenIndex
         }`
     );
 
-    const subchannelId = hashes.subchannelId(channelKey, to, toPublicKey, token);
-    const encryptedSubchannelInfo = encryptSymmetric(channelKey, token, random);
+    const subchannelId = compute_subchannel_id(channelKey, to, toBigInt(toPublicKey), token);
+    const encryptedSubchannelInfo = encryptions.encryptSubchannelInfo(
+      channelKey,
+      index,
+      token,
+      random
+    );
 
     return () => {
       assert(
@@ -543,14 +637,14 @@ export class PrivacyPool implements MockContract {
       // this method may run from setupToken, so the channel is already set
       if (!userChannel.tokens.has(token)) {
         userChannel.tokens.set(token, {
-          tokenNonce: index,
+          tokenIndex: index,
           noteNonce: 0,
         });
       } else {
         assert(
-          userChannel.tokens.get(token)!.tokenNonce == index,
+          userChannel.tokens.get(token)!.tokenIndex == index,
           () =>
-            `Channel with ${to}: Token ${token} nonce mismatch between the user channel and arguments ${userChannel.tokens.get(token)!.tokenNonce} != ${index}`
+            `Channel with ${to}: Token ${token} nonce mismatch between the user channel and arguments ${userChannel.tokens.get(token)!.tokenIndex} != ${index}`
         );
       }
     };
@@ -565,14 +659,16 @@ export class PrivacyPool implements MockContract {
   ): StateCallback {
     const ownerPublicKey = this.getPublicKey(owner);
     assert(
-      this.subchannelIds.has(hashes.subchannelId(channelKey, owner, ownerPublicKey, token)),
+      this.subchannelIds.has(
+        compute_subchannel_id(channelKey, owner, toBigInt(ownerPublicKey), token)
+      ),
       () => `Token ${token} does not exist`
     );
 
-    const noteId = hashes.noteId(channelKey, token, noteIndex);
+    const noteId = compute_note_id(channelKey, token, noteIndex);
     assert(this.notes.has(noteId), () => `Note ${noteId} does not exist`);
 
-    const nullifier = hashes.nullifier(channelKey, token, noteIndex, ownerPrivateKey);
+    const nullifier = compute_nullifier(channelKey, token, noteIndex, toBigInt(ownerPrivateKey));
     assert(!this.nullifiers.has(nullifier), () => `Nullifier ${nullifier} already exists`);
 
     return () => {
@@ -598,22 +694,31 @@ export class PrivacyPool implements MockContract {
     amount: Amount | Open,
     random: bigint
   ): StateCallback {
-    const channelKey = hashes.channelKey(sender, senderPrivateKey, to, toPublicKey);
-    const subchannelId = hashes.subchannelId(channelKey, to, toPublicKey, token);
+    const channelKey = compute_channel_key(
+      sender,
+      toBigInt(senderPrivateKey),
+      to,
+      toBigInt(toPublicKey)
+    );
+    const subchannelId = compute_subchannel_id(channelKey, to, toBigInt(toPublicKey), token);
     assert(this.subchannelIds.has(subchannelId), () => `Token ${token} does not exist`);
 
     assert(
-      index == 0 || this.notes.has(hashes.noteId(channelKey, token, index - 1)),
+      index == 0 || this.notes.has(compute_note_id(channelKey, token, index - 1)),
       () => `Nonce ${index} is not sequential`
     );
 
-    const noteId = hashes.noteId(channelKey, token, index);
+    const noteId = compute_note_id(channelKey, token, index);
 
     assert(!this.notes.has(noteId), () => `Note ${noteId} already exists`);
 
-    const noteData = isOpen(amount)
+    const noteData: EncryptedNote | OpenNote = isOpen(amount)
       ? { r: 1n, amount: 0n, token }
-      : encryptSymmetric(channelKey, amount, random);
+      : {
+          packed: encryptions.encryptNoteAmount(channelKey, token, index, random, amount),
+          token,
+          index,
+        };
 
     return () => {
       this.tracking.get(sender)!.channels.get(to)!.incrementNoteNonce(token);
@@ -719,6 +824,9 @@ export class PrivacyPool implements MockContract {
 
     // Validate all totals end at 0
     for (const [token, total] of runningTotals.entries()) {
+      if (total !== 0n) {
+        debugLog("pool", "validateTokenTotals", hex(token), clientActions);
+      }
       assert(total === 0n, () => `Final total for token ${hex(token)} is ${total}, expected 0`);
     }
   }
