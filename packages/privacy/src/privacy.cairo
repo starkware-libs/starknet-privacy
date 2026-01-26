@@ -162,7 +162,21 @@ pub mod Privacy {
         fn execute_and_panic(
             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
-            // TODO: Consider extracting logic to internal `main` function.
+            let server_actions = self.main(:user_addr, :client_actions);
+
+            // `assert_valid_signature` must be the last call before panicking, to ensure contract
+            // storage is not modified.
+            // TODO: Test wrapped `is_valid_signature` panics.
+            assert_valid_signature(:user_addr);
+            panic(server_actions_to_panic_data(:server_actions));
+        }
+    }
+
+    #[generate_trait]
+    pub(crate) impl ClientInternalImpl of ClientInternalTrait {
+        fn main(
+            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ) -> Span<ServerAction> {
             let mut server_actions: Array<ServerAction> = array![];
             let mut current_phase = ClientActionTrait::ACCOUNT_PHASE;
             let mut token_balances: TokenBalances = Default::default();
@@ -201,17 +215,9 @@ pub mod Privacy {
             }
             assert(has_privacy_action, errors::NO_PRIVACY_ACTIONS);
             token_balances.squash().assert_valid();
-
-            // `assert_valid_signature` must be the last call before panicking, to ensure contract
-            // storage is not modified.
-            // TODO: Test wrapped `is_valid_signature` panics.
-            assert_valid_signature(:user_addr);
-            panic(server_actions_to_panic_data(server_actions: server_actions.span()));
+            server_actions.span()
         }
-    }
 
-    #[generate_trait]
-    pub(crate) impl ClientInternalImpl of ClientInternalTrait {
         /// Assumes `user_addr` is non-zero (checked in `__execute__`).
         fn set_viewing_key(
             self: @ContractState, user_addr: ContractAddress, input: SetViewingKeyInput,
