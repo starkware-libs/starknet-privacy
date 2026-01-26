@@ -41,6 +41,7 @@ import {
 import { ClientAction } from "../internal/client-actions.js";
 import { hex } from "../utils/logging.js";
 import type { MockServerAction } from "./mock-server-action.js";
+import { Call } from "starknet";
 
 type OpenNote = {
   r: bigint;
@@ -209,8 +210,12 @@ export class MockPoolContract implements MockContract {
 
   /**
    * Execute client actions and return MockServerAction[] that can be replayed.
-   * Actions are applied immediately (like the original PrivacyPool), except
-   * FollowupCall which is only applied during replay.
+   * This is a "view" function - pool state changes are rolled back after execution.
+   *
+   * Pool-state actions are applied temporarily (required for assertions in subsequent
+   * actions), then state is restored. Externally-modifying actions (Deposit, Withdraw,
+   * FollowupCall) are deferred and only applied when callbacks are replayed.
+   *
    * Validates token totals if validateBalances is true.
    */
   execute_view(sender: bigint, clientActions: ClientAction[]): MockServerAction[] {
@@ -218,18 +223,24 @@ export class MockPoolContract implements MockContract {
       this.validateTokenTotals(sender, clientActions);
     }
 
+    const snapshot = this.snapshot();
     const serverActions: MockServerAction[] = [];
 
-    for (const action of clientActions) {
-      const actions = this.execute_action(sender, action);
-      // Apply each action immediately (required for assertions in subsequent actions)
-      // Exception: FollowupCall is deferred - only applied during replay
-      for (const serverAction of actions) {
-        if (serverAction.type !== "FollowupCall") {
-          serverAction.apply();
+    try {
+      for (const action of clientActions) {
+        const actions = this.execute_action(sender, action);
+        // Apply pool-state actions immediately (required for assertions in subsequent actions)
+        // Defer ERC20-modifying actions - only applied during replay
+        for (const serverAction of actions) {
+          if (!serverAction.deferred) {
+            serverAction.apply();
+          }
+          serverActions.push(serverAction);
         }
-        serverActions.push(serverAction);
       }
+    } finally {
+      // Restore pool state - this is a view function
+      this.restore(snapshot);
     }
 
     return serverActions;
@@ -245,17 +256,25 @@ export class MockPoolContract implements MockContract {
   }
 
   /**
-   * Execute client actions immediately (for backward compatibility).
    * Returns MockServerAction[] that have already been applied.
    */
   execute(sender: bigint, ...clientActions: ClientAction[]): MockServerAction[] {
     return this.execute_view(sender, clientActions);
   }
 
-  openDeposit(noteId: bigint, token: bigint, amount: Amount): void {
-    this.fillOpenNote(noteId, token, amount);
-    // Note: The original PrivacyPool doesn't actually execute the deposit transfer here.
-    // The swap helper is expected to have already handled the token transfer.
+  /**
+   *
+   * @param from  since there's no support for getting the caller address, need an explicit parameter
+   */
+
+  openDeposit(noteId: bigint, token: bigint, amount: Amount, from: bigint): void {
+    this.contracts.get(token).transfer(from, this.address, amount);
+    const note = this.notes.get(noteId)! as OpenNote;
+    assert(note, () => `Note ${hex(noteId)} does not exist`);
+    assert(note.r == 1n, () => `Note ${hex(noteId)} is not open`);
+    assert(note.token == token, () => `Note ${hex(noteId)} is not for token ${token}`);
+    assert(note.amount == 0n, () => `Note ${hex(noteId)} has already been filled`);
+    note.amount = amount;
   }
 
   // ============ Setup Methods (for compiler) ============
@@ -407,17 +426,6 @@ export class MockPoolContract implements MockContract {
         ];
 
       case "Deposit": {
-        if (action.input.noteId !== undefined) {
-          const noteId = action.input.noteId;
-          const token = action.input.token;
-          const amount = action.input.amount;
-          return [
-            {
-              type: "OpenDeposit",
-              apply: () => this.openDeposit(noteId, token, amount),
-            },
-          ];
-        }
         return [this.deposit(sender, action.input.token, action.input.amount)];
       }
 
@@ -452,18 +460,7 @@ export class MockPoolContract implements MockContract {
         ];
 
       case "FollowupCall":
-        return [
-          {
-            type: "FollowupCall",
-            apply: () => {
-              this.contracts.call(
-                action.input.call.contractAddress,
-                action.input.call.entrypoint,
-                ...(action.input.call.calldata ? (action.input.call.calldata as unknown[]) : [])
-              );
-            },
-          },
-        ];
+        return [this.followupCall(action.input.call)];
     }
   }
 
@@ -650,6 +647,7 @@ export class MockPoolContract implements MockContract {
     return {
       type: "Deposit",
       apply: () => this.contracts.get(token).transfer(from, this.address, amount),
+      deferred: true,
     };
   }
 
@@ -657,16 +655,18 @@ export class MockPoolContract implements MockContract {
     return {
       type: "Withdraw",
       apply: () => this.contracts.get(token).transfer(this.address, recipient, amount),
+      deferred: true,
     };
   }
 
-  private fillOpenNote(noteId: bigint, token: bigint, amount: Amount): void {
-    const note = this.notes.get(noteId)! as OpenNote;
-    assert(note, () => `Note ${hex(noteId)} does not exist`);
-    assert(note.r == 1n, () => `Note ${hex(noteId)} is not open`);
-    assert(note.token == token, () => `Note ${hex(noteId)} is not for token ${token}`);
-    assert(note.amount == 0n, () => `Note ${hex(noteId)} has already been filled`);
-    note.amount = amount;
+  private followupCall(call: Call): MockServerAction {
+    return {
+      type: "FollowupCall",
+      apply: () => {
+        this.contracts.call(call.contractAddress, call.entrypoint, call.calldata as unknown[]);
+      },
+      deferred: true,
+    };
   }
 
   private validateTokenTotals(sender: bigint, clientActions: ClientAction[]): void {
