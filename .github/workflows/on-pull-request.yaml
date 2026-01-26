@@ -1,17 +1,55 @@
 name: Pull Request Integration
 
 on:
+  workflow_dispatch:
   pull_request:
     branches:
       - main
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      cairo: ${{ steps.filter.outputs.cairo }}
+      rust: ${{ steps.filter.outputs.rust }}
+      typescript: ${{ steps.filter.outputs.typescript }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            cairo:
+              - 'packages/**'
+              - 'Scarb.toml'
+              - 'Scarb.lock'
+              - '**/*.cairo'
+            rust:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/*.rs'
+            typescript:
+              - 'sdk/**'
+              - '.github/workflows/typescript-ci.yml'
+
   test:
+    needs: changes
+    if: ${{ needs.changes.outputs.cairo == 'true' }}
     uses: ./.github/workflows/test.yaml
     secrets: inherit
 
   check_formatting:
+    needs: changes
+    if: ${{ needs.changes.outputs.cairo == 'true' }}
     uses: ./.github/workflows/check_formatting.yaml
 
   rust_ci:
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     uses: ./.github/workflows/rust-ci.yaml
+
+  typescript_ci:
+    needs: changes
+    if: ${{ needs.changes.outputs.typescript == 'true' }}
+    uses: ./.github/workflows/typescript-ci.yml

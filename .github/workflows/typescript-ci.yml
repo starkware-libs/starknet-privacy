@@ -1,6 +1,8 @@
 name: TypeScript CI
 
 on:
+  workflow_call:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'sdk/**'
@@ -31,14 +33,6 @@ jobs:
 
       - name: Install snforge
         uses: foundry-rs/setup-snfoundry@v3
-
-      - name: Apply Cairo patch
-        working-directory: .
-        run: |
-          if [ -f "sdk/cairo.patch" ]; then
-            echo "Applying sdk/cairo.patch"
-            git apply sdk/cairo.patch
-          fi
 
       - name: Build Cairo contracts
         working-directory: .

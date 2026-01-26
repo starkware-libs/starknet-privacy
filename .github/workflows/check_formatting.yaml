@@ -2,6 +2,14 @@ name: Check Formatting
 
 on:
   workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'packages/**'
+      - 'Scarb.toml'
+      - 'Scarb.lock'
+      - '**/*.cairo'
+      - '.github/workflows/check_formatting.yaml'
 
 jobs:
   check_formatting:
