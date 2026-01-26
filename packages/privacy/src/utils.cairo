@@ -1,5 +1,7 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
+use core::iter::Extend;
+use core::never;
 use core::num::traits::Zero;
 use privacy::actions::ServerAction;
 use privacy::errors;
@@ -12,7 +14,7 @@ use privacy::hashes::{
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr,
 };
-use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, TWO_POW_120, TX_V3};
+use privacy::utils::constants::{ENTRYPOINT_FAILED, ERROR_WRAPPER, OK_WRAPPER, TWO_POW_120, TX_V3};
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
 use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_execution_info, get_tx_info};
@@ -274,7 +276,7 @@ pub(crate) fn assert_valid_execution_info() {
     }
 }
 
-pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<(), Array<felt252>> {
+pub(crate) fn assert_valid_signature(user_addr: ContractAddress) {
     let tx_info = get_tx_info();
     let tx_hash = tx_info.transaction_hash;
     let signature = tx_info.signature;
@@ -283,16 +285,15 @@ pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<(), A
     let mut calldata = array![];
     tx_hash.serialize(ref calldata);
     signature.serialize(ref calldata);
-    let mut serialized_result = call_contract_syscall(
+    let syscall_result = call_contract_syscall(
         address: user_addr,
         entry_point_selector: selector!("is_valid_signature"),
         calldata: calldata.span(),
-    )?;
-
+    );
+    let mut serialized_result = syscall_result.unwrap_or_else(|err| external_panic(:err));
     let is_valid: felt252 = Serde::deserialize(ref serialized_result)
         .expect(internal_errors::DESERIALIZE_FAILED);
     assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
-    Ok(())
 }
 
 pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
@@ -315,4 +316,22 @@ pub(crate) fn unwrap_execute_and_panic_result(
     let _ = panic_message.pop_front();
     // TODO: Consider also popping the last 2 elements.
     panic_message.span()
+}
+
+/// Wraps an external panic with `ERROR_WRAPPER`.
+pub(crate) fn external_panic(err: Array<felt252>) -> never {
+    let mut panic_data = array![];
+    panic_data.append(ERROR_WRAPPER);
+    panic_data.extend(err);
+    panic_data.append(ERROR_WRAPPER);
+    panic(panic_data);
+}
+
+/// Wraps the server actions with `OK_WRAPPER` in a panic data array.
+pub(crate) fn server_actions_to_panic_data(server_actions: Span<ServerAction>) -> Array<felt252> {
+    let mut panic_data = array![];
+    panic_data.append(OK_WRAPPER);
+    server_actions.serialize(ref panic_data);
+    panic_data.append(OK_WRAPPER);
+    panic_data
 }

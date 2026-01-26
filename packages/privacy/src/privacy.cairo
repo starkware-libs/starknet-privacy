@@ -21,12 +21,12 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, NoteTrait,
         ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
     };
-    use privacy::utils::constants::{CREATE_NOTE_MIN_SALT, ERROR_WRAPPER, OK_WRAPPER, TWO_POW_120};
+    use privacy::utils::constants::{CREATE_NOTE_MIN_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature, derive_public_key,
         encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
         encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, send_message_to_server,
-        unwrap_execute_and_panic_result,
+        server_actions_to_panic_data, unwrap_execute_and_panic_result,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -202,21 +202,11 @@ pub mod Privacy {
             assert(has_privacy_action, errors::NO_PRIVACY_ACTIONS);
             token_balances.squash().assert_valid();
 
-            let mut panic_message = array![];
             // `assert_valid_signature` must be the last call before panicking, to ensure contract
             // storage is not modified.
-            // TODO: Consider refactoring wrapping logic to a function.
             // TODO: Test wrapped `is_valid_signature` panics.
-            if let Err(err) = assert_valid_signature(:user_addr) {
-                panic_message.append(ERROR_WRAPPER);
-                panic_message.extend(err);
-                panic_message.append(ERROR_WRAPPER);
-            } else {
-                panic_message.append(OK_WRAPPER);
-                server_actions.serialize(ref panic_message);
-                panic_message.append(OK_WRAPPER);
-            }
-            panic(panic_message);
+            assert_valid_signature(:user_addr);
+            panic(server_actions_to_panic_data(server_actions: server_actions.span()));
         }
     }
 
