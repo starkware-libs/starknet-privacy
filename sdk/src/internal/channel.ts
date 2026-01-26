@@ -1,8 +1,25 @@
-import { BlockNumber } from "starknet";
-import type { Blob, ChannelSerde, StarknetAddress, WitnessSerde } from "../interfaces.js";
+import { BlockIdentifier, BlockNumber } from "starknet";
+import {
+  SetupRequirement,
+  StarknetAddressBigint,
+  type Blob,
+  type ChannelSerde,
+  type StarknetAddress,
+  type WitnessSerde,
+} from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { jsonStringify, jsonParse } from "../utils/json.js";
 import { PublicKey } from "../utils/crypto.js";
+
+/**
+ * Tracks nonces for a token subchannel within a channel.
+ * - tokenIndex: identifies which subchannel (fixed, part of the ID)
+ * - noteNonce: next note index to use (advances as notes are created)
+ */
+export type TokenChannel = {
+  tokenIndex: number;
+  noteNonce: number;
+};
 
 /** Type guard for non-negative integers */
 function isUint(value: unknown): value is number {
@@ -13,6 +30,21 @@ function isUint(value: unknown): value is number {
 function assert(condition: unknown, message: () => string): asserts condition {
   if (!condition) throw new Error(message());
 }
+
+export type IncomingChannelCursor = {
+  /** @internal */ channelKey: ChannelKey;
+  /** @internal */ subchannelKeyIndex: number;
+  /** @internal */ noteIndexes: AddressMap<number>; // token -> i
+};
+
+export type NotesCursor = {
+  /* when was this cursor valid */
+  /** @internal */ blockId: BlockIdentifier;
+  /* the number of channels opened */
+  /** @internal */ incomingChannelsCount: number;
+  /* per sender, a cursor to the subcahnels they opened and notes they created */
+  /** @internal */ incomingChannels: AddressMap<IncomingChannelCursor>; // sender -> cursor
+};
 
 // Base nonce class with shared logic and methods.
 class Nonce {
@@ -56,23 +88,17 @@ type ChannelKey = bigint;
 export class Channel {
   /** @internal */ readonly publicKey: PublicKey;
   /** @internal */ key?: ChannelKey;
-  /** @internal */ readonly tokens: AddressMap<{
-    tokenNonce: number;
-    noteNonce: number;
-  }>; // for the next note for each token
+  /** @internal */ readonly tokens: AddressMap<TokenChannel>; // for the next note for each token
 
   constructor(
     publicKey: PublicKey,
     key?: ChannelKey,
-    tokens?: Iterable<[StarknetAddress, { tokenNonce: number; noteNonce: number }]>
+    tokens?: Iterable<[StarknetAddress, TokenChannel]>
   ) {
     this.publicKey = publicKey;
     this.key = key;
-    this.tokens = new AddressMap<{
-      tokenNonce: number;
-      noteNonce: number;
-    }>(() => {
-      return { tokenNonce: 0, noteNonce: 0 };
+    this.tokens = new AddressMap<TokenChannel>(() => {
+      return { tokenIndex: 0, noteNonce: 0 };
     });
     if (tokens) {
       for (const [k, v] of tokens) {
@@ -92,6 +118,19 @@ export class Channel {
   clone(): Channel {
     return new Channel(this.publicKey, this.key, this.tokens.entries());
   }
+
+  toSetupRequirement(token: StarknetAddressBigint): SetupRequirement {
+    if (!this.publicKey) {
+      return SetupRequirement.Register;
+    }
+    if (!this.key) {
+      return SetupRequirement.SetupChannel;
+    }
+    if (!this.tokens.has(token)) {
+      return SetupRequirement.SetupToken;
+    }
+    return SetupRequirement.Ready;
+  }
 }
 
 export const channelSerde: ChannelSerde = {
@@ -104,7 +143,7 @@ export const channelSerde: ChannelSerde = {
       tokens: Array.from(channel.tokens.entries()).map(([k, v]) => [
         k,
         {
-          tokenNonce: { sequence: v.tokenNonce },
+          tokenNonce: { sequence: v.tokenIndex },
           noteNonce: { sequence: v.noteNonce },
         },
       ]),
@@ -198,34 +237,30 @@ function assertNoteNonce(value: unknown): number {
   return sequence;
 }
 
-function assertTokenEntries(
-  value: unknown
-): Map<StarknetAddress, { tokenNonce: number; noteNonce: number }> {
+function assertTokenEntries(value: unknown): Map<StarknetAddress, TokenChannel> {
   if (!Array.isArray(value)) {
     throw new Error("Invalid tokens");
   }
-  const entries: [StarknetAddress, { tokenNonce: number; noteNonce: number }][] = value.map(
-    (entry) => {
-      if (!Array.isArray(entry) || entry.length !== 2) {
-        throw new Error("Invalid token entry");
-      }
-      const [token, nonces] = entry;
-      const { tokenNonce, noteNonce } = nonces as { tokenNonce: unknown; noteNonce: unknown };
-      return [
-        token as StarknetAddress,
-        {
-          tokenNonce: assertTokenNonce(tokenNonce),
-          noteNonce: assertNoteNonce(noteNonce),
-        },
-      ];
+  const entries: [StarknetAddress, TokenChannel][] = value.map((entry) => {
+    if (!Array.isArray(entry) || entry.length !== 2) {
+      throw new Error("Invalid token entry");
     }
-  );
+    const [token, nonces] = entry as [unknown, Record<string, unknown>];
+    const { tokenIndex, noteNonce } = nonces;
+    return [
+      token as StarknetAddress,
+      {
+        tokenIndex: assertTokenIndex(tokenIndex),
+        noteNonce: assertNoteNonce(noteNonce),
+      },
+    ];
+  });
   return new Map(entries);
 }
 
-function assertTokenNonce(value: unknown): number {
+function assertTokenIndex(value: unknown): number {
   if (typeof value === "number") {
-    assert(isUint(value), () => "Invalid nonce: must be a non-negative integer");
+    assert(isUint(value), () => "Invalid token index: must be a non-negative integer");
     return value;
   }
   assert(

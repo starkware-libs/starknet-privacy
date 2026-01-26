@@ -1,7 +1,7 @@
-import { BlockIdentifier, Call } from "starknet";
+import { Call } from "starknet";
 import {
-  SimplePrivateTransfers,
-  PrivateTransfers,
+  SimplePrivateTransfersInterface,
+  PrivateTransfersInterface,
   Amount,
   Channel,
   Note,
@@ -14,8 +14,8 @@ import {
 import { AddressMap } from "./utils/maps.js";
 import { isAll } from "./utils/validation.js";
 
-export class SimplePrivateTransfersImpl implements SimplePrivateTransfers {
-  constructor(private inner: PrivateTransfers) {}
+export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterface {
+  constructor(private inner: PrivateTransfersInterface) {}
 
   get user(): StarknetAddress {
     return this.inner.user;
@@ -66,19 +66,6 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfers {
       .with(toToken)
       .transfer({ recipient: this.inner.user, amount: Open })
       .execute();
-  }
-
-  discoverNotes(params: { since?: BlockIdentifier; known?: AddressMap<Note[]> }): {
-    timestamp: BlockIdentifier;
-    notes: AddressMap<Note[]>;
-  } {
-    return this.inner.discoverNotes(params);
-  }
-  discoverChannels(...recipients: StarknetAddress[]): {
-    timestamp: BlockIdentifier;
-    channels: AddressMap<Channel>;
-  } {
-    return this.inner.discoverChannels(...recipients);
   }
 
   private build(token: StarknetAddress) {

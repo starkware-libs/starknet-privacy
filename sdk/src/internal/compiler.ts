@@ -26,17 +26,14 @@ import type {
   ViewingKey,
 } from "../interfaces.js";
 import { Channel, createEmptyRegistry } from "../interfaces.js";
-import { AddressMap, AdvancedMap } from "../utils/maps.js";
+import { AddressMap, AdvancedMap, toBigInt } from "../utils/index.js";
 import type { ClientAction } from "./client-actions.js";
 import { PrivacyPool } from "../testing/pool.js";
 import { MockContracts } from "../testing/contracts.js";
 import { assert, isOpen } from "../utils/validation.js";
-import { num, BigNumberish } from "starknet";
+import type { BigNumberish } from "starknet";
 import { generateRandom } from "../utils/crypto.js";
 import { consoleLogCallback, withLogging, debugLog, hex } from "../utils/logging.js";
-
-/** Normalize BigNumberish to bigint */
-const toBigInt = (value: BigNumberish): bigint => num.toBigInt(value);
 
 export type CompileResult = {
   clientActions: ClientAction[];
@@ -75,24 +72,31 @@ export class ActionCompiler {
   /**
    * Compile actions by resolving contexts, updating the registry, and producing ClientAction[].
    */
-  compile(actions: Actions, options?: ExecuteOptions): CompileResult {
+  async compile(actions: Actions, options?: ExecuteOptions): Promise<CompileResult> {
     const registry_ = options?.registry ?? createEmptyRegistry();
     const registry = options?.registryConst ? this.cloneRegistry(registry_) : registry_;
     const recipientsNeeded = this.getRecipientsNeeded(actions);
 
     // Phase 1: Resolve recipient channels
-    const channels = this.resolveRecipientChannels(actions, options, registry, recipientsNeeded);
+    const channels = await this.resolveRecipientChannels(
+      actions,
+      options,
+      registry,
+      recipientsNeeded
+    );
 
     // Phase 2: Resolve notes (discover and/or auto-select)
-    this.resolveNotes(actions, registry, options);
+    await this.resolveNotes(actions, registry, options);
 
-    // debugLog("compiler", "registry notes after resolve", registry?.notes?.size);
+    debugLog("compiler", "compile", "post resolveNotes", registry?.notes?.size, actions);
 
     // create a pool to simulate the execution of the actions
     const pool = this.createPool(actions, registry, channels);
 
     // Phase 3: Transform Actions to ClientAction[]
     const clientActions = this.transformToClientActions(actions, pool, recipientsNeeded, options);
+
+    debugLog("compiler", "compile", "post transformToClientActions", clientActions);
 
     return { clientActions, registry: pool.updateRegistry(this.userAddress, registry) };
   }
@@ -436,12 +440,12 @@ export class ActionCompiler {
   /**
    * Resolve recipient channels by discovering or using registry.
    */
-  private resolveRecipientChannels(
+  private async resolveRecipientChannels(
     actions: Actions,
     options: ExecuteOptions | undefined,
     registry: PrivateRegistry,
     recipientsNeeded: AddressMap<boolean>
-  ): AddressMap<Channel> | undefined {
+  ): Promise<AddressMap<Channel> | undefined> {
     const recipientDiscoveryLevel = options?.autoDiscover?.channels;
 
     if (!recipientDiscoveryLevel) {
@@ -469,10 +473,10 @@ export class ActionCompiler {
 
     // Discover channels for all recipients that need discovery in a single call
     // discoverChannels computes channel keys and returns current nonce state
-    const { channels } = this.discoveryProvider.discoverChannels(
+    const { channels } = await this.discoveryProvider.discoverChannels(
       this.userAddress,
       this.userViewingKey,
-      ...recipientsToDiscover
+      recipientsToDiscover
     );
 
     return channels;
@@ -481,11 +485,11 @@ export class ActionCompiler {
   /**
    * Resolve notes by discovering and/or auto-selecting from registry.
    */
-  private resolveNotes(
+  private async resolveNotes(
     actions: Actions,
     registry: PrivateRegistry,
     options?: ExecuteOptions
-  ): void {
+  ): Promise<void> {
     if (!actions.surpluses && !options?.autoSelectNotes) return;
 
     // Calculate token balances (inputs - outputs)
@@ -570,16 +574,17 @@ export class ActionCompiler {
       debugLog("compiler", "discovering notes", tokensToDiscover);
 
       if (!tokensToDiscover || tokensToDiscover.length > 0) {
-        const { notes } = this.discoveryProvider.discoverNotes(
+        const { notes, cursor } = await this.discoveryProvider.discoverNotes(
           this.userAddress,
           this.userViewingKey,
-          { known: registry.notes, tokens: tokensToDiscover }
+          { cursor: registry.cursor, tokens: tokensToDiscover }
         );
 
         // Replace registry notes (don't merge - some may have been spent)
         for (const [token, discoveredNotes] of notes.entries()) {
           registry.notes.set(token, discoveredNotes);
         }
+        registry.cursor = cursor;
       }
     }
 
