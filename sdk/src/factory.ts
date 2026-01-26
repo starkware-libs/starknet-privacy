@@ -11,6 +11,10 @@ import type {
 } from "./interfaces.js";
 import type { Account, AccountInterface } from "starknet";
 import { PrivateTransfers } from "./internal/private-transfers.js";
+import {
+  ProofInvocationFactory,
+  type ProofInvocationFactoryInterface,
+} from "./internal/proof-invocation-factory.js";
 
 /**
  * Creates a new PrivateTransfers instance for interacting with the privacy pool.
@@ -33,10 +37,14 @@ import { PrivateTransfers } from "./internal/private-transfers.js";
 export function createPrivateTransfers(params: {
   account: Account;
   viewingKeyProvider: ViewingKeyProvider;
+  proofInvocationFactory?: ProofInvocationFactoryInterface;
   provingProvider: ProofProviderInterface;
   discoveryProvider: DiscoveryProviderInterface;
   poolContractAddress: StarknetAddress;
   poolAccount: AccountInterface;
 }): PrivateTransfersInterface {
-  return new PrivateTransfers(params);
+  return new PrivateTransfers({
+    ...params,
+    proofInvocationFactory: params.proofInvocationFactory ?? new ProofInvocationFactory(),
+  });
 }

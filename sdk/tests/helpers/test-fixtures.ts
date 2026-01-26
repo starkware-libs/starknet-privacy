@@ -1,15 +1,11 @@
 import { MockContracts, MockPoolContract, MockPrivateTransfers } from "../../src/testing/index.js";
-import { withLogging, consoleLogCallback } from "../../src/utils/index.js";
+import { withLogging, consoleLogCallback, toBigInt } from "../../src/utils/index.js";
 import {
   createEmptyRegistry,
   ExecuteOptions,
   ExecuteResult,
   PrivateRegistry,
 } from "../../src/interfaces.js";
-import { num } from "starknet";
-
-/** Normalize BigNumberish to bigint */
-const toBigInt = (value: string | bigint | number): bigint => num.toBigInt(value);
 
 // Test addresses and keys (must be valid hex addresses convertible to BigInt)
 export const POOL_ADDRESS = toBigInt("0x1");
