@@ -2,11 +2,10 @@
  * MockPoolContract - Mock implementation of the privacy pool contract.
  *
  * This class provides:
- * 1. Async view methods matching PrivacyPoolContract signatures (for ContractDiscoveryProvider)
- * 2. Sync methods matching old PrivacyPool API (for MockDiscoveryProvider - to be removed in Branch 3)
- * 3. execute_view() returns MockServerAction[] for state mutations
- * 4. execute_actions() applies the mutations
- * 5. snapshot()/restore() for validation pattern
+ * 1. View methods with bigint params (matching Cairo contract felts)
+ * 2. execute_view() returns MockServerAction[] for state mutations
+ * 3. execute_actions() applies the mutations
+ * 4. snapshot()/restore() for validation pattern
  */
 
 import type { Amount, Note, Open, StarknetAddressBigint } from "../interfaces.js";
@@ -40,7 +39,7 @@ import {
   compute_outgoing_channel_key,
 } from "../utils/hashes.js";
 import { ClientAction } from "../internal/client-actions.js";
-import { debugLog, hex } from "../utils/logging.js";
+import { hex } from "../utils/logging.js";
 import type { MockServerAction } from "./mock-server-action.js";
 
 type OpenNote = {
@@ -96,83 +95,91 @@ export class MockPoolContract implements MockContract {
     private validateBalances: boolean = true
   ) {}
 
-  // ============ Async View Methods (matching PrivacyPoolContract) ============
+  // ============ View Methods (bigint params, matching Cairo contract) ============
 
-  async get_public_key(userAddr: string): Promise<bigint> {
-    const addr = BigInt(userAddr);
-    return this.publicKeys.has(addr) ? toBigInt(this.publicKeys.get(addr)!) : 0n;
+  is_registered(address: bigint): boolean {
+    return this.publicKeys.has(address);
   }
 
-  async get_num_of_channels(recipientAddr: string): Promise<bigint> {
-    const addr = BigInt(recipientAddr);
-    if (!this.publicKeys.has(addr)) return 0n;
-    const pk = this.publicKeys.get(addr)!;
-    return BigInt(this.channels.get({ address: addr, publicKey: pk })?.length ?? 0);
+  get_public_key(userAddr: bigint): bigint {
+    return this.publicKeys.has(userAddr) ? toBigInt(this.publicKeys.get(userAddr)!) : 0n;
   }
 
-  async get_channel_info(recipientAddr: string, index: number): Promise<EncChannelInfo> {
-    const addr = BigInt(recipientAddr);
-    const pk = this.publicKeys.get(addr)!;
-    const channelList = this.channels.get({ address: addr, publicKey: pk }) ?? [];
+  get_num_of_channels(recipientAddr: bigint): bigint {
+    if (!this.publicKeys.has(recipientAddr)) return 0n;
+    const pk = this.publicKeys.get(recipientAddr)!;
+    return BigInt(this.channels.get({ address: recipientAddr, publicKey: pk })?.length ?? 0);
+  }
+
+  get_channel_info(recipientAddr: bigint, index: number): EncChannelInfo {
+    const pk = this.publicKeys.get(recipientAddr)!;
+    const channelList = this.channels.get({ address: recipientAddr, publicKey: pk }) ?? [];
     return channelList[index] ?? { ephemeral_pubkey: 0n, enc_channel_key: 0n, enc_sender_addr: 0n };
   }
 
-  async get_subchannel_info(subchannelKey: string): Promise<EncSubchannelInfo> {
-    const key = BigInt(subchannelKey);
-    return this.subchannels.get(key) ?? { salt: 0n, enc_token: 0n };
+  get_subchannel_info(subchannelKey: bigint): EncSubchannelInfo {
+    return this.subchannels.get(subchannelKey) ?? { salt: 0n, enc_token: 0n };
   }
 
-  async get_outgoing_channel_info(outgoingChannelKey: string): Promise<EncOutgoingChannelInfo> {
-    const key = BigInt(outgoingChannelKey);
-    return this.outgoingChannels.get(key) ?? { salt: 0n, enc_recipient_addr: 0n };
+  get_outgoing_channel_info(outgoingChannelKey: bigint): EncOutgoingChannelInfo {
+    return this.outgoingChannels.get(outgoingChannelKey) ?? { salt: 0n, enc_recipient_addr: 0n };
   }
 
-  async get_note(noteId: string): Promise<bigint> {
-    const id = BigInt(noteId);
-    const note = this.notes.get(id);
+  get_note(noteId: bigint): bigint {
+    const note = this.notes.get(noteId);
     if (!note) return 0n;
     if ("packed" in note) return note.packed;
     return note.amount as bigint; // For open notes, return amount directly
   }
 
-  async channel_exists(channelId: string): Promise<boolean> {
-    return this.channelIds.has(BigInt(channelId));
+  channel_exists(channelId: bigint): boolean {
+    return this.channelIds.has(channelId);
   }
 
-  async nullifier_exists(nullifier: string): Promise<boolean> {
-    return this.nullifiers.has(BigInt(nullifier));
+  nullifier_exists(nullifier: bigint): boolean {
+    return this.nullifiers.has(nullifier);
   }
 
-  // ============ Sync Methods (for MockDiscoveryProvider compatibility) ============
+  // ============ Helper Methods for Discovery ============
 
-  isRegistered(address: bigint): boolean {
-    return this.publicKeys.has(address);
+  /**
+   * Get all encrypted channel info for a recipient.
+   */
+  get_channels(address: bigint): EncChannelInfo[] {
+    const pk = this.publicKeys.get(address);
+    if (!pk) return [];
+    return this.channels.get({ address, publicKey: pk }) ?? [];
   }
 
-  getPublicKey(address: bigint): PublicKey {
-    this.assertRegistered(address);
-    return this.publicKeys.get(address)!;
+  /**
+   * Check if channel exists between two addresses.
+   */
+  does_channel_exist(channelKey: bigint, from: bigint, to: bigint): boolean {
+    const toPublicKey = this.publicKeys.get(to);
+    if (!toPublicKey) return false;
+    return this.channelIds.has(compute_channel_id(channelKey, from, to, toBigInt(toPublicKey)));
   }
 
-  getChannels(address: bigint): EncChannelInfo[] {
-    const pk = this.getPublicKey(address);
-    return this.channels.get({ address, publicKey: pk })!;
-  }
-
-  doesChannelExist(channelKey: bigint, from: bigint, to: bigint): boolean {
-    return this.channelIds.has(
-      compute_channel_id(channelKey, from, to, toBigInt(this.getPublicKey(to)))
-    );
-  }
-
-  getToken(channelKey: Hash, nonce: number): StarknetAddressBigint | false {
+  /**
+   * Get decrypted token from subchannel.
+   * Returns false if subchannel doesn't exist.
+   */
+  get_token(channelKey: Hash, nonce: number): StarknetAddressBigint | false {
     const subchannelKey = compute_subchannel_key(channelKey, nonce);
     const encrypted = this.subchannels.get(subchannelKey);
     if (!encrypted) return false;
     return encryptions.decryptSubchannelInfo(encrypted, channelKey, nonce).token;
   }
 
-  getNote(channelKey: ChannelKey, index: number, token: bigint) {
+  /**
+   * Get decrypted note data.
+   * Returns false if note doesn't exist.
+   */
+  get_decrypted_note(
+    channelKey: ChannelKey,
+    index: number,
+    token: bigint
+  ): { id: bigint; amount: Amount; r: bigint; open: boolean } | false {
     const noteId = compute_note_id(channelKey, token, index);
     const note = this.notes.get(noteId);
     if (note === undefined) return false;
@@ -189,18 +196,13 @@ export class MockPoolContract implements MockContract {
     return { id: noteId, amount, r: salt, open: false };
   }
 
-  hasNoteById(noteId: bigint) {
-    return this.notes.has(noteId);
-  }
-
-  getNullifier(witness: Witness, token: bigint, ownerPrivateKey: ViewingKey): boolean {
+  /**
+   * Check if nullifier exists for a given witness.
+   */
+  has_nullifier(witness: Witness, token: bigint, ownerPrivateKey: ViewingKey): boolean {
     return this.nullifiers.has(
       compute_nullifier(witness.channelKey, token, witness.nonce, toBigInt(ownerPrivateKey))
     );
-  }
-
-  getOutgoingChannelInfo(key: bigint): EncOutgoingChannelInfo | undefined {
-    return this.outgoingChannels.get(key);
   }
 
   // ============ Execute Methods ============
@@ -219,7 +221,7 @@ export class MockPoolContract implements MockContract {
     const serverActions: MockServerAction[] = [];
 
     for (const action of clientActions) {
-      const actions = this.compileAction(sender, action);
+      const actions = this.execute_action(sender, action);
       // Apply each action immediately (required for assertions in subsequent actions)
       // Exception: FollowupCall is deferred - only applied during replay
       for (const serverAction of actions) {
@@ -295,7 +297,7 @@ export class MockPoolContract implements MockContract {
       compute_subchannel_id(
         note.witness.channelKey,
         userAddress,
-        toBigInt(this.getPublicKey(userAddress)),
+        this.get_public_key(userAddress),
         token
       )
     );
@@ -375,7 +377,7 @@ export class MockPoolContract implements MockContract {
     }
   }
 
-  private compileAction(sender: bigint, action: ClientAction): MockServerAction[] {
+  private execute_action(sender: bigint, action: ClientAction): MockServerAction[] {
     switch (action.type) {
       case "SetViewingKey":
         return [this.register(sender, action.input.privateKey, action.input.random)];
@@ -581,11 +583,9 @@ export class MockPoolContract implements MockContract {
     channelKey: Hash,
     noteIndex: number
   ): MockServerAction {
-    const ownerPublicKey = this.getPublicKey(owner);
+    const ownerPublicKey = this.get_public_key(owner);
     assert(
-      this.subchannelIds.has(
-        compute_subchannel_id(channelKey, owner, toBigInt(ownerPublicKey), token)
-      ),
+      this.subchannelIds.has(compute_subchannel_id(channelKey, owner, ownerPublicKey, token)),
       () => `Token ${token} does not exist`
     );
 
@@ -695,7 +695,7 @@ export class MockPoolContract implements MockContract {
           break;
 
         case "UseNote": {
-          const noteData = this.getNote(
+          const noteData = this.get_decrypted_note(
             action.input.channelKey,
             action.input.noteIndex,
             action.input.token

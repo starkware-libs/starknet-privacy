@@ -31,7 +31,7 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
 
     const result = new AddressMap<Note[]>(() => []);
 
-    const channels = this.pool.getChannels(address);
+    const channels = this.pool.get_channels(address);
 
     debugLog(
       "mock-discovery",
@@ -48,7 +48,7 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
       // Iterate token sequences
       let tokenSequence = 0;
       let token: bigint | false;
-      while ((token = this.pool.getToken(key, tokenSequence++)) !== false) {
+      while ((token = this.pool.get_token(key, tokenSequence++)) !== false) {
         if (params.tokens && !params.tokens.includes(token)) {
           continue;
         }
@@ -56,10 +56,10 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
         // Iterate note sequences for this token
         let noteSequence = 0;
         let note: { id: NoteId; amount: Amount; r: bigint; open: boolean } | false; // TODO: add explicit type name
-        while ((note = this.pool.getNote(key, noteSequence, token)) !== false) {
+        while ((note = this.pool.get_decrypted_note(key, noteSequence, token)) !== false) {
           //TODO: cleanup
           const nonce = noteSequence;
-          const nullifierResult = this.pool.getNullifier(
+          const nullifierExists = this.pool.has_nullifier(
             new Witness(key, nonce, note.r),
             token,
             viewingKey
@@ -67,9 +67,9 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
           debugLog("mock-discovery", "checking nullifier", {
             nonce,
             noteId: note.id,
-            nullifierResult,
+            nullifierExists,
           });
-          if (nullifierResult !== false) {
+          if (nullifierExists) {
             debugLog("mock-discovery", "skipping nullified note", { nonce, noteId: note.id });
             noteSequence++;
             continue;
@@ -118,8 +118,8 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
       recipientList = [];
       for (let s = 0; ; s++) {
         const outgoingChannelKey = compute_outgoing_channel_key(address, toBigInt(viewingKey), s);
-        const encOutgoingChannelInfo = this.pool.getOutgoingChannelInfo(outgoingChannelKey);
-        if (!encOutgoingChannelInfo) break;
+        const encOutgoingChannelInfo = this.pool.get_outgoing_channel_info(outgoingChannelKey);
+        if (toBigInt(encOutgoingChannelInfo.salt) === 0n) break;
         const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
           encOutgoingChannelInfo,
           address,
@@ -134,7 +134,7 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
 
     const result = new AddressMap<Channel>();
     for (const recipient of recipientList) {
-      if (!this.pool.isRegistered(recipient)) {
+      if (!this.pool.is_registered(recipient)) {
         debugLog(
           "mock-discovery",
           "discoverChannels",
@@ -143,14 +143,9 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
         );
         continue;
       }
-      const publicKey = this.pool.getPublicKey(recipient);
-      const key = compute_channel_key(
-        address,
-        toBigInt(viewingKey),
-        recipient,
-        toBigInt(publicKey)
-      );
-      if (!this.pool.doesChannelExist(key, address, recipient)) {
+      const publicKey = this.pool.get_public_key(recipient);
+      const key = compute_channel_key(address, toBigInt(viewingKey), recipient, publicKey);
+      if (!this.pool.does_channel_exist(key, address, recipient)) {
         result.set(recipient, new Channel(publicKey));
         continue;
       }
@@ -160,10 +155,10 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
       let token: bigint | false;
       const tokens = new AddressMap<TokenChannel>();
 
-      while ((token = this.pool.getToken(key, tokenSequence)) !== false) {
+      while ((token = this.pool.get_token(key, tokenSequence)) !== false) {
         // Find the highest note nonce sequence for this token
         let noteSequence = 0;
-        while (this.pool.getNote(key, noteSequence, token) !== false) {
+        while (this.pool.get_decrypted_note(key, noteSequence, token) !== false) {
           noteSequence++;
         }
         tokens.set(token, {
