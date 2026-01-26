@@ -1927,13 +1927,13 @@ fn test_create_note_use_note_zero_amount() {
             recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
         );
     // Create note with zero amount.
-    let note = user_1
+    let create_note_input = user_1
         .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 0);
-    let server_actions = user_1.create_note(:note);
-    let (note_id, expected_note) = user_1.compute_note(:note);
+    let server_actions = user_1.create_note(note: create_note_input);
+    let (note_id, expected_note) = user_1.compute_note(note: create_note_input);
     assert_ne!(note_id, Zero::zero());
     assert_ne!(expected_note.enc_value, Zero::zero());
-    assert_eq!(server_actions, user_1.note_to_server_actions(:note));
+    assert_eq!(server_actions, user_1.note_to_server_actions(note: create_note_input));
     assert_eq!(user_1.privacy.get_note(:note_id), Zero::zero());
     user_1.privacy.execute_actions(actions: server_actions);
     assert_eq!(user_1.privacy.get_note(:note_id), expected_note.enc_value);
