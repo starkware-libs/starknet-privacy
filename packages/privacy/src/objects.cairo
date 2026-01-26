@@ -2,7 +2,8 @@ use core::dict::{Felt252Dict, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::errors;
-use privacy::utils::encrypt_note_amount;
+use privacy::utils::constants::OPEN_NOTE_SALT;
+use privacy::utils::{encrypt_note_amount, packing};
 use starknet::{ContractAddress, Store};
 
 pub(crate) type TokenBalances = Felt252Dict<u128>;
@@ -147,20 +148,25 @@ pub impl EncOutgoingChannelInfoZero of Zero<EncOutgoingChannelInfo> {
 /// A note containing encrypted value and token information.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
 pub(crate) struct Note {
-    /// The encrypted value of the note.
-    // TODO: Implement open notes.
-    pub enc_value: felt252,
+    /// The packed value of the note `(salt, amount)`,
+    /// Where `amount` is encrypted if `salt >= 2`.
+    pub value: felt252,
     /// The token address of the note (zero for encrypted notes).
     pub token: ContractAddress,
+    // TODO: Add permitted depositor address field.
 }
 
 #[generate_trait]
 pub impl NoteImpl of NoteTrait {
-    fn encrypt(
+    fn open_note(token: ContractAddress) -> Note {
+        Note { value: packing(value_1: OPEN_NOTE_SALT, value_2: Zero::zero()), token }
+    }
+
+    fn encrypted_note(
         channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
     ) -> Note {
         Note {
-            enc_value: encrypt_note_amount(:channel_key, :token, :index, :salt, :amount),
+            value: encrypt_note_amount(:channel_key, :token, :index, :salt, :amount),
             token: Zero::zero(),
         }
     }
