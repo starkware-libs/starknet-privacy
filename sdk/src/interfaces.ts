@@ -549,12 +549,13 @@ export interface DiscoveryProviderInterface {
   }>;
 
   /**
-   * Discover channels for one or more recipients
+   * Discover channels for one or more recipients.
+   * Pass "all" to discover all outgoing channels by iterating through the outgoing channel map.
    */
   discoverChannels(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipients: StarknetAddressBigint[],
+    recipients: StarknetAddressBigint[] | "all",
     params?: { cursor?: AddressMap<Channel> }
   ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }>;
 
