@@ -78,11 +78,16 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
 
     // Decode the raw felts as Span<ServerAction> to see the structured ServerActions
     // The type string must match the ABI type definition exactly
-    const parsedOutput = () =>
-      callDataCompiler.decodeParameters(
-        "core::array::Span::<privacy::actions::ServerAction>",
-        proof.output
-      );
+    const parsedOutput = () => {
+      try {
+        return callDataCompiler.decodeParameters(
+          "core::array::Span::<privacy::actions::ServerAction>",
+          proof.output
+        );
+      } catch (e) {
+        return { error: String(e), rawOutput: proof.output };
+      }
+    };
     debugLog("private-transfers", "execute", "parsed server actions", parsedOutput);
 
     return {
