@@ -8,11 +8,12 @@
 import { describe, it, beforeAll, afterAll, expect } from "vitest";
 import { ContractDiscoveryProvider, type DevnetEnvironment } from "../src/testing/index.js";
 import { createPrivateTransfers } from "../src/factory.js";
-import { CallMockProofProvider } from "../src/testing/proving.js";
+import { CallMockProofProvider } from "../src/testing/mock-proving.js";
 import { Devnet } from "../src/testing/devnet.js";
 import { debugLog } from "../src/utils/logging.js";
 import { PrivateTransfersInterface } from "../src/interfaces.js";
 import { toBigInt } from "../src/utils/crypto.js";
+import { constants } from "starknet";
 
 describe("Devnet Integration", () => {
   let devnet: Devnet;
@@ -22,10 +23,11 @@ describe("Devnet Integration", () => {
   beforeAll(async () => {
     devnet = new Devnet();
     setup = await devnet.initialize();
+    const chainId = constants.StarknetChainId.SN_SEPOLIA;
     transfers.alice = createPrivateTransfers({
       account: setup.alice,
       viewingKeyProvider: { getViewingKey: () => toBigInt("0xA11CE") },
-      provingProvider: new CallMockProofProvider(setup.provider),
+      provingProvider: new CallMockProofProvider(setup.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(setup.privacy),
       poolContractAddress: setup.privacy.address,
       poolAccount: setup.admin,
@@ -34,7 +36,7 @@ describe("Devnet Integration", () => {
     transfers.bob = createPrivateTransfers({
       account: setup.bob,
       viewingKeyProvider: { getViewingKey: () => toBigInt("0xB0B") },
-      provingProvider: new CallMockProofProvider(setup.provider),
+      provingProvider: new CallMockProofProvider(setup.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(setup.privacy),
       poolContractAddress: setup.privacy.address,
       poolAccount: setup.admin,
