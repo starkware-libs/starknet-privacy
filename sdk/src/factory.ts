@@ -9,7 +9,7 @@ import type {
   DiscoveryProviderInterface,
   StarknetAddress,
 } from "./interfaces.js";
-import type { Account, AccountInterface } from "starknet";
+import type { Account } from "starknet";
 import { PrivateTransfers } from "./internal/private-transfers.js";
 import {
   ProofInvocationFactory,
@@ -30,7 +30,6 @@ import {
  *   provingProvider: myProvingProvider,
  *   discoveryProvider: myDiscoveryProvider,
  *   poolContractAddress: poolAddress,
- *   poolAccount: poolAccount,
  * });
  * ```
  */
@@ -41,7 +40,6 @@ export function createPrivateTransfers(params: {
   provingProvider: ProofProviderInterface;
   discoveryProvider: DiscoveryProviderInterface;
   poolContractAddress: StarknetAddress;
-  poolAccount: AccountInterface;
 }): PrivateTransfersInterface {
   return new PrivateTransfers({
     ...params,

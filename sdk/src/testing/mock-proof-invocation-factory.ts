@@ -18,6 +18,36 @@ import type {
 import type { CallResult } from "starknet";
 import { num } from "starknet";
 
+import { Open } from "../interfaces.js";
+
+/**
+ * JSON replacer that converts BigInts and Symbols to strings with prefix markers.
+ */
+function jsonReplacer(_key: string, value: unknown): unknown {
+  if (typeof value === "bigint") {
+    return `__bigint__${value.toString()}`;
+  }
+  if (typeof value === "symbol" && value === Open) {
+    return "__symbol__Open";
+  }
+  return value;
+}
+
+/**
+ * JSON reviver that converts prefixed strings back to BigInts and Symbols.
+ */
+export function bigintReviver(_key: string, value: unknown): unknown {
+  if (typeof value === "string") {
+    if (value.startsWith("__bigint__")) {
+      return BigInt(value.slice(10));
+    }
+    if (value === "__symbol__Open") {
+      return Open;
+    }
+  }
+  return value;
+}
+
 /**
  * Mock implementation - creates a minimal ProofInvocation for testing.
  * The calldata contains just the user address and client actions for the mock pool.
@@ -34,7 +64,7 @@ export class MockProofInvocationFactory implements ProofInvocationFactoryInterfa
     const poolAddressHex = num.toHex(poolAddress);
     return {
       contractAddress: poolAddressHex,
-      calldata: [num.toHex(user.address), JSON.stringify(clientActions)],
+      calldata: [num.toHex(user.address), JSON.stringify(clientActions, jsonReplacer)],
       signature: [],
     };
   }
