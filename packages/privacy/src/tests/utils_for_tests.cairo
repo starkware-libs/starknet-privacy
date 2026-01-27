@@ -89,7 +89,6 @@ pub(crate) impl UserImpl of UserTrait {
         self.privacy.execute(user_addr: *self.address, :client_actions)
     }
 
-    #[feature("safe_dispatcher")]
     fn safe_client_execute(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
@@ -122,7 +121,6 @@ pub(crate) impl UserImpl of UserTrait {
         self.client_execute(client_actions: client_actions.span())
     }
 
-    #[feature("safe_dispatcher")]
     fn safe_transfer(
         self: @User,
         notes_to_use: Span<UseNoteInput>,
@@ -200,7 +198,6 @@ pub(crate) impl UserImpl of UserTrait {
         (random, output)
     }
 
-    #[feature("safe_dispatcher")]
     fn safe_withdraw(
         self: @User,
         withdrawal_target: ContractAddress,
@@ -247,7 +244,6 @@ pub(crate) impl UserImpl of UserTrait {
             .span()
     }
 
-    #[feature("safe_dispatcher")]
     fn safe_open_channel(
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Result<(), Array<felt252>> {
@@ -318,7 +314,6 @@ pub(crate) impl UserImpl of UserTrait {
             .span()
     }
 
-    #[feature("safe_dispatcher")]
     fn safe_open_subchannel(
         self: @User, recipient: User, token_address: ContractAddress, index: usize, salt: felt252,
     ) -> Result<(), Array<felt252>> {
@@ -334,7 +329,6 @@ pub(crate) impl UserImpl of UserTrait {
         self.safe_client_execute(client_actions: [ClientAction::OpenSubchannel(input),].span())
     }
 
-    #[feature("safe_dispatcher")]
     fn safe_open_subchannel_with_channel_key(
         self: @User,
         recipient: User,
@@ -707,7 +701,6 @@ pub(crate) impl UserImpl of UserTrait {
             .span()
     }
 
-    #[feature("safe_dispatcher")]
     fn safe_deposit(
         self: @User, token_address: ContractAddress, amount: u128,
     ) -> Result<(), Array<felt252>> {
@@ -768,7 +761,6 @@ pub(crate) impl UserImpl of UserTrait {
         self.privacy.server.execute_actions(:actions);
     }
 
-    #[feature("safe_dispatcher")]
     fn safe_set_viewing_key(self: @User, random: felt252) -> Result<(), Array<felt252>> {
         let input = SetViewingKeyInput { private_key: *self.private_key, random };
         self.safe_client_execute(client_actions: [ClientAction::SetViewingKey(input)].span())
