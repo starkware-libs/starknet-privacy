@@ -2,19 +2,23 @@ name: TypeScript CI
 
 on:
   workflow_call:
+    inputs:
+      cairo_changed:
+        description: 'Whether Cairo files changed (triggers generate instead of lint)'
+        type: boolean
+        default: false
+      commit_generated:
+        description: 'Whether to commit generated files (false = fail if out of sync)'
+        type: boolean
+        default: true
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'sdk/**'
-      - 'packages/**'
-      - '.github/workflows/typescript-ci.yml'
-  push:
-    branches:
-      - main
+
+permissions:
+  contents: write
 
 jobs:
-  check:
-    name: Build & Test
+  typescript_ci:
+    name: TypeScript CI
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -22,6 +26,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: actions/setup-node@v4
         with:
@@ -29,22 +36,82 @@ jobs:
           cache: 'npm'
           cache-dependency-path: sdk/package-lock.json
 
-      - name: Install Scarb
-        uses: software-mansion/setup-scarb@v1
+      - uses: software-mansion/setup-scarb@v1
         with:
           scarb-version: "2.15.0"
 
-      - name: Install snforge
-        uses: foundry-rs/setup-snfoundry@v3
+      - uses: foundry-rs/setup-snfoundry@v3
 
+      # Try to restore Cairo cache (from cairo_ci or previous runs)
+      - name: Restore Cairo cache
+        uses: actions/cache/restore@v4
+        with:
+          path: target/dev
+          key: cairo-build-${{ github.sha }}
+          restore-keys: |
+            cairo-build-
+
+      # Build Cairo if cache miss
       - name: Build Cairo contracts
         working-directory: .
-        run: scarb build
+        run: |
+          if [ ! -d "target/dev" ]; then
+            echo "Cache miss, building Cairo..."
+            scarb build
+          else
+            echo "Using cached Cairo build"
+          fi
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Build, lint, and test
+      # === Cairo changed: generate, check for changes, then build/test/commit ===
+      - name: Generate (Cairo changed)
+        if: ${{ inputs.cairo_changed }}
+        run: npm run generate
+
+      - name: Check for generated file changes
+        if: ${{ inputs.cairo_changed }}
+        id: check_changes
+        working-directory: .
+        run: |
+          if git diff --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No generated file changes detected"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Generated files changed:"
+            git diff --stat
+          fi
+
+      - name: Fail if generated files out of sync
+        if: ${{ inputs.cairo_changed && steps.check_changes.outputs.has_changes == 'true' && !inputs.commit_generated }}
+        run: |
+          echo "::error::Generated files are out of sync! Run 'npm run generate' locally and commit the changes."
+          git diff
+          exit 1
+
+      - name: Build (if generated files changed)
+        if: ${{ inputs.cairo_changed && steps.check_changes.outputs.has_changes == 'true' && inputs.commit_generated }}
+        run: npm run build
+
+      - name: Test (if generated files changed)
+        if: ${{ inputs.cairo_changed && steps.check_changes.outputs.has_changes == 'true' && inputs.commit_generated }}
+        run: npm test
+
+      - name: Commit generated files
+        if: ${{ inputs.cairo_changed && steps.check_changes.outputs.has_changes == 'true' && inputs.commit_generated }}
+        working-directory: .
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(sdk): update generated files"
+          git push
+
+      # === TypeScript only: run full CI with lint/format ===
+      - name: Full CI (lint, format, build, test)
+        if: ${{ !inputs.cairo_changed }}
         run: |
           if npm run ci --if-present 2>/dev/null; then
             echo "Ran npm run ci"
