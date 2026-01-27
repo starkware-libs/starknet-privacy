@@ -499,13 +499,13 @@ pub mod Privacy {
             let (salt, value) = unpacking(packed_value);
             // TODO: Test open notes with value when server action is implemented.
             let amount = if salt == OPEN_NOTE_SALT {
-                assert(value.is_non_zero(), errors::EMPTY_NOTE_USAGE);
                 let note_token = self.notes.entry(note_id).token.read();
                 assert(note_token == token, errors::NOTE_TOKEN_MISMATCH);
                 value
             } else {
                 decrypt_note_amount(:salt, enc_amount: value, :channel_key, :token, :index)
             };
+            assert(amount.is_non_zero(), errors::ZERO_NOTE_AMOUNT_USAGE);
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);

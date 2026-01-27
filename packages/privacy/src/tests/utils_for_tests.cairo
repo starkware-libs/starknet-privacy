@@ -606,6 +606,10 @@ pub(crate) impl UserImpl of UserTrait {
         self.client_execute(client_actions: [ClientAction::UseNote(note)].span())
     }
 
+    fn safe_use_note(self: @User, note: UseNoteInput) -> Result<(), Array<felt252>> {
+        self.safe_client_execute(client_actions: [ClientAction::UseNote(note)].span())
+    }
+
     fn internal_use_note(self: @User, note: UseNoteInput) -> Span<ServerAction> {
         interact_with_state(
             *self.privacy.address,
