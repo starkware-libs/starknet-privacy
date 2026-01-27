@@ -29,6 +29,7 @@ pub const NON_ZERO_TIP: felt252 = 'NON_ZERO_TIP';
 pub const SALT_TOO_SMALL: felt252 = 'SALT_TOO_SMALL';
 pub const ZERO_COMPLIANCE_PUBLIC_KEY: felt252 = 'ZERO_COMPLIANCE_PUBLIC_KEY';
 pub const EMPTY_NOTE_USAGE: felt252 = 'EMPTY_NOTE_USAGE';
+pub const ZERO_DEPOSITOR: felt252 = 'ZERO_DEPOSITOR';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';

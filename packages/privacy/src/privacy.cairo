@@ -611,9 +611,12 @@ pub mod Privacy {
             let recipient_public_key = input.recipient_public_key;
             let token = input.token;
             let index = input.index;
+            let depositor = input.depositor;
 
             // Validate inputs.
             assert_note_creation_params(:recipient_addr, :recipient_public_key, :token);
+            assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
+            assert(depositor.is_non_zero(), errors::ZERO_DEPOSITOR);
 
             // Validate and compute note values.
             let (_, storage_address) = self
@@ -626,7 +629,7 @@ pub mod Privacy {
                     :index,
                 );
 
-            let note = NoteTrait::open_note(:token);
+            let note = NoteTrait::open_note(:token, :depositor);
             assert(note.packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
 
             // TODO: Add event action.
