@@ -144,7 +144,7 @@ pub mod Privacy {
         }
 
         fn execute_view(
-            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) -> Span<ServerAction> {
             let mut calldata = array![];
             user_addr.serialize(ref calldata);
@@ -670,6 +670,7 @@ pub mod Privacy {
             token: ContractAddress,
             amount: u128,
         ) {
+            // Note: This function should NOT panic as the contract should have the balance.
             IERC20Dispatcher { contract_address: token }
                 .checked_transfer(recipient: recipient_addr, amount: amount.into());
         }
