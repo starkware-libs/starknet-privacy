@@ -24,7 +24,11 @@ export class MockPrivateTransfers extends AbstractPrivateTransfers {
     userPrivateKey: PrivateKey
   ) {
     const pool = contracts.get<MockPoolContract>(toBigInt(poolAddress));
-    super(userAddress, { getViewingKey: () => userPrivateKey }, new ContractDiscoveryProvider(pool));
+    super(
+      userAddress,
+      { getViewingKey: () => userPrivateKey },
+      new ContractDiscoveryProvider(pool)
+    );
     this.pool = pool;
     this.compiler = withLogging(
       new ActionCompiler(this.user, userPrivateKey, this.discoveryProvider),
