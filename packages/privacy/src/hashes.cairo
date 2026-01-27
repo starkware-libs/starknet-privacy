@@ -32,6 +32,10 @@ pub mod domain_separation {
     pub const ENC_PRIVATE_KEY_TAG: felt252 = 'ENC_PRIVATE_KEY_TAG:V1';
     /// Tag for the `EncUserAddr.enc_user_addr`.
     pub const ENC_USER_ADDR_TAG: felt252 = 'ENC_USER_ADDR_TAG:V1';
+    /// Tag for the `EncOutgoingChannelInfo.enc_recipient_addr`.
+    pub const ENC_RECIPIENT_ADDR_TAG: felt252 = 'ENC_RECIPIENT_ADDR_TAG:V1';
+    /// Tag for `outgoing_channel_key`.
+    pub const OUTGOING_CHANNEL_KEY_TAG: felt252 = 'OUTGOING_CHANNEL_KEY_TAG:V1';
 }
 
 
@@ -77,6 +81,20 @@ pub(crate) fn compute_enc_sender_addr_hash(shared_x: felt252) -> felt252 {
     hash([ENC_SENDER_ADDR_TAG, shared_x].span())
 }
 
+/// Computes the hash used to encrypt the recipient address in `EncOutgoingChannelInfo`.
+///
+/// Returns `h(ENC_RECIPIENT_ADDR_TAG, sender_addr, sender_private_key, index, 0, salt)`
+pub(crate) fn compute_enc_recipient_addr_hash(
+    sender_addr: ContractAddress, sender_private_key: felt252, index: usize, salt: felt252,
+) -> felt252 {
+    hash(
+        [
+            ENC_RECIPIENT_ADDR_TAG, sender_addr.into(), sender_private_key, index.into(),
+            Zero::zero(), salt,
+        ]
+            .span(),
+    )
+}
 
 /// Computes the channel key.
 /// Assumes all the inputs are not zero.
@@ -93,6 +111,22 @@ pub(crate) fn compute_channel_key(
         [
             CHANNEL_KEY_TAG, sender_addr.into(), sender_private_key, recipient_addr.into(),
             recipient_public_key,
+        ]
+            .span(),
+    )
+}
+
+/// Computes the outgoing channel key.
+/// Assumes `sender_addr` and `sender_private_key` are not zero.
+///
+/// `outgoing_channel_key = h(OUTGOING_CHANNEL_KEY_TAG, sender_addr, sender_private_key, index, 0)`
+pub(crate) fn compute_outgoing_channel_key(
+    sender_addr: ContractAddress, sender_private_key: felt252, index: usize,
+) -> felt252 {
+    hash(
+        [
+            OUTGOING_CHANNEL_KEY_TAG, sender_addr.into(), sender_private_key, index.into(),
+            Zero::zero(),
         ]
             .span(),
     )

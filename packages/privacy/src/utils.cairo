@@ -6,25 +6,27 @@ use privacy::errors;
 use privacy::errors::internal_errors;
 use privacy::hashes::{
     compute_enc_address_hash, compute_enc_amount_hash, compute_enc_channel_key_hash,
-    compute_enc_private_key_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
+    compute_enc_private_key_hash, compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash,
+    compute_enc_token_hash,
 };
-use privacy::objects::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr};
-use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER};
+use privacy::objects::{
+    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr,
+};
+use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, TWO_POW_120, TX_V3};
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
-use starknet::{ContractAddress, SyscallResultTrait, VALIDATED, get_tx_info};
+use starknet::{ContractAddress, ExecutionInfo, SyscallResultTrait, TxInfo, VALIDATED};
 use starkware_utils::constants::TWO_POW_128;
 
 pub mod constants {
     use core::num::traits::Pow;
 
+    pub const CREATE_NOTE_MIN_SALT: u128 = 2;
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
-    pub const ERROR_WRAPPER: felt252 = 'PRIVACY_ERROR_WRAPPER';
+    pub const TX_V3: u64 = 3;
 }
-
-// TODO: Test the util and hash functions.
 
 /// Returns the generator point.
 pub fn GEN_P() -> EcPoint {
@@ -65,6 +67,26 @@ fn _compute_shared_x(ephemeral_secret: felt252, public_key: felt252) -> (felt252
     let shared_point = recipient_public_point.mul(scalar: ephemeral_secret);
     let shared_x = shared_point.try_into().unwrap().x();
     (ephemeral_pub_x, shared_x)
+}
+
+/// Encrypts the outgoing channel info.
+/// Assumes all the inputs (except `index` and `salt`) are not zero.
+///
+/// `enc_outgoing_channel_info = (salt, enc_recipient_addr)`.
+/// `enc_recipient_addr = h(ENC_RECIPIENT_ADDR_TAG, sender_addr, sender_private_key, index, salt) +
+/// recipient_addr`
+pub(crate) fn encrypt_outgoing_channel_info(
+    sender_addr: ContractAddress,
+    sender_private_key: felt252,
+    index: usize,
+    recipient_addr: ContractAddress,
+    salt: felt252,
+) -> EncOutgoingChannelInfo {
+    let enc_recipient_addr = compute_enc_recipient_addr_hash(
+        :sender_addr, :sender_private_key, :index, :salt,
+    )
+        + recipient_addr.into();
+    EncOutgoingChannelInfo { salt, enc_recipient_addr }
 }
 
 /// Encrypts channel info using ECDH.
@@ -127,7 +149,7 @@ pub(crate) fn encrypt_private_key(
     );
     // Encrypt channel information.
     let enc_private_key = compute_enc_private_key_hash(:shared_x) + private_key;
-    EncPrivateKey { ephemeral_pubkey: ephemeral_pub_x, enc_private_key }
+    EncPrivateKey { compliance_public_key, ephemeral_pubkey: ephemeral_pub_x, enc_private_key }
 }
 
 /// Encrypts the user address when withdrawing for the compliance using ECDH.
@@ -156,7 +178,7 @@ pub(crate) fn encrypt_user_addr(
     );
     // Encrypt address.
     let enc_user_addr = compute_enc_address_hash(:shared_x) + user_addr.into();
-    EncUserAddr { ephemeral_pubkey: ephemeral_pub_x, enc_user_addr }
+    EncUserAddr { compliance_public_key, ephemeral_pubkey: ephemeral_pub_x, enc_user_addr }
 }
 
 
@@ -213,36 +235,44 @@ pub(crate) impl StoragePathIntoFelt<
     }
 }
 
-// TODO: Move to utils repo?
-// TODO: Consider change type of value_2 to u128.
 /// Packing two felt252 values into a single felt252 value.
 /// Equivalent to (value_1 << 128) | value_2.
 /// Assumes: value_1 is 120 bits, value_2 is 128 bits.
-pub(crate) fn packing(value_1: u128, value_2: felt252) -> felt252 {
+pub(crate) fn packing(value_1: u128, value_2: u128) -> felt252 {
     (value_1.into() * TWO_POW_128 + value_2.into())
         .try_into()
         .expect(internal_errors::PACK_OVERFLOW)
 }
 
-
-// TODO: Move to utils repo?
-// TODO: Consider change type of value_2 to u128.
 /// Unpacking a single felt252 into two felt252 values (120 bits for value_1, 128 bits for value_2).
 /// Inverse of `packing`: `packed_value = value_1 * 2^128 + value_2`
-pub(crate) fn unpacking(packed_value: felt252) -> (u128, felt252) {
+pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
     let packed_u256: u256 = packed_value.into();
     let value_1 = packed_u256 / TWO_POW_128;
     let value_2 = packed_u256 % TWO_POW_128;
-    // TODO: Assert bounds?
-    // TODO: Assert value_1 is 120 bits?
+    // Sanity check that value_1 is 120 bits.
+    assert(value_1 < TWO_POW_120.into(), internal_errors::UNPACK1_OUT_OF_BOUNDS);
     (
         value_1.try_into().expect(internal_errors::UNPACK1_OVERFLOW),
         value_2.try_into().expect(internal_errors::UNPACK2_OVERFLOW),
     )
 }
 
-pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<(), Array<felt252>> {
-    let tx_info = get_tx_info().unbox();
+pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
+    // Ensure that the current call is the first of the transaction,
+    // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
+    assert(execution_info.caller_address.is_zero(), errors::INVALID_CALLER);
+    let tx_info = execution_info.tx_info;
+    assert(tx_info.version.try_into().unwrap() >= TX_V3, errors::INVALID_TX_VERSION);
+    // Ensure that the effective fee of the transaction is zero; this is a sanity check,
+    // to prevent the execution of this code over Starknet.
+    assert(tx_info.tip.is_zero(), errors::NON_ZERO_TIP);
+    for resource_bounds in tx_info.resource_bounds {
+        assert(resource_bounds.max_price_per_unit.is_zero(), errors::NON_ZERO_RESOURCE_PRICE);
+    }
+}
+
+pub(crate) fn assert_valid_signature(user_addr: ContractAddress, tx_info: Box<TxInfo>) {
     let tx_hash = tx_info.transaction_hash;
     let signature = tx_info.signature;
 
@@ -250,16 +280,15 @@ pub(crate) fn assert_valid_signature(user_addr: ContractAddress) -> Result<(), A
     let mut calldata = array![];
     tx_hash.serialize(ref calldata);
     signature.serialize(ref calldata);
-    let mut serialized_result = call_contract_syscall(
+    let syscall_result = call_contract_syscall(
         address: user_addr,
         entry_point_selector: selector!("is_valid_signature"),
         calldata: calldata.span(),
-    )?;
-
+    );
+    let mut serialized_result = syscall_result.unwrap_syscall();
     let is_valid: felt252 = Serde::deserialize(ref serialized_result)
         .expect(internal_errors::DESERIALIZE_FAILED);
     assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
-    Ok(())
 }
 
 pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
@@ -282,4 +311,13 @@ pub(crate) fn unwrap_execute_and_panic_result(
     let _ = panic_message.pop_front();
     // TODO: Consider also popping the last 2 elements.
     panic_message.span()
+}
+
+/// Wraps the server actions with `OK_WRAPPER` in a panic data array.
+pub(crate) fn server_actions_to_panic_data(server_actions: Span<ServerAction>) -> Array<felt252> {
+    let mut panic_data = array![];
+    panic_data.append(OK_WRAPPER);
+    server_actions.serialize(ref panic_data);
+    panic_data.append(OK_WRAPPER);
+    panic_data
 }

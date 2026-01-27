@@ -6,3 +6,5 @@ export * from "./channel.js";
 // Re-export builders, compiler, and registry updater
 export { TokenOperationsBuilderImpl, PrivateTransfersBuilderImpl } from "./builders.js";
 export { ActionCompiler } from "./compiler.js";
+export { AbstractDiscoveryProvider } from "./abstract-discovery.js";
+export { AbstractPrivateTransfers } from "./abstract-private-transfers.js";

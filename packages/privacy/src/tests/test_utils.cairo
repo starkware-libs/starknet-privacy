@@ -1,8 +1,69 @@
 use privacy::hashes::hash;
+use privacy::tests::utils_for_tests::{
+    decrypt_channel_info, decrypt_enc_user_addr, decrypt_private_key, decrypt_subchannel_token,
+};
 use privacy::utils::constants::TWO_POW_120;
-use privacy::utils::{decrypt_note_amount, encrypt_note_amount, packing, unpacking};
+use privacy::utils::{
+    decrypt_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
+    encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, packing, unpacking,
+};
 use starknet::ContractAddress;
 use starkware_utils::constants::{MAX_U128, MAX_U32, TWO_POW_128};
+
+#[test]
+fn test_encrypt_private_key_decrypt() {
+    let private_key = hash(['PRIVATE_KEY'].span());
+    let random = hash(['RANDOM'].span());
+    let compliance_private_key = hash(['COMPLIANCE_PRIVATE_KEY'].span());
+    let compliance_public_key = derive_public_key(private_key: compliance_private_key);
+    let enc_private_key = encrypt_private_key(
+        ephemeral_secret: random, :compliance_public_key, :private_key,
+    );
+    let dec_private_key = decrypt_private_key(:enc_private_key, :compliance_private_key);
+    assert_eq!(dec_private_key, private_key);
+}
+
+#[test]
+fn test_encrypt_user_addr_decrypt() {
+    let user_addr = hash(['USER_ADDR'].span()).try_into().unwrap();
+    let random = hash(['RANDOM'].span());
+    let compliance_private_key = hash(['COMPLIANCE_PRIVATE_KEY'].span());
+    let compliance_public_key = derive_public_key(private_key: compliance_private_key);
+    let enc_user_addr = encrypt_user_addr(
+        ephemeral_secret: random, :compliance_public_key, :user_addr,
+    );
+    let dec_user_addr = decrypt_enc_user_addr(:enc_user_addr, :compliance_private_key);
+    assert_eq!(dec_user_addr, user_addr);
+}
+
+#[test]
+fn test_encrypt_channel_info_decrypt() {
+    let channel_key = hash(['CHANNEL_KEY'].span());
+    let sender_addr = hash(['SENDER_ADDR'].span()).try_into().unwrap();
+    let random = hash(['RANDOM'].span());
+    let recipient_private_key = hash(['RECIPIENT_PRIVATE_KEY'].span());
+    let recipient_public_key = derive_public_key(private_key: recipient_private_key);
+    let enc_channel_info = encrypt_channel_info(
+        ephemeral_secret: random, :recipient_public_key, :channel_key, :sender_addr,
+    );
+    let (dec_channel_key, dec_sender_addr) = decrypt_channel_info(
+        :enc_channel_info, :recipient_private_key,
+    );
+    assert_eq!(dec_channel_key, channel_key);
+    assert_eq!(dec_sender_addr, sender_addr);
+}
+
+#[test]
+fn test_encrypt_subchannel_info_decrypt() {
+    let channel_key = hash(['CHANNEL_KEY'].span());
+    let index_u256: u256 = hash(['INDEX'].span()).into();
+    let index: usize = (index_u256 % MAX_U32.into()).try_into().unwrap();
+    let token = hash(['TOKEN'].span()).try_into().unwrap();
+    let salt = hash(['SALT'].span());
+    let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :index, :token, :salt);
+    let dec_token = decrypt_subchannel_token(:enc_subchannel_info, :channel_key, :index);
+    assert_eq!(dec_token, token);
+}
 
 #[test]
 fn test_encrypt_decrypt_note_amount() {
@@ -33,9 +94,10 @@ fn test_encrypt_decrypt_note_amount() {
 
 #[test]
 fn test_packing_unpacking() {
-    let values: [(u128, felt252); 4] = [
-        (1, 1), (1, TWO_POW_128.try_into().unwrap() - 1), (TWO_POW_120.try_into().unwrap() - 1, 1),
-        (TWO_POW_120.try_into().unwrap() - 1, TWO_POW_128.try_into().unwrap() - 1),
+    let max_120_bits: u128 = TWO_POW_120.try_into().unwrap() - 1;
+    let max_u128: u128 = (TWO_POW_128 - 1).try_into().unwrap();
+    let values: [(u128, u128); 4] = [
+        (1, 1), (1, max_u128), (max_120_bits, 1), (max_120_bits, max_u128),
     ];
     for (value_1, value_2) in values.span() {
         let packed_value = packing(value_1: (*value_1).into(), value_2: *value_2);
@@ -55,8 +117,7 @@ fn test_packing_unpacking_random() {
             .into();
         let value_1_120_bits: u128 = value_1_120_bits_u256.try_into().unwrap();
         nonce += 1;
-        let value_2_128_bits: felt252 = (hash(['VALUE_2', nonce.into()].span())
-            .into() % TWO_POW_128)
+        let value_2_128_bits: u128 = (hash(['VALUE_2', nonce.into()].span()).into() % TWO_POW_128)
             .try_into()
             .unwrap();
         let packed_value = packing(value_1: value_1_120_bits, value_2: value_2_128_bits);

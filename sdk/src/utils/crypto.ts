@@ -42,9 +42,9 @@ export function hash(...values: (BigNumberish | string)[]): Hash {
   const feltValues = values.map((v) => {
     if (typeof v === "string") {
       // Numeric strings should be converted to bigint, not as short strings
-      return isNumericString(v) ? num.toBigInt(v) : shortStringToFelt(v);
+      return isNumericString(v) ? toBigInt(v) : shortStringToFelt(v);
     }
-    return num.toBigInt(v);
+    return toBigInt(v);
   });
 
   // Match Cairo's hash function: h(h(data))
@@ -104,7 +104,7 @@ function computeEncSenderAddrHash(sharedX: bigint): Hash {
  * Convert BigNumberish to bytes for starkCurve operations.
  */
 function toBytes32(value: BigNumberish): Uint8Array {
-  const bi = num.toBigInt(value);
+  const bi = toBigInt(value);
   const hex = bi.toString(16).padStart(64, "0");
   return Uint8Array.from(Buffer.from(hex, "hex"));
 }
@@ -162,12 +162,12 @@ export function encryptChannelInfo(
   senderAddr: StarknetAddress
 ): EncChannelInfo {
   // Generate ephemeral key pair
-  const ephemeralSecret = starkCurve.utils.randomPrivateKey();
+  const ephemeralSecret = new Uint8Array([2]); // until there's forward tracing. then starkCurve.utils.randomPrivateKey();
   const ephemeralPubPoint = starkCurve.getPublicKey(ephemeralSecret);
   const ephemeralPubkey = getXCoordinateFromBytes(ephemeralPubPoint);
 
   // Recover recipient public key point from x-coordinate
-  const recipientPubBytes = recoverPointFromX(num.toBigInt(recipientPublicKey));
+  const recipientPubBytes = recoverPointFromX(toBigInt(recipientPublicKey));
 
   // Compute shared secret via ECDH
   const sharedPoint = starkCurve.getSharedSecret(ephemeralSecret, recipientPubBytes);
@@ -176,7 +176,7 @@ export function encryptChannelInfo(
   // Encrypt using additive masking
   const n = starkCurve.CURVE.n;
   const encChannelKey = (computeEncChannelKeyHash(sharedX) + channelKey) % n;
-  const encSenderAddr = (computeEncSenderAddrHash(sharedX) + num.toBigInt(senderAddr)) % n;
+  const encSenderAddr = (computeEncSenderAddrHash(sharedX) + toBigInt(senderAddr)) % n;
 
   return { ephemeralPubkey, encChannelKey, encSenderAddr };
 }
@@ -244,7 +244,7 @@ export function encryptSymmetric(
   }
   return {
     r,
-    enc: (hash(shared, r) + num.toBigInt(data)) % starkCurve.CURVE.n,
+    enc: (hash(shared, r) + toBigInt(data)) % starkCurve.CURVE.n,
   };
 }
 

@@ -1,6 +1,8 @@
 pub mod generate_reference_hashes;
 pub mod mock_account;
 pub mod test_client;
+pub mod test_compliance;
+pub mod test_hashes;
 pub mod test_objects;
 pub mod test_server;
 pub mod test_utils;

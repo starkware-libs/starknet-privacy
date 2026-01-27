@@ -7,6 +7,7 @@ pub struct ViewingKeySet {
     #[key]
     pub user_addr: ContractAddress,
     /// The public viewing key.
+    #[key]
     pub public_key: felt252,
     /// The encrypted private key.
     pub enc_private_key: EncPrivateKey,
@@ -25,6 +26,22 @@ pub struct Withdrawal {
     /// The amount to withdraw.
     pub amount: u128,
 }
-// TODO: Consider event for deposit.
 
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct Deposit {
+    /// User address who is depositing.
+    #[key]
+    pub user_addr: ContractAddress,
+    /// The token's address.
+    #[key]
+    pub token: ContractAddress,
+    /// The amount to deposit.
+    pub amount: u128,
+}
 
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct CompliancePublicKeySet {
+    /// The compliance public key.
+    #[key]
+    pub compliance_public_key: felt252,
+}
