@@ -625,6 +625,26 @@ fn test_execute_emit_deposit() {
 }
 
 #[test]
+fn test_execute_emit_open_note_created() {
+    let mut test: Test = Default::default();
+    let token = test.mock_new_token();
+    let enc_user_addr = test.mock_new_enc_address();
+    let note_id = 'NOTE_ID';
+    let expected_event = events::OpenNoteCreated { enc_user_addr, token, note_id };
+    let actions = array![ServerAction::EmitOpenNoteCreated(expected_event)];
+    let mut spy = spy_events();
+    test.privacy.execute_actions(actions.span());
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("OpenNoteCreated"),
+        expected_event_name: "OpenNoteCreated",
+    );
+}
+
+#[test]
 fn test_execute_actions_paused() {
     let mut test: Test = Default::default();
     test.privacy.pause();
