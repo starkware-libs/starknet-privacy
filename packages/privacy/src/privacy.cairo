@@ -106,6 +106,7 @@ pub mod Privacy {
         Withdrawal: events::Withdrawal,
         Deposit: events::Deposit,
         CompliancePublicKeySet: events::CompliancePublicKeySet,
+        OpenNoteCreated: events::OpenNoteCreated,
     }
 
     #[constructor]
@@ -582,7 +583,7 @@ pub mod Privacy {
             assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
 
             // Validate and compute note values.
-            let (channel_key, storage_address) = self
+            let (channel_key, storage_address, _) = self
                 .prepare_note_creation(
                     :sender_addr,
                     :sender_private_key,
@@ -613,12 +614,14 @@ pub mod Privacy {
             let recipient_public_key = input.recipient_public_key;
             let token = input.token;
             let index = input.index;
+            let random = input.random;
 
             // Validate inputs.
             assert_note_creation_params(:recipient_addr, :recipient_public_key, :token);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
 
             // Validate and compute note values.
-            let (_, storage_address) = self
+            let (_, storage_address, note_id) = self
                 .prepare_note_creation(
                     :sender_addr,
                     :sender_private_key,
@@ -631,12 +634,24 @@ pub mod Privacy {
             let note = NoteTrait::open_note(:token);
             assert(note.packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
 
-            // TODO: Add event action.
-            array![note.to_write_once_action(:storage_address)]
+            // Encrypt the sender address for the compliance.
+            let enc_user_addr = encrypt_user_addr(
+                ephemeral_secret: random,
+                compliance_public_key: self.compliance_public_key.read(),
+                user_addr: sender_addr,
+            );
+            assert(enc_user_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
+
+            array![
+                note.to_write_once_action(:storage_address),
+                ServerAction::EmitOpenNoteCreated(
+                    events::OpenNoteCreated { enc_user_addr, token, note_id },
+                ),
+            ]
         }
 
         /// Validates preconditions and computes values needed for creating a note.
-        /// Returns `(channel_key, storage_address)`.
+        /// Returns `(channel_key, storage_address, note_id)`.
         fn prepare_note_creation(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -645,7 +660,7 @@ pub mod Privacy {
             recipient_public_key: felt252,
             token: ContractAddress,
             index: usize,
-        ) -> (felt252, felt252) {
+        ) -> (felt252, felt252, felt252) {
             let channel_key = compute_channel_key(
                 :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key,
             );
@@ -673,7 +688,7 @@ pub mod Privacy {
             assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
 
             let storage_address = self.notes.entry(note_id).into();
-            (channel_key, storage_address)
+            (channel_key, storage_address, note_id)
         }
     }
 
@@ -723,6 +738,7 @@ pub mod Privacy {
                     ServerAction::EmitViewingKeySet(event) => { self.emit(event); },
                     ServerAction::EmitWithdrawal(event) => { self.emit(event); },
                     ServerAction::EmitDeposit(event) => { self.emit(event); },
+                    ServerAction::EmitOpenNoteCreated(event) => { self.emit(event); },
                 };
             };
         }
