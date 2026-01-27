@@ -11,7 +11,6 @@ pub struct SetViewingKeyInput {
     pub random: felt252,
 }
 
-// TODO: Consider merge salt with random.
 /// Input for the `OpenChannel` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct OpenChannelInput {
