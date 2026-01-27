@@ -40,13 +40,21 @@ import {
 } from "../utils/hashes.js";
 import { ClientAction } from "../internal/client-actions.js";
 import { hex } from "../utils/logging.js";
-import type { MockServerAction } from "./mock-server-action.js";
 import { Call } from "starknet";
 
 type OpenNote = {
   r: bigint;
   amount: Amount;
   token: StarknetAddressBigint;
+};
+
+type MockServerAction = {
+  /** Action type for debugging/logging (e.g., "WriteIfZero", "AppendToVec") */
+  type: string;
+  /** Closure that performs the state mutation */
+  apply: () => void;
+  /** actions that shouldn't be applied in the private side */
+  deferred?: boolean;
 };
 
 type EncryptedNote = { packed: bigint; token: bigint; index: number };
@@ -93,7 +101,8 @@ export class MockPoolContract implements MockContract {
   constructor(
     public address: bigint,
     private contracts: MockContracts,
-    private validateBalances: boolean = true
+    private validateBalances: boolean = true,
+    private serverActions: MockServerAction[] = []
   ) {}
 
   // ============ View Methods (bigint params, matching Cairo contract) ============
@@ -249,17 +258,24 @@ export class MockPoolContract implements MockContract {
   /**
    * Apply server actions to mutate state.
    */
-  execute_actions(actions: MockServerAction[]): void {
-    for (const action of actions) {
-      action.apply();
+  execute_actions(actions: string[]): void {
+    for (let i = 0; i < actions.length; i++) {
+      assert(
+        this.serverActions[i].type == actions[i],
+        () => `Server action ${actions[i]} does not match expected ${this.serverActions[i].type}`
+      );
+      this.serverActions[i].apply();
     }
+    this.serverActions = [];
   }
 
   /**
    * Returns MockServerAction[] that have already been applied.
    */
-  execute(sender: bigint, ...clientActions: ClientAction[]): MockServerAction[] {
-    return this.execute_view(sender, clientActions);
+  execute(sender: bigint, ...clientActions: ClientAction[]): string[] {
+    const actions = this.execute_view(sender, clientActions);
+    this.serverActions = actions;
+    return this.serverActions.map((action) => action.type);
   }
 
   /**
