@@ -137,7 +137,6 @@ pub mod Privacy {
         ) {
             let execution_info = get_execution_info();
             assert_valid_execution_info(:execution_info);
-            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             let server_actions = self.execute_view(:user_addr, :client_actions);
             // TODO: Test inner `is_valid_signature` panics.
             assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
@@ -167,6 +166,7 @@ pub mod Privacy {
         fn execute_and_panic(
             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
+            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
             // TODO: Consider extracting logic to internal `main` function.
             let mut server_actions: Array<ServerAction> = array![];
             let mut current_phase = ClientActionTrait::ACCOUNT_PHASE;
