@@ -606,6 +606,26 @@ fn test_execute_emit_deposit() {
 }
 
 #[test]
+fn test_execute_emit_open_note_created() {
+    let mut test: Test = Default::default();
+    let token = test.mock_new_token();
+    let enc_sender_addr = test.mock_new_enc_address();
+    let note_id = 'NOTE_ID';
+    let expected_event = events::OpenNoteCreated { enc_sender_addr, token, note_id };
+    let actions = array![ServerAction::EmitOpenNoteCreated(expected_event)];
+    let mut spy = spy_events();
+    test.privacy.execute_actions(actions.span());
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("OpenNoteCreated"),
+        expected_event_name: "OpenNoteCreated",
+    );
+}
+
+#[test]
 fn test_execute_actions_paused() {
     let mut test: Test = Default::default();
     test.privacy.pause();
@@ -629,7 +649,9 @@ fn test_execute_write_once_open_note() {
         );
 
     let create_note_input = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: 0, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 0, :depositor,
+        );
     let (note_id, expected_note) = user_1.compute_open_note(:create_note_input);
 
     // Compute the server actions to write the note to storage.
@@ -665,7 +687,9 @@ fn test_execute_write_once_open_note_assertions() {
 
     // Create open note first.
     let create_note_input = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: 0, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 0, :depositor,
+        );
     user_1.cheat_create_open_note_e2e(:create_note_input);
 
     // Try to write again - should fail.
