@@ -227,7 +227,17 @@ export const PrivacyPoolABI = [
   },
   {
     type: "struct",
-    name: "privacy::actions::WriteIfZeroInput::<core::felt252>",
+    name: "core::array::Span::<core::felt252>",
+    members: [
+      {
+        name: "snapshot",
+        type: "@core::array::Array::<core::felt252>",
+      },
+    ],
+  },
+  {
+    type: "struct",
+    name: "privacy::actions::WriteOnceInput",
     members: [
       {
         name: "storage_address",
@@ -235,119 +245,7 @@ export const PrivacyPoolABI = [
       },
       {
         name: "value",
-        type: "core::felt252",
-      },
-    ],
-  },
-  {
-    type: "struct",
-    name: "privacy::objects::EncSubchannelInfo",
-    members: [
-      {
-        name: "salt",
-        type: "core::felt252",
-      },
-      {
-        name: "enc_token",
-        type: "core::felt252",
-      },
-    ],
-  },
-  {
-    type: "struct",
-    name: "privacy::actions::WriteIfZeroInput::<privacy::objects::EncSubchannelInfo>",
-    members: [
-      {
-        name: "storage_address",
-        type: "core::felt252",
-      },
-      {
-        name: "value",
-        type: "privacy::objects::EncSubchannelInfo",
-      },
-    ],
-  },
-  {
-    type: "struct",
-    name: "privacy::objects::EncOutgoingChannelInfo",
-    members: [
-      {
-        name: "salt",
-        type: "core::felt252",
-      },
-      {
-        name: "enc_recipient_addr",
-        type: "core::felt252",
-      },
-    ],
-  },
-  {
-    type: "struct",
-    name: "privacy::actions::WriteIfZeroInput::<privacy::objects::EncOutgoingChannelInfo>",
-    members: [
-      {
-        name: "storage_address",
-        type: "core::felt252",
-      },
-      {
-        name: "value",
-        type: "privacy::objects::EncOutgoingChannelInfo",
-      },
-    ],
-  },
-  {
-    type: "struct",
-    name: "privacy::objects::EncPrivateKey",
-    members: [
-      {
-        name: "ephemeral_pubkey",
-        type: "core::felt252",
-      },
-      {
-        name: "enc_private_key",
-        type: "core::felt252",
-      },
-    ],
-  },
-  {
-    type: "struct",
-    name: "privacy::actions::WriteIfZeroInput::<privacy::objects::EncPrivateKey>",
-    members: [
-      {
-        name: "storage_address",
-        type: "core::felt252",
-      },
-      {
-        name: "value",
-        type: "privacy::objects::EncPrivateKey",
-      },
-    ],
-  },
-  {
-    type: "struct",
-    name: "privacy::objects::Note",
-    members: [
-      {
-        name: "enc_value",
-        type: "core::felt252",
-      },
-      {
-        name: "token",
-        type: "core::starknet::contract_address::ContractAddress",
-      },
-    ],
-  },
-  {
-    type: "struct",
-    name: "privacy::actions::WriteIfZeroInput::<privacy::objects::Note>",
-    members: [
-      {
-        name: "storage_address",
-        type: "core::felt252",
-      },
-      {
-        name: "value",
-        type: "privacy::objects::Note",
+        type: "core::array::Span::<core::felt252>",
       },
     ],
   },
@@ -435,6 +333,24 @@ export const PrivacyPoolABI = [
   },
   {
     type: "struct",
+    name: "privacy::objects::EncPrivateKey",
+    members: [
+      {
+        name: "compliance_public_key",
+        type: "core::felt252",
+      },
+      {
+        name: "ephemeral_pubkey",
+        type: "core::felt252",
+      },
+      {
+        name: "enc_private_key",
+        type: "core::felt252",
+      },
+    ],
+  },
+  {
+    type: "struct",
     name: "privacy::events::ViewingKeySet",
     members: [
       {
@@ -455,6 +371,10 @@ export const PrivacyPoolABI = [
     type: "struct",
     name: "privacy::objects::EncUserAddr",
     members: [
+      {
+        name: "compliance_public_key",
+        type: "core::felt252",
+      },
       {
         name: "ephemeral_pubkey",
         type: "core::felt252",
@@ -510,24 +430,8 @@ export const PrivacyPoolABI = [
     name: "privacy::actions::ServerAction",
     variants: [
       {
-        name: "WriteIfZero",
-        type: "privacy::actions::WriteIfZeroInput::<core::felt252>",
-      },
-      {
-        name: "WriteIfZeroSubchannel",
-        type: "privacy::actions::WriteIfZeroInput::<privacy::objects::EncSubchannelInfo>",
-      },
-      {
-        name: "WriteIfZeroOutgoingChannel",
-        type: "privacy::actions::WriteIfZeroInput::<privacy::objects::EncOutgoingChannelInfo>",
-      },
-      {
-        name: "WriteIfZeroPrivateKey",
-        type: "privacy::actions::WriteIfZeroInput::<privacy::objects::EncPrivateKey>",
-      },
-      {
-        name: "WriteIfZeroNote",
-        type: "privacy::actions::WriteIfZeroInput::<privacy::objects::Note>",
+        name: "WriteOnce",
+        type: "privacy::actions::WriteOnceInput",
       },
       {
         name: "AppendToVec",
@@ -686,6 +590,34 @@ export const PrivacyPoolABI = [
       {
         name: "True",
         type: "()",
+      },
+    ],
+  },
+  {
+    type: "struct",
+    name: "privacy::objects::EncSubchannelInfo",
+    members: [
+      {
+        name: "salt",
+        type: "core::felt252",
+      },
+      {
+        name: "enc_token",
+        type: "core::felt252",
+      },
+    ],
+  },
+  {
+    type: "struct",
+    name: "privacy::objects::EncOutgoingChannelInfo",
+    members: [
+      {
+        name: "salt",
+        type: "core::felt252",
+      },
+      {
+        name: "enc_recipient_addr",
+        type: "core::felt252",
       },
     ],
   },
@@ -872,6 +804,29 @@ export const PrivacyPoolABI = [
   },
   {
     type: "impl",
+    name: "ComplianceImpl",
+    interface_name: "privacy::interface::ICompliance",
+  },
+  {
+    type: "interface",
+    name: "privacy::interface::ICompliance",
+    items: [
+      {
+        type: "function",
+        name: "set_compliance_public_key",
+        inputs: [
+          {
+            name: "compliance_public_key",
+            type: "core::felt252",
+          },
+        ],
+        outputs: [],
+        state_mutability: "external",
+      },
+    ],
+  },
+  {
+    type: "impl",
     name: "PausableImpl",
     interface_name: "starkware_utils::components::pausable::interface::IPausable",
   },
@@ -910,16 +865,6 @@ export const PrivacyPoolABI = [
     type: "impl",
     name: "ReplaceabilityImpl",
     interface_name: "starkware_utils::components::replaceability::interface::IReplaceable",
-  },
-  {
-    type: "struct",
-    name: "core::array::Span::<core::felt252>",
-    members: [
-      {
-        name: "snapshot",
-        type: "@core::array::Array::<core::felt252>",
-      },
-    ],
   },
   {
     type: "struct",
@@ -2202,7 +2147,7 @@ export const PrivacyPoolABI = [
       {
         name: "public_key",
         type: "core::felt252",
-        kind: "data",
+        kind: "key",
       },
       {
         name: "enc_private_key",
@@ -2262,6 +2207,18 @@ export const PrivacyPoolABI = [
   },
   {
     type: "event",
+    name: "privacy::events::CompliancePublicKeySet",
+    kind: "struct",
+    members: [
+      {
+        name: "compliance_public_key",
+        type: "core::felt252",
+        kind: "key",
+      },
+    ],
+  },
+  {
+    type: "event",
     name: "privacy::privacy::Privacy::Event",
     kind: "enum",
     variants: [
@@ -2303,6 +2260,11 @@ export const PrivacyPoolABI = [
       {
         name: "Deposit",
         type: "privacy::events::Deposit",
+        kind: "nested",
+      },
+      {
+        name: "CompliancePublicKeySet",
+        type: "privacy::events::CompliancePublicKeySet",
         kind: "nested",
       },
     ],

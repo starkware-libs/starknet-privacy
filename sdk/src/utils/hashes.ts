@@ -54,7 +54,7 @@ export function compute_enc_recipient_addr_hash(
   index: number,
   salt: bigint
 ): bigint {
-  return hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, sender_private_key, index, salt);
+  return hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, sender_private_key, index, 0n, salt);
 }
 
 /** See packages/privacy/src/hashes.cairo for documentation. */
@@ -79,7 +79,7 @@ export function compute_outgoing_channel_key(
   sender_private_key: bigint,
   index: number
 ): bigint {
-  return hash(OUTGOING_CHANNEL_KEY_TAG, sender_addr, sender_private_key, index);
+  return hash(OUTGOING_CHANNEL_KEY_TAG, sender_addr, sender_private_key, index, 0n);
 }
 
 /** See packages/privacy/src/hashes.cairo for documentation. */
