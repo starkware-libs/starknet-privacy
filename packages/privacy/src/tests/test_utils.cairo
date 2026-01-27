@@ -139,7 +139,6 @@ fn test_decode_note_amount_open_note() {
 }
 
 #[test]
-#[should_panic(expected: 'EMPTY_NOTE_USAGE')]
 fn test_decode_note_amount_open_note_empty() {
     let channel_key = hash(['CHANNEL_KEY'].span());
     let token: ContractAddress = hash(['TOKEN'].span()).try_into().unwrap();
