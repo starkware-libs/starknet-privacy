@@ -30,7 +30,7 @@ import { TracingRpcProvider } from "./tracing-provider.js";
 import type { CallAndProof, PrivateTransfersInterface } from "../interfaces.js";
 import { createPrivateTransfers } from "../factory.js";
 import { CallMockProofProvider } from "./mock-proving.js";
-import { ContractDiscoveryProvider, type IPoolContract } from "./contract-discovery.js";
+import { ContractDiscoveryProvider } from "./contract-discovery.js";
 import { toBigInt } from "../utils/crypto.js";
 import { Devnet as StarknetDevnet } from "starknet-devnet";
 import { readFileSync, writeFileSync } from "fs";
@@ -465,33 +465,6 @@ export interface DevnetTestEnv {
 }
 
 /**
- * Adapts a PrivacyPoolContract (starknet.js Contract) to IPoolContract interface.
- * Converts bigint arguments to hex strings and return values to bigint.
- */
-function adaptPoolContract(contract: PrivacyPoolContract): IPoolContract {
-  const toHex = (n: bigint) => `0x${n.toString(16)}`;
-  return {
-    get_public_key: async (userAddr: bigint) => toBigInt(await contract.get_public_key(toHex(userAddr))),
-    get_num_of_channels: async (recipientAddr: bigint) =>
-      toBigInt(await contract.get_num_of_channels(toHex(recipientAddr))),
-    get_channel_info: (recipientAddr: bigint, index: number) =>
-      contract.get_channel_info(toHex(recipientAddr), index),
-    get_subchannel_info: (subchannelKey: bigint) => contract.get_subchannel_info(toHex(subchannelKey)),
-    get_outgoing_channel_info: (outgoingChannelKey: bigint) =>
-      contract.get_outgoing_channel_info(toHex(outgoingChannelKey)),
-    get_note: async (noteId: bigint) => {
-      const note = await contract.get_note(toHex(noteId));
-      return {
-        packed_value: toBigInt(note.packed_value),
-        token: toBigInt(note.token),
-        depositor: toBigInt(note.depositor),
-      };
-    },
-    channel_exists: (channelId: bigint) => contract.channel_exists(toHex(channelId)),
-  };
-}
-
-/**
  * Create a complete test environment with initialized devnet, accounts, and transfers.
  * This is the recommended way for SDK consumers to set up integration tests.
  *
@@ -501,21 +474,20 @@ function adaptPoolContract(contract: PrivacyPoolContract): IPoolContract {
 export async function createDevnetTestEnv(devnet: Devnet): Promise<DevnetTestEnv> {
   const env = await devnet.initialize();
   const chainId = constants.StarknetChainId.SN_SEPOLIA;
-  const poolAdapter = adaptPoolContract(env.privacy);
 
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
       viewingKeyProvider: { getViewingKey: () => toBigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
-      discoveryProvider: new ContractDiscoveryProvider(poolAdapter),
+      discoveryProvider: new ContractDiscoveryProvider(env.privacy),
       poolContractAddress: env.privacy.address,
     }),
     bob: createPrivateTransfers({
       account: env.bob,
       viewingKeyProvider: { getViewingKey: () => toBigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
-      discoveryProvider: new ContractDiscoveryProvider(poolAdapter),
+      discoveryProvider: new ContractDiscoveryProvider(env.privacy),
       poolContractAddress: env.privacy.address,
     }),
   };
