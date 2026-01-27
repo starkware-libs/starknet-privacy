@@ -26,7 +26,7 @@ pub mod Privacy {
         StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature, derive_public_key,
         encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
         encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, send_message_to_server,
-        server_actions_to_panic_data, unwrap_execute_and_panic_result,
+        unwrap_execute_and_panic_result, wrap_server_actions_and_panic,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -168,7 +168,7 @@ pub mod Privacy {
             ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
         ) {
             let server_actions = self.main(:user_addr, :client_actions);
-            panic(server_actions_to_panic_data(:server_actions));
+            wrap_server_actions_and_panic(:server_actions);
         }
     }
 

@@ -1,5 +1,6 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
+use core::never;
 use core::num::traits::Zero;
 use privacy::actions::ServerAction;
 use privacy::errors;
@@ -314,10 +315,10 @@ pub(crate) fn unwrap_execute_and_panic_result(
 }
 
 /// Wraps the server actions with `OK_WRAPPER` in a panic data array.
-pub(crate) fn server_actions_to_panic_data(server_actions: Span<ServerAction>) -> Array<felt252> {
+pub(crate) fn wrap_server_actions_and_panic(server_actions: Span<ServerAction>) -> never {
     let mut panic_data = array![];
     panic_data.append(OK_WRAPPER);
     server_actions.serialize(ref panic_data);
     panic_data.append(OK_WRAPPER);
-    panic_data
+    panic(panic_data);
 }
