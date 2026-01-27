@@ -78,7 +78,6 @@ fn test_set_viewing_key() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 fn test_set_viewing_key_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
@@ -520,7 +519,6 @@ fn test_transfer_many_to_many() {
 
 // TODO: Fix this test. Now failing because storage writings are not reverted when panicking.
 #[test]
-#[feature("safe_dispatcher")]
 #[ignore]
 fn test_transfer_assertions() {
     let mut test = Default::default();
@@ -933,7 +931,6 @@ fn test_open_channel_self_channel() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 fn test_open_channel_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
@@ -1441,7 +1438,6 @@ fn test_open_subchannel_zero_salt() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 fn test_open_subchannel_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
@@ -2524,7 +2520,6 @@ fn test_use_open_note_token_mismatch() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 fn test_deposit_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
@@ -3132,7 +3127,6 @@ fn test_withdraw_different_targets() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 fn test_withdraw_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
