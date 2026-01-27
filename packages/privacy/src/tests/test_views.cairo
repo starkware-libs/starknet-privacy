@@ -201,7 +201,9 @@ fn test_get_note() {
     // Create and verify open note.
     let depositor = test.mock_new_depositor();
     let open_note_input = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: 1, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 1, :depositor,
+        );
     user_1.cheat_create_open_note_e2e(create_note_input: open_note_input);
     let (open_note_id, expected_open_note) = user_1
         .compute_open_note(create_note_input: open_note_input);

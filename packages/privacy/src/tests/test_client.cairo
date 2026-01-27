@@ -2088,7 +2088,9 @@ fn test_create_note_self_note() {
     // Create open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user
-        .new_open_note(recipient: user, token: token_address, index: note_index, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user, token: token_address, index: note_index, :depositor,
+        );
     let actions = user.internal_create_open_note(:create_note_input);
     assert_eq!(actions, create_note_input.into_server_actions(:user));
 }
@@ -2132,14 +2134,18 @@ fn test_create_note_twice() {
 
     // Note 3: open note at index 2 (enc → open).
     let note_3 = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: 2, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 2, :depositor,
+        );
     let create_note_3_actions = user_1.internal_create_open_note(create_note_input: note_3);
     assert_eq!(create_note_3_actions, note_3.into_server_actions(user: user_1));
     user_1.privacy.execute_actions(actions: create_note_3_actions);
 
     // Note 4: open note at index 3 (open → open).
     let note_4 = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: 3, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 3, :depositor,
+        );
     let create_note_4_actions = user_1.internal_create_open_note(create_note_input: note_4);
     assert_eq!(create_note_4_actions, note_4.into_server_actions(user: user_1));
     user_1.privacy.execute_actions(actions: create_note_4_actions);
@@ -2448,7 +2454,9 @@ fn test_create_open_note_assertions() {
     user.set_viewing_key_e2e();
     let depositor = test.mock_new_depositor();
     let create_note_input = user
-        .new_open_note(recipient: user, token: token_address, index: 0, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user, token: token_address, index: 0, :depositor,
+        );
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero = user;
@@ -2668,7 +2676,9 @@ fn test_create_note_subchannel_not_found_wrong_addr() {
     // Open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: 0, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 0, :depositor,
+        );
     let result = user_1.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 }
@@ -2696,7 +2706,9 @@ fn test_create_note_subchannel_not_found_wrong_private_key() {
     // Open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: 0, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 0, :depositor,
+        );
     let result = user_1.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 }
@@ -2724,7 +2736,9 @@ fn test_create_note_subchannel_not_found_wrong_public_key() {
     // Open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: 0, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 0, :depositor,
+        );
     let result = user_1.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 }
@@ -2754,7 +2768,9 @@ fn test_create_note_subchannel_not_found_wrong_token() {
     // Open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
-        .new_open_note(recipient: user_2, token: wrong_token, index: 0, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: wrong_token, index: 0, :depositor,
+        );
     let result = user_1.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 }
@@ -2809,7 +2825,9 @@ fn test_create_open_note_stores_correctly() {
     let note_index = 0;
     let depositor = test.mock_new_depositor();
     let note = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: note_index, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: note_index, :depositor,
+        );
     let create_note_actions = user_1.internal_create_open_note(create_note_input: note);
     user_1.privacy.execute_actions(actions: create_note_actions);
 
@@ -2861,7 +2879,9 @@ fn test_use_open_note_empty_note() {
     let note_index = 0;
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: note_index, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: note_index, :depositor,
+        );
     user_1.cheat_create_open_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index };
@@ -3522,6 +3542,43 @@ fn test_withdraw_decrypt_user_addr() {
 }
 
 #[test]
+fn test_create_open_note_decrypt_user_addr() {
+    let mut test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    // Setup.
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    let token_address = test.mock_new_token();
+    user_1
+        .open_channel_with_token_e2e(
+            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+    // Create an open note.
+    let depositor = test.mock_new_depositor();
+    let create_note_input = user_1
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 0, :depositor,
+        );
+    let mut spy_events = spy_events();
+    user_1.cheat_create_open_note_e2e(:create_note_input);
+
+    // Compliance should be able to decrypt the user address from the OpenNoteCreated event.
+    let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    let (_, event) = events[0];
+    // For OpenNoteCreated, enc_user_addr is a #[key] field, so it's in event.keys.
+    // keys[0] is the event selector, followed by enc_user_addr fields.
+    let enc_user_addr = EncUserAddr {
+        compliance_public_key: *event.data[0],
+        ephemeral_pubkey: *event.data[1],
+        enc_user_addr: *event.data[2],
+    };
+    let decrypted_user_addr = test.compliance.decrypt_user_addr(:enc_user_addr);
+    assert_eq!(decrypted_user_addr, user_1.address);
+}
+
+#[test]
 fn test_set_viewing_key_to_other_user_key() {
     let mut test: Test = Default::default();
     let mut user1 = test.new_user();
@@ -4036,7 +4093,9 @@ fn test_internal_actions() {
 
     // Create open note action.
     let create_open_note_input = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: note_index, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: note_index, :depositor,
+        );
     let actions = user_1.internal_create_open_note(create_note_input: create_open_note_input);
     assert_eq!(actions, create_open_note_input.into_server_actions(user: user_1));
 
@@ -4491,7 +4550,7 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> set viewing key).
     let open_note = user
-        .new_open_note(
+        .new_open_note_with_generated_random(
             recipient: user, token: token_address, index: 1, depositor: test.mock_new_depositor(),
         );
     let client_actions = [
@@ -4899,9 +4958,10 @@ fn test_client_execute_writes() {
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Test CreateOpenNote writes.
-    let create_open_note_input = CreateOpenNoteInput {
-        recipient_addr, recipient_public_key, token: token_address, index: index + 1, depositor,
-    };
+    let create_open_note_input = user
+        .new_open_note_with_generated_random(
+            recipient: user, token: token_address, index: index + 1, :depositor,
+        );
     let create_open_note = ClientAction::CreateOpenNote(create_open_note_input);
     let client_actions = [create_open_note, create_open_note].span();
     let result = user.safe_client_execute(:client_actions);
@@ -5124,7 +5184,9 @@ fn test_client_execute_create_open_note() {
         );
     let note_index = 0;
     let create_note_input = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: note_index, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: note_index, :depositor,
+        );
 
     // Execute client actions.
     let client_actions = [ClientAction::CreateOpenNote(create_note_input)].span();
@@ -5148,6 +5210,8 @@ fn test_client_execute_create_open_note() {
     // Verify storage before execution.
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
+    // TODO: Verify no events emitted (currently not tested because of snforge revert issue).
+
     // Execute actions and verify storage after.
     test.privacy.execute_actions(:actions);
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
@@ -5167,7 +5231,9 @@ fn test_create_open_note_as_single_action() {
             recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let create_note_input = user
-        .new_open_note(recipient: user, token: token_address, index: 0, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user, token: token_address, index: 0, :depositor,
+        );
 
     // Create open note as the single action - should succeed (it's a privacy action).
     let client_actions = [ClientAction::CreateOpenNote(create_note_input)].span();
@@ -5199,11 +5265,15 @@ fn test_create_open_and_enc_notes_same_tx() {
 
     // Create 4 notes in order: open -> enc -> open -> enc.
     let open_0 = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: 0, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 0, :depositor,
+        );
     let enc_1 = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 1);
     let open_2 = user_1
-        .new_open_note(recipient: user_2, token: token_address, index: 2, :depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 2, :depositor,
+        );
     let enc_3 = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 3);
 
