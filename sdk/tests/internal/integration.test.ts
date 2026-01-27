@@ -1,7 +1,6 @@
 import { describe, expect, it, beforeEach, afterAll } from "vitest";
 import {
   createTestEnv,
-  applyStateChanges,
   createEmptyRegistry,
   AUTO_ALL,
   ACE,
@@ -35,14 +34,14 @@ describe("Private Transfers Integration", () => {
   // ============================================================================
   describe("Explicit Flow", () => {
     it("manual registration, channel setup, token setup, deposit, transfer, withdraw", async () => {
-      const { alice, bob, contracts } = env;
+      const { alice, bob, contracts, executeOutside } = env;
 
       // Bob registers separately (prerequisite for Alice to set up channel to him)
-      applyStateChanges(await bob.build().register().execute());
+      executeOutside(await bob.build().register().execute());
 
       // Alice: register, setup channels (self + Bob), setup token (self + Bob), deposit
       // prettier-ignore
-      const registry = applyStateChanges(
+      const registry = executeOutside(
         await alice
           .build()
           .register()
@@ -63,7 +62,7 @@ describe("Private Transfers Integration", () => {
 
       // Alice: use note as input, transfer half to Bob, surplus to self, withdraw
       // prettier-ignore
-      applyStateChanges(
+      executeOutside(
         await alice
           .build({ registry })
           .surplusTo(ALICE.address)
@@ -86,7 +85,7 @@ describe("Private Transfers Integration", () => {
 
       // Bob withdraws his note
       // prettier-ignore
-      applyStateChanges(
+      executeOutside(
         await bob
           .build({ autoDiscover: { channels: "refresh" } })
           .with(ACE)
@@ -105,16 +104,16 @@ describe("Private Transfers Integration", () => {
   // ============================================================================
   describe("Auto Setup Flow", () => {
     it("auto setup handles registration, channels, and token setup", async () => {
-      const { alice, bob } = env;
+      const { alice, bob, executeOutside } = env;
 
       // Bob registers (required for Alice to set up channel to him)
-      applyStateChanges(await bob.build().register().execute());
+      executeOutside(await bob.build().register().execute());
 
       // Alice uses autoRegister, autoSetup and autoSelectNotes: deposits and transfers to Bob
       // prettier-ignore
-      const registry = applyStateChanges(
+      const registry = executeOutside(
         await alice
-          .build({ ...AUTO_ALL, autoRegister: true, autoSelectNotes: "naive" })
+          .build(AUTO_ALL)
           .with(ACE)
             .deposit({ amount: 100n, recipient: ALICE.address })
             .transfer({ recipient: BOB.address, amount: 50n })
@@ -137,13 +136,13 @@ describe("Private Transfers Integration", () => {
     });
 
     it("covers autoSelectNotes: all, autoDiscover: missing, registryConst, implicit surplus", async () => {
-      const { alice, contracts } = env;
+      const { alice, contracts, executeOutside } = env;
 
       // Phase 1: Create multiple notes for Alice
-      applyStateChanges(await alice.build().register().execute());
+      executeOutside(await alice.build().register().execute());
 
       // Create first note: 100n
-      applyStateChanges(
+      executeOutside(
         await alice
           .build(AUTO_ALL)
           .setup(ALICE.address)
@@ -153,7 +152,7 @@ describe("Private Transfers Integration", () => {
       );
 
       // Create second note: 50n
-      applyStateChanges(
+      executeOutside(
         await alice
           .build(AUTO_ALL)
           .with(ACE)
@@ -173,7 +172,7 @@ describe("Private Transfers Integration", () => {
       // - autoDiscover: { notes: "missing" } (discover ACE notes since not in registry)
       // - surplusTo triggers the "sweeping" code path for discovery
       debugLog("test", "main");
-      const result = applyStateChanges(
+      const result = executeOutside(
         await alice
           .build({
             registry: channelOnly,
@@ -201,14 +200,14 @@ describe("Private Transfers Integration", () => {
     });
 
     it("implicit surplus: deposit without surplusTo creates note for self", async () => {
-      const { alice, bob, contracts } = env;
+      const { alice, bob, contracts, executeOutside } = env;
 
-      applyStateChanges(await alice.build().register().execute());
+      executeOutside(await alice.build().register().execute());
 
       // Deposit 100n, transfer only 30n to Bob -> 70n surplus with NO explicit surplusTo
-      applyStateChanges(await bob.build().register().execute());
+      executeOutside(await bob.build().register().execute());
 
-      const result = applyStateChanges(
+      const result = executeOutside(
         await alice
           .build(AUTO_ALL)
           .setup(ALICE.address)
@@ -238,7 +237,7 @@ describe("Private Transfers Integration", () => {
   const SWAP_HELPER_ADDRESS = "0x53A2";
 
   it("swaps ACE for BEE via swap helper and open note", async () => {
-    const { alice, contracts } = env;
+    const { alice, contracts, executeOutside } = env;
 
     const swapHelper = new MockSwapHelper(SWAP_HELPER_ADDRESS, contracts);
     contracts.register(swapHelper);
@@ -253,9 +252,9 @@ describe("Private Transfers Integration", () => {
 
     // 1. Setup self-channel and deposit ACE (autoSetup handles token subchannel setup)
     // prettier-ignore
-    applyStateChanges(
+    executeOutside(
       await alice
-        .build({ ...AUTO_ALL, autoRegister: true })
+        .build(AUTO_ALL)
         .with(ACE)
           .deposit({ amount: 100n, recipient: ALICE.address })
           .withdraw({ recipient: swapHelper.address, amount: 10n })

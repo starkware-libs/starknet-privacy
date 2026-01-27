@@ -1,9 +1,6 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import {
   createTestEnv,
-  setupSelfChannel,
-  setupRecipientChannel,
-  applyStateChanges,
   AUTO_ALL,
   ACE,
   BEE,
@@ -23,7 +20,6 @@ describe("Edge Cases", () => {
   describe("Validation", () => {
     it("rejects negative deposit amount", async () => {
       const { alice } = env;
-      await setupSelfChannel(alice, ALICE.address, ACE);
 
       await expect(
         alice
@@ -35,15 +31,13 @@ describe("Edge Cases", () => {
     });
 
     it("rejects negative withdraw amount", async () => {
-      const { alice, bob } = env;
+      const { alice, bob, executeOutside } = env;
 
       // Setup Alice -> Bob and create a note
-      applyStateChanges(await alice.build().register().execute());
-      const registry = await setupRecipientChannel(alice, bob, BOB.address, ACE);
-
-      applyStateChanges(
+      executeOutside(await bob.build().register().execute());
+      executeOutside(
         await alice
-          .build({ ...AUTO_ALL, registry })
+          .build(AUTO_ALL)
           .with(ACE)
           .deposit({ amount: 100n, recipient: BOB.address })
           .execute()
@@ -63,16 +57,15 @@ describe("Edge Cases", () => {
     });
 
     it("rejects negative transfer amount (created note)", async () => {
-      const { alice, bob } = env;
+      const { alice, bob, executeOutside } = env;
 
       // Setup Alice's self channel and Alice -> Bob channel
-      const selfRegistry = await setupSelfChannel(alice, ALICE.address, ACE);
-      await setupRecipientChannel(alice, bob, BOB.address, ACE);
+      executeOutside(await bob.build().register().execute());
 
       // prettier-ignore
-      applyStateChanges(
+      executeOutside(
         await alice
-          .build({ ...AUTO_ALL, registry: selfRegistry })
+          .build(AUTO_ALL)
           .with(ACE)
             .deposit({ amount: 100n, recipient: ALICE.address })
           .execute()
@@ -101,11 +94,12 @@ describe("Edge Cases", () => {
 
   describe("Token Setup Independence", () => {
     it("different tokens require separate setup", async () => {
-      const { alice, bob } = env;
+      const { alice, bob, executeOutside } = env;
+
+      executeOutside(await bob.build().register().execute());
 
       // Setup Alice -> Bob with ACE only
-      applyStateChanges(await alice.build().register().execute());
-      await setupRecipientChannel(alice, bob, BOB.address, ACE);
+      executeOutside(await alice.build(AUTO_ALL).register().with(ACE).setup(BOB.address).execute());
 
       // ACE is ready, BEE still needs setup
       expect(await alice.discoverRequirement(BOB.address, ACE)).toBe(SetupRequirement.Ready);
