@@ -45,3 +45,15 @@ pub struct CompliancePublicKeySet {
     #[key]
     pub compliance_public_key: felt252,
 }
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct OpenNoteCreated {
+    /// Encrypted sender address. Can be decrypted by the compliance.
+    pub enc_user_addr: EncUserAddr,
+    /// The token's address.
+    #[key]
+    pub token: ContractAddress,
+    /// The note ID.
+    #[key]
+    pub note_id: felt252,
+}
