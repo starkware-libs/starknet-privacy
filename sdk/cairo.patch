@@ -1,26 +1,15 @@
 diff --git a/packages/privacy/src/privacy.cairo b/packages/privacy/src/privacy.cairo
-index 0405d42..627b1ac 100644
 --- a/packages/privacy/src/privacy.cairo
 +++ b/packages/privacy/src/privacy.cairo
-@@ -209,15 +209,15 @@ pub mod Privacy {
-             // storage is not modified.
-             // TODO: Consider refactoring wrapping logic to a function.
-             // TODO: Test wrapped `is_valid_signature` panics.
--            if let Err(err) = assert_valid_signature(:user_addr) {
--                panic_message.append(ERROR_WRAPPER);
--                panic_message.extend(err);
--                panic_message.append(ERROR_WRAPPER);
--            } else {
-+            //if let Err(err) = assert_valid_signature(:user_addr) {
-+            //    panic_message.append(ERROR_WRAPPER);
-+            //    panic_message.extend(err);
-+            //    panic_message.append(ERROR_WRAPPER);
-+            //} else {
-                 panic_message.append(OK_WRAPPER);
-                 server_actions.serialize(ref panic_message);
-                 panic_message.append(OK_WRAPPER);
--            }
-+            //}
-             panic(panic_message);
+@@ -139,8 +139,9 @@ pub mod Privacy {
+             assert_valid_execution_info(:execution_info);
+             let server_actions = self.execute_view(:user_addr, :client_actions);
+             // TODO: Test inner `is_valid_signature` panics.
+-            assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
+-            send_message_to_server(:server_actions);
++            //assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
++            //send_message_to_server(:server_actions);
++            panic(server_actions_to_panic_data(:server_actions));
          }
-     }
+
+         fn execute_view(
