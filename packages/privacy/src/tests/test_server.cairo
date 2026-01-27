@@ -340,7 +340,10 @@ fn test_execute_write_once_note() {
         map_selector: selector!("notes"), keys: [note_id].span(),
     );
     let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, Note { packed_value: Zero::zero(), token: Zero::zero() });
+    assert_eq!(
+        current_value,
+        Note { packed_value: Zero::zero(), token: Zero::zero(), depositor: Zero::zero() },
+    );
 
     // Write stored note.
     let actions: Array<ServerAction> = array![
