@@ -210,6 +210,7 @@ fn test_note_encrypt() {
             :channel_key, token: token_address, :index, :salt, :amount,
         ),
         token: Zero::zero(),
+        depositor: Zero::zero(),
     };
     assert_eq!(note, expected_note);
     let (note_salt, enc_amount) = unpacking(note.packed_value);
@@ -282,15 +283,18 @@ fn test_enc_outgoing_channel_info_to_write_once_action() {
 #[test]
 fn test_note_to_write_once_action() {
     let enc_value = 'ENC_VALUE';
-    let token = 'TOKEN'.try_into().unwrap();
-    let note = Note { packed_value: enc_value, token };
+    let token: ContractAddress = 'TOKEN'.try_into().unwrap();
+    let depositor: ContractAddress = 'DEPOSITOR'.try_into().unwrap();
+    let note = Note { packed_value: enc_value, token, depositor };
     let key = 'KEY';
     let storage_address = map_entry_address(map_selector: selector!("notes"), keys: [key].span());
     let action = note.to_write_once_action(:storage_address);
     assert_eq!(
         action,
         ServerAction::WriteOnce(
-            WriteOnceInput { storage_address, value: [enc_value, token.into()].span() },
+            WriteOnceInput {
+                storage_address, value: [enc_value, token.into(), depositor.into()].span(),
+            },
         ),
     );
 }
@@ -482,7 +486,11 @@ fn enc_outgoing_channel_info_serialization_format() {
 fn note_serialization_format() {
     let mock_contract_address = deploy_mock_contract();
     let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
-    let note = Note { packed_value: 'ENC_VALUE', token: 'TOKEN'.try_into().unwrap() };
+    let note = Note {
+        packed_value: 'ENC_VALUE',
+        token: 'TOKEN'.try_into().unwrap(),
+        depositor: 'DEPOSITOR'.try_into().unwrap(),
+    };
     let mut serialized_value = array![];
     note.serialize(ref output: serialized_value);
     mock_contract.write_serialized_note(serialized_value: serialized_value.span());

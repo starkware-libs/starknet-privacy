@@ -51,11 +51,11 @@ use starkware_utils_testing::test_utils::{
 
 pub impl NoteZero of Zero<Note> {
     fn zero() -> Note {
-        Note { packed_value: Zero::zero(), token: Zero::zero() }
+        Note { packed_value: Zero::zero(), token: Zero::zero(), depositor: Zero::zero() }
     }
 
     fn is_zero(self: @Note) -> bool {
-        (*self.packed_value).is_zero() && (*self.token).is_zero()
+        (*self.packed_value).is_zero() && (*self.token).is_zero() && (*self.depositor).is_zero()
     }
 
     fn is_non_zero(self: @Note) -> bool {
@@ -787,7 +787,7 @@ pub(crate) impl UserImpl of UserTrait {
             salt: create_note_input.salt,
             amount: create_note_input.amount,
         );
-        (note_id, Note { packed_value, token: Zero::zero() })
+        (note_id, Note { packed_value, token: Zero::zero(), depositor: Zero::zero() })
     }
 
     /// Computes the note ID and Note for a given CreateOpenNoteInput.
@@ -803,7 +803,14 @@ pub(crate) impl UserImpl of UserTrait {
             :channel_key, token: create_note_input.token, index: create_note_input.index,
         );
         let packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: Zero::zero());
-        (note_id, Note { packed_value, token: create_note_input.token })
+        (
+            note_id,
+            Note {
+                packed_value,
+                token: create_note_input.token,
+                depositor: create_note_input.depositor,
+            },
+        )
     }
 
 
@@ -893,13 +900,18 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn new_open_note(
-        self: @User, recipient: User, token: ContractAddress, index: usize,
+        self: @User,
+        recipient: User,
+        token: ContractAddress,
+        index: usize,
+        depositor: ContractAddress,
     ) -> CreateOpenNoteInput {
         CreateOpenNoteInput {
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             token,
             index,
+            depositor,
         }
     }
 
@@ -1164,6 +1176,12 @@ pub(crate) impl TestImpl of TestTrait {
         ('TOKEN_ADDRESS' + self.nonce.into()).try_into().unwrap()
     }
 
+    /// Mock function to generate a new depositor address.
+    fn mock_new_depositor(ref self: Test) -> ContractAddress {
+        self.nonce += 1;
+        ('DEPOSITOR' + self.nonce.into()).try_into().unwrap()
+    }
+
     /// Mock function to generate a new compliance private key.
     fn mock_new_enc_private_key(ref self: Test) -> EncPrivateKey {
         self.nonce += 1;
@@ -1216,7 +1234,8 @@ pub(crate) impl TestImpl of TestTrait {
         let note_id = 'NOTE_ID' + self.nonce.into();
         let packed_value = 'PACKED_VALUE' + amount.into() + self.nonce.into();
         let token = self.mock_new_token();
-        (note_id, Note { packed_value, token })
+        let depositor = self.mock_new_depositor();
+        (note_id, Note { packed_value, token, depositor })
     }
 
     /// Mock function to generate a new nullifier.
