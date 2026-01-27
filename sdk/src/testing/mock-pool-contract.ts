@@ -137,7 +137,11 @@ export class MockPoolContract implements MockContract {
     return this.outgoingChannels.get(outgoingChannelKey) ?? { salt: 0n, enc_recipient_addr: 0n };
   }
 
-  get_note(noteId: bigint): { packed_value: bigint; token: StarknetAddressBigint; depositor: StarknetAddressBigint } {
+  get_note(noteId: bigint): {
+    packed_value: bigint;
+    token: StarknetAddressBigint;
+    depositor: StarknetAddressBigint;
+  } {
     const note = this.notes.get(noteId);
     if (!note) return { packed_value: 0n, token: 0n, depositor: 0n };
     if ("packed" in note) {

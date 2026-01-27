@@ -1,4 +1,4 @@
-import { BlockIdentifier } from "starknet";
+import { BigNumberish, BlockIdentifier } from "starknet";
 import { ViewingKey, Note, Channel, StarknetAddressBigint } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { AbstractDiscoveryProvider } from "../internal/abstract-discovery.js";
@@ -26,23 +26,31 @@ import { NotesCursor } from "../internal/channel.js";
  * - depositor: non-zero for open notes (who can fill it), zero for encrypted notes
  */
 export type NoteData = {
-  packed_value: bigint;
-  token: bigint;
-  depositor: bigint;
+  packed_value: BigNumberish;
+  token: BigNumberish;
+  depositor: BigNumberish;
 };
 
 /**
  * Interface for pool contract view methods used by ContractDiscoveryProvider.
  * Both MockPoolContract and PrivacyPoolContract satisfy this interface.
- * Uses bigint for addresses/keys to align with Cairo felts.
+ *
+ * Return types are widened to accept what starknet.js typed contracts return:
+ * - felt252 fields return BigNumberish (string | number | bigint)
+ * - u64 fields return bigint | number
+ *
+ * ContractDiscoveryProvider defensively converts all values with toBigInt().
  */
 export interface IPoolContract {
-  get_public_key(userAddr: bigint): bigint | Promise<bigint>;
-  get_num_of_channels(recipientAddr: bigint): bigint | Promise<bigint>;
-  get_channel_info(recipientAddr: bigint, index: number): EncChannelInfo | Promise<EncChannelInfo>;
-  get_subchannel_info(subchannelKey: bigint): EncSubchannelInfo | Promise<EncSubchannelInfo>;
+  get_public_key(userAddr: BigNumberish): BigNumberish | Promise<BigNumberish>;
+  get_num_of_channels(recipientAddr: BigNumberish): bigint | number | Promise<bigint | number>;
+  get_channel_info(
+    recipientAddr: BigNumberish,
+    index: number
+  ): EncChannelInfo | Promise<EncChannelInfo>;
+  get_subchannel_info(subchannelKey: BigNumberish): EncSubchannelInfo | Promise<EncSubchannelInfo>;
   get_outgoing_channel_info(
-    outgoingChannelKey: bigint
+    outgoingChannelKey: BigNumberish
   ): EncOutgoingChannelInfo | Promise<EncOutgoingChannelInfo>;
   get_note(noteId: bigint): NoteData | Promise<NoteData>;
   channel_exists(channelId: bigint): boolean | Promise<boolean>;
