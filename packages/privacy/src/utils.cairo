@@ -236,7 +236,6 @@ pub(crate) fn decode_note_amount(
 ) -> u128 {
     let (salt, value) = unpacking(:packed_value);
     if salt == constants::OPEN_NOTE_SALT {
-        assert(value.is_non_zero(), errors::EMPTY_NOTE_USAGE);
         value
     } else {
         decrypt_note_amount(enc_amount: value, :salt, :channel_key, :token, :index)

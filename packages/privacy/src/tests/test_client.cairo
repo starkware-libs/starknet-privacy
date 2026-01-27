@@ -2591,7 +2591,8 @@ fn test_create_open_note_assertions() {
 }
 
 #[test]
-fn test_create_note_use_note_zero_amount() {
+fn test_create_and_use_encrypted_note_zero_amount() {
+    // Creating an encrypted note with amount=0 is allowed, but using it should fail.
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -2602,11 +2603,7 @@ fn test_create_note_use_note_zero_amount() {
         .open_channel_with_token_e2e(
             recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
         );
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    // Create note with zero amount.
+    // Create note with zero amount - this should succeed.
     let create_note_input = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 0);
     let server_actions = user_1.create_enc_note(:create_note_input);
@@ -2617,61 +2614,14 @@ fn test_create_note_use_note_zero_amount() {
     assert_eq!(user_1.privacy.get_note(:note_id), Zero::zero());
     user_1.privacy.execute_actions(actions: server_actions);
     assert_eq!(user_1.privacy.get_note(:note_id), expected_note.packed_value);
-    // Use note + create note with zero amount.
+    // Attempt to use note with zero amount - should fail with ZERO_NOTE_AMOUNT_USAGE.
     let use_note_input = UseNoteInput {
         channel_key: user_1.compute_channel_key(recipient: user_2),
         token: token_address,
         note_index: 0,
     };
-    let create_note_input = user_2
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 0);
-    let client_actions = [
-        ClientAction::UseNote(use_note_input), ClientAction::CreateEncNote(create_note_input),
-    ]
-        .span();
-    let server_actions = user_2.client_execute(:client_actions);
-    let expected_nullifier = user_2
-        .compute_nullifier(sender: user_1, :token_address, note_index: 0);
-    assert_ne!(expected_nullifier, Zero::zero());
-    let nullifier_storage_path = map_entry_address(
-        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
-    );
-    let (note_id, expected_note) = user_2.compute_enc_note(:create_note_input);
-    assert_ne!(note_id, Zero::zero());
-    assert_ne!(expected_note.packed_value, Zero::zero());
-    let expected_server_actions = [
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: nullifier_storage_path, value: [true.into()].span() },
-        ),
-        create_note_input.into_server_action(user: user_2),
-    ]
-        .span();
-    assert_eq!(server_actions, expected_server_actions);
-    assert!(!user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(user_2.privacy.get_note(:note_id), Zero::zero());
-    user_2.privacy.execute_actions(actions: server_actions);
-    assert!(user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(user_2.privacy.get_note(:note_id), expected_note.packed_value);
-    // Use note with zero amount.
-    let channel_key = user_2.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, note_index: 0 };
-    let client_actions = [ClientAction::UseNote(use_note_input)].span();
-    let server_actions = user_2.client_execute(:client_actions);
-    let expected_nullifier = user_2
-        .compute_nullifier(sender: user_2, :token_address, note_index: 0);
-    let nullifier_storage_path = map_entry_address(
-        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
-    );
-    let expected_server_actions = [
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: nullifier_storage_path, value: [true.into()].span() },
-        ),
-    ]
-        .span();
-    assert_eq!(server_actions, expected_server_actions);
-    assert!(!user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
-    user_2.privacy.execute_actions(actions: server_actions);
-    assert!(user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
+    let result = user_2.safe_use_note(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NOTE_AMOUNT_USAGE);
 }
 
 #[test]
@@ -2845,7 +2795,7 @@ fn test_create_open_note_stores_token() {
 }
 
 #[test]
-#[should_panic(expected: 'EMPTY_NOTE_USAGE')]
+#[should_panic(expected: 'ZERO_NOTE_AMOUNT_USAGE')]
 fn test_use_open_note_empty_note() {
     // Open notes with value=0 cannot be used (awaiting future implementation).
     let mut test: Test = Default::default();

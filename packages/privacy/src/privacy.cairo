@@ -540,6 +540,7 @@ pub mod Privacy {
             // Decode note amount (handles both open and encrypted notes).
             // TODO: Test open notes with value when server action is implemented.
             let amount = decode_note_amount(:packed_value, :channel_key, :token, :index);
+            assert(amount.is_non_zero(), errors::ZERO_NOTE_AMOUNT_USAGE);
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
