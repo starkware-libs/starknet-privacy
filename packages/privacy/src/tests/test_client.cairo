@@ -3481,9 +3481,9 @@ fn test_client_execute_assertions() {
 
     // TODO: Catch server errors.
 
-    // Catch INVALID_CALLER.
+    // Catch NON_ZERO_CALLER.
     let result = user.safe_client_execute_without_cheat(client_actions: [].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLER);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_CALLER);
 
     // Catch INVALID_TX_VERSION.
     user.privacy.cheat_zero_caller_address();
