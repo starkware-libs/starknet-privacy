@@ -1,5 +1,6 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
+use core::never;
 use core::num::traits::Zero;
 use privacy::actions::ServerAction;
 use privacy::errors;
@@ -261,7 +262,7 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
 pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
     // Ensure that the current call is the first of the transaction,
     // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
-    assert(execution_info.caller_address.is_zero(), errors::INVALID_CALLER);
+    assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
     let tx_info = execution_info.tx_info;
     assert(tx_info.version.try_into().unwrap() >= TX_V3, errors::INVALID_TX_VERSION);
     // Ensure that the effective fee of the transaction is zero; this is a sanity check,
@@ -314,10 +315,10 @@ pub(crate) fn unwrap_execute_and_panic_result(
 }
 
 /// Wraps the server actions with `OK_WRAPPER` in a panic data array.
-pub(crate) fn server_actions_to_panic_data(server_actions: Span<ServerAction>) -> Array<felt252> {
+pub(crate) fn panic_with_server_actions(server_actions: Span<ServerAction>) -> never {
     let mut panic_data = array![];
     panic_data.append(OK_WRAPPER);
     server_actions.serialize(ref panic_data);
     panic_data.append(OK_WRAPPER);
-    panic_data
+    panic(panic_data);
 }

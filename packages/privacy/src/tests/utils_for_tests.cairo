@@ -82,7 +82,7 @@ pub(crate) impl EncNoteImpl of EncNoteTrait {
             map_selector: selector!("notes"), keys: [*self.id].span(),
         );
         let note: Note = (*self).into();
-        note.to_write_once_action(:storage_address)
+        note.enc_value.to_write_once_action(:storage_address)
     }
 
     fn to_server_actions(self: @EncNote) -> Span<ServerAction> {
@@ -91,9 +91,28 @@ pub(crate) impl EncNoteImpl of EncNoteTrait {
 }
 
 #[derive(Copy, Drop)]
+pub(crate) struct Roles {
+    pub governance_admin: ContractAddress,
+    pub security_agent: ContractAddress,
+    pub app_role_admin: ContractAddress,
+    pub token_admin: ContractAddress,
+}
+
+impl DefaultRolesImpl of Default<Roles> {
+    fn default() -> Roles {
+        Roles {
+            governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
+            security_agent: 'SECURITY_AGENT'.try_into().unwrap(),
+            app_role_admin: 'APP_ROLE_ADMIN'.try_into().unwrap(),
+            token_admin: 'TOKEN_ADMIN'.try_into().unwrap(),
+        }
+    }
+}
+
+#[derive(Copy, Drop)]
 pub(crate) struct PrivacyCfg {
     pub address: ContractAddress,
-    pub governance_admin: ContractAddress,
+    pub roles: Roles,
     server: IServerDispatcher,
     safe_server: IServerSafeDispatcher,
     client: IClientDispatcher,
@@ -116,25 +135,40 @@ struct User {
 #[generate_trait]
 pub(crate) impl UserImpl of UserTrait {
     fn client_execute(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
-        self.privacy.execute(user_addr: *self.address, :client_actions)
+        self
+            .privacy
+            .execute(user_addr: *self.address, user_private_key: *self.private_key, :client_actions)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_client_execute(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
-        self.privacy.safe_execute(user_addr: *self.address, :client_actions)
+        self
+            .privacy
+            .safe_execute(
+                user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
+            )
     }
 
     #[feature("safe_dispatcher")]
     fn safe_client_execute_without_cheat(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
-        self.privacy.safe_client.__execute__(user_addr: *self.address, :client_actions)
+        self
+            .privacy
+            .safe_client
+            .__execute__(
+                user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
+            )
     }
 
     fn execute_view(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
-        self.privacy.execute_view(user_addr: *self.address, :client_actions)
+        self
+            .privacy
+            .execute_view(
+                user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
+            )
     }
 
     fn transfer(
@@ -174,10 +208,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) {
         let random = self.get_random();
         let use_note_input = UseNoteInput {
-            owner_private_key: self.private_key,
-            channel_key,
-            token: token.contract_address(),
-            note_index,
+            channel_key, token: token.contract_address(), note_index,
         };
         let withdraw_input = WithdrawInput {
             withdrawal_target, token: token.contract_address(), amount, random,
@@ -242,7 +273,6 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Span<ServerAction> {
         let input = OpenChannelInput {
-            sender_private_key: *self.private_key,
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             index,
@@ -260,14 +290,16 @@ pub(crate) impl UserImpl of UserTrait {
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 let input = OpenChannelInput {
-                    sender_private_key: *self.private_key,
                     recipient_addr: recipient.address,
                     recipient_public_key: recipient.public_key,
                     index,
                     random,
                     salt,
                 };
-                state.open_channel(sender_addr: *self.address, :input)
+                state
+                    .open_channel(
+                        sender_addr: *self.address, sender_private_key: *self.private_key, :input,
+                    )
             },
         )
             .span()
@@ -278,7 +310,6 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Result<(), Array<felt252>> {
         let input = OpenChannelInput {
-            sender_private_key: *self.private_key,
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             index,
@@ -444,7 +475,13 @@ pub(crate) impl UserImpl of UserTrait {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
                 token_balances.add_balance(token: note.token, amount: note.amount);
-                state.create_note(owner_addr: *self.address, input: note, ref :token_balances)
+                state
+                    .create_note(
+                        sender_addr: *self.address,
+                        sender_private_key: *self.private_key,
+                        input: note,
+                        ref :token_balances,
+                    )
             },
         )
             .span()
@@ -547,7 +584,13 @@ pub(crate) impl UserImpl of UserTrait {
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
-                state.use_note(owner_addr: *self.address, input: note, ref :token_balances)
+                state
+                    .use_note(
+                        owner_addr: *self.address,
+                        owner_private_key: *self.private_key,
+                        input: note,
+                        ref :token_balances,
+                    )
             },
         )
             .span()
@@ -573,7 +616,6 @@ pub(crate) impl UserImpl of UserTrait {
         salt: u128,
     ) -> CreateNoteInput {
         CreateNoteInput {
-            sender_private_key: *self.private_key,
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             token: token_address,
@@ -594,7 +636,6 @@ pub(crate) impl UserImpl of UserTrait {
         let salt = self.get_salt();
         let deposit_input = DepositInput { token: token.contract_address(), amount };
         let create_note_input = CreateNoteInput {
-            sender_private_key: self.private_key,
             recipient_addr: self.address,
             recipient_public_key: self.public_key,
             token: token.contract_address(),
@@ -651,7 +692,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
-        let input = SetViewingKeyInput { private_key: *self.private_key, random };
+        let input = SetViewingKeyInput { random };
         self.client_execute(client_actions: [ClientAction::SetViewingKey(input)].span())
     }
 
@@ -660,8 +701,11 @@ pub(crate) impl UserImpl of UserTrait {
             *self.privacy.address,
             || {
                 let mut state = Privacy::contract_state_for_testing();
-                let input = SetViewingKeyInput { private_key: *self.private_key, random };
-                state.set_viewing_key(user_addr: *self.address, :input)
+                let input = SetViewingKeyInput { random };
+                state
+                    .set_viewing_key(
+                        user_addr: *self.address, user_private_key: *self.private_key, :input,
+                    )
             },
         )
             .span()
@@ -690,7 +734,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_set_viewing_key(self: @User, random: felt252) -> Result<(), Array<felt252>> {
-        let input = SetViewingKeyInput { private_key: *self.private_key, random };
+        let input = SetViewingKeyInput { random };
         self.safe_client_execute(client_actions: [ClientAction::SetViewingKey(input)].span())
     }
 
@@ -999,7 +1043,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     fn pause(self: @PrivacyCfg) {
         cheat_caller_address_once(
-            contract_address: *self.address, caller_address: *self.governance_admin,
+            contract_address: *self.address, caller_address: *self.roles.security_agent,
         );
         IPausableDispatcher { contract_address: *self.address }.pause();
     }
@@ -1009,33 +1053,45 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     fn execute(
-        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
         self.cheat_before_execute();
         let mut spy = spy_messages_to_l1();
-        self.client.__execute__(:user_addr, :client_actions);
+        self.client.__execute__(:user_addr, :user_private_key, :client_actions);
         self.general_assert_spy_messages(ref :spy);
         spy_messages_to_server_actions(ref :spy)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_execute(
-        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
         self.cheat_before_execute();
-        self.safe_client.__execute__(:user_addr, :client_actions)
+        self.safe_client.__execute__(:user_addr, :user_private_key, :client_actions)
     }
 
     fn validate(
-        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     ) -> felt252 {
-        self.client.__validate__(:user_addr, :client_actions)
+        self.client.__validate__(:user_addr, :user_private_key, :client_actions)
     }
 
     fn execute_view(
-        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
-        self.client.execute_view(:user_addr, :client_actions)
+        self.client.execute_view(:user_addr, :user_private_key, :client_actions)
     }
 
     /// Asserts the message from the spy is valid.
@@ -1068,7 +1124,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     fn set_compliance_public_key(self: @PrivacyCfg, compliance_public_key: felt252) {
         cheat_caller_address_once(
-            contract_address: *self.address, caller_address: *self.governance_admin,
+            contract_address: *self.address, caller_address: *self.roles.token_admin,
         );
         self.compliance.set_compliance_public_key(:compliance_public_key);
     }
@@ -1106,10 +1162,10 @@ pub(crate) fn deploy_privacy(
         :compliance_public_key,
     )
         .expect('Privacy deployment failed');
-    _set_privacy_roles(contract: contract_address, :governance_admin);
+    let roles = _set_privacy_roles(contract: contract_address, :governance_admin);
     PrivacyCfg {
         address: contract_address,
-        governance_admin,
+        roles,
         server: IServerDispatcher { contract_address },
         safe_server: IServerSafeDispatcher { contract_address },
         client: IClientDispatcher { contract_address },
@@ -1121,15 +1177,17 @@ pub(crate) fn deploy_privacy(
     }
 }
 
-fn _set_privacy_roles(contract: ContractAddress, governance_admin: ContractAddress) {
-    // TODO: Use different address for different roles?
+fn _set_privacy_roles(contract: ContractAddress, governance_admin: ContractAddress) -> Roles {
+    let mut roles: Roles = Default::default();
+    roles.governance_admin = governance_admin;
     set_account_as_security_agent(
-        :contract, account: governance_admin, security_admin: governance_admin,
+        :contract, account: roles.security_agent, security_admin: governance_admin,
     );
-    set_account_as_app_role_admin(:contract, account: governance_admin, :governance_admin);
+    set_account_as_app_role_admin(:contract, account: roles.app_role_admin, :governance_admin);
     set_account_as_token_admin(
-        :contract, account: governance_admin, app_role_admin: governance_admin,
+        :contract, account: roles.token_admin, app_role_admin: roles.app_role_admin,
     );
+    roles
 }
 
 pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddress {
