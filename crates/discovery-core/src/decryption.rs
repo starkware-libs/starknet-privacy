@@ -7,7 +7,8 @@ use starknet_types_core::{curve::AffinePoint, felt::Felt};
 use thiserror::Error;
 
 use crate::hashes::{
-    compute_enc_channel_key_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
+    compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
+    compute_enc_token_hash,
 };
 use crate::types::{ChannelInfo, EncChannelInfo, EncSubchannelInfo};
 
@@ -68,6 +69,37 @@ pub fn decrypt_subchannel_token(enc: &EncSubchannelInfo, channel_key: &Felt, ind
     enc.enc_token - enc_token_hash
 }
 
+/// Unpacks a packed note amount into salt and encrypted amount.
+///
+/// Packed format (big-endian): `packed = salt * 2^128 + enc_amount`
+/// - Bytes [0..16]: salt
+/// - Bytes [16..32]: enc_amount
+pub fn unpack_note_amount(packed_amount: Felt) -> (u128, u128) {
+    let bytes = packed_amount.to_bytes_be();
+    let salt = u128::from_be_bytes(bytes[0..16].try_into().unwrap());
+    let enc_amount = u128::from_be_bytes(bytes[16..32].try_into().unwrap());
+    (salt, enc_amount)
+}
+
+/// Decrypts an encrypted note amount.
+///
+/// `amount = (enc_amount + 2^128 - pad) % 2^128`
+/// where `pad = hash(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt) % 2^128`
+pub fn decrypt_note_amount(
+    enc_amount: u128,
+    salt: u128,
+    channel_key: Felt,
+    token: Felt,
+    index: u64,
+) -> u128 {
+    let enc_amount_hash = compute_enc_amount_hash(channel_key, token, index, salt);
+    let hash_bytes = enc_amount_hash.to_bytes_be();
+    let pad = u128::from_be_bytes(hash_bytes[16..32].try_into().unwrap());
+
+    // Wrapping subtraction: (enc_amount + 2^128 - pad) % 2^128
+    enc_amount.wrapping_sub(pad)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -116,5 +148,27 @@ mod tests {
         let token = decrypt_subchannel_token(&encrypted, &f.inputs.channel_key, f.inputs.index);
 
         assert_eq!(token, f.inputs.token);
+    }
+
+    #[test]
+    fn test_unpack_and_decrypt_note_amount_with_cairo_vectors() {
+        let f = load_cairo_ref_fixture();
+
+        let (salt, enc_amount) = unpack_note_amount(f.outputs.enc_note_amount);
+        // Compare salt as u128 by converting the fixture's Felt to u128
+        let expected_salt = {
+            let bytes = f.inputs.salt.to_bytes_be();
+            u128::from_be_bytes(bytes[16..32].try_into().unwrap())
+        };
+        assert_eq!(salt, expected_salt);
+
+        let amount = decrypt_note_amount(
+            enc_amount,
+            salt,
+            f.inputs.channel_key,
+            f.inputs.token,
+            f.inputs.index,
+        );
+        assert_eq!(amount, f.outputs.dec_note_amount as u128);
     }
 }
