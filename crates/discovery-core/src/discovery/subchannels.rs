@@ -84,22 +84,7 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
 mod tests {
     use super::*;
     use crate::mock_backend::MockBackend;
-    use crate::test_fixtures::load_devnet_fixture;
-
-    /// Helper to discover channels and get the channel key for a recipient.
-    async fn get_channel_key(
-        backend: &MockBackend,
-        recipient: Felt,
-        viewing_key: &Felt,
-    ) -> Option<Felt> {
-        use crate::discovery::discover_incoming_channels;
-
-        let result = discover_incoming_channels(backend, recipient, viewing_key, 0)
-            .await
-            .ok()?;
-
-        result.channels.first().map(|c| c.info.channel_key)
-    }
+    use crate::test_fixtures::{get_channel_key, load_devnet_fixture};
 
     #[tokio::test]
     async fn test_discover_no_subchannels() {
