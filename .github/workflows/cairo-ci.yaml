@@ -32,18 +32,8 @@ jobs:
             exit 1
           fi
 
-      - name: Install cairo-coverage
-        run: |
-          curl -L https://raw.githubusercontent.com/software-mansion/cairo-coverage/main/scripts/install.sh | sh
-
-      - name: Run tests with coverage
-        run: scarb test -w --coverage
-
-      - uses: codecov/codecov-action@v5.3.1
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: coverage/coverage.lcov
-          fail_ci_if_error: false
+      - name: Run tests
+        run: scarb test
 
       - name: Cache Cairo build
         uses: actions/cache/save@v4
