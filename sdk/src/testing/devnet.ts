@@ -348,6 +348,7 @@ export class Devnet {
           deployer.address, // governance_admin
           "0x1", // compliance_public_key (dummy value)
         ],
+        salt: "0x0", // Deterministic salt for reproducible contract address
       },
       { retryInterval: 100 }
     );
