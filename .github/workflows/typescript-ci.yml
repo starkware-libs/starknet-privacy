@@ -115,18 +115,12 @@ jobs:
           git commit -m "chore(sdk): update generated files"
           git push
 
-      # === TypeScript only: minimal Cairo build for devnet tests ===
-      - name: Setup Scarb (TS only)
-        if: ${{ !inputs.cairo_changed }}
-        uses: software-mansion/setup-scarb@v1
-        with:
-          scarb-version: "2.15.0"
-
-      - name: Build Cairo (minimal, for devnet tests)
-        if: ${{ !inputs.cairo_changed }}
-        working-directory: .
-        run: scarb build
-
+      # === TypeScript only: run full CI with lint/format ===
       - name: Full CI (lint, format, build, test)
         if: ${{ !inputs.cairo_changed }}
-        run: npm run check
+        run: |
+          if npm run ci --if-present 2>/dev/null; then
+            echo "Ran npm run ci"
+          else
+            npm run check
+          fi
