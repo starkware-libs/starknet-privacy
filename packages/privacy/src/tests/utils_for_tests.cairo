@@ -135,25 +135,40 @@ struct User {
 #[generate_trait]
 pub(crate) impl UserImpl of UserTrait {
     fn client_execute(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
-        self.privacy.execute(user_addr: *self.address, :client_actions)
+        self
+            .privacy
+            .execute(user_addr: *self.address, user_private_key: *self.private_key, :client_actions)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_client_execute(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
-        self.privacy.safe_execute(user_addr: *self.address, :client_actions)
+        self
+            .privacy
+            .safe_execute(
+                user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
+            )
     }
 
     #[feature("safe_dispatcher")]
     fn safe_client_execute_without_cheat(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
-        self.privacy.safe_client.__execute__(user_addr: *self.address, :client_actions)
+        self
+            .privacy
+            .safe_client
+            .__execute__(
+                user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
+            )
     }
 
     fn execute_view(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
-        self.privacy.execute_view(user_addr: *self.address, :client_actions)
+        self
+            .privacy
+            .execute_view(
+                user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
+            )
     }
 
     fn transfer(
@@ -193,10 +208,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) {
         let random = self.get_random();
         let use_note_input = UseNoteInput {
-            owner_private_key: self.private_key,
-            channel_key,
-            token: token.contract_address(),
-            note_index,
+            channel_key, token: token.contract_address(), note_index,
         };
         let withdraw_input = WithdrawInput {
             withdrawal_target, token: token.contract_address(), amount, random,
@@ -261,7 +273,6 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Span<ServerAction> {
         let input = OpenChannelInput {
-            sender_private_key: *self.private_key,
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             index,
@@ -279,14 +290,16 @@ pub(crate) impl UserImpl of UserTrait {
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 let input = OpenChannelInput {
-                    sender_private_key: *self.private_key,
                     recipient_addr: recipient.address,
                     recipient_public_key: recipient.public_key,
                     index,
                     random,
                     salt,
                 };
-                state.open_channel(sender_addr: *self.address, :input)
+                state
+                    .open_channel(
+                        sender_addr: *self.address, sender_private_key: *self.private_key, :input,
+                    )
             },
         )
             .span()
@@ -297,7 +310,6 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Result<(), Array<felt252>> {
         let input = OpenChannelInput {
-            sender_private_key: *self.private_key,
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             index,
@@ -463,7 +475,13 @@ pub(crate) impl UserImpl of UserTrait {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
                 token_balances.add_balance(token: note.token, amount: note.amount);
-                state.create_note(owner_addr: *self.address, input: note, ref :token_balances)
+                state
+                    .create_note(
+                        sender_addr: *self.address,
+                        sender_private_key: *self.private_key,
+                        input: note,
+                        ref :token_balances,
+                    )
             },
         )
             .span()
@@ -566,7 +584,13 @@ pub(crate) impl UserImpl of UserTrait {
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
-                state.use_note(owner_addr: *self.address, input: note, ref :token_balances)
+                state
+                    .use_note(
+                        owner_addr: *self.address,
+                        owner_private_key: *self.private_key,
+                        input: note,
+                        ref :token_balances,
+                    )
             },
         )
             .span()
@@ -592,7 +616,6 @@ pub(crate) impl UserImpl of UserTrait {
         salt: u128,
     ) -> CreateNoteInput {
         CreateNoteInput {
-            sender_private_key: *self.private_key,
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             token: token_address,
@@ -613,7 +636,6 @@ pub(crate) impl UserImpl of UserTrait {
         let salt = self.get_salt();
         let deposit_input = DepositInput { token: token.contract_address(), amount };
         let create_note_input = CreateNoteInput {
-            sender_private_key: self.private_key,
             recipient_addr: self.address,
             recipient_public_key: self.public_key,
             token: token.contract_address(),
@@ -670,7 +692,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
-        let input = SetViewingKeyInput { private_key: *self.private_key, random };
+        let input = SetViewingKeyInput { random };
         self.client_execute(client_actions: [ClientAction::SetViewingKey(input)].span())
     }
 
@@ -679,8 +701,11 @@ pub(crate) impl UserImpl of UserTrait {
             *self.privacy.address,
             || {
                 let mut state = Privacy::contract_state_for_testing();
-                let input = SetViewingKeyInput { private_key: *self.private_key, random };
-                state.set_viewing_key(user_addr: *self.address, :input)
+                let input = SetViewingKeyInput { random };
+                state
+                    .set_viewing_key(
+                        user_addr: *self.address, user_private_key: *self.private_key, :input,
+                    )
             },
         )
             .span()
@@ -709,7 +734,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_set_viewing_key(self: @User, random: felt252) -> Result<(), Array<felt252>> {
-        let input = SetViewingKeyInput { private_key: *self.private_key, random };
+        let input = SetViewingKeyInput { random };
         self.safe_client_execute(client_actions: [ClientAction::SetViewingKey(input)].span())
     }
 
@@ -1028,33 +1053,45 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     fn execute(
-        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
         self.cheat_before_execute();
         let mut spy = spy_messages_to_l1();
-        self.client.__execute__(:user_addr, :client_actions);
+        self.client.__execute__(:user_addr, :user_private_key, :client_actions);
         self.general_assert_spy_messages(ref :spy);
         spy_messages_to_server_actions(ref :spy)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_execute(
-        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
         self.cheat_before_execute();
-        self.safe_client.__execute__(:user_addr, :client_actions)
+        self.safe_client.__execute__(:user_addr, :user_private_key, :client_actions)
     }
 
     fn validate(
-        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     ) -> felt252 {
-        self.client.__validate__(:user_addr, :client_actions)
+        self.client.__validate__(:user_addr, :user_private_key, :client_actions)
     }
 
     fn execute_view(
-        self: @PrivacyCfg, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
-        self.client.execute_view(:user_addr, :client_actions)
+        self.client.execute_view(:user_addr, :user_private_key, :client_actions)
     }
 
     /// Asserts the message from the spy is valid.
