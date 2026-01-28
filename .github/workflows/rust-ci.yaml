@@ -2,7 +2,6 @@ name: Rust CI
 
 on:
   workflow_call:
-  workflow_dispatch:
 
 jobs:
   rust_ci:
