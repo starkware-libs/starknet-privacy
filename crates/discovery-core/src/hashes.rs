@@ -13,6 +13,13 @@ static ENC_CHANNEL_KEY_TAG: LazyLock<Felt> =
 static ENC_SENDER_ADDR_TAG: LazyLock<Felt> =
     LazyLock::new(|| short_string_to_felt("ENC_SENDER_ADDR_TAG:V1"));
 
+/// Domain separation tag for subchannel key derivation.
+static SUBCHANNEL_KEY_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("SUBCHANNEL_KEY_TAG:V1"));
+
+/// Domain separation tag for encrypted token.
+static ENC_TOKEN_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("ENC_TOKEN_TAG:V1"));
+
 /// Converts a short string (up to 31 ASCII chars) to Felt.
 fn short_string_to_felt(s: &str) -> Felt {
     assert!(
@@ -41,34 +48,35 @@ pub fn compute_enc_sender_addr_hash(shared_x: Felt) -> Felt {
     hash(&[*ENC_SENDER_ADDR_TAG, shared_x])
 }
 
+/// Computes the subchannel key from channel key and index.
+///
+/// `subchannel_key = hash(SUBCHANNEL_KEY_TAG, channel_key, index, 0)`
+pub fn compute_subchannel_key(channel_key: Felt, index: u64) -> Felt {
+    hash(&[
+        *SUBCHANNEL_KEY_TAG,
+        channel_key,
+        Felt::from(index),
+        Felt::ZERO,
+    ])
+}
+
+/// Computes the encryption mask for token encryption.
+///
+/// `enc_token_hash = hash(ENC_TOKEN_TAG, channel_key, index, 0, salt)`
+pub fn compute_enc_token_hash(channel_key: Felt, index: u64, salt: Felt) -> Felt {
+    hash(&[
+        *ENC_TOKEN_TAG,
+        channel_key,
+        Felt::from(index),
+        Felt::ZERO,
+        salt,
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::Deserialize;
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Inputs {
-        shared_x: Felt,
-    }
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Outputs {
-        enc_channel_key_hash: Felt,
-        enc_sender_addr_hash: Felt,
-    }
-
-    #[derive(Deserialize)]
-    struct Fixture {
-        inputs: Inputs,
-        outputs: Outputs,
-    }
-
-    fn load_fixture() -> Fixture {
-        const JSON: &str = include_str!("../tests/fixtures/cairo-reference-data.json");
-        serde_json::from_str(JSON).expect("failed to parse fixture")
-    }
+    use crate::test_fixtures::load_cairo_ref_fixture;
 
     #[test]
     fn test_short_string_to_felt() {
@@ -78,7 +86,7 @@ mod tests {
 
     #[test]
     fn test_hashes_with_cairo_vectors() {
-        let f = load_fixture();
+        let f = load_cairo_ref_fixture();
         assert_eq!(
             compute_enc_channel_key_hash(f.inputs.shared_x),
             f.outputs.enc_channel_key_hash
@@ -86,6 +94,24 @@ mod tests {
         assert_eq!(
             compute_enc_sender_addr_hash(f.inputs.shared_x),
             f.outputs.enc_sender_addr_hash
+        );
+    }
+
+    #[test]
+    fn test_compute_subchannel_key() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_subchannel_key(f.inputs.channel_key, f.inputs.index),
+            f.outputs.subchannel_key
+        );
+    }
+
+    #[test]
+    fn test_compute_enc_token_hash() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_enc_token_hash(f.inputs.channel_key, f.inputs.index, f.inputs.salt),
+            f.outputs.enc_token_hash
         );
     }
 }

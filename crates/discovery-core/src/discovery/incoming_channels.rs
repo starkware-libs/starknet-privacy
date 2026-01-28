@@ -91,32 +91,9 @@ pub async fn discover_incoming_channels<PrivacyPool: IViews>(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
-    use serde::Deserialize;
-
     use super::*;
     use crate::mock_backend::MockBackend;
-
-    // TODO: Refactor fixture loading to be shared across test modules.
-    #[derive(Deserialize)]
-    struct DevnetFixture {
-        constants: DevnetConstants,
-        slots: HashMap<Felt, Felt>,
-    }
-
-    #[derive(Deserialize)]
-    struct DevnetConstants {
-        alice_address: Felt,
-        alice_viewing_key: Felt,
-        bob_address: Felt,
-        bob_viewing_key: Felt,
-    }
-
-    fn load_devnet_fixture() -> DevnetFixture {
-        const JSON: &str = include_str!("../../tests/fixtures/devnet-state.json");
-        serde_json::from_str(JSON).expect("failed to parse devnet fixture")
-    }
+    use crate::test_fixtures::load_devnet_fixture;
 
     #[tokio::test]
     async fn test_discover_no_channels() {
