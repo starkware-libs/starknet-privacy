@@ -5,7 +5,20 @@ on:
   pull_request:
 
 jobs:
+  # Skip duplicate runs (e.g., after rebase with same content)
+  skip_check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - uses: fkirc/skip-duplicate-actions@v5
+        id: skip_check
+        with:
+          concurrent_skipping: same_content_newer
+
   changes:
+    needs: skip_check
+    if: ${{ needs.skip_check.outputs.should_skip != 'true' }}
     runs-on: ubuntu-latest
     outputs:
       cairo: ${{ steps.filter.outputs.cairo }}
@@ -47,7 +60,7 @@ jobs:
   # - Cairo files changed (generate + build + test, after cairo_ci)
   typescript_ci:
     needs: [changes, cairo_ci]
-    if: ${{ always() && (needs.changes.outputs.typescript == 'true' || needs.changes.outputs.cairo == 'true') && (needs.cairo_ci.result == 'success' || needs.cairo_ci.result == 'skipped') }}
+    if: ${{ always() && needs.changes.result == 'success' && (needs.changes.outputs.typescript == 'true' || needs.changes.outputs.cairo == 'true') && (needs.cairo_ci.result == 'success' || needs.cairo_ci.result == 'skipped') }}
     uses: ./.github/workflows/typescript-ci.yml
     with:
       cairo_changed: ${{ needs.changes.outputs.cairo == 'true' }}
