@@ -24,8 +24,6 @@ use starkware_utils_testing::test_utils::{
     assert_expected_event_emitted, assert_panic_with_error, assert_panic_with_felt_error,
 };
 
-// TODO: Catch server errors in the client side.
-
 #[test]
 fn test_validate() {
     let mut test: Test = Default::default();
@@ -89,9 +87,17 @@ fn test_set_viewing_key_assertions() {
     user_zero_public_key.private_key = Zero::zero();
     let result = user_zero_public_key.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_public_key.safe_set_viewing_key_execute_and_panic(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_public_key.safe_set_viewing_key_execute_view(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch ZERO_RANDOM.
     let result = user.safe_set_viewing_key(random: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+    let result = user.safe_set_viewing_key_execute_and_panic(random: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+    let result = user.safe_set_viewing_key_execute_view(random: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
@@ -99,12 +105,29 @@ fn test_set_viewing_key_assertions() {
     user_key_not_canonical.private_key = Neg::neg(user.private_key);
     let result = user_key_not_canonical.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_key_not_canonical.safe_set_viewing_key_execute_and_panic(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_key_not_canonical.safe_set_viewing_key_execute_view(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero_addr.safe_set_viewing_key_execute_and_panic(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero_addr.safe_set_viewing_key_execute_view(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+
+    // Catch NON_ZERO_VALUE (user already registered).
+    user.set_viewing_key_e2e();
+    let result = user.safe_set_viewing_key(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user.safe_set_viewing_key_execute_and_panic(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user.safe_set_viewing_key_execute_view(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -885,7 +908,7 @@ fn test_open_channel_self_channel() {
 fn test_open_channel_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
-    let user_2 = test.new_user();
+    let mut user_2 = test.new_user();
     let random = user_1.get_random();
     let salt = user_1.get_salt().into();
     let index = 0;
@@ -895,11 +918,23 @@ fn test_open_channel_assertions() {
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_open_channel(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero_addr
+        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero_addr
+        .safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_PRIVATE_KEY.
     let mut user_zero_private_key = user_1;
     user_zero_private_key.private_key = Zero::zero();
     let result = user_zero_private_key.safe_open_channel(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_private_key
+        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_private_key
+        .safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch ZERO_RECIPIENT_ADDR.
@@ -907,15 +942,37 @@ fn test_open_channel_assertions() {
     user_zero_addr.address = Zero::zero();
     let result = user_1.safe_open_channel(recipient: user_zero_addr, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(recipient: user_zero_addr, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
+    let result = user_1
+        .safe_open_channel_execute_view(recipient: user_zero_addr, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_RECIPIENT_PUBLIC_KEY.
     let mut user_zero_public_key = user_2;
     user_zero_public_key.public_key = Zero::zero();
     let result = user_1.safe_open_channel(recipient: user_zero_public_key, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(
+            recipient: user_zero_public_key, :index, :random, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
+    let result = user_1
+        .safe_open_channel_execute_view(recipient: user_zero_public_key, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
     // Catch ZERO_RANDOM.
     let result = user_1.safe_open_channel(recipient: user_2, :index, random: Zero::zero(), :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(
+            recipient: user_2, :index, random: Zero::zero(), :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+    let result = user_1
+        .safe_open_channel_execute_view(recipient: user_2, :index, random: Zero::zero(), :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
@@ -924,9 +981,20 @@ fn test_open_channel_assertions() {
     let result = user_invalid_private_key
         .safe_open_channel(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_invalid_private_key
+        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_invalid_private_key
+        .safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch SENDER_NOT_REGISTERED.
     let result = user_1.safe_open_channel(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_REGISTERED);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_REGISTERED);
+    let result = user_1.safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_REGISTERED);
 
     // Catch SENDER_NOT_AUTHENTICATED.
@@ -938,11 +1006,58 @@ fn test_open_channel_assertions() {
     }
     let result = user_1.safe_open_channel(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
+    let result = user_1.safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
     user_1.private_key = user_1_private_key;
 
     // Catch INDEX_NOT_SEQUENTIAL.
     let result = user_1.safe_open_channel(recipient: user_2, index: 1, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(recipient: user_2, index: 1, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+    let result = user_1.safe_open_channel_execute_view(recipient: user_2, index: 1, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+
+    // Catch VALUE_MISMATCH (recipient public key mismatch).
+    let mut user_2_wrong_public_key = user_2;
+    user_2_wrong_public_key.public_key = Neg::neg(user_2.public_key);
+    let result = user_1
+        .safe_open_channel(recipient: user_2_wrong_public_key, index: 0, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(
+            recipient: user_2_wrong_public_key, index: 0, :random, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
+    let result = user_1
+        .safe_open_channel_execute_view(
+            recipient: user_2_wrong_public_key, index: 0, :random, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
+
+    // Catch NON_ZERO_VALUE (channel already exists).
+    user_2.set_viewing_key_e2e();
+    user_1.open_channel_e2e(recipient: user_2, index: 0);
+    let result = user_1.safe_open_channel(recipient: user_2, index: 1, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(recipient: user_2, index: 0, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user_1.safe_open_channel_execute_view(recipient: user_2, index: 0, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+
+    // Catch NON_ZERO_VALUE (outgoing channel index already used).
+    let result = user_1.safe_open_channel(recipient: user_1, index: 0, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(recipient: user_1, index: 0, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user_1.safe_open_channel_execute_view(recipient: user_1, index: 0, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -1404,12 +1519,54 @@ fn test_open_subchannel_assertions() {
     let result = user_zero_addr
         .safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero_addr
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero_addr
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+
+    // Catch ZERO_PRIVATE_KEY.
+    let mut user_zero_private_key = user_1;
+    user_zero_private_key.private_key = Zero::zero();
+    let result = user_zero_private_key
+        .safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_private_key
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_private_key
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+
+    // Catch PRIVATE_KEY_NOT_CANONICAL.
+    let mut user_private_key_not_canonical = user_1;
+    user_private_key_not_canonical.private_key = Neg::neg(user_1.private_key);
+    let result = user_private_key_not_canonical
+        .safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_private_key_not_canonical
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_private_key_not_canonical
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch ZERO_RECIPIENT_ADDR.
     let mut user_zero_addr = user_2;
     user_zero_addr.address = Zero::zero();
     let result = user_1
         .safe_open_subchannel(recipient: user_zero_addr, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
+    let result = user_1
+        .safe_open_subchannel_execute_and_panic(
+            recipient: user_zero_addr, :token_address, :index, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
+    let result = user_1
+        .safe_open_subchannel_execute_view(
+            recipient: user_zero_addr, :token_address, :index, :salt,
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_CHANNEL_KEY.
@@ -1418,10 +1575,30 @@ fn test_open_subchannel_assertions() {
             recipient: user_2, :token_address, :index, :salt, channel_key: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+    let result = user_1
+        .safe_open_subchannel_with_channel_key_execute_and_panic(
+            recipient: user_2, :token_address, :index, :salt, channel_key: Zero::zero(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+    let result = user_1
+        .safe_open_subchannel_with_channel_key_execute_view(
+            recipient: user_2, :token_address, :index, :salt, channel_key: Zero::zero(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
 
     // Catch ZERO_TOKEN.
     let result = user_1
         .safe_open_subchannel(recipient: user_2, token_address: Zero::zero(), :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    let result = user_1
+        .safe_open_subchannel_execute_and_panic(
+            recipient: user_2, token_address: Zero::zero(), :index, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    let result = user_1
+        .safe_open_subchannel_execute_view(
+            recipient: user_2, token_address: Zero::zero(), :index, :salt,
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_RECIPIENT_PUBLIC_KEY.
@@ -1430,17 +1607,39 @@ fn test_open_subchannel_assertions() {
     let result = user_1
         .safe_open_subchannel(recipient: user_zero_public_key, :token_address, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
+    let result = user_1
+        .safe_open_subchannel_execute_and_panic(
+            recipient: user_zero_public_key, :token_address, :index, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
+    let result = user_1
+        .safe_open_subchannel_execute_view(
+            recipient: user_zero_public_key, :token_address, :index, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
     user_2.set_viewing_key_e2e();
 
     // Catch INVALID_CHANNEL - sender is not registered.
     let result = user_1.safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     user_1.set_viewing_key_e2e();
 
     // Catch INVALID_CHANNEL - no channel exists for the given sender and recipient.
     let result = user_1.safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     user_1.open_channel_e2e(recipient: user_2, index: 0);
@@ -1452,12 +1651,28 @@ fn test_open_subchannel_assertions() {
     let result = user_1_wrong_addr
         .safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1_wrong_addr
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1_wrong_addr
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INVALID_CHANNEL - wrong recipient_addr.
     let mut user_2_wrong_addr = user_2;
     user_2_wrong_addr.address = user_1.address;
     let result = user_1
         .safe_open_subchannel(recipient: user_2_wrong_addr, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1
+        .safe_open_subchannel_execute_and_panic(
+            recipient: user_2_wrong_addr, :token_address, :index, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1
+        .safe_open_subchannel_execute_view(
+            recipient: user_2_wrong_addr, :token_address, :index, :salt,
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INVALID_CHANNEL - wrong recipient_public_key.
@@ -1466,10 +1681,30 @@ fn test_open_subchannel_assertions() {
     let result = user_1
         .safe_open_subchannel(recipient: user_2_wrong_public_key, :token_address, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1
+        .safe_open_subchannel_execute_and_panic(
+            recipient: user_2_wrong_public_key, :token_address, :index, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1
+        .safe_open_subchannel_execute_view(
+            recipient: user_2_wrong_public_key, :token_address, :index, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INVALID_CHANNEL - wrong channel key.
     let result = user_1
         .safe_open_subchannel_with_channel_key(
+            recipient: user_2, :token_address, :index, :salt, channel_key: channel_key + 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1
+        .safe_open_subchannel_with_channel_key_execute_and_panic(
+            recipient: user_2, :token_address, :index, :salt, channel_key: channel_key + 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
+    let result = user_1
+        .safe_open_subchannel_with_channel_key_execute_view(
             recipient: user_2, :token_address, :index, :salt, channel_key: channel_key + 1,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
@@ -1478,10 +1713,29 @@ fn test_open_subchannel_assertions() {
     let result = user_1
         .safe_open_subchannel(recipient: user_2, :token_address, index: index + 1, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+    let result = user_1
+        .safe_open_subchannel_execute_and_panic(
+            recipient: user_2, :token_address, index: index + 1, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+    let result = user_1
+        .safe_open_subchannel_execute_view(
+            recipient: user_2, :token_address, index: index + 1, :salt,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
 
-    // Sanity check - should succeed.
+    // Should succeed.
+    user_1.open_subchannel_e2e(recipient: user_2, :token_address, :index);
+
+    // Catch NON_ZERO_VALUE (subchannel already exists).
     let result = user_1.safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
-    assert_eq!(result.is_ok(), true);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user_1
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user_1
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -1865,29 +2119,222 @@ fn test_create_note_twice_same_amount() {
 }
 
 #[test]
-#[should_panic(expected: 'ZERO_RECIPIENT_ADDR')]
-fn test_create_note_zero_recipient_addr() {
+fn test_create_note_assertions() {
     let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
+    let mut user = test.new_user();
     let token_address = test.mock_new_token();
-    user_2.address = Zero::zero();
-    let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
-    user_1.create_note(:create_note_input);
-}
+    user.set_viewing_key_e2e();
+    let create_note_input = user
+        .new_note_with_generated_salt(recipient: user, :token_address, amount: 1, index: 0);
 
-#[test]
-#[should_panic(expected: 'ZERO_TOKEN')]
-fn test_create_note_zero_token() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let user_2 = test.new_user();
-    let create_note_input = user_1
-        .new_note_with_generated_salt(
-            recipient: user_2, token_address: Zero::zero(), amount: 1, index: 0,
+    // Catch ZERO_USER_ADDR.
+    let mut user_zero = user;
+    user_zero.address = Zero::zero();
+    let result = user_zero.safe_create_note(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero.safe_create_note_execute_and_panic(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero.safe_create_note_execute_view(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+
+    // Catch ZERO_PRIVATE_KEY.
+    let mut user_zero_private_key = user;
+    user_zero_private_key.private_key = Zero::zero();
+    let result = user_zero_private_key.safe_create_note(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_private_key.safe_create_note_execute_and_panic(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_private_key.safe_create_note_execute_view(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+
+    // Catch PRIVATE_KEY_NOT_CANONICAL.
+    let mut user_private_key_not_canonical = user.clone();
+    user_private_key_not_canonical.private_key = Neg::neg(user.private_key);
+    let result = user_private_key_not_canonical.safe_create_note(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_private_key_not_canonical
+        .safe_create_note_execute_and_panic(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_private_key_not_canonical.safe_create_note_execute_view(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+
+    // Catch ZERO_RECIPIENT_ADDR.
+    let result = user
+        .safe_create_note(
+            create_note_input: CreateNoteInput {
+                recipient_addr: Zero::zero(), ..create_note_input,
+            },
         );
-    user_1.create_note(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
+    let result = user
+        .safe_create_note_execute_and_panic(
+            create_note_input: CreateNoteInput {
+                recipient_addr: Zero::zero(), ..create_note_input,
+            },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
+    let result = user
+        .safe_create_note_execute_view(
+            create_note_input: CreateNoteInput {
+                recipient_addr: Zero::zero(), ..create_note_input,
+            },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
+
+    // Catch ZERO_TOKEN.
+    let result = user
+        .safe_create_note(
+            create_note_input: CreateNoteInput { token: Zero::zero(), ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    let result = user
+        .safe_create_note_execute_and_panic(
+            create_note_input: CreateNoteInput { token: Zero::zero(), ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    let result = user
+        .safe_create_note_execute_view(
+            create_note_input: CreateNoteInput { token: Zero::zero(), ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+
+    // Catch ZERO_RECIPIENT_PUBLIC_KEY.
+    let result = user
+        .safe_create_note(
+            create_note_input: CreateNoteInput {
+                recipient_public_key: Zero::zero(), ..create_note_input,
+            },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
+    let result = user
+        .safe_create_note_execute_and_panic(
+            create_note_input: CreateNoteInput {
+                recipient_public_key: Zero::zero(), ..create_note_input,
+            },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
+    let result = user
+        .safe_create_note_execute_view(
+            create_note_input: CreateNoteInput {
+                recipient_public_key: Zero::zero(), ..create_note_input,
+            },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
+
+    // Catch SALT_TOO_SMALL.
+    let result = user
+        .safe_create_note(
+            create_note_input: CreateNoteInput { salt: Zero::zero(), ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+    let result = user
+        .safe_create_note(create_note_input: CreateNoteInput { salt: 1, ..create_note_input });
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+    let result = user
+        .safe_create_note_execute_and_panic(
+            create_note_input: CreateNoteInput { salt: Zero::zero(), ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+    let result = user
+        .safe_create_note_execute_and_panic(
+            create_note_input: CreateNoteInput { salt: 1, ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+    let result = user
+        .safe_create_note_execute_view(
+            create_note_input: CreateNoteInput { salt: Zero::zero(), ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+    let result = user
+        .safe_create_note_execute_view(
+            create_note_input: CreateNoteInput { salt: 1, ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+
+    // Catch SALT_EXCEEDS_120_BITS.
+    let result = user
+        .safe_create_note(
+            create_note_input: CreateNoteInput {
+                salt: TWO_POW_120.try_into().unwrap(), ..create_note_input,
+            },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_EXCEEDS_120_BITS);
+    let result = user
+        .safe_create_note_execute_and_panic(
+            create_note_input: CreateNoteInput {
+                salt: TWO_POW_120.try_into().unwrap(), ..create_note_input,
+            },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_EXCEEDS_120_BITS);
+    let result = user
+        .safe_create_note_execute_view(
+            create_note_input: CreateNoteInput {
+                salt: TWO_POW_120.try_into().unwrap(), ..create_note_input,
+            },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_EXCEEDS_120_BITS);
+
+    // Catch SUBCHANNEL_NOT_FOUND (channel doesnt exist).
+    let result = user.safe_create_note(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+    let result = user.safe_create_note_execute_and_panic(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+    let result = user.safe_create_note_execute_view(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+
+    user.open_channel_e2e(recipient: user, index: 0);
+
+    // Catch SUBCHANNEL_NOT_FOUND (subchannel doesnt exist).
+    let result = user.safe_create_note(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+    let result = user.safe_create_note_execute_and_panic(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+    let result = user.safe_create_note_execute_view(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+
+    user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
+
+    // Catch INDEX_NOT_SEQUENTIAL.
+    let result = user
+        .safe_create_note(create_note_input: CreateNoteInput { index: 1, ..create_note_input });
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+    let result = user
+        .safe_create_note_execute_and_panic(
+            create_note_input: CreateNoteInput { index: 1, ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+    let result = user
+        .safe_create_note_execute_view(
+            create_note_input: CreateNoteInput { index: 1, ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+
+    // Catch NEGATIVE_INTERMEDIATE_BALANCE.
+    let result = user.safe_create_note(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
+    let result = user.safe_create_note_execute_and_panic(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
+    let result = user.safe_create_note_execute_view(:create_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
+
+    user.cheat_create_note_e2e(:create_note_input);
+
+    // Catch NON_ZERO_VALUE (note id already exists).
+    let use_note_input = UseNoteInput {
+        channel_key: user.compute_channel_key(recipient: user),
+        token: create_note_input.token,
+        note_index: create_note_input.index,
+    };
+    let client_actions = [
+        ClientAction::UseNote(use_note_input), ClientAction::CreateNote(create_note_input),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -1953,128 +2400,6 @@ fn test_create_note_use_note_zero_amount() {
     assert!(user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(user_2.privacy.get_note(:note_id), expected_note.enc_value);
     // TODO: Test only use note with zero amount.
-}
-
-#[test]
-#[should_panic(expected: 'SALT_TOO_SMALL')]
-fn test_create_note_zero_salt() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    let create_note_input = user_1
-        .new_note(recipient: user_2, :token_address, amount: 1, index: 0, salt: Zero::zero());
-    user_1.create_note(:create_note_input);
-}
-
-#[test]
-#[should_panic(expected: 'SALT_TOO_SMALL')]
-fn test_create_note_salt_too_small() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    let create_note_input = user_1
-        .new_note(recipient: user_2, :token_address, amount: 1, index: 0, salt: 1);
-    user_1.create_note(:create_note_input);
-}
-
-#[test]
-#[should_panic(expected: 'ZERO_PRIVATE_KEY')]
-fn test_create_note_zero_private_key() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    user_1.private_key = Zero::zero();
-    let user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
-    user_1.create_note(:create_note_input);
-}
-
-#[test]
-#[should_panic(expected: 'PRIVATE_KEY_NOT_CANONICAL')]
-fn test_create_note_private_key_not_canonical() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    user_1.private_key = Neg::neg(user_1.private_key);
-    let user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
-    user_1.create_note(:create_note_input);
-}
-
-#[test]
-#[should_panic(expected: 'SALT_EXCEEDS_120_BITS')]
-fn test_create_note_salt_exceeds_120_bits() {
-    let mut test: Test = Default::default();
-    let user_1 = test.new_user();
-    let user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    let create_note_input = user_1
-        .new_note(
-            recipient: user_2,
-            :token_address,
-            amount: 1,
-            index: 0,
-            salt: TWO_POW_120.try_into().unwrap(),
-        );
-    user_1.create_note(:create_note_input);
-}
-
-#[test]
-#[should_panic(expected: 'ZERO_RECIPIENT_PUBLIC_KEY')]
-fn test_create_note_zero_recipient_public_key() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    let mut create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
-    create_note_input.recipient_public_key = Zero::zero();
-    user_1.create_note(:create_note_input);
-}
-
-#[test]
-#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
-fn test_create_note_subchannel_not_found_channel_doesnt_exist() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
-    let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
-    user_1.create_note(:create_note_input);
-}
-
-#[test]
-#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
-fn test_create_note_subchannel_not_found_subchannel_doesnt_exist() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, index: 0);
-    let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
-    user_1.create_note(:create_note_input);
 }
 
 #[test]
@@ -2150,24 +2475,6 @@ fn test_create_note_subchannel_not_found_wrong_token() {
     let mut create_note_input = user_1
         .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
     create_note_input.token = test.mock_new_token();
-    user_1.create_note(:create_note_input);
-}
-
-#[should_panic(expected: 'INDEX_NOT_SEQUENTIAL')]
-fn test_create_note_index_not_sequential() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    let amount = 1;
-    let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 1);
     user_1.create_note(:create_note_input);
 }
 
@@ -2463,25 +2770,146 @@ fn test_use_note_same_amount() {
 }
 
 #[test]
-#[should_panic(expected: 'ZERO_TOKEN')]
-fn test_use_note_zero_token() {
+fn test_use_note_assertions() {
     let mut test: Test = Default::default();
-    let user_1 = test.new_user();
-    let channel_key = user_1.compute_channel_key(recipient: user_1);
-    let use_note_input = UseNoteInput { channel_key, token: Zero::zero(), note_index: 0 };
-    user_1.use_note(note: use_note_input);
-}
+    let mut user = test.new_user();
+    let token = test.new_token();
+    let token_address = token.contract_address();
+    user.set_viewing_key_e2e();
+    user
+        .open_channel_with_token_e2e(
+            recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+    let create_note_input = user
+        .new_note_with_generated_salt(recipient: user, :token_address, amount: 1, index: 0);
+    user.cheat_create_note_e2e(:create_note_input);
 
-#[test]
-#[should_panic(expected: 'ZERO_CHANNEL_KEY')]
-fn test_use_note_zero_channel_key() {
-    let mut test: Test = Default::default();
-    let user_1 = test.new_user();
-    let token_address = test.mock_new_token();
-    let use_note_input = UseNoteInput {
-        channel_key: Zero::zero(), token: token_address, note_index: 0,
-    };
-    user_1.use_note(note: use_note_input);
+    let channel_key = user.compute_channel_key(recipient: user);
+    let use_note_input = UseNoteInput { channel_key, token: token_address, note_index: 0 };
+
+    // Catch ZERO_USER_ADDR.
+    let mut user_zero = user;
+    user_zero.address = Zero::zero();
+    let result = user_zero.safe_use_note(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero.safe_use_note_execute_and_panic(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero.safe_use_note_execute_view(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+
+    // Catch ZERO_PRIVATE_KEY.
+    let mut user_zero_private_key = user;
+    user_zero_private_key.private_key = Zero::zero();
+    let result = user_zero_private_key.safe_use_note(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_private_key.safe_use_note_execute_and_panic(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_private_key.safe_use_note_execute_view(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+
+    // Catch PRIVATE_KEY_NOT_CANONICAL.
+    let mut user_private_key_not_canonical = user.clone();
+    user_private_key_not_canonical.private_key = Neg::neg(user.private_key);
+    let result = user_private_key_not_canonical.safe_use_note(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_private_key_not_canonical
+        .safe_use_note_execute_and_panic(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_private_key_not_canonical.safe_use_note_execute_view(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+
+    // Catch ZERO_TOKEN.
+    let result = user.safe_use_note(note: UseNoteInput { token: Zero::zero(), ..use_note_input });
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    let result = user
+        .safe_use_note_execute_and_panic(
+            note: UseNoteInput { token: Zero::zero(), ..use_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    let result = user
+        .safe_use_note_execute_view(note: UseNoteInput { token: Zero::zero(), ..use_note_input });
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+
+    // Catch ZERO_CHANNEL_KEY.
+    let result = user
+        .safe_use_note(note: UseNoteInput { channel_key: Zero::zero(), ..use_note_input });
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+    let result = user
+        .safe_use_note_execute_and_panic(
+            note: UseNoteInput { channel_key: Zero::zero(), ..use_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+    let result = user
+        .safe_use_note_execute_view(
+            note: UseNoteInput { channel_key: Zero::zero(), ..use_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+
+    // Catch SUBCHANNEL_NOT_FOUND (wrong channel key).
+    let wrong_channel_key = channel_key + 1;
+    let result = user
+        .safe_use_note(note: UseNoteInput { channel_key: wrong_channel_key, ..use_note_input });
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+    let result = user
+        .safe_use_note_execute_and_panic(
+            note: UseNoteInput { channel_key: wrong_channel_key, ..use_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+    let result = user
+        .safe_use_note_execute_view(
+            note: UseNoteInput { channel_key: wrong_channel_key, ..use_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+
+    // Catch SUBCHANNEL_NOT_FOUND (wrong token).
+    let wrong_token_address = test.mock_new_token();
+    let result = user
+        .safe_use_note(note: UseNoteInput { token: wrong_token_address, ..use_note_input });
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+    let result = user
+        .safe_use_note_execute_and_panic(
+            note: UseNoteInput { token: wrong_token_address, ..use_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+    let result = user
+        .safe_use_note_execute_view(
+            note: UseNoteInput { token: wrong_token_address, ..use_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+
+    // Ctach NOTE_NOT_FOUND (wrong note index).
+    let result = user.safe_use_note(note: UseNoteInput { note_index: 1, ..use_note_input });
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+    let result = user
+        .safe_use_note_execute_and_panic(note: UseNoteInput { note_index: 1, ..use_note_input });
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+    let result = user
+        .safe_use_note_execute_view(note: UseNoteInput { note_index: 1, ..use_note_input });
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+
+    // Catch NON_ZERO_VALUE (nullifier already exists).
+    let client_actions = [
+        ClientAction::UseNote(use_note_input),
+        ClientAction::CreateNote(
+            CreateNoteInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                token: token_address,
+                amount: create_note_input.amount,
+                index: create_note_input.index + 1,
+                salt: create_note_input.salt + 1,
+            },
+        ),
+    ]
+        .span();
+    let server_actions = user.client_execute(:client_actions);
+    user.privacy.execute_actions(actions: server_actions);
+    let result = user.safe_use_note(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user.safe_use_note_execute_and_panic(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user.safe_use_note_execute_view(note: use_note_input);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -2530,81 +2958,6 @@ fn test_use_note_wrong_owner_private_key() {
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     user_2.new_key();
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index };
-    user_2.use_note(note: use_note_input);
-}
-
-#[test]
-#[should_panic(expected: 'NOTE_NOT_FOUND')]
-fn test_use_note_wrong_note_index() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    let amount = 1;
-    let note_index = 0;
-    let create_note_input = user_1
-        .new_note_with_generated_salt(
-            recipient: user_2, :token_address, :amount, index: note_index,
-        );
-    user_1.cheat_create_note_e2e(:create_note_input);
-    let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput {
-        channel_key, token: token_address, note_index: note_index + 1,
-    };
-    user_2.use_note(note: use_note_input);
-}
-
-#[test]
-#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
-fn test_use_note_wrong_channel_key() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, index: 0);
-    user_2.open_channel_e2e(recipient: user_2, index: 0);
-    let amount = 1;
-    let note_index = 0;
-    let create_note_input = user_1
-        .new_note_with_generated_salt(
-            recipient: user_2, :token_address, :amount, index: note_index,
-        );
-    user_1.cheat_create_note_e2e(:create_note_input);
-    let wrong_channel_key = user_1.compute_channel_key(recipient: user_1);
-    let use_note_input = UseNoteInput {
-        channel_key: wrong_channel_key, token: token_address, note_index,
-    };
-    user_2.use_note(note: use_note_input);
-}
-
-#[test]
-#[should_panic(expected: 'SUBCHANNEL_NOT_FOUND')]
-fn test_use_note_wrong_token() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
-    user_1.open_channel_e2e(recipient: user_2, index: 0);
-    let amount = 1;
-    let note_index = 0;
-    let create_note_input = user_1
-        .new_note_with_generated_salt(
-            recipient: user_2, :token_address, :amount, index: note_index,
-        );
-    user_1.cheat_create_note_e2e(:create_note_input);
-    let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let wrong_token_address = test.mock_new_token();
-    let use_note_input = UseNoteInput { channel_key, token: wrong_token_address, note_index };
     user_2.use_note(note: use_note_input);
 }
 
@@ -2774,6 +3127,11 @@ fn test_withdraw_assertions() {
             withdrawal_target: user_2.address, :token_address, :amount, random: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+
+    // Catch NEGATIVE_INTERMEDIATE_BALANCE.
+    let result = user_1
+        .safe_withdraw(withdrawal_target: user_2.address, :token_address, :amount, :random);
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 }
 
 #[test]
@@ -3279,36 +3637,10 @@ fn test_internal_actions() {
     assert_eq!(actions, expected_actions);
 }
 
-// TODO: Fix this test. Now failing because storage writings are not reverted when panicking.
 #[test]
-#[ignore]
 fn test_client_execute_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    let token_address = test.mock_new_token();
-    let amount = 100;
-    user.set_viewing_key_e2e();
-    let create_note_input_1 = user
-        .new_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
-    let note_1_path = UseNoteInput {
-        channel_key: user.compute_channel_key(recipient: user), token: token_address, note_index: 0,
-    };
-    let create_note_input_2 = CreateNoteInput { index: 1, ..create_note_input_1 };
-
-    // Catch INVALID_SIGNATURE.
-    let mut user_invalid = test.new_user_with_is_valid(is_valid: false);
-    let result = user_invalid
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::SetViewingKey(
-                    SetViewingKeyInput { random: user_invalid.get_random() },
-                ),
-            ]
-                .span(),
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
-
-    // TODO: Catch server errors.
 
     // Catch NON_ZERO_CALLER.
     let result = user.safe_client_execute_without_cheat(client_actions: [].span());
@@ -3335,11 +3667,80 @@ fn test_client_execute_assertions() {
     let result = user.safe_client_execute_without_cheat(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_RESOURCE_PRICE);
 
+    // Catch INVALID_SIGNATURE.
+    let mut user_invalid = test.new_user_with_is_valid(is_valid: false);
+    let result = user_invalid
+        .safe_client_execute(
+            client_actions: [
+                ClientAction::SetViewingKey(
+                    SetViewingKeyInput { random: user_invalid.get_random() },
+                ),
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+}
+
+#[test]
+fn test_client_execute_and_panic_assertions() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_client_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero_addr.safe_execute_and_panic(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+    let result = user_zero_addr.safe_execute_view(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
+
+    // Catch ZERO_PRIVATE_KEY.
+    let mut user_zero_private_key = user;
+    user_zero_private_key.private_key = Zero::zero();
+    let result = user_zero_private_key.safe_client_execute(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_private_key.safe_execute_and_panic(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+    let result = user_zero_private_key.safe_execute_view(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
+
+    // Catch PRIVATE_KEY_NOT_CANONICAL.
+    let mut user_private_key_not_canonical = user;
+    user_private_key_not_canonical.private_key = Neg::neg(user.private_key);
+    let result = user_private_key_not_canonical.safe_client_execute(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_private_key_not_canonical.safe_execute_and_panic(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+    let result = user_private_key_not_canonical.safe_execute_view(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
+
+    // Catch NO_PRIVACY_ACTIONS.
+    let result = user.safe_client_execute(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    let result = user.safe_execute_and_panic(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    let result = user.safe_execute_view(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+}
+
+// TODO: Fix.
+#[test]
+#[ignore]
+fn test_actions_out_of_order() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+
+    let token_address = test.mock_new_token();
+    let amount = 100;
+    user.set_viewing_key_e2e();
+    let create_note_input_1 = user
+        .new_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
+    let note_1_path = UseNoteInput {
+        channel_key: user.compute_channel_key(recipient: user), token: token_address, note_index: 0,
+    };
+    let create_note_input_2 = CreateNoteInput { index: 1, ..create_note_input_1 };
 
     // Catch ACTIONS_OUT_OF_ORDER (set viewing key twice).
     let random = user.get_random();
@@ -3725,62 +4126,74 @@ fn test_client_execute_assertions() {
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+}
+
+#[test]
+fn test_execute_and_panic_balance_assertions() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+
+    let token_address = test.mock_new_token();
+    let amount = 100;
+    user.set_viewing_key_e2e();
+    user
+        .open_channel_with_token_e2e(
+            recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+    let create_note_input = user
+        .new_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
+    user.cheat_create_note_e2e(:create_note_input);
+    let use_note_input = UseNoteInput {
+        channel_key: user.compute_channel_key(recipient: user), token: token_address, note_index: 0,
+    };
+    let create_note_input = CreateNoteInput { index: 1, ..create_note_input };
 
     // Catch FINAL_BALANCE_MUST_BE_ZERO (deposit).
-    let result = user
-        .safe_client_execute(
-            client_actions: [ClientAction::Deposit(DepositInput { token: token_address, amount }),]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount: 2 * amount }),
+        ClientAction::CreateNote(create_note_input),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
 
     // Catch FINAL_BALANCE_MUST_BE_ZERO (use note).
-    let result = user
-        .safe_client_execute(client_actions: [ClientAction::UseNote(note_1_path),].span());
+    let client_actions = [ClientAction::UseNote(use_note_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE (withdraw).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user.address, token: token_address, amount, random,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let random = user.get_random();
+    let client_actions = [
+        ClientAction::Withdraw(
+            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+        )
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE (create note).
-    let result = user
-        .safe_client_execute(
-            client_actions: [ClientAction::CreateNote(create_note_input_2),].span(),
-        );
+    let client_actions = [ClientAction::CreateNote(create_note_input)].span();
+    let result = user.safe_client_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-
-    // Catch NEGATIVE_INTERMEDIATE_BALANCE (wrong order)
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user.address,
-                        token: token_address,
-                        amount: 2 * amount,
-                        random,
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-            ]
-                .span(),
-        );
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 }
-// TODO: Test with the negative private key (not canonical but the right public key) for each action
-// that gets a private key as an input.
 
 #[test]
 fn test_client_execute_writes() {
@@ -4100,7 +4513,11 @@ fn test_no_privacy_actions() {
 
     // Deposit only.
     let deposit_action = ClientAction::Deposit(DepositInput { token: token_address, amount });
-    let result = user.safe_client_execute(client_actions: [deposit_action,].span());
+    let result = user.safe_client_execute(client_actions: [deposit_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    let result = user.safe_execute_and_panic(client_actions: [deposit_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    let result = user.safe_execute_view(client_actions: [deposit_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 
     // Withdraw only.
@@ -4114,8 +4531,17 @@ fn test_no_privacy_actions() {
     );
     let result = user.safe_client_execute(client_actions: [withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
+    let result = user.safe_execute_and_panic(client_actions: [withdraw_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
+    let result = user.safe_execute_view(client_actions: [withdraw_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
     // Deposit and Withdraw.
     let result = user.safe_client_execute(client_actions: [deposit_action, withdraw_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    let result = user
+        .safe_execute_and_panic(client_actions: [deposit_action, withdraw_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    let result = user.safe_execute_view(client_actions: [deposit_action, withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 }
