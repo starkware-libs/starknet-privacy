@@ -6,8 +6,10 @@
 use starknet_types_core::{curve::AffinePoint, felt::Felt};
 use thiserror::Error;
 
-use crate::hashes::{compute_enc_channel_key_hash, compute_enc_sender_addr_hash};
-use crate::types::{ChannelInfo, EncChannelInfo};
+use crate::hashes::{
+    compute_enc_channel_key_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
+};
+use crate::types::{ChannelInfo, EncChannelInfo, EncSubchannelInfo};
 
 /// Errors that can occur during decryption.
 #[derive(Debug, Error)]
@@ -47,37 +49,29 @@ pub fn decrypt_channel_info(
     })
 }
 
+/// Decrypts encrypted subchannel info to get the token address.
+///
+/// The decryption process:
+/// `token = enc_token - hash(ENC_TOKEN_TAG, channel_key, index, 0, salt)`
+///
+/// # Arguments
+///
+/// * `enc` - The encrypted subchannel info (salt and enc_token).
+/// * `channel_key` - The channel key for this subchannel.
+/// * `index` - The subchannel index.
+///
+/// # Returns
+///
+/// The decrypted token address.
+pub fn decrypt_subchannel_token(enc: &EncSubchannelInfo, channel_key: &Felt, index: u64) -> Felt {
+    let enc_token_hash = compute_enc_token_hash(*channel_key, index, enc.salt);
+    enc.enc_token - enc_token_hash
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::Deserialize;
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Inputs {
-        recipient_private_key: Felt,
-        channel_key: Felt,
-        sender: Felt,
-    }
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Outputs {
-        enc_channel_ephemeral_pubkey: Felt,
-        enc_channel_key: Felt,
-        enc_channel_sender_addr: Felt,
-    }
-
-    #[derive(Deserialize)]
-    struct Fixture {
-        inputs: Inputs,
-        outputs: Outputs,
-    }
-
-    fn load_fixture() -> Fixture {
-        const JSON: &str = include_str!("../tests/fixtures/cairo-reference-data.json");
-        serde_json::from_str(JSON).expect("failed to parse fixture")
-    }
+    use crate::test_fixtures::load_cairo_ref_fixture;
 
     #[test]
     fn test_decrypt_channel_info_invalid_pubkey() {
@@ -95,20 +89,32 @@ mod tests {
 
     #[test]
     fn test_decrypt_channel_info_with_cairo_vectors() {
-        let f = load_fixture();
-        let i = &f.inputs;
-        let o = &f.outputs;
+        let f = load_cairo_ref_fixture();
 
         let encrypted = EncChannelInfo {
-            ephemeral_pubkey: o.enc_channel_ephemeral_pubkey,
-            enc_channel_key: o.enc_channel_key,
-            enc_sender_addr: o.enc_channel_sender_addr,
+            ephemeral_pubkey: f.outputs.enc_channel_ephemeral_pubkey,
+            enc_channel_key: f.outputs.enc_channel_key,
+            enc_sender_addr: f.outputs.enc_channel_sender_addr,
         };
 
-        let result = decrypt_channel_info(&encrypted, &i.recipient_private_key)
+        let result = decrypt_channel_info(&encrypted, &f.inputs.recipient_private_key)
             .expect("decryption should succeed");
 
-        assert_eq!(result.channel_key, i.channel_key);
-        assert_eq!(result.sender_addr, i.sender);
+        assert_eq!(result.channel_key, f.inputs.channel_key);
+        assert_eq!(result.sender_addr, f.inputs.sender);
+    }
+
+    #[test]
+    fn test_decrypt_subchannel_token_with_cairo_vectors() {
+        let f = load_cairo_ref_fixture();
+
+        let encrypted = EncSubchannelInfo {
+            salt: f.outputs.enc_subchannel_salt,
+            enc_token: f.outputs.enc_subchannel_token,
+        };
+
+        let token = decrypt_subchannel_token(&encrypted, &f.inputs.channel_key, f.inputs.index);
+
+        assert_eq!(token, f.inputs.token);
     }
 }

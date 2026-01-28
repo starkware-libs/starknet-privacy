@@ -117,94 +117,66 @@ pub fn nullifiers(nullifier: Felt) -> Result<Felt> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde::Deserialize;
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Slots {
-        compliance_public_key_address: Felt,
-        sender_public_key_address: Felt,
-        recipient_public_key_address: Felt,
-        enc_private_key_ephemeral_address: Felt,
-        enc_private_key_enc_key_address: Felt,
-        channel_exists_address: Felt,
-        recipient_channels_base_address: Felt,
-        recipient_channels_element_address: Felt,
-        subchannel_exists_address: Felt,
-        subchannel_tokens_salt_address: Felt,
-        subchannel_tokens_enc_token_address: Felt,
-        notes_address: Felt,
-        nullifiers_address: Felt,
-    }
-
-    #[derive(Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Inputs {
-        sender: Felt,
-        recipient: Felt,
-        channel_id: Felt,
-        subchannel_key: Felt,
-        subchannel_id: Felt,
-        note_id: Felt,
-        nullifier: Felt,
-    }
-
-    #[derive(Deserialize)]
-    struct Fixture {
-        slots: Slots,
-        inputs: Inputs,
-    }
-
-    fn load_fixture() -> Fixture {
-        const JSON: &str = include_str!("../tests/fixtures/cairo-reference-data.json");
-        serde_json::from_str(JSON).expect("failed to parse fixture")
-    }
+    use crate::test_fixtures::load_cairo_ref_fixture;
 
     #[test]
     fn test_storage_slots_with_cairo_vectors() {
-        let f = load_fixture();
-        let i = &f.inputs;
-        let s = &f.slots;
+        let f = load_cairo_ref_fixture();
 
         assert_eq!(
             compliance_public_key().unwrap(),
-            s.compliance_public_key_address
+            f.slots.compliance_public_key_address
         );
-        assert_eq!(public_key(i.sender).unwrap(), s.sender_public_key_address);
         assert_eq!(
-            public_key(i.recipient).unwrap(),
-            s.recipient_public_key_address
+            public_key(f.inputs.sender).unwrap(),
+            f.slots.sender_public_key_address
+        );
+        assert_eq!(
+            public_key(f.inputs.recipient).unwrap(),
+            f.slots.recipient_public_key_address
         );
 
-        let enc_pk = enc_private_key(i.sender).unwrap();
-        assert_eq!(enc_pk.ephemeral_pubkey, s.enc_private_key_ephemeral_address);
-        assert_eq!(enc_pk.enc_private_key, s.enc_private_key_enc_key_address);
+        let enc_pk = enc_private_key(f.inputs.sender).unwrap();
+        assert_eq!(
+            enc_pk.ephemeral_pubkey,
+            f.slots.enc_private_key_ephemeral_address
+        );
+        assert_eq!(
+            enc_pk.enc_private_key,
+            f.slots.enc_private_key_enc_key_address
+        );
 
         assert_eq!(
-            channel_exists(i.channel_id).unwrap(),
-            s.channel_exists_address
+            channel_exists(f.inputs.channel_id).unwrap(),
+            f.slots.channel_exists_address
         );
         assert_eq!(
-            recipient_channels_base(i.recipient).unwrap(),
-            s.recipient_channels_base_address
+            recipient_channels_base(f.inputs.recipient).unwrap(),
+            f.slots.recipient_channels_base_address
         );
         assert_eq!(
-            recipient_channels_element(i.recipient, 0)
+            recipient_channels_element(f.inputs.recipient, 0)
                 .unwrap()
                 .ephemeral_pubkey,
-            s.recipient_channels_element_address
+            f.slots.recipient_channels_element_address
         );
 
         assert_eq!(
-            subchannel_exists(i.subchannel_id).unwrap(),
-            s.subchannel_exists_address
+            subchannel_exists(f.inputs.subchannel_id).unwrap(),
+            f.slots.subchannel_exists_address
         );
 
-        let tokens = subchannel_tokens(i.subchannel_key).unwrap();
-        assert_eq!(tokens.salt, s.subchannel_tokens_salt_address);
-        assert_eq!(tokens.enc_token, s.subchannel_tokens_enc_token_address);
+        let tokens = subchannel_tokens(f.inputs.subchannel_key).unwrap();
+        assert_eq!(tokens.salt, f.slots.subchannel_tokens_salt_address);
+        assert_eq!(
+            tokens.enc_token,
+            f.slots.subchannel_tokens_enc_token_address
+        );
 
-        assert_eq!(notes(i.note_id).unwrap(), s.notes_address);
-        assert_eq!(nullifiers(i.nullifier).unwrap(), s.nullifiers_address);
+        assert_eq!(notes(f.inputs.note_id).unwrap(), f.slots.notes_address);
+        assert_eq!(
+            nullifiers(f.inputs.nullifier).unwrap(),
+            f.slots.nullifiers_address
+        );
     }
 }
