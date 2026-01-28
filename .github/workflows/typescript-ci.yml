@@ -36,14 +36,19 @@ jobs:
           cache: 'npm'
           cache-dependency-path: sdk/package-lock.json
 
-      - uses: software-mansion/setup-scarb@v1
+      - name: Setup Scarb
+        if: ${{ inputs.cairo_changed }}
+        uses: software-mansion/setup-scarb@v1
         with:
           scarb-version: "2.15.0"
 
-      - uses: foundry-rs/setup-snfoundry@v3
+      - name: Setup snfoundry
+        if: ${{ inputs.cairo_changed }}
+        uses: foundry-rs/setup-snfoundry@v3
 
       # Try to restore Cairo cache (from cairo_ci or previous runs)
       - name: Restore Cairo cache
+        if: ${{ inputs.cairo_changed }}
         uses: actions/cache/restore@v4
         with:
           path: target/dev
@@ -53,6 +58,7 @@ jobs:
 
       # Build Cairo if cache miss
       - name: Build Cairo contracts
+        if: ${{ inputs.cairo_changed }}
         working-directory: .
         run: |
           if [ ! -d "target/dev" ]; then

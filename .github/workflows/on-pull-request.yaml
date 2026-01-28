@@ -35,11 +35,13 @@ jobs:
               - 'Scarb.toml'
               - 'Scarb.lock'
               - '**/*.cairo'
+              - '.github/workflows/cairo-ci.yaml'
             rust:
               - 'crates/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '**/*.rs'
+              - '.github/workflows/rust-ci.yaml'
             typescript:
               - 'sdk/**'
               - '.github/workflows/typescript-ci.yml'
