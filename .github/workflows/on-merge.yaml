@@ -6,18 +6,25 @@ on:
       - main
 
 jobs:
-  test:
-    uses: ./.github/workflows/test.yaml
+  cairo_ci:
+    uses: ./.github/workflows/cairo-ci.yaml
     secrets: inherit
 
   rust_ci:
     uses: ./.github/workflows/rust-ci.yaml
 
+  typescript_ci:
+    needs: cairo_ci
+    uses: ./.github/workflows/typescript-ci.yml
+    with:
+      cairo_changed: true
+      commit_generated: false
+
   notify-slack:
-    needs: test
+    needs: [cairo_ci, rust_ci, typescript_ci]
     if: failure()
     uses: ./.github/workflows/notify-slack.yaml
     with:
       context_title: "main branch"
-      failed_job_name: "test"
+      failed_job_name: "CI"
     secrets: inherit

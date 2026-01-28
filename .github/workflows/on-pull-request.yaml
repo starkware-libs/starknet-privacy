@@ -1,17 +1,68 @@
 name: Pull Request Integration
 
 on:
+  workflow_dispatch:
   pull_request:
-    branches:
-      - main
 
 jobs:
-  test:
-    uses: ./.github/workflows/test.yaml
+  # Skip duplicate runs (e.g., after rebase with same content)
+  skip_check:
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.skip_check.outputs.should_skip }}
+    steps:
+      - uses: fkirc/skip-duplicate-actions@v5
+        id: skip_check
+        with:
+          concurrent_skipping: same_content_newer
+
+  changes:
+    needs: skip_check
+    if: ${{ needs.skip_check.outputs.should_skip != 'true' }}
+    runs-on: ubuntu-latest
+    outputs:
+      cairo: ${{ steps.filter.outputs.cairo }}
+      rust: ${{ steps.filter.outputs.rust }}
+      typescript: ${{ steps.filter.outputs.typescript }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            cairo:
+              - 'packages/**'
+              - 'Scarb.toml'
+              - 'Scarb.lock'
+              - '**/*.cairo'
+              - '.github/workflows/cairo-ci.yaml'
+            rust:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/*.rs'
+              - '.github/workflows/rust-ci.yaml'
+            typescript:
+              - 'sdk/**'
+              - '.github/workflows/typescript-ci.yml'
+
+  cairo_ci:
+    needs: changes
+    if: ${{ needs.changes.outputs.cairo == 'true' }}
+    uses: ./.github/workflows/cairo-ci.yaml
     secrets: inherit
 
-  check_formatting:
-    uses: ./.github/workflows/check_formatting.yaml
-
   rust_ci:
+    needs: changes
+    if: ${{ needs.changes.outputs.rust == 'true' }}
     uses: ./.github/workflows/rust-ci.yaml
+
+  # TypeScript CI runs if:
+  # - TypeScript files changed (full CI with lint/format)
+  # - Cairo files changed (generate + build + test, after cairo_ci)
+  typescript_ci:
+    needs: [changes, cairo_ci]
+    if: ${{ always() && needs.changes.result == 'success' && (needs.changes.outputs.typescript == 'true' || needs.changes.outputs.cairo == 'true') && (needs.cairo_ci.result == 'success' || needs.cairo_ci.result == 'skipped') }}
+    uses: ./.github/workflows/typescript-ci.yml
+    with:
+      cairo_changed: ${{ needs.changes.outputs.cairo == 'true' }}

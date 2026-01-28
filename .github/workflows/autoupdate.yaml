@@ -1,15 +1,17 @@
 name: Auto Update Workflow
 permissions:
   contents: write
+  pull-requests: read
 
 on:
   push:
-    branches: [${{ github.event.repository.default_branch }}]
+    branches:
+      - main
 
 jobs:
   autoupdate:
     name: autoupdate
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - uses: docker://chinthakagodawita/autoupdate-action:v1
         env:
@@ -20,6 +22,7 @@ jobs:
           MERGE_CONFLICT_ACTION: "ignore"
           MERGE_MSG: "Branch was auto-updated."
           EXCLUDED_LABELS: "autoupdate-rebase"
+
   autoupdate-rebase:
     name: autoupdate-rebase
     runs-on: ubuntu-latest
