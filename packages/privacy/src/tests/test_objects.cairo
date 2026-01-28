@@ -6,7 +6,7 @@ use privacy::objects::{
 };
 use privacy::tests::test_objects::MockContract::deploy_for_test as deploy_mock_contract_for_test;
 use privacy::tests::utils_for_tests::{Test, TestTrait, UserTrait, constants};
-use privacy::utils::encrypt_note_amount;
+use privacy::utils::{decrypt_note_amount, encrypt_note_amount};
 use snforge_std::{DeclareResultTrait, declare, map_entry_address};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
@@ -195,7 +195,7 @@ fn test_token_balances_final_balance_must_be_zero() {
 }
 
 #[test]
-fn test_note_encrypt_decrypt() {
+fn test_note_encrypt() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token_address = test.mock_new_token();
@@ -205,12 +205,13 @@ fn test_note_encrypt_decrypt() {
     let index = 0;
 
     let note = NoteTrait::encrypt(:channel_key, token: token_address, :index, :salt, :amount);
-    let expected_note = Note {
-        enc_value: encrypt_note_amount(:channel_key, token: token_address, :index, :salt, :amount),
-        token: Zero::zero(),
-    };
+    let enc_value = encrypt_note_amount(:channel_key, token: token_address, :index, :salt, :amount);
+    let expected_note = Note { enc_value, token: Zero::zero() };
     assert_eq!(note, expected_note);
-    assert_eq!(note.decrypt_amount(:channel_key, token: token_address, :index), amount);
+    assert_eq!(
+        decrypt_note_amount(enc_note_value: enc_value, :channel_key, token: token_address, :index),
+        amount,
+    );
 }
 
 #[test]

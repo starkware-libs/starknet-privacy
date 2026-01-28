@@ -23,10 +23,10 @@ pub mod Privacy {
     };
     use privacy::utils::constants::{CREATE_NOTE_MIN_SALT, TWO_POW_120};
     use privacy::utils::{
-        StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature, derive_public_key,
-        encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
-        encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, panic_with_server_actions,
-        send_message_to_server, unwrap_execute_and_panic_result,
+        StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
+        decrypt_note_amount, derive_public_key, encrypt_channel_info, encrypt_outgoing_channel_info,
+        encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, is_canonical_key,
+        panic_with_server_actions, send_message_to_server, unwrap_execute_and_panic_result,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -489,12 +489,11 @@ pub mod Privacy {
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
-            let note = self.notes.read(note_id);
-            assert(note.enc_value.is_non_zero(), errors::NOTE_NOT_FOUND);
-            assert(note.token.is_zero(), internal_errors::ENC_NOTE_NON_ZERO_TOKEN);
+            let enc_note_value = self.notes.entry(note_id).enc_value.read();
+            assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             // Decrypt note amount.
-            let amount = note.decrypt_amount(:channel_key, :token, :index);
+            let amount = decrypt_note_amount(:enc_note_value, :channel_key, :token, :index);
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
@@ -556,8 +555,9 @@ pub mod Privacy {
                 index.is_zero()
                     || self
                         .notes
-                        .read(compute_note_id(:channel_key, :token, index: index - 1))
+                        .entry(compute_note_id(:channel_key, :token, index: index - 1))
                         .enc_value
+                        .read()
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
             );
@@ -571,7 +571,12 @@ pub mod Privacy {
 
             token_balances.subtract_balance(:token, :amount);
 
-            array![note.to_write_once_action(storage_address: self.notes.entry(note_id).into())]
+            // Only `enc_value` needs to be written, `token` is initialized to zero.
+            array![
+                note
+                    .enc_value
+                    .to_write_once_action(storage_address: self.notes.entry(note_id).into()),
+            ]
         }
     }
 
