@@ -12,8 +12,8 @@ pub trait IClient<T> {
     /// A single client action may compile to multiple server actions.
     ///
     /// #### Parameters
-    /// - `user_addr` (`ContractAddress`): The address of the user
-    /// executing the actions.
+    /// - `user_addr` (`ContractAddress`): The address of the user executing the actions.
+    /// - `user_private_key` (`felt252`): The private key of the user executing the actions.
     /// - `client_actions` (`Span<`[`ClientAction`](privacy::actions::ClientAction)`>`): The list of
     /// client actions to compile.
     ///   Each [`ClientAction`](privacy::actions::ClientAction) variant has the following purpose:
@@ -39,6 +39,7 @@ pub trait IClient<T> {
     /// - The TX version must be >= 3.
     /// - The effective fee of the transaction is zero (i.e. `tip` and `resource_bounds`).
     /// - `user_addr` must not be zero.
+    /// - `user_private_key` must not be zero and must be canonical.
     /// - The TX signature must be valid for `user_addr`.
     /// - `client_actions` must be valid sequential actions to execute on the current state of the
     /// contract.
@@ -88,7 +89,12 @@ pub trait IClient<T> {
     /// - See [`execute_view`](privacy::interface::IClient::execute_view) Returns section for
     /// details on which server actions each client action produces.
     /// - This function does not change the state of the contract.
-    fn __execute__(ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>);
+    fn __execute__(
+        ref self: T,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
+    );
 
     /// Processes client actions and panics with the compiled server actions or an error.
     ///
@@ -99,8 +105,8 @@ pub trait IClient<T> {
     /// result.
     ///
     /// #### Parameters
-    /// - `user_addr` (`ContractAddress`): The address of the user
-    /// executing the actions.
+    /// - `user_addr` (`ContractAddress`): The address of the user executing the actions.
+    /// - `user_private_key` (`felt252`): The private key of the user executing the actions.
     /// - `client_actions` (`Span<`[`ClientAction`](privacy::actions::ClientAction)`>`): The list of
     /// client actions to compile. See [`__execute__`](privacy::interface::IClient::__execute__) for
     /// more details.
@@ -111,6 +117,7 @@ pub trait IClient<T> {
     ///
     /// #### Preconditions
     /// - `user_addr` must not be zero.
+    /// - `user_private_key` must not be zero and must be canonical.
     /// - `client_actions` must be valid sequential actions to execute on the current state of the
     /// contract.
     /// - See [`__execute__`](privacy::interface::IClient::__execute__) for additional constraints
@@ -126,6 +133,10 @@ pub trait IClient<T> {
     /// - On success, panic with the serialized server actions wrapped with
     /// [`OK_WRAPPER`](privacy::utils::constants::OK_WRAPPER).
     /// - [`ZERO_USER_ADDR`](privacy::errors::ZERO_USER_ADDR): Thrown if `user_addr` is zero.
+    /// - [`ZERO_PRIVATE_KEY`](privacy::errors::ZERO_PRIVATE_KEY): Thrown if `user_private_key` is
+    /// zero.
+    /// - [`PRIVATE_KEY_NOT_CANONICAL`](privacy::errors::PRIVATE_KEY_NOT_CANONICAL): Thrown if
+    /// `user_private_key` is not in canonical form.
     /// - [`ACTIONS_OUT_OF_ORDER`](privacy::errors::ACTIONS_OUT_OF_ORDER): Thrown if
     /// `client_actions` is not ordered correctly.
     /// - [`NO_PRIVACY_ACTIONS`](privacy::errors::NO_PRIVACY_ACTIONS): Thrown if `client_actions`
@@ -134,24 +145,16 @@ pub trait IClient<T> {
     /// token balances are not zero after all actions are processed.
     ///
     /// **Errors for [`SetViewingKey`](privacy::actions::ClientAction::SetViewingKey) action:**
-    /// - [`ZERO_PRIVATE_KEY`](privacy::errors::ZERO_PRIVATE_KEY): Thrown if the private key is
-    /// zero.
     /// - [`ZERO_RANDOM`](privacy::errors::ZERO_RANDOM): Thrown if the random value is zero.
-    /// - [`PRIVATE_KEY_NOT_CANONICAL`](privacy::errors::PRIVATE_KEY_NOT_CANONICAL): Thrown if the
-    /// private key is not in canonical form.
     /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the user is already
     /// registered.
     ///
     /// **Errors for [`OpenChannel`](privacy::actions::ClientAction::OpenChannel) action:**
-    /// - [`ZERO_PRIVATE_KEY`](privacy::errors::ZERO_PRIVATE_KEY): Thrown if the sender private key
-    /// is zero.
     /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if the recipient
     /// address is zero.
     /// - [`ZERO_RECIPIENT_PUBLIC_KEY`](privacy::errors::ZERO_RECIPIENT_PUBLIC_KEY): Thrown if the
     /// recipient public key is zero.
     /// - [`ZERO_RANDOM`](privacy::errors::ZERO_RANDOM): Thrown if the random value is zero.
-    /// - [`PRIVATE_KEY_NOT_CANONICAL`](privacy::errors::PRIVATE_KEY_NOT_CANONICAL): Thrown if the
-    /// sender private key is not in canonical form.
     /// - [`SENDER_NOT_REGISTERED`](privacy::errors::SENDER_NOT_REGISTERED): Thrown if the sender is
     /// not registered with a viewing key.
     /// - [`SENDER_NOT_AUTHENTICATED`](privacy::errors::SENDER_NOT_AUTHENTICATED): Thrown if the
@@ -185,13 +188,9 @@ pub trait IClient<T> {
     /// - `INSUFFICIENT_ALLOWANCE`: Thrown if the sender has insufficient token allowance.
     ///
     /// **Errors for [`UseNote`](privacy::actions::ClientAction::UseNote) action:**
-    /// - [`ZERO_PRIVATE_KEY`](privacy::errors::ZERO_PRIVATE_KEY): Thrown if the owner private key
-    /// is zero.
     /// - [`ZERO_CHANNEL_KEY`](privacy::errors::ZERO_CHANNEL_KEY): Thrown if the channel key is
     /// zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
-    /// - [`PRIVATE_KEY_NOT_CANONICAL`](privacy::errors::PRIVATE_KEY_NOT_CANONICAL): Thrown if the
-    /// owner private key is not in canonical form.
     /// - [`SUBCHANNEL_NOT_FOUND`](privacy::errors::SUBCHANNEL_NOT_FOUND): Thrown if the subchannel
     /// does not exist.
     /// - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if the note does not exist.
@@ -199,15 +198,11 @@ pub trait IClient<T> {
     /// exists (the note already spent before).
     ///
     /// **Errors for [`CreateNote`](privacy::actions::ClientAction::CreateNote) action:**
-    /// - [`ZERO_PRIVATE_KEY`](privacy::errors::ZERO_PRIVATE_KEY): Thrown if the sender private key
-    /// is zero.
     /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if the recipient
     /// address is zero.
     /// - [`ZERO_RECIPIENT_PUBLIC_KEY`](privacy::errors::ZERO_RECIPIENT_PUBLIC_KEY): Thrown if the
     /// recipient public key is zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
-    /// - [`PRIVATE_KEY_NOT_CANONICAL`](privacy::errors::PRIVATE_KEY_NOT_CANONICAL): Thrown if the
-    /// sender private key is not in canonical form.
     /// - [`SALT_TOO_SMALL`](privacy::errors::SALT_TOO_SMALL): Thrown if the salt < 2.
     /// - [`SALT_EXCEEDS_120_BITS`](privacy::errors::SALT_EXCEEDS_120_BITS): Thrown if the salt
     /// exceeds 120 bits.
@@ -236,7 +231,10 @@ pub trait IClient<T> {
     /// with [`OK_WRAPPER`](privacy::utils::constants::OK_WRAPPER). On error, it panics with the
     /// error.
     fn execute_and_panic(
-        ref self: T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        ref self: T,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     );
 
     /// Processes client actions and returns the compiled server actions (without sending to L1).
@@ -249,8 +247,8 @@ pub trait IClient<T> {
     /// messages to L1 and does not validate execution context (caller address, TX version, fees).
     ///
     /// #### Parameters
-    /// - `user_addr` (`ContractAddress`): The address of the user
-    /// executing the actions.
+    /// - `user_addr` (`ContractAddress`): The address of the user executing the actions.
+    /// - `user_private_key` (`felt252`): The private key of the user executing the actions.
     /// - `client_actions` (`Span<`[`ClientAction`](privacy::actions::ClientAction)`>`): The list of
     /// client actions to compile, see [`__execute__`](privacy::interface::IClient::__execute__) for
     /// more details.
@@ -308,6 +306,7 @@ pub trait IClient<T> {
     ///
     /// #### Preconditions
     /// - `user_addr` must not be zero.
+    /// - `user_private_key` must not be zero and must be canonical.
     /// - `client_actions` must be valid sequential actions to execute on the current state of the
     /// contract.
     /// - See [`__execute__`](privacy::interface::IClient::__execute__) for additional constraints
@@ -334,7 +333,10 @@ pub trait IClient<T> {
     /// the result.
     /// - This is a view function which never changes the state.
     fn execute_view(
-        self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @T,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     ) -> Span<ServerAction>;
 
     /// An empty implementation for the TX validation, always returns valid.
@@ -344,8 +346,8 @@ pub trait IClient<T> {
     /// [`VALIDATED`](starknet::VALIDATED) to indicate that the transaction is valid.
     ///
     /// #### Parameters
-    /// - `user_addr` (`ContractAddress`): The address of the user
-    /// executing the actions.
+    /// - `user_addr` (`ContractAddress`): The address of the user executing the actions.
+    /// - `user_private_key` (`felt252`): The private key of the user executing the actions.
     /// - `client_actions` (`Span<`[`ClientAction`](privacy::actions::ClientAction)`>`): The list of
     /// client actions to validate.
     ///
@@ -357,7 +359,10 @@ pub trait IClient<T> {
     /// - This function is part of the account contract interface and is called automatically during
     /// transaction validation.
     fn __validate__(
-        self: @T, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+        self: @T,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
     ) -> felt252;
 }
 
