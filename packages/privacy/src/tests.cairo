@@ -6,4 +6,5 @@ pub mod test_hashes;
 pub mod test_objects;
 pub mod test_server;
 pub mod test_utils;
+pub mod test_views;
 pub mod utils_for_tests;
