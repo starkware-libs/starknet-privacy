@@ -41,8 +41,8 @@ describe("Devnet Integration", () => {
     });
   }, 120000); // 120 second timeout for devnet startup and deployment
 
-  afterAll(() => {
-    devnet.cleanup();
+  afterAll(async () => {
+    await devnet.cleanup();
   });
 
   it("should setup devnet with alice, bob, tokens, and privacy contract", async () => {
