@@ -1,3 +1,3 @@
 mod devnet;
 
-pub use devnet::{DeployedContract, Devnet, DevnetConfig, PredeployedAccount};
+pub use devnet::{Devnet, DevnetConfig};
