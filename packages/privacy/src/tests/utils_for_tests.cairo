@@ -450,22 +450,23 @@ pub(crate) impl UserImpl of UserTrait {
         (salt_u256 % TWO_POW_120.into()).try_into().unwrap()
     }
 
-    fn create_note(self: @User, note: CreateNoteInput) -> Span<ServerAction> {
-        self.client_execute([ClientAction::CreateNote(note)].span())
+    fn create_note(self: @User, create_note_input: CreateNoteInput) -> Span<ServerAction> {
+        self.client_execute([ClientAction::CreateNote(create_note_input)].span())
     }
 
-    fn internal_create_note(self: @User, note: CreateNoteInput) -> Span<ServerAction> {
+    fn internal_create_note(self: @User, create_note_input: CreateNoteInput) -> Span<ServerAction> {
         interact_with_state(
             *self.privacy.address,
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
-                token_balances.add_balance(token: note.token, amount: note.amount);
+                token_balances
+                    .add_balance(token: create_note_input.token, amount: create_note_input.amount);
                 state
                     .create_note(
                         sender_addr: *self.address,
                         sender_private_key: *self.private_key,
-                        input: note,
+                        input: create_note_input,
                         ref :token_balances,
                     )
             },
@@ -473,8 +474,8 @@ pub(crate) impl UserImpl of UserTrait {
             .span()
     }
 
-    fn cheat_create_note_e2e(self: @User, note: CreateNoteInput) {
-        self.privacy.server.execute_actions(actions: self.internal_create_note(note));
+    fn cheat_create_note_e2e(self: @User, create_note_input: CreateNoteInput) {
+        self.privacy.server.execute_actions(actions: self.internal_create_note(create_note_input));
     }
 
     fn compute_channel_key(self: @User, recipient: User) -> felt252 {
