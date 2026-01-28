@@ -261,7 +261,7 @@ pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
 pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
     // Ensure that the current call is the first of the transaction,
     // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
-    assert(execution_info.caller_address.is_zero(), errors::INVALID_CALLER);
+    assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
     let tx_info = execution_info.tx_info;
     assert(tx_info.version.try_into().unwrap() >= TX_V3, errors::INVALID_TX_VERSION);
     // Ensure that the effective fee of the transaction is zero; this is a sanity check,
