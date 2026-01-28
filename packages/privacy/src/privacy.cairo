@@ -281,12 +281,8 @@ pub mod Privacy {
             assert(enc_private_key.is_all_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
             array![
-                ServerAction::WriteOnce(
-                    WriteOnceInput {
-                        storage_address: self.public_key.entry(user_addr).into(),
-                        value: [user_public_key].span(),
-                    },
-                ),
+                user_public_key
+                    .to_write_once_action(storage_address: self.public_key.entry(user_addr).into()),
                 enc_private_key
                     .to_write_once_action(
                         storage_address: self.enc_private_key.entry(user_addr).into(),

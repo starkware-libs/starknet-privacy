@@ -100,9 +100,7 @@ fn test_execute_write_once() {
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [user.public_key].span() },
-        ),
+        user.public_key.to_write_once_action(storage_address: storage_path_felt),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -175,9 +173,7 @@ fn test_execute_write_once_assertions() {
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [user.public_key].span() },
-        ),
+        user.public_key.to_write_once_action(storage_address: storage_path_felt),
     ];
     test.privacy.execute_actions(actions.span());
     let current_value: felt252 = generic_load(
@@ -528,11 +524,7 @@ fn test_execute_verify_value() {
     let storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
-    let actions = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [user.public_key].span() },
-        ),
-    ];
+    let actions = array![user.public_key.to_write_once_action(storage_address: storage_path_felt)];
     test.privacy.execute_actions(actions.span());
 
     // Verify value by loading from storage.
