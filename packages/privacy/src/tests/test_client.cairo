@@ -7,9 +7,8 @@ use privacy::actions::{
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
 use privacy::objects::{EncUserAddr, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
-    EncNoteTrait, PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait,
-    decrypt_channel_info, decrypt_enc_user_addr, decrypt_outgoing_channel_info, decrypt_private_key,
-    decrypt_subchannel_token,
+    ComplianceTrait, EncNoteTrait, PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait,
+    decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
 };
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
@@ -112,9 +111,7 @@ fn test_set_viewing_key_decrypt_private_key() {
 
     // Compliance should be able to decrypt the private key.
     let enc_private_key = user.get_enc_private_key();
-    let decrypted_private_key = decrypt_private_key(
-        :enc_private_key, compliance_private_key: test.compliance_private_key,
-    );
+    let decrypted_private_key = test.compliance.decrypt_private_key(:enc_private_key);
     assert_eq!(decrypted_private_key, user.private_key);
 }
 
@@ -2955,9 +2952,7 @@ fn test_withdraw_decrypt_user_addr() {
         ephemeral_pubkey: *event.data[1],
         enc_user_addr: *event.data[2],
     };
-    let decrypted_user_addr = decrypt_enc_user_addr(
-        :enc_user_addr, compliance_private_key: test.compliance_private_key,
-    );
+    let decrypted_user_addr = test.compliance.decrypt_user_addr(:enc_user_addr);
     assert_eq!(decrypted_user_addr, user_1.address);
 }
 

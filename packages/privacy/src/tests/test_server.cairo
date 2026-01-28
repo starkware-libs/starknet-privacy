@@ -27,7 +27,7 @@ use starkware_utils_testing::test_utils::{
 fn test_constructor() {
     let mut test: Test = Default::default();
     // Test compliance public key.
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance_public_key);
+    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
     // Test roles.
     let contract_roles = IRolesDispatcher { contract_address: test.privacy.address };
     assert!(contract_roles.is_governance_admin(account: test.privacy.governance_admin));
@@ -44,7 +44,7 @@ fn test_constructor() {
 #[test]
 fn test_get_compliance_public_key() {
     let mut test: Test = Default::default();
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance_public_key);
+    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
 }
 
 #[test]

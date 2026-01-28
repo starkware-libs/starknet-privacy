@@ -773,12 +773,28 @@ pub(crate) impl UserImpl of UserTrait {
 }
 
 #[derive(Drop, Copy)]
+pub(crate) struct Compliance {
+    pub private_key: felt252,
+    pub public_key: felt252,
+}
+
+#[generate_trait]
+pub(crate) impl ComplianceImpl of ComplianceTrait {
+    fn decrypt_private_key(self: @Compliance, enc_private_key: EncPrivateKey) -> felt252 {
+        decrypt_private_key(:enc_private_key, compliance_private_key: *self.private_key)
+    }
+
+    fn decrypt_user_addr(self: @Compliance, enc_user_addr: EncUserAddr) -> ContractAddress {
+        decrypt_enc_user_addr(:enc_user_addr, compliance_private_key: *self.private_key)
+    }
+}
+
+
+#[derive(Drop, Copy)]
 pub(crate) struct Test {
     pub privacy: PrivacyCfg,
     pub nonce: usize,
-    // TODO: Compliance fields as struct + trait?
-    pub compliance_private_key: felt252,
-    pub compliance_public_key: felt252,
+    pub compliance: Compliance,
 }
 
 #[generate_trait]
@@ -809,7 +825,7 @@ pub(crate) impl TestImpl of TestTrait {
     fn mock_new_enc_private_key(ref self: Test) -> EncPrivateKey {
         self.nonce += 1;
         EncPrivateKey {
-            compliance_public_key: self.compliance_public_key,
+            compliance_public_key: self.compliance.public_key,
             ephemeral_pubkey: 'EPHEMERAL_PUBKEY' + self.nonce.into(),
             enc_private_key: 'ENC_PRIVATE_KEY' + self.nonce.into(),
         }
@@ -819,7 +835,7 @@ pub(crate) impl TestImpl of TestTrait {
     fn mock_new_enc_address(ref self: Test) -> EncUserAddr {
         self.nonce += 1;
         EncUserAddr {
-            compliance_public_key: self.compliance_public_key,
+            compliance_public_key: self.compliance.public_key,
             ephemeral_pubkey: 'EPHEMERAL_PUBKEY' + self.nonce.into(),
             enc_user_addr: 'ENC_USER_ADDR' + self.nonce.into(),
         }
@@ -885,9 +901,9 @@ pub(crate) impl TestImpl of TestTrait {
 
     fn replace_compliance_key(ref self: Test) {
         self.nonce += 1;
-        self.compliance_private_key = 'COMPLIANCE_PRIVATE_KEY' + self.nonce.into();
-        self.compliance_public_key = derive_public_key(private_key: self.compliance_private_key);
-        self.privacy.set_compliance_public_key(compliance_public_key: self.compliance_public_key);
+        self.compliance.private_key = 'COMPLIANCE_PRIVATE_KEY' + self.nonce.into();
+        self.compliance.public_key = derive_public_key(private_key: self.compliance.private_key);
+        self.privacy.set_compliance_public_key(compliance_public_key: self.compliance.public_key);
     }
 }
 
@@ -1087,7 +1103,10 @@ impl DefaultTestImpl of Default<Test> {
         let compliance_private_key = 'COMPLIANCE_PRIVATE_KEY';
         let compliance_public_key = derive_public_key(private_key: compliance_private_key);
         let privacy = deploy_privacy(:governance_admin, :compliance_public_key);
-        Test { privacy, nonce: Zero::zero(), compliance_private_key, compliance_public_key }
+        let compliance = Compliance {
+            private_key: compliance_private_key, public_key: compliance_public_key,
+        };
+        Test { privacy, nonce: Zero::zero(), compliance }
     }
 }
 
