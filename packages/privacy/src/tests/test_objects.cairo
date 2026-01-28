@@ -164,7 +164,7 @@ fn test_token_balances_assert_valid_empty() {
 fn test_token_balances_negative_intermediate_balance_from_zero() {
     let token = 'TOKEN'.try_into().unwrap();
     let mut token_balances: TokenBalances = Default::default();
-    token_balances.subtract_balance(token: token, amount: 1);
+    token_balances.subtract_balance(:token, amount: 1);
 }
 
 #[test]
@@ -172,8 +172,8 @@ fn test_token_balances_negative_intermediate_balance_from_zero() {
 fn test_token_balances_negative_intermediate_balance() {
     let token = 'TOKEN'.try_into().unwrap();
     let mut token_balances: TokenBalances = Default::default();
-    token_balances.add_balance(token: token, amount: 1);
-    token_balances.subtract_balance(token: token, amount: 2);
+    token_balances.add_balance(:token, amount: 1);
+    token_balances.subtract_balance(:token, amount: 2);
 }
 
 #[test]

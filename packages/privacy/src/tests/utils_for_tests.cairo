@@ -22,7 +22,7 @@ use privacy::interface::{
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
-    ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
+    TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
@@ -48,6 +48,23 @@ use starkware_utils_testing::test_utils::{
     set_account_as_security_agent, set_account_as_token_admin,
 };
 
+#[generate_trait]
+pub(crate) impl CreateNoteInputIntoServerAction of IntoServerActionTrait {
+    fn into_server_action(self: @CreateNoteInput, user: User) -> ServerAction {
+        let (note_id, note_value) = user.compute_note(create_note_input: *self);
+        let storage_path = map_entry_address(
+            map_selector: selector!("notes"), keys: [note_id].span(),
+        );
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: storage_path, value: [note_value.enc_value].span() },
+        )
+    }
+
+    fn into_server_actions(self: @CreateNoteInput, user: User) -> Span<ServerAction> {
+        [self.into_server_action(:user)].span()
+    }
+}
+
 pub(crate) mod constants {
     use core::num::traits::Pow;
     use starknet::ContractAddress;
@@ -58,37 +75,6 @@ pub(crate) mod constants {
     pub const DEFAULT_AMOUNT: u128 = 10_u128.pow(DECIMALS.into());
 }
 
-// TODO: Consider removing this struct.
-/// An encrypted note, to be written to storage.
-#[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct EncNote {
-    /// The note's id.
-    pub id: felt252,
-    /// The encrypted amount of the note.
-    // TODO: Rename.
-    pub enc_amount: felt252,
-}
-
-pub(crate) impl EncNoteIntoNoteImpl of Into<EncNote, Note> {
-    fn into(self: EncNote) -> Note {
-        Note { enc_value: self.enc_amount, token: Zero::zero() }
-    }
-}
-
-#[generate_trait]
-pub(crate) impl EncNoteImpl of EncNoteTrait {
-    fn to_server_action(self: @EncNote) -> ServerAction {
-        let storage_address = map_entry_address(
-            map_selector: selector!("notes"), keys: [*self.id].span(),
-        );
-        let note: Note = (*self).into();
-        note.enc_value.to_write_once_action(:storage_address)
-    }
-
-    fn to_server_actions(self: @EncNote) -> Span<ServerAction> {
-        [self.to_server_action()].span()
-    }
-}
 
 #[derive(Copy, Drop)]
 pub(crate) struct Roles {
@@ -464,22 +450,23 @@ pub(crate) impl UserImpl of UserTrait {
         (salt_u256 % TWO_POW_120.into()).try_into().unwrap()
     }
 
-    fn create_note(self: @User, note: CreateNoteInput) -> Span<ServerAction> {
-        self.client_execute([ClientAction::CreateNote(note)].span())
+    fn create_note(self: @User, create_note_input: CreateNoteInput) -> Span<ServerAction> {
+        self.client_execute([ClientAction::CreateNote(create_note_input)].span())
     }
 
-    fn internal_create_note(self: @User, note: CreateNoteInput) -> Span<ServerAction> {
+    fn internal_create_note(self: @User, create_note_input: CreateNoteInput) -> Span<ServerAction> {
         interact_with_state(
             *self.privacy.address,
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
-                token_balances.add_balance(token: note.token, amount: note.amount);
+                token_balances
+                    .add_balance(token: create_note_input.token, amount: create_note_input.amount);
                 state
                     .create_note(
                         sender_addr: *self.address,
                         sender_private_key: *self.private_key,
-                        input: note,
+                        input: create_note_input,
                         ref :token_balances,
                     )
             },
@@ -487,8 +474,8 @@ pub(crate) impl UserImpl of UserTrait {
             .span()
     }
 
-    fn cheat_create_note_e2e(self: @User, note: CreateNoteInput) {
-        self.privacy.server.execute_actions(actions: self.internal_create_note(note));
+    fn cheat_create_note_e2e(self: @User, create_note_input: CreateNoteInput) {
+        self.privacy.server.execute_actions(actions: self.internal_create_note(create_note_input));
     }
 
     fn compute_channel_key(self: @User, recipient: User) -> felt252 {
@@ -550,20 +537,29 @@ pub(crate) impl UserImpl of UserTrait {
         encrypt_subchannel_info(:channel_key, :index, token: token_address, :salt)
     }
 
-    fn compute_enc_note(
-        self: @User,
-        recipient: User,
-        token_address: ContractAddress,
-        index: usize,
-        amount: u128,
-        salt: u128,
-    ) -> EncNote {
-        let channel_key = self.compute_channel_key(:recipient);
-        let note_id = compute_note_id(:channel_key, token: token_address, :index);
-        let enc_amount = encrypt_note_amount(
-            :channel_key, token: token_address, :index, :salt, :amount,
+    /// Computes the note ID and Note for a given CreateNoteInput.
+    /// Returns (note_id, Note).
+    fn compute_note(self: @User, create_note_input: CreateNoteInput) -> (felt252, Note) {
+        let channel_key = compute_channel_key(
+            sender_addr: *self.address,
+            sender_private_key: *self.private_key,
+            recipient_addr: create_note_input.recipient_addr,
+            recipient_public_key: create_note_input.recipient_public_key,
         );
-        EncNote { id: note_id, enc_amount }
+        let note_id = compute_note_id(
+            :channel_key, token: create_note_input.token, index: create_note_input.index,
+        );
+        let note_value = Note {
+            enc_value: encrypt_note_amount(
+                :channel_key,
+                token: create_note_input.token,
+                index: create_note_input.index,
+                salt: create_note_input.salt,
+                amount: create_note_input.amount,
+            ),
+            token: Zero::zero(),
+        };
+        (note_id, note_value)
     }
 
     fn compute_enc_user_addr(self: @User, random: felt252) -> EncUserAddr {
@@ -772,10 +768,10 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     /// Cheat deposit in the server side (no client side).
-    fn cheat_deposit(self: @User, token: Token, amount: u128, note: EncNote) {
+    fn cheat_deposit(self: @User, token: Token, amount: u128, create_note_input: CreateNoteInput) {
         self.approve(:token, amount: amount.into());
         let actions = [
-            note.to_server_action(),
+            create_note_input.into_server_action(user: *self),
             ServerAction::TransferFrom(
                 TransferFromInput {
                     sender_addr: *self.address, token: token.contract_address(), amount,
@@ -911,11 +907,12 @@ pub(crate) impl TestImpl of TestTrait {
     }
 
     /// Mock function to generate a new note.
-    fn mock_new_note(ref self: Test, amount: u128) -> EncNote {
+    /// Returns (note_id, Note).
+    fn mock_new_note(ref self: Test, amount: u128) -> (felt252, Note) {
         self.nonce += 1;
-        let id = 'NOTE_ID' + self.nonce.into();
-        let enc_amount = 'ENC_AMOUNT' + amount.into() + self.nonce.into();
-        EncNote { id, enc_amount }
+        let note_id = 'NOTE_ID' + self.nonce.into();
+        let enc_value = 'ENC_VALUE' + amount.into() + self.nonce.into();
+        (note_id, Note { enc_value, token: Zero::zero() })
     }
 
     /// Mock function to generate a new nullifier.
@@ -1011,8 +1008,22 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     /// Cheat create a note in the server side (no client side).
-    fn cheat_create_note(self: @PrivacyCfg, note: EncNote) {
-        self.server.execute_actions(actions: note.to_server_actions())
+    fn cheat_create_note(self: @PrivacyCfg, note_id: felt252, note: Note) {
+        let storage_path = map_entry_address(
+            map_selector: selector!("notes"), keys: [note_id].span(),
+        );
+        self
+            .server
+            .execute_actions(
+                actions: [
+                    ServerAction::WriteOnce(
+                        WriteOnceInput {
+                            storage_address: storage_path, value: [note.enc_value].span(),
+                        },
+                    ),
+                ]
+                    .span(),
+            )
     }
 
     fn get_note(self: @PrivacyCfg, note_id: felt252) -> felt252 {
