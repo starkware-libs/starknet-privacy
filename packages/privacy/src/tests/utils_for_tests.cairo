@@ -838,6 +838,13 @@ pub(crate) impl ComplianceImpl of ComplianceTrait {
     }
 }
 
+impl DefaultComplianceImpl of Default<Compliance> {
+    fn default() -> Compliance {
+        let private_key = 'COMPLIANCE_PRIVATE_KEY';
+        let public_key = derive_public_key(:private_key);
+        Compliance { private_key, public_key }
+    }
+}
 
 #[derive(Drop, Copy)]
 pub(crate) struct Test {
@@ -1160,20 +1167,16 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
 impl DefaultTestImpl of Default<Test> {
     fn default() -> Test {
-        let governance_admin = 'GOVERNANCE_ADMIN'.try_into().unwrap();
-        let compliance_private_key = 'COMPLIANCE_PRIVATE_KEY';
-        let compliance_public_key = derive_public_key(private_key: compliance_private_key);
-        let privacy = deploy_privacy(:governance_admin, :compliance_public_key);
-        let compliance = Compliance {
-            private_key: compliance_private_key, public_key: compliance_public_key,
-        };
+        let compliance: Compliance = Default::default();
+        let roles: Roles = Default::default();
+        let privacy = deploy_privacy(:roles, compliance_public_key: compliance.public_key);
         Test { privacy, nonce: Zero::zero(), compliance }
     }
 }
 
-pub(crate) fn deploy_privacy(
+pub(crate) fn _deploy_privacy(
     governance_admin: ContractAddress, compliance_public_key: felt252,
-) -> PrivacyCfg {
+) -> ContractAddress {
     let contract_class_hash = declare(contract: "Privacy")
         .unwrap_syscall()
         .contract_class()
@@ -1186,7 +1189,15 @@ pub(crate) fn deploy_privacy(
         :compliance_public_key,
     )
         .expect('Privacy deployment failed');
-    let roles = _set_privacy_roles(contract: contract_address, :governance_admin);
+    contract_address
+}
+
+/// Deploy a new privacy contract and set the roles.
+fn deploy_privacy(roles: Roles, compliance_public_key: felt252) -> PrivacyCfg {
+    let contract_address = _deploy_privacy(
+        governance_admin: roles.governance_admin, compliance_public_key: compliance_public_key,
+    );
+    let roles = _set_privacy_roles(contract: contract_address, :roles);
     PrivacyCfg {
         address: contract_address,
         roles,
@@ -1201,13 +1212,13 @@ pub(crate) fn deploy_privacy(
     }
 }
 
-fn _set_privacy_roles(contract: ContractAddress, governance_admin: ContractAddress) -> Roles {
-    let mut roles: Roles = Default::default();
-    roles.governance_admin = governance_admin;
+fn _set_privacy_roles(contract: ContractAddress, roles: Roles) -> Roles {
     set_account_as_security_agent(
-        :contract, account: roles.security_agent, security_admin: governance_admin,
+        :contract, account: roles.security_agent, security_admin: roles.governance_admin,
     );
-    set_account_as_app_role_admin(:contract, account: roles.app_role_admin, :governance_admin);
+    set_account_as_app_role_admin(
+        :contract, account: roles.app_role_admin, governance_admin: roles.governance_admin,
+    );
     set_account_as_token_admin(
         :contract, account: roles.token_admin, app_role_admin: roles.app_role_admin,
     );
