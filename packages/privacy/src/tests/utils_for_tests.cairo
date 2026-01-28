@@ -27,7 +27,7 @@ use privacy::objects::{
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
-use privacy::utils::constants::TWO_POW_120;
+use privacy::utils::constants::{OK_WRAPPER, TWO_POW_120};
 use privacy::utils::{
     derive_public_key, encrypt_note_amount, encrypt_outgoing_channel_info, encrypt_private_key,
     encrypt_subchannel_info, encrypt_user_addr, is_canonical_key,
@@ -35,7 +35,7 @@ use privacy::utils::{
 use snforge_std::{
     CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
     Token, TokenTrait, cheat_resource_bounds, declare, interact_with_state, map_entry_address,
-    set_balance, spy_messages_to_l1,
+    set_balance, spy_messages_to_l1, store,
 };
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
@@ -44,7 +44,7 @@ use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
 use starkware_utils_testing::test_utils::{
-    Deployable, TokenConfig, cheat_caller_address_once, set_account_as_app_role_admin,
+    Deployable, TokenConfig, cheat_caller_address_once, generic_load, set_account_as_app_role_admin,
     set_account_as_security_agent, set_account_as_token_admin,
 };
 
@@ -177,6 +177,26 @@ pub(crate) impl UserImpl of UserTrait {
             .execute_view(
                 user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
             )
+    }
+
+    fn execute_and_panic(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
+        let result = self
+            .privacy
+            .safe_execute_and_panic(
+                user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
+            );
+        assert!(result.is_err());
+        let mut panic_data = result.unwrap_err();
+        let len = panic_data.len();
+        assert_eq!(*panic_data[len - 1], OK_WRAPPER);
+        assert_eq!(*panic_data[0], OK_WRAPPER);
+        #[allow(manual_assert)]
+        let _ = panic_data.pop_front();
+        let mut serialized_server_actions = panic_data.span();
+        let server_actions: Span<ServerAction> = Serde::deserialize(ref serialized_server_actions)
+            .expect('DESERIALIZE_FAILED');
+        self.privacy.revert_actions_for_testing(actions: server_actions);
+        server_actions
     }
 
     fn transfer(
@@ -1366,6 +1386,50 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self: @PrivacyCfg, compliance_public_key: felt252,
     ) -> Result<(), Array<felt252>> {
         self.safe_compliance.set_compliance_public_key(:compliance_public_key)
+    }
+
+    fn revert_actions_for_testing(self: @PrivacyCfg, actions: Span<ServerAction>) {
+        for action in actions {
+            match *action {
+                ServerAction::WriteOnce(WriteOnceInput {
+                    mut storage_address, value, ..,
+                }) => {
+                    for _ in value {
+                        self.store_zero(:storage_address);
+                        storage_address += 1;
+                    }
+                },
+                ServerAction::AppendToVec(AppendToVecInput {
+                    recipient_addr, ..,
+                }) => { self.pop_from_vec(:recipient_addr); },
+                _ => {},
+            }
+        }
+    }
+
+    fn store_zero(self: @PrivacyCfg, storage_address: felt252) {
+        store(target: *self.address, :storage_address, serialized_value: [Zero::zero()].span());
+    }
+
+    fn pop_from_vec(self: @PrivacyCfg, recipient_addr: ContractAddress) {
+        let target = *self.address;
+        let vector_storage_address = map_entry_address(
+            map_selector: selector!("recipient_channels"), keys: [recipient_addr.into()].span(),
+        );
+        let length: u64 = generic_load(:target, storage_address: vector_storage_address);
+        let new_length = length - 1;
+        // Store new length.
+        store(
+            :target,
+            storage_address: vector_storage_address,
+            serialized_value: [new_length.into()].span(),
+        );
+        // Store Zero.
+        let storage_address = map_entry_address(
+            map_selector: vector_storage_address, keys: [new_length.into()].span(),
+        );
+        self.store_zero(:storage_address);
+        self.store_zero(storage_address: storage_address + 1);
     }
 }
 

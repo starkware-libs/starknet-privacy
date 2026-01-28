@@ -1299,8 +1299,6 @@ fn test_open_channel_multiple_channels_same_recipient() {
     assert_eq!(c2_output, expected_actions_2);
 }
 
-// TODO: Test actions with same random.
-
 #[test]
 fn test_open_channel_decrypt_channel_info() {
     let mut test = Default::default();
@@ -2364,7 +2362,7 @@ fn test_create_note_use_note_zero_amount() {
     assert_eq!(user_1.privacy.get_note(:note_id), Zero::zero());
     user_1.privacy.execute_actions(actions: server_actions);
     assert_eq!(user_1.privacy.get_note(:note_id), expected_note.enc_value);
-    // Use note with zero amount.
+    // Use note + create note with zero amount.
     let use_note_input = UseNoteInput {
         channel_key: user_1.compute_channel_key(recipient: user_2),
         token: token_address,
@@ -2399,7 +2397,29 @@ fn test_create_note_use_note_zero_amount() {
     user_2.privacy.execute_actions(actions: server_actions);
     assert!(user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(user_2.privacy.get_note(:note_id), expected_note.enc_value);
-    // TODO: Test only use note with zero amount.
+    // Use note with zero amount.
+    let channel_key = user_2.compute_channel_key(recipient: user_2);
+    let use_note_input = UseNoteInput { channel_key, token: token_address, note_index: 0 };
+    let client_actions = [ClientAction::UseNote(use_note_input)].span();
+    let server_actions = user_2.client_execute(:client_actions);
+    let expected_nullifier = user_2
+        .compute_nullifier(sender: user_2, :token_address, note_index: 0);
+    let nullifier_storage_path = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
+    );
+    let expected_server_actions = [
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: nullifier_storage_path, value: [true.into()].span() },
+        ),
+    ]
+        .span();
+    assert_eq!(server_actions, expected_server_actions);
+    assert!(!user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
+    let note_id = compute_note_id(:channel_key, token: token_address, index: 0);
+    assert_eq!(user_2.privacy.get_note(:note_id), Zero::zero());
+    user_2.privacy.execute_actions(actions: server_actions);
+    assert!(user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
+    assert_eq!(user_2.privacy.get_note(:note_id), expected_note.enc_value);
 }
 
 #[test]
@@ -3011,11 +3031,6 @@ fn test_use_note_find_nullifier() {
 
     assert!(user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
 }
-// TODO: Test use note with all fields of note same but one field different, for each field - test
-// nullifier are different.
-// TODO: Test create note with all fields of note same but one field different, for each field -
-// test note_ids (and maybe enc_amount) are different.
-// TODO: Same for subchannels, channels, etc.
 
 #[test]
 fn test_withdraw_different_targets() {
@@ -3224,6 +3239,8 @@ fn test_client_execute_set_viewing_key() {
     assert_eq!(actions, expected_actions);
     let view_actions = user_1.execute_view(:client_actions);
     assert_eq!(view_actions, actions);
+    let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    assert_eq!(panic_data_actions, actions);
     assert_eq!(user_1.get_public_key(), Zero::zero());
     assert_eq!(user_1.get_enc_private_key().ephemeral_pubkey, Zero::zero());
     assert_eq!(user_1.get_enc_private_key().enc_private_key, Zero::zero());
@@ -3310,6 +3327,8 @@ fn test_client_execute_open_channel() {
     assert_eq!(actions, expected_actions);
     let view_actions = user_1.execute_view(:client_actions);
     assert_eq!(view_actions, actions);
+    let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.channel_exists(channel_id: expected_channel_id));
     assert_eq!(user_2.get_num_of_channels(), 0);
     let result = user_2.safe_get_channel_info(channel_index: 0);
@@ -3376,6 +3395,8 @@ fn test_client_execute_open_subchannel() {
     assert_eq!(actions, expected_actions);
     let view_actions = user_1.execute_view(:client_actions);
     assert_eq!(view_actions, actions);
+    let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.subchannel_exists(subchannel_id: expected_subchannel_id));
     assert_eq!(
         test.privacy.get_subchannel_info(subchannel_key: expected_subchannel_key), Zero::zero(),
@@ -3429,6 +3450,8 @@ fn test_client_execute_deposit_create_note() {
     assert_eq!(actions, expected_actions);
     let view_actions = user_1.execute_view(:client_actions);
     assert_eq!(view_actions, actions);
+    let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    assert_eq!(panic_data_actions, actions);
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
     assert_eq!(token.balance_of(address: user_1.address), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
@@ -3484,6 +3507,8 @@ fn test_client_execute_use_note_create_note() {
     assert_eq!(actions, expected_actions);
     let view_actions = user_2.execute_view(:client_actions);
     assert_eq!(view_actions, actions);
+    let panic_data_actions = user_2.execute_and_panic(:client_actions);
+    assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
@@ -3547,6 +3572,8 @@ fn test_client_execute_use_note_withdraw() {
     assert_eq!(actions, expected_actions);
     let view_actions = user_2.execute_view(:client_actions);
     assert_eq!(view_actions, actions);
+    let panic_data_actions = user_2.execute_and_panic(:client_actions);
+    assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
@@ -4324,6 +4351,9 @@ fn test_client_execute_writes() {
     // Assert view actions are the same.
     let view_actions = user.execute_view(:client_actions);
     assert_eq!(view_actions, server_actions);
+    // Test panic data matches the server actions.
+    let panic_data_actions = user.execute_and_panic(:client_actions);
+    assert_eq!(panic_data_actions, server_actions);
 
     // Test CreateNote writes.
     user.increase_token_balance(:token, :amount);
