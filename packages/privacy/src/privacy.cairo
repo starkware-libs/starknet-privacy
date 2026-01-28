@@ -127,27 +127,37 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn __validate__(
-            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+            self: @ContractState,
+            user_addr: ContractAddress,
+            user_private_key: felt252,
+            client_actions: Span<ClientAction>,
         ) -> felt252 {
             VALIDATED
         }
 
         fn __execute__(
-            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+            ref self: ContractState,
+            user_addr: ContractAddress,
+            user_private_key: felt252,
+            client_actions: Span<ClientAction>,
         ) {
             let execution_info = get_execution_info();
             assert_valid_execution_info(:execution_info);
-            let server_actions = self.execute_view(:user_addr, :client_actions);
+            let server_actions = self.execute_view(:user_addr, :user_private_key, :client_actions);
             // TODO: Test inner `is_valid_signature` panics.
             assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
             send_message_to_server(:server_actions);
         }
 
         fn execute_view(
-            self: @ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+            self: @ContractState,
+            user_addr: ContractAddress,
+            user_private_key: felt252,
+            client_actions: Span<ClientAction>,
         ) -> Span<ServerAction> {
             let mut calldata = array![];
             user_addr.serialize(ref calldata);
+            user_private_key.serialize(ref calldata);
             client_actions.serialize(ref calldata);
             let syscall_result = call_contract_syscall(
                 address: get_contract_address(),
@@ -164,9 +174,14 @@ pub mod Privacy {
         /// to prevent injection of `OK_WRAPPER` into the panic data.
         // TODO: Add tests (verify always panics with appropriate wrapping).
         fn execute_and_panic(
-            ref self: ContractState, user_addr: ContractAddress, client_actions: Span<ClientAction>,
+            ref self: ContractState,
+            user_addr: ContractAddress,
+            user_private_key: felt252,
+            client_actions: Span<ClientAction>,
         ) {
             assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            assert(user_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
+            assert(is_canonical_key(key: user_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
             // TODO: Consider extracting logic to internal `main` function.
             let mut server_actions: Array<ServerAction> = array![];
             let mut current_phase = ClientActionTrait::ACCOUNT_PHASE;
@@ -177,10 +192,16 @@ pub mod Privacy {
                 client_action.assert_and_set_phase(ref :current_phase);
                 let (actions, should_execute) = match *client_action {
                     ClientAction::SetViewingKey(input) => (
-                        self.set_viewing_key(:user_addr, :input), true,
+                        self.set_viewing_key(:user_addr, :user_private_key, :input), true,
                     ),
                     ClientAction::OpenChannel(input) => (
-                        self.open_channel(sender_addr: user_addr, :input), true,
+                        self
+                            .open_channel(
+                                sender_addr: user_addr,
+                                sender_private_key: user_private_key,
+                                :input,
+                            ),
+                        true,
                     ),
                     ClientAction::OpenSubchannel(input) => (
                         self.open_subchannel(sender_addr: user_addr, :input), true,
@@ -189,10 +210,24 @@ pub mod Privacy {
                         self.deposit(:user_addr, :input, ref :token_balances), false,
                     ),
                     ClientAction::CreateNote(input) => (
-                        self.create_note(owner_addr: user_addr, :input, ref :token_balances), true,
+                        self
+                            .create_note(
+                                sender_addr: user_addr,
+                                sender_private_key: user_private_key,
+                                :input,
+                                ref :token_balances,
+                            ),
+                        true,
                     ),
                     ClientAction::UseNote(input) => (
-                        self.use_note(owner_addr: user_addr, :input, ref :token_balances), true,
+                        self
+                            .use_note(
+                                owner_addr: user_addr,
+                                owner_private_key: user_private_key,
+                                :input,
+                                ref :token_balances,
+                            ),
+                        true,
                     ),
                     ClientAction::Withdraw(input) => (
                         self.withdraw(:user_addr, :input, ref :token_balances), false,
@@ -213,25 +248,26 @@ pub mod Privacy {
 
     #[generate_trait]
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
-        /// Assumes `user_addr` is non-zero (checked in `__execute__`).
+        /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical
+        /// (checked in `__execute__`).
         fn set_viewing_key(
-            self: @ContractState, user_addr: ContractAddress, input: SetViewingKeyInput,
+            self: @ContractState,
+            user_addr: ContractAddress,
+            user_private_key: felt252,
+            input: SetViewingKeyInput,
         ) -> Array<ServerAction> {
-            let private_key = input.private_key;
             let random = input.random;
-            assert(private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
-            assert(is_canonical_key(key: private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
 
             // Derive the public key from the private key.
-            let user_public_key = derive_public_key(:private_key);
+            let user_public_key = derive_public_key(private_key: user_private_key);
             assert(user_public_key.is_non_zero(), internal_errors::ZERO_DERIVED_PUBLIC_KEY);
 
             // Encrypt the private key for the compliance.
             let enc_private_key = encrypt_private_key(
                 ephemeral_secret: random,
                 compliance_public_key: self.compliance_public_key.read(),
-                :private_key,
+                private_key: user_private_key,
             );
             assert(enc_private_key.is_all_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
@@ -254,23 +290,22 @@ pub mod Privacy {
             ]
         }
 
-        /// Assumes `sender_addr` is non-zero (checked in `__execute__`).
+        /// Assumes `sender_addr` is non-zero and `sender_private_key` is non-zero and canonical
+        /// (checked in `__execute__`).
         fn open_channel(
-            self: @ContractState, sender_addr: ContractAddress, input: OpenChannelInput,
+            self: @ContractState,
+            sender_addr: ContractAddress,
+            sender_private_key: felt252,
+            input: OpenChannelInput,
         ) -> Array<ServerAction> {
-            let sender_private_key = input.sender_private_key;
             let recipient_addr = input.recipient_addr;
             let recipient_public_key = input.recipient_public_key;
             let index = input.index;
             let random = input.random;
             let salt = input.salt;
-            assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
-
-            // Assert sender private key is canonical.
-            assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
 
             // Assert sender is registered with the given private key.
             let sender_public_key = self.public_key.read(sender_addr);
@@ -419,6 +454,7 @@ pub mod Privacy {
             ]
         }
 
+        /// Assumes `user_addr` is non-zero (checked in `__execute__`).
         fn withdraw(
             self: @ContractState,
             user_addr: ContractAddress,
@@ -456,21 +492,20 @@ pub mod Privacy {
         }
 
         /// Returns the server action to use a note.
-        /// Assumes `owner_addr` is non-zero (checked in `__execute__`).
+        /// Assumes `owner_addr` is non-zero and `owner_private_key` is non-zero and canonical
+        /// (checked in `__execute__`).
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
+            owner_private_key: felt252,
             input: UseNoteInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            let owner_private_key = input.owner_private_key;
             let channel_key = input.channel_key;
             let token = input.token;
             let index = input.note_index;
-            assert(owner_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(is_canonical_key(key: owner_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
 
             // Assert subchannel exists and is connected to owner's address and public key.
             let recipient_public_key = derive_public_key(private_key: owner_private_key);
@@ -508,35 +543,31 @@ pub mod Privacy {
         }
 
         /// Returns the server action to create a note.
-        /// Assumes `owner_addr` is non-zero (checked in `__execute__`).
+        /// Assumes `sender_addr` is non-zero and `sender_private_key` is non-zero and canonical
+        /// (checked in `__execute__`).
         fn create_note(
             self: @ContractState,
-            owner_addr: ContractAddress,
+            sender_addr: ContractAddress,
+            sender_private_key: felt252,
             input: CreateNoteInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            let sender_private_key = input.sender_private_key;
             let recipient_addr = input.recipient_addr;
             let recipient_public_key = input.recipient_public_key;
             let token = input.token;
             let amount = input.amount;
             let index = input.index;
             let salt = input.salt;
-            assert(sender_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(is_canonical_key(key: sender_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
             // Assert valid salt.
             assert(salt >= CREATE_NOTE_MIN_SALT, errors::SALT_TOO_SMALL);
             assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
 
             // Compute channel key.
             let channel_key = compute_channel_key(
-                sender_addr: owner_addr,
-                :sender_private_key,
-                :recipient_addr,
-                :recipient_public_key,
+                :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key,
             );
 
             // Assert subchannel exists.
