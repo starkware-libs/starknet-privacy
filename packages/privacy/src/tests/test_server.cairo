@@ -30,8 +30,8 @@ fn test_constructor() {
     assert_eq!(test.privacy.get_compliance_public_key(), test.compliance_public_key);
     // Test roles.
     let contract_roles = IRolesDispatcher { contract_address: test.privacy.address };
-    assert!(contract_roles.is_governance_admin(account: test.privacy.governance_admin));
-    assert!(contract_roles.is_security_admin(account: test.privacy.governance_admin));
+    assert!(contract_roles.is_governance_admin(account: test.privacy.roles.governance_admin));
+    assert!(contract_roles.is_security_admin(account: test.privacy.roles.governance_admin));
     let user = test.new_user();
     assert!(!contract_roles.is_governance_admin(account: user.address));
     assert!(!contract_roles.is_security_admin(account: user.address));
