@@ -6,9 +6,11 @@ use crate::decryption::DecryptionError;
 use crate::storage::StorageError;
 
 pub mod incoming_channels;
+pub mod notes;
 pub mod subchannels;
 
 pub use incoming_channels::{discover_incoming_channels, DiscoveryResult, IncomingChannel};
+pub use notes::{discover_notes, DecryptedNote, NotesDiscoveryResult};
 pub use subchannels::{discover_subchannels, Subchannel, SubchannelDiscoveryResult};
 
 /// Errors that can occur during channel discovery.
