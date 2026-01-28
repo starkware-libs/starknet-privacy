@@ -184,8 +184,6 @@ pub trait IClient<T> {
     /// **Errors for [`Deposit`](privacy::actions::ClientAction::Deposit) action:**
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
     /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if the deposit amount is zero.
-    /// - `INSUFFICIENT_BALANCE`: Thrown if the sender has insufficient token balance.
-    /// - `INSUFFICIENT_ALLOWANCE`: Thrown if the sender has insufficient token allowance.
     ///
     /// **Errors for [`UseNote`](privacy::actions::ClientAction::UseNote) action:**
     /// - [`ZERO_CHANNEL_KEY`](privacy::errors::ZERO_CHANNEL_KEY): Thrown if the channel key is
