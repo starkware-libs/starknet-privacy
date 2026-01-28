@@ -167,11 +167,11 @@ fn test_get_outgoing_channel_info() {
 #[test]
 fn test_get_note() {
     let mut test: Test = Default::default();
-    let note = test.mock_new_note(amount: DEFAULT_AMOUNT);
-    assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
-    test.privacy.cheat_create_note(:note);
-    let enc_value = test.privacy.get_note(note_id: note.id);
-    assert_eq!(enc_value, note.enc_amount);
+    let (note_id, note) = test.mock_new_note(amount: DEFAULT_AMOUNT);
+    assert_eq!(test.privacy.get_note(note_id: note_id), Zero::zero());
+    test.privacy.cheat_create_note(:note_id, :note);
+    let enc_value = test.privacy.get_note(:note_id);
+    assert_eq!(enc_value, note.enc_value);
 }
 
 #[test]

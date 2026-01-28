@@ -338,43 +338,45 @@ fn test_execute_write_once_outgoing_channel_assertions() {
 #[test]
 fn test_execute_write_once_note() {
     let mut test: Test = Default::default();
-    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    let note_value = note.into();
-    assert!(note.enc_amount.is_non_zero());
+    let (note_id, note) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    assert!(note.enc_value.is_non_zero());
 
     // Verify stored note is zero before writing.
     let storage_address = map_entry_address(
-        map_selector: selector!("notes"), keys: [note.id].span(),
+        map_selector: selector!("notes"), keys: [note_id].span(),
     );
     let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(current_value, Note { enc_value: Zero::zero(), token: Zero::zero() });
 
     // Write stored note.
-    let actions: Array<ServerAction> = array![note_value.to_write_once_action(:storage_address)];
+    let actions: Array<ServerAction> = array![
+        note.enc_value.to_write_once_action(:storage_address),
+    ];
     test.privacy.execute_actions(actions.span());
 
     // Verify stored note was written.
     let written_value: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(written_value, note_value);
-    assert_eq!(test.privacy.get_note(note_id: note.id), note_value.enc_value);
+    assert_eq!(written_value, note);
+    assert_eq!(test.privacy.get_note(:note_id), note.enc_value);
 }
 
 #[test]
 fn test_execute_write_once_note_assertions() {
     let mut test: Test = Default::default();
-    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    let note_value = note.into();
-    assert!(note.enc_amount.is_non_zero());
+    let (note_id, note) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    assert!(note.enc_value.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
-        map_selector: selector!("notes"), keys: [note.id].span(),
+        map_selector: selector!("notes"), keys: [note_id].span(),
     );
-    let actions: Array<ServerAction> = array![note_value.to_write_once_action(:storage_address)];
+    let actions: Array<ServerAction> = array![
+        note.enc_value.to_write_once_action(:storage_address),
+    ];
     test.privacy.execute_actions(actions.span());
     let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
     // Verify the value was written
-    assert_eq!(current_value, note_value);
+    assert_eq!(current_value, note);
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -438,7 +440,7 @@ fn test_execute_transfer_from_assertions() {
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom(
             TransferFromInput {
-                sender_addr: user.address, token: token.contract_address(), amount: amount,
+                sender_addr: user.address, token: token.contract_address(), amount,
             },
         ),
     ];
@@ -450,7 +452,7 @@ fn test_execute_transfer_from_assertions() {
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom(
             TransferFromInput {
-                sender_addr: user.address, token: token.contract_address(), amount: amount,
+                sender_addr: user.address, token: token.contract_address(), amount,
             },
         ),
     ];
@@ -466,10 +468,17 @@ fn test_execute_transfer_to() {
     let amount = constants::DEFAULT_AMOUNT;
 
     // Supply tokens to the server (via deposit).
-    let user = test.new_user();
-    let note = test.mock_new_note(:amount);
+    let mut user = test.new_user();
+    let token_address = token.contract_address();
+    user.set_viewing_key_e2e();
+    user
+        .open_channel_with_token_e2e(
+            recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+    let note = user
+        .new_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
     user.increase_token_balance(:token, :amount);
-    user.cheat_deposit(:token, :amount, :note);
+    user.cheat_deposit(:token, :amount, create_note_input: note);
 
     // Verify balances before transfer.
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
