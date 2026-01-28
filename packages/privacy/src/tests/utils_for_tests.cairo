@@ -91,9 +91,28 @@ pub(crate) impl EncNoteImpl of EncNoteTrait {
 }
 
 #[derive(Copy, Drop)]
+pub(crate) struct Roles {
+    pub governance_admin: ContractAddress,
+    pub security_agent: ContractAddress,
+    pub app_role_admin: ContractAddress,
+    pub token_admin: ContractAddress,
+}
+
+impl DefaultRolesImpl of Default<Roles> {
+    fn default() -> Roles {
+        Roles {
+            governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
+            security_agent: 'SECURITY_AGENT'.try_into().unwrap(),
+            app_role_admin: 'APP_ROLE_ADMIN'.try_into().unwrap(),
+            token_admin: 'TOKEN_ADMIN'.try_into().unwrap(),
+        }
+    }
+}
+
+#[derive(Copy, Drop)]
 pub(crate) struct PrivacyCfg {
     pub address: ContractAddress,
-    pub governance_admin: ContractAddress,
+    pub roles: Roles,
     server: IServerDispatcher,
     safe_server: IServerSafeDispatcher,
     client: IClientDispatcher,
@@ -1040,7 +1059,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     fn pause(self: @PrivacyCfg) {
         cheat_caller_address_once(
-            contract_address: *self.address, caller_address: *self.governance_admin,
+            contract_address: *self.address, caller_address: *self.roles.security_agent,
         );
         IPausableDispatcher { contract_address: *self.address }.pause();
     }
@@ -1121,7 +1140,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     fn set_compliance_public_key(self: @PrivacyCfg, compliance_public_key: felt252) {
         cheat_caller_address_once(
-            contract_address: *self.address, caller_address: *self.governance_admin,
+            contract_address: *self.address, caller_address: *self.roles.token_admin,
         );
         self.compliance.set_compliance_public_key(:compliance_public_key);
     }
@@ -1162,10 +1181,10 @@ pub(crate) fn deploy_privacy(
         :compliance_public_key,
     )
         .expect('Privacy deployment failed');
-    _set_privacy_roles(contract: contract_address, :governance_admin);
+    let roles = _set_privacy_roles(contract: contract_address, :governance_admin);
     PrivacyCfg {
         address: contract_address,
-        governance_admin,
+        roles,
         server: IServerDispatcher { contract_address },
         safe_server: IServerSafeDispatcher { contract_address },
         client: IClientDispatcher { contract_address },
@@ -1177,15 +1196,17 @@ pub(crate) fn deploy_privacy(
     }
 }
 
-fn _set_privacy_roles(contract: ContractAddress, governance_admin: ContractAddress) {
-    // TODO: Use different address for different roles?
+fn _set_privacy_roles(contract: ContractAddress, governance_admin: ContractAddress) -> Roles {
+    let mut roles: Roles = Default::default();
+    roles.governance_admin = governance_admin;
     set_account_as_security_agent(
-        :contract, account: governance_admin, security_admin: governance_admin,
+        :contract, account: roles.security_agent, security_admin: governance_admin,
     );
-    set_account_as_app_role_admin(:contract, account: governance_admin, :governance_admin);
+    set_account_as_app_role_admin(:contract, account: roles.app_role_admin, :governance_admin);
     set_account_as_token_admin(
-        :contract, account: governance_admin, app_role_admin: governance_admin,
+        :contract, account: roles.token_admin, app_role_admin: roles.app_role_admin,
     );
+    roles
 }
 
 pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddress {
