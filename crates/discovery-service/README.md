@@ -70,6 +70,14 @@ npm test -- --run devnet.test.ts
 ```
 This generates `devnet-dump.json.gz` and `devnet-dump.metadata.json` in the fixtures directory.
 
+### Time-sensitive transactions in fixtures
+
+The SDK tests use SNIP-9 outside execution to simulate a paymaster flow. Outside execution transactions include time bounds (`execute_after` and `execute_before`) that are validated against `block.timestamp` during execution.
+
+When `devnet_load` replays the dump, it uses the current system time for new blocks rather than preserving the original timestamps. This causes outside execution transactions to fail with "SRC9: now >= execute_before" if the dump is replayed after the time window expires.
+
+**Workaround:** The test harness prepends a `devnet_setTime` JSON-RPC call to the dump before loading. This sets devnet's clock to the timestamp recorded in the metadata file, ensuring the replayed transactions execute within their valid time window. See `load_dump()` in `tests/common/devnet.rs`.
+
 ### Run integration tests
 ```bash
 cargo test -p discovery-service --test integration

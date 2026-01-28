@@ -3,8 +3,29 @@ name = "discovery-service"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "discovery_service"
+path = "src/lib.rs"
+
+[[bin]]
+name = "discovery-service"
+path = "src/main.rs"
+
 [dependencies]
+# Internal
+discovery-core = { path = "../discovery-core" }
+
+# Async
+async-trait = "0.1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync"] }
+
+# StarkNet
+starknet-core = "0.16"
+starknet-providers = "0.16"
+starknet-types-core = "0.2"
+url = "2"
+
+# CLI and logging
 clap = { version = "4", features = ["derive"] }
 dotenv = "0.15"
 tracing = "0.1"
@@ -12,6 +33,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
 anyhow = "1.0"
+expect-test = "1.5"
 flate2 = "1.0"
 libc = "0.2"
 reqwest = { version = "0.12", features = ["json"] }
