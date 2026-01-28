@@ -84,60 +84,50 @@ impl Devnet {
         bail!("devnet failed to start")
     }
 
-    /// Load dump from fixtures directory using metadata file.
-    /// Loads the dump state, then sets devnet time from metadata.
-    /// Returns metadata containing contract and alice addresses.
-    pub async fn load_dump(&mut self, fixtures_dir: &Path) -> Result<DumpMetadata> {
+    /// Read metadata from fixtures directory.
+    fn read_metadata(fixtures_dir: &Path) -> Result<DumpMetadata> {
         let metadata_path = fixtures_dir.join("devnet-dump.metadata.json");
         let metadata: DumpMetadata = serde_json::from_str(
             &fs::read_to_string(&metadata_path)
                 .with_context(|| format!("failed to read {}", metadata_path.display()))?,
         )?;
+        Ok(metadata)
+    }
+
+    /// Load dump from fixtures directory.
+    /// Prepends a devnet_setTime call to ensure correct block timestamps during replay.
+    pub async fn load_dump(&mut self, fixtures_dir: &Path) -> Result<DumpMetadata> {
+        let metadata = Self::read_metadata(fixtures_dir)?;
 
         let dump_path = fixtures_dir.join("devnet-dump.json.gz");
         let gz_bytes = fs::read(&dump_path)
             .with_context(|| format!("failed to read {}", dump_path.display()))?;
 
-        self.set_time(metadata.timestamp).await?;
-        self.load_dump_bytes(&gz_bytes).await?;
+        // Decompress
+        let mut decoder = GzDecoder::new(&gz_bytes[..]);
+        let mut json_bytes = Vec::new();
+        decoder.read_to_end(&mut json_bytes)?;
 
-        Ok(metadata)
-    }
+        // Parse as JSON array
+        let mut dump: Vec<serde_json::Value> = serde_json::from_slice(&json_bytes)?;
 
-    /// Set devnet block timestamp via devnet_setTime JSON-RPC.
-    async fn set_time(&self, timestamp: u64) -> Result<()> {
-        let resp: serde_json::Value = reqwest::Client::new()
-            .post(self.rpc_url())
-            .json(&serde_json::json!({
-                "jsonrpc": "2.0",
-                "id": 1,
-                "method": "devnet_setTime",
-                "params": { "time": timestamp }
-            }))
-            .send()
-            .await?
-            .json()
-            .await?;
+        // Prepend devnet_setTime call
+        let set_time_call = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "devnet_setTime",
+            "params": { "time": metadata.timestamp }
+        });
+        dump.insert(0, set_time_call);
 
-        if resp.get("error").is_some() {
-            bail!("devnet_setTime failed: {resp}");
-        }
-        Ok(())
-    }
-
-    /// Load gzipped dump bytes via devnet_load JSON-RPC.
-    async fn load_dump_bytes(&mut self, gz_bytes: &[u8]) -> Result<()> {
-        // Decompress to temp file
+        // Write modified dump to temp file
         let mut temp = NamedTempFile::new()?;
-        let mut decoder = GzDecoder::new(gz_bytes);
-        let mut buf = Vec::new();
-        decoder.read_to_end(&mut buf)?;
-        temp.write_all(&buf)?;
+        serde_json::to_writer(&mut temp, &dump)?;
         temp.flush()?;
 
         let path = temp.path().to_string_lossy().to_string();
 
-        // Call devnet_load
+        // Load via devnet_load
         let resp: serde_json::Value = reqwest::Client::new()
             .post(self.rpc_url())
             .json(&serde_json::json!({
@@ -156,7 +146,7 @@ impl Devnet {
         }
 
         self._temp_dump = Some(temp);
-        Ok(())
+        Ok(metadata)
     }
 
     pub fn rpc_url(&self) -> String {
