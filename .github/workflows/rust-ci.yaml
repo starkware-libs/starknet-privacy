@@ -52,5 +52,10 @@ jobs:
           npm run generate:cairo-refs
           cp tests/fixtures/cairo-reference-data.json ../crates/discovery-core/tests/fixtures/cairo-reference-data.json
 
+      - name: Install starknet-devnet via asdf
+        uses: asdf-vm/actions/install@v3
+        with:
+          tool_versions: starknet-devnet 0.7.1
+
       - name: Rust test
         run: cargo test --workspace --all-targets
