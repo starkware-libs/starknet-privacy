@@ -1,26 +1,21 @@
-name: Cairo CI
+name: Check Formatting
 
 on:
   workflow_call:
-  workflow_dispatch:
 
 jobs:
-  cairo_ci:
+  check_formatting:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: software-mansion/setup-scarb@v1
         with:
           scarb-version: "2.15.0"
 
-      - uses: foundry-rs/setup-snfoundry@v3
-        with:
-          starknet-foundry-version: "0.54.1"
-
       - name: Check formatting
-        run: scarb fmt -w --check
+        run: |
+          scarb fmt -w --check
 
       - name: Check unused imports and variables
         run: |
@@ -31,12 +26,3 @@ jobs:
             echo "$matches"
             exit 1
           fi
-
-      - name: Run tests
-        run: scarb test
-
-      - name: Cache Cairo build
-        uses: actions/cache/save@v4
-        with:
-          path: target/dev
-          key: cairo-build-${{ github.sha }}

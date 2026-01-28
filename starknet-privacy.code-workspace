@@ -6,12 +6,7 @@
     },
     {
       "name": "sdk (npm)",
-      "path": "sdk",
-      "settings": {
-        "typescript.workspaceTsconfigFile": "tsconfig.editor.json",
-        "typescript.enablePromptUseWorkspaceTsdk": false,
-        "typescript.tsdk": "node_modules/typescript/lib"
-      }
+      "path": "sdk"
     },
     {
       "name": "client (cairo)",
@@ -28,18 +23,7 @@
     "editor.defaultFormatter": "esbenp.prettier-vscode",
     "[typescript]": {
       "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
-    "[javascript]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
-    },
-    "[json]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
     }
-  },
-  "extensions": {
-    "recommendations": [
-      "esbenp.prettier-vscode"
-    ]
   }
 }
 
