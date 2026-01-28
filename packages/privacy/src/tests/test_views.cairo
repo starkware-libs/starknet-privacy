@@ -1,4 +1,5 @@
 use core::num::traits::Zero;
+use privacy::privacy::Privacy;
 use privacy::tests::utils_for_tests::constants::DEFAULT_AMOUNT;
 use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, UserTrait};
 use starkware_utils::components::replaceability::interface::{
@@ -24,7 +25,17 @@ fn test_constructor() {
     let contract_replaceability = IReplaceableDispatcher { contract_address: test.privacy.address };
     assert_eq!(contract_replaceability.get_upgrade_delay(), Zero::zero());
 }
-// TODO: Test constructor assertions.
+
+#[test]
+#[should_panic(expected: 'ZERO_COMPLIANCE_PUBLIC_KEY')]
+fn test_constructor_assertions() {
+    let mut state = Privacy::contract_state_for_testing();
+    Privacy::constructor(
+        ref state,
+        governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
+        compliance_public_key: Zero::zero(),
+    );
+}
 
 #[test]
 fn test_get_compliance_public_key() {

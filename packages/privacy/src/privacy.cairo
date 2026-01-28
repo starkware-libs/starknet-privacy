@@ -107,7 +107,7 @@ pub mod Privacy {
     }
 
     #[constructor]
-    fn constructor(
+    pub(crate) fn constructor(
         ref self: ContractState, governance_admin: ContractAddress, compliance_public_key: felt252,
     ) {
         self.roles.initialize(:governance_admin);

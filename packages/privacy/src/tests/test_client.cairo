@@ -3590,11 +3590,104 @@ fn test_internal_actions() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token_address = test.mock_new_token();
-    user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
+
+    // Set viewing key action.
+    let (random, actions) = user_1.internal_set_viewing_key_with_generated_random();
+    let enc_private_key = user_1.compute_enc_private_key(:random);
+    let public_key_storage_path = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
+    );
+    let enc_private_key_storage_path = map_entry_address(
+        map_selector: selector!("enc_private_key"), keys: [user_1.address.into()].span(),
+    );
+    let expected_actions = [
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: public_key_storage_path, value: [user_1.public_key].span(),
+            },
+        ),
+        enc_private_key.to_write_once_action(storage_address: enc_private_key_storage_path),
+        ServerAction::EmitViewingKeySet(
+            events::ViewingKeySet {
+                user_addr: user_1.address, public_key: user_1.public_key, enc_private_key,
+            },
+        ),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
+    user_1.set_viewing_key_e2e();
+
+    // Open channel action.
+    let (random_channel, salt_channel, actions) = user_1
+        .internal_open_channel_with_generated_random_and_salt(recipient: user_2, index: 0);
+    let channel_key = user_1.compute_channel_key(recipient: user_2);
+    let expected_enc_channel_info = encrypt_channel_info(
+        ephemeral_secret: random_channel,
+        recipient_public_key: user_2.public_key,
+        :channel_key,
+        sender_addr: user_1.address,
+    );
+    let expected_channel_id = user_1.compute_channel_id(recipient: user_2);
+    let public_key_storage_path = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
+    );
+    let channel_exists_storage_path = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
+    );
+    let expected_outgoing_channel_key = user_1.compute_outgoing_channel_key(index: 0);
+    let outgoing_channels_storage_path = map_entry_address(
+        map_selector: selector!("outgoing_channels"), keys: [expected_outgoing_channel_key].span(),
+    );
+    let expected_enc_outgoing_channel_info = user_1
+        .compute_enc_outgoing_channel_info(recipient: user_2, index: 0, salt: salt_channel);
+    let expected_actions = [
+        ServerAction::VerifyValue(
+            VerifyValueInput { storage_address: public_key_storage_path, value: user_2.public_key },
+        ),
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: channel_exists_storage_path, value: [true.into()].span(),
+            },
+        ),
+        ServerAction::AppendToVec(
+            AppendToVecInput {
+                recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
+            },
+        ),
+        expected_enc_outgoing_channel_info
+            .to_write_once_action(storage_address: outgoing_channels_storage_path),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
     user_1.open_channel_e2e(recipient: user_2, index: 0);
 
-    // TODO: Add missing actions here.
+    // Open subchannel action.
+    let (salt_subchannel, actions) = user_1
+        .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_address, index: 0);
+    let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
+    let subchannel_exists_storage_path = map_entry_address(
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
+    );
+    let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
+    let subchannel_tokens_storage_path = map_entry_address(
+        map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
+    );
+    let expected_enc_subchannel_info = user_1
+        .compute_enc_subchannel_info(
+            recipient: user_2, :token_address, index: 0, salt: salt_subchannel,
+        );
+    let expected_actions = [
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: subchannel_exists_storage_path, value: [true.into()].span(),
+            },
+        ),
+        expected_enc_subchannel_info
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 
     // Create note action.
     let amount = 1;
