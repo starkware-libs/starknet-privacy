@@ -55,7 +55,7 @@ fn test_set_compliance_public_key_assertions() {
 
     // Catch ZERO_COMPLIANCE_PUBLIC_KEY.
     cheat_caller_address_once(
-        contract_address: test.privacy.address, caller_address: test.privacy.governance_admin,
+        contract_address: test.privacy.address, caller_address: test.privacy.roles.token_admin,
     );
     let result = test.privacy.safe_set_compliance_public_key(compliance_public_key: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_COMPLIANCE_PUBLIC_KEY);
