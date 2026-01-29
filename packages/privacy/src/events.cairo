@@ -45,3 +45,10 @@ pub struct CompliancePublicKeySet {
     #[key]
     pub compliance_public_key: felt252,
 }
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct OpenNoteDeposited {
+    /// The note id that was deposited into.
+    #[key]
+    pub note_id: felt252,
+}
