@@ -70,7 +70,14 @@
 7. Create open note, then enc note for the same note id in different tx (should fail - NON_ZERO_VALUE).
 
 ## Open note
-1. Use open note and then try to reuse/refill the note (for later - when open note filling is implemented).
+1. Use open note and then try to reuse/re-deposit to the note.
+2. Split from open note: create open note -> deposit large amount -> use to create multiple output notes for different recipients.
+3. Open note chain: User A creates open note for User B -> Depositor deposits -> User B transfers to User C -> User C withdraws.
+4. Multiple depositors scenario: User A creates open notes with depositor X for User B, and with depositor Y for User C -> both depositors fund their notes -> both recipients transfer to User D.
+5. Same depositor multiple open notes: Depositor funds multiple open notes for different recipients in same transaction.
+6. Open note round trip: Depositor creates open note for User A -> deposits -> User A transfers to User B -> User B creates open note back to User A with same depositor -> depositor funds again -> User A withdraws.
+7. Create an open note and deposit to it in the same TX.
+8. Create an open note and deposit to a different one in the same TX.
 
 ## Use note
 1. Use note, change viewing key, try to use note again.
