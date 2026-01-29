@@ -3843,11 +3843,27 @@ fn test_client_execute_and_panic_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
     let result = user.safe_execute_view(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+
+    // Catch ACTIONS_OUT_OF_ORDER. (just one sanity example, the other cases are tested in
+    // test_actions_out_of_order).
+    let token_address = test.mock_new_token();
+    let amount = 100;
+    let random = user.get_random();
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 }
 
-// TODO: Fix.
+// TODO: execute_and_panic is not tested here because snforge storage bug.
 #[test]
-#[ignore]
 fn test_actions_out_of_order() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
@@ -3862,389 +3878,377 @@ fn test_actions_out_of_order() {
     };
     let create_note_input_2 = CreateNoteInput { index: 1, ..create_note_input_1 };
 
-    // Catch ACTIONS_OUT_OF_ORDER (set viewing key twice).
+    // Catch NON_ZERO_VALUE (set viewing key twice).
     let random = user.get_random();
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random }),
-                ClientAction::SetViewingKey(SetViewingKeyInput { random }),
-            ]
-                .span(),
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch ACTIONS_OUT_OF_ORDER (open channel -> set viewing key).
     let salt = user.get_salt().into();
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        index: 0,
-                        random,
-                        salt,
-                    },
-                ),
-                ClientAction::SetViewingKey(SetViewingKeyInput { random }),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::OpenChannel(
+            OpenChannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                index: 0,
+                random,
+                salt,
+            },
+        ),
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (open subchannel -> set viewing key).
     user.open_channel_e2e(recipient: user, index: 0);
     let channel_key = user.compute_channel_key(recipient: user);
     let salt = user.get_salt().into();
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key,
-                        index: 0,
-                        token: token_address,
-                        salt,
-                    },
-                ),
-                ClientAction::SetViewingKey(SetViewingKeyInput { random }),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::OpenSubchannel(
+            OpenSubchannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                channel_key,
+                index: 0,
+                token: token_address,
+                salt,
+            },
+        ),
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (open subchannel -> open channel).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key,
-                        index: 0,
-                        token: token_address,
-                        salt,
-                    },
-                ),
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        index: 0,
-                        random,
-                        salt,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::OpenSubchannel(
+            OpenSubchannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                channel_key,
+                index: 0,
+                token: token_address,
+                salt,
+            },
+        ),
+        ClientAction::OpenChannel(
+            OpenChannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                index: 0,
+                random,
+                salt,
+            },
+        ),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> set viewing key).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::SetViewingKey(SetViewingKeyInput { random }),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> open channel).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        index: 0,
-                        random,
-                        salt,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::OpenChannel(
+            OpenChannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                index: 0,
+                random,
+                salt,
+            },
+        ),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> open subchannel).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key,
-                        index: 0,
-                        token: token_address,
-                        salt,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::OpenSubchannel(
+            OpenSubchannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                channel_key,
+                index: 0,
+                token: token_address,
+                salt,
+            },
+        ),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> set viewing key).
     user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
     user.cheat_create_note_e2e(create_note_input: create_note_input_1);
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::UseNote(note_1_path),
-                ClientAction::SetViewingKey(SetViewingKeyInput { random }),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::UseNote(note_1_path),
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> open channel).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::UseNote(note_1_path),
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        index: 0,
-                        random,
-                        salt,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::UseNote(note_1_path),
+        ClientAction::OpenChannel(
+            OpenChannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                index: 0,
+                random,
+                salt,
+            },
+        ),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> open subchannel).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::UseNote(note_1_path),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key,
-                        index: 0,
-                        token: token_address,
-                        salt,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::UseNote(note_1_path),
+        ClientAction::OpenSubchannel(
+            OpenSubchannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                channel_key,
+                index: 0,
+                token: token_address,
+                salt,
+            },
+        ),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> deposit).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::UseNote(note_1_path),
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::UseNote(note_1_path),
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create note -> set viewing key).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::CreateNote(create_note_input_2),
-                ClientAction::SetViewingKey(SetViewingKeyInput { random }),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::CreateNote(create_note_input_2),
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create note -> open channel).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::CreateNote(create_note_input_2),
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        index: 0,
-                        random,
-                        salt,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::CreateNote(create_note_input_2),
+        ClientAction::OpenChannel(
+            OpenChannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                index: 0,
+                random,
+                salt,
+            },
+        ),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create note -> open subchannel).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::CreateNote(create_note_input_2),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key,
-                        index: 0,
-                        token: token_address,
-                        salt,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::CreateNote(create_note_input_2),
+        ClientAction::OpenSubchannel(
+            OpenSubchannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                channel_key,
+                index: 0,
+                token: token_address,
+                salt,
+            },
+        ),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create note -> deposit).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::CreateNote(create_note_input_2),
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::CreateNote(create_note_input_2),
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create note -> use note).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::CreateNote(create_note_input_2), ClientAction::UseNote(note_1_path),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::CreateNote(create_note_input_2), ClientAction::UseNote(note_1_path),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> set viewing key).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user.address, token: token_address, amount, random,
-                    },
-                ),
-                ClientAction::SetViewingKey(SetViewingKeyInput { random }),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Withdraw(
+            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+        ),
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open channel).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user.address, token: token_address, amount, random,
-                    },
-                ),
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        index: 0,
-                        random,
-                        salt,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Withdraw(
+            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+        ),
+        ClientAction::OpenChannel(
+            OpenChannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                index: 0,
+                random,
+                salt,
+            },
+        ),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open subchannel).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user.address, token: token_address, amount, random,
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key,
-                        index: 0,
-                        token: token_address,
-                        salt,
-                    },
-                ),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Withdraw(
+            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+        ),
+        ClientAction::OpenSubchannel(
+            OpenSubchannelInput {
+                recipient_addr: user.address,
+                recipient_public_key: user.public_key,
+                channel_key,
+                index: 0,
+                token: token_address,
+                salt,
+            },
+        ),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> deposit).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user.address, token: token_address, amount, random,
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Withdraw(
+            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+        ),
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> use note).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user.address, token: token_address, amount, random,
-                    },
-                ),
-                ClientAction::UseNote(note_1_path),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Withdraw(
+            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+        ),
+        ClientAction::UseNote(note_1_path),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create note).
-    let result = user
-        .safe_client_execute(
-            client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user.address, token: token_address, amount, random,
-                    },
-                ),
-                ClientAction::CreateNote(create_note_input_2),
-            ]
-                .span(),
-        );
+    let client_actions = [
+        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Withdraw(
+            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+        ),
+        ClientAction::CreateNote(create_note_input_2),
+    ]
+        .span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 }
 
