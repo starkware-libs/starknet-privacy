@@ -6,7 +6,7 @@ use privacy::objects::{
 };
 use privacy::tests::test_objects::MockContract::deploy_for_test as deploy_mock_contract_for_test;
 use privacy::tests::utils_for_tests::{Test, TestTrait, UserTrait, constants};
-use privacy::utils::{decrypt_note_amount, encrypt_note_amount};
+use privacy::utils::{decrypt_note_amount, encrypt_note_amount, unpacking};
 use snforge_std::{DeclareResultTrait, declare, map_entry_address};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
@@ -212,11 +212,10 @@ fn test_note_encrypt() {
         token: Zero::zero(),
     };
     assert_eq!(note, expected_note);
+    let (note_salt, enc_amount) = unpacking(note.packed_value);
+    assert_eq!(note_salt, salt);
     assert_eq!(
-        decrypt_note_amount(
-            enc_note_value: note.packed_value, :channel_key, token: token_address, :index,
-        ),
-        amount,
+        decrypt_note_amount(:enc_amount, :salt, :channel_key, token: token_address, :index), amount,
     );
 }
 

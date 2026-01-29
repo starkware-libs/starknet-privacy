@@ -68,6 +68,19 @@ pub struct CreateEncNoteInput {
     pub salt: u128,
 }
 
+/// Input for the `CreateOpenNote` action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct CreateOpenNoteInput {
+    /// The recipient's address.
+    pub recipient_addr: ContractAddress,
+    /// The recipient's public key.
+    pub recipient_public_key: felt252,
+    /// The token's address.
+    pub token: ContractAddress,
+    /// The index of the note within the channel.
+    pub index: usize,
+}
+
 /// Input for the `Deposit` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct DepositInput {
@@ -115,6 +128,10 @@ pub enum ClientAction {
     OpenSubchannel: OpenSubchannelInput,
     /// Creates a new encrypted note with a specified amount.
     CreateEncNote: CreateEncNoteInput,
+    /// Creates a new open note (unencrypted, zero-value note to be filled by a server action).
+    /// Open notes enable interactions where the final amount is determined at execution time,
+    /// such as AMM swaps or receiving funds directly through bridge transfers.
+    CreateOpenNote: CreateOpenNoteInput,
     /// Deposit funds into the contract.
     Deposit: DepositInput,
     /// Uses up a note (creates a nullifier for it).
@@ -141,6 +158,7 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
             ClientAction::OpenSubchannel(_) => Self::SUBCHANNEL_PHASE,
             ClientAction::Deposit(_) => Self::DEPOSIT_PHASE,
             ClientAction::CreateEncNote(_) => Self::CREATE_NOTES_PHASE,
+            ClientAction::CreateOpenNote(_) => Self::CREATE_NOTES_PHASE,
             ClientAction::UseNote(_) => Self::USE_NOTES_PHASE,
             ClientAction::Withdraw(_) => Self::WITHDRAW_PHASE,
         }
