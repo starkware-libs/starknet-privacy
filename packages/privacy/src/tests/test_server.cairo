@@ -4,17 +4,15 @@ use privacy::actions::{
     WriteOnceInput,
 };
 use privacy::objects::{EncPrivateKeyTrait, Note, ToServerActionsTrait};
-use privacy::tests::utils_for_tests::{
-    PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
-};
+use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, UserTrait, constants};
 use privacy::{errors, events};
 use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{
-    assert_expected_event_emitted, assert_panic_with_error, assert_panic_with_felt_error,
-    generic_load,
+    TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_error,
+    assert_panic_with_felt_error, generic_load,
 };
 
 #[test]
