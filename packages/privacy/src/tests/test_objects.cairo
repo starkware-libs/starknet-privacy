@@ -290,6 +290,20 @@ fn test_note_to_write_once_action() {
     );
 }
 
+#[test]
+fn test_public_key_to_write_once_action() {
+    let public_key = 'PUBLIC_KEY';
+    let key = 'KEY';
+    let storage_address = map_entry_address(
+        map_selector: selector!("public_key"), keys: [key].span(),
+    );
+    let action = public_key.to_write_once_action(:storage_address);
+    assert_eq!(
+        action,
+        ServerAction::WriteOnce(WriteOnceInput { storage_address, value: [public_key].span() }),
+    );
+}
+
 /// Interface for `MockContract`.
 #[starknet::interface]
 trait IMockContract<T> {
@@ -297,10 +311,12 @@ trait IMockContract<T> {
     fn get_enc_subchannel_info(self: @T) -> EncSubchannelInfo;
     fn get_enc_outgoing_channel_info(self: @T) -> EncOutgoingChannelInfo;
     fn get_note(self: @T) -> Note;
+    fn get_public_key(self: @T) -> felt252;
     fn write_serialized_enc_private_key(ref self: T, serialized_value: Span<felt252>);
     fn write_serialized_enc_subchannel_info(ref self: T, serialized_value: Span<felt252>);
     fn write_serialized_enc_outgoing_channel_info(ref self: T, serialized_value: Span<felt252>);
     fn write_serialized_note(ref self: T, serialized_value: Span<felt252>);
+    fn write_serialized_public_key(ref self: T, serialized_value: Span<felt252>);
 }
 
 /// Mock contract to test serialization format exactly matches in-storage representation for
@@ -322,6 +338,7 @@ mod MockContract {
         enc_subchannel_info: EncSubchannelInfo,
         enc_outgoing_channel_info: EncOutgoingChannelInfo,
         note: Note,
+        public_key: felt252,
     }
 
     #[constructor]
@@ -340,6 +357,9 @@ mod MockContract {
         }
         fn get_note(self: @ContractState) -> Note {
             self.note.read()
+        }
+        fn get_public_key(self: @ContractState) -> felt252 {
+            self.public_key.read()
         }
         fn write_serialized_enc_private_key(
             ref self: ContractState, serialized_value: Span<felt252>,
@@ -363,6 +383,11 @@ mod MockContract {
             let storage_address = self.note.__base_address__;
             self._write(:storage_address, :serialized_value);
         }
+        fn write_serialized_public_key(ref self: ContractState, serialized_value: Span<felt252>) {
+            assert(serialized_value.len() == 1, 'EXPECTED_LENGTH_1');
+            let storage_address = self.public_key.__base_address__;
+            self._write(:storage_address, :serialized_value);
+        }
     }
 
     #[generate_trait]
@@ -371,14 +396,18 @@ mod MockContract {
             ref self: ContractState, storage_address: felt252, serialized_value: Span<felt252>,
         ) {
             let len = serialized_value.len();
-            assert(len == 2 || len == 3, 'EXPECTED_LENGTH_2_OR_3');
+            assert(len >= 1 && len <= 3, 'EXPECTED_LENGTH_1_TO_3');
             let base = storage_base_address_from_felt252(addr: storage_address);
             let addr_0 = storage_address_from_base_and_offset(:base, offset: 0);
-            let addr_1 = storage_address_from_base_and_offset(:base, offset: 1);
             storage_write_syscall(address_domain: 0, address: addr_0, value: *serialized_value[0])
                 .unwrap_syscall();
-            storage_write_syscall(address_domain: 0, address: addr_1, value: *serialized_value[1])
-                .unwrap_syscall();
+            if len >= 2 {
+                let addr_1 = storage_address_from_base_and_offset(:base, offset: 1);
+                storage_write_syscall(
+                    address_domain: 0, address: addr_1, value: *serialized_value[1],
+                )
+                    .unwrap_syscall();
+            }
             if len == 3 {
                 let addr_2 = storage_address_from_base_and_offset(:base, offset: 2);
                 storage_write_syscall(
@@ -455,4 +484,15 @@ fn note_serialization_format() {
     note.serialize(ref output: serialized_value);
     mock_contract.write_serialized_note(serialized_value: serialized_value.span());
     assert_eq!(mock_contract.get_note(), note);
+}
+
+#[test]
+fn felt_serialization_format() {
+    let mock_contract_address = deploy_mock_contract();
+    let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
+    let public_key = 'PUBLIC_KEY';
+    let mut serialized_value = array![];
+    public_key.serialize(ref output: serialized_value);
+    mock_contract.write_serialized_public_key(serialized_value: serialized_value.span());
+    assert_eq!(mock_contract.get_public_key(), public_key);
 }
