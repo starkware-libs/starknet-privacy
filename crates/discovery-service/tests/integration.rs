@@ -44,10 +44,11 @@ async fn setup_devnet() -> (Devnet, Felt, Felt) {
 async fn test_public_key_lookup() {
     let (devnet, contract_address, alice_address) = setup_devnet().await;
 
-    let backend = RpcBackend::new(RpcConfig {
-        rpc_url: Url::parse(&devnet.rpc_url()).unwrap(),
+    let backend = RpcBackend::new(RpcConfig::new(
+        Url::parse(&devnet.rpc_url()).unwrap(),
         contract_address,
-    });
+    ))
+    .unwrap();
 
     let snapshot = backend.snapshot(None).await.unwrap();
 

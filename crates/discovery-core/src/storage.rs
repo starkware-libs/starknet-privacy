@@ -12,18 +12,15 @@ use crate::types::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
 /// Errors that can occur during storage operations.
 #[derive(Debug, Error)]
 pub enum StorageError {
-    /// RPC communication error.
-    #[error("RPC error: {0}")]
-    Rpc(String),
     /// Failed to compute storage slot address.
     #[error("slot computation failed: {0}")]
     SlotComputation(#[from] anyhow::Error),
-    /// Failed to establish connection.
-    #[error("connection failed: {0}")]
-    Connection(String),
     /// Failed to convert value to u64.
     #[error("value is too large to convert to u64: {0}")]
     CastToU64Error(Felt),
+    /// Backend-specific error.
+    #[error("{0}")]
+    Backend(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 /// Factory for creating storage snapshots bound to a specific block.

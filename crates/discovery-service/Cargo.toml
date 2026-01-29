@@ -25,6 +25,13 @@ starknet-providers = "0.16"
 starknet-types-core = "0.2"
 url = "2"
 
+# HTTP
+reqwest = { version = "0.12", features = ["json"] }
+tower = { version = "0.5", features = ["limit"] }
+
+# Error handling
+thiserror = "2"
+
 # CLI and logging
 clap = { version = "4", features = ["derive"] }
 dotenv = "0.15"
@@ -36,7 +43,6 @@ anyhow = "1.0"
 expect-test = "1.5"
 flate2 = "1.0"
 libc = "0.2"
-reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 starknet-core = "0.16"
