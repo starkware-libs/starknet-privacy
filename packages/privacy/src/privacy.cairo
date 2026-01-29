@@ -6,7 +6,7 @@ pub mod Privacy {
     use openzeppelin::interfaces::token::erc20::IERC20Dispatcher;
     use openzeppelin::introspection::src5::SRC5Component;
     use privacy::actions::{
-        AppendToVecInput, ClientAction, ClientActionTrait, CreateNoteInput, DepositInput,
+        AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, DepositInput,
         OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
         TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput, WriteOnceInput,
     };
@@ -21,7 +21,7 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, NoteTrait,
         ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
     };
-    use privacy::utils::constants::{CREATE_NOTE_MIN_SALT, TWO_POW_120};
+    use privacy::utils::constants::{ENC_NOTE_MIN_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
         decrypt_note_amount, derive_public_key, encrypt_channel_info, encrypt_outgoing_channel_info,
@@ -221,9 +221,9 @@ pub mod Privacy {
                     ClientAction::Deposit(input) => (
                         self.deposit(:user_addr, :input, ref :token_balances), false,
                     ),
-                    ClientAction::CreateNote(input) => (
+                    ClientAction::CreateEncNote(input) => (
                         self
-                            .create_note(
+                            .create_enc_note(
                                 sender_addr: user_addr,
                                 sender_private_key: user_private_key,
                                 :input,
@@ -523,11 +523,13 @@ pub mod Privacy {
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
-            let enc_note_value = self.notes.entry(note_id).enc_value.read();
-            assert(enc_note_value.is_non_zero(), errors::NOTE_NOT_FOUND);
+            let packed_value = self.notes.entry(note_id).packed_value.read();
+            assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             // Decrypt note amount.
-            let amount = decrypt_note_amount(:enc_note_value, :channel_key, :token, :index);
+            let amount = decrypt_note_amount(
+                enc_note_value: packed_value, :channel_key, :token, :index,
+            );
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
@@ -546,14 +548,14 @@ pub mod Privacy {
             ]
         }
 
-        /// Returns the server action to create a note.
+        /// Returns the server action to create an encrypted note.
         /// Assumes `sender_addr` is non-zero and `sender_private_key` is non-zero and canonical
         /// (checked in `execute_and_panic`).
-        fn create_note(
+        fn create_enc_note(
             self: @ContractState,
             sender_addr: ContractAddress,
             sender_private_key: felt252,
-            input: CreateNoteInput,
+            input: CreateEncNoteInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
             let recipient_addr = input.recipient_addr;
@@ -566,7 +568,7 @@ pub mod Privacy {
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             // Assert valid salt.
-            assert(salt >= CREATE_NOTE_MIN_SALT, errors::SALT_TOO_SMALL);
+            assert(salt >= ENC_NOTE_MIN_SALT, errors::SALT_TOO_SMALL);
             assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
 
             // Compute channel key.
@@ -586,7 +588,7 @@ pub mod Privacy {
                     || self
                         .notes
                         .entry(compute_note_id(:channel_key, :token, index: index - 1))
-                        .enc_value
+                        .packed_value
                         .read()
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
@@ -594,17 +596,17 @@ pub mod Privacy {
 
             // Compute note values.
             let note_id = compute_note_id(:channel_key, :token, :index);
-            let note = NoteTrait::encrypt(:channel_key, :token, :index, :salt, :amount);
+            let note = NoteTrait::enc_note(:channel_key, :token, :index, :salt, :amount);
 
             assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
-            assert(note.enc_value.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
+            assert(note.packed_value.is_non_zero(), internal_errors::ZERO_ENC_NOTE_VALUE);
 
             token_balances.subtract_balance(:token, :amount);
 
             // Only `enc_value` needs to be written, `token` is initialized to zero.
             array![
                 note
-                    .enc_value
+                    .packed_value
                     .to_write_once_action(storage_address: self.notes.entry(note_id).into()),
             ]
         }
@@ -759,7 +761,7 @@ pub mod Privacy {
             let note = self.notes.read(note_id);
             // TODO: Revise when open notes are implemented.
             assert(note.token.is_zero(), internal_errors::ENC_NOTE_NON_ZERO_TOKEN);
-            self.notes.read(note_id).enc_value
+            self.notes.read(note_id).packed_value
         }
 
         fn nullifier_exists(self: @ContractState, nullifier: felt252) -> bool {
