@@ -1,5 +1,5 @@
 /**
- * Script to parse Cairo test output and generate reference hash JSON.
+ * Script to parse Cairo test output and generate reference data JSON.
  *
  * This script reads a file containing Cairo test output and extracts
  * key-value pairs like "path.to.key: 0x123" into a JSON structure.
@@ -12,7 +12,7 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const fixturesPath = join(__dirname, "../tests/fixtures/cairo-reference-hashes.json");
+const fixturesPath = join(__dirname, "../tests/fixtures/cairo-reference-data.json");
 
 // Get input file from command line argument
 const inputFile = process.argv[2];
