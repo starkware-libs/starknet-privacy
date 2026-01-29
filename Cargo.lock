@@ -450,7 +450,9 @@ dependencies = [
  "starknet-providers",
  "starknet-types-core",
  "tempfile",
+ "thiserror 2.0.18",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -2401,8 +2403,10 @@ dependencies = [
  "pin-project-lite",
  "sync_wrapper",
  "tokio",
+ "tokio-util",
  "tower-layer",
  "tower-service",
+ "tracing",
 ]
 
 [[package]]

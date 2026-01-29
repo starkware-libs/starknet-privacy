@@ -55,10 +55,11 @@ async fn test_public_key_lookup() {
     let devnet = spawn_devnet().await;
     let metadata = load_metadata();
 
-    let backend = RpcBackend::new(RpcConfig {
-        rpc_url: Url::parse(&devnet.rpc_url()).unwrap(),
-        contract_address: metadata.contract_address,
-    });
+    let backend = RpcBackend::new(RpcConfig::new(
+        Url::parse(&devnet.rpc_url()).unwrap(),
+        metadata.contract_address,
+    ))
+    .unwrap();
 
     let snapshot = backend.snapshot(None).await.unwrap();
 
