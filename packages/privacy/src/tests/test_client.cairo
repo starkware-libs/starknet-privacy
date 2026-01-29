@@ -3265,7 +3265,7 @@ fn test_client_execute_set_viewing_key() {
     assert_eq!(user_1.get_public_key(), Zero::zero());
     assert_eq!(user_1.get_enc_private_key().ephemeral_pubkey, Zero::zero());
     assert_eq!(user_1.get_enc_private_key().enc_private_key, Zero::zero());
-    // TODO: Verify no events emitted (after snforge revert bug is resolved).
+    // TODO: Verify no events emitted (currently not tested because of snforge revert issue).
 
     let mut spy_events = spy_events();
     test.privacy.execute_actions(:actions);
@@ -3883,9 +3883,9 @@ fn test_client_execute_and_panic_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 }
 
-// TODO: execute_and_panic is not tested here because snforge storage bug.
 #[test]
 fn test_actions_out_of_order() {
+    // TODO: execute_and_panic is not tested here because of snforge storage revert issue.
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
