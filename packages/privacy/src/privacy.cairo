@@ -107,7 +107,7 @@ pub mod Privacy {
     }
 
     #[constructor]
-    fn constructor(
+    pub(crate) fn constructor(
         ref self: ContractState, governance_admin: ContractAddress, compliance_public_key: felt252,
     ) {
         self.roles.initialize(:governance_admin);
@@ -144,7 +144,6 @@ pub mod Privacy {
             let execution_info = get_execution_info();
             assert_valid_execution_info(:execution_info);
             let server_actions = self.execute_view(:user_addr, :user_private_key, :client_actions);
-            // TODO: Test inner `is_valid_signature` panics.
             assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
             send_message_to_server(:server_actions);
         }
@@ -172,7 +171,6 @@ pub mod Privacy {
 
         /// Panics directly for internal errors; external calls should be wrapped via syscall
         /// to prevent injection of `OK_WRAPPER` into the panic data.
-        // TODO: Add tests (verify always panics with appropriate wrapping).
         fn execute_and_panic(
             ref self: ContractState,
             user_addr: ContractAddress,

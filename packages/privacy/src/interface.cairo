@@ -399,8 +399,7 @@ pub trait IServer<T> {
     ///
     /// #### Preconditions
     /// - The contract must not be paused.
-    /// - Client proof verification (TODO: currently not implemented, will be verified in the
-    /// future).
+    /// - `proof_facts` field in the TX info must be valid.
     /// - For [`WriteOnce`](privacy::actions::ServerAction::WriteOnce) actions, the storage location
     /// must be empty (zero) before writing.
     /// - For [`VerifyValue`](privacy::actions::ServerAction::VerifyValue) actions, the storage
@@ -433,7 +432,7 @@ pub trait IServer<T> {
     /// ERC20 contract).
     ///
     /// #### Access Control
-    /// - TODO: Access control requirements need to be specified.
+    /// - Any address can call this function.
     ///
     /// #### Notes
     /// - All actions are executed sequentially in the order they appear in the span.
