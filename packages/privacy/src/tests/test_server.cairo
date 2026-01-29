@@ -1,12 +1,14 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
-    WriteOnceInput,
+    AppendToVecInput, FillOpenNoteInput, ServerAction, TransferFromInput, TransferToInput,
+    VerifyValueInput, WriteOnceInput,
 };
-use privacy::objects::{EncPrivateKeyTrait, ToServerActionsTrait};
+use privacy::objects::{EncPrivateKeyTrait, NoteTrait, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
     NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait, constants,
 };
+use privacy::utils::constants::OPEN_NOTE_SALT;
+use privacy::utils::packing;
 use privacy::{errors, events};
 use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
@@ -14,7 +16,7 @@ use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_error,
-    assert_panic_with_felt_error,
+    assert_panic_with_felt_error, cheat_caller_address_once,
 };
 
 #[test]
@@ -678,4 +680,199 @@ fn test_execute_write_once_open_note_non_zero_token_fails() {
         .span();
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+}
+
+#[test]
+fn test_execute_fill_open_note() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let depositor = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    let token_address = token.contract_address();
+
+    // Create an open note.
+    let note_id = 12345; // Arbitrary note id for testing.
+    let open_note = NoteTrait::open_note(token: token_address, depositor: depositor.address);
+    let storage_address = map_entry_address(
+        map_selector: selector!("notes"), keys: [note_id].span(),
+    );
+
+    // Write the open note to storage.
+    let actions = [open_note.to_write_once_action(:storage_address)].span();
+    test.privacy.execute_actions(:actions);
+
+    // Verify note was written.
+    let stored_note = test.privacy.get_note(:note_id);
+    assert_eq!(stored_note, open_note);
+
+    // Set up depositor with token balance and approval.
+    depositor.increase_token_balance(:token, :amount);
+    depositor.approve(:token, amount: amount.into());
+
+    // Verify balances before fill.
+    assert_eq!(token.balance_of(address: depositor.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+
+    // Spy on events before executing.
+    let mut spy = spy_events();
+
+    // Execute FillOpenNote action (caller must be the depositor).
+    let fill_action = ServerAction::FillOpenNote(FillOpenNoteInput { note_id, amount });
+    cheat_caller_address_once(
+        contract_address: test.privacy.address, caller_address: depositor.address,
+    );
+    test.privacy.execute_actions([fill_action].span());
+
+    // Verify note packed_value updated to packing(OPEN_NOTE_SALT, amount).
+    let filled_note = test.privacy.get_note(:note_id);
+    let expected_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
+    assert_eq!(filled_note.packed_value, expected_packed_value);
+    assert_eq!(filled_note.token, token_address);
+    assert_eq!(filled_note.depositor, depositor.address);
+
+    // Verify tokens transferred.
+    assert_eq!(token.balance_of(address: depositor.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+
+    // Verify OpenNoteFilled event emitted.
+    let expected_event = events::OpenNoteFilled { note_id };
+    let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(emitted_events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: emitted_events[0],
+        :expected_event,
+        expected_event_selector: @selector!("OpenNoteFilled"),
+        expected_event_name: "OpenNoteFilled",
+    );
+}
+
+#[test]
+fn test_execute_fill_open_note_assertions() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let depositor = test.new_user();
+    let other_depositor = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    let token_address = token.contract_address();
+
+    // Setup: depositor has balance and approval.
+    depositor.increase_token_balance(:token, :amount);
+    depositor.approve(:token, amount: amount.into());
+
+    // Test 1: NOTE_NOT_OPEN - Write an encrypted note (salt >= 2), try to fill it.
+    let (note_id_enc, enc_note) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    // Write just the packed_value (encrypted note has zero token and depositor).
+    test.privacy.cheat_create_note(note_id: note_id_enc, note: enc_note);
+
+    let fill_enc_action = ServerAction::FillOpenNote(
+        FillOpenNoteInput { note_id: note_id_enc, amount },
+    );
+    cheat_caller_address_once(
+        contract_address: test.privacy.address, caller_address: depositor.address,
+    );
+    let result = test.privacy.safe_execute_actions([fill_enc_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
+
+    // Test 2: NOTE_ALREADY_FILLED - Fill an open note, then try to fill it again.
+    let (note_id_filled, _) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    let open_note = NoteTrait::open_note(token: token_address, depositor: depositor.address);
+    let storage_address_filled = map_entry_address(
+        map_selector: selector!("notes"), keys: [note_id_filled].span(),
+    );
+    let actions = [open_note.to_write_once_action(storage_address: storage_address_filled)].span();
+    test.privacy.execute_actions(:actions);
+
+    // Fill the open note first time.
+    let fill_action = ServerAction::FillOpenNote(
+        FillOpenNoteInput { note_id: note_id_filled, amount },
+    );
+    cheat_caller_address_once(
+        contract_address: test.privacy.address, caller_address: depositor.address,
+    );
+    test.privacy.execute_actions([fill_action].span());
+
+    // Now try to fill again - should fail with NOTE_ALREADY_FILLED.
+    // Need to add more balance and approval for second attempt.
+    depositor.increase_token_balance(:token, :amount);
+    depositor.approve(:token, amount: amount.into());
+
+    let fill_again_action = ServerAction::FillOpenNote(
+        FillOpenNoteInput { note_id: note_id_filled, amount },
+    );
+    cheat_caller_address_once(
+        contract_address: test.privacy.address, caller_address: depositor.address,
+    );
+    let result = test.privacy.safe_execute_actions([fill_again_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_FILLED);
+
+    // Test 3: DEPOSITOR_MISMATCH - Create open note with depositor A, caller is depositor B.
+    let (note_id_mismatch, _) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    let open_note_a = NoteTrait::open_note(token: token_address, depositor: depositor.address);
+    let storage_address_mismatch = map_entry_address(
+        map_selector: selector!("notes"), keys: [note_id_mismatch].span(),
+    );
+    let actions = [open_note_a.to_write_once_action(storage_address: storage_address_mismatch)]
+        .span();
+    test.privacy.execute_actions(:actions);
+
+    // Try to fill with other_depositor as caller instead of depositor.
+    other_depositor.increase_token_balance(:token, :amount);
+    other_depositor.approve(:token, amount: amount.into());
+
+    let fill_mismatch_action = ServerAction::FillOpenNote(
+        FillOpenNoteInput { note_id: note_id_mismatch, amount },
+    );
+    cheat_caller_address_once(
+        contract_address: test.privacy.address, caller_address: other_depositor.address,
+    );
+    let result = test.privacy.safe_execute_actions([fill_mismatch_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::DEPOSITOR_MISMATCH);
+}
+
+#[test]
+fn test_execute_fill_open_note_transfer_assertions() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let depositor = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    let token_address = token.contract_address();
+
+    // Create an open note.
+    let (note_id, _) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    let open_note = NoteTrait::open_note(token: token_address, depositor: depositor.address);
+    let storage_address = map_entry_address(
+        map_selector: selector!("notes"), keys: [note_id].span(),
+    );
+    let actions = [open_note.to_write_once_action(:storage_address)].span();
+    test.privacy.execute_actions(:actions);
+
+    // Test 1: INSUFFICIENT_BALANCE - Depositor has no tokens.
+    let fill_action = ServerAction::FillOpenNote(FillOpenNoteInput { note_id, amount });
+    cheat_caller_address_once(
+        contract_address: test.privacy.address, caller_address: depositor.address,
+    );
+    let result = test.privacy.safe_execute_actions([fill_action].span());
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
+
+    // Test 2: INSUFFICIENT_ALLOWANCE - Depositor has tokens but no approval.
+    // Create a new open note for this test (since we need fresh state).
+    let (note_id_2, _) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    let open_note_2 = NoteTrait::open_note(token: token_address, depositor: depositor.address);
+    let storage_address_2 = map_entry_address(
+        map_selector: selector!("notes"), keys: [note_id_2].span(),
+    );
+    let actions = [open_note_2.to_write_once_action(storage_address: storage_address_2)].span();
+    test.privacy.execute_actions(:actions);
+
+    depositor.increase_token_balance(:token, :amount);
+    // Note: NOT calling approve here.
+
+    let fill_action_2 = ServerAction::FillOpenNote(
+        FillOpenNoteInput { note_id: note_id_2, amount },
+    );
+    cheat_caller_address_once(
+        contract_address: test.privacy.address, caller_address: depositor.address,
+    );
+    let result = test.privacy.safe_execute_actions([fill_action_2].span());
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
 }
