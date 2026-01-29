@@ -1,7 +1,7 @@
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
-use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
     OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
