@@ -160,7 +160,7 @@ fn test_token_balances_assert_valid_empty() {
 }
 
 #[test]
-#[should_panic(expected_error: 'NEGATIVE_INTERMEDIATE_BALANCE')]
+#[should_panic(expected: 'NEGATIVE_INTERMEDIATE_BALANCE')]
 fn test_token_balances_negative_intermediate_balance_from_zero() {
     let token = 'TOKEN'.try_into().unwrap();
     let mut token_balances: TokenBalances = Default::default();
@@ -168,7 +168,7 @@ fn test_token_balances_negative_intermediate_balance_from_zero() {
 }
 
 #[test]
-#[should_panic(expected_error: 'NEGATIVE_INTERMEDIATE_BALANCE')]
+#[should_panic(expected: 'NEGATIVE_INTERMEDIATE_BALANCE')]
 fn test_token_balances_negative_intermediate_balance() {
     let token = 'TOKEN'.try_into().unwrap();
     let mut token_balances: TokenBalances = Default::default();
@@ -177,7 +177,7 @@ fn test_token_balances_negative_intermediate_balance() {
 }
 
 #[test]
-#[should_panic(expected_error: 'FINAL_BALANCE_MUST_BE_ZERO')]
+#[should_panic(expected: 'FINAL_BALANCE_MUST_BE_ZERO')]
 fn test_token_balances_final_balance_must_be_zero() {
     let token_1: ContractAddress = 'TOKEN_1'.try_into().unwrap();
     let token_2: ContractAddress = 'TOKEN_2'.try_into().unwrap();
