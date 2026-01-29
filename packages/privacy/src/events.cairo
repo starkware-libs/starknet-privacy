@@ -57,3 +57,18 @@ pub struct OpenNoteCreated {
     #[key]
     pub note_id: felt252,
 }
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct OpenNoteDeposited {
+    /// The user address who deposited.
+    #[key]
+    pub depositor: ContractAddress,
+    /// The token's address.
+    #[key]
+    pub token: ContractAddress,
+    /// The note id that was deposited into.
+    #[key]
+    pub note_id: felt252,
+    /// The amount deposited.
+    pub amount: u128,
+}

@@ -1,7 +1,11 @@
 use core::num::traits::Zero;
+use privacy::actions::DepositToOpenNoteInput;
 use privacy::privacy::Privacy;
 use privacy::tests::utils_for_tests::constants::DEFAULT_AMOUNT;
 use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
+use privacy::utils::constants::OPEN_NOTE_SALT;
+use privacy::utils::unpacking;
+use snforge_std::TokenTrait;
 use starkware_utils::components::replaceability::interface::{
     IReplaceableDispatcher, IReplaceableDispatcherTrait,
 };
@@ -182,7 +186,10 @@ fn test_get_note() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token = test.new_token();
+    let token_address = token.contract_address();
+    let depositor = test.new_user();
+    let amount = DEFAULT_AMOUNT;
     user_1
         .open_channel_with_token_e2e(
             recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
@@ -190,24 +197,42 @@ fn test_get_note() {
 
     // Create and verify encrypted note.
     let enc_note_input = user_1
-        .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, amount: DEFAULT_AMOUNT, index: 0,
-        );
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
     user_1.cheat_create_enc_note_e2e(create_note_input: enc_note_input);
     let (enc_note_id, expected_enc_note) = user_1
         .compute_enc_note(create_note_input: enc_note_input);
     assert_eq!(test.privacy.get_note(note_id: enc_note_id), expected_enc_note);
 
-    // Create and verify open note.
-    let depositor = test.mock_new_depositor();
+    // Create and verify empty open note.
     let open_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 1, :depositor,
+            recipient: user_2, token: token_address, index: 1, depositor: depositor.address,
         );
     user_1.cheat_create_open_note_e2e(create_note_input: open_note_input);
     let (open_note_id, expected_open_note) = user_1
         .compute_open_note(create_note_input: open_note_input);
     assert_eq!(test.privacy.get_note(note_id: open_note_id), expected_open_note);
+
+    // Create and verify deposited open note.
+    let deposited_open_note_input = user_1
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 2, depositor: depositor.address,
+        );
+    user_1.cheat_create_open_note_e2e(create_note_input: deposited_open_note_input);
+    let (deposited_note_id, _) = user_1
+        .compute_open_note(create_note_input: deposited_open_note_input);
+    // Deposit to the open note.
+    depositor
+        .fund_and_deposit_to_open_note(
+            :token, input: DepositToOpenNoteInput { note_id: deposited_note_id, amount },
+        );
+    // Verify the filled note.
+    let filled_note = test.privacy.get_note(note_id: deposited_note_id);
+    let (salt, stored_amount) = unpacking(packed_value: filled_note.packed_value);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(stored_amount, amount);
+    assert_eq!(filled_note.token, token_address);
+    assert_eq!(filled_note.depositor, depositor.address);
 }
 
 #[test]

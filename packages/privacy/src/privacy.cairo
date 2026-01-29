@@ -22,13 +22,13 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, NoteTrait,
         ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
     };
-    use privacy::utils::constants::{ENC_NOTE_MIN_SALT, TWO_POW_120};
+    use privacy::utils::constants::{ENC_NOTE_MIN_SALT, OPEN_NOTE_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
         assert_valid_signature, decode_note_amount, derive_public_key, encrypt_channel_info,
         encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, is_canonical_key, panic_with_server_actions, send_message_to_server,
-        unwrap_execute_and_panic_result,
+        encrypt_user_addr, is_canonical_key, packing, panic_with_server_actions,
+        send_message_to_server, unpacking, unwrap_execute_and_panic_result,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -40,7 +40,8 @@ pub mod Privacy {
     };
     use starknet::syscalls::{call_contract_syscall, storage_read_syscall, storage_write_syscall};
     use starknet::{
-        ContractAddress, SyscallResultTrait, VALIDATED, get_contract_address, get_execution_info,
+        ContractAddress, SyscallResultTrait, VALIDATED, get_caller_address, get_contract_address,
+        get_execution_info,
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -107,6 +108,7 @@ pub mod Privacy {
         Deposit: events::Deposit,
         CompliancePublicKeySet: events::CompliancePublicKeySet,
         OpenNoteCreated: events::OpenNoteCreated,
+        OpenNoteDeposited: events::OpenNoteDeposited,
     }
 
     #[constructor]
@@ -741,6 +743,12 @@ pub mod Privacy {
                     ServerAction::EmitWithdrawal(event) => { self.emit(event); },
                     ServerAction::EmitDeposit(event) => { self.emit(event); },
                     ServerAction::EmitOpenNoteCreated(event) => { self.emit(event); },
+                    ServerAction::DepositToOpenNote(input) => {
+                        self
+                            ._execute_deposit_to_open_note(
+                                note_id: input.note_id, amount: input.amount,
+                            );
+                    },
                 };
             };
         }
@@ -807,6 +815,44 @@ pub mod Privacy {
             let target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
             let current_value = target.read();
             assert(current_value == value, errors::VALUE_MISMATCH);
+        }
+
+        fn _execute_deposit_to_open_note(ref self: ContractState, note_id: felt252, amount: u128) {
+            // Validate inputs.
+            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+
+            // Read the Note from storage.
+            let note_entry = self.notes.entry(note_id);
+            let note = note_entry.read();
+
+            // Unpack the packed_value to get (salt, current_amount).
+            let (salt, current_amount) = unpacking(packed_value: note.packed_value);
+
+            // Assert it's an open note (salt == OPEN_NOTE_SALT).
+            assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
+
+            // Assert the note hasn't been deposited to yet (current_amount == 0).
+            assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
+
+            // Assert the caller is the depositor.
+            let caller = get_caller_address();
+            assert(caller == note.depositor, errors::CALLER_NOT_DEPOSITOR);
+
+            // Transfer funds from the depositor (caller).
+            self._execute_transfer_from(sender_addr: note.depositor, token: note.token, :amount);
+
+            // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
+            let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
+            note_entry.packed_value.write(new_packed_value);
+
+            // Emit the OpenNoteDeposited event.
+            self
+                .emit(
+                    events::OpenNoteDeposited {
+                        depositor: note.depositor, token: note.token, note_id, amount,
+                    },
+                );
         }
     }
 
