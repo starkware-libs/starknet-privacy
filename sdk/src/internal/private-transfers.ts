@@ -52,8 +52,9 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
   }
 
   async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
-    // Get compiler with current viewing key
-    const compiler = await this.getCompiler();
+    // Get viewing key for both compiler and calldata
+    const viewingKey = await this.params.viewingKeyProvider.getViewingKey();
+    const compiler = new ActionCompiler(this.user, viewingKey, this.params.discoveryProvider);
 
     // Compile actions
     const { clientActions, registry } = await compiler.compile(actions, options);
@@ -63,7 +64,11 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
 
     // Use CallData to compile the arguments
     const callDataCompiler = new CallData(PrivacyPoolABI);
-    const compiledCalldata = callDataCompiler.compile("__execute__", [this.user, cairoActions]);
+    const compiledCalldata = callDataCompiler.compile("__execute__", [
+      this.user,
+      viewingKey,
+      cairoActions,
+    ]);
 
     // Create invocation from the populated call (no account abstraction needed for proving)
     const invocation = {

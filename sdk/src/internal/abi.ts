@@ -20,10 +20,6 @@ export const PrivacyPoolABI = [
     name: "privacy::actions::SetViewingKeyInput",
     members: [
       {
-        name: "private_key",
-        type: "core::felt252",
-      },
-      {
         name: "random",
         type: "core::felt252",
       },
@@ -33,10 +29,6 @@ export const PrivacyPoolABI = [
     type: "struct",
     name: "privacy::actions::OpenChannelInput",
     members: [
-      {
-        name: "sender_private_key",
-        type: "core::felt252",
-      },
       {
         name: "recipient_addr",
         type: "core::starknet::contract_address::ContractAddress",
@@ -94,10 +86,6 @@ export const PrivacyPoolABI = [
     name: "privacy::actions::CreateNoteInput",
     members: [
       {
-        name: "sender_private_key",
-        type: "core::felt252",
-      },
-      {
         name: "recipient_addr",
         type: "core::starknet::contract_address::ContractAddress",
       },
@@ -141,10 +129,6 @@ export const PrivacyPoolABI = [
     type: "struct",
     name: "privacy::actions::UseNoteInput",
     members: [
-      {
-        name: "owner_private_key",
-        type: "core::felt252",
-      },
       {
         name: "channel_key",
         type: "core::felt252",
@@ -486,6 +470,10 @@ export const PrivacyPoolABI = [
             type: "core::starknet::contract_address::ContractAddress",
           },
           {
+            name: "user_private_key",
+            type: "core::felt252",
+          },
+          {
             name: "client_actions",
             type: "core::array::Span::<privacy::actions::ClientAction>",
           },
@@ -500,6 +488,10 @@ export const PrivacyPoolABI = [
           {
             name: "user_addr",
             type: "core::starknet::contract_address::ContractAddress",
+          },
+          {
+            name: "user_private_key",
+            type: "core::felt252",
           },
           {
             name: "client_actions",
@@ -518,6 +510,10 @@ export const PrivacyPoolABI = [
             type: "core::starknet::contract_address::ContractAddress",
           },
           {
+            name: "user_private_key",
+            type: "core::felt252",
+          },
+          {
             name: "client_actions",
             type: "core::array::Span::<privacy::actions::ClientAction>",
           },
@@ -527,7 +523,7 @@ export const PrivacyPoolABI = [
             type: "core::array::Span::<privacy::actions::ServerAction>",
           },
         ],
-        state_mutability: "external",
+        state_mutability: "view",
       },
       {
         type: "function",
@@ -536,6 +532,10 @@ export const PrivacyPoolABI = [
           {
             name: "user_addr",
             type: "core::starknet::contract_address::ContractAddress",
+          },
+          {
+            name: "user_private_key",
+            type: "core::felt252",
           },
           {
             name: "client_actions",
