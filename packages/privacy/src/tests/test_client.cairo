@@ -530,10 +530,7 @@ fn test_transfer_many_to_many() {
     assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2.enc_value);
 }
 
-// TODO: Fix this test. Now failing because storage writings are not reverted when panicking.
 #[test]
-#[feature("safe_dispatcher")]
-#[ignore]
 fn test_transfer_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
@@ -666,7 +663,24 @@ fn test_transfer_assertions() {
         .new_note_with_generated_salt(recipient: user_1, :token_address, amount: 1, index: 0);
     user_1.cheat_create_note_e2e(:create_note_input);
 
+    // Catch NON_ZERO_VALUE.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [use_note_input, use_note_input].span(), notes_to_create: [].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+
     // Create note errors.
+
+    // Catch NON_ZERO_VALUE.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [use_note_input].span(), notes_to_create: [create_note_input].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+
+    let create_note_input = user_1
+        .new_note_with_generated_salt(recipient: user_3, :token_address, amount: 1, index: 0);
 
     // Catch ZERO_RECIPIENT.
     let result = user_1
@@ -684,14 +698,6 @@ fn test_transfer_assertions() {
             notes_to_create: [CreateNoteInput { token: Zero::zero(), ..create_note_input }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
-
-    // Catch ZERO_AMOUNT.
-    let result = user_1
-        .safe_transfer(
-            notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateNoteInput { amount: Zero::zero(), ..create_note_input }].span(),
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch ZERO_RECIPIENT_PUBLIC_KEY.
     let result = user_1
@@ -795,11 +801,37 @@ fn test_transfer_assertions() {
             notes_to_create: [CreateNoteInput { index: 1, ..create_note_input }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+
     // Transfer errors.
 
-    // TODO: Catch token balances error.
+    // Catch NEGATIVE_INTERMEDIATE_BALANCE.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [use_note_input].span(),
+            notes_to_create: [CreateNoteInput { amount: 2, ..create_note_input }].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
-    // TODO: Catch server errors.
+    // Catch FINAL_BALANCE_MUST_BE_ZERO.
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [use_note_input].span(),
+            notes_to_create: [CreateNoteInput { amount: 0, ..create_note_input }].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
+
+    // Catch again NON_ZERO_VALUE of use_note.
+    let client_actions = [
+        ClientAction::UseNote(use_note_input), ClientAction::CreateNote(create_note_input),
+    ]
+        .span();
+    let server_actions = user_1.client_execute(:client_actions);
+    user_1.privacy.execute_actions(actions: server_actions);
+    let result = user_1
+        .safe_transfer(
+            notes_to_use: [use_note_input].span(), notes_to_create: [create_note_input].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
