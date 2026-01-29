@@ -229,6 +229,15 @@ pub struct VerifyValueInput {
     pub value: felt252,
 }
 
+/// Input for the `FillOpenNote` action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct FillOpenNoteInput {
+    /// The note identifier (key into the `notes` map).
+    pub note_id: felt252,
+    /// The amount to deposit.
+    pub amount: u128,
+}
+
 /// An action to be executed by the server.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ServerAction {
@@ -248,4 +257,6 @@ pub enum ServerAction {
     EmitWithdrawal: events::Withdrawal,
     /// Emit [`Deposit`](privacy::events::Deposit) event.
     EmitDeposit: events::Deposit,
+    /// Fill an open note with funds from a depositor.
+    FillOpenNote: FillOpenNoteInput,
 }
