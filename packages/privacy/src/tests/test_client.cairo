@@ -1,6 +1,6 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    AppendToVecInput, ClientAction, CreateNoteInput, DepositInput, OpenChannelInput,
+    AppendToVecInput, ClientAction, CreateEncNoteInput, DepositInput, OpenChannelInput,
     OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
     UseNoteInput, VerifyValueInput, WithdrawInput, WriteOnceInput,
 };
@@ -157,15 +157,15 @@ fn test_transfer() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_1, :token_address, :amount, index: note_index,
         );
-    user_1.cheat_create_note_e2e(:create_note_input);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_1);
 
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index };
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index,
         );
     let actions = user_1
@@ -174,7 +174,7 @@ fn test_transfer() {
         );
 
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token_address, :note_index);
-    let (note_id, expected_note) = user_1.compute_note(:create_note_input);
+    let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
@@ -193,7 +193,7 @@ fn test_transfer() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(:note_id), expected_note.enc_value);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note.packed_value);
 }
 
 #[test]
@@ -215,15 +215,15 @@ fn test_transfer_to_self() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user_2
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_1, :token_address, :amount, index: note_index,
         );
-    user_2.cheat_create_note_e2e(:create_note_input);
+    user_2.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_2.compute_channel_key(recipient: user_1);
 
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index };
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_1, :token_address, :amount, index: note_index,
         );
 
@@ -232,7 +232,7 @@ fn test_transfer_to_self() {
             notes_to_use: [use_note_input].span(), notes_to_create: [create_note_input].span(),
         );
     let expected_nullifier = user_1.compute_nullifier(sender: user_2, :token_address, :note_index);
-    let (note_id, expected_note) = user_1.compute_note(:create_note_input);
+    let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
@@ -251,7 +251,7 @@ fn test_transfer_to_self() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(:note_id), expected_note.enc_value);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note.packed_value);
 }
 
 #[test]
@@ -280,19 +280,19 @@ fn test_transfer_one_to_many() {
     let amount_1 = 1;
     let amount_2 = 8;
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_1, :token_address, amount: amount_1 + amount_2, index: note_index,
         );
-    user_1.cheat_create_note_e2e(:create_note_input);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_1);
 
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index };
     let create_note_input_1 = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, amount: amount_1, index: note_index,
         );
     let create_note_input_2 = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_3, :token_address, amount: amount_2, index: note_index,
         );
 
@@ -302,8 +302,10 @@ fn test_transfer_one_to_many() {
             notes_to_create: [create_note_input_1, create_note_input_2].span(),
         );
     let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token_address, :note_index);
-    let (note_id_1, expected_note_1) = user_1.compute_note(create_note_input: create_note_input_1);
-    let (note_id_2, expected_note_2) = user_1.compute_note(create_note_input: create_note_input_2);
+    let (note_id_1, expected_note_1) = user_1
+        .compute_enc_note(create_note_input: create_note_input_1);
+    let (note_id_2, expected_note_2) = user_1
+        .compute_enc_note(create_note_input: create_note_input_2);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
@@ -324,8 +326,8 @@ fn test_transfer_one_to_many() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1.enc_value);
-    assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2.enc_value);
+    assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1.packed_value);
+    assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2.packed_value);
 }
 
 #[test]
@@ -353,16 +355,16 @@ fn test_transfer_many_to_one() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user_2
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_1, :token_address, :amount, index: note_index,
         );
-    user_2.cheat_create_note_e2e(:create_note_input);
+    user_2.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key_1 = user_2.compute_channel_key(recipient: user_1);
     let create_note_input = user_3
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_1, :token_address, :amount, index: note_index,
         );
-    user_3.cheat_create_note_e2e(:create_note_input);
+    user_3.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key_2 = user_3.compute_channel_key(recipient: user_1);
 
     let use_note_input_1 = UseNoteInput {
@@ -373,7 +375,7 @@ fn test_transfer_many_to_one() {
     };
     let amount = 2 * amount;
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index,
         );
 
@@ -389,7 +391,7 @@ fn test_transfer_many_to_one() {
     let expected_nullifier_2 = user_1
         .compute_nullifier(sender: user_3, :token_address, :note_index);
     assert_ne!(expected_nullifier_1, expected_nullifier_2);
-    let (note_id, expected_note) = user_1.compute_note(:create_note_input);
+    let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     let storage_path_felt_nullifier_1 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
     );
@@ -418,7 +420,7 @@ fn test_transfer_many_to_one() {
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
-    assert_eq!(test.privacy.get_note(:note_id), expected_note.enc_value);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note.packed_value);
 }
 
 #[test]
@@ -450,16 +452,16 @@ fn test_transfer_many_to_many() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_3, :token_address, :amount, index: note_index,
         );
-    user_1.cheat_create_note_e2e(:create_note_input);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key_1 = user_1.compute_channel_key(recipient: user_3);
     let create_note_input = user_2
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_3, :token_address, :amount, index: note_index,
         );
-    user_2.cheat_create_note_e2e(:create_note_input);
+    user_2.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key_2 = user_2.compute_channel_key(recipient: user_3);
 
     let use_note_input_1 = UseNoteInput {
@@ -469,11 +471,11 @@ fn test_transfer_many_to_many() {
         channel_key: channel_key_2, token: token_address, note_index: 0,
     };
     let create_note_input_1 = user_3
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_1, :token_address, :amount, index: note_index,
         );
     let create_note_input_2 = user_3
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index,
         );
 
@@ -488,10 +490,12 @@ fn test_transfer_many_to_many() {
     let expected_nullifier_2 = user_3
         .compute_nullifier(sender: user_2, :token_address, :note_index);
     assert_ne!(expected_nullifier_1, expected_nullifier_2);
-    let (note_id_1, expected_note_1) = user_3.compute_note(create_note_input: create_note_input_1);
-    let (note_id_2, expected_note_2) = user_3.compute_note(create_note_input: create_note_input_2);
+    let (note_id_1, expected_note_1) = user_3
+        .compute_enc_note(create_note_input: create_note_input_1);
+    let (note_id_2, expected_note_2) = user_3
+        .compute_enc_note(create_note_input: create_note_input_2);
     assert_ne!(note_id_1, note_id_2);
-    assert_ne!(expected_note_1.enc_value, expected_note_2.enc_value);
+    assert_ne!(expected_note_1.packed_value, expected_note_2.packed_value);
     let storage_path_felt_nullifier_1 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
     );
@@ -522,8 +526,8 @@ fn test_transfer_many_to_many() {
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
-    assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1.enc_value);
-    assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2.enc_value);
+    assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1.packed_value);
+    assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2.packed_value);
 }
 
 #[test]
@@ -536,7 +540,7 @@ fn test_transfer_assertions() {
     let channel_key = user_1.compute_channel_key(recipient: user_1);
 
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index: 0 };
-    let create_note_input = CreateNoteInput {
+    let create_note_input = CreateEncNoteInput {
         recipient_addr: user_3.address,
         recipient_public_key: user_3.public_key,
         token: token_address,
@@ -656,8 +660,8 @@ fn test_transfer_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_1, :token_address, amount: 1, index: 0);
-    user_1.cheat_create_note_e2e(:create_note_input);
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_address, amount: 1, index: 0);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
 
     // Catch NON_ZERO_VALUE.
     let result = user_1
@@ -676,13 +680,15 @@ fn test_transfer_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_3, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_3, :token_address, amount: 1, index: 0);
 
     // Catch ZERO_RECIPIENT.
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateNoteInput { recipient_addr: Zero::zero(), ..create_note_input }]
+            notes_to_create: [
+                CreateEncNoteInput { recipient_addr: Zero::zero(), ..create_note_input }
+            ]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
@@ -691,7 +697,8 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateNoteInput { token: Zero::zero(), ..create_note_input }].span(),
+            notes_to_create: [CreateEncNoteInput { token: Zero::zero(), ..create_note_input }]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
@@ -700,7 +707,7 @@ fn test_transfer_assertions() {
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
             notes_to_create: [
-                CreateNoteInput { recipient_public_key: Zero::zero(), ..create_note_input }
+                CreateEncNoteInput { recipient_public_key: Zero::zero(), ..create_note_input }
             ]
                 .span(),
         );
@@ -710,13 +717,13 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateNoteInput { salt: 0, ..create_note_input }].span(),
+            notes_to_create: [CreateEncNoteInput { salt: 0, ..create_note_input }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateNoteInput { salt: 1, ..create_note_input }].span(),
+            notes_to_create: [CreateEncNoteInput { salt: 1, ..create_note_input }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
 
@@ -725,7 +732,7 @@ fn test_transfer_assertions() {
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
             notes_to_create: [
-                CreateNoteInput { salt: TWO_POW_120.try_into().unwrap(), ..create_note_input }
+                CreateEncNoteInput { salt: TWO_POW_120.try_into().unwrap(), ..create_note_input }
             ]
                 .span(),
         );
@@ -756,7 +763,7 @@ fn test_transfer_assertions() {
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
             notes_to_create: [
-                CreateNoteInput { recipient_public_key: user_1.public_key, ..create_note_input }
+                CreateEncNoteInput { recipient_public_key: user_1.public_key, ..create_note_input }
             ]
                 .span(),
         );
@@ -785,7 +792,9 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateNoteInput { token: wrong_token_address, ..create_note_input }]
+            notes_to_create: [
+                CreateEncNoteInput { token: wrong_token_address, ..create_note_input }
+            ]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -794,7 +803,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateNoteInput { index: 1, ..create_note_input }].span(),
+            notes_to_create: [CreateEncNoteInput { index: 1, ..create_note_input }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
 
@@ -804,7 +813,7 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateNoteInput { amount: 2, ..create_note_input }].span(),
+            notes_to_create: [CreateEncNoteInput { amount: 2, ..create_note_input }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
@@ -812,13 +821,13 @@ fn test_transfer_assertions() {
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateNoteInput { amount: 0, ..create_note_input }].span(),
+            notes_to_create: [CreateEncNoteInput { amount: 0, ..create_note_input }].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
 
     // Catch again NON_ZERO_VALUE of use_note.
     let client_actions = [
-        ClientAction::UseNote(use_note_input), ClientAction::CreateNote(create_note_input),
+        ClientAction::UseNote(use_note_input), ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
     let server_actions = user_1.client_execute(:client_actions);
@@ -2070,8 +2079,10 @@ fn test_create_note_self_note() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user
-        .new_note_with_generated_salt(recipient: user, :token_address, :amount, index: note_index);
-    let actions = user.internal_create_note(:create_note_input);
+        .new_enc_note_with_generated_salt(
+            recipient: user, :token_address, :amount, index: note_index,
+        );
+    let actions = user.internal_create_enc_note(:create_note_input);
     assert_eq!(actions, create_note_input.into_server_actions(:user));
 }
 
@@ -2090,22 +2101,26 @@ fn test_create_note_twice() {
     let amount_1 = 1;
     let note_index_1 = 0;
     let create_note_input_1 = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, amount: amount_1, index: note_index_1,
         );
-    let create_note_1_actions = user_1.internal_create_note(create_note_input: create_note_input_1);
+    let create_note_1_actions = user_1
+        .internal_create_enc_note(create_note_input: create_note_input_1);
     let amount_2 = amount_1 + 1;
     let note_index_2 = note_index_1 + 1;
     user_1.privacy.execute_actions(actions: create_note_1_actions);
     let create_note_input_2 = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, amount: amount_2, index: note_index_2,
         );
-    let create_note_2_actions = user_1.internal_create_note(create_note_input: create_note_input_2);
-    let (note_id_1, expected_note_1) = user_1.compute_note(create_note_input: create_note_input_1);
-    let (note_id_2, expected_note_2) = user_1.compute_note(create_note_input: create_note_input_2);
+    let create_note_2_actions = user_1
+        .internal_create_enc_note(create_note_input: create_note_input_2);
+    let (note_id_1, expected_note_1) = user_1
+        .compute_enc_note(create_note_input: create_note_input_1);
+    let (note_id_2, expected_note_2) = user_1
+        .compute_enc_note(create_note_input: create_note_input_2);
     assert_ne!(note_id_1, note_id_2);
-    assert_ne!(expected_note_1.enc_value, expected_note_2.enc_value);
+    assert_ne!(expected_note_1.packed_value, expected_note_2.packed_value);
     assert_eq!(create_note_1_actions, create_note_input_1.into_server_actions(user: user_1));
     assert_eq!(create_note_2_actions, create_note_input_2.into_server_actions(user: user_1));
 }
@@ -2125,83 +2140,88 @@ fn test_create_note_twice_same_amount() {
     let amount = 1;
     let note_index_1 = 0;
     let create_note_input_1 = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index_1,
         );
-    let create_note_1_actions = user_1.internal_create_note(create_note_input: create_note_input_1);
+    let create_note_1_actions = user_1
+        .internal_create_enc_note(create_note_input: create_note_input_1);
     let note_index_2 = note_index_1 + 1;
     test.privacy.execute_actions(actions: create_note_1_actions);
     let create_note_input_2 = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index_2,
         );
-    let create_note_2_actions = user_1.internal_create_note(create_note_input: create_note_input_2);
-    let (note_id_1, expected_note_1) = user_1.compute_note(create_note_input: create_note_input_1);
-    let (note_id_2, expected_note_2) = user_1.compute_note(create_note_input: create_note_input_2);
+    let create_note_2_actions = user_1
+        .internal_create_enc_note(create_note_input: create_note_input_2);
+    let (note_id_1, expected_note_1) = user_1
+        .compute_enc_note(create_note_input: create_note_input_1);
+    let (note_id_2, expected_note_2) = user_1
+        .compute_enc_note(create_note_input: create_note_input_2);
     assert_ne!(note_id_1, note_id_2);
-    assert_ne!(expected_note_1.enc_value, expected_note_2.enc_value);
+    assert_ne!(expected_note_1.packed_value, expected_note_2.packed_value);
     assert_eq!(create_note_1_actions, create_note_input_1.into_server_actions(user: user_1));
     assert_eq!(create_note_2_actions, create_note_input_2.into_server_actions(user: user_1));
 }
 
 #[test]
-fn test_create_note_assertions() {
+fn test_create_enc_note_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token_address = test.mock_new_token();
     user.set_viewing_key_e2e();
     let create_note_input = user
-        .new_note_with_generated_salt(recipient: user, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user, :token_address, amount: 1, index: 0);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero = user;
     user_zero.address = Zero::zero();
-    let result = user_zero.safe_create_note(:create_note_input);
+    let result = user_zero.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero.safe_create_note_execute_and_panic(:create_note_input);
+    let result = user_zero.safe_create_enc_note_execute_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero.safe_create_note_execute_view(:create_note_input);
+    let result = user_zero.safe_create_enc_note_execute_view(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_PRIVATE_KEY.
     let mut user_zero_private_key = user;
     user_zero_private_key.private_key = Zero::zero();
-    let result = user_zero_private_key.safe_create_note(:create_note_input);
+    let result = user_zero_private_key.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_private_key.safe_create_note_execute_and_panic(:create_note_input);
+    let result = user_zero_private_key.safe_create_enc_note_execute_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_private_key.safe_create_note_execute_view(:create_note_input);
+    let result = user_zero_private_key.safe_create_enc_note_execute_view(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
     let mut user_private_key_not_canonical = user.clone();
     user_private_key_not_canonical.private_key = Neg::neg(user.private_key);
-    let result = user_private_key_not_canonical.safe_create_note(:create_note_input);
+    let result = user_private_key_not_canonical.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical
-        .safe_create_note_execute_and_panic(:create_note_input);
+        .safe_create_enc_note_execute_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
-    let result = user_private_key_not_canonical.safe_create_note_execute_view(:create_note_input);
+    let result = user_private_key_not_canonical
+        .safe_create_enc_note_execute_view(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch ZERO_RECIPIENT_ADDR.
     let result = user
-        .safe_create_note(
-            create_note_input: CreateNoteInput {
+        .safe_create_enc_note(
+            create_note_input: CreateEncNoteInput {
                 recipient_addr: Zero::zero(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user
-        .safe_create_note_execute_and_panic(
-            create_note_input: CreateNoteInput {
+        .safe_create_enc_note_execute_and_panic(
+            create_note_input: CreateEncNoteInput {
                 recipient_addr: Zero::zero(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user
-        .safe_create_note_execute_view(
-            create_note_input: CreateNoteInput {
+        .safe_create_enc_note_execute_view(
+            create_note_input: CreateEncNoteInput {
                 recipient_addr: Zero::zero(), ..create_note_input,
             },
         );
@@ -2209,39 +2229,39 @@ fn test_create_note_assertions() {
 
     // Catch ZERO_TOKEN.
     let result = user
-        .safe_create_note(
-            create_note_input: CreateNoteInput { token: Zero::zero(), ..create_note_input },
+        .safe_create_enc_note(
+            create_note_input: CreateEncNoteInput { token: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user
-        .safe_create_note_execute_and_panic(
-            create_note_input: CreateNoteInput { token: Zero::zero(), ..create_note_input },
+        .safe_create_enc_note_execute_and_panic(
+            create_note_input: CreateEncNoteInput { token: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user
-        .safe_create_note_execute_view(
-            create_note_input: CreateNoteInput { token: Zero::zero(), ..create_note_input },
+        .safe_create_enc_note_execute_view(
+            create_note_input: CreateEncNoteInput { token: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_RECIPIENT_PUBLIC_KEY.
     let result = user
-        .safe_create_note(
-            create_note_input: CreateNoteInput {
+        .safe_create_enc_note(
+            create_note_input: CreateEncNoteInput {
                 recipient_public_key: Zero::zero(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
     let result = user
-        .safe_create_note_execute_and_panic(
-            create_note_input: CreateNoteInput {
+        .safe_create_enc_note_execute_and_panic(
+            create_note_input: CreateEncNoteInput {
                 recipient_public_key: Zero::zero(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
     let result = user
-        .safe_create_note_execute_view(
-            create_note_input: CreateNoteInput {
+        .safe_create_enc_note_execute_view(
+            create_note_input: CreateEncNoteInput {
                 recipient_public_key: Zero::zero(), ..create_note_input,
             },
         );
@@ -2249,101 +2269,105 @@ fn test_create_note_assertions() {
 
     // Catch SALT_TOO_SMALL.
     let result = user
-        .safe_create_note(
-            create_note_input: CreateNoteInput { salt: Zero::zero(), ..create_note_input },
+        .safe_create_enc_note(
+            create_note_input: CreateEncNoteInput { salt: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
     let result = user
-        .safe_create_note(create_note_input: CreateNoteInput { salt: 1, ..create_note_input });
-    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
-    let result = user
-        .safe_create_note_execute_and_panic(
-            create_note_input: CreateNoteInput { salt: Zero::zero(), ..create_note_input },
+        .safe_create_enc_note(
+            create_note_input: CreateEncNoteInput { salt: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
     let result = user
-        .safe_create_note_execute_and_panic(
-            create_note_input: CreateNoteInput { salt: 1, ..create_note_input },
+        .safe_create_enc_note_execute_and_panic(
+            create_note_input: CreateEncNoteInput { salt: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
     let result = user
-        .safe_create_note_execute_view(
-            create_note_input: CreateNoteInput { salt: Zero::zero(), ..create_note_input },
+        .safe_create_enc_note_execute_and_panic(
+            create_note_input: CreateEncNoteInput { salt: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
     let result = user
-        .safe_create_note_execute_view(
-            create_note_input: CreateNoteInput { salt: 1, ..create_note_input },
+        .safe_create_enc_note_execute_view(
+            create_note_input: CreateEncNoteInput { salt: Zero::zero(), ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+    let result = user
+        .safe_create_enc_note_execute_view(
+            create_note_input: CreateEncNoteInput { salt: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
 
     // Catch SALT_EXCEEDS_120_BITS.
     let result = user
-        .safe_create_note(
-            create_note_input: CreateNoteInput {
+        .safe_create_enc_note(
+            create_note_input: CreateEncNoteInput {
                 salt: TWO_POW_120.try_into().unwrap(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_EXCEEDS_120_BITS);
     let result = user
-        .safe_create_note_execute_and_panic(
-            create_note_input: CreateNoteInput {
+        .safe_create_enc_note_execute_and_panic(
+            create_note_input: CreateEncNoteInput {
                 salt: TWO_POW_120.try_into().unwrap(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_EXCEEDS_120_BITS);
     let result = user
-        .safe_create_note_execute_view(
-            create_note_input: CreateNoteInput {
+        .safe_create_enc_note_execute_view(
+            create_note_input: CreateEncNoteInput {
                 salt: TWO_POW_120.try_into().unwrap(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_EXCEEDS_120_BITS);
 
     // Catch SUBCHANNEL_NOT_FOUND (channel doesnt exist).
-    let result = user.safe_create_note(:create_note_input);
+    let result = user.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_note_execute_and_panic(:create_note_input);
+    let result = user.safe_create_enc_note_execute_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_note_execute_view(:create_note_input);
+    let result = user.safe_create_enc_note_execute_view(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     user.open_channel_e2e(recipient: user, index: 0);
 
     // Catch SUBCHANNEL_NOT_FOUND (subchannel doesnt exist).
-    let result = user.safe_create_note(:create_note_input);
+    let result = user.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_note_execute_and_panic(:create_note_input);
+    let result = user.safe_create_enc_note_execute_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_note_execute_view(:create_note_input);
+    let result = user.safe_create_enc_note_execute_view(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
 
     // Catch INDEX_NOT_SEQUENTIAL.
     let result = user
-        .safe_create_note(create_note_input: CreateNoteInput { index: 1, ..create_note_input });
-    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
-    let result = user
-        .safe_create_note_execute_and_panic(
-            create_note_input: CreateNoteInput { index: 1, ..create_note_input },
+        .safe_create_enc_note(
+            create_note_input: CreateEncNoteInput { index: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user
-        .safe_create_note_execute_view(
-            create_note_input: CreateNoteInput { index: 1, ..create_note_input },
+        .safe_create_enc_note_execute_and_panic(
+            create_note_input: CreateEncNoteInput { index: 1, ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
+    let result = user
+        .safe_create_enc_note_execute_view(
+            create_note_input: CreateEncNoteInput { index: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE.
-    let result = user.safe_create_note(:create_note_input);
+    let result = user.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-    let result = user.safe_create_note_execute_and_panic(:create_note_input);
+    let result = user.safe_create_enc_note_execute_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-    let result = user.safe_create_note_execute_view(:create_note_input);
+    let result = user.safe_create_enc_note_execute_view(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
-    user.cheat_create_note_e2e(:create_note_input);
+    user.cheat_create_enc_note_e2e(:create_note_input);
 
     // Catch NON_ZERO_VALUE (note id already exists).
     let use_note_input = UseNoteInput {
@@ -2352,7 +2376,7 @@ fn test_create_note_assertions() {
         note_index: create_note_input.index,
     };
     let client_actions = [
-        ClientAction::UseNote(use_note_input), ClientAction::CreateNote(create_note_input),
+        ClientAction::UseNote(use_note_input), ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
     let result = user.safe_client_execute(:client_actions);
@@ -2381,15 +2405,15 @@ fn test_create_note_use_note_zero_amount() {
         );
     // Create note with zero amount.
     let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 0);
-    let server_actions = user_1.create_note(:create_note_input);
-    let (note_id, expected_note) = user_1.compute_note(:create_note_input);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 0);
+    let server_actions = user_1.create_enc_note(:create_note_input);
+    let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     assert_ne!(note_id, Zero::zero());
-    assert_ne!(expected_note.enc_value, Zero::zero());
+    assert_ne!(expected_note.packed_value, Zero::zero());
     assert_eq!(server_actions, create_note_input.into_server_actions(user: user_1));
     assert_eq!(user_1.privacy.get_note(:note_id), Zero::zero());
     user_1.privacy.execute_actions(actions: server_actions);
-    assert_eq!(user_1.privacy.get_note(:note_id), expected_note.enc_value);
+    assert_eq!(user_1.privacy.get_note(:note_id), expected_note.packed_value);
     // Use note + create note with zero amount.
     let use_note_input = UseNoteInput {
         channel_key: user_1.compute_channel_key(recipient: user_2),
@@ -2397,9 +2421,9 @@ fn test_create_note_use_note_zero_amount() {
         note_index: 0,
     };
     let create_note_input = user_2
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 0);
     let client_actions = [
-        ClientAction::UseNote(use_note_input), ClientAction::CreateNote(create_note_input),
+        ClientAction::UseNote(use_note_input), ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
     let server_actions = user_2.client_execute(:client_actions);
@@ -2409,9 +2433,9 @@ fn test_create_note_use_note_zero_amount() {
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
-    let (note_id, expected_note) = user_2.compute_note(:create_note_input);
+    let (note_id, expected_note) = user_2.compute_enc_note(:create_note_input);
     assert_ne!(note_id, Zero::zero());
-    assert_ne!(expected_note.enc_value, Zero::zero());
+    assert_ne!(expected_note.packed_value, Zero::zero());
     let expected_server_actions = [
         ServerAction::WriteOnce(
             WriteOnceInput { storage_address: nullifier_storage_path, value: [true.into()].span() },
@@ -2424,7 +2448,7 @@ fn test_create_note_use_note_zero_amount() {
     assert_eq!(user_2.privacy.get_note(:note_id), Zero::zero());
     user_2.privacy.execute_actions(actions: server_actions);
     assert!(user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(user_2.privacy.get_note(:note_id), expected_note.enc_value);
+    assert_eq!(user_2.privacy.get_note(:note_id), expected_note.packed_value);
     // Use note with zero amount.
     let channel_key = user_2.compute_channel_key(recipient: user_2);
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index: 0 };
@@ -2461,9 +2485,9 @@ fn test_create_note_subchannel_not_found_wrong_addr() {
             recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
     user_1.address = user_2.address;
-    user_1.create_note(:create_note_input);
+    user_1.create_enc_note(:create_note_input);
 }
 
 #[test]
@@ -2481,8 +2505,8 @@ fn test_create_note_subchannel_not_found_wrong_private_key() {
         );
     user_1.new_key();
     let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
-    user_1.create_note(:create_note_input);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
+    user_1.create_enc_note(:create_note_input);
 }
 
 #[test]
@@ -2500,8 +2524,8 @@ fn test_create_note_subchannel_not_found_wrong_public_key() {
         );
     user_2.public_key = user_1.public_key;
     let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
-    user_1.create_note(:create_note_input);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
+    user_1.create_enc_note(:create_note_input);
 }
 
 #[test]
@@ -2518,9 +2542,9 @@ fn test_create_note_subchannel_not_found_wrong_token() {
             recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let mut create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
     create_note_input.token = test.mock_new_token();
-    user_1.create_note(:create_note_input);
+    user_1.create_enc_note(:create_note_input);
 }
 
 #[test]
@@ -2538,10 +2562,10 @@ fn test_create_note_decrypt_amount() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index,
         );
-    let create_note_actions = user_1.internal_create_note(:create_note_input);
+    let create_note_actions = user_1.internal_create_enc_note(:create_note_input);
     user_1.privacy.execute_actions(actions: create_note_actions);
 
     // User 2 should be able to decrypt the amount.
@@ -2590,10 +2614,10 @@ fn test_use_note() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index,
         );
-    user_1.cheat_create_note_e2e(:create_note_input);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index };
     let actions = user_2.internal_use_note(note: use_note_input);
@@ -2623,8 +2647,10 @@ fn test_use_note_self_note() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user
-        .new_note_with_generated_salt(recipient: user, :token_address, :amount, index: note_index);
-    user.cheat_create_note_e2e(:create_note_input);
+        .new_enc_note_with_generated_salt(
+            recipient: user, :token_address, :amount, index: note_index,
+        );
+    user.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user.compute_channel_key(recipient: user);
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index };
     let actions = user.internal_use_note(note: use_note_input);
@@ -2660,20 +2686,20 @@ fn test_use_note_multiple_notes() {
     let amount_1 = 1;
     let amount_2 = 2;
     let create_note_input_1 = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, amount: amount_1, index: 0,
         );
     let create_note_input_2 = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, amount: amount_2, index: 1,
         );
     let create_note_input_3 = user_2
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, amount: amount_1, index: 0,
         );
-    user_1.cheat_create_note_e2e(create_note_input: create_note_input_1);
-    user_1.cheat_create_note_e2e(create_note_input: create_note_input_2);
-    user_2.cheat_create_note_e2e(create_note_input: create_note_input_3);
+    user_1.cheat_create_enc_note_e2e(create_note_input: create_note_input_1);
+    user_1.cheat_create_enc_note_e2e(create_note_input: create_note_input_2);
+    user_2.cheat_create_enc_note_e2e(create_note_input: create_note_input_3);
     let channel_key_1 = user_1.compute_channel_key(recipient: user_2);
     let channel_key_2 = user_2.compute_channel_key(recipient: user_2);
     let note_1_path = UseNoteInput {
@@ -2748,10 +2774,10 @@ fn test_use_same_note_twice() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index,
         );
-    user_1.cheat_create_note_e2e(:create_note_input);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index };
     let use_note_action = ClientAction::UseNote(use_note_input);
@@ -2774,11 +2800,11 @@ fn test_use_note_same_amount() {
         );
     let amount = 1;
     let create_note_input_1 = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
     let create_note_input_2 = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 1);
-    user_1.cheat_create_note_e2e(create_note_input: create_note_input_1);
-    user_1.cheat_create_note_e2e(create_note_input: create_note_input_2);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 1);
+    user_1.cheat_create_enc_note_e2e(create_note_input: create_note_input_1);
+    user_1.cheat_create_enc_note_e2e(create_note_input: create_note_input_2);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let use_note_input_1 = UseNoteInput { channel_key, token: token_address, note_index: 0 };
     let use_note_input_2 = UseNoteInput { channel_key, token: token_address, note_index: 1 };
@@ -2826,8 +2852,8 @@ fn test_use_note_assertions() {
             recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let create_note_input = user
-        .new_note_with_generated_salt(recipient: user, :token_address, amount: 1, index: 0);
-    user.cheat_create_note_e2e(:create_note_input);
+        .new_enc_note_with_generated_salt(recipient: user, :token_address, amount: 1, index: 0);
+    user.cheat_create_enc_note_e2e(:create_note_input);
 
     let channel_key = user.compute_channel_key(recipient: user);
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index: 0 };
@@ -2935,8 +2961,8 @@ fn test_use_note_assertions() {
     // Catch NON_ZERO_VALUE (nullifier already exists).
     let client_actions = [
         ClientAction::UseNote(use_note_input),
-        ClientAction::CreateNote(
-            CreateNoteInput {
+        ClientAction::CreateEncNote(
+            CreateEncNoteInput {
                 recipient_addr: user.address,
                 recipient_public_key: user.public_key,
                 token: token_address,
@@ -2972,8 +2998,8 @@ fn test_use_note_wrong_owner_addr() {
         );
     user_2.open_channel_e2e(recipient: user_1, index: 0);
     let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
-    user_1.cheat_create_note_e2e(:create_note_input);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index: 0 };
     user_2.address = user_1.address;
@@ -2996,10 +3022,10 @@ fn test_use_note_wrong_owner_private_key() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index,
         );
-    user_1.cheat_create_note_e2e(:create_note_input);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     user_2.new_key();
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index };
@@ -3021,10 +3047,10 @@ fn test_use_note_find_nullifier() {
     let amount = 1;
     let note_index = 0;
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index,
         );
-    user_1.cheat_create_note_e2e(:create_note_input);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
 
     // User 2 should be able to find the nullifier.
     let enc_channel_info = user_2.get_channel_info(channel_index: 0);
@@ -3444,17 +3470,17 @@ fn test_client_execute_deposit_create_note() {
 
     let amount = 100;
     let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
     user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
     user_1.increase_token_balance(:token, :amount);
     user_1.approve(:token, amount: amount.into());
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_address, amount }),
-        ClientAction::CreateNote(create_note_input),
+        ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
     let actions = user_1.client_execute(:client_actions);
-    let (note_id, expected_note) = user_1.compute_note(:create_note_input);
+    let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     let expected_event = events::Deposit {
         user_addr: user_1.address, token: token_address, amount,
     };
@@ -3478,7 +3504,7 @@ fn test_client_execute_deposit_create_note() {
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 
     test.privacy.execute_actions(:actions);
-    assert_eq!(test.privacy.get_note(:note_id), expected_note.enc_value);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note.packed_value);
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
@@ -3496,23 +3522,23 @@ fn test_client_execute_use_note_create_note() {
 
     let amount = 100;
     let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
-    user_1.cheat_create_note_e2e(:create_note_input);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
     let use_note_input = UseNoteInput {
         channel_key: user_1.compute_channel_key(recipient: user_2),
         token: token_address,
         note_index: create_note_input.index,
     };
     let create_note_input_2 = user_2
-        .new_note_with_generated_salt(recipient: user_1, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_address, :amount, index: 0);
     user_2.open_channel_e2e(recipient: user_1, index: 0);
     user_2.open_subchannel_e2e(recipient: user_1, :token_address, index: 0);
     let client_actions = [
-        ClientAction::UseNote(use_note_input), ClientAction::CreateNote(create_note_input_2),
+        ClientAction::UseNote(use_note_input), ClientAction::CreateEncNote(create_note_input_2),
     ]
         .span();
     let actions = user_2.client_execute(:client_actions);
-    let (note_id, expected_note) = user_2.compute_note(create_note_input: create_note_input_2);
+    let (note_id, expected_note) = user_2.compute_enc_note(create_note_input: create_note_input_2);
     let nullifier = user_2
         .compute_nullifier(sender: user_1, :token_address, note_index: create_note_input.index);
     let nullifier_storage_path = map_entry_address(
@@ -3535,7 +3561,7 @@ fn test_client_execute_use_note_create_note() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
-    assert_eq!(test.privacy.get_note(:note_id), expected_note.enc_value);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note.packed_value);
 }
 
 #[test]
@@ -3551,8 +3577,8 @@ fn test_client_execute_use_note_withdraw() {
     user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
     let amount = 100;
     let create_note_input = user_1
-        .new_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
-    user_1.cheat_create_note_e2e(:create_note_input);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
     test.privacy.increase_token_balance(:token, :amount);
 
     let use_note_input = UseNoteInput {
@@ -3715,11 +3741,11 @@ fn test_internal_actions() {
     let note_index = 0;
     let subchannel_index = 0;
     let create_note_input = user_1
-        .new_note_with_generated_salt(
+        .new_enc_note_with_generated_salt(
             recipient: user_2, :token_address, :amount, index: note_index,
         );
     user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: subchannel_index);
-    let actions = user_1.internal_create_note(:create_note_input);
+    let actions = user_1.internal_create_enc_note(:create_note_input);
     assert_eq!(actions, create_note_input.into_server_actions(user: user_1));
 
     // TODO: Test writing only `enc_value` to storage when open notes are implemented.
@@ -3739,7 +3765,7 @@ fn test_internal_actions() {
     assert_eq!(actions, expected_actions);
 
     // Use note action.
-    user_1.cheat_create_note_e2e(:create_note_input);
+    user_1.cheat_create_enc_note_e2e(:create_note_input);
     let nullifier = user_2.compute_nullifier(sender: user_1, :token_address, :note_index);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index };
@@ -3893,11 +3919,11 @@ fn test_actions_out_of_order() {
     let amount = 100;
     user.set_viewing_key_e2e();
     let create_note_input_1 = user
-        .new_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
     let note_1_path = UseNoteInput {
         channel_key: user.compute_channel_key(recipient: user), token: token_address, note_index: 0,
     };
-    let create_note_input_2 = CreateNoteInput { index: 1, ..create_note_input_1 };
+    let create_note_input_2 = CreateEncNoteInput { index: 1, ..create_note_input_1 };
 
     // Catch NON_ZERO_VALUE (set viewing key twice).
     let random = user.get_random();
@@ -4034,7 +4060,7 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> set viewing key).
     user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
-    user.cheat_create_note_e2e(create_note_input: create_note_input_1);
+    user.cheat_create_enc_note_e2e(create_note_input: create_note_input_1);
     let client_actions = [
         ClientAction::UseNote(note_1_path),
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
@@ -4095,10 +4121,10 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
-    // Catch ACTIONS_OUT_OF_ORDER (create note -> set viewing key).
+    // Catch ACTIONS_OUT_OF_ORDER (create enc note -> set viewing key).
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_address, amount }),
-        ClientAction::CreateNote(create_note_input_2),
+        ClientAction::CreateEncNote(create_note_input_2),
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
@@ -4107,10 +4133,10 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
-    // Catch ACTIONS_OUT_OF_ORDER (create note -> open channel).
+    // Catch ACTIONS_OUT_OF_ORDER (create enc note -> open channel).
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_address, amount }),
-        ClientAction::CreateNote(create_note_input_2),
+        ClientAction::CreateEncNote(create_note_input_2),
         ClientAction::OpenChannel(
             OpenChannelInput {
                 recipient_addr: user.address,
@@ -4127,10 +4153,10 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
-    // Catch ACTIONS_OUT_OF_ORDER (create note -> open subchannel).
+    // Catch ACTIONS_OUT_OF_ORDER (create enc note -> open subchannel).
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_address, amount }),
-        ClientAction::CreateNote(create_note_input_2),
+        ClientAction::CreateEncNote(create_note_input_2),
         ClientAction::OpenSubchannel(
             OpenSubchannelInput {
                 recipient_addr: user.address,
@@ -4148,10 +4174,10 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
-    // Catch ACTIONS_OUT_OF_ORDER (create note -> deposit).
+    // Catch ACTIONS_OUT_OF_ORDER (create enc note -> deposit).
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_address, amount }),
-        ClientAction::CreateNote(create_note_input_2),
+        ClientAction::CreateEncNote(create_note_input_2),
         ClientAction::Deposit(DepositInput { token: token_address, amount }),
     ]
         .span();
@@ -4160,10 +4186,10 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
-    // Catch ACTIONS_OUT_OF_ORDER (create note -> use note).
+    // Catch ACTIONS_OUT_OF_ORDER (create enc note -> use note).
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_address, amount }),
-        ClientAction::CreateNote(create_note_input_2), ClientAction::UseNote(note_1_path),
+        ClientAction::CreateEncNote(create_note_input_2), ClientAction::UseNote(note_1_path),
     ]
         .span();
     let result = user.safe_client_execute(:client_actions);
@@ -4258,13 +4284,13 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
-    // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create note).
+    // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create enc note).
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_address, amount }),
         ClientAction::Withdraw(
             WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
         ),
-        ClientAction::CreateNote(create_note_input_2),
+        ClientAction::CreateEncNote(create_note_input_2),
     ]
         .span();
     let result = user.safe_client_execute(:client_actions);
@@ -4286,17 +4312,17 @@ fn test_execute_and_panic_balance_assertions() {
             recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let create_note_input = user
-        .new_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
-    user.cheat_create_note_e2e(:create_note_input);
+        .new_enc_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
+    user.cheat_create_enc_note_e2e(:create_note_input);
     let use_note_input = UseNoteInput {
         channel_key: user.compute_channel_key(recipient: user), token: token_address, note_index: 0,
     };
-    let create_note_input = CreateNoteInput { index: 1, ..create_note_input };
+    let create_note_input = CreateEncNoteInput { index: 1, ..create_note_input };
 
     // Catch FINAL_BALANCE_MUST_BE_ZERO (deposit).
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_address, amount: 2 * amount }),
-        ClientAction::CreateNote(create_note_input),
+        ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
     let result = user.safe_client_execute(:client_actions);
@@ -4331,7 +4357,7 @@ fn test_execute_and_panic_balance_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE (create note).
-    let client_actions = [ClientAction::CreateNote(create_note_input)].span();
+    let client_actions = [ClientAction::CreateEncNote(create_note_input),].span();
     let result = user.safe_client_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
     let result = user.safe_execute_view(:client_actions);
@@ -4372,10 +4398,10 @@ fn test_client_execute_writes() {
         },
     );
     let deposit = ClientAction::Deposit(DepositInput { token: token_address, amount });
-    let create_note_input = CreateNoteInput {
+    let create_note_input = CreateEncNoteInput {
         recipient_addr, recipient_public_key, token: token_address, amount, index, salt,
     };
-    let create_note = ClientAction::CreateNote(create_note_input);
+    let create_note = ClientAction::CreateEncNote(create_note_input);
     let client_actions = [set_viewing_key, open_channel, open_subchannel, deposit, create_note]
         .span();
     // Compile client actions.
@@ -4476,8 +4502,8 @@ fn test_client_execute_writes() {
     user.approve(:token, amount: amount.into());
     test.privacy.execute_actions(actions: server_actions);
 
-    let create_note = ClientAction::CreateNote(
-        CreateNoteInput {
+    let create_note = ClientAction::CreateEncNote(
+        CreateEncNoteInput {
             recipient_addr,
             recipient_public_key,
             token: token_address,
@@ -4520,8 +4546,8 @@ fn test_client_transfers_dont_execute() {
         .client_execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_address, amount }),
-                ClientAction::CreateNote(
-                    CreateNoteInput {
+                ClientAction::CreateEncNote(
+                    CreateEncNoteInput {
                         recipient_addr: user.address,
                         recipient_public_key: user.public_key,
                         token: token_address,
@@ -4546,7 +4572,7 @@ fn test_client_transfers_dont_execute() {
         0,
     );
 
-    let create_note_input = CreateNoteInput {
+    let create_note_input = CreateEncNoteInput {
         recipient_addr: user.address,
         recipient_public_key: user.public_key,
         token: token_address,

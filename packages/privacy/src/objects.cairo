@@ -147,20 +147,20 @@ pub impl EncOutgoingChannelInfoZero of Zero<EncOutgoingChannelInfo> {
 /// A note containing encrypted value and token information.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
 pub(crate) struct Note {
-    /// The encrypted value of the note.
-    // TODO: Implement open notes.
-    pub enc_value: felt252,
+    /// The packed value of the note `(salt, amount)`:
+    /// - For encrypted notes: salt>=CREATE_NOTE_MIN_SALT (2), value=encrypted_amount.
+    pub packed_value: felt252,
     /// The token address of the note (zero for encrypted notes).
     pub token: ContractAddress,
 }
 
 #[generate_trait]
 pub impl NoteImpl of NoteTrait {
-    fn encrypt(
+    fn enc_note(
         channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
     ) -> Note {
         Note {
-            enc_value: encrypt_note_amount(:channel_key, :token, :index, :salt, :amount),
+            packed_value: encrypt_note_amount(:channel_key, :token, :index, :salt, :amount),
             token: Zero::zero(),
         }
     }
