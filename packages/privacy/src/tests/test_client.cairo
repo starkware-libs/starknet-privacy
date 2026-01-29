@@ -59,11 +59,7 @@ fn test_set_viewing_key() {
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
     let expected_actions = [
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: public_key_storage_path_felt, value: [public_key].span(),
-            },
-        ),
+        public_key.to_write_once_action(storage_address: public_key_storage_path_felt),
         enc_private_key.to_write_once_action(storage_address: enc_private_key_storage_path_felt),
         ServerAction::EmitViewingKeySet(
             events::ViewingKeySet {
@@ -3256,11 +3252,7 @@ fn test_client_execute_set_viewing_key() {
         user_addr: user_1.address, public_key: user_1.public_key, enc_private_key,
     };
     let expected_actions = [
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: public_key_storage_path_felt, value: [user_1.public_key].span(),
-            },
-        ),
+        user_1.public_key.to_write_once_action(storage_address: public_key_storage_path_felt),
         enc_private_key.to_write_once_action(storage_address: enc_private_key_storage_path_felt),
         ServerAction::EmitViewingKeySet(expected_event),
     ]
@@ -4430,9 +4422,7 @@ fn test_client_execute_writes() {
     };
     let expected_server_actions = [
         // Set viewing key.
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: public_key_storage_path, value: [public_key].span() },
-        ),
+        public_key.to_write_once_action(storage_address: public_key_storage_path),
         enc_private_key.to_write_once_action(storage_address: enc_private_key_storage_path),
         ServerAction::EmitViewingKeySet(expected_event_viewing_key_set),
         // Open channel.
