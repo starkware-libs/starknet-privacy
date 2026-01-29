@@ -35,7 +35,7 @@ use privacy::utils::{
 use snforge_std::{
     CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
     Token, TokenTrait, cheat_resource_bounds, declare, interact_with_state, map_entry_address,
-    set_balance, spy_messages_to_l1, store,
+    spy_messages_to_l1, store,
 };
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
@@ -44,8 +44,8 @@ use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
 use starkware_utils_testing::test_utils::{
-    Deployable, TokenConfig, cheat_caller_address_once, generic_load, set_account_as_app_role_admin,
-    set_account_as_security_agent, set_account_as_token_admin,
+    Deployable, TokenConfig, TokenHelperTrait, cheat_caller_address_once, generic_load,
+    set_account_as_app_role_admin, set_account_as_security_agent, set_account_as_token_admin,
 };
 
 #[generate_trait]
@@ -1150,23 +1150,6 @@ pub(crate) impl TestImpl of TestTrait {
         self.compliance.private_key = 'COMPLIANCE_PRIVATE_KEY' + self.nonce.into();
         self.compliance.public_key = derive_public_key(private_key: self.compliance.private_key);
         self.privacy.set_compliance_public_key(compliance_public_key: self.compliance.public_key);
-    }
-}
-
-// TODO: Move to utils repo.
-#[generate_trait]
-pub(crate) impl PrivacyTokenImpl of PrivacyTokenTrait {
-    fn balance_of(self: @Token, address: ContractAddress) -> u256 {
-        IERC20Dispatcher { contract_address: self.contract_address() }.balance_of(account: address)
-    }
-
-    fn supply(self: @Token, address: ContractAddress, amount: u128) {
-        let current_balance = self.balance_of(:address);
-        set_balance(target: address, new_balance: current_balance + amount.into(), token: *self);
-    }
-
-    fn set_balance(self: @Token, address: ContractAddress, amount: u128) {
-        set_balance(target: address, new_balance: amount.into(), token: *self);
     }
 }
 

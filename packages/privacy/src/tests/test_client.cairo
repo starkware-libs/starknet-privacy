@@ -7,8 +7,8 @@ use privacy::actions::{
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
 use privacy::objects::{EncUserAddr, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
-    ComplianceTrait, IntoServerActionTrait, PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait,
-    UserTrait, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
+    ComplianceTrait, IntoServerActionTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait,
+    decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
 };
 use privacy::utils::constants::TWO_POW_120;
 use privacy::utils::{decrypt_note_amount, encrypt_channel_info, is_canonical_key};
@@ -21,7 +21,8 @@ use starknet::VALIDATED;
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{
-    assert_expected_event_emitted, assert_panic_with_error, assert_panic_with_felt_error,
+    TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_error,
+    assert_panic_with_felt_error,
 };
 
 #[test]
