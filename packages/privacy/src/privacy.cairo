@@ -3,8 +3,8 @@ pub mod Privacy {
     use core::iter::Extend;
     use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
+    use openzeppelin::interfaces::token::erc20::IERC20Dispatcher;
     use openzeppelin::introspection::src5::SRC5Component;
-    use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use privacy::actions::{
         AppendToVecInput, ClientAction, ClientActionTrait, CreateNoteInput, DepositInput,
         OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
