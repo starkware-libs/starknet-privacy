@@ -30,7 +30,7 @@ import { TracingRpcProvider } from "./tracing-provider.js";
 import type { CallAndProof, PrivateTransfersInterface } from "../interfaces.js";
 import { createPrivateTransfers } from "../factory.js";
 import { CallMockProofProvider } from "./mock-proving.js";
-import { ContractDiscoveryProvider } from "./contract-discovery.js";
+import { ContractDiscoveryProvider } from "../internal/contract-discovery.js";
 import { toBigInt } from "../utils/crypto.js";
 import { Devnet as StarknetDevnet } from "starknet-devnet";
 import { readFileSync, writeFileSync } from "fs";
