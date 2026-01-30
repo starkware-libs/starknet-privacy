@@ -1,10 +1,6 @@
-//! Indexer integration tests.
+//! Indexer lifecycle tests: startup, shutdown, reconnection.
 //!
-//! ## Running tests
-//!
-//! ```sh
-//! cargo test -p discovery-service --test test_indexer
-//! ```
+//! Run with: `cargo test -p discovery-service --test indexer_tests`
 
 mod common;
 
@@ -47,7 +43,6 @@ async fn test_new_block_notification() {
         .await
         .unwrap();
 
-    // Create a block and verify we get notified
     devnet.create_block().await.unwrap();
     indexer
         .wait_for_log("New block #", Duration::from_secs(5))

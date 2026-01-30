@@ -40,9 +40,9 @@ pub struct DecryptedNote {
 pub struct NotesDiscoveryResult {
     /// List of discovered and decrypted notes.
     pub notes: Vec<DecryptedNote>,
-    /// Next index to scan for incremental discovery.
-    /// Use this as `start_index` for the next discovery call.
-    pub total_n_notes: u64,
+    /// Index of the last discovered note, or `None` if no notes were discovered.
+    /// Use for cursor updates: `cursor.last_note_index = result.last_index`.
+    pub last_index: Option<u64>,
     /// Whether there may be more notes to discover.
     /// `true` if stopped due to budget exhaustion, `false` if sentinel was found.
     pub has_more: bool,
@@ -112,9 +112,11 @@ pub async fn discover_notes<PrivacyPool: IViews>(
         index += 1;
     }
 
+    let last_index = notes.last().map(|n| n.index);
+
     Ok(NotesDiscoveryResult {
         notes,
-        total_n_notes: index,
+        last_index,
         has_more: out_of_budget,
     })
 }
@@ -137,7 +139,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.notes.len(), 0);
-        assert_eq!(result.total_n_notes, 0);
+        assert!(result.last_index.is_none());
         assert!(!result.has_more);
     }
 
@@ -168,7 +170,11 @@ mod tests {
             !result.notes.is_empty(),
             "Alice's self-channel should have notes"
         );
-        assert_eq!(result.total_n_notes, result.notes.len() as u64);
+        assert_eq!(
+            result.last_index,
+            Some(result.notes.len() as u64 - 1),
+            "last_index should be the last note's index"
+        );
         assert!(!result.has_more);
         assert_eq!(result.notes[0].index, 0);
         // The amount should be positive
@@ -231,13 +237,14 @@ mod tests {
             .unwrap();
         assert!(!result1.notes.is_empty());
         assert!(!result1.has_more);
+        let last_index = result1.last_index.unwrap();
 
-        // Incremental discovery starting from total - should find 0 new notes
-        let result2 = discover_notes(&backend, channel_key, token, result1.total_n_notes, &budget)
+        // Incremental discovery starting from last_index + 1 - should find 0 new notes
+        let result2 = discover_notes(&backend, channel_key, token, last_index + 1, &budget)
             .await
             .unwrap();
         assert_eq!(result2.notes.len(), 0);
-        assert_eq!(result2.total_n_notes, result1.total_n_notes);
+        assert!(result2.last_index.is_none());
         assert!(!result2.has_more);
     }
 
@@ -266,7 +273,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.notes.len(), 0);
-        assert_eq!(result.total_n_notes, 0);
+        assert!(result.last_index.is_none());
         assert!(result.has_more);
     }
 }

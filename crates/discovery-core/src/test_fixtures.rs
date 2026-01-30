@@ -137,11 +137,16 @@ pub async fn get_channel_key(
     recipient: starknet_types_core::felt::Felt,
     viewing_key: &starknet_types_core::felt::Felt,
 ) -> Option<starknet_types_core::felt::Felt> {
-    use crate::discovery::incoming_channels::discover_incoming_channels;
+    use crate::discovery::incoming_channels::{
+        discover_incoming_channels, get_incoming_channel_count,
+    };
     use crate::io_budget::IoBudget;
 
     let budget = IoBudget::new(100);
-    let result = discover_incoming_channels(backend, recipient, viewing_key, 0, &budget)
+    let count = get_incoming_channel_count(backend, recipient, &budget)
+        .await
+        .ok()??;
+    let result = discover_incoming_channels(backend, recipient, viewing_key, 0, count, &budget)
         .await
         .ok()?;
 
