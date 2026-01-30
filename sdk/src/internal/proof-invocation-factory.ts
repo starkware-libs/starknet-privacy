@@ -14,7 +14,6 @@ import type {
 } from "starknet";
 import { CallData, num } from "starknet";
 
-import type { ClientAction } from "./client-actions.js";
 import { serializeClientActions } from "./serialization.js";
 import { PrivacyPoolABI } from "./abi.js";
 import type {
@@ -23,6 +22,7 @@ import type {
   StarknetAddress,
 } from "../interfaces.js";
 import { toBigInt } from "../utils/crypto.js";
+import { ClientAction } from "./client-actions.js";
 
 /**
  * Minimal user info needed for creating a proof invocation.
@@ -30,6 +30,7 @@ import { toBigInt } from "../utils/crypto.js";
 export interface ProofUser {
   address: BigNumberish;
   signer: SignerInterface;
+  viewingKey: BigNumberish;
 }
 
 /**
@@ -63,7 +64,11 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     const cairoActions = serializeClientActions(clientActions);
     const callDataCompiler = new CallData(PrivacyPoolABI);
     const userAddress = toBigInt(user.address);
-    const compiledCalldata = callDataCompiler.compile("__execute__", [userAddress, cairoActions]);
+    const compiledCalldata = callDataCompiler.compile("__execute__", [
+      userAddress,
+      user.viewingKey,
+      cairoActions,
+    ]);
     const poolAddressHex = num.toHex(poolAddress);
 
     // Sign the transaction using details from the proof provider

@@ -52,13 +52,13 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     // Create invocation for proving
     const details = this.params.provingProvider.getDefaultDetails();
     const invocation = await this.params.proofInvocationFactory.create(
-      { address: this.params.account.address, signer: this.params.account.signer },
+      { address: this.params.account.address, signer: this.params.account.signer, viewingKey },
       this.params.poolContractAddress,
       clientActions,
       details
     );
 
-// Get proof from provider
+    // Get proof from provider
     const proof = await this.params.provingProvider.prove(invocation);
 
     // Parse and log server actions for debugging
