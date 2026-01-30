@@ -227,7 +227,11 @@ export class MockPoolContract implements MockContract {
    *
    * Validates token totals if validateBalances is true.
    */
-  execute_view(sender: bigint, clientActions: ClientAction[]): MockServerAction[] {
+  execute_view(
+    sender: bigint,
+    privateKey: ViewingKey,
+    clientActions: ClientAction[]
+  ): MockServerAction[] {
     if (this.validateBalances) {
       this.validateTokenTotals(sender, clientActions);
     }
@@ -237,7 +241,7 @@ export class MockPoolContract implements MockContract {
 
     try {
       for (const action of clientActions) {
-        const actions = this.execute_action(sender, action);
+        const actions = this.execute_action(sender, privateKey, action);
         // Apply pool-state actions immediately (required for assertions in subsequent actions)
         // Defer ERC20-modifying actions - only applied during replay
         for (const serverAction of actions) {
@@ -272,8 +276,8 @@ export class MockPoolContract implements MockContract {
   /**
    * Returns MockServerAction[] that have already been applied.
    */
-  execute(sender: bigint, ...clientActions: ClientAction[]): string[] {
-    const actions = this.execute_view(sender, clientActions);
+  execute(sender: bigint, privateKey: ViewingKey, ...clientActions: ClientAction[]): string[] {
+    const actions = this.execute_view(sender, privateKey, clientActions);
     this.serverActions = actions;
     return this.serverActions.map((action) => action.type);
   }
@@ -412,16 +416,20 @@ export class MockPoolContract implements MockContract {
     }
   }
 
-  private execute_action(sender: bigint, action: ClientAction): MockServerAction[] {
+  private execute_action(
+    sender: bigint,
+    privateKey: ViewingKey,
+    action: ClientAction
+  ): MockServerAction[] {
     switch (action.type) {
       case "SetViewingKey":
-        return [this.register(sender, action.input.privateKey, action.input.random)];
+        return [this.register(sender, privateKey, action.input.random)];
 
       case "OpenChannel":
         return [
           this.setChannel(
             sender,
-            action.input.senderPrivateKey,
+            privateKey,
             action.input.recipientAddr,
             action.input.recipientPublicKey,
             action.input.random
@@ -449,7 +457,7 @@ export class MockPoolContract implements MockContract {
         return [
           this.useNote(
             sender,
-            action.input.ownerPrivateKey,
+            privateKey,
             action.input.token,
             action.input.channelKey,
             action.input.noteIndex
@@ -460,7 +468,7 @@ export class MockPoolContract implements MockContract {
         return [
           this.createNote(
             sender,
-            action.input.senderPrivateKey,
+            privateKey,
             action.input.recipientAddr,
             action.input.recipientPublicKey,
             action.input.token,

@@ -142,9 +142,9 @@ export class ActionCompiler {
     const pool = new PoolSimulator(this.userAddress);
 
     // The simulator needs a viewing key to be set regardless if already registered
-    pool.execute({
+    pool.execute(this.userViewingKey, {
       type: "SetViewingKey",
-      input: { privateKey: this.userViewingKey, random: generateRandom() },
+      input: { random: generateRandom() },
     });
 
     debugLog("compiler", "setup discovered channels", channels);
@@ -198,7 +198,7 @@ export class ActionCompiler {
     if (options?.autoRegister && !options?.registry?.channels?.has(this.userAddress)) {
       actions.setViewingKey = {
         type: "SetViewingKey",
-        input: { privateKey: this.userViewingKey, random: generateRandom() },
+        input: { random: generateRandom() },
       };
     }
 
@@ -219,7 +219,7 @@ export class ActionCompiler {
     }
 
     const execute = <T extends ClientAction>(input: T, arr: T[] = []): T => {
-      pool.execute(input);
+      pool.execute(this.userViewingKey, input);
       arr.push(input);
       return input;
     };
@@ -230,7 +230,6 @@ export class ActionCompiler {
       const input = {
         type: "SetViewingKey",
         input: {
-          privateKey: this.userViewingKey,
           random: generateRandom(),
         },
       } as const; // typescipt magic
@@ -249,7 +248,6 @@ export class ActionCompiler {
         const input = {
           type: "OpenChannel",
           input: {
-            senderPrivateKey: this.userViewingKey,
             recipientAddr: action.recipient,
             recipientPublicKey: channel.publicKey as bigint,
             index: seenRecipients.size - 1, // TODO: track outgoing channel index properly
@@ -334,7 +332,6 @@ export class ActionCompiler {
         const input = {
           type: "UseNote",
           input: {
-            ownerPrivateKey: this.userViewingKey,
             channelKey: action.note.witness.channelKey,
             token: action.token,
             noteIndex: action.note.witness.nonce,
@@ -362,7 +359,6 @@ export class ActionCompiler {
         const input = {
           type: "CreateNote",
           input: {
-            senderPrivateKey: this.userViewingKey,
             recipientAddr: action.recipient,
             recipientPublicKey: channel.publicKey as bigint,
             token: action.token,

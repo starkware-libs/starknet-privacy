@@ -12,7 +12,7 @@
  * - Just tracks Channel objects with nonces and Note objects
  */
 
-import type { Note, PrivateRegistry, StarknetAddressBigint } from "../interfaces.js";
+import type { Note, PrivateRegistry, StarknetAddressBigint, ViewingKey } from "../interfaces.js";
 import { Channel } from "./channel.js";
 import { derivePublicKey, toBigInt } from "../utils/crypto.js";
 import { AddressMap } from "../utils/maps.js";
@@ -38,14 +38,14 @@ export class PoolSimulator {
    * Execute a client action, updating the tracked state.
    * No encryption, no hashing, no balance checks.
    */
-  execute(action: ClientAction): void {
+  execute(privateKey: ViewingKey, action: ClientAction): void {
     switch (action.type) {
       case "SetViewingKey":
-        this.handleSetViewingKey(action.input);
+        this.handleSetViewingKey(privateKey, action.input);
         break;
 
       case "OpenChannel":
-        this.handleOpenChannel(action.input);
+        this.handleOpenChannel(privateKey, action.input);
         break;
 
       case "OpenSubchannel":
@@ -61,7 +61,7 @@ export class PoolSimulator {
         break;
 
       case "CreateNote":
-        this.handleCreateNote(action.input);
+        this.handleCreateNote(privateKey, action.input);
         break;
 
       case "Withdraw":
@@ -124,21 +124,21 @@ export class PoolSimulator {
     return registry;
   }
 
-  private handleSetViewingKey(input: SetViewingKeyInput): void {
+  private handleSetViewingKey(privateKey: ViewingKey, _input: SetViewingKeyInput): void {
     // Derive the real public key from the private key and create self-channel entry
-    const publicKey = derivePublicKey(input.privateKey);
+    const publicKey = derivePublicKey(privateKey);
     this.channels.set(this.userAddress, new Channel(publicKey));
 
     debugLog("pool-simulator", "SetViewingKey", hex(this.userAddress));
   }
 
-  private handleOpenChannel(input: OpenChannelInput): void {
-    const { senderPrivateKey, recipientAddr, recipientPublicKey } = input;
+  private handleOpenChannel(privateKey: ViewingKey, input: OpenChannelInput): void {
+    const { recipientAddr, recipientPublicKey } = input;
 
     // Compute the real channel key
     const channelKey = compute_channel_key(
       this.userAddress,
-      toBigInt(senderPrivateKey),
+      toBigInt(privateKey),
       recipientAddr,
       toBigInt(recipientPublicKey)
     );
@@ -186,8 +186,8 @@ export class PoolSimulator {
     debugLog("pool-simulator", "UseNote", hex(this.userAddress), "token:", hex(token));
   }
 
-  private handleCreateNote(input: CreateNoteInput): void {
-    const { senderPrivateKey, recipientAddr, recipientPublicKey, token, amount, index } = input;
+  private handleCreateNote(privateKey: ViewingKey, input: CreateNoteInput): void {
+    const { recipientAddr, recipientPublicKey, token, amount, index } = input;
 
     // Update sender's channel note nonce
     const senderChannel = this.channels.get(recipientAddr)!;
@@ -198,7 +198,7 @@ export class PoolSimulator {
       // Compute the channel key to generate the note ID
       const channelKey = compute_channel_key(
         this.userAddress,
-        toBigInt(senderPrivateKey),
+        toBigInt(privateKey),
         recipientAddr,
         toBigInt(recipientPublicKey)
       );

@@ -7,14 +7,12 @@
  */
 
 import { Call } from "starknet";
-import type { Amount, Open, ViewingKey } from "../interfaces.js";
+import type { Amount, Open } from "../interfaces.js";
 
 /**
  * Input for the SetViewingKey action.
  */
 export type SetViewingKeyInput = {
-  /** The viewing key (private key) to set */
-  privateKey: ViewingKey;
   /** Random value use to encrypt the private key for compliance */
   random: bigint;
 };
@@ -23,8 +21,6 @@ export type SetViewingKeyInput = {
  * Input for the OpenChannel action.
  */
 export type OpenChannelInput = {
-  /** The sender's private key (viewing key) */
-  senderPrivateKey: ViewingKey;
   /** The recipient's address */
   recipientAddr: bigint;
   /** The recipient's public key */
@@ -59,8 +55,6 @@ export type OpenSubchannelInput = {
  * Input for the CreateNote action.
  */
 export type CreateNoteInput = {
-  /** The sender's private key (viewing key) */
-  senderPrivateKey: ViewingKey;
   /** The recipient's address */
   recipientAddr: bigint;
   /** The recipient's public key */
@@ -91,8 +85,6 @@ export type DepositInput = {
  * Input for the UseNote action.
  */
 export type UseNoteInput = {
-  /** The owner's private key (viewing key) */
-  ownerPrivateKey: ViewingKey;
   /** The channel key of the note's channel */
   channelKey: bigint;
   /** The note's token address */

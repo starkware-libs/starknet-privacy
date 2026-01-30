@@ -41,7 +41,11 @@ export class MockPrivateTransfers extends AbstractPrivateTransfers {
     debugLog("private-transfers", "clientActions", clientActions);
 
     // 2. Execute client actions (execute_view handles snapshot/restore internally)
-    const serverActions = this.pool.execute(this.user, ...clientActions);
+    const serverActions = this.pool.execute(
+      this.user,
+      await this.getViewingKey(),
+      ...clientActions
+    );
 
     return {
       callAndProof: createMockCallAndProof(serverActions),
