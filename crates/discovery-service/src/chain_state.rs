@@ -1,12 +1,13 @@
 //! Chain state tracking for the Starknet indexer.
 
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use starknet_core::types::Felt;
 use starknet_providers::ProviderError;
 use thiserror::Error;
 
 /// Represents the current chain head.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChainHead {
     pub block_number: u64,
     pub block_hash: Felt,
