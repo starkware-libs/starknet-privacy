@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 use clap::Parser;
+use discovery_service::api_server::{ApiServer, ApiServerConfig};
 use discovery_service::indexer::{Indexer, IndexerConfig};
 use discovery_service::rpc_backend::{RpcBackend, RpcConfig};
 use discovery_service::shutdown::Shutdown;
@@ -16,6 +17,10 @@ struct Cli {
     /// Logging level (off, error, warn, info, debug, trace). Overrides RUST_LOG.
     #[arg(long)]
     log_level: Option<String>,
+
+    /// API server host and port (e.g., "127.0.0.1:8080"). Overrides API_HOST env var.
+    #[arg(long)]
+    api_host: Option<String>,
 }
 
 fn init_tracing(log_level: Option<&str>) {
@@ -62,11 +67,24 @@ async fn main() {
     }
     let rpc_backend = RpcBackend::new(rpc_config).expect("Failed to create RPC backend");
 
-    let mut indexer = Indexer::new(indexer_config, shutdown.subscribe(), rpc_backend);
+    let mut api_server_config = ApiServerConfig::default();
+    if let Some(api_host) = cli.api_host.or_else(|| std::env::var("API_HOST").ok()) {
+        api_server_config.api_host = api_host;
+    }
+
+    let mut indexer = Indexer::new(indexer_config, shutdown.subscribe(), rpc_backend.clone());
+    let mut api_server = ApiServer::new(api_server_config, shutdown.subscribe(), rpc_backend);
+
     let indexer_handle = tokio::spawn(async move { indexer.run().await });
+    let api_server_handle = tokio::spawn(async move { api_server.run().await });
+
     let shutdown_handle = tokio::spawn(async move { shutdown.run().await });
 
-    match tokio::try_join!(flatten(indexer_handle), flatten(shutdown_handle)) {
+    match tokio::try_join!(
+        flatten(indexer_handle),
+        flatten(api_server_handle),
+        flatten(shutdown_handle)
+    ) {
         Ok(_) => {
             info!("Discovery service has shut down");
             std::process::exit(0);
