@@ -6,7 +6,7 @@ import privacy.notes.discoverable_outgoing
 import privacy.registration.discoverable
 import privacy.tracing.utils
 import privacy.transactions.transactions
-import privacy.amounts_outgoing
+import privacy.amounts.outgoing
 
 theorem outgoing_notes
     {crypto: Crypto} (stxs: SuccessfulTransactions crypto)
