@@ -1,6 +1,6 @@
 import {
   MockContracts,
-  PrivacyPool,
+  MockPoolContract,
   MockPrivateTransfers,
   applyStateChanges,
 } from "../../src/testing/index.js";
@@ -39,7 +39,7 @@ export const AUTO_DISCOVERY_ONLY: ExecuteOptions = {
 // Test environment factory
 export interface TestEnv {
   contracts: MockContracts;
-  pool: PrivacyPool;
+  pool: MockPoolContract;
   alice: MockPrivateTransfers;
   bob: MockPrivateTransfers;
   carol: MockPrivateTransfers;
@@ -49,8 +49,8 @@ export interface TestEnv {
 export function createTestEnv(): TestEnv {
   const contracts = new MockContracts();
   const pool = withLogging(
-    new PrivacyPool(POOL_ADDRESS, contracts),
-    "PrivacyPool",
+    new MockPoolContract(POOL_ADDRESS, contracts),
+    "MockPoolContract",
     consoleLogCallback
   );
   contracts.register(pool);
