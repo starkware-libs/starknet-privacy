@@ -2,9 +2,7 @@
  * Shared helpers for testing utilities.
  */
 
-import type { CallAndProof, ExecuteResult, PrivateRegistry, Proof } from "../interfaces.js";
-import type { MockServerAction } from "./mock-server-action.js";
-import { debugLog } from "../utils/logging.js";
+import type { CallAndProof, Proof } from "../interfaces.js";
 
 // ============ Mock Helpers ============
 
@@ -17,15 +15,12 @@ export function createMockProof(overrides?: Partial<Proof>): Proof {
   };
 }
 
-export function createMockCallAndProof(actions?: MockServerAction[]): CallAndProof {
+export function createMockCallAndProof(actions?: string[]): CallAndProof {
   return {
     call: {
       contractAddress: "0x0",
       entrypoint: "execute_writes",
-      calldata: [],
-      ...(typeof actions !== "undefined"
-        ? { call: () => actions.map((action) => action.apply()) }
-        : {}),
+      calldata: actions,
     } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
     proof: createMockProof(),
   };
@@ -33,24 +28,3 @@ export function createMockCallAndProof(actions?: MockServerAction[]): CallAndPro
 
 // Symbol used as a type marker for withdrawal operations (vs NoteNonce for transfers)
 export const Withdrawal = Symbol("Withdrawal");
-
-// ============ Test Helpers ============
-
-/**
- * Helper to apply state changes by calling callAndProof.call.call() if it exists.
- * This executes the callbacks returned from PrivacyPool.execute() to actually
- * apply the state changes to the pool.
- */
-export function applyStateChanges(result: ExecuteResult): PrivateRegistry {
-  const { callAndProof } = result;
-  if (
-    callAndProof.call &&
-    typeof callAndProof.call === "object" &&
-    "call" in callAndProof.call &&
-    typeof callAndProof.call.call === "function"
-  ) {
-    debugLog("applyStateChanges", "calling callbacks");
-    callAndProof.call.call();
-  }
-  return result.registry;
-}

@@ -1,11 +1,11 @@
-import {
-  MockContracts,
-  MockPoolContract,
-  MockPrivateTransfers,
-  applyStateChanges,
-} from "../../src/testing/index.js";
+import { MockContracts, MockPoolContract, MockPrivateTransfers } from "../../src/testing/index.js";
 import { withLogging, consoleLogCallback } from "../../src/utils/index.js";
-import { createEmptyRegistry, ExecuteOptions, PrivateRegistry } from "../../src/interfaces.js";
+import {
+  createEmptyRegistry,
+  ExecuteOptions,
+  ExecuteResult,
+  PrivateRegistry,
+} from "../../src/interfaces.js";
 import { num } from "starknet";
 
 /** Normalize BigNumberish to bigint */
@@ -22,6 +22,7 @@ export const CAROL = { address: toBigInt("0xCA201"), privateKey: 99999n };
 
 // Default options presets - for operations AFTER registration and setup are done
 export const AUTO_ALL: ExecuteOptions = {
+  autoRegister: true,
   autoDiscover: { channels: "refresh", notes: "refresh" },
   autoSetup: true,
   autoSelectNotes: "naive",
@@ -44,6 +45,7 @@ export interface TestEnv {
   bob: MockPrivateTransfers;
   carol: MockPrivateTransfers;
   fundUser: (address: bigint, token: bigint, amount: bigint) => void;
+  executeOutside: (result: ExecuteResult) => PrivateRegistry;
 }
 
 export function createTestEnv(): TestEnv {
@@ -63,62 +65,17 @@ export function createTestEnv(): TestEnv {
     contracts.get(token).setBalance(address, amount);
   };
 
+  const executeOutside = (result: ExecuteResult) => {
+    pool.execute_actions(result.callAndProof.call.calldata as string[]);
+    return result.registry;
+  };
+
   // Default funding
   fundUser(ALICE.address, ACE, 1000n);
   fundUser(ALICE.address, BEE, 500n);
 
-  return { contracts, pool, alice, bob, carol, fundUser };
-}
-
-// Setup helper: register user and set up self-channel with token
-// Returns updated registry with token info
-export async function setupSelfChannel(
-  user: MockPrivateTransfers,
-  userAddress: bigint,
-  token: bigint
-): Promise<PrivateRegistry> {
-  applyStateChanges(await user.build().register().execute());
-  applyStateChanges(await user.build().setup(userAddress).execute());
-
-  let channel = (await user.discoverChannels([userAddress])).channels.get(userAddress)!;
-  const registry = createEmptyRegistry();
-  registry.channels.set(userAddress, channel);
-
-  applyStateChanges(await user.build({ registry }).with(token).setup(userAddress).execute());
-
-  // Refresh channel to include token info
-  channel = (await user.discoverChannels([userAddress])).channels.get(userAddress)!;
-  registry.channels.set(userAddress, channel);
-
-  return registry;
-}
-
-// Setup helper: register sender and set up channel to recipient with token
-// Returns updated registry with token info
-export async function setupRecipientChannel(
-  sender: MockPrivateTransfers,
-  recipient: MockPrivateTransfers,
-  recipientAddress: bigint,
-  token: bigint
-): Promise<PrivateRegistry> {
-  // Recipient must be registered first
-  applyStateChanges(await recipient.build().register().execute());
-
-  // Sender sets up channel to recipient
-  applyStateChanges(await sender.build().setup(recipientAddress).execute());
-
-  let channel = (await sender.discoverChannels([recipientAddress])).channels.get(recipientAddress)!;
-  const registry = createEmptyRegistry();
-  registry.channels.set(recipientAddress, channel);
-
-  applyStateChanges(await sender.build({ registry }).with(token).setup(recipientAddress).execute());
-
-  // Refresh channel to include token info
-  channel = (await sender.discoverChannels([recipientAddress])).channels.get(recipientAddress)!;
-  registry.channels.set(recipientAddress, channel);
-
-  return registry;
+  return { contracts, pool, alice, bob, carol, fundUser, executeOutside };
 }
 
 // Re-export commonly used utilities
-export { applyStateChanges, createEmptyRegistry };
+export { createEmptyRegistry };

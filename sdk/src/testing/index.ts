@@ -6,12 +6,7 @@ export { ERC20, MockContracts, MockSwapHelper } from "./contracts.js";
 export { MockPoolContract } from "./mock-pool-contract.js";
 export { MockDiscoveryProvider } from "./discovery.js";
 export { MockPrivateTransfers } from "./transfers.js";
-export {
-  createMockProof,
-  createMockCallAndProof,
-  Withdrawal,
-  applyStateChanges,
-} from "./helpers.js";
+export { createMockProof, createMockCallAndProof, Withdrawal } from "./helpers.js";
 export {
   compute_channel_key,
   compute_channel_id,
