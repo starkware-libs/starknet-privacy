@@ -26,9 +26,9 @@ pub struct Subchannel {
 pub struct SubchannelDiscoveryResult {
     /// List of discovered and decrypted subchannels.
     pub subchannels: Vec<Subchannel>,
-    /// Next index to scan for incremental discovery.
-    /// Use this as `start_index` for the next discovery call.
-    pub total_n_subchannels: u64,
+    /// Index of the last discovered subchannel, or `None` if no subchannels were discovered.
+    /// Use for cursor updates: `cursor.last_subchannel_index = result.last_index`.
+    pub last_index: Option<u64>,
     /// Whether there may be more subchannels to discover.
     /// `true` if stopped due to budget exhaustion, `false` if sentinel was found.
     pub has_more: bool,
@@ -87,9 +87,11 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
         index += 1;
     }
 
+    let last_index = subchannels.last().map(|s| s.index);
+
     Ok(SubchannelDiscoveryResult {
         subchannels,
-        total_n_subchannels: index,
+        last_index,
         has_more: out_of_budget,
     })
 }
@@ -112,7 +114,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.subchannels.len(), 0);
-        assert_eq!(result.total_n_subchannels, 0);
+        assert!(result.last_index.is_none());
         assert!(!result.has_more);
     }
 
@@ -141,7 +143,6 @@ mod tests {
             1,
             "Alice's self-channel should have 1 subchannel (STRK)"
         );
-        assert_eq!(result.total_n_subchannels, 1);
         assert!(!result.has_more);
         assert_eq!(result.subchannels[0].index, 0);
         // The subchannel token should be STRK
@@ -173,7 +174,6 @@ mod tests {
             1,
             "Bob's channel should have 1 subchannel (STRK)"
         );
-        assert_eq!(result.total_n_subchannels, 1);
         assert!(!result.has_more);
         assert_eq!(result.subchannels[0].index, 0);
         // The subchannel token should be STRK
@@ -200,16 +200,15 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result1.subchannels.len(), 1);
-        assert_eq!(result1.total_n_subchannels, 1);
         assert!(!result1.has_more);
+        let last_index = result1.last_index.unwrap();
 
-        // Incremental discovery starting from total - should find 0 new subchannels
-        let result2 =
-            discover_subchannels(&backend, channel_key, result1.total_n_subchannels, &budget)
-                .await
-                .unwrap();
+        // Incremental discovery starting from last_index + 1 - should find 0 new subchannels
+        let result2 = discover_subchannels(&backend, channel_key, last_index + 1, &budget)
+            .await
+            .unwrap();
         assert_eq!(result2.subchannels.len(), 0);
-        assert_eq!(result2.total_n_subchannels, 1);
+        assert!(result2.last_index.is_none());
         assert!(!result2.has_more);
     }
 
@@ -234,7 +233,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.subchannels.len(), 0);
-        assert_eq!(result.total_n_subchannels, 0);
+        assert!(result.last_index.is_none());
         assert!(result.has_more);
     }
 }
