@@ -23,6 +23,24 @@ pub struct DumpMetadata {
     pub alice_private_key: Felt,
 }
 
+/// Predeployed account from devnet.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct PredeployedAccount {
+    pub address: Felt,
+    pub private_key: Felt,
+    pub public_key: Felt,
+}
+
+/// Contract deployed via UDC.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub struct DeployedContract {
+    pub address: Felt,
+    pub deployer: Felt,
+    pub class_hash: Felt,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DevnetConfig {
     pub seed: u32,
