@@ -10,6 +10,8 @@ use thiserror::Error;
 use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
+use crate::chain_state::{ChainHead, ChainState};
+
 const DEFAULT_WS_URL: &str = "ws://127.0.0.1:5050/ws";
 
 /// Errors that can occur during indexer operation.
@@ -74,15 +76,20 @@ impl Default for IndexerConfig {
 }
 
 /// Indexer that subscribes to Starknet new heads via WebSocket.
-pub struct Indexer {
+pub struct Indexer<C: ChainState> {
     config: IndexerConfig,
     backoff: ExponentialBackoff,
     rx_shutdown: broadcast::Receiver<()>,
+    chain_state: C,
 }
 
-impl Indexer {
-    /// Creates a new indexer with the given configuration and shutdown receiver.
-    pub fn new(config: IndexerConfig, rx_shutdown: broadcast::Receiver<()>) -> Self {
+impl<C: ChainState> Indexer<C> {
+    /// Creates a new indexer with the given configuration, shutdown receiver, and chain state.
+    pub fn new(
+        config: IndexerConfig,
+        rx_shutdown: broadcast::Receiver<()>,
+        chain_state: C,
+    ) -> Self {
         let backoff = ExponentialBackoffBuilder::default()
             .with_initial_interval(config.backoff_initial_interval)
             .with_max_interval(config.backoff_max_interval)
@@ -92,6 +99,7 @@ impl Indexer {
             config,
             backoff,
             rx_shutdown,
+            chain_state,
         }
     }
 
@@ -153,6 +161,11 @@ impl Indexer {
                     match update? {
                         NewHeadsUpdate::NewHeader(head) => {
                             info!("New block #{}: {:#064x}", head.block_number, head.block_hash);
+                            self.chain_state.set_head(ChainHead {
+                                block_number: head.block_number,
+                                block_hash: head.block_hash,
+                                timestamp: head.timestamp,
+                            }).await;
                         }
                         NewHeadsUpdate::Reorg(reorg) => {
                             warn!(
