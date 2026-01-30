@@ -11,7 +11,7 @@ import { MockContracts } from "./contracts.js";
 import { MockPoolContract } from "./mock-pool-contract.js";
 import { MockProofProvider } from "./mock-proof-provider.js";
 import { MockProofInvocationFactory } from "./mock-proof-invocation-factory.js";
-import { ContractDiscoveryProvider } from "./contract-discovery.js";
+import { ContractDiscoveryProvider } from "../internal/contract-discovery.js";
 
 /**
  * Mock account with address and private key.

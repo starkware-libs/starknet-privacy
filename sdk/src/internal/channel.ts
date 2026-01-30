@@ -40,11 +40,44 @@ export type IncomingChannelCursor = {
 export type NotesCursor = {
   /* when was this cursor valid */
   /** @internal */ blockId: BlockIdentifier;
-  /* the number of channels opened */
-  /** @internal */ incomingChannelsCount: number;
   /* per sender, a cursor to the subcahnels they opened and notes they created */
   /** @internal */ incomingChannels: AddressMap<IncomingChannelCursor>; // sender -> cursor
 };
+
+export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
+  if (!cursor) {
+    return {
+      blockId: 0,
+      incomingChannels: new AddressMap<IncomingChannelCursor>(),
+    };
+  }
+
+  const cloneIncomingChannelCursor = (sc: IncomingChannelCursor): IncomingChannelCursor => ({
+    channelKey: sc.channelKey,
+    subchannelKeyIndex: sc.subchannelKeyIndex,
+    noteIndexes: new AddressMap<number>(sc.noteIndexes.entries()),
+  });
+
+  const incomingChannels = new AddressMap<IncomingChannelCursor>(
+    [...cursor.incomingChannels.entries()].map(
+      ([k, v]): [StarknetAddressBigint, IncomingChannelCursor] => [k, cloneIncomingChannelCursor(v)]
+    )
+  );
+  return {
+    blockId: cursor.blockId,
+    incomingChannels: incomingChannels,
+  };
+}
+
+export function cloneChannelCursor(cursor?: AddressMap<Channel>): AddressMap<Channel> {
+  if (!cursor) {
+    return new AddressMap<Channel>();
+  }
+
+  return new AddressMap<Channel>(
+    [...cursor.entries()].map(([k, v]): [StarknetAddressBigint, Channel] => [k, v.clone()])
+  );
+}
 
 // Base nonce class with shared logic and methods.
 class Nonce {
