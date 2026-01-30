@@ -2,12 +2,25 @@
 
 use thiserror::Error;
 
-use crate::decryption::DecryptionError;
-use crate::storage::StorageError;
+use crate::privacy_pool::decryption::DecryptionError;
+use crate::storage_backend::StorageError;
 
+pub mod cursor;
 pub mod incoming_channels;
 pub mod notes;
 pub mod subchannels;
+
+/// Cost for `get_num_of_channels` (1 storage slot read).
+pub const COST_NUM_CHANNELS: usize = 1;
+
+/// Cost for `get_channel_info` (3 storage slot reads).
+pub const COST_CHANNEL_INFO: usize = 3;
+
+/// Cost for `get_subchannel_info` (2 storage slot reads).
+pub const COST_SUBCHANNEL_INFO: usize = 2;
+
+/// Cost for `get_note` (1 storage slot read).
+pub const COST_NOTE: usize = 1;
 
 /// Errors that can occur during channel discovery.
 #[derive(Debug, Error)]
@@ -24,4 +37,7 @@ pub enum DiscoveryError {
         #[source]
         source: DecryptionError,
     },
+    /// A spawned task panicked.
+    #[error("spawned task panicked: {0}")]
+    TaskPanicked(String),
 }

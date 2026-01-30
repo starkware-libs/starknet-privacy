@@ -50,6 +50,12 @@ Apply these guidelines when writing or reviewing code in this codebase.
 
 ## Brevity
 
+### Inline expressions that save >2 lines
+- Inline expressions where doing so saves more than 2 lines without making the resulting line excessively long
+- Prefer `map_or(default, |x| x + 1)` over `map(|x| x + 1).unwrap_or(default)` - it's shorter and more idiomatic
+- Use `.or()` to update optional values instead of `if let Some(x) = ... { field = Some(x) }`
+- *Example:* `cursor.last_index = result.last_index.or(cursor.last_index);` instead of a 3-line `if let`
+
 ### Inline trivial expressions
 - Avoid separate `let` bindings for trivial expressions like `.clone()` when used immediately
 - Inline directly in function arguments if it doesn't hurt readability
@@ -94,6 +100,25 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Test names should precisely describe the scenario being verified
 - *Example:* `test_empty_collection` vs `test_no_new_items` convey different conditions
 
+### Match assertions to fixture guarantees
+- Only assert on data presence when the fixture explicitly guarantees that data exists
+- For structural/protocol tests, verify correctness of whatever data is returned without assuming specific content
+- *Example:* Assert `channels_done == true` (protocol correctness) separately from asserting `!channels.is_empty()` (data presence)
+
+### Verify base state before debugging failures
+- When a test fails unexpectedly, first verify the code at HEAD actually compiles and tests pass
+- Broken imports or syntax errors can mask that tests were never working
+- *Example:* `git stash && cargo build` to check if the original code even compiles before investigating test logic
+
+---
+
+## Module Organization
+
+### Public entry points first
+- Place public functions at the top of the module, before their private helpers
+- Readers should encounter the high-level orchestration first and drill into details top-down
+- *Example:* `pub async fn sync_incoming_state(...)` at the top, followed by `process_channel(...)`, then `process_subchannel(...)`
+
 ---
 
 ## WIP: Guidelines to add
@@ -101,4 +126,3 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - [ ] Error handling patterns
 - [ ] Async patterns
 - [ ] Trait design
-- [ ] Module organization

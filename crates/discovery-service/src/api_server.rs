@@ -6,15 +6,16 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::{Json, Router};
-use discovery_core::storage::StorageBackend;
+use discovery_core::storage_backend::StorageBackend;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tracing::info;
 
 use crate::chain_state::{ChainHead, ChainState};
+use crate::incoming_sync::incoming_sync_handler;
 
 /// Configuration for the API server.
 #[derive(Debug, Clone)]
@@ -44,6 +45,7 @@ pub struct ApiServer<B> {
 impl<B> ApiServer<B>
 where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
+    B::Snapshot: Clone + Send + Sync + 'static,
 {
     /// Creates a new API server.
     pub fn new(config: ApiServerConfig, rx_shutdown: broadcast::Receiver<()>, backend: B) -> Self {
@@ -63,6 +65,10 @@ where
 
         let app = Router::new()
             .route("/health", get(health_handler::<B>))
+            .route(
+                "/v1/discovery/incoming/sync",
+                post(incoming_sync_handler::<B>),
+            )
             .with_state(app_state);
 
         let listener = TcpListener::bind(&self.config.api_host)
@@ -86,9 +92,9 @@ where
 }
 
 /// Shared state for the API handlers.
-struct AppState<B> {
-    backend: B,
-    health_max_lag_secs: u64,
+pub struct AppState<B> {
+    pub backend: B,
+    pub health_max_lag_secs: u64,
 }
 
 /// Response for the health endpoint.
@@ -140,4 +146,58 @@ pub enum ApiServerError {
     Bind(String),
     #[error("server error: {0}")]
     Serve(String),
+}
+
+/// Standard error response format per spec 08-error-handling.md.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiErrorResponse {
+    pub error: ApiErrorBody,
+}
+
+/// Error body details.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiErrorBody {
+    pub code: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub details: Option<serde_json::Value>,
+}
+
+impl ApiErrorResponse {
+    pub fn new(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            error: ApiErrorBody {
+                code: code.to_string(),
+                message: message.into(),
+                details: None,
+            },
+        }
+    }
+
+    pub fn with_details(
+        code: &'static str,
+        message: impl Into<String>,
+        details: serde_json::Value,
+    ) -> Self {
+        Self {
+            error: ApiErrorBody {
+                code: code.to_string(),
+                message: message.into(),
+                details: Some(details),
+            },
+        }
+    }
+}
+
+/// Error codes for the API endpoints.
+pub mod error_codes {
+    pub const INVALID_REQUEST: &str = "INVALID_REQUEST";
+    #[allow(dead_code)]
+    pub const INVALID_ADDRESS: &str = "INVALID_ADDRESS";
+    pub const MAX_READS_EXCEEDED: &str = "MAX_READS_EXCEEDED";
+    pub const BLOCK_NOT_FOUND: &str = "BLOCK_NOT_FOUND";
+    pub const BLOCK_REORGED: &str = "BLOCK_REORGED";
+    pub const SERVICE_UNAVAILABLE: &str = "SERVICE_UNAVAILABLE";
+    pub const RPC_UNAVAILABLE: &str = "RPC_UNAVAILABLE";
+    pub const INTERNAL_ERROR: &str = "INTERNAL_ERROR";
 }

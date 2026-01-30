@@ -1,18 +1,59 @@
-//! Mock storage backend for testing.
+//! Low-level storage access traits, error types, and mock implementation.
 //!
-//! This backend uses an in-memory HashMap to simulate storage reads,
-//! allowing unit tests to run without a real RPC endpoint.
+//! [`RawStorageAccess`] abstracts reading raw contract storage slots.
+//! [`StorageBackend`] and [`StorageSnapshot`] provide block-scoped access.
+//! [`MockBackend`] provides an in-memory implementation for testing.
 
 use std::collections::HashMap;
 
 use async_trait::async_trait;
+use starknet_core::types::BlockId;
 use starknet_types_core::felt::Felt;
+use thiserror::Error;
 
-use crate::storage::{RawStorageAccess, StorageError};
+/// Errors that can occur during storage operations.
+#[derive(Debug, Error)]
+pub enum StorageError {
+    /// Failed to convert value to u64.
+    #[error("value is too large to convert to u64: {0}")]
+    CastToU64Error(Felt),
+    /// Backend-specific error.
+    #[error("{0}")]
+    Backend(#[source] Box<dyn std::error::Error + Send + Sync>),
+}
+
+/// Low-level storage access for reading raw storage slots.
+#[async_trait]
+pub trait RawStorageAccess: Send + Sync {
+    /// Reads a single storage slot.
+    async fn read_slot(&self, slot: Felt) -> Result<Felt, StorageError>;
+
+    /// Reads multiple storage slots.
+    async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError>;
+}
+
+/// Factory for creating storage snapshots bound to a specific block.
+#[async_trait]
+pub trait StorageBackend: Send + Sync {
+    /// The snapshot type produced by this backend.
+    type Snapshot: StorageSnapshot;
+
+    /// Creates a snapshot at the specified block.
+    /// If `block_id` is `None`, uses the latest block.
+    async fn snapshot(&self, block_id: Option<BlockId>) -> Result<Self::Snapshot, StorageError>;
+}
+
+/// Consistent view of storage at a specific block.
+#[async_trait]
+pub trait StorageSnapshot: RawStorageAccess {
+    /// Returns the block ID this snapshot is bound to.
+    fn block_id(&self) -> BlockId;
+}
 
 /// Mock storage backend backed by an in-memory HashMap.
 ///
 /// Returns `Felt::ZERO` for any slot not in the map, mirroring the behavior of Cairo map.
+#[derive(Clone)]
 pub struct MockBackend {
     slots: HashMap<Felt, Felt>,
 }

@@ -4,7 +4,9 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use discovery_core::storage::{RawStorageAccess, StorageBackend, StorageError, StorageSnapshot};
+use discovery_core::storage_backend::{
+    RawStorageAccess, StorageBackend, StorageError, StorageSnapshot,
+};
 use starknet_core::types::{requests::GetStorageAtRequest, BlockId, BlockTag, Felt, StarknetError};
 use starknet_providers::{
     jsonrpc::{HttpTransport, JsonRpcClient},
@@ -152,6 +154,7 @@ impl StorageBackend for RpcBackend {
 }
 
 /// Snapshot of storage at a specific block, accessed via RPC.
+#[derive(Clone)]
 pub struct RpcSnapshot {
     backend: RpcBackend,
     block_id: BlockId,
