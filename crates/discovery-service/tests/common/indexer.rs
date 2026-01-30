@@ -19,9 +19,25 @@ pub struct IndexerClient {
 }
 
 impl IndexerClient {
-    pub async fn spawn_with_binary(binary: &str, ws_url: &str) -> Result<Self> {
+    pub async fn spawn_with_binary(
+        binary: &str,
+        ws_url: &str,
+        api_host: Option<&str>,
+    ) -> Result<Self> {
+        let auto_port;
+        let api_host = match api_host {
+            Some(h) => h,
+            None => {
+                let port = super::process::find_free_port()?;
+                auto_port = format!("127.0.0.1:{}", port);
+                &auto_port
+            }
+        };
+
         let mut process = Command::new(binary)
             .env("WS_URL", ws_url)
+            .arg("--api-host")
+            .arg(api_host)
             .stderr(std::process::Stdio::piped())
             .spawn()?;
 

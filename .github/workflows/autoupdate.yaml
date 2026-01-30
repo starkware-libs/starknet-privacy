@@ -1,6 +1,7 @@
 name: Auto Update Workflow
 permissions:
   contents: write
+  pull-requests: write
 
 on:
   push:

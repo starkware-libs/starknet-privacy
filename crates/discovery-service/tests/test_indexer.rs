@@ -17,7 +17,7 @@ const BINARY: &str = env!("CARGO_BIN_EXE_discovery-service");
 #[tokio::test]
 async fn test_startup_and_shutdown() {
     let devnet = DevnetClient::spawn(DevnetConfig::default()).expect("Failed to spawn devnet");
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url())
+    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), None)
         .await
         .expect("Failed to spawn indexer");
 
@@ -38,7 +38,7 @@ async fn test_startup_and_shutdown() {
 #[tokio::test]
 async fn test_new_block_notification() {
     let devnet = DevnetClient::spawn(DevnetConfig::default()).expect("Failed to spawn devnet");
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url())
+    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), None)
         .await
         .expect("Failed to spawn indexer");
 
@@ -62,7 +62,7 @@ async fn test_new_block_notification() {
 async fn test_reconnection_on_devnet_restart() {
     let devnet = DevnetClient::spawn(DevnetConfig::default()).expect("Failed to spawn devnet");
     let port = devnet.port();
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url())
+    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), None)
         .await
         .expect("Failed to spawn indexer");
 
