@@ -31,7 +31,7 @@
     "format": "prettier --write src tests",
     "format:check": "prettier --check src tests",
     "test": "vitest run",
-    "test:fast": "vitest run --exclude '**/devnet.test.ts'",
+    "test:fast": "vitest run --exclude '**/devnet.test.ts' --exclude '**/parallel-discovery.test.ts'",
     "test:watch": "vitest watch",
     "all": "npm run build && npm run lint && npm run format && npm run test",
     "check": "npm run build && npm run lint:check && npm run format:check && npm run test",

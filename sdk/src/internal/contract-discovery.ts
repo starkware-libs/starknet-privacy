@@ -1,0 +1,429 @@
+import { BigNumberish, BlockIdentifier } from "starknet";
+import { ViewingKey, Note, Channel, StarknetAddressBigint } from "../interfaces.js";
+import { AddressMap } from "../utils/maps.js";
+import { AbstractDiscoveryProvider } from "./abstract-discovery.js";
+import { debugLog, hex } from "../utils/logging.js";
+import { toBigInt } from "../utils/crypto.js";
+import {
+  compute_channel_key,
+  compute_channel_id,
+  compute_subchannel_key,
+  compute_note_id,
+  compute_outgoing_channel_key,
+  compute_nullifier,
+} from "../utils/hashes.js";
+import {
+  encryptions,
+  type EncChannelInfo,
+  type EncSubchannelInfo,
+  type EncOutgoingChannelInfo,
+} from "../utils/encryptions.js";
+import { cloneNotesCursor, cloneChannelCursor, NotesCursor } from "./channel.js";
+import { bisect, scan, Tracker } from "../utils/scan.js";
+
+/**
+ * Note data returned by get_note(), matching Cairo's privacy::objects::Note struct.
+ * - packed_value: (salt << 128) | amount - salt=1 for open notes, salt>=2 for encrypted
+ * - token: non-zero for open notes, zero for encrypted notes
+ * - depositor: non-zero for open notes (who can fill it), zero for encrypted notes
+ */
+export type NoteData = {
+  packed_value: BigNumberish;
+  token: BigNumberish;
+  depositor: BigNumberish;
+};
+
+/**
+ * Interface for pool contract view methods used by ContractDiscoveryProvider.
+ * Both MockPoolContract and PrivacyPoolContract satisfy this interface.
+ *
+ * Return types are widened to accept what starknet.js typed contracts return:
+ * - felt252 fields return BigNumberish (string | number | bigint)
+ * - u64 fields return bigint | number
+ *
+ * ContractDiscoveryProvider defensively converts all values with toBigInt().
+ */
+export interface IPoolContract {
+  get_public_key(userAddr: BigNumberish): BigNumberish | Promise<BigNumberish>;
+  get_num_of_channels(recipientAddr: BigNumberish): bigint | number | Promise<bigint | number>;
+  get_channel_info(
+    recipientAddr: BigNumberish,
+    index: number
+  ): EncChannelInfo | Promise<EncChannelInfo>;
+  get_subchannel_info(subchannelKey: BigNumberish): EncSubchannelInfo | Promise<EncSubchannelInfo>;
+  get_outgoing_channel_info(
+    outgoingChannelKey: BigNumberish
+  ): EncOutgoingChannelInfo | Promise<EncOutgoingChannelInfo>;
+  get_note(noteId: BigNumberish): NoteData | Promise<NoteData>;
+  channel_exists(channelId: BigNumberish): boolean | Promise<boolean>;
+  /** Check if a nullifier exists (note has been spent) */
+  nullifier_exists(nullifier: BigNumberish): boolean | Promise<boolean>;
+}
+
+class NotesDiscovery {
+  private readonly tracker = new Tracker();
+  private readonly notes = new AddressMap<Note[]>(() => []);
+  private readonly cursor: NotesCursor;
+  constructor(
+    private readonly address: StarknetAddressBigint,
+    private readonly viewingKey: ViewingKey,
+    private readonly existingCursor: NotesCursor | undefined,
+    private readonly tokens: Set<StarknetAddressBigint>,
+    private readonly pool: IPoolContract
+  ) {
+    this.cursor = cloneNotesCursor(this.existingCursor);
+  }
+
+  async discover(): Promise<{
+    timestamp: BlockIdentifier;
+    notes: AddressMap<Note[]>;
+    cursor: NotesCursor;
+  }> {
+    void this.tracker.add(this.discoverChannels(this.existingCursor?.incomingChannels.size ?? 0));
+    for (const [sender, incomingChannelCursor] of this.existingCursor?.incomingChannels ?? []) {
+      void this.tracker.add(this.discoverSubchannels(sender));
+      for (const [token, nonce] of incomingChannelCursor.noteIndexes) {
+        void this.tracker.add(this.discoverNotes(sender, token, nonce));
+      }
+    }
+
+    await this.tracker.wait();
+    return {
+      timestamp: 0,
+      notes: this.notes,
+      cursor: this.cursor,
+    };
+  }
+
+  async discoverChannels(start: number): Promise<void> {
+    debugLog("contract-discovery", "discoverNotes", "start", this.cursor);
+    const nc = await this.pool.get_num_of_channels(this.address);
+    debugLog("contract-discovery", "discoverNotes", "num of channels", nc);
+    void bisect(
+      async (c) => {
+        const encryptedChannel = await this.pool.get_channel_info(this.address, c);
+        const channel = encryptions.decryptChannelInfo(encryptedChannel, this.viewingKey);
+        debugLog("contract-discovery", "discoverNotes", "channel", channel);
+        const incomingChannelCursor = {
+          channelKey: channel.key,
+          subchannelKeyIndex: 0,
+          noteIndexes: new AddressMap<number>(),
+        };
+        this.cursor!.incomingChannels.set(channel.sender, incomingChannelCursor);
+
+        // no await on purpose - but must track the promise
+        void this.tracker.add(this.discoverSubchannels(channel.sender));
+        return true;
+      },
+      start,
+      Number(nc),
+      this.tracker
+    );
+  }
+
+  async discoverSubchannels(sender: StarknetAddressBigint): Promise<void> {
+    const incomingChannelCursor = this.cursor!.incomingChannels.get(sender)!;
+    const channelKey = incomingChannelCursor.channelKey;
+    void scan(
+      async (k) => {
+        const encSubchannel = await this.pool.get_subchannel_info(
+          compute_subchannel_key(channelKey, k)
+        );
+        if (toBigInt(encSubchannel.salt) === 0n) return false;
+
+        // no await until the end
+        debugLog(
+          "contract-discovery",
+          "discoverNotes",
+          "encSubchannel",
+          encSubchannel,
+          () => compute_subchannel_key(channelKey, k),
+          k
+        );
+        const { token } = encryptions.decryptSubchannelInfo(encSubchannel, channelKey, k);
+        // skip tokens the caller doesn't want to discover
+        if ((this.tokens?.size ?? 0) > 0 && !this.tokens.has(token)) {
+          debugLog("contract-discovery", "discoverNotes", "skipping token", token);
+          return true;
+        }
+        debugLog("contract-discovery", "discoverNotes", "subchannel", sender, token, k);
+        incomingChannelCursor.noteIndexes.set(token, 0);
+        incomingChannelCursor.subchannelKeyIndex = Math.max(
+          incomingChannelCursor.subchannelKeyIndex,
+          k
+        );
+
+        // no await on purpose - but must track the promise
+        void this.tracker.add(this.discoverNotes(sender, token, 0));
+
+        return true;
+      },
+      incomingChannelCursor.subchannelKeyIndex,
+      this.tracker
+    );
+  }
+
+  async discoverNotes(
+    sender: StarknetAddressBigint,
+    token: StarknetAddressBigint,
+    index: number
+  ): Promise<void> {
+    const incomingChannelCursor = this.cursor!.incomingChannels.get(sender)!;
+    const channelKey = incomingChannelCursor.channelKey;
+    void scan(
+      async (i, skipResult?: boolean) => {
+        const noteId = compute_note_id(channelKey, token, i);
+
+        if (skipResult) {
+          // Touch mode: check nullifier first (optimization - skip note fetch if spent)
+          const nullifier = compute_nullifier(channelKey, token, i, BigInt(this.viewingKey));
+          const isSpent = await this.pool.nullifier_exists(nullifier);
+          if (isSpent) return true; // note exists but spent, skip entirely
+
+          // Not spent - fetch note and add
+          const noteData = await this.pool.get_note(noteId);
+          const packedValue = toBigInt(noteData.packed_value);
+          if (packedValue === 0n) return false;
+
+          await this.addNoteIfNotSpent(noteId, noteData, i, channelKey, token, sender, true);
+          return true;
+        }
+
+        // Boundary mode: check note first, then async nullifier check
+        const noteData = await this.pool.get_note(noteId);
+        const packedValue = toBigInt(noteData.packed_value);
+        if (packedValue === 0n) return false; // boundary found
+
+        // Fire-and-forget: check nullifier and maybe add
+        void this.tracker.add(
+          this.addNoteIfNotSpent(noteId, noteData, i, channelKey, token, sender, false)
+        );
+        return true; // note exists, return immediately
+      },
+      index,
+      this.tracker
+    );
+  }
+
+  /** Helper to check nullifier and add note if not spent */
+  private async addNoteIfNotSpent(
+    noteId: bigint,
+    noteData: NoteData,
+    index: number,
+    channelKey: bigint,
+    token: StarknetAddressBigint,
+    sender: StarknetAddressBigint,
+    skipNullifierCheck: boolean
+  ): Promise<boolean> {
+    if (!skipNullifierCheck) {
+      const nullifier = compute_nullifier(channelKey, token, index, BigInt(this.viewingKey));
+      const isSpent = await this.pool.nullifier_exists(nullifier);
+      if (isSpent) return true; // spent, don't add
+    }
+
+    const packedValue = toBigInt(noteData.packed_value);
+
+    // Extract salt from upper 128 bits to determine note type
+    // OPEN_NOTE_SALT = 1, ENC_NOTE_MIN_SALT = 2
+    const packedSalt = packedValue >> 128n;
+    const isOpenNote = packedSalt === 1n;
+
+    let amount: bigint;
+    let salt: bigint;
+
+    if (isOpenNote) {
+      // Open notes: amount is in lower 128 bits (plaintext), salt is always 1
+      amount = packedValue & ((1n << 128n) - 1n);
+      salt = 1n;
+    } else {
+      // Encrypted notes: decrypt to get amount and salt
+      const decrypted = encryptions.decryptNoteAmount(packedValue, channelKey, token, index);
+      amount = decrypted.amount;
+      salt = decrypted.salt;
+    }
+
+    debugLog(
+      "contract-discovery",
+      "discoverNotes",
+      "note",
+      sender,
+      token,
+      index,
+      amount,
+      isOpenNote ? "open" : "encrypted"
+    );
+    this.notes.get(token)!.push({
+      id: noteId,
+      amount,
+      created: 0,
+      witness: { channelKey, nonce: index, r: salt },
+      sender,
+      open: isOpenNote,
+      depositor: isOpenNote ? noteData.depositor : undefined,
+    });
+
+    const m = this.cursor!.incomingChannels.get(sender)!.noteIndexes.get(token)!;
+    this.cursor!.incomingChannels.get(sender)!.noteIndexes.set(token, m);
+    return true;
+  }
+}
+
+class ChannelsDiscovery {
+  private readonly tracker = new Tracker();
+  private readonly channels;
+  constructor(
+    private readonly address: StarknetAddressBigint,
+    private readonly viewingKey: bigint,
+    private readonly recipients: StarknetAddressBigint[] | "all",
+    private readonly cursor: AddressMap<Channel> | undefined,
+    private readonly pool: IPoolContract
+  ) {
+    this.channels = cloneChannelCursor(cursor);
+  }
+
+  async discover(): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }> {
+    if (this.recipients === "all") {
+      void scan(
+        async (s) => {
+          const encOutgoingChannelInfo = await this.pool.get_outgoing_channel_info(
+            compute_outgoing_channel_key(this.address, toBigInt(this.viewingKey), s)
+          );
+          if (toBigInt(encOutgoingChannelInfo.salt) === 0n) return false;
+          const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
+            encOutgoingChannelInfo,
+            this.address,
+            this.viewingKey,
+            s
+          );
+          void this.tracker.add(this.discoverChannel(recipientAddr));
+          return true;
+        },
+        0,
+        this.tracker
+      );
+    }
+
+    // discover channel
+    for (const recipient of this.recipients) {
+      void this.tracker.add(this.discoverChannel(toBigInt(recipient)));
+    }
+
+    if (this.cursor) {
+      // discover subchannels
+      for (const [recipient, channel] of this.cursor.entries()) {
+        if (!channel.key) continue;
+        void this.tracker.add(this.discoverSubchannels(recipient, channel));
+        // discover note indexes
+        for (const [token, nonces] of channel.tokens) {
+          void this.tracker.add(this.discoverNotes(recipient, channel, token, nonces.noteNonce));
+        }
+      }
+    }
+    await this.tracker.wait();
+    return { timestamp: 0, channels: this.channels };
+  }
+
+  private async discoverChannel(recipient: StarknetAddressBigint): Promise<void> {
+    debugLog("contract-discovery", "discoverChannels", "recipient", hex(recipient));
+    if (this.channels.has(recipient) && this.channels.get(recipient)!.key !== 0n) return;
+
+    const publicKey =
+      this.channels.get(recipient)?.publicKey ?? (await this.pool.get_public_key(recipient));
+
+    debugLog("contract-discovery", "discoverChannels", "publicKey", publicKey);
+    if (!publicKey) return;
+
+    const channel = this.channels.get(recipient, () => new Channel(publicKey))!;
+
+    const channelKey = compute_channel_key(
+      this.address,
+      this.viewingKey,
+      recipient,
+      toBigInt(publicKey)
+    );
+
+    const channelId = compute_channel_id(channelKey, this.address, recipient, toBigInt(publicKey));
+
+    if (await this.pool.channel_exists(channelId)) {
+      channel.key = channelKey;
+      void this.tracker.add(this.discoverSubchannels(recipient, channel));
+    }
+  }
+
+  private async discoverSubchannels(
+    recipient: StarknetAddressBigint,
+    channel: Channel
+  ): Promise<void> {
+    void scan(
+      async (k) => {
+        const encSubchannel = await this.pool.get_subchannel_info(
+          compute_subchannel_key(channel.key!, k)
+        );
+        if (toBigInt(encSubchannel.salt) === 0n) return false;
+        const { token } = encryptions.decryptSubchannelInfo(encSubchannel, channel.key!, k);
+        this.channels.get(recipient)!.tokens.set(token, { tokenIndex: k, noteNonce: 0 });
+        void this.tracker.add(this.discoverNotes(recipient, channel, token, 0));
+        return true;
+      },
+      channel.tokens.size ?? 0,
+      this.tracker
+    );
+  }
+
+  private async discoverNotes(
+    recipient: StarknetAddressBigint,
+    channel: Channel,
+    token: StarknetAddressBigint,
+    index: number
+  ): Promise<void> {
+    void scan(
+      async (i) => {
+        const noteData = await this.pool.get_note(compute_note_id(channel.key!, token, i));
+        if (toBigInt(noteData.packed_value) === 0n) return false;
+        const nonces = this.channels.get(recipient)!.tokens.get(token)!;
+        nonces.noteNonce = Math.max(nonces.noteNonce, i + 1);
+        return true;
+      },
+      index,
+      this.tracker,
+      true
+    );
+  }
+}
+
+export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
+  constructor(private readonly pool: IPoolContract) {
+    super();
+  }
+
+  async discoverNotes(
+    address: StarknetAddressBigint,
+    viewingKey: ViewingKey,
+    params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }
+  ): Promise<{ timestamp: BlockIdentifier; notes: AddressMap<Note[]>; cursor: NotesCursor }> {
+    const discovery = new NotesDiscovery(
+      address,
+      viewingKey,
+      params?.cursor,
+      new Set(params?.tokens ?? []),
+      this.pool
+    );
+    return discovery.discover();
+  }
+
+  async discoverChannels(
+    address: StarknetAddressBigint,
+    viewingKey: ViewingKey,
+    _recipients: StarknetAddressBigint[] | "all",
+    params?: { cursor?: AddressMap<Channel> }
+  ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }> {
+    const discovery = new ChannelsDiscovery(
+      address,
+      toBigInt(viewingKey),
+      _recipients,
+      params?.cursor,
+      this.pool
+    );
+    return discovery.discover();
+  }
+}
