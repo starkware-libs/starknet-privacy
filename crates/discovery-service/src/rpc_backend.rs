@@ -1,18 +1,21 @@
-//! RPC-based implementation of the storage interface.
+//! RPC-based implementation of the storage interface and chain state.
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use discovery_core::storage::{RawStorageAccess, StorageBackend, StorageError, StorageSnapshot};
-use starknet_core::types::{requests::GetStorageAtRequest, BlockId, BlockTag, Felt};
+use starknet_core::types::{requests::GetStorageAtRequest, BlockId, BlockTag, Felt, StarknetError};
 use starknet_providers::{
     jsonrpc::{HttpTransport, JsonRpcClient},
-    Provider, ProviderRequestData, ProviderResponseData,
+    Provider, ProviderError, ProviderRequestData, ProviderResponseData,
 };
 use thiserror::Error;
+use tokio::sync::RwLock;
 use tower::limit::concurrency::ConcurrencyLimitLayer;
 use url::Url;
+
+use crate::chain_state::{ChainHead, ChainState, ChainStateError};
 
 /// Errors specific to the RPC backend.
 #[derive(Debug, Error)]
@@ -58,6 +61,8 @@ impl Default for PoolConfig {
     }
 }
 
+const DEFAULT_RPC_URL: &str = "http://127.0.0.1:5050";
+
 /// Configuration for the RPC backend.
 #[derive(Debug, Clone)]
 pub struct RpcConfig {
@@ -70,7 +75,7 @@ pub struct RpcConfig {
 }
 
 impl RpcConfig {
-    /// Creates a new RPC configuration with default pool settings.
+    /// Creates a new RPC configuration with the given URL and contract address.
     pub fn new(rpc_url: Url, contract_address: Felt) -> Self {
         Self {
             rpc_url,
@@ -78,11 +83,15 @@ impl RpcConfig {
             pool_config: PoolConfig::default(),
         }
     }
+}
 
-    /// Sets the pool configuration.
-    pub fn with_pool_config(mut self, pool_config: PoolConfig) -> Self {
-        self.pool_config = pool_config;
-        self
+impl Default for RpcConfig {
+    fn default() -> Self {
+        Self {
+            rpc_url: Url::parse(DEFAULT_RPC_URL).unwrap(),
+            contract_address: Felt::ZERO,
+            pool_config: PoolConfig::default(),
+        }
     }
 }
 
@@ -90,6 +99,7 @@ impl RpcConfig {
 struct RpcBackendInner {
     provider: JsonRpcClient<HttpTransport>,
     contract_address: Felt,
+    head: RwLock<Option<ChainHead>>,
 }
 
 /// RPC-based storage backend that reads from a StarkNet node via JSON-RPC.
@@ -122,6 +132,7 @@ impl RpcBackend {
             inner: Arc::new(RpcBackendInner {
                 provider,
                 contract_address: config.contract_address,
+                head: RwLock::new(None),
             }),
         })
     }
@@ -165,12 +176,14 @@ impl RawStorageAccess for RpcSnapshot {
             return Ok(vec![self.read_slot(slots[0]).await?]);
         }
 
+        let contract_address = self.backend.inner.contract_address;
+
         // Build batch request
         let requests: Vec<ProviderRequestData> = slots
             .iter()
             .map(|&slot| {
                 ProviderRequestData::GetStorageAt(GetStorageAtRequest {
-                    contract_address: self.backend.inner.contract_address,
+                    contract_address,
                     key: slot,
                     block_id: self.block_id,
                 })
@@ -194,6 +207,30 @@ impl RawStorageAccess for RpcSnapshot {
                 _ => Err(RpcBackendError::UnexpectedResponseType.into()),
             })
             .collect()
+    }
+}
+
+#[async_trait]
+impl ChainState for RpcBackend {
+    async fn get_head(&self) -> Option<ChainHead> {
+        *self.inner.head.read().await
+    }
+
+    async fn set_head(&self, head: ChainHead) {
+        *self.inner.head.write().await = Some(head);
+    }
+
+    async fn is_canonical(&self, block_hash: Felt) -> Result<bool, ChainStateError> {
+        match self
+            .inner
+            .provider
+            .get_block_transaction_count(BlockId::Hash(block_hash))
+            .await
+        {
+            Ok(_) => Ok(true),
+            Err(ProviderError::StarknetError(StarknetError::BlockNotFound)) => Ok(false),
+            Err(e) => Err(ChainStateError::RpcError(e)),
+        }
     }
 }
 
