@@ -20,7 +20,6 @@ export {
   derivePublicKey,
   encryptSymmetric,
   decryptSymmetric,
-  toBigInt,
   type Hash,
   type ChannelKey,
   type PublicKey,
@@ -52,3 +51,4 @@ export {
   addSelectors,
   type DecodedError,
 } from "./error-decoder.js";
+export { toBigInt, toBytes, toHex, type Numeric } from "./convert.js";
