@@ -16,9 +16,8 @@ import type {
   StarknetAddress,
 } from "../interfaces.js";
 import type { CallResult } from "starknet";
-import { num } from "starknet";
-
 import { Open } from "../interfaces.js";
+import { toHex } from "../utils/convert.js";
 
 /**
  * JSON replacer that converts BigInts and Symbols to strings with prefix markers.
@@ -61,12 +60,12 @@ export class MockProofInvocationFactory implements ProofInvocationFactoryInterfa
   ): Promise<ProofInvocation> {
     // For mock, we store the client actions in a way the mock pool can use
     // The mock proof provider will extract and process these
-    const poolAddressHex = num.toHex(poolAddress);
+    const poolAddressHex = toHex(poolAddress);
     return {
       contractAddress: poolAddressHex,
       calldata: [
-        num.toHex(user.address),
-        num.toHex(user.viewingKey),
+        toHex(user.address),
+        toHex(user.viewingKey),
         JSON.stringify(clientActions, jsonReplacer),
       ],
       signature: [],

@@ -2,8 +2,9 @@ import { BigNumberish, BlockIdentifier } from "starknet";
 import { ViewingKey, Note, Channel, StarknetAddressBigint } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { AbstractDiscoveryProvider } from "./abstract-discovery.js";
-import { debugLog, hex } from "../utils/logging.js";
+import { debugLog } from "../utils/logging.js";
 import { toBigInt } from "../utils/crypto.js";
+import { toHex } from "../utils/convert.js";
 import {
   compute_channel_key,
   compute_channel_id,
@@ -325,7 +326,7 @@ class ChannelsDiscovery {
   }
 
   private async discoverChannel(recipient: StarknetAddressBigint): Promise<void> {
-    debugLog("contract-discovery", "discoverChannels", "recipient", hex(recipient));
+    debugLog("contract-discovery", "discoverChannels", "recipient", toHex(recipient));
     if (this.channels.has(recipient) && this.channels.get(recipient)!.key !== 0n) return;
 
     const publicKey =

@@ -26,7 +26,8 @@ import type {
   UseNoteInput,
 } from "./client-actions.js";
 import { compute_channel_key, compute_note_id } from "../utils/hashes.js";
-import { debugLog, hex } from "../utils/logging.js";
+import { debugLog } from "../utils/logging.js";
+import { toHex } from "../utils/convert.js";
 import { assert } from "../utils/validation.js";
 
 export class PoolSimulator {
@@ -106,7 +107,7 @@ export class PoolSimulator {
       "pool-simulator",
       "setupChannel",
       "addr:",
-      hex(recipientAddress),
+      toHex(recipientAddress),
       "incoming publicKey:",
       channel.publicKey,
       "incoming key:",
@@ -149,12 +150,12 @@ export class PoolSimulator {
       const publicKey = derivePublicKey(this.userViewingKey);
       assert(
         !this.channels.has(this.userAddress),
-        () => `Channel already exists for ${hex(this.userAddress)}`
+        () => `Channel already exists for ${toHex(this.userAddress)}`
       );
       this.channels.set(this.userAddress, new Channel(publicKey));
     }
 
-    debugLog("pool-simulator", "SetViewingKey", hex(this.userAddress));
+    debugLog("pool-simulator", "SetViewingKey", toHex(this.userAddress));
   }
 
   private handleOpenChannel(input: OpenChannelInput): void {
@@ -175,7 +176,7 @@ export class PoolSimulator {
       channel.key = channelKey;
     }
 
-    debugLog("pool-simulator", "OpenChannel", hex(this.userAddress), "->", hex(recipient_addr));
+    debugLog("pool-simulator", "OpenChannel", toHex(this.userAddress), "->", toHex(recipient_addr));
   }
 
   private handleOpenSubchannel(input: OpenSubchannelInput): void {
@@ -192,11 +193,11 @@ export class PoolSimulator {
     debugLog(
       "pool-simulator",
       "OpenSubchannel",
-      hex(this.userAddress),
+      toHex(this.userAddress),
       "->",
-      hex(recipient_addr),
+      toHex(recipient_addr),
       "token:",
-      hex(token)
+      toHex(token)
     );
   }
 
@@ -210,7 +211,7 @@ export class PoolSimulator {
 
     tokenNotes.delete(noteId);
 
-    debugLog("pool-simulator", "UseNote", hex(this.userAddress), "token:", hex(token));
+    debugLog("pool-simulator", "UseNote", toHex(this.userAddress), "token:", toHex(token));
   }
 
   private handleCreateEncNote(input: CreateEncNoteInput): void {
@@ -248,11 +249,11 @@ export class PoolSimulator {
     debugLog(
       "pool-simulator",
       "CreateEncNote",
-      hex(this.userAddress),
+      toHex(this.userAddress),
       "->",
-      hex(recipient_addr),
+      toHex(recipient_addr),
       "token:",
-      hex(token)
+      toHex(token)
     );
   }
 
@@ -266,11 +267,11 @@ export class PoolSimulator {
     debugLog(
       "pool-simulator",
       "CreateOpenNote",
-      hex(this.userAddress),
+      toHex(this.userAddress),
       "->",
-      hex(recipient_addr),
+      toHex(recipient_addr),
       "token:",
-      hex(token)
+      toHex(token)
     );
   }
 }

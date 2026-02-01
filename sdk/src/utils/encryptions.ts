@@ -33,7 +33,7 @@ const TWO_POW_128 = 2n ** 128n;
 function getXCoordinateFromBytes(publicKeyBytes: Uint8Array): bigint {
   const start = publicKeyBytes.length === 33 ? 1 : publicKeyBytes.length === 65 ? 1 : 0;
   const end = start + 32;
-  return BigInt("0x" + toHex(publicKeyBytes.slice(start, end)));
+  return BigInt(toHex(publicKeyBytes.slice(start, end)));
 }
 
 /**
