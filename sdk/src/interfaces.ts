@@ -244,6 +244,14 @@ export type ExecuteOptions = {
   registryConst?: boolean;
 };
 
+export type Warning = {
+  code: WarningCode;
+  message: string;
+};
+
+export enum WarningCode {
+  USER_LINKAGE = "USER_LINKAGE",
+}
 /**
  * Result of execute, including the call/proof and updated registry.
  */
@@ -251,6 +259,8 @@ export type ExecuteResult = {
   callAndProof: CallAndProof;
   /** Updated registry (new object if registryConst was true, same object otherwise) */
   registry: PrivateRegistry;
+
+  warnings: Warning[];
 };
 
 /**

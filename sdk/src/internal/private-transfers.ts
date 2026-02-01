@@ -47,7 +47,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     const compiler = new ActionCompiler(this.user, viewingKey, this.params.discoveryProvider);
 
     // Compile actions
-    const { clientActions, registry } = await compiler.compile(actions, options);
+    const { clientActions, registry, warnings } = await compiler.compile(actions, options);
 
     // Create invocation for proving
     const details = this.params.provingProvider.getDefaultDetails();
@@ -75,6 +75,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
         proof,
       },
       registry,
+      warnings,
     };
   }
 }
