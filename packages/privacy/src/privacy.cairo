@@ -822,11 +822,8 @@ pub mod Privacy {
             self.subchannel_tokens.read(subchannel_key)
         }
 
-        // TODO: Modify / add new getter for open notes.
-        fn get_note(self: @ContractState, note_id: felt252) -> felt252 {
-            let note = self.notes.read(note_id);
-            assert(note.token.is_zero(), internal_errors::ENC_NOTE_NON_ZERO_TOKEN);
-            self.notes.read(note_id).packed_value
+        fn get_note(self: @ContractState, note_id: felt252) -> Note {
+            self.notes.read(note_id)
         }
 
         fn nullifier_exists(self: @ContractState, nullifier: felt252) -> bool {

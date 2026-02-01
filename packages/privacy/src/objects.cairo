@@ -147,7 +147,7 @@ pub impl EncOutgoingChannelInfoZero of Zero<EncOutgoingChannelInfo> {
 
 /// A note containing encrypted value and token information.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
-pub(crate) struct Note {
+pub struct Note {
     /// The packed value of the note `(salt, amount)`:
     /// - For open notes: salt = OPEN_NOTE_SALT (=1), amount = 0 (awaiting deposit).
     /// - For encrypted notes: salt >= ENC_NOTE_MIN_SALT (=2), amount = encrypted_amount.
