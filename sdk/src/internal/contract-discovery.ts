@@ -20,6 +20,7 @@ import {
 } from "../utils/encryptions.js";
 import { cloneNotesCursor, cloneChannelCursor, NotesCursor } from "./channel.js";
 import { bisect, scan, Tracker } from "../utils/scan.js";
+import { createRateLimitedObject, type RateLimitOptions } from "../utils/rate-limiter.js";
 
 /**
  * Note data returned by get_note(), matching Cairo's privacy::objects::Note struct.
@@ -391,9 +392,20 @@ class ChannelsDiscovery {
   }
 }
 
+/**
+ * Options for ContractDiscoveryProvider.
+ */
+export type DiscoveryOptions = {
+  /** Rate limiting for pool contract RPC calls */
+  rateLimit?: RateLimitOptions;
+};
+
 export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
-  constructor(private readonly pool: IPoolContract) {
+  private readonly pool: IPoolContract;
+
+  constructor(pool: IPoolContract, options?: DiscoveryOptions) {
     super();
+    this.pool = options?.rateLimit ? createRateLimitedObject(pool, options.rateLimit) : pool;
   }
 
   async discoverNotes(

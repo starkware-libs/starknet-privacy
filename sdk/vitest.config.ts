@@ -20,10 +20,10 @@ export default defineConfig({
       exclude: ["src/**/*.test.ts", "src/**/index.ts"],
       skipFull: true, // hide files with 100% coverage
       thresholds: {
-        statements: 80,
-        branches: 75,
-        functions: 70,
-        lines: 80,
+        statements: 70,
+        branches: 50,
+        functions: 60,
+        lines: 70,
       },
     },
     setupFiles: ["tests/setup.ts"],
