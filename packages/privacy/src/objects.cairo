@@ -146,6 +146,7 @@ pub impl EncOutgoingChannelInfoZero of Zero<EncOutgoingChannelInfo> {
 }
 
 /// A note containing encrypted value and token information.
+// TODO: Ask if we should add getters for specific fields.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
 pub struct Note {
     /// The packed value of the note `(salt, amount)`:
@@ -154,13 +155,16 @@ pub struct Note {
     pub packed_value: felt252,
     /// The token address of the note (zero for encrypted notes, non-zero for open notes).
     pub token: ContractAddress,
-    // TODO: Add permitted depositor address field.
+    /// The address of the contract permitted to deposit into the note (zero for encrypted notes).
+    pub depositor: ContractAddress,
 }
 
 #[generate_trait]
 pub impl NoteImpl of NoteTrait {
-    fn open_note(token: ContractAddress) -> Note {
-        Note { packed_value: packing(value_1: OPEN_NOTE_SALT, value_2: Zero::zero()), token }
+    fn open_note(token: ContractAddress, depositor: ContractAddress) -> Note {
+        Note {
+            packed_value: packing(value_1: OPEN_NOTE_SALT, value_2: Zero::zero()), token, depositor,
+        }
     }
 
     fn enc_note(
@@ -169,6 +173,7 @@ pub impl NoteImpl of NoteTrait {
         Note {
             packed_value: encrypt_note_amount(:channel_key, :token, :index, :salt, :amount),
             token: Zero::zero(),
+            depositor: Zero::zero(),
         }
     }
 }

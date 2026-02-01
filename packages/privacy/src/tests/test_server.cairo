@@ -5,7 +5,8 @@ use privacy::actions::{
 };
 use privacy::objects::{EncPrivateKeyTrait, Note, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
-    NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait, constants,
+    CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
+    constants,
 };
 use privacy::{errors, events};
 use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
@@ -618,6 +619,7 @@ fn test_execute_write_once_open_note() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
+    let depositor = test.mock_new_depositor();
     let token_address = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
@@ -626,7 +628,8 @@ fn test_execute_write_once_open_note() {
             recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
-    let create_note_input = user_1.new_open_note(recipient: user_2, token: token_address, index: 0);
+    let create_note_input = user_1
+        .new_open_note(recipient: user_2, token: token_address, index: 0, :depositor);
     let (note_id, expected_note) = user_1.compute_open_note(:create_note_input);
 
     // Compute the server actions to write the note to storage.
@@ -646,11 +649,12 @@ fn test_execute_write_once_open_note() {
 }
 
 #[test]
-fn test_execute_write_once_open_note_non_zero_token_fails() {
+fn test_execute_write_once_open_note_assertions() {
     // Test that trying to overwrite an existing open note fails.
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
+    let depositor = test.mock_new_depositor();
     let token_address = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
@@ -660,22 +664,12 @@ fn test_execute_write_once_open_note_non_zero_token_fails() {
         );
 
     // Create open note first.
-    let create_note_input = user_1.new_open_note(recipient: user_2, token: token_address, index: 0);
+    let create_note_input = user_1
+        .new_open_note(recipient: user_2, token: token_address, index: 0, :depositor);
     user_1.cheat_create_open_note_e2e(:create_note_input);
 
     // Try to write again - should fail.
-    let (note_id, expected_note) = user_1.compute_open_note(:create_note_input);
-    let storage_address = map_entry_address(
-        map_selector: selector!("notes"), keys: [note_id].span(),
-    );
-    let actions = [
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address, value: [expected_note.packed_value, token_address.into()].span(),
-            },
-        ),
-    ]
-        .span();
+    let actions = create_note_input.into_server_actions(user: user_1);
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }

@@ -79,6 +79,8 @@ pub struct CreateOpenNoteInput {
     pub token: ContractAddress,
     /// The index of the note within the channel.
     pub index: usize,
+    /// The address of the contract permitted to deposit into the note.
+    pub depositor: ContractAddress,
 }
 
 /// Input for the `Deposit` action.
