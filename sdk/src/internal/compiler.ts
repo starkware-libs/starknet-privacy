@@ -29,9 +29,10 @@ import { Channel, createEmptyRegistry } from "../interfaces.js";
 import { AddressMap, AdvancedMap, toBigInt } from "../utils/index.js";
 import type { ClientAction } from "./client-actions.js";
 import { PoolSimulator } from "./pool-simulator.js";
+
 import { assert, isOpen } from "../utils/validation.js";
 import type { BigNumberish } from "starknet";
-import { generateRandom } from "../utils/crypto.js";
+import { generateRandom, generateRandom120 } from "../utils/crypto.js";
 import { debugLog, hex } from "../utils/logging.js";
 
 export type CompileResult = {
@@ -45,21 +46,21 @@ type ClientActions = {
   openTokenChannels: Extract<ClientAction, { type: "OpenSubchannel" }>[];
   deposits: Extract<ClientAction, { type: "Deposit" }>[];
   useNotes: Extract<ClientAction, { type: "UseNote" }>[];
-  createNotes: Extract<ClientAction, { type: "CreateEncNote" }>[];
+  createEncNotes: Extract<ClientAction, { type: "CreateEncNote" }>[];
+  createOpenNotes: Extract<ClientAction, { type: "CreateOpenNote" }>[];
   withdraws: Extract<ClientAction, { type: "Withdraw" }>[];
   followupCall?: Extract<ClientAction, { type: "FollowupCall" }>;
 };
 
-/** Generate a 120-bit random value for note encryption */
-function generateRandom120(): bigint {
-  const bytes = new Uint8Array(15); // 15 bytes = 120 bits
-  crypto.getRandomValues(bytes);
-  let result = 0n;
-  for (const byte of bytes) {
-    result = (result << 8n) | BigInt(byte);
-  }
-  return result;
+// Enforces that input has no extra properties beyond what's expected for its type
+type StrictClientAction<T extends ClientAction> = T extends {
+  type: infer Type extends ClientAction["type"];
+  input: infer I;
 }
+  ? keyof I extends keyof Extract<ClientAction, { type: Type }>["input"]
+    ? T
+    : never
+  : never;
 
 export class ActionCompiler {
   constructor(
@@ -90,7 +91,7 @@ export class ActionCompiler {
     debugLog("compiler", "compile", "post resolveNotes", registry?.notes?.size, actions);
 
     // create a pool to simulate the execution of the actions
-    const pool = this.createPool(registry, channels);
+    const pool = this.createPool(toBigInt(this.userViewingKey), registry, channels);
 
     // Phase 3: Transform Actions to ClientAction[]
     const clientActions = this.transformToClientActions(actions, pool, recipientsNeeded, options);
@@ -138,14 +139,18 @@ export class ActionCompiler {
     return recipientsNeeded;
   }
 
-  private createPool(registry?: PrivateRegistry, channels?: AddressMap<Channel>): PoolSimulator {
-    const pool = new PoolSimulator(this.userAddress);
+  private createPool(
+    privateKey: bigint,
+    registry?: PrivateRegistry,
+    channels?: AddressMap<Channel>
+  ): PoolSimulator {
+    const pool = new PoolSimulator(this.userAddress, privateKey);
 
     // The simulator needs a viewing key to be set regardless if already registered
-    pool.execute({
-      type: "SetViewingKey",
-      input: { privateKey: this.userViewingKey, random: generateRandom() },
-    });
+    //pool.execute({
+    //  type: "SetViewingKey",
+    //  input: { random: generateRandom() },
+    //});
 
     debugLog("compiler", "setup discovered channels", channels);
 
@@ -188,17 +193,18 @@ export class ActionCompiler {
       openTokenChannels: [],
       deposits: [],
       useNotes: [],
-      createNotes: [],
+      createEncNotes: [],
+      createOpenNotes: [],
       withdraws: [],
       followupCall: undefined,
     };
 
     debugLog("compiler", "transformToClientActions", actions);
     // if the user is registered, it must appear in the registry
-    if (options?.autoRegister && !options?.registry?.channels?.has(this.userAddress)) {
+    if (options?.autoRegister && !pool.getChannel(this.userAddress)?.publicKey) {
       actions.setViewingKey = {
         type: "SetViewingKey",
-        input: { privateKey: this.userViewingKey, random: generateRandom() },
+        input: { random: generateRandom() },
       };
     }
 
@@ -218,7 +224,7 @@ export class ActionCompiler {
       }
     }
 
-    const execute = <T extends ClientAction>(input: T, arr: T[] = []): T => {
+    const execute = <T extends ClientAction>(input: StrictClientAction<T>, arr: T[] = []): T => {
       pool.execute(input);
       arr.push(input);
       return input;
@@ -230,11 +236,10 @@ export class ActionCompiler {
       const input = {
         type: "SetViewingKey",
         input: {
-          privateKey: this.userViewingKey,
           random: generateRandom(),
         },
       } as const; // typescipt magic
-      clientActions.setViewingKey = input;
+      clientActions.setViewingKey = execute(input);
     }
 
     // 2. OpenChannel (deduplicate by recipient to prevent duplicate channels)
@@ -249,9 +254,8 @@ export class ActionCompiler {
         const input = {
           type: "OpenChannel",
           input: {
-            senderPrivateKey: this.userViewingKey,
-            recipientAddr: action.recipient,
-            recipientPublicKey: channel.publicKey as bigint,
+            recipient_addr: action.recipient,
+            recipient_public_key: channel.publicKey as bigint,
             index: seenRecipients.size - 1, // TODO: track outgoing channel index properly
             random: generateRandom(),
             salt: generateRandom(),
@@ -272,8 +276,6 @@ export class ActionCompiler {
       assert(channel, () => `Channel not found for recipient ${hex(action.recipient)}`);
       debugLog("compiler", "open channel", action.recipient, action, channel);
 
-      // console.log(`[compiler] checking token ${action.token} in channel ${action.recipient}: ${channel.tokens.has(action.token)}`);
-
       if (channel.tokens.has(action.token)) {
         return channel;
       }
@@ -285,12 +287,12 @@ export class ActionCompiler {
       const input = {
         type: "OpenSubchannel",
         input: {
-          recipientAddr: action.recipient,
-          recipientPublicKey: channel.publicKey as bigint,
-          channelKey: channel.key as bigint,
+          recipient_addr: action.recipient,
+          recipient_public_key: channel.publicKey as bigint,
+          channel_key: channel.key as bigint,
           index: channel.tokens.size,
           token: action.token,
-          random: generateRandom(),
+          salt: generateRandom(),
         },
       } as const; // typescipt magic
       execute(input, clientActions.openTokenChannels);
@@ -334,10 +336,9 @@ export class ActionCompiler {
         const input = {
           type: "UseNote",
           input: {
-            ownerPrivateKey: this.userViewingKey,
-            channelKey: action.note.witness.channelKey,
+            channel_key: action.note.witness.channelKey,
             token: action.token,
-            noteIndex: action.note.witness.nonce,
+            note_index: action.note.witness.nonce,
           },
         } as const; // typescipt magic
         if (!pool.hasNote(action.token, toBigInt(action.note.id))) {
@@ -359,19 +360,32 @@ export class ActionCompiler {
           false
         );
 
-        const input = {
-          type: "CreateEncNote",
-          input: {
-            senderPrivateKey: this.userViewingKey,
-            recipientAddr: action.recipient,
-            recipientPublicKey: channel.publicKey as bigint,
-            token: action.token,
-            amount: action.amount,
-            index: channel.tokens.get(action.token)!.noteNonce,
-            random: generateRandom120(),
-          },
-        } as const; // typescipt magic
-        execute(input, clientActions.createNotes);
+        if (isOpen(action.amount)) {
+          const input = {
+            type: "CreateOpenNote",
+            input: {
+              recipient_addr: action.recipient,
+              recipient_public_key: channel.publicKey as bigint,
+              token: action.token,
+              index: channel.tokens.get(action.token)!.noteNonce,
+              depositor: action.depositor!,
+            },
+          } as const; // typescipt magic
+          execute(input, clientActions.createOpenNotes);
+        } else {
+          const input = {
+            type: "CreateEncNote",
+            input: {
+              recipient_addr: action.recipient,
+              recipient_public_key: channel.publicKey as bigint,
+              token: action.token,
+              amount: action.amount,
+              index: channel.tokens.get(action.token)!.noteNonce,
+              salt: generateRandom120(),
+            },
+          } as const; // typescipt magic
+          execute(input, clientActions.createEncNotes);
+        }
       }
     }
 
@@ -381,7 +395,7 @@ export class ActionCompiler {
         const input = {
           type: "Withdraw",
           input: {
-            withdrawalTarget: action.recipient,
+            withdrawal_target: action.recipient,
             token: action.token,
             amount: action.amount,
             random: generateRandom(),
@@ -401,6 +415,7 @@ export class ActionCompiler {
           call: actions.followupCall.call,
         },
       } as const; // typescipt magic
+
       clientActions.followupCall = execute(input);
     }
 

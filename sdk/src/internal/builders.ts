@@ -97,6 +97,7 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
         token,
         recipient: toBigInt(output.recipient),
         amount: output.amount,
+        depositor: "depositor" in output ? toBigInt(output.depositor) : undefined,
       });
     }
     return this;
