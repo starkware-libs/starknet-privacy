@@ -182,7 +182,7 @@ fn test_get_note() {
     assert_eq!(test.privacy.get_note(note_id: note_id), Zero::zero());
     test.privacy.cheat_create_note(:note_id, :note);
     let enc_value = test.privacy.get_note(:note_id);
-    assert_eq!(enc_value, note.enc_value);
+    assert_eq!(enc_value, note.packed_value);
 }
 
 #[test]

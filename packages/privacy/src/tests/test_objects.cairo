@@ -204,12 +204,18 @@ fn test_note_encrypt() {
     let channel_key = user.compute_channel_key(recipient: user);
     let index = 0;
 
-    let note = NoteTrait::encrypt(:channel_key, token: token_address, :index, :salt, :amount);
-    let enc_value = encrypt_note_amount(:channel_key, token: token_address, :index, :salt, :amount);
-    let expected_note = Note { enc_value, token: Zero::zero() };
+    let note = NoteTrait::enc_note(:channel_key, token: token_address, :index, :salt, :amount);
+    let expected_note = Note {
+        packed_value: encrypt_note_amount(
+            :channel_key, token: token_address, :index, :salt, :amount,
+        ),
+        token: Zero::zero(),
+    };
     assert_eq!(note, expected_note);
     assert_eq!(
-        decrypt_note_amount(enc_note_value: enc_value, :channel_key, token: token_address, :index),
+        decrypt_note_amount(
+            enc_note_value: note.packed_value, :channel_key, token: token_address, :index,
+        ),
         amount,
     );
 }
@@ -278,7 +284,7 @@ fn test_enc_outgoing_channel_info_to_write_once_action() {
 fn test_note_to_write_once_action() {
     let enc_value = 'ENC_VALUE';
     let token = 'TOKEN'.try_into().unwrap();
-    let note = Note { enc_value, token };
+    let note = Note { packed_value: enc_value, token };
     let key = 'KEY';
     let storage_address = map_entry_address(map_selector: selector!("notes"), keys: [key].span());
     let action = note.to_write_once_action(:storage_address);
@@ -477,9 +483,7 @@ fn enc_outgoing_channel_info_serialization_format() {
 fn note_serialization_format() {
     let mock_contract_address = deploy_mock_contract();
     let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
-    let note = Note {
-        enc_value: 'ENC_VALUE'.try_into().unwrap(), token: 'TOKEN'.try_into().unwrap(),
-    };
+    let note = Note { packed_value: 'ENC_VALUE', token: 'TOKEN'.try_into().unwrap() };
     let mut serialized_value = array![];
     note.serialize(ref output: serialized_value);
     mock_contract.write_serialized_note(serialized_value: serialized_value.span());
