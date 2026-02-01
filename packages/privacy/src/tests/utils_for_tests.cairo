@@ -1215,7 +1215,8 @@ pub(crate) impl TestImpl of TestTrait {
         self.nonce += 1;
         let note_id = 'NOTE_ID' + self.nonce.into();
         let packed_value = 'PACKED_VALUE' + amount.into() + self.nonce.into();
-        (note_id, Note { packed_value, token: Zero::zero() })
+        let token = self.mock_new_token();
+        (note_id, Note { packed_value, token })
     }
 
     /// Mock function to generate a new nullifier.
@@ -1291,25 +1292,6 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self: @PrivacyCfg, outgoing_channel_key: felt252,
     ) -> EncOutgoingChannelInfo {
         self.views.get_outgoing_channel_info(:outgoing_channel_key)
-    }
-
-    /// Cheat create a note in the server side (no client side).
-    fn cheat_create_note(self: @PrivacyCfg, note_id: felt252, note: Note) {
-        let storage_path = map_entry_address(
-            map_selector: selector!("notes"), keys: [note_id].span(),
-        );
-        self
-            .server
-            .execute_actions(
-                actions: [
-                    ServerAction::WriteOnce(
-                        WriteOnceInput {
-                            storage_address: storage_path, value: [note.packed_value].span(),
-                        },
-                    ),
-                ]
-                    .span(),
-            )
     }
 
     fn get_note(self: @PrivacyCfg, note_id: felt252) -> Note {

@@ -3,7 +3,7 @@ use privacy::actions::{
     AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
     WriteOnceInput,
 };
-use privacy::objects::{EncPrivateKeyTrait, ToServerActionsTrait};
+use privacy::objects::{EncPrivateKeyTrait, Note, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
     NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait, constants,
 };
@@ -316,7 +316,7 @@ fn test_execute_write_once_outgoing_channel_assertions() {
 }
 
 #[test]
-fn test_execute_write_once_note() {
+fn test_execute_write_once_enc_note() {
     let mut test: Test = Default::default();
     let (note_id, note) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
     assert!(note.packed_value.is_non_zero());
@@ -334,11 +334,13 @@ fn test_execute_write_once_note() {
     test.privacy.execute_actions(actions.span());
 
     // Verify stored note was written.
-    assert_eq!(test.privacy.get_note(:note_id), note);
+    assert_eq!(
+        test.privacy.get_note(:note_id), Note { packed_value: note.packed_value, ..Zero::zero() },
+    );
 }
 
 #[test]
-fn test_execute_write_once_note_assertions() {
+fn test_execute_write_once_enc_note_assertions() {
     let mut test: Test = Default::default();
     let (note_id, note) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
     assert!(note.packed_value.is_non_zero());
@@ -352,7 +354,9 @@ fn test_execute_write_once_note_assertions() {
     ];
     test.privacy.execute_actions(actions.span());
     // Verify the value was written
-    assert_eq!(test.privacy.get_note(:note_id), note);
+    assert_eq!(
+        test.privacy.get_note(:note_id), Note { packed_value: note.packed_value, ..Zero::zero() },
+    );
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }

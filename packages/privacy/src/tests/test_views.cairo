@@ -178,15 +178,6 @@ fn test_get_outgoing_channel_info() {
 #[test]
 fn test_get_note() {
     let mut test: Test = Default::default();
-    let (note_id, note) = test.mock_new_note(amount: DEFAULT_AMOUNT);
-    assert_eq!(test.privacy.get_note(note_id: note_id), Zero::zero());
-    test.privacy.cheat_create_note(:note_id, :note);
-    assert_eq!(test.privacy.get_note(:note_id), note);
-}
-
-#[test]
-fn test_get_note_enc_and_open() {
-    let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
