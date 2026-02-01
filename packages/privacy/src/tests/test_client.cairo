@@ -2242,7 +2242,7 @@ fn test_create_enc_note_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
-    let mut user_private_key_not_canonical = user.clone();
+    let mut user_private_key_not_canonical = user;
     user_private_key_not_canonical.private_key = Neg::neg(user.private_key);
     let result = user_private_key_not_canonical.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
@@ -3112,7 +3112,7 @@ fn test_use_note_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
-    let mut user_private_key_not_canonical = user.clone();
+    let mut user_private_key_not_canonical = user;
     user_private_key_not_canonical.private_key = Neg::neg(user.private_key);
     let result = user_private_key_not_canonical.safe_use_note(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
