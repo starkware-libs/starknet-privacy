@@ -20,6 +20,7 @@ import {
 } from "../utils/encryptions.js";
 import { cloneNotesCursor, cloneChannelCursor, NotesCursor } from "./channel.js";
 import { bisect, scan, Tracker } from "../utils/scan.js";
+import { createRateLimitedObject, type RateLimitOptions } from "../utils/rate-limiter.js";
 
 /**
  * Note data returned by get_note(), matching Cairo's privacy::objects::Note struct.
@@ -82,8 +83,8 @@ class NotesDiscovery {
     void this.tracker.add(this.discoverChannels(this.existingCursor?.incomingChannels.size ?? 0));
     for (const [sender, incomingChannelCursor] of this.existingCursor?.incomingChannels ?? []) {
       void this.tracker.add(this.discoverSubchannels(sender));
-      for (const [token, nonce] of incomingChannelCursor.noteIndexes) {
-        void this.tracker.add(this.discoverNotes(sender, token, nonce));
+      for (const [token, index] of incomingChannelCursor.noteIndexes) {
+        void this.tracker.add(this.discoverNotes(sender, token, index));
       }
     }
 
@@ -263,7 +264,7 @@ class NotesDiscovery {
     });
 
     const m = this.cursor!.incomingChannels.get(sender)!.noteIndexes.get(token)!;
-    this.cursor!.incomingChannels.get(sender)!.noteIndexes.set(token, m);
+    this.cursor!.incomingChannels.get(sender)!.noteIndexes.set(token, Math.max(m, index + 1));
     return true;
   }
 }
@@ -301,11 +302,10 @@ class ChannelsDiscovery {
         0,
         this.tracker
       );
-    }
-
-    // discover channel
-    for (const recipient of this.recipients) {
-      void this.tracker.add(this.discoverChannel(toBigInt(recipient)));
+    } else {
+      for (const recipient of this.recipients) {
+        void this.tracker.add(this.discoverChannel(toBigInt(recipient)));
+      }
     }
 
     if (this.cursor) {
@@ -391,9 +391,20 @@ class ChannelsDiscovery {
   }
 }
 
+/**
+ * Options for ContractDiscoveryProvider.
+ */
+export type DiscoveryOptions = {
+  /** Rate limiting for pool contract RPC calls */
+  rateLimit?: RateLimitOptions;
+};
+
 export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
-  constructor(private readonly pool: IPoolContract) {
+  private readonly pool: IPoolContract;
+
+  constructor(pool: IPoolContract, options?: DiscoveryOptions) {
     super();
+    this.pool = options?.rateLimit ? createRateLimitedObject(pool, options.rateLimit) : pool;
   }
 
   async discoverNotes(

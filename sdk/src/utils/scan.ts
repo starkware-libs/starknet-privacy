@@ -1,3 +1,6 @@
+export const INITIAL_OFFSET = 8;
+export const INITIAL_STEP = 8;
+
 type Probe = (i: number, skipResult?: boolean) => Promise<boolean>;
 
 export class Tracker {
@@ -65,8 +68,8 @@ export async function bisect(
 
 export async function scan(probe: Probe, start: number, tracker?: Tracker, lengthOnly?: boolean) {
   const tr = tracker ?? new Tracker();
-  let offset = 8;
-  let step = 8;
+  let offset = INITIAL_OFFSET;
+  let step = INITIAL_STEP;
   let prev = -1;
   let index;
 
