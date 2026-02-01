@@ -328,9 +328,7 @@ fn test_execute_write_once_note() {
     let storage_address = map_entry_address(
         map_selector: selector!("notes"), keys: [note_id].span(),
     );
-    let actions: Array<ServerAction> = array![
-        note.packed_value.to_write_once_action(:storage_address),
-    ];
+    let actions: Array<ServerAction> = array![note.to_write_once_action(:storage_address)];
     test.privacy.execute_actions(actions.span());
 
     // Verify stored note was written.
@@ -347,9 +345,7 @@ fn test_execute_write_once_note_assertions() {
     let storage_address = map_entry_address(
         map_selector: selector!("notes"), keys: [note_id].span(),
     );
-    let actions: Array<ServerAction> = array![
-        note.packed_value.to_write_once_action(:storage_address),
-    ];
+    let actions: Array<ServerAction> = array![note.to_write_once_action(:storage_address)];
     test.privacy.execute_actions(actions.span());
     // Verify the value was written
     assert_eq!(test.privacy.get_note(:note_id), note);
