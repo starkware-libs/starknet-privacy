@@ -2,31 +2,34 @@
  * Builder implementations for constructing private transfer operations.
  */
 
-import type {
-  CreateNoteAction,
-  DepositAction,
-  ExecuteOptions,
-  ExecuteResult,
-  Note,
-  OpenChannelAction,
-  OpenTokenChannelAction,
-  PrivateTransfers,
-  PrivateTransfersBuilder,
-  Actions,
-  SetViewingKeyAction,
-  StarknetAddress,
-  TokenOperationsBuilder,
-  UseNoteAction,
-  WithdrawAction,
-  WithdrawOutput,
-  DepositInput,
-  TransferOutput,
-  SurplusAction,
-  FollowupCallAction,
+import {
+  type CreateNoteAction,
+  type DepositAction,
+  type ExecuteOptions,
+  type ExecuteResult,
+  type Note,
+  type OpenChannelAction,
+  type OpenTokenChannelAction,
+  type PrivateTransfers,
+  type PrivateTransfersBuilder,
+  type Actions,
+  type SetViewingKeyAction,
+  type StarknetAddress,
+  type TokenOperationsBuilder,
+  type UseNoteAction,
+  type WithdrawAction,
+  type WithdrawOutput,
+  type DepositInput,
+  type TransferOutput,
+  type SurplusAction,
+  type FollowupCallAction,
+  Open,
+  Amount,
 } from "../interfaces.js";
 import type { Call } from "starknet";
 import { AddressMap, toBigInt } from "../utils/index.js";
 import { debugLog } from "../utils/logging.js";
+import { isOpenNote } from "../utils/validation.js";
 
 // ============ Token Operations Builder ============
 
@@ -93,11 +96,20 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   transfer(...outputs: TransferOutput[]): this {
     const token = toBigInt(this.token);
     for (const output of outputs) {
-      this.createNotes.push({
-        token,
-        recipient: toBigInt(output.recipient),
-        amount: output.amount,
-      });
+      if (isOpenNote(output)) {
+        this.createNotes.push({
+          token,
+          recipient: toBigInt(output.recipient),
+          amount: Open,
+          depositor: toBigInt(output.depositor),
+        });
+      } else {
+        this.createNotes.push({
+          token,
+          recipient: toBigInt(output.recipient),
+          amount: output.amount as Amount,
+        });
+      }
     }
     return this;
   }

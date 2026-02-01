@@ -64,7 +64,7 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
     return this.build(fromToken)
       .withdraw({ recipient: helperCall.contractAddress, amount: fromAmount })
       .with(toToken)
-      .transfer({ recipient: this.inner.user, amount: Open })
+      .transfer({ recipient: this.inner.user, amount: Open, depositor: helperCall.contractAddress })
       .execute();
   }
 

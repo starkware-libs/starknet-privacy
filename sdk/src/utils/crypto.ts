@@ -228,6 +228,17 @@ export function generateRandom(): bigint {
   return encode.uint8ArrayToBigInt(starkCurve.utils.randomPrivateKey());
 }
 
+/** Generate a 120-bit random value for note encryption */
+export function generateRandom120(): bigint {
+  const bytes = new Uint8Array(15); // 15 bytes = 120 bits
+  crypto.getRandomValues(bytes);
+  let result = 0n;
+  for (const byte of bytes) {
+    result = (result << 8n) | BigInt(byte);
+  }
+  return result;
+}
+
 export type SymmetricEncryption = {
   r: bigint;
   enc: bigint;

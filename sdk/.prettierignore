@@ -1,0 +1,7 @@
+# Auto-generated files
+src/internal/client-actions.ts
+src/internal/abi.ts
+src/utils/hashes.ts
+
+# Build output
+dist/

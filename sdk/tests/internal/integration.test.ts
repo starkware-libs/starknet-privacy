@@ -259,7 +259,7 @@ describe("Private Transfers Integration", () => {
           .deposit({ amount: 100n, recipient: ALICE.address })
           .withdraw({ recipient: swapHelper.address, amount: 10n })
         .with(BEE)
-          .transfer({ recipient: ALICE.address, amount: Open })
+          .transfer({ recipient: ALICE.address, amount: Open, depositor: swapHelper.address })
         .done()
         .call({
           contractAddress: hex(swapHelper.address),

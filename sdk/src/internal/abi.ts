@@ -131,6 +131,10 @@ export const PrivacyPoolABI = [
         name: "index",
         type: "core::integer::u32",
       },
+      {
+        name: "depositor",
+        type: "core::starknet::contract_address::ContractAddress",
+      },
     ],
   },
   {
@@ -657,6 +661,10 @@ export const PrivacyPoolABI = [
       },
       {
         name: "token",
+        type: "core::starknet::contract_address::ContractAddress",
+      },
+      {
+        name: "depositor",
         type: "core::starknet::contract_address::ContractAddress",
       },
     ],
