@@ -1,6 +1,5 @@
 // ============ Logging Utilities ============
-import type { BigNumberish } from "starknet";
-import { toHex as toHexRaw } from "./convert.js";
+import { toHex } from "./convert.js";
 
 // --- Environment Access (Browser-Compatible) ---
 
@@ -178,9 +177,6 @@ const color = (text: string, code: number) => {
 
 // ... existing code ...
 
-/** Helper to format bigint/BigNumberish as hex string (0x prefixed, uppercase) */
-export const hex = (v: BigNumberish | Uint8Array) => `0x${toHexRaw(v).toUpperCase()}`;
-
 /** Get current timestamp as HH:MM:SS.mmm */
 const getTimestamp = () => {
   const now = new Date();
@@ -194,9 +190,9 @@ const getTimestamp = () => {
 const createReplacer = () => {
   const seen = new WeakSet();
   return (_: string, v: unknown) => {
-    if (typeof v === "bigint") return `0x${v.toString(16)}`;
+    if (typeof v === "bigint") return toHex(v);
     if (typeof v === "function") return "[Function]";
-    if (v instanceof Uint8Array) return hex(v);
+    if (v instanceof Uint8Array) return toHex(v);
     if (typeof v === "object" && v !== null) {
       if (seen.has(v)) return "[Circular]";
       seen.add(v);

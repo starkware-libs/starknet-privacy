@@ -39,7 +39,7 @@ import {
   compute_outgoing_channel_key,
 } from "../utils/hashes.js";
 
-import { hex } from "../utils/logging.js";
+import { toHex } from "../utils/convert.js";
 import { Call } from "starknet";
 import { ClientAction } from "../internal/client-actions.js";
 
@@ -310,11 +310,11 @@ export class MockPoolContract implements MockContract {
   openDeposit(noteId: bigint, token: bigint, amount: Amount, from: StarknetAddressBigint): void {
     this.contracts.get(token).transfer(from, this.address, amount);
     const note = this.notes.get(noteId)! as OpenNote;
-    assert(note, () => `Note ${hex(noteId)} does not exist`);
-    assert(note.r == 1n, () => `Note ${hex(noteId)} is not open`);
-    assert(note.token == token, () => `Note ${hex(noteId)} is not for token ${token}`);
-    assert(note.amount == 0n, () => `Note ${hex(noteId)} has already been filled`);
-    assert(note.depositor == from, () => `Note ${hex(noteId)} is not for depositor ${from}`);
+    assert(note, () => `Note ${toHex(noteId)} does not exist`);
+    assert(note.r == 1n, () => `Note ${toHex(noteId)} is not open`);
+    assert(note.token == token, () => `Note ${toHex(noteId)} is not for token ${token}`);
+    assert(note.amount == 0n, () => `Note ${toHex(noteId)} has already been filled`);
+    assert(note.depositor == from, () => `Note ${toHex(noteId)} is not for depositor ${from}`);
     note.amount = amount;
   }
 
@@ -434,7 +434,7 @@ export class MockPoolContract implements MockContract {
 
   private assertRegistered(address: StarknetAddressBigint): void {
     if (!this.publicKeys.has(address)) {
-      throw new Error(`Address ${hex(address)} is not registered`);
+      throw new Error(`Address ${toHex(address)} is not registered`);
     }
   }
 
@@ -567,7 +567,7 @@ export class MockPoolContract implements MockContract {
       );
       assert(
         this.outgoingChannels.has(prevOutgoingChannelKey),
-        () => `Outgoing channel index ${s} is not sequential for sender ${hex(from)}`
+        () => `Outgoing channel index ${s} is not sequential for sender ${toHex(from)}`
       );
     }
     const outgoingChannelKey = compute_outgoing_channel_key(from, toBigInt(fromPrivateKey), s);
@@ -613,7 +613,7 @@ export class MockPoolContract implements MockContract {
     );
 
     const subchannelKey = compute_subchannel_key(channelKey, index);
-    assert(!this.subchannels.has(subchannelKey), () => `Token ${hex(token)} already exists`);
+    assert(!this.subchannels.has(subchannelKey), () => `Token ${toHex(token)} already exists`);
 
     const subchannelId = compute_subchannel_id(channelKey, to, toBigInt(toPublicKey), token);
     const encryptedSubchannelInfo = encryptions.encryptSubchannelInfo(
@@ -628,7 +628,7 @@ export class MockPoolContract implements MockContract {
       apply: () => {
         assert(
           !this.subchannelIds.has(subchannelId),
-          () => `Subchannel ${hex(subchannelId)} already exists`
+          () => `Subchannel ${toHex(subchannelId)} already exists`
         );
         this.subchannels.set(subchannelKey, encryptedSubchannelInfo);
         this.subchannelIds.add(subchannelId);
@@ -784,7 +784,7 @@ export class MockPoolContract implements MockContract {
       const updated = current + delta;
       assert(
         updated >= 0n,
-        () => `Running total for token ${hex(token)} went negative: ${updated}`
+        () => `Running total for token ${toHex(token)} went negative: ${updated}`
       );
       runningTotals.set(token, updated);
     };
@@ -836,7 +836,7 @@ export class MockPoolContract implements MockContract {
     }
 
     for (const [token, total] of runningTotals.entries()) {
-      assert(total === 0n, () => `Final total for token ${hex(token)} is ${total}, expected 0`);
+      assert(total === 0n, () => `Final total for token ${toHex(token)} is ${total}, expected 0`);
     }
   }
 }

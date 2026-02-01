@@ -12,12 +12,12 @@ import type {
   StarknetAddress,
 } from "../interfaces.js";
 import type { Account, TypedContractV2 } from "starknet";
-import { num } from "starknet";
 import { ActionCompiler } from "./compiler.js";
 import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
+import { toHex } from "../utils/convert.js";
 
 // Export the specific typed contract type for the Privacy Pool
 export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
@@ -68,7 +68,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     return {
       callAndProof: {
         call: {
-          contractAddress: num.toHex(this.params.poolContractAddress),
+          contractAddress: toHex(this.params.poolContractAddress),
           entrypoint: "execute_actions",
           calldata: proof.output,
         },
