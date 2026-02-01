@@ -2,9 +2,9 @@ use privacy::hashes::hash;
 use privacy::tests::utils_for_tests::{
     decrypt_channel_info, decrypt_enc_user_addr, decrypt_private_key, decrypt_subchannel_token,
 };
-use privacy::utils::constants::TWO_POW_120;
+use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
-    decrypt_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
+    decode_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
     encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, packing, unpacking,
 };
 use starknet::ContractAddress;
@@ -85,9 +85,7 @@ fn test_encrypt_decrypt_note_amount() {
         let enc_amount = encrypt_note_amount(
             :channel_key, :token, :index, salt: salt_120_bits, amount: *amount,
         );
-        let dec_amount = decrypt_note_amount(
-            enc_note_value: enc_amount, :channel_key, :token, :index,
-        );
+        let dec_amount = decode_note_amount(packed_value: enc_amount, :channel_key, :token, :index);
         assert_eq!(dec_amount, *amount);
     }
 }
@@ -125,4 +123,27 @@ fn test_packing_unpacking_random() {
         assert_eq!(unpacked_value_1, value_1_120_bits);
         assert_eq!(unpacked_value_2, value_2_128_bits);
     }
+}
+
+#[test]
+fn test_decode_note_amount_open_note() {
+    let amounts = [1_u128, 123456789, MAX_U128];
+    let channel_key = hash(['CHANNEL_KEY'].span());
+    let token: ContractAddress = hash(['TOKEN'].span()).try_into().unwrap();
+    let index: usize = 0;
+    for amount in amounts.span() {
+        let packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: *amount);
+        let decoded_amount = decode_note_amount(:packed_value, :channel_key, :token, :index);
+        assert_eq!(decoded_amount, *amount);
+    }
+}
+
+#[test]
+#[should_panic(expected: 'EMPTY_NOTE_USAGE')]
+fn test_decode_note_amount_open_note_empty() {
+    let channel_key = hash(['CHANNEL_KEY'].span());
+    let token: ContractAddress = hash(['TOKEN'].span()).try_into().unwrap();
+    let index: usize = 0;
+    let packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: 0);
+    decode_note_amount(:packed_value, :channel_key, :token, :index);
 }

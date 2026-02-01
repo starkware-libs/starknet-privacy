@@ -631,3 +631,77 @@ fn test_execute_actions_paused() {
     let result = test.privacy.safe_execute_actions([].span());
     assert_panic_with_felt_error(:result, expected_error: PausableErrors::PAUSED);
 }
+
+#[test]
+fn test_execute_write_once_open_note() {
+    // Test that server correctly writes all open note fields.
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token_address = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1
+        .open_channel_with_token_e2e(
+            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+
+    let create_note_input = user_1.new_open_note(recipient: user_2, token: token_address, index: 0);
+    let (note_id, expected_note) = user_1.compute_open_note(:create_note_input);
+
+    // Compute the server actions to write the note to storage.
+    let storage_address = map_entry_address(
+        map_selector: selector!("notes"), keys: [note_id].span(),
+    );
+    let actions = [expected_note.to_write_once_action(:storage_address)].span();
+
+    // Verify storage before execution.
+    let stored_note_before: Note = generic_load(target: test.privacy.address, :storage_address);
+    assert_eq!(stored_note_before.packed_value, Zero::zero());
+    assert_eq!(stored_note_before.token, Zero::zero());
+    // TODO: Use getter.
+
+    // Execute server actions.
+    test.privacy.execute_actions(:actions);
+
+    // Verify storage after execution - both fields should be set.
+    let stored_note_after: Note = generic_load(target: test.privacy.address, :storage_address);
+    assert_eq!(stored_note_after.packed_value, expected_note.packed_value);
+    assert_eq!(stored_note_after.token, token_address);
+    // TODO: Use getter.
+}
+
+#[test]
+fn test_execute_write_once_open_note_non_zero_token_fails() {
+    // Test that trying to overwrite an existing open note fails.
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token_address = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1
+        .open_channel_with_token_e2e(
+            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+
+    // Create open note first.
+    let create_note_input = user_1.new_open_note(recipient: user_2, token: token_address, index: 0);
+    user_1.cheat_create_open_note_e2e(:create_note_input);
+
+    // Try to write again - should fail.
+    let (note_id, expected_note) = user_1.compute_open_note(:create_note_input);
+    let storage_address = map_entry_address(
+        map_selector: selector!("notes"), keys: [note_id].span(),
+    );
+    let actions = [
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address, value: [expected_note.packed_value, token_address.into()].span(),
+            },
+        ),
+    ]
+        .span();
+    let result = test.privacy.safe_execute_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+}
