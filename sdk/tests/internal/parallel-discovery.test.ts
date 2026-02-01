@@ -4,13 +4,13 @@
  */
 
 import { describe, it, expect } from "vitest";
+// Import directly from specific modules to avoid loading devnet.js (Node-only)
 import {
   ContractDiscoveryProvider,
-  createConcurrencyProfiler,
-  formatReport,
-  Mocknet,
   type IPoolContract,
-} from "../../src/testing/index.js";
+} from "../../src/internal/contract-discovery.js";
+import { createConcurrencyProfiler, formatReport } from "../../src/testing/concurrency-profiler.js";
+import { Mocknet } from "../../src/testing/mocknet.js";
 import { Channel } from "../../src/internal/channel.js";
 import { derivePublicKey } from "../../src/utils/crypto.js";
 import { compute_channel_key, compute_note_id, compute_nullifier } from "../../src/utils/hashes.js";
