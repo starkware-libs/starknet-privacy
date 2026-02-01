@@ -3,7 +3,7 @@ use privacy::actions::{
     AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
     WriteOnceInput,
 };
-use privacy::objects::{EncPrivateKeyTrait, Note, ToServerActionsTrait};
+use privacy::objects::{EncPrivateKeyTrait, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
     NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait, constants,
 };
@@ -14,7 +14,7 @@ use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_error,
-    assert_panic_with_felt_error, generic_load,
+    assert_panic_with_felt_error,
 };
 
 #[test]
@@ -112,10 +112,7 @@ fn test_execute_write_once() {
     let storage_path_felt = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
-    let current_value: bool = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, false);
+    assert_eq!(test.privacy.nullifier_exists(:nullifier), false);
     let actions: Array<ServerAction> = array![
         ServerAction::WriteOnce(
             WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
@@ -144,10 +141,7 @@ fn test_execute_write_once_assertions() {
         ),
     ];
     test.privacy.execute_actions(actions.span());
-    let current_value: bool = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, true);
+    assert!(test.privacy.channel_exists(:channel_id));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
@@ -161,10 +155,7 @@ fn test_execute_write_once_assertions() {
         ),
     ];
     test.privacy.execute_actions(actions.span());
-    let current_value: bool = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, true);
+    assert!(test.privacy.subchannel_exists(:subchannel_id));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
@@ -176,10 +167,7 @@ fn test_execute_write_once_assertions() {
         user.public_key.to_write_once_action(storage_address: storage_path_felt),
     ];
     test.privacy.execute_actions(actions.span());
-    let current_value: felt252 = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, user.public_key);
+    assert_eq!(user.get_public_key(), user.public_key);
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
@@ -194,10 +182,7 @@ fn test_execute_write_once_assertions() {
         ),
     ];
     test.privacy.execute_actions(actions.span());
-    let current_value: bool = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, true);
+    assert!(test.privacy.nullifier_exists(:nullifier));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -236,8 +221,7 @@ fn test_execute_write_once_subchannel_assertions() {
     );
     let actions = [enc_subchannel_info.to_write_once_action(:storage_address)].span();
     test.privacy.execute_actions(:actions);
-    let current_value = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, enc_subchannel_info);
+    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), enc_subchannel_info);
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -278,8 +262,7 @@ fn test_execute_write_once_private_key_assertions() {
     );
     let actions = [enc_private_key.to_write_once_action(:storage_address)].span();
     test.privacy.execute_actions(:actions);
-    let current_value = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, enc_private_key);
+    assert_eq!(user.get_enc_private_key(), enc_private_key);
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -325,8 +308,9 @@ fn test_execute_write_once_outgoing_channel_assertions() {
     );
     let actions = [enc_outgoing_channel_info.to_write_once_action(:storage_address)].span();
     test.privacy.execute_actions(:actions);
-    let current_value = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, enc_outgoing_channel_info);
+    assert_eq!(
+        test.privacy.get_outgoing_channel_info(:outgoing_channel_key), enc_outgoing_channel_info,
+    );
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -338,21 +322,18 @@ fn test_execute_write_once_note() {
     assert!(note.packed_value.is_non_zero());
 
     // Verify stored note is zero before writing.
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
+
+    // Write stored note.
     let storage_address = map_entry_address(
         map_selector: selector!("notes"), keys: [note_id].span(),
     );
-    let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, Note { packed_value: Zero::zero(), token: Zero::zero() });
-
-    // Write stored note.
     let actions: Array<ServerAction> = array![
         note.packed_value.to_write_once_action(:storage_address),
     ];
     test.privacy.execute_actions(actions.span());
 
     // Verify stored note was written.
-    let written_value: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(written_value, note);
     assert_eq!(test.privacy.get_note(:note_id), note);
 }
 
@@ -370,9 +351,8 @@ fn test_execute_write_once_note_assertions() {
         note.packed_value.to_write_once_action(:storage_address),
     ];
     test.privacy.execute_actions(actions.span());
-    let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
     // Verify the value was written
-    assert_eq!(current_value, note);
+    assert_eq!(test.privacy.get_note(:note_id), note);
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -528,10 +508,7 @@ fn test_execute_verify_value() {
     test.privacy.execute_actions(actions.span());
 
     // Verify value by loading from storage.
-    let current_value = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, user.public_key);
+    assert_eq!(user.get_public_key(), user.public_key);
 
     // Verify value by action.
     let actions = array![
@@ -551,10 +528,7 @@ fn test_execute_verify_value_assertions() {
     );
 
     // Catch VALUE_MISMATCH.
-    let current_value = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_ne!(current_value, user.public_key);
+    assert_ne!(user.get_public_key(), user.public_key);
     let actions = array![
         ServerAction::VerifyValue(
             VerifyValueInput { storage_address: storage_path_felt, value: user.public_key },
