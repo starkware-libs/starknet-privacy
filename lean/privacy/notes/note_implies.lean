@@ -162,7 +162,7 @@ theorem NoteImplies.from_open_note_event
     ∃ (inp: CreateNoteInput) (_: NoteImplies rm inp),
       inp.note_id crypto = note_id ∧
       inp.r = 1 ∧
-      user_enc = crypto.enc crypto.council_pub_key [inp.addralice] := by
+      user_enc = crypto.enc crypto.council_pub_key [inp.addrbob] := by
   revert rm
   apply ReachableMemory.induction
   case inv₀ => intro h; contradiction

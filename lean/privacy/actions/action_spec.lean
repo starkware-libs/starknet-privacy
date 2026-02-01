@@ -106,7 +106,7 @@ def create_note (crypto: Crypto) (inp: CreateNoteInput) (m: Memory) : List Serve
     .Write .OpenNoteToken [note_id] (if inp.r = 1 then inp.token else 0),
     .Event (
       if inp.r = 1 then
-        .CreateOpenNote note_id (crypto.enc crypto.council_pub_key [inp.addralice])
+        .CreateOpenNote note_id (crypto.enc crypto.council_pub_key [inp.addrbob])
       else
         .None
     ),

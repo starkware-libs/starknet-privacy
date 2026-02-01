@@ -14,12 +14,16 @@ def ForwardTracing₀.user_addr (self: ForwardTracing₀) :=
 def ForwardTracing₀.user_priv_key (self: ForwardTracing₀) :=
   get_priv_key self.crypto self.events self.user_addr
 
+def ForwardTracing₀.user (self: ForwardTracing₀) : UserPrivKey self.crypto self.m :=
+  have h := self.context.h_from_create_open_note_event self.note_id self.user_enc self.h_event
+  ⟨self.user_addr, ⟨self.user_priv_key, h.2.1⟩, h.2.2⟩
+
 -- Find the note
-def ForwardTracing₀.sent_notes (self: ForwardTracing₀) :=
-  scan_outgoing_notes_for_sender self.context.toScanOutgoingNoteContext self.user_addr self.user_priv_key
+def ForwardTracing₀.received_notes (self: ForwardTracing₀) :=
+  scan_notes_for_recipient self.context.toScanNoteContext self.user.addr self.user.k
 
 def ForwardTracing₀.esn_opt (self: ForwardTracing₀) : Option ExScannedNote :=
-  self.sent_notes.find? (λ note ↦ note.note_id self.crypto = self.note_id)
+  self.received_notes.find? (λ note ↦ note.note_id self.crypto = self.note_id)
 
 structure ForwardTracing₁ extends ForwardTracing₀ where
   esn: ExScannedNote
@@ -32,14 +36,15 @@ theorem ForwardTracing₁.esn_opt.note_id (self: ForwardTracing₁) :
   simp only [←this.1]
 
 def ForwardTracing₁.note_coins (self: ForwardTracing₁) : List (Coin self.crypto self.m) :=
-  have : self.esn ∈ self.sent_notes := by
+  have : self.esn ∈ self.received_notes := by
     have ⟨_, _, h, _⟩ := (List.find?_eq_some_iff_append.1 self.h_esn_opt).2
     simp [h]
   let amount := self.esn.amount self.crypto self.m
   List.finRange amount |>.map (
     λ (i: Fin amount) ↦ ⟨self.esn, ↑i, i.prop, by
-      have ⟨_, Kbob, h⟩ := self.context.h_scan_outgoing_notes_for_sender self.user_addr self.user_priv_key self.esn this
-      exact ⟨self.user_priv_key, Kbob, h⟩
+
+      have ⟨_, kalice, h⟩ := self.context.h_scan_notes_for_recipient self.user self.esn this
+      exact ⟨kalice, self.crypto.priv_to_pub self.user_priv_key, h⟩
     ⟩
   )
 
@@ -53,7 +58,7 @@ theorem ForwardTracing₁.no_prev
     simp only [←h_coin, ForwardTracing₁.esn_opt.note_id]
 
   simp only [TracingContext.tracing_graph, self.context.prev_coin_none]
-  exact self.context.h_open_note_from_event (coin.esn.note_id self.crypto) _ (this ▸ self.h_event)
+  exact (self.context.h_from_create_open_note_event (coin.esn.note_id self.crypto) _ (this ▸ self.h_event)).1
 
 def ForwardTracing₁.final_coins (self: ForwardTracing₁) : List (Coin self.crypto self.m) :=
   self.note_coins.attach.map (λ ⟨coin, h_coin⟩ ↦ self.context.tracing_graph.next_limit coin (
@@ -109,40 +114,51 @@ theorem forward_tracing' {crypto: Crypto} {rm: ReachableMemory crypto}
   intro forward_tracing₀
   have ⟨inp, note_imp, h_note_id, h_r, h_user_enc⟩ := NoteImplies.from_open_note_event h_event
 
-  have h_addralice : forward_tracing₀.user_addr = inp.addralice := by
+  have h_addrbob : forward_tracing₀.user_addr = inp.addrbob := by
     simp [ForwardTracing₀.user_addr, forward_tracing₀, h_user_enc, crypto.h_council_priv_key,
       crypto.dec_enc]
-  have : forward_tracing₀.user_priv_key = inp.kalice := by
-    simp only [ForwardTracing₀.user_priv_key, forward_tracing₀, h_addralice]
+  have h_addrbob' : forward_tracing₀.user.addr = inp.addrbob := h_addrbob
+  let kbob := note_imp.subchannel.channel.kbob
+  have : forward_tracing₀.user_priv_key = kbob := by
+    simp only [ForwardTracing₀.user_priv_key, forward_tracing₀]
+    simp only [forward_tracing₀] at h_addrbob
 
-    let register_imp₀ := note_imp.subchannel.channel.alice_registered
-    have register_imp₁ := RegisterImplies.for_get_priv_key rm inp.addralice (by
+    let register_imp₀ := note_imp.subchannel.channel.bob_registered
+    have register_imp₁ := RegisterImplies.for_get_priv_key rm inp.addrbob (by
       simp [register_imp₀.public_key]
       exact crypto.zero_not_public_key ⟨_, register_imp₀.h_kalice⟩
     )
     have := register_imp₁.public_key ▸ register_imp₀.public_key
-    apply crypto.priv_to_pub_inj register_imp₁.h_kalice register_imp₀.h_kalice at this
-    simp only [←note_imp.h_kalice] at this
+    apply crypto.priv_to_pub_inj (forward_tracing₀.user.k.prop) register_imp₀.h_kalice
+    simp only [←h_addrbob] at this
     exact this
+  have : forward_tracing₀.user.k = kbob := by
+    apply Subtype.ext; exact this
   have h_esn_opt : forward_tracing₀.esn_opt = some (inp.to_ex_scanned_note crypto) := by
     apply find?_eq_some
-    · simp [ForwardTracing₀.sent_notes, note_imp.scan_outgoing, *]
+    · simp [ForwardTracing₀.received_notes, *]
+      exact note_imp.scan_for_recipient
     · rw [decide_eq_true_eq]
       exact h_note_id
     · intro esn' h_esn' h
       simp only [decide_eq_true_eq, forward_tracing₀, ←h_note_id] at h
       have h_eq := CreateNoteInput.to_scanned_note_eq h.symm
 
-      replace ⟨inp', note_imp', h_esn', h₀', h₁'⟩ := NoteImplies.from_scan_outgoing_notes_for_sender h_esn'
-      rw [←h_esn']
+      replace ⟨inp', note_imp', h_esn', h₀', h₁', h₂', h₃'⟩ :=
+        NoteImplies.from_scan_notes_for_recipient forward_tracing₀.user.h_k h_esn'
       rw [←h_esn'] at h_eq
 
       have : inp.c crypto = inp'.c crypto := congrArg ScannedNote.c h_eq
+      apply crypto.h_hash at this
 
-      apply ExScannedNote.ext h_eq
-      · simp only [h₀', h_addralice]
-      · apply crypto.h_hash at this
-        injections
+      apply ExScannedNote.ext
+      · rw [←h_esn']
+        exact h_eq
+      · injections
+        simp [*]
+      · injections
+        rw [h₂']
+        assumption
 
   use inp.to_ex_scanned_note crypto, h_esn_opt
   simp [forward_tracing]
