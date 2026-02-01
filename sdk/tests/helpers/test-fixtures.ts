@@ -1,4 +1,6 @@
-import { Mocknet, MockPoolContract, type MocknetEnvironment } from "../../src/testing/index.js";
+// Import directly from specific modules to avoid loading devnet.js (Node-only)
+import { Mocknet, type MocknetEnvironment } from "../../src/testing/mocknet.js";
+import { MockPoolContract } from "../../src/testing/mock-pool-contract.js";
 import {
   createEmptyRegistry,
   ExecuteOptions,

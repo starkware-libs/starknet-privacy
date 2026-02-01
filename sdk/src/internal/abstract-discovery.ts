@@ -8,7 +8,7 @@ import type {
 } from "../interfaces.js";
 import { SetupRequirement } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
-import { NotesCursor } from "./channel.js";
+import type { NotesCursor } from "./channel.js";
 
 export abstract class AbstractDiscoveryProvider implements DiscoveryProviderInterface {
   // Abstract methods that subclasses must implement

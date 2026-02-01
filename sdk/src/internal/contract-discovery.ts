@@ -18,7 +18,8 @@ import {
   type EncSubchannelInfo,
   type EncOutgoingChannelInfo,
 } from "../utils/encryptions.js";
-import { cloneNotesCursor, cloneChannelCursor, NotesCursor } from "./channel.js";
+import { cloneNotesCursor, cloneChannelCursor } from "./channel.js";
+import type { NotesCursor } from "./channel.js";
 import { bisect, scan, Tracker } from "../utils/scan.js";
 import { createRateLimitedObject, type RateLimitOptions } from "../utils/rate-limiter.js";
 

@@ -1,4 +1,5 @@
 import { defineConfig } from "vitest/config";
+import { playwright } from "@vitest/browser-playwright";
 
 export default defineConfig({
   test: {
@@ -27,5 +28,12 @@ export default defineConfig({
       },
     },
     setupFiles: ["tests/setup.ts"],
+
+    // Browser mode configuration (enabled via CLI: --browser.enabled)
+    browser: {
+      enabled: false,
+      provider: playwright(),
+      instances: [{ browser: "chromium" }],
+    },
   },
 });

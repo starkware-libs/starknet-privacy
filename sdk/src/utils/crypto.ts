@@ -1,5 +1,6 @@
-import { ec, encode, num, BigNumberish } from "starknet";
+import { ec, encode, BigNumberish } from "starknet";
 import type { StarknetAddress } from "../interfaces.js";
+import { toHex, toBytes, toBigInt } from "./convert.js";
 
 // ============ Hash Types ============
 
@@ -18,7 +19,7 @@ export function shortStringToFelt(str: string): bigint {
   if (str.length > 31) {
     throw new Error(`Short string must be <= 31 chars, got ${str.length}`);
   }
-  return BigInt("0x" + Buffer.from(str).toString("hex"));
+  return BigInt("0x" + toHex(str));
 }
 
 /**
@@ -58,12 +59,8 @@ export function hash(...values: (BigNumberish | string)[]): Hash {
 const starkCurve = ec.starkCurve;
 
 // Domain separation tags (must match Cairo constants)
-const ENC_CHANNEL_KEY_TAG = BigInt(
-  "0x" + Buffer.from("channel_info:enc_channel_key:v1").toString("hex")
-);
-const ENC_SENDER_ADDR_TAG = BigInt(
-  "0x" + Buffer.from("channel_info:enc_sender_addr:v1").toString("hex")
-);
+const ENC_CHANNEL_KEY_TAG = BigInt("0x" + toHex("channel_info:enc_channel_key:v1"));
+const ENC_SENDER_ADDR_TAG = BigInt("0x" + toHex("channel_info:enc_sender_addr:v1"));
 
 /**
  * Encrypted channel information structure.
@@ -101,15 +98,6 @@ function computeEncSenderAddrHash(sharedX: bigint): Hash {
 }
 
 /**
- * Convert BigNumberish to bytes for starkCurve operations.
- */
-function toBytes32(value: BigNumberish): Uint8Array {
-  const bi = toBigInt(value);
-  const hex = bi.toString(16).padStart(64, "0");
-  return Uint8Array.from(Buffer.from(hex, "hex"));
-}
-
-/**
  * Get the x-coordinate from a public key bytes (compressed or uncompressed).
  */
 function getXCoordinateFromBytes(publicKeyBytes: Uint8Array): bigint {
@@ -117,7 +105,7 @@ function getXCoordinateFromBytes(publicKeyBytes: Uint8Array): bigint {
   // If 65 bytes (uncompressed), skip prefix and take first 32 bytes
   const start = publicKeyBytes.length === 33 ? 1 : publicKeyBytes.length === 65 ? 1 : 0;
   const end = start + 32;
-  return BigInt("0x" + Buffer.from(publicKeyBytes.slice(start, end)).toString("hex"));
+  return BigInt("0x" + toHex(publicKeyBytes.slice(start, end)));
 }
 
 /**
@@ -196,7 +184,7 @@ export function decryptChannelInfo(
   const ephemeralPubBytes = recoverPointFromX(encryptedInfo.ephemeralPubkey);
 
   // Convert private key to bytes
-  const privateKeyBytes = toBytes32(recipientPrivateKey);
+  const privateKeyBytes = toBytes(recipientPrivateKey);
 
   // Compute shared secret
   const sharedPoint = starkCurve.getSharedSecret(privateKeyBytes, ephemeralPubBytes);
@@ -216,7 +204,7 @@ export function decryptChannelInfo(
  * Derive public key from private key (returns x-coordinate).
  */
 export function derivePublicKey(privateKey: PrivateKey): bigint {
-  const privateKeyBytes = toBytes32(privateKey);
+  const privateKeyBytes = toBytes(privateKey);
   const publicKeyBytes = starkCurve.getPublicKey(privateKeyBytes);
   return getXCoordinateFromBytes(publicKeyBytes);
 }
@@ -263,8 +251,5 @@ export function decryptSymmetric(encryption: SymmetricEncryption, shared: bigint
   return encryption.enc - (hash(shared, encryption.r) % starkCurve.CURVE.n);
 }
 
-// ============ Conversion Utilities ============
-
-export function toBigInt(value: BigNumberish): bigint {
-  return num.toBigInt(value);
-}
+// Re-export toBigInt for backwards compatibility
+export { toBigInt } from "./convert.js";
