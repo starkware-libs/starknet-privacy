@@ -5,10 +5,10 @@ use privacy::actions::{
     TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput, WriteOnceInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
-use privacy::objects::{EncUserAddr, Note, ToServerActionsTrait};
+use privacy::objects::{EncUserAddr, ToServerActionsTrait};
 use privacy::tests::utils_for_tests::{
     ComplianceTrait, CreateEncNoteInputIntoServerActionTrait,
-    CreateOpenNoteInputIntoServerActionTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait,
+    CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     assert_unique_felts, decrypt_channel_info, decrypt_outgoing_channel_info,
     decrypt_subchannel_token,
 };
@@ -24,7 +24,7 @@ use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_error,
-    assert_panic_with_felt_error, generic_load,
+    assert_panic_with_felt_error,
 };
 
 #[test]
@@ -195,7 +195,7 @@ fn test_transfer() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(:note_id), expected_note.packed_value);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
 
 #[test]
@@ -253,7 +253,7 @@ fn test_transfer_to_self() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(:note_id), expected_note.packed_value);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
 
 #[test]
@@ -328,8 +328,8 @@ fn test_transfer_one_to_many() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1.packed_value);
-    assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2.packed_value);
+    assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1);
+    assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2);
 }
 
 #[test]
@@ -422,7 +422,7 @@ fn test_transfer_many_to_one() {
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
-    assert_eq!(test.privacy.get_note(:note_id), expected_note.packed_value);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
 
 #[test]
@@ -528,8 +528,8 @@ fn test_transfer_many_to_many() {
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
-    assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1.packed_value);
-    assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2.packed_value);
+    assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1);
+    assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2);
 }
 
 #[test]
@@ -2614,7 +2614,7 @@ fn test_create_note_use_note_zero_amount() {
     assert_eq!(server_actions, create_note_input.into_server_actions(user: user_1));
     assert_eq!(user_1.privacy.get_note(:note_id), Zero::zero());
     user_1.privacy.execute_actions(actions: server_actions);
-    assert_eq!(user_1.privacy.get_note(:note_id), expected_note.packed_value);
+    assert_eq!(user_1.privacy.get_note(:note_id), expected_note);
     // Use note + create note with zero amount.
     let use_note_input = UseNoteInput {
         channel_key: user_1.compute_channel_key(recipient: user_2),
@@ -2649,7 +2649,7 @@ fn test_create_note_use_note_zero_amount() {
     assert_eq!(user_2.privacy.get_note(:note_id), Zero::zero());
     user_2.privacy.execute_actions(actions: server_actions);
     assert!(user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
-    assert_eq!(user_2.privacy.get_note(:note_id), expected_note.packed_value);
+    assert_eq!(user_2.privacy.get_note(:note_id), expected_note);
     // Use note with zero amount.
     let channel_key = user_2.compute_channel_key(recipient: user_2);
     let use_note_input = UseNoteInput { channel_key, token: token_address, note_index: 0 };
@@ -2806,9 +2806,9 @@ fn test_create_note_decrypt_amount() {
         :enc_channel_info, recipient_private_key: user_2.private_key,
     );
     let note_id = compute_note_id(:channel_key, token: token_address, index: note_index);
-    let enc_amount = user_2.privacy.get_note(:note_id);
+    let note = user_2.privacy.get_note(:note_id);
     let dec_note_amount = decode_note_amount(
-        packed_value: enc_amount, :channel_key, token: token_address, index: note_index,
+        packed_value: note.packed_value, :channel_key, token: token_address, index: note_index,
     );
     assert_eq!(dec_note_amount, amount);
 }
@@ -2833,13 +2833,7 @@ fn test_create_open_note_stores_token() {
 
     // Verify the token field was stored correctly.
     let (note_id, expected_note) = user_1.compute_open_note(:create_note_input);
-    let storage_address = map_entry_address(
-        map_selector: selector!("notes"), keys: [note_id].span(),
-    );
-    let stored_note: Note = generic_load(target: user_1.privacy.address, :storage_address);
-    assert_eq!(stored_note.packed_value, expected_note.packed_value);
-    assert_eq!(stored_note.token, token_address);
-    // TODO: Test with getter when implemented.
+    assert_eq!(user_1.privacy.get_note(:note_id), expected_note);
 }
 
 #[test]
@@ -3786,7 +3780,7 @@ fn test_client_execute_deposit_create_note() {
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 
     test.privacy.execute_actions(:actions);
-    assert_eq!(test.privacy.get_note(:note_id), expected_note.packed_value);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note);
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
@@ -3843,7 +3837,7 @@ fn test_client_execute_use_note_create_note() {
 
     test.privacy.execute_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
-    assert_eq!(test.privacy.get_note(:note_id), expected_note.packed_value);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
 
 #[test]
@@ -5137,20 +5131,11 @@ fn test_client_execute_create_open_note() {
     assert_eq!(panic_data_actions, actions);
 
     // Verify storage before execution.
-    let storage_address = map_entry_address(
-        map_selector: selector!("notes"), keys: [note_id].span(),
-    );
-    let stored_note_before: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(stored_note_before.packed_value, Zero::zero());
-    assert_eq!(stored_note_before.token, Zero::zero());
-    // TODO: Use getter.
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
     // Execute actions and verify storage after.
     test.privacy.execute_actions(:actions);
-    let stored_note_after: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(stored_note_after.packed_value, expected_note.packed_value);
-    assert_eq!(stored_note_after.token, token_address);
-    // TODO: Use getter.
+    assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
 
 #[test]
@@ -5177,13 +5162,7 @@ fn test_create_open_note_as_single_action() {
     // Execute and verify storage.
     test.privacy.execute_actions(:actions);
     let (note_id, expected_note) = user.compute_open_note(:create_note_input);
-    let storage_address = map_entry_address(
-        map_selector: selector!("notes"), keys: [note_id].span(),
-    );
-    let stored_note: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(stored_note.packed_value, expected_note.packed_value);
-    assert_eq!(stored_note.token, token_address);
-    // TODO: Use getter.
+    assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
 
 #[test]
@@ -5221,54 +5200,12 @@ fn test_create_open_and_enc_notes_same_tx() {
     // Verify enc notes via getter.
     let (enc_id_1, expected_enc_1) = user_1.compute_enc_note(create_note_input: enc_1);
     let (enc_id_3, expected_enc_3) = user_1.compute_enc_note(create_note_input: enc_3);
-    assert_eq!(test.privacy.get_note(note_id: enc_id_1), expected_enc_1.packed_value);
-    assert_eq!(test.privacy.get_note(note_id: enc_id_3), expected_enc_3.packed_value);
+    assert_eq!(test.privacy.get_note(note_id: enc_id_1), expected_enc_1);
+    assert_eq!(test.privacy.get_note(note_id: enc_id_3), expected_enc_3);
 
-    // Verify open notes via direct storage read (getter panics for open notes).
+    // Verify open notes via getter.
     let (open_id_0, expected_open_0) = user_1.compute_open_note(create_note_input: open_0);
     let (open_id_2, expected_open_2) = user_1.compute_open_note(create_note_input: open_2);
-    let stored_0: Note = generic_load(
-        target: test.privacy.address,
-        storage_address: map_entry_address(
-            map_selector: selector!("notes"), keys: [open_id_0].span(),
-        ),
-    );
-    let stored_2: Note = generic_load(
-        target: test.privacy.address,
-        storage_address: map_entry_address(
-            map_selector: selector!("notes"), keys: [open_id_2].span(),
-        ),
-    );
-    assert_eq!(stored_0.packed_value, expected_open_0.packed_value);
-    assert_eq!(stored_0.token, token_address);
-    assert_eq!(stored_2.packed_value, expected_open_2.packed_value);
-    assert_eq!(stored_2.token, token_address);
-    // TODO: Use getter.
-}
-
-#[test]
-#[should_panic(expected: 'ENC_NOTE_NON_ZERO_TOKEN')]
-fn test_get_note_with_open_note_panics() {
-    // Test that get_note panics for open notes (since they have non-zero token field).
-    // This is expected behavior - open notes need a separate getter.
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-
-    // Create open note.
-    let create_note_input = user_1.new_open_note(recipient: user_2, token: token_address, index: 0);
-    user_1.cheat_create_open_note_e2e(:create_note_input);
-
-    // Get note_id.
-    let (note_id, _) = user_1.compute_open_note(:create_note_input);
-
-    // This should panic because open notes have non-zero token field.
-    test.privacy.get_note(:note_id);
+    assert_eq!(test.privacy.get_note(note_id: open_id_0), expected_open_0);
+    assert_eq!(test.privacy.get_note(note_id: open_id_2), expected_open_2);
 }

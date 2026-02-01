@@ -1,5 +1,7 @@
 use privacy::actions::{ClientAction, ServerAction};
-use privacy::objects::{EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo};
+use privacy::objects::{
+    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
+};
 use starknet::ContractAddress;
 
 #[starknet::interface]
@@ -511,14 +513,14 @@ pub trait IViews<T> {
     /// outgoing channel information, or a zero struct if the outgoing channel does not exist.
     fn get_outgoing_channel_info(self: @T, outgoing_channel_key: felt252) -> EncOutgoingChannelInfo;
 
-    /// Returns the encrypted note value for a given note id.
+    /// Returns the note for a given note id.
     ///
     /// #### Parameters
     /// - `note_id` (`felt252`): The id of the note.
     ///
     /// #### Returns
-    /// (`felt252`): The encrypted note value, or zero if the note does not exist.
-    fn get_note(self: @T, note_id: felt252) -> felt252;
+    /// ([`Note`](privacy::objects::Note)): The note, or a zero struct if the note does not exist.
+    fn get_note(self: @T, note_id: felt252) -> Note;
 
     /// Checks if a nullifier exists.
     ///

@@ -4,7 +4,9 @@ use privacy::actions::{
     WriteOnceInput,
 };
 use privacy::objects::{EncPrivateKeyTrait, Note, ToServerActionsTrait};
-use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, UserTrait, constants};
+use privacy::tests::utils_for_tests::{
+    NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait, constants,
+};
 use privacy::{errors, events};
 use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
@@ -351,7 +353,7 @@ fn test_execute_write_once_note() {
     // Verify stored note was written.
     let written_value: Note = generic_load(target: test.privacy.address, :storage_address);
     assert_eq!(written_value, note);
-    assert_eq!(test.privacy.get_note(:note_id), note.packed_value);
+    assert_eq!(test.privacy.get_note(:note_id), note);
 }
 
 #[test]
@@ -656,19 +658,13 @@ fn test_execute_write_once_open_note() {
     let actions = [expected_note.to_write_once_action(:storage_address)].span();
 
     // Verify storage before execution.
-    let stored_note_before: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(stored_note_before.packed_value, Zero::zero());
-    assert_eq!(stored_note_before.token, Zero::zero());
-    // TODO: Use getter.
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
     // Execute server actions.
     test.privacy.execute_actions(:actions);
 
     // Verify storage after execution - both fields should be set.
-    let stored_note_after: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(stored_note_after.packed_value, expected_note.packed_value);
-    assert_eq!(stored_note_after.token, token_address);
-    // TODO: Use getter.
+    assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
 
 #[test]

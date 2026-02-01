@@ -1,7 +1,7 @@
 use core::num::traits::Zero;
 use privacy::privacy::Privacy;
 use privacy::tests::utils_for_tests::constants::DEFAULT_AMOUNT;
-use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, UserTrait};
+use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
 use starkware_utils::components::replaceability::interface::{
     IReplaceableDispatcher, IReplaceableDispatcherTrait,
 };
@@ -181,8 +181,7 @@ fn test_get_note() {
     let (note_id, note) = test.mock_new_note(amount: DEFAULT_AMOUNT);
     assert_eq!(test.privacy.get_note(note_id: note_id), Zero::zero());
     test.privacy.cheat_create_note(:note_id, :note);
-    let enc_value = test.privacy.get_note(:note_id);
-    assert_eq!(enc_value, note.packed_value);
+    assert_eq!(test.privacy.get_note(:note_id), note);
 }
 
 #[test]
