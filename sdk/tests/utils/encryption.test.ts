@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from "vitest";
 import { encryptions } from "../../src/utils/encryptions.js";
+import { Channel, Witness, channelSerde, witnessSerde } from "../../src/internal/channel.js";
 import referenceHashes from "../fixtures/cairo-reference-data.json" with { type: "json" };
 
 describe("Encryption Compatibility with Cairo", () => {
@@ -273,6 +274,57 @@ describe("Encryption Compatibility with Cairo", () => {
       const encrypted = encryptions.encryptUserAddr(ephemeralSecret, compliancePublicKey, userAddr);
       const decrypted = encryptions.decryptUserAddr(encrypted, compliancePrivateKey);
       expect(decrypted.toString(16)).toBe(userAddr.toString(16));
+    });
+  });
+});
+
+describe("Channel/Witness Serialization", () => {
+  describe("channelSerde", () => {
+    it("encode then decode recovers original channel", () => {
+      const publicKey = 0x123456789abcdefn;
+      const key = 0xfedcba987654321n;
+      const tokens: [bigint, { tokenIndex: number; noteNonce: number }][] = [
+        [0x1n, { tokenIndex: 0, noteNonce: 5 }],
+        [0x2n, { tokenIndex: 1, noteNonce: 10 }],
+      ];
+      const channel = new Channel(publicKey, key, tokens);
+
+      const encoded = channelSerde.encode(channel);
+      const decoded = channelSerde.decode(encoded);
+
+      expect(decoded.publicKey).toBe(publicKey);
+      expect(decoded.key).toBe(key);
+      expect(decoded.tokens.size).toBe(2);
+      expect(decoded.tokens.get(0x1n)).toEqual({ tokenIndex: 0, noteNonce: 5 });
+      expect(decoded.tokens.get(0x2n)).toEqual({ tokenIndex: 1, noteNonce: 10 });
+    });
+
+    it("handles channel without key", () => {
+      const publicKey = 0x123n;
+      const channel = new Channel(publicKey);
+
+      const encoded = channelSerde.encode(channel);
+      const decoded = channelSerde.decode(encoded);
+
+      expect(decoded.publicKey).toBe(publicKey);
+      expect(decoded.key).toBeUndefined();
+      expect(decoded.tokens.size).toBe(0);
+    });
+  });
+
+  describe("witnessSerde", () => {
+    it("encode then decode recovers original witness", () => {
+      const channelKey = 0xabcdef123456n;
+      const nonce = 42;
+      const r = 0x999888777n;
+      const witness = new Witness(channelKey, nonce, r);
+
+      const encoded = witnessSerde.encode(witness);
+      const decoded = witnessSerde.decode(encoded);
+
+      expect(decoded.channelKey).toBe(channelKey);
+      expect(decoded.nonce).toBe(nonce);
+      expect(decoded.r).toBe(r);
     });
   });
 });
