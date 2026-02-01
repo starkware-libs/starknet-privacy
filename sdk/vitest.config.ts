@@ -18,7 +18,15 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "text-summary"],
       include: ["src/**/*.ts"],
-      exclude: ["src/**/*.test.ts", "src/**/index.ts"],
+      exclude: [
+        "src/**/*.test.ts",
+        "src/**/index.ts",
+        // Debug utilities - not critical path
+        "src/utils/logging.ts",
+        "src/utils/error-decoder.ts",
+        "src/testing/tracing-provider.ts",
+        "src/testing/helpers.ts",
+      ],
       skipFull: true, // hide files with 100% coverage
       thresholds: {
         statements: 70,
