@@ -33,7 +33,8 @@ import { PoolSimulator } from "./pool-simulator.js";
 import { assert, isOpen, isOpenNote } from "../utils/validation.js";
 import type { BigNumberish } from "starknet";
 import { generateRandom, generateRandom120 } from "../utils/crypto.js";
-import { debugLog, hex } from "../utils/logging.js";
+import { debugLog } from "../utils/logging.js";
+import { toHex } from "../utils/convert.js";
 
 export type CompileResult = {
   clientActions: ClientAction[];
@@ -238,7 +239,7 @@ export class ActionCompiler {
         seenRecipients.add(action.recipient);
         debugLog("compiler", "open channel x", action.recipient);
         const channel = pool.getChannel(action.recipient);
-        assert(channel, () => `Missing channel context for recipient ${hex(action.recipient)}`);
+        assert(channel, () => `Missing channel context for recipient ${toHex(action.recipient)}`);
         const input = {
           type: "OpenChannel",
           input: {
@@ -261,7 +262,7 @@ export class ActionCompiler {
       force: boolean
     ) => {
       const channel = pool.getChannel(action.recipient);
-      assert(channel, () => `Channel not found for recipient ${hex(action.recipient)}`);
+      assert(channel, () => `Channel not found for recipient ${toHex(action.recipient)}`);
       debugLog("compiler", "open channel", action.recipient, action, channel);
 
       if (channel.tokens.has(action.token)) {
@@ -514,7 +515,7 @@ export class ActionCompiler {
       for (const c of actions.createNotes) {
         assert(
           isOpen(c.amount) || c.amount > 0n,
-          () => `Created note amount must be positive (token: ${hex(c.token)})`
+          () => `Created note amount must be positive (token: ${toHex(c.token)})`
         );
         if (!isOpen(c.amount)) {
           update(c.token, -c.amount);
@@ -597,7 +598,7 @@ export class ActionCompiler {
             actions.surpluses.push(surplusAction);
           } else {
             throw new Error(
-              `Surplus of ${balance} found for token ${hex(token)} but no surplus action found`
+              `Surplus of ${balance} found for token ${toHex(token)} but no surplus action found`
             );
           }
         }

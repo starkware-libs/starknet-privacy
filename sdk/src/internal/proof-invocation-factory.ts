@@ -12,7 +12,7 @@ import type {
   SignerInterface,
   V3InvocationsSignerDetails,
 } from "starknet";
-import { CallData, num } from "starknet";
+import { CallData } from "starknet";
 
 import { serializeClientActions } from "./serialization.js";
 import { PrivacyPoolABI } from "./abi.js";
@@ -23,6 +23,7 @@ import type {
 } from "../interfaces.js";
 import { toBigInt } from "../utils/crypto.js";
 import { ClientAction } from "./client-actions.js";
+import { toHex } from "../utils/convert.js";
 
 /**
  * Minimal user info needed for creating a proof invocation.
@@ -69,7 +70,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
       user.viewingKey,
       cairoActions,
     ]);
-    const poolAddressHex = num.toHex(poolAddress);
+    const poolAddressHex = toHex(poolAddress);
 
     // Sign the transaction using details from the proof provider
     const signature = await user.signer.signTransaction(
@@ -81,7 +82,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
         },
       ],
       {
-        walletAddress: num.toHex(user.address),
+        walletAddress: toHex(user.address),
         cairoVersion: "1",
         ...details,
       } as V3InvocationsSignerDetails
