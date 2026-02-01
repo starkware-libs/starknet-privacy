@@ -532,6 +532,8 @@ export class MockPoolContract implements MockContract {
     return {
       type: "SetViewingKey",
       apply: () => {
+        // Matches Cairo's to_write_once_action - fails if public key already set
+        assert(!this.publicKeys.has(address), () => `User ${toHex(address)} already registered`);
         this.publicKeys.set(address, publicKey);
       },
     };
@@ -580,11 +582,15 @@ export class MockPoolContract implements MockContract {
       outgoingSalt
     );
 
+    const channelId = compute_channel_id(channelKey, from, to, toBigInt(toPublicKey));
+
     return {
       type: "OpenChannel",
       apply: () => {
+        // Matches Cairo's WriteOnce for channel_exists - fails if channel already exists
+        assert(!this.channelIds.has(channelId), () => `Channel ${toHex(channelId)} already exists`);
         this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
-        this.channelIds.add(compute_channel_id(channelKey, from, to, toBigInt(toPublicKey)));
+        this.channelIds.add(channelId);
         this.outgoingChannels.set(outgoingChannelKey, encOutgoingChannelInfo);
         this.outgoingChannelCounters.set(from, s + 1);
       },
@@ -653,11 +659,12 @@ export class MockPoolContract implements MockContract {
     assert(this.notes.has(noteId), () => `Note ${noteId} does not exist`);
 
     const nullifier = compute_nullifier(channelKey, token, noteIndex, toBigInt(ownerPrivateKey));
-    assert(!this.nullifiers.has(nullifier), () => `Nullifier ${nullifier} already exists`);
 
     return {
       type: "UseNote",
       apply: () => {
+        // Matches Cairo's WriteOnce for nullifier - fails if nullifier already exists
+        assert(!this.nullifiers.has(nullifier), () => `Nullifier ${nullifier} already exists`);
         this.nullifiers.add(nullifier);
       },
     };
@@ -688,7 +695,6 @@ export class MockPoolContract implements MockContract {
     );
 
     const noteId = compute_note_id(channelKey, token, index);
-    assert(!this.notes.has(noteId), () => `Note ${noteId} already exists`);
 
     const noteData: EncryptedNote = {
       packed: encryptions.encryptNoteAmount(channelKey, token, index, random, amount),
@@ -699,6 +705,8 @@ export class MockPoolContract implements MockContract {
     return {
       type: "CreateEncNote",
       apply: () => {
+        // Matches Cairo's to_write_once_action for note - fails if note already exists
+        assert(!this.notes.has(noteId), () => `Note ${noteId} already exists`);
         this.notes.set(noteId, noteData);
       },
     };
