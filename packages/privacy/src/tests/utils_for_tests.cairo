@@ -49,6 +49,20 @@ use starkware_utils_testing::test_utils::{
     set_account_as_app_role_admin, set_account_as_security_agent, set_account_as_token_admin,
 };
 
+pub impl NoteZero of Zero<Note> {
+    fn zero() -> Note {
+        Note { packed_value: Zero::zero(), token: Zero::zero() }
+    }
+
+    fn is_zero(self: @Note) -> bool {
+        (*self.packed_value).is_zero() && (*self.token).is_zero()
+    }
+
+    fn is_non_zero(self: @Note) -> bool {
+        !self.is_zero()
+    }
+}
+
 #[generate_trait]
 pub(crate) impl CreateEncNoteInputIntoServerAction of CreateEncNoteInputIntoServerActionTrait {
     fn into_server_action(self: @CreateEncNoteInput, user: User) -> ServerAction {
@@ -1298,7 +1312,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             )
     }
 
-    fn get_note(self: @PrivacyCfg, note_id: felt252) -> felt252 {
+    fn get_note(self: @PrivacyCfg, note_id: felt252) -> Note {
         self.views.get_note(:note_id)
     }
 
