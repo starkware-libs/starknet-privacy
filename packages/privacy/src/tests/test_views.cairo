@@ -185,6 +185,37 @@ fn test_get_note() {
 }
 
 #[test]
+fn test_get_note_enc_and_open() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    let token_address = test.mock_new_token();
+    user_1
+        .open_channel_with_token_e2e(
+            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+
+    // Create and verify encrypted note.
+    let enc_note_input = user_1
+        .new_enc_note_with_generated_salt(
+            recipient: user_2, :token_address, amount: DEFAULT_AMOUNT, index: 0,
+        );
+    user_1.cheat_create_enc_note_e2e(create_note_input: enc_note_input);
+    let (enc_note_id, expected_enc_note) = user_1
+        .compute_enc_note(create_note_input: enc_note_input);
+    assert_eq!(test.privacy.get_note(note_id: enc_note_id), expected_enc_note);
+
+    // Create and verify open note.
+    let open_note_input = user_1.new_open_note(recipient: user_2, token: token_address, index: 1);
+    user_1.cheat_create_open_note_e2e(create_note_input: open_note_input);
+    let (open_note_id, expected_open_note) = user_1
+        .compute_open_note(create_note_input: open_note_input);
+    assert_eq!(test.privacy.get_note(note_id: open_note_id), expected_open_note);
+}
+
+#[test]
 fn test_nullifier_exists() {
     let mut test: Test = Default::default();
     let nullifier = test.mock_new_nullifier();
