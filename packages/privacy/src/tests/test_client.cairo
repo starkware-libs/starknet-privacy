@@ -73,7 +73,6 @@ fn test_set_viewing_key() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 fn test_set_viewing_key_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
@@ -942,7 +941,6 @@ fn test_open_channel_self_channel() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 fn test_open_channel_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
@@ -1540,7 +1538,6 @@ fn test_open_subchannel_zero_salt() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 fn test_open_subchannel_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
@@ -3160,7 +3157,6 @@ fn test_withdraw_different_targets() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 fn test_withdraw_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
