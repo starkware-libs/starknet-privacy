@@ -12,7 +12,7 @@ import { assertViewingKey } from "../utils/validation.js";
 import type { MockPoolContract } from "./mock-pool-contract.js";
 import { compute_channel_key, compute_outgoing_channel_key } from "../utils/hashes.js";
 import { toBigInt } from "../utils/crypto.js";
-import { debugLog } from "../utils/logging.js";
+import { debugLog, hex } from "../utils/logging.js";
 import { AbstractDiscoveryProvider } from "../internal/abstract-discovery.js";
 import { NotesCursor, IncomingChannelCursor } from "../internal/channel.js";
 
@@ -170,6 +170,16 @@ export class MockDiscoveryProvider extends AbstractDiscoveryProvider {
 
       result.set(recipient, new Channel(publicKey, key, tokens.entries()));
     }
+
+    debugLog(
+      "mock-discovery",
+      "discoverChannels result",
+      [...result.entries()].map(([k, v]) => ({
+        addr: hex(k),
+        publicKey: v.publicKey,
+        key: v.key,
+      }))
+    );
 
     return { timestamp: this._currentBlock, channels: result };
   }

@@ -8,7 +8,7 @@
  * 4. snapshot()/restore() for validation pattern
  */
 
-import type { Amount, Note, Open, StarknetAddressBigint } from "../interfaces.js";
+import type { Amount, Note, StarknetAddressBigint } from "../interfaces.js";
 import { Witness } from "../interfaces.js";
 import { Channel } from "../internal/channel.js";
 import {
@@ -38,14 +38,16 @@ import {
   compute_nullifier,
   compute_outgoing_channel_key,
 } from "../utils/hashes.js";
-import { ClientAction } from "../internal/client-actions.js";
+
 import { hex } from "../utils/logging.js";
 import { Call } from "starknet";
+import { ClientAction } from "../internal/client-actions.js";
 
 type OpenNote = {
   r: bigint;
   amount: Amount;
   token: StarknetAddressBigint;
+  depositor: StarknetAddressBigint;
 };
 
 type MockServerAction = {
@@ -57,7 +59,7 @@ type MockServerAction = {
   deferred?: boolean;
 };
 
-type EncryptedNote = { packed: bigint; token: bigint; index: number };
+type EncryptedNote = { packed: bigint; token: StarknetAddressBigint; index: number };
 
 export type MockPoolContractSnapshot = {
   publicKeys: Map<bigint, PublicKey>;
@@ -72,7 +74,7 @@ export type MockPoolContractSnapshot = {
 };
 
 class ChannelsMap extends AdvancedMap<
-  { address: bigint; publicKey: PublicKey },
+  { address: StarknetAddressBigint; publicKey: PublicKey },
   EncChannelInfo[],
   string
 > {
@@ -99,7 +101,7 @@ export class MockPoolContract implements MockContract {
   [key: string]: unknown;
 
   constructor(
-    public address: bigint,
+    public address: StarknetAddressBigint,
     private contracts: MockContracts,
     private validateBalances: boolean = true,
     private serverActions: MockServerAction[] = []
@@ -107,21 +109,21 @@ export class MockPoolContract implements MockContract {
 
   // ============ View Methods (bigint params, matching Cairo contract) ============
 
-  is_registered(address: bigint): boolean {
+  is_registered(address: StarknetAddressBigint): boolean {
     return this.publicKeys.has(address);
   }
 
-  get_public_key(userAddr: bigint): bigint {
+  get_public_key(userAddr: StarknetAddressBigint): bigint {
     return this.publicKeys.has(userAddr) ? toBigInt(this.publicKeys.get(userAddr)!) : 0n;
   }
 
-  get_num_of_channels(recipientAddr: bigint): bigint {
+  get_num_of_channels(recipientAddr: StarknetAddressBigint): bigint {
     if (!this.publicKeys.has(recipientAddr)) return 0n;
     const pk = this.publicKeys.get(recipientAddr)!;
     return BigInt(this.channels.get({ address: recipientAddr, publicKey: pk })?.length ?? 0);
   }
 
-  get_channel_info(recipientAddr: bigint, index: number): EncChannelInfo {
+  get_channel_info(recipientAddr: StarknetAddressBigint, index: number): EncChannelInfo {
     const pk = this.publicKeys.get(recipientAddr)!;
     const channelList = this.channels.get({ address: recipientAddr, publicKey: pk }) ?? [];
     return channelList[index] ?? { ephemeral_pubkey: 0n, enc_channel_key: 0n, enc_sender_addr: 0n };
@@ -135,7 +137,7 @@ export class MockPoolContract implements MockContract {
     return this.outgoingChannels.get(outgoingChannelKey) ?? { salt: 0n, enc_recipient_addr: 0n };
   }
 
-  get_note(noteId: bigint): { packed_value: bigint; token: bigint } {
+  get_note(noteId: bigint): { packed_value: bigint; token: StarknetAddressBigint } {
     const note = this.notes.get(noteId);
     if (!note) return { packed_value: 0n, token: 0n };
     if ("packed" in note) return { packed_value: note.packed, token: note.token };
@@ -156,7 +158,7 @@ export class MockPoolContract implements MockContract {
   /**
    * Get all encrypted channel info for a recipient.
    */
-  get_channels(address: bigint): EncChannelInfo[] {
+  get_channels(address: StarknetAddressBigint): EncChannelInfo[] {
     const pk = this.publicKeys.get(address);
     if (!pk) return [];
     return this.channels.get({ address, publicKey: pk }) ?? [];
@@ -165,7 +167,11 @@ export class MockPoolContract implements MockContract {
   /**
    * Check if channel exists between two addresses.
    */
-  does_channel_exist(channelKey: bigint, from: bigint, to: bigint): boolean {
+  does_channel_exist(
+    channelKey: bigint,
+    from: StarknetAddressBigint,
+    to: StarknetAddressBigint
+  ): boolean {
     const toPublicKey = this.publicKeys.get(to);
     if (!toPublicKey) return false;
     return this.channelIds.has(compute_channel_id(channelKey, from, to, toBigInt(toPublicKey)));
@@ -189,7 +195,7 @@ export class MockPoolContract implements MockContract {
   get_decrypted_note(
     channelKey: ChannelKey,
     index: number,
-    token: bigint
+    token: StarknetAddressBigint
   ): { id: bigint; amount: Amount; r: bigint; open: boolean } | false {
     const noteId = compute_note_id(channelKey, token, index);
     const note = this.notes.get(noteId);
@@ -197,7 +203,7 @@ export class MockPoolContract implements MockContract {
     if ("r" in note && note.r == 1n) {
       return { id: noteId, amount: (note as OpenNote).amount, r: 1n, open: true };
     }
-    const packed = note as { packed: bigint; token: bigint; index: number };
+    const packed = note as { packed: bigint; token: StarknetAddressBigint; index: number };
     const { amount, salt } = encryptions.decryptNoteAmount(
       packed.packed,
       channelKey,
@@ -210,9 +216,9 @@ export class MockPoolContract implements MockContract {
   /**
    * Check if nullifier exists for a given witness.
    */
-  has_nullifier(witness: Witness, token: bigint, ownerPrivateKey: ViewingKey): boolean {
+  has_nullifier(witness: Witness, token: StarknetAddressBigint, privateKey: ViewingKey): boolean {
     return this.nullifiers.has(
-      compute_nullifier(witness.channelKey, token, witness.nonce, toBigInt(ownerPrivateKey))
+      compute_nullifier(witness.channelKey, token, witness.nonce, toBigInt(privateKey))
     );
   }
 
@@ -228,7 +234,11 @@ export class MockPoolContract implements MockContract {
    *
    * Validates token totals if validateBalances is true.
    */
-  execute_view(sender: bigint, clientActions: ClientAction[]): MockServerAction[] {
+  execute_view(
+    sender: StarknetAddressBigint,
+    privateKey: bigint,
+    clientActions: ClientAction[]
+  ): MockServerAction[] {
     if (this.validateBalances) {
       this.validateTokenTotals(sender, clientActions);
     }
@@ -238,7 +248,7 @@ export class MockPoolContract implements MockContract {
 
     try {
       for (const action of clientActions) {
-        const actions = this.execute_action(sender, action);
+        const actions = this.execute_action(sender, privateKey, action);
         // Apply pool-state actions immediately (required for assertions in subsequent actions)
         // Defer ERC20-modifying actions - only applied during replay
         for (const serverAction of actions) {
@@ -273,8 +283,12 @@ export class MockPoolContract implements MockContract {
   /**
    * Returns MockServerAction[] that have already been applied.
    */
-  execute(sender: bigint, ...clientActions: ClientAction[]): string[] {
-    const actions = this.execute_view(sender, clientActions);
+  execute(
+    sender: StarknetAddressBigint,
+    privateKey: bigint,
+    ...clientActions: ClientAction[]
+  ): string[] {
+    const actions = this.execute_view(sender, privateKey, clientActions);
     this.serverActions = actions;
     return this.serverActions.map((action) => action.type);
   }
@@ -284,22 +298,23 @@ export class MockPoolContract implements MockContract {
    * @param from  since there's no support for getting the caller address, need an explicit parameter
    */
 
-  openDeposit(noteId: bigint, token: bigint, amount: Amount, from: bigint): void {
+  openDeposit(noteId: bigint, token: bigint, amount: Amount, from: StarknetAddressBigint): void {
     this.contracts.get(token).transfer(from, this.address, amount);
     const note = this.notes.get(noteId)! as OpenNote;
     assert(note, () => `Note ${hex(noteId)} does not exist`);
     assert(note.r == 1n, () => `Note ${hex(noteId)} is not open`);
     assert(note.token == token, () => `Note ${hex(noteId)} is not for token ${token}`);
     assert(note.amount == 0n, () => `Note ${hex(noteId)} has already been filled`);
+    assert(note.depositor == from, () => `Note ${hex(noteId)} is not for depositor ${from}`);
     note.amount = amount;
   }
 
   // ============ Setup Methods (for compiler) ============
 
   setupChannel(
-    userAddress: bigint,
+    userAddress: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    address: bigint,
+    address: StarknetAddressBigint,
     channel: Channel
   ): void {
     this.publicKeys.set(address, channel.publicKey);
@@ -323,12 +338,13 @@ export class MockPoolContract implements MockContract {
           r: 1n,
           amount: 0n,
           token,
+          depositor: 0n,
         });
       }
     }
   }
 
-  setupNote(userAddress: bigint, note: Note, token: bigint) {
+  setupNote(userAddress: StarknetAddressBigint, note: Note, token: StarknetAddressBigint) {
     this.subchannelIds.add(
       compute_subchannel_id(
         note.witness.channelKey,
@@ -341,7 +357,7 @@ export class MockPoolContract implements MockContract {
     this.notes.set(
       note.id as bigint,
       note.open
-        ? { r: 1n, amount: note.amount, token }
+        ? { r: 1n, amount: note.amount, token, depositor: toBigInt(note.depositor!) }
         : {
             packed: encryptions.encryptNoteAmount(
               note.witness.channelKey,
@@ -391,7 +407,7 @@ export class MockPoolContract implements MockContract {
     this.channels.clear();
     for (const [strKey, value] of s.channels) {
       const [address, publicKey] = strKey.split(":");
-      this.channels.set({ address: BigInt(address), publicKey: BigInt(publicKey) }, value);
+      this.channels.set({ address: toBigInt(address), publicKey: toBigInt(publicKey) }, value);
     }
 
     this.channelIds = new Set(s.channelIds);
@@ -407,24 +423,28 @@ export class MockPoolContract implements MockContract {
 
   // ============ Private Methods ============
 
-  private assertRegistered(address: bigint): void {
+  private assertRegistered(address: StarknetAddressBigint): void {
     if (!this.publicKeys.has(address)) {
       throw new Error(`Address ${hex(address)} is not registered`);
     }
   }
 
-  private execute_action(sender: bigint, action: ClientAction): MockServerAction[] {
+  private execute_action(
+    sender: StarknetAddressBigint,
+    privateKey: bigint,
+    action: ClientAction
+  ): MockServerAction[] {
     switch (action.type) {
       case "SetViewingKey":
-        return [this.register(sender, action.input.privateKey, action.input.random)];
+        return [this.register(sender, privateKey, action.input.random)];
 
       case "OpenChannel":
         return [
           this.setChannel(
             sender,
-            action.input.senderPrivateKey,
-            action.input.recipientAddr,
-            action.input.recipientPublicKey,
+            privateKey,
+            action.input.recipient_addr,
+            action.input.recipient_public_key,
             action.input.random
           ),
         ];
@@ -433,12 +453,12 @@ export class MockPoolContract implements MockContract {
         return [
           this.setToken(
             sender,
-            action.input.recipientAddr,
-            action.input.recipientPublicKey,
-            action.input.channelKey,
+            action.input.recipient_addr,
+            action.input.recipient_public_key,
+            action.input.channel_key,
             action.input.token,
             action.input.index,
-            action.input.random
+            action.input.salt
           ),
         ];
 
@@ -450,30 +470,43 @@ export class MockPoolContract implements MockContract {
         return [
           this.useNote(
             sender,
-            action.input.ownerPrivateKey,
+            privateKey,
             action.input.token,
-            action.input.channelKey,
-            action.input.noteIndex
+            action.input.channel_key,
+            action.input.note_index
           ),
         ];
 
       case "CreateEncNote":
         return [
-          this.createNote(
+          this.createEncNote(
             sender,
-            action.input.senderPrivateKey,
-            action.input.recipientAddr,
-            action.input.recipientPublicKey,
+            privateKey,
+            action.input.recipient_addr,
+            action.input.recipient_public_key,
             action.input.token,
             action.input.index,
             action.input.amount,
-            action.input.random
+            action.input.salt
+          ),
+        ];
+
+      case "CreateOpenNote":
+        return [
+          this.createOpenNote(
+            sender,
+            privateKey,
+            action.input.recipient_addr,
+            action.input.recipient_public_key,
+            action.input.token,
+            action.input.index,
+            action.input.depositor
           ),
         ];
 
       case "Withdraw":
         return [
-          this.withdraw(action.input.token, action.input.withdrawalTarget, action.input.amount),
+          this.withdraw(action.input.token, action.input.withdrawal_target, action.input.amount),
         ];
 
       case "FollowupCall":
@@ -481,7 +514,11 @@ export class MockPoolContract implements MockContract {
     }
   }
 
-  private register(address: bigint, privateKey: ViewingKey, _random: bigint): MockServerAction {
+  private register(
+    address: StarknetAddressBigint,
+    privateKey: ViewingKey,
+    _random: bigint
+  ): MockServerAction {
     const publicKey = derivePublicKey(privateKey);
     return {
       type: "SetViewingKey",
@@ -492,9 +529,9 @@ export class MockPoolContract implements MockContract {
   }
 
   private setChannel(
-    from: bigint,
+    from: StarknetAddressBigint,
     fromPrivateKey: ViewingKey,
-    to: bigint,
+    to: StarknetAddressBigint,
     toPublicKey: PublicKey,
     random: bigint
   ): MockServerAction {
@@ -546,11 +583,11 @@ export class MockPoolContract implements MockContract {
   }
 
   private setToken(
-    from: bigint,
-    to: bigint,
+    from: StarknetAddressBigint,
+    to: StarknetAddressBigint,
     toPublicKey: PublicKey,
     channelKey: Hash,
-    token: bigint,
+    token: StarknetAddressBigint,
     index: number,
     random: bigint
   ): MockServerAction {
@@ -591,9 +628,9 @@ export class MockPoolContract implements MockContract {
   }
 
   private useNote(
-    owner: bigint,
+    owner: StarknetAddressBigint,
     ownerPrivateKey: ViewingKey,
-    token: bigint,
+    token: StarknetAddressBigint,
     channelKey: Hash,
     noteIndex: number
   ): MockServerAction {
@@ -617,14 +654,14 @@ export class MockPoolContract implements MockContract {
     };
   }
 
-  private createNote(
-    sender: bigint,
+  private createEncNote(
+    sender: StarknetAddressBigint,
     senderPrivateKey: ViewingKey,
-    to: bigint,
+    to: StarknetAddressBigint,
     toPublicKey: PublicKey,
-    token: bigint,
+    token: StarknetAddressBigint,
     index: number,
-    amount: Amount | Open,
+    amount: Amount,
     random: bigint
   ): MockServerAction {
     const channelKey = compute_channel_key(
@@ -644,13 +681,11 @@ export class MockPoolContract implements MockContract {
     const noteId = compute_note_id(channelKey, token, index);
     assert(!this.notes.has(noteId), () => `Note ${noteId} already exists`);
 
-    const noteData: EncryptedNote | OpenNote = isOpen(amount)
-      ? { r: 1n, amount: 0n, token }
-      : {
-          packed: encryptions.encryptNoteAmount(channelKey, token, index, random, amount),
-          token,
-          index,
-        };
+    const noteData: EncryptedNote = {
+      packed: encryptions.encryptNoteAmount(channelKey, token, index, random, amount),
+      token,
+      index,
+    };
 
     return {
       type: "CreateEncNote",
@@ -660,7 +695,49 @@ export class MockPoolContract implements MockContract {
     };
   }
 
-  private deposit(from: bigint, token: bigint, amount: Amount): MockServerAction {
+  private createOpenNote(
+    sender: StarknetAddressBigint,
+    senderPrivateKey: ViewingKey,
+    to: StarknetAddressBigint,
+    toPublicKey: PublicKey,
+    token: StarknetAddressBigint,
+    index: number,
+    depositor: StarknetAddressBigint
+  ): MockServerAction {
+    const channelKey = compute_channel_key(
+      sender,
+      toBigInt(senderPrivateKey),
+      to,
+      toBigInt(toPublicKey)
+    );
+    const subchannelId = compute_subchannel_id(channelKey, to, toBigInt(toPublicKey), token);
+    assert(this.subchannelIds.has(subchannelId), () => `Token ${token} does not exist`);
+
+    assert(
+      index == 0 || this.notes.has(compute_note_id(channelKey, token, index - 1)),
+      () => `Nonce ${index} is not sequential`
+    );
+
+    const noteId = compute_note_id(channelKey, token, index);
+    assert(!this.notes.has(noteId), () => `Note ${noteId} already exists`);
+    assert(depositor !== 0n, () => `Depositor cannot be zero`);
+
+    // Open note: r=1n marker, amount=0n (to be filled by depositor), token
+    const noteData: OpenNote = { r: 1n, amount: 0n, token, depositor };
+
+    return {
+      type: "CreateOpenNote",
+      apply: () => {
+        this.notes.set(noteId, noteData);
+      },
+    };
+  }
+
+  private deposit(
+    from: StarknetAddressBigint,
+    token: StarknetAddressBigint,
+    amount: Amount
+  ): MockServerAction {
     return {
       type: "Deposit",
       apply: () => this.contracts.get(token).transfer(from, this.address, amount),
@@ -668,7 +745,11 @@ export class MockPoolContract implements MockContract {
     };
   }
 
-  private withdraw(token: bigint, recipient: bigint, amount: Amount): MockServerAction {
+  private withdraw(
+    token: StarknetAddressBigint,
+    recipient: StarknetAddressBigint,
+    amount: Amount
+  ): MockServerAction {
     return {
       type: "Withdraw",
       apply: () => this.contracts.get(token).transfer(this.address, recipient, amount),
@@ -686,10 +767,10 @@ export class MockPoolContract implements MockContract {
     };
   }
 
-  private validateTokenTotals(sender: bigint, clientActions: ClientAction[]): void {
+  private validateTokenTotals(sender: StarknetAddressBigint, clientActions: ClientAction[]): void {
     const runningTotals = new Map<bigint, bigint>();
 
-    const updateTotal = (token: bigint, delta: bigint) => {
+    const updateTotal = (token: StarknetAddressBigint, delta: bigint) => {
       const current = runningTotals.get(token) ?? 0n;
       const updated = current + delta;
       assert(
@@ -713,8 +794,8 @@ export class MockPoolContract implements MockContract {
 
         case "UseNote": {
           const noteData = this.get_decrypted_note(
-            action.input.channelKey,
-            action.input.noteIndex,
+            action.input.channel_key,
+            action.input.note_index,
             action.input.token
           );
           assert(noteData, () => `Note not found`);

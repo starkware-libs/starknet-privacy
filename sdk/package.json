@@ -20,10 +20,11 @@
   ],
   "scripts": {
     "scarb:build": "cd .. && scarb build",
-    "generate:abi": "node scripts/generate-abi.js",
+    "generate:abi": "npx tsx scripts/generate-abi.ts",
+    "generate:client-actions": "npx tsx scripts/generate-client-actions.ts",
     "generate:hashes": "npx tsx scripts/generate-hashes.ts && prettier --write src/utils/hashes.ts",
     "generate:cairo-refs": "cd .. && scarb test -p privacy -- --color always generate_reference --include-ignored 2>&1 | tee target/cairo-refs-output.txt && cd sdk && npx tsx scripts/generate-cairo-refs.ts ../target/cairo-refs-output.txt",
-    "generate": "npm run scarb:build && npm run generate:abi && npm run generate:hashes && npm run generate:cairo-refs",
+    "generate": "npm run scarb:build && npm run generate:abi && npm run generate:client-actions && npm run generate:hashes && npm run generate:cairo-refs",
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src tests --fix",
     "lint:check": "eslint src tests",
