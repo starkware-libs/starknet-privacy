@@ -229,14 +229,14 @@ pub(crate) fn decrypt_note_amount(
 }
 
 /// Returns the actual note amount from a packed value.
-/// For open notes (OPEN_NOTE_SALT): returns the value directly (must be non-zero).
+/// For open notes (OPEN_NOTE_SALT): returns the value directly.
 /// For encrypted notes: decrypts using channel_key, token, and index.
+/// In both cases, the returned amount may be zero.
 pub(crate) fn decode_note_amount(
     packed_value: felt252, channel_key: felt252, token: ContractAddress, index: usize,
 ) -> u128 {
     let (salt, amount) = unpacking(:packed_value);
     if salt == OPEN_NOTE_SALT {
-        assert(amount.is_non_zero(), errors::EMPTY_NOTE_USAGE);
         amount
     } else {
         decrypt_note_amount(enc_amount: amount, :salt, :channel_key, :token, :index)
