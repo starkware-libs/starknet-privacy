@@ -135,11 +135,12 @@ export class MockPoolContract implements MockContract {
     return this.outgoingChannels.get(outgoingChannelKey) ?? { salt: 0n, enc_recipient_addr: 0n };
   }
 
-  get_note(noteId: bigint): bigint {
+  get_note(noteId: bigint): { packed_value: bigint; token: bigint } {
     const note = this.notes.get(noteId);
-    if (!note) return 0n;
-    if ("packed" in note) return note.packed;
-    return note.amount as bigint; // For open notes, return amount directly
+    if (!note) return { packed_value: 0n, token: 0n };
+    if ("packed" in note) return { packed_value: note.packed, token: note.token };
+    // For open notes, return amount as packed_value (open notes have r=1n marker)
+    return { packed_value: note.amount as bigint, token: note.token };
   }
 
   channel_exists(channelId: bigint): boolean {
@@ -456,7 +457,7 @@ export class MockPoolContract implements MockContract {
           ),
         ];
 
-      case "CreateNote":
+      case "CreateEncNote":
         return [
           this.createNote(
             sender,
@@ -652,7 +653,7 @@ export class MockPoolContract implements MockContract {
         };
 
     return {
-      type: "CreateNote",
+      type: "CreateEncNote",
       apply: () => {
         this.notes.set(noteId, noteData);
       },
@@ -722,10 +723,10 @@ export class MockPoolContract implements MockContract {
           break;
         }
 
-        case "CreateNote": {
+        case "CreateEncNote": {
           const amount = action.input.amount;
           if (!isOpen(amount)) {
-            assert(amount >= 0n, () => `CreateNote amount must be non-negative: ${amount}`);
+            assert(amount >= 0n, () => `CreateEncNote amount must be non-negative: ${amount}`);
             updateTotal(action.input.token, -amount);
           }
           break;

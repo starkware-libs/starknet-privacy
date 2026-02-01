@@ -82,10 +82,10 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
         let i;
         for (i = nonce; ; i++) {
           const noteId = compute_note_id(channelKey, token, i);
-          const encAmount = await this.pool.get_note(noteId);
-          if (toBigInt(encAmount) === 0n) break;
+          const noteData = await this.pool.get_note(noteId);
+          if (toBigInt(noteData.packed_value) === 0n) break;
           const { amount, salt } = encryptions.decryptNoteAmount(
-            toBigInt(encAmount),
+            toBigInt(noteData.packed_value),
             channelKey,
             token,
             i
@@ -171,8 +171,8 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
       for (const [token, nonces] of channel.tokens) {
         let i;
         for (i = nonces.noteNonce; ; i++) {
-          const encAmount = await this.pool.get_note(compute_note_id(channel.key, token, i));
-          if (toBigInt(encAmount) === 0n) break;
+          const noteData = await this.pool.get_note(compute_note_id(channel.key, token, i));
+          if (toBigInt(noteData.packed_value) === 0n) break;
         }
         nonces.noteNonce = i;
       }

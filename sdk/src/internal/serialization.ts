@@ -17,7 +17,7 @@ function toSnakeCase(str: string): string {
  * Some fields have different names in Cairo than in TypeScript.
  */
 const FIELD_NAME_MAPPINGS: Record<string, string> = {
-  random: "salt", // OpenSubchannel and CreateNote use 'salt' in Cairo
+  random: "salt", // OpenSubchannel and CreateEncNote use 'salt' in Cairo
 };
 
 /**
@@ -35,7 +35,7 @@ function toSnakeCaseKeys(
 
     // Apply field name mapping if applicable, then convert to snake_case
     const mappedKey =
-      actionType === "OpenSubchannel" || actionType === "CreateNote"
+      actionType === "OpenSubchannel" || actionType === "CreateEncNote"
         ? (FIELD_NAME_MAPPINGS[key] ?? key)
         : key;
     result[toSnakeCase(mappedKey)] = value;
@@ -50,7 +50,8 @@ const CLIENT_ACTION_VARIANTS = [
   "SetViewingKey",
   "OpenChannel",
   "OpenSubchannel",
-  "CreateNote",
+  "CreateEncNote",
+  "CreateOpenNote",
   "Deposit",
   "UseNote",
   "Withdraw",

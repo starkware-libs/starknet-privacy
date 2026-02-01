@@ -45,7 +45,7 @@ type ClientActions = {
   openTokenChannels: Extract<ClientAction, { type: "OpenSubchannel" }>[];
   deposits: Extract<ClientAction, { type: "Deposit" }>[];
   useNotes: Extract<ClientAction, { type: "UseNote" }>[];
-  createNotes: Extract<ClientAction, { type: "CreateNote" }>[];
+  createNotes: Extract<ClientAction, { type: "CreateEncNote" }>[];
   withdraws: Extract<ClientAction, { type: "Withdraw" }>[];
   followupCall?: Extract<ClientAction, { type: "FollowupCall" }>;
 };
@@ -348,7 +348,7 @@ export class ActionCompiler {
       }
     }
 
-    // 6. CreateNote (non-deposit notes)
+    // 6. CreateEncNote (non-deposit notes)
     if (actions.createNotes) {
       for (const action of actions.createNotes) {
         const channel = transformOpenSubchannel(
@@ -360,7 +360,7 @@ export class ActionCompiler {
         );
 
         const input = {
-          type: "CreateNote",
+          type: "CreateEncNote",
           input: {
             senderPrivateKey: this.userViewingKey,
             recipientAddr: action.recipient,

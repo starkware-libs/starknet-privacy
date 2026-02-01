@@ -56,9 +56,9 @@ export type OpenSubchannelInput = {
 };
 
 /**
- * Input for the CreateNote action.
+ * Input for the CreateEncNote action (encrypted note).
  */
-export type CreateNoteInput = {
+export type CreateEncNoteInput = {
   /** The sender's private key (viewing key) */
   senderPrivateKey: ViewingKey;
   /** The recipient's address */
@@ -125,6 +125,6 @@ export type ClientAction =
   | { type: "OpenSubchannel"; input: OpenSubchannelInput }
   | { type: "Deposit"; input: DepositInput }
   | { type: "UseNote"; input: UseNoteInput }
-  | { type: "CreateNote"; input: CreateNoteInput }
+  | { type: "CreateEncNote"; input: CreateEncNoteInput }
   | { type: "Withdraw"; input: WithdrawInput }
   | { type: "FollowupCall"; input: FollowupCallInput };
