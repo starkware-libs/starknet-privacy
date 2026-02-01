@@ -95,7 +95,13 @@ export class ActionCompiler {
     const pool = this.createPool(toBigInt(this.userViewingKey), registry, channels);
 
     // Phase 3: Transform Actions to ClientAction[]
-    const clientActions = this.transformToClientActions(actions, pool, recipientsNeeded, options);
+    const clientActions = this.transformToClientActions(
+      actions,
+      pool,
+      recipientsNeeded,
+      channels,
+      options
+    );
 
     debugLog("compiler", "compile", "post transformToClientActions", clientActions);
 
@@ -174,6 +180,7 @@ export class ActionCompiler {
     actions: Actions,
     pool: PoolSimulator,
     recipientsNeeded: AddressMap<boolean>,
+    discoveredChannels: AddressMap<Channel> | undefined,
     options?: ExecuteOptions
   ): ClientAction[] {
     const clientActions: ClientActions = {
@@ -195,6 +202,14 @@ export class ActionCompiler {
         type: "SetViewingKey",
         input: { random: generateRandom() },
       };
+    }
+
+    if (actions.setViewingKey && options?.autoSetup) {
+      // If registering, also open self-channel (it can't exist yet)
+      actions.openChannels ??= [];
+      actions.openChannels.push({
+        recipient: this.userAddress,
+      });
     }
 
     for (const recipient of recipientsNeeded.keys()) {
