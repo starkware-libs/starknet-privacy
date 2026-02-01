@@ -83,7 +83,7 @@ export const PrivacyPoolABI = [
   },
   {
     type: "struct",
-    name: "privacy::actions::CreateNoteInput",
+    name: "privacy::actions::CreateEncNoteInput",
     members: [
       {
         name: "recipient_addr",
@@ -108,6 +108,28 @@ export const PrivacyPoolABI = [
       {
         name: "salt",
         type: "core::integer::u128",
+      },
+    ],
+  },
+  {
+    type: "struct",
+    name: "privacy::actions::CreateOpenNoteInput",
+    members: [
+      {
+        name: "recipient_addr",
+        type: "core::starknet::contract_address::ContractAddress",
+      },
+      {
+        name: "recipient_public_key",
+        type: "core::felt252",
+      },
+      {
+        name: "token",
+        type: "core::starknet::contract_address::ContractAddress",
+      },
+      {
+        name: "index",
+        type: "core::integer::u32",
       },
     ],
   },
@@ -182,8 +204,12 @@ export const PrivacyPoolABI = [
         type: "privacy::actions::OpenSubchannelInput",
       },
       {
-        name: "CreateNote",
-        type: "privacy::actions::CreateNoteInput",
+        name: "CreateEncNote",
+        type: "privacy::actions::CreateEncNoteInput",
+      },
+      {
+        name: "CreateOpenNote",
+        type: "privacy::actions::CreateOpenNoteInput",
       },
       {
         name: "Deposit",
@@ -622,6 +648,20 @@ export const PrivacyPoolABI = [
     ],
   },
   {
+    type: "struct",
+    name: "privacy::objects::Note",
+    members: [
+      {
+        name: "packed_value",
+        type: "core::felt252",
+      },
+      {
+        name: "token",
+        type: "core::starknet::contract_address::ContractAddress",
+      },
+    ],
+  },
+  {
     type: "interface",
     name: "privacy::interface::IViews",
     items: [
@@ -736,7 +776,7 @@ export const PrivacyPoolABI = [
         ],
         outputs: [
           {
-            type: "core::felt252",
+            type: "privacy::objects::Note",
           },
         ],
         state_mutability: "view",

@@ -18,7 +18,7 @@ import { derivePublicKey, toBigInt } from "../utils/crypto.js";
 import { AddressMap } from "../utils/maps.js";
 import {
   ClientAction,
-  CreateNoteInput,
+  CreateEncNoteInput,
   OpenChannelInput,
   OpenSubchannelInput,
   SetViewingKeyInput,
@@ -60,8 +60,8 @@ export class PoolSimulator {
         this.handleUseNote(action.input);
         break;
 
-      case "CreateNote":
-        this.handleCreateNote(action.input);
+      case "CreateEncNote":
+        this.handleCreateEncNote(action.input);
         break;
 
       case "Withdraw":
@@ -186,7 +186,7 @@ export class PoolSimulator {
     debugLog("pool-simulator", "UseNote", hex(this.userAddress), "token:", hex(token));
   }
 
-  private handleCreateNote(input: CreateNoteInput): void {
+  private handleCreateEncNote(input: CreateEncNoteInput): void {
     const { senderPrivateKey, recipientAddr, recipientPublicKey, token, amount, index } = input;
 
     // Update sender's channel note nonce
@@ -220,7 +220,7 @@ export class PoolSimulator {
 
     debugLog(
       "pool-simulator",
-      "CreateNote",
+      "CreateEncNote",
       hex(this.userAddress),
       "->",
       hex(recipientAddr),
