@@ -19,7 +19,7 @@ export function shortStringToFelt(str: string): bigint {
   if (str.length > 31) {
     throw new Error(`Short string must be <= 31 chars, got ${str.length}`);
   }
-  return BigInt("0x" + toHex(str));
+  return BigInt(toHex(str));
 }
 
 /**
@@ -59,8 +59,8 @@ export function hash(...values: (BigNumberish | string)[]): Hash {
 const starkCurve = ec.starkCurve;
 
 // Domain separation tags (must match Cairo constants)
-const ENC_CHANNEL_KEY_TAG = BigInt("0x" + toHex("channel_info:enc_channel_key:v1"));
-const ENC_SENDER_ADDR_TAG = BigInt("0x" + toHex("channel_info:enc_sender_addr:v1"));
+const ENC_CHANNEL_KEY_TAG = BigInt(toHex("channel_info:enc_channel_key:v1"));
+const ENC_SENDER_ADDR_TAG = BigInt(toHex("channel_info:enc_sender_addr:v1"));
 
 /**
  * Encrypted channel information structure.
@@ -105,7 +105,7 @@ function getXCoordinateFromBytes(publicKeyBytes: Uint8Array): bigint {
   // If 65 bytes (uncompressed), skip prefix and take first 32 bytes
   const start = publicKeyBytes.length === 33 ? 1 : publicKeyBytes.length === 65 ? 1 : 0;
   const end = start + 32;
-  return BigInt("0x" + toHex(publicKeyBytes.slice(start, end)));
+  return BigInt(toHex(publicKeyBytes.slice(start, end)));
 }
 
 /**

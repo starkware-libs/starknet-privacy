@@ -9,7 +9,8 @@ import {
 import { Open } from "../../src/interfaces.js";
 import { debugHint, derivePublicKey, isDebugEnabled, toBigInt } from "../../src/utils/index.js";
 import { compute_channel_key, compute_note_id } from "../../src/utils/hashes.js";
-import { debugLog, hex } from "../../src/utils/logging.js";
+import { debugLog } from "../../src/utils/logging.js";
+import { toHex } from "../../src/utils/convert.js";
 import { MockSwapHelper } from "../../src/testing/contracts.js";
 
 describe("Private Transfers Integration", () => {
@@ -272,7 +273,7 @@ describe("Private Transfers Integration", () => {
           .transfer({ recipient: env.alice.address, amount: Open, depositor: swapHelper.address })
         .done()
         .call({
-          contractAddress: hex(swapHelper.address),
+          contractAddress: toHex(swapHelper.address),
           entrypoint: "swap",
           calldata: [ace, bee, 10n, POOL_ADDRESS, beeNoteId],
         })
