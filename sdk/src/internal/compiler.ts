@@ -24,8 +24,9 @@ import type {
   Note,
   PrivateRegistry,
   ViewingKey,
+  Warning,
 } from "../interfaces.js";
-import { Channel, createEmptyRegistry } from "../interfaces.js";
+import { Channel, createEmptyRegistry, WarningCode } from "../interfaces.js";
 import { AddressMap, AdvancedMap, toBigInt } from "../utils/index.js";
 import type { ClientAction } from "./client-actions.js";
 import { PoolSimulator } from "./pool-simulator.js";
@@ -39,6 +40,7 @@ import { toHex } from "../utils/convert.js";
 export type CompileResult = {
   clientActions: ClientAction[];
   registry: PrivateRegistry;
+  warnings: Warning[];
 };
 
 type ClientActions = {
@@ -99,7 +101,22 @@ export class ActionCompiler {
 
     debugLog("compiler", "compile", "post transformToClientActions", clientActions);
 
-    return { clientActions, registry: pool.updateRegistry(registry) };
+    return {
+      clientActions,
+      registry: pool.updateRegistry(registry),
+      warnings: this.checkWarnings(clientActions),
+    };
+  }
+
+  private checkWarnings(clientActions: ClientAction[]): Warning[] {
+    const warnings: Warning[] = [];
+    if (clientActions.filter((action) => action.type === "OpenChannel").length > 1) {
+      warnings.push({
+        code: WarningCode.USER_LINKAGE,
+        message: "Multiple open channel actions found",
+      });
+    }
+    return warnings;
   }
 
   private getRecipientsNeeded(actions: Actions): AddressMap<boolean> {
