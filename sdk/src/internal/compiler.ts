@@ -197,6 +197,14 @@ export class ActionCompiler {
       };
     }
 
+    if (actions.setViewingKey && options?.autoSetup) {
+      // If registering, also open self-channel (it can't exist yet)
+      actions.openChannels ??= [];
+      actions.openChannels.push({
+        recipient: this.userAddress,
+      });
+    }
+
     for (const recipient of recipientsNeeded.keys()) {
       const channel = pool.getChannel(recipient);
       if (!channel?.key && options?.autoSetup) {
