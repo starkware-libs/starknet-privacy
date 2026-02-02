@@ -5,6 +5,7 @@ import type {
   BlockIdentifier,
   BlockNumber,
   Call,
+  constants,
   Invocation,
 } from "starknet";
 import { ec } from "starknet";
@@ -535,7 +536,7 @@ export type ProofInvocation = Invocation;
  * Extends AccountInvocationsFactoryDetails with chainId for signing.
  */
 export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
-  chainId: string;
+  chainId: constants.StarknetChainId;
 };
 
 ////// The following are more likely to change /////////

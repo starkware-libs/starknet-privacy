@@ -14,7 +14,7 @@ import type {
 import type { ClientAction } from "../internal/client-actions.js";
 import type { MockPoolContract } from "./mock-pool-contract.js";
 import { bigintReviver } from "./mock-proof-invocation-factory.js";
-import { ETransactionVersion } from "starknet";
+import { constants, ETransactionVersion } from "starknet";
 
 /**
  * Mock proof provider that executes actions on MockPoolContract.
@@ -45,7 +45,7 @@ export class MockProofProvider implements ProofProviderInterface {
       nonceDataAvailabilityMode: "L1",
       feeDataAvailabilityMode: "L1",
       version: ETransactionVersion.V3,
-      chainId: "0x0", // Mock chain ID
+      chainId: constants.StarknetChainId.SN_SEPOLIA, // Mock chain ID
     };
   }
 
