@@ -1,20 +1,13 @@
-import { MockContracts, MockPoolContract, MockPrivateTransfers } from "../../src/testing/index.js";
-import { withLogging, consoleLogCallback, toBigInt } from "../../src/utils/index.js";
+import { Mocknet, MockPoolContract, type MocknetEnvironment } from "../../src/testing/index.js";
 import {
   createEmptyRegistry,
   ExecuteOptions,
   ExecuteResult,
   PrivateRegistry,
+  PrivateTransfersInterface,
 } from "../../src/interfaces.js";
 
-// Test addresses and keys (must be valid hex addresses convertible to BigInt)
-export const POOL_ADDRESS = toBigInt("0x1");
-export const ACE = toBigInt("0xACE"); // Token A
-export const BEE = toBigInt("0xBEE"); // Token B
-
-export const ALICE = { address: toBigInt("0xA11CE"), privateKey: 12345n };
-export const BOB = { address: toBigInt("0xB0B"), privateKey: 67890n };
-export const CAROL = { address: toBigInt("0xCA201"), privateKey: 99999n };
+export const POOL_ADDRESS = 0x1n;
 
 // Default options presets - for operations AFTER registration and setup are done
 export const AUTO_ALL: ExecuteOptions = {
@@ -34,43 +27,91 @@ export const AUTO_DISCOVERY_ONLY: ExecuteOptions = {
 };
 
 // Test environment factory
-export interface TestEnv {
-  contracts: MockContracts;
-  pool: MockPoolContract;
-  alice: MockPrivateTransfers;
-  bob: MockPrivateTransfers;
-  carol: MockPrivateTransfers;
-  fundUser: (address: bigint, token: bigint, amount: bigint) => void;
-  executeOutside: (result: ExecuteResult) => PrivateRegistry;
+export interface MockTestEnv {
+  mocknet: Mocknet;
+  env: MocknetEnvironment;
+  transfers: {
+    alice: PrivateTransfersInterface;
+    bob: PrivateTransfersInterface;
+    carol: PrivateTransfersInterface;
+  };
 }
 
-export function createTestEnv(): TestEnv {
-  const contracts = new MockContracts();
-  const pool = withLogging(
-    new MockPoolContract(POOL_ADDRESS, contracts),
-    "MockPoolContract",
-    consoleLogCallback
-  );
-  contracts.register(pool);
+export function createTestEnv(): MockTestEnv {
+  const mocknet = new Mocknet({ poolAddress: POOL_ADDRESS });
+  const env = mocknet.initialize(); // Funds all users with 1000n of ace/bee
 
-  const alice = new MockPrivateTransfers(contracts, POOL_ADDRESS, ALICE.address, ALICE.privateKey);
-  const bob = new MockPrivateTransfers(contracts, POOL_ADDRESS, BOB.address, BOB.privateKey);
-  const carol = new MockPrivateTransfers(contracts, POOL_ADDRESS, CAROL.address, CAROL.privateKey);
-
-  const fundUser = (address: bigint, token: bigint, amount: bigint) => {
-    contracts.get(token).setBalance(address, amount);
+  const transfers = {
+    alice: mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey),
+    bob: mocknet.createPrivateTransfers(env.bob.address, env.bob.privateKey),
+    carol: mocknet.createPrivateTransfers(env.carol.address, env.carol.privateKey),
   };
 
+  return { mocknet, env, transfers };
+}
+
+// Tests use: mocknet.fundUser(), mocknet.executeOutside()
+
+// Setup helper: register user and set up self-channel with token
+// Returns updated registry with token info
+export async function setupSelfChannel(
+  user: PrivateTransfersInterface,
+  userAddress: bigint,
+  token: bigint,
+  pool: MockPoolContract
+): Promise<PrivateRegistry> {
   const executeOutside = (result: ExecuteResult) => {
     pool.execute_actions(result.callAndProof.call.calldata as string[]);
     return result.registry;
   };
 
-  // Default funding
-  fundUser(ALICE.address, ACE, 1000n);
-  fundUser(ALICE.address, BEE, 500n);
+  executeOutside(await user.build().register().execute());
+  executeOutside(await user.build().setup(userAddress).execute());
 
-  return { contracts, pool, alice, bob, carol, fundUser, executeOutside };
+  let channel = (await user.discoverChannels([userAddress])).channels.get(userAddress)!;
+  const registry = createEmptyRegistry();
+  registry.channels.set(userAddress, channel);
+
+  executeOutside(await user.build({ registry }).with(token).setup(userAddress).execute());
+
+  // Refresh channel to include token info
+  channel = (await user.discoverChannels([userAddress])).channels.get(userAddress)!;
+  registry.channels.set(userAddress, channel);
+
+  return registry;
+}
+
+// Setup helper: register sender and set up channel to recipient with token
+// Returns updated registry with token info
+export async function setupRecipientChannel(
+  sender: PrivateTransfersInterface,
+  recipient: PrivateTransfersInterface,
+  recipientAddress: bigint,
+  token: bigint,
+  pool: MockPoolContract
+): Promise<PrivateRegistry> {
+  const executeOutside = (result: ExecuteResult) => {
+    pool.execute_actions(result.callAndProof.call.calldata as string[]);
+    return result.registry;
+  };
+
+  // Recipient must be registered first
+  executeOutside(await recipient.build().register().execute());
+
+  // Sender sets up channel to recipient
+  executeOutside(await sender.build().setup(recipientAddress).execute());
+
+  let channel = (await sender.discoverChannels([recipientAddress])).channels.get(recipientAddress)!;
+  const registry = createEmptyRegistry();
+  registry.channels.set(recipientAddress, channel);
+
+  executeOutside(await sender.build({ registry }).with(token).setup(recipientAddress).execute());
+
+  // Refresh channel to include token info
+  channel = (await sender.discoverChannels([recipientAddress])).channels.get(recipientAddress)!;
+  registry.channels.set(recipientAddress, channel);
+
+  return registry;
 }
 
 // Re-export commonly used utilities
