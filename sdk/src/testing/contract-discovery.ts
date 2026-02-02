@@ -1,8 +1,7 @@
-import { BlockIdentifier } from "starknet";
+import { BigNumberish, BlockIdentifier } from "starknet";
 import { ViewingKey, Note, Channel, StarknetAddressBigint } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { AbstractDiscoveryProvider } from "../internal/abstract-discovery.js";
-import { PrivacyPoolContract } from "../internal/private-transfers.js";
 import { debugLog, hex } from "../utils/logging.js";
 import { toBigInt } from "../utils/crypto.js";
 import {
@@ -12,11 +11,53 @@ import {
   compute_note_id,
   compute_outgoing_channel_key,
 } from "../utils/hashes.js";
-import { encryptions } from "../utils/encryptions.js";
+import {
+  encryptions,
+  type EncChannelInfo,
+  type EncSubchannelInfo,
+  type EncOutgoingChannelInfo,
+} from "../utils/encryptions.js";
 import { NotesCursor } from "../internal/channel.js";
 
+/**
+ * Note data returned by get_note(), matching Cairo's privacy::objects::Note struct.
+ * - packed_value: (salt << 128) | amount - salt=1 for open notes, salt>=2 for encrypted
+ * - token: non-zero for open notes, zero for encrypted notes
+ * - depositor: non-zero for open notes (who can fill it), zero for encrypted notes
+ */
+export type NoteData = {
+  packed_value: BigNumberish;
+  token: BigNumberish;
+  depositor: BigNumberish;
+};
+
+/**
+ * Interface for pool contract view methods used by ContractDiscoveryProvider.
+ * Both MockPoolContract and PrivacyPoolContract satisfy this interface.
+ *
+ * Return types are widened to accept what starknet.js typed contracts return:
+ * - felt252 fields return BigNumberish (string | number | bigint)
+ * - u64 fields return bigint | number
+ *
+ * ContractDiscoveryProvider defensively converts all values with toBigInt().
+ */
+export interface IPoolContract {
+  get_public_key(userAddr: BigNumberish): BigNumberish | Promise<BigNumberish>;
+  get_num_of_channels(recipientAddr: BigNumberish): bigint | number | Promise<bigint | number>;
+  get_channel_info(
+    recipientAddr: BigNumberish,
+    index: number
+  ): EncChannelInfo | Promise<EncChannelInfo>;
+  get_subchannel_info(subchannelKey: BigNumberish): EncSubchannelInfo | Promise<EncSubchannelInfo>;
+  get_outgoing_channel_info(
+    outgoingChannelKey: BigNumberish
+  ): EncOutgoingChannelInfo | Promise<EncOutgoingChannelInfo>;
+  get_note(noteId: bigint): NoteData | Promise<NoteData>;
+  channel_exists(channelId: bigint): boolean | Promise<boolean>;
+}
+
 export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
-  constructor(private readonly pool: PrivacyPoolContract) {
+  constructor(private readonly pool: IPoolContract) {
     super();
   }
 
@@ -28,15 +69,14 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
     const tokens = new Set([...(params?.tokens ?? [])]);
     const notes = new AddressMap<Note[]>(() => []);
     const cursor: NotesCursor = this.cloneNotesCursor(params?.cursor);
-    const addressStr = hex(address);
 
     // identify channels
     debugLog("contract-discovery", "discoverNotes", "start", cursor);
-    const nc = await this.pool.get_num_of_channels(addressStr);
+    const nc = await this.pool.get_num_of_channels(address);
     debugLog("contract-discovery", "discoverNotes", "num of channels", nc);
     let c;
     for (c = cursor.incomingChannelsCount ?? 0; c < nc; c++) {
-      const encryptedChannel = await this.pool.get_channel_info(addressStr, c);
+      const encryptedChannel = await this.pool.get_channel_info(address, c);
       const channel = encryptions.decryptChannelInfo(encryptedChannel, viewingKey);
       debugLog("contract-discovery", "discoverNotes", "channel", channel);
       cursor.incomingChannels.set(channel.sender, {
@@ -122,7 +162,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
             witness: { channelKey, nonce: i, r: salt },
             sender,
             open: isOpenNote,
-            depositor: isOpenNote ? toBigInt(noteData.depositor) : undefined,
+            depositor: isOpenNote ? noteData.depositor : undefined,
           });
         }
         incomingChannelCursor.noteIndexes.set(token, i);
@@ -164,7 +204,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
       debugLog("contract-discovery", "discoverChannels", "recipient", hex(recipient));
       if (channels.has(recipient) && channels.get(recipient)!.key !== 0n) continue;
       const publicKey =
-        channels.get(recipient)?.publicKey ?? (await this.pool.get_public_key(hex(recipient)));
+        channels.get(recipient)?.publicKey ?? (await this.pool.get_public_key(recipient));
       debugLog("contract-discovery", "discoverChannels", "publicKey", publicKey);
       if (!publicKey) continue;
       const channel = channels.get(recipient, () => new Channel(publicKey))!;

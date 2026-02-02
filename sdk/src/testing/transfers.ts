@@ -7,7 +7,7 @@ import type { PrivateKey } from "../utils/crypto.js";
 import { toBigInt } from "../utils/index.js";
 import { createMockCallAndProof } from "./helpers.js";
 import type { MockPoolContract } from "./mock-pool-contract.js";
-import { MockDiscoveryProvider } from "./discovery.js";
+import { ContractDiscoveryProvider } from "./contract-discovery.js";
 import { ActionCompiler } from "../internal/compiler.js";
 import { MockContracts } from "./contracts.js";
 import { consoleLogCallback, debugLog, withLogging } from "../utils/logging.js";
@@ -24,7 +24,11 @@ export class MockPrivateTransfers extends AbstractPrivateTransfers {
     userPrivateKey: PrivateKey
   ) {
     const pool = contracts.get<MockPoolContract>(toBigInt(poolAddress));
-    super(userAddress, { getViewingKey: () => userPrivateKey }, new MockDiscoveryProvider(pool));
+    super(
+      userAddress,
+      { getViewingKey: () => userPrivateKey },
+      new ContractDiscoveryProvider(pool)
+    );
     this.pool = pool;
     this.compiler = withLogging(
       new ActionCompiler(this.user, userPrivateKey, this.discoveryProvider),
