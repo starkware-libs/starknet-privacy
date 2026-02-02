@@ -1,0 +1,61 @@
+/**
+ * AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+ * Generated from sdk/src/internal/abi.ts
+ * Run: npx tsx scripts/generate-pool-interface.ts
+ */
+
+import { BigNumberish } from "starknet";
+
+// ============ Struct Types ============
+
+export type EncChannelInfo = {
+  ephemeral_pubkey: BigNumberish;
+  enc_channel_key: BigNumberish;
+  enc_sender_addr: BigNumberish;
+};
+
+export type EncSubchannelInfo = {
+  salt: BigNumberish;
+  enc_token: BigNumberish;
+};
+
+export type EncOutgoingChannelInfo = {
+  salt: BigNumberish;
+  enc_recipient_addr: BigNumberish;
+};
+
+export type NoteData = {
+  packed_value: BigNumberish;
+  token: BigNumberish;
+  depositor: BigNumberish;
+};
+
+export type EncPrivateKey = {
+  compliance_public_key: BigNumberish;
+  ephemeral_pubkey: BigNumberish;
+  enc_private_key: BigNumberish;
+};
+
+// ============ Pool Contract Interface ============
+
+/**
+ * Interface for pool contract view methods.
+ * Generated from IViews interface in the ABI.
+ *
+ * Return types are widened to accept sync and async implementations:
+ * - Methods can return T | Promise<T>
+ * - Implementations should defensively convert values with toBigInt()
+ */
+export interface PoolContractInterface {
+  channel_exists(channelId: BigNumberish): boolean | Promise<boolean>;
+  get_num_of_channels(recipientAddr: BigNumberish): bigint | number | Promise<bigint | number>;
+  get_channel_info(recipientAddr: BigNumberish, channelIndex: BigNumberish): EncChannelInfo | Promise<EncChannelInfo>;
+  subchannel_exists(subchannelId: BigNumberish): boolean | Promise<boolean>;
+  get_subchannel_info(subchannelKey: BigNumberish): EncSubchannelInfo | Promise<EncSubchannelInfo>;
+  get_outgoing_channel_info(outgoingChannelKey: BigNumberish): EncOutgoingChannelInfo | Promise<EncOutgoingChannelInfo>;
+  get_note(noteId: BigNumberish): NoteData | Promise<NoteData>;
+  nullifier_exists(nullifier: BigNumberish): boolean | Promise<boolean>;
+  get_public_key(userAddr: BigNumberish): BigNumberish | Promise<BigNumberish>;
+  get_enc_private_key(userAddr: BigNumberish): EncPrivateKey | Promise<EncPrivateKey>;
+  get_compliance_public_key(): BigNumberish | Promise<BigNumberish>;
+}

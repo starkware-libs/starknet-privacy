@@ -20,12 +20,14 @@ import {
   generateRandom,
   toBigInt,
 } from "../utils/crypto.js";
-import {
-  encryptions,
-  type EncChannelInfo,
-  type EncSubchannelInfo,
-  type EncOutgoingChannelInfo,
-} from "../utils/encryptions.js";
+import { encryptions } from "../utils/encryptions.js";
+import type {
+  PoolContractInterface,
+  EncChannelInfo,
+  EncSubchannelInfo,
+  EncOutgoingChannelInfo,
+  EncPrivateKey,
+} from "../internal/pool-contract-interface.js";
 import { AdvancedMap, AddressMap } from "../utils/maps.js";
 import { assert, isOpen } from "../utils/validation.js";
 import type { MockContracts, MockContract } from "./contracts.js";
@@ -86,7 +88,7 @@ class ChannelsMap extends AdvancedMap<
   }
 }
 
-export class MockPoolContract implements MockContract {
+export class MockPoolContract implements MockContract, PoolContractInterface {
   private publicKeys = new AddressMap<PublicKey>();
   private channels = new ChannelsMap();
   private channelIds = new Set<Hash>();
@@ -160,6 +162,20 @@ export class MockPoolContract implements MockContract {
 
   nullifier_exists(nullifier: bigint): boolean {
     return this.nullifiers.has(nullifier);
+  }
+
+  subchannel_exists(subchannelId: bigint): boolean {
+    return this.subchannelIds.has(subchannelId);
+  }
+
+  get_enc_private_key(_userAddr: StarknetAddressBigint): EncPrivateKey {
+    // Mock doesn't store encrypted private keys
+    return { compliance_public_key: 0n, ephemeral_pubkey: 0n, enc_private_key: 0n };
+  }
+
+  get_compliance_public_key(): bigint {
+    // Mock returns dummy compliance key
+    return 1n;
   }
 
   // ============ Helper Methods for Discovery ============

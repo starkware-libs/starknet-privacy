@@ -32,7 +32,7 @@ export type ConcurrencyProfiler<T> = {
 /**
  * Creates a proxy around an object that tracks concurrent async calls.
  *
- * @param pool - The object to wrap (e.g., IPoolContract implementation)
+ * @param pool - The object to wrap (e.g., PoolContractInterface implementation)
  * @param delayMs - Artificial delay per call to simulate RPC latency (default: 20ms)
  * @returns Profiler with wrapped pool and getReport() method
  */

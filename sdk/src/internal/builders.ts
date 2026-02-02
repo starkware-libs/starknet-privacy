@@ -10,7 +10,6 @@ import {
   type Note,
   type OpenChannelAction,
   type OpenTokenChannelAction,
-  type PrivateTransfers,
   type PrivateTransfersBuilder,
   type Actions,
   type SetViewingKeyAction,
@@ -26,6 +25,7 @@ import {
   type FollowupCallAction,
   type Amount,
   Open,
+  PrivateTransfersInterface,
 } from "../interfaces.js";
 import type { Call } from "starknet";
 import { AddressMap, toBigInt } from "../utils/index.js";
@@ -159,7 +159,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   private buildOptions?: ExecuteOptions;
 
   constructor(
-    private transfers: PrivateTransfers,
+    private transfers: PrivateTransfersInterface,
     public readonly userAddress: StarknetAddress,
     options?: ExecuteOptions
   ) {

@@ -1,5 +1,6 @@
 # Auto-generated files
 src/internal/client-actions.ts
+src/internal/pool-contract-interface.ts
 src/internal/abi.ts
 src/utils/hashes.ts
 
