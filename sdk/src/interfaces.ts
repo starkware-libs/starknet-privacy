@@ -50,9 +50,11 @@ export enum SetupRequirement {
 /** A Starknet address normalized to bigint (for use as Map keys, etc.) */
 export type StarknetAddressBigint = bigint;
 
-// Import and re-export Witness class from internal.ts
-import { Witness, Channel, NotesCursor } from "./internal/channel.js";
-export { Witness, Channel, NotesCursor as DiscoveryCursor };
+// Import and re-export from internal channel
+import { Witness, Channel } from "./internal/channel.js";
+import type { NotesCursor } from "./internal/channel.js";
+export { Witness, Channel };
+export type { NotesCursor as DiscoveryCursor };
 
 export type Note = {
   readonly id: NoteId;

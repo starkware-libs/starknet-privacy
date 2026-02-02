@@ -6,6 +6,7 @@
  */
 
 import { BigNumberish, ec } from "starknet";
+import { toHex, toBytes } from "./convert.js";
 import {
   compute_enc_channel_key_hash,
   compute_enc_sender_addr_hash,
@@ -15,7 +16,7 @@ import {
   compute_enc_private_key_hash,
   compute_enc_address_hash,
 } from "./hashes.js";
-import { toBigInt } from "./crypto.js";
+import { toBigInt } from "./convert.js";
 
 const starkCurve = ec.starkCurve;
 
@@ -27,20 +28,12 @@ const TWO_POW_128 = 2n ** 128n;
 // ============ Helper Functions ============
 
 /**
- * Convert bigint to 32-byte array for starkCurve operations.
- */
-function toBytes32(value: bigint): Uint8Array {
-  const hex = value.toString(16).padStart(64, "0");
-  return Uint8Array.from(Buffer.from(hex, "hex"));
-}
-
-/**
  * Get the x-coordinate from a public key bytes (compressed or uncompressed).
  */
 function getXCoordinateFromBytes(publicKeyBytes: Uint8Array): bigint {
   const start = publicKeyBytes.length === 33 ? 1 : publicKeyBytes.length === 65 ? 1 : 0;
   const end = start + 32;
-  return BigInt("0x" + Buffer.from(publicKeyBytes.slice(start, end)).toString("hex"));
+  return BigInt("0x" + toHex(publicKeyBytes.slice(start, end)));
 }
 
 /**
@@ -136,7 +129,7 @@ export const encryptions = {
     channelKey: bigint,
     senderAddr: bigint
   ): EncChannelInfo => {
-    const ephemeralSecretBytes = toBytes32(ephemeralSecret);
+    const ephemeralSecretBytes = toBytes(ephemeralSecret);
 
     // Compute ephemeral public key
     const ephemeralPubPoint = starkCurve.getPublicKey(ephemeralSecretBytes);
@@ -171,7 +164,7 @@ export const encryptions = {
     encrypted: EncChannelInfo,
     recipientPrivateKey: BigNumberish
   ): ChannelInfo => {
-    const privateKeyBytes = toBytes32(toBigInt(recipientPrivateKey));
+    const privateKeyBytes = toBytes(recipientPrivateKey);
 
     // Recover ephemeral public key point from x-coordinate
     const ephemeralPubBytes = recoverPointFromX(toBigInt(encrypted.ephemeral_pubkey));
@@ -302,7 +295,7 @@ export const encryptions = {
    * Matches Cairo's derive_public_key in utils.cairo.
    */
   derivePublicKey: (privateKey: bigint): bigint => {
-    const privateKeyBytes = toBytes32(privateKey);
+    const privateKeyBytes = toBytes(privateKey);
     const publicKeyBytes = starkCurve.getPublicKey(privateKeyBytes);
     return getXCoordinateFromBytes(publicKeyBytes);
   },
@@ -381,7 +374,7 @@ export const encryptions = {
     compliancePublicKey: bigint,
     privateKey: bigint
   ): EncPrivateKey => {
-    const ephemeralSecretBytes = toBytes32(ephemeralSecret);
+    const ephemeralSecretBytes = toBytes(ephemeralSecret);
 
     // Compute ephemeral public key
     const ephemeralPubPoint = starkCurve.getPublicKey(ephemeralSecretBytes);
@@ -408,7 +401,7 @@ export const encryptions = {
    * @param compliancePrivateKey - The compliance's private key
    */
   decryptPrivateKey: (encrypted: EncPrivateKey, compliancePrivateKey: bigint): bigint => {
-    const privateKeyBytes = toBytes32(compliancePrivateKey);
+    const privateKeyBytes = toBytes(compliancePrivateKey);
 
     // Recover ephemeral public key point from x-coordinate
     const ephemeralPubBytes = recoverPointFromX(encrypted.ephemeralPubkey);
@@ -441,7 +434,7 @@ export const encryptions = {
     compliancePublicKey: bigint,
     userAddr: bigint
   ): EncUserAddr => {
-    const ephemeralSecretBytes = toBytes32(ephemeralSecret);
+    const ephemeralSecretBytes = toBytes(ephemeralSecret);
 
     // Compute ephemeral public key
     const ephemeralPubPoint = starkCurve.getPublicKey(ephemeralSecretBytes);
@@ -468,7 +461,7 @@ export const encryptions = {
    * @param compliancePrivateKey - The compliance's private key
    */
   decryptUserAddr: (encrypted: EncUserAddr, compliancePrivateKey: bigint): bigint => {
-    const privateKeyBytes = toBytes32(compliancePrivateKey);
+    const privateKeyBytes = toBytes(compliancePrivateKey);
 
     // Recover ephemeral public key point from x-coordinate
     const ephemeralPubBytes = recoverPointFromX(encrypted.ephemeralPubkey);
