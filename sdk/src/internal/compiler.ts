@@ -583,8 +583,10 @@ export class ActionCompiler {
         actions.useNotes ??= [];
 
         // naively select unused notes from registry (may create surplus)
+        // sort by amount in descending order to select the largest notes first to avoid an attack of sending
+        // dust notes to the user
         // TODO: Implement an 'exact' strategy that selects notes exactly to cover the deficit
-        for (const note of availableNotes) {
+        for (const note of availableNotes.slice().sort((a, b) => Number(b.amount - a.amount))) {
           if (usedNoteIds.has(note.id)) continue; // Skip used notes
 
           actions.useNotes.push({ token, note });
