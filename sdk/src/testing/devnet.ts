@@ -30,7 +30,10 @@ import { TracingRpcProvider } from "./tracing-provider.js";
 import type { CallAndProof, PrivateTransfersInterface } from "../interfaces.js";
 import { createPrivateTransfers } from "../factory.js";
 import { CallMockProofProvider } from "./mock-proving.js";
-import { ContractDiscoveryProvider } from "./contract-discovery.js";
+import {
+  ContractDiscoveryProvider,
+  type DiscoveryOptions,
+} from "../internal/contract-discovery.js";
 import { toBigInt } from "../utils/crypto.js";
 import { Devnet as StarknetDevnet } from "starknet-devnet";
 import { readFileSync, writeFileSync } from "fs";
@@ -465,13 +468,25 @@ export interface DevnetTestEnv {
 }
 
 /**
+ * Configuration for createDevnetTestEnv.
+ */
+export interface DevnetTestEnvConfig {
+  /** Options for discovery (rate limiting, etc.) */
+  discoveryOptions?: DiscoveryOptions;
+}
+
+/**
  * Create a complete test environment with initialized devnet, accounts, and transfers.
  * This is the recommended way for SDK consumers to set up integration tests.
  *
  * @param devnet - The Devnet instance (must be created by caller for cleanup control)
+ * @param config - Optional configuration for the test environment
  * @returns DevnetTestEnv with devnet, env, and transfers
  */
-export async function createDevnetTestEnv(devnet: Devnet): Promise<DevnetTestEnv> {
+export async function createDevnetTestEnv(
+  devnet: Devnet,
+  config?: DevnetTestEnvConfig
+): Promise<DevnetTestEnv> {
   const env = await devnet.initialize();
   const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
@@ -480,14 +495,14 @@ export async function createDevnetTestEnv(devnet: Devnet): Promise<DevnetTestEnv
       account: env.alice,
       viewingKeyProvider: { getViewingKey: () => toBigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
-      discoveryProvider: new ContractDiscoveryProvider(env.privacy),
+      discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),
     bob: createPrivateTransfers({
       account: env.bob,
       viewingKeyProvider: { getViewingKey: () => toBigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
-      discoveryProvider: new ContractDiscoveryProvider(env.privacy),
+      discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),
   };

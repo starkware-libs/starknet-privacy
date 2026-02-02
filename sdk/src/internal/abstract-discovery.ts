@@ -8,7 +8,7 @@ import type {
 } from "../interfaces.js";
 import { SetupRequirement } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
-import { NotesCursor, IncomingChannelCursor } from "./channel.js";
+import { NotesCursor } from "./channel.js";
 
 export abstract class AbstractDiscoveryProvider implements DiscoveryProviderInterface {
   // Abstract methods that subclasses must implement
@@ -43,35 +43,5 @@ export abstract class AbstractDiscoveryProvider implements DiscoveryProviderInte
     const { channels } = await this.discoverChannels(address, viewingKey, [recipient]);
     const channel = channels.get(recipient);
     return channel?.toSetupRequirement(token) ?? SetupRequirement.Register;
-  }
-
-  protected cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
-    if (!cursor) {
-      return {
-        blockId: 0,
-        incomingChannelsCount: 0,
-        incomingChannels: new AddressMap<IncomingChannelCursor>(),
-      };
-    }
-
-    const cloneIncomingChannelCursor = (sc: IncomingChannelCursor): IncomingChannelCursor => ({
-      channelKey: sc.channelKey,
-      subchannelKeyIndex: sc.subchannelKeyIndex,
-      noteIndexes: new AddressMap<number>(sc.noteIndexes.entries()),
-    });
-
-    const incomingChannels = new AddressMap<IncomingChannelCursor>(
-      [...cursor.incomingChannels.entries()].map(
-        ([k, v]): [StarknetAddressBigint, IncomingChannelCursor] => [
-          k,
-          cloneIncomingChannelCursor(v),
-        ]
-      )
-    );
-    return {
-      blockId: cursor.blockId,
-      incomingChannelsCount: cursor.incomingChannelsCount,
-      incomingChannels: incomingChannels,
-    };
   }
 }
