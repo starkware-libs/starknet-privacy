@@ -9,6 +9,7 @@ use starknet_types_core::felt::Felt;
 use super::DiscoveryError;
 use crate::decryption::decrypt_subchannel_token;
 use crate::hashes::compute_subchannel_key;
+use crate::io_budget::{IoBudget, COST_SUBCHANNEL_INFO};
 use crate::storage::IViews;
 
 /// A discovered and decrypted subchannel.
@@ -46,6 +47,7 @@ pub struct SubchannelDiscoveryResult {
 /// * `channel_key` - The channel key to discover subchannels for.
 /// * `start_index` - Starting index (inclusive). For incremental discovery, pass
 ///   `total_n_subchannels` from previous result.
+/// * `budget` - I/O budget to limit storage operations.
 ///
 /// # Returns
 ///
@@ -55,11 +57,17 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
     privacy_pool: &PrivacyPool,
     channel_key: Felt,
     start_index: u64,
+    budget: &IoBudget,
 ) -> Result<SubchannelDiscoveryResult, DiscoveryError> {
     let mut subchannels = Vec::new();
     let mut index = start_index;
 
     loop {
+        // Consume budget for get_subchannel_info
+        if budget.consume(COST_SUBCHANNEL_INFO).is_none() {
+            break; // Out of budget
+        }
+
         let subchannel_key = compute_subchannel_key(channel_key, index);
         let encrypted = privacy_pool.get_subchannel_info(subchannel_key).await?;
 
@@ -91,8 +99,9 @@ mod tests {
         let backend = MockBackend::empty();
         // Use a random channel key - empty backend returns zero for all slots
         let channel_key = Felt::from_hex_unchecked("0x12345");
+        let budget = IoBudget::new(100);
 
-        let result = discover_subchannels(&backend, channel_key, 0)
+        let result = discover_subchannels(&backend, channel_key, 0, &budget)
             .await
             .unwrap();
 
@@ -115,7 +124,8 @@ mod tests {
         .expect("Alice should have at least one channel");
 
         // Now discover subchannels for this channel
-        let result = discover_subchannels(&backend, channel_key, 0)
+        let budget = IoBudget::new(100);
+        let result = discover_subchannels(&backend, channel_key, 0, &budget)
             .await
             .unwrap();
 
@@ -145,7 +155,8 @@ mod tests {
         .expect("Bob should have at least one channel");
 
         // Now discover subchannels for this channel
-        let result = discover_subchannels(&backend, channel_key, 0)
+        let budget = IoBudget::new(100);
+        let result = discover_subchannels(&backend, channel_key, 0, &budget)
             .await
             .unwrap();
 
@@ -175,17 +186,43 @@ mod tests {
         .expect("Alice should have at least one channel");
 
         // First discovery - should find 1 subchannel
-        let result1 = discover_subchannels(&backend, channel_key, 0)
+        let budget = IoBudget::new(100);
+        let result1 = discover_subchannels(&backend, channel_key, 0, &budget)
             .await
             .unwrap();
         assert_eq!(result1.subchannels.len(), 1);
         assert_eq!(result1.total_n_subchannels, 1);
 
         // Incremental discovery starting from total - should find 0 new subchannels
-        let result2 = discover_subchannels(&backend, channel_key, result1.total_n_subchannels)
-            .await
-            .unwrap();
+        let result2 =
+            discover_subchannels(&backend, channel_key, result1.total_n_subchannels, &budget)
+                .await
+                .unwrap();
         assert_eq!(result2.subchannels.len(), 0);
         assert_eq!(result2.total_n_subchannels, 1);
+    }
+
+    #[tokio::test]
+    async fn test_discover_subchannels_out_of_budget() {
+        let fixture = load_devnet_fixture();
+        let backend = MockBackend::new(fixture.slots);
+
+        // First discover Alice's incoming channels to get the channel key
+        let channel_key = get_channel_key(
+            &backend,
+            fixture.constants.alice_address,
+            &fixture.constants.alice_viewing_key,
+        )
+        .await
+        .expect("Alice should have at least one channel");
+
+        // Budget exhausted before starting (COST_SUBCHANNEL_INFO = 2)
+        let budget = IoBudget::new(1);
+        let result = discover_subchannels(&backend, channel_key, 0, &budget)
+            .await
+            .unwrap();
+
+        assert_eq!(result.subchannels.len(), 0);
+        assert_eq!(result.total_n_subchannels, 0);
     }
 }
