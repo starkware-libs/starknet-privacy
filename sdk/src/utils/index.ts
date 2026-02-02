@@ -15,8 +15,6 @@ export { assert, assertViewingKey, assertRecipientAddress, isOpen } from "./vali
 export {
   hash,
   shortStringToFelt,
-  encryptChannelInfo,
-  decryptChannelInfo,
   derivePublicKey,
   encryptSymmetric,
   decryptSymmetric,
@@ -24,8 +22,6 @@ export {
   type ChannelKey,
   type PublicKey,
   type PrivateKey,
-  type EncChannelInfo,
-  type ChannelInfo,
   type SymmetricEncryption,
 } from "./crypto.js";
 export {
