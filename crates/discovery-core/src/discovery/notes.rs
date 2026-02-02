@@ -19,6 +19,7 @@ use starknet_types_core::felt::Felt;
 use super::DiscoveryError;
 use crate::decryption::{decrypt_note_amount, unpack_note_amount};
 use crate::hashes::compute_note_id;
+use crate::io_budget::{IoBudget, COST_NOTE};
 use crate::storage::IViews;
 
 /// A discovered and decrypted note.
@@ -39,9 +40,12 @@ pub struct DecryptedNote {
 pub struct NotesDiscoveryResult {
     /// List of discovered and decrypted notes.
     pub notes: Vec<DecryptedNote>,
-    /// Total number of notes discovered.
-    /// Use this as `start_index` for incremental discovery.
+    /// Next index to scan for incremental discovery.
+    /// Use this as `start_index` for the next discovery call.
     pub total_n_notes: u64,
+    /// Whether there may be more notes to discover.
+    /// `true` if stopped due to budget exhaustion, `false` if sentinel was found.
+    pub has_more: bool,
 }
 
 /// Discovers and decrypts notes for a given channel key and token.
@@ -61,6 +65,7 @@ pub struct NotesDiscoveryResult {
 /// * `token` - The token address for this subchannel.
 /// * `start_index` - Starting index (inclusive). For incremental discovery, pass
 ///   `total_n_notes` from previous result.
+/// * `budget` - I/O budget to limit storage operations.
 ///
 /// # Returns
 ///
@@ -71,11 +76,19 @@ pub async fn discover_notes<PrivacyPool: IViews>(
     channel_key: Felt,
     token: Felt,
     start_index: u64,
+    budget: &IoBudget,
 ) -> Result<NotesDiscoveryResult, DiscoveryError> {
     let mut notes = Vec::new();
     let mut index = start_index;
+    let mut out_of_budget = false;
 
     loop {
+        // Consume budget for get_note
+        if budget.consume(COST_NOTE).is_none() {
+            out_of_budget = true;
+            break;
+        }
+
         let note_id = compute_note_id(channel_key, token, index);
         let packed_amount = privacy_pool.get_note(note_id).await?;
 
@@ -102,6 +115,7 @@ pub async fn discover_notes<PrivacyPool: IViews>(
     Ok(NotesDiscoveryResult {
         notes,
         total_n_notes: index,
+        has_more: out_of_budget,
     })
 }
 
@@ -116,13 +130,15 @@ mod tests {
         let backend = MockBackend::empty();
         let channel_key = Felt::from_hex_unchecked("0x12345");
         let token = Felt::from_hex_unchecked("0x67890");
+        let budget = IoBudget::new(100);
 
-        let result = discover_notes(&backend, channel_key, token, 0)
+        let result = discover_notes(&backend, channel_key, token, 0, &budget)
             .await
             .unwrap();
 
         assert_eq!(result.notes.len(), 0);
         assert_eq!(result.total_n_notes, 0);
+        assert!(!result.has_more);
     }
 
     #[tokio::test]
@@ -143,7 +159,8 @@ mod tests {
             .await
             .expect("Alice's channel should have at least one subchannel");
 
-        let result = discover_notes(&backend, channel_key, token, 0)
+        let budget = IoBudget::new(100);
+        let result = discover_notes(&backend, channel_key, token, 0, &budget)
             .await
             .unwrap();
 
@@ -152,6 +169,7 @@ mod tests {
             "Alice's self-channel should have notes"
         );
         assert_eq!(result.total_n_notes, result.notes.len() as u64);
+        assert!(!result.has_more);
         assert_eq!(result.notes[0].index, 0);
         // The amount should be positive
         assert!(result.notes[0].amount > 0, "Note amount should be positive");
@@ -175,7 +193,8 @@ mod tests {
             .await
             .expect("Bob's channel should have at least one subchannel");
 
-        let result = discover_notes(&backend, channel_key, token, 0)
+        let budget = IoBudget::new(100);
+        let result = discover_notes(&backend, channel_key, token, 0, &budget)
             .await
             .unwrap();
 
@@ -183,6 +202,7 @@ mod tests {
             !result.notes.is_empty(),
             "Bob should have received notes from Alice"
         );
+        assert!(!result.has_more);
         assert!(result.notes[0].amount > 0, "Note amount should be positive");
     }
 
@@ -205,16 +225,48 @@ mod tests {
             .expect("Alice's channel should have at least one subchannel");
 
         // First discovery
-        let result1 = discover_notes(&backend, channel_key, token, 0)
+        let budget = IoBudget::new(100);
+        let result1 = discover_notes(&backend, channel_key, token, 0, &budget)
             .await
             .unwrap();
         assert!(!result1.notes.is_empty());
+        assert!(!result1.has_more);
 
         // Incremental discovery starting from total - should find 0 new notes
-        let result2 = discover_notes(&backend, channel_key, token, result1.total_n_notes)
+        let result2 = discover_notes(&backend, channel_key, token, result1.total_n_notes, &budget)
             .await
             .unwrap();
         assert_eq!(result2.notes.len(), 0);
         assert_eq!(result2.total_n_notes, result1.total_n_notes);
+        assert!(!result2.has_more);
+    }
+
+    #[tokio::test]
+    async fn test_discover_notes_out_of_budget() {
+        let fixture = load_devnet_fixture();
+        let backend = MockBackend::new(fixture.slots);
+
+        // Discover Alice's channel and subchannel
+        let channel_key = get_channel_key(
+            &backend,
+            fixture.constants.alice_address,
+            &fixture.constants.alice_viewing_key,
+        )
+        .await
+        .expect("Alice should have at least one channel");
+
+        let token = get_subchannel_token(&backend, channel_key)
+            .await
+            .expect("Alice's channel should have at least one subchannel");
+
+        // Budget exhausted before starting (COST_NOTE = 1)
+        let budget = IoBudget::new(0);
+        let result = discover_notes(&backend, channel_key, token, 0, &budget)
+            .await
+            .unwrap();
+
+        assert_eq!(result.notes.len(), 0);
+        assert_eq!(result.total_n_notes, 0);
+        assert!(result.has_more);
     }
 }
