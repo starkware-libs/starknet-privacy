@@ -83,20 +83,46 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
         for (i = nonce; ; i++) {
           const noteId = compute_note_id(channelKey, token, i);
           const noteData = await this.pool.get_note(noteId);
-          if (toBigInt(noteData.packed_value) === 0n) break;
-          const { amount, salt } = encryptions.decryptNoteAmount(
-            toBigInt(noteData.packed_value),
-            channelKey,
+          const packedValue = toBigInt(noteData.packed_value);
+          if (packedValue === 0n) break;
+
+          // Extract salt from upper 128 bits to determine note type
+          // OPEN_NOTE_SALT = 1, ENC_NOTE_MIN_SALT = 2
+          const packedSalt = packedValue >> 128n;
+          const isOpenNote = packedSalt === 1n;
+
+          let amount: bigint;
+          let salt: bigint;
+
+          if (isOpenNote) {
+            // Open notes: amount is in lower 128 bits (plaintext), salt is always 1
+            amount = packedValue & ((1n << 128n) - 1n);
+            salt = 1n;
+          } else {
+            // Encrypted notes: decrypt to get amount and salt
+            const decrypted = encryptions.decryptNoteAmount(packedValue, channelKey, token, i);
+            amount = decrypted.amount;
+            salt = decrypted.salt;
+          }
+
+          debugLog(
+            "contract-discovery",
+            "discoverNotes",
+            "note",
+            sender,
             token,
-            i
+            i,
+            amount,
+            isOpenNote ? "open" : "encrypted"
           );
-          debugLog("contract-discovery", "discoverNotes", "note", sender, token, i, amount);
           notes.get(token)!.push({
             id: noteId,
             amount,
             created: 0,
             witness: { channelKey, nonce: i, r: salt },
             sender,
+            open: isOpenNote,
+            depositor: isOpenNote ? toBigInt(noteData.depositor) : undefined,
           });
         }
         incomingChannelCursor.noteIndexes.set(token, i);

@@ -61,6 +61,7 @@ export type Note = {
   readonly viewingKey?: ViewingKey; // in case the viewing key is different than the privacy pool's.
   readonly sender: StarknetAddress;
   readonly open?: boolean;
+  readonly depositor?: StarknetAddress;
 };
 
 /** Unique identifier for a note, used for semi-transparent (preprepared) notes */
@@ -142,8 +143,7 @@ export type UseNoteAction = {
 export type CreateNoteAction = {
   recipient: StarknetAddressBigint;
   token: StarknetAddressBigint;
-  amount: Amount | Open;
-};
+} & ({ amount: Amount } | { amount: Open; depositor: StarknetAddressBigint });
 
 export type WithdrawAction = {
   recipient: StarknetAddressBigint;
@@ -373,7 +373,10 @@ export type PrivateTransfers = PrivateTransfersInterface;
 /**
  * Output specification for transfer/withdraw operations
  */
-export type TransferOutput = { recipient: StarknetAddress; amount: Amount | Open };
+export type TransferOutput = { recipient: StarknetAddress } & (
+  | { amount: Amount }
+  | { amount: Open; depositor: StarknetAddress }
+);
 export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
 export type DepositInput = { recipient?: StarknetAddress } & {
   amount: Amount;
@@ -409,7 +412,7 @@ export interface TokenOperationsBuilder {
    * Transfer this token privately to one or more recipients.
    * Context for each recipient is resolved from registry or discovery.
    */
-  transfer(...outputs: Array<{ recipient: StarknetAddress; amount: Amount | Open }>): this;
+  transfer(...outputs: TransferOutput[]): this;
 
   /**
    * Set the recipient for any surplus for this token.
