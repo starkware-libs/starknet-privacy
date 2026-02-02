@@ -17,6 +17,14 @@ import {
   compute_enc_address_hash,
 } from "./hashes.js";
 import { toBigInt } from "./convert.js";
+import type {
+  EncChannelInfo,
+  EncSubchannelInfo,
+  EncOutgoingChannelInfo,
+} from "../internal/pool-contract-interface.js";
+
+// Re-export generated types for backwards compatibility
+export type { EncChannelInfo, EncSubchannelInfo, EncOutgoingChannelInfo };
 
 const starkCurve = ec.starkCurve;
 
@@ -59,13 +67,7 @@ function recoverPointFromX(x: bigint): Uint8Array {
 }
 
 // ============ Types ============
-
-/** Encrypted channel information (matches Cairo EncChannelInfo struct) */
-export type EncChannelInfo = {
-  ephemeral_pubkey: BigNumberish;
-  enc_channel_key: BigNumberish;
-  enc_sender_addr: BigNumberish;
-};
+// Note: EncChannelInfo, EncSubchannelInfo, EncOutgoingChannelInfo are imported from pool-contract-interface.ts
 
 /** Decrypted channel information */
 export type ChannelInfo = {
@@ -73,22 +75,10 @@ export type ChannelInfo = {
   sender: bigint;
 };
 
-/** Encrypted subchannel information (matches Cairo EncSubchannelInfo struct) */
-export type EncSubchannelInfo = {
-  salt: BigNumberish;
-  enc_token: BigNumberish;
-};
-
 /** Decrypted subchannel information */
 export type SubchannelInfo = {
   token: bigint;
   salt: bigint;
-};
-
-/** Encrypted outgoing channel information (matches Cairo EncOutgoingChannelInfo struct) */
-export type EncOutgoingChannelInfo = {
-  salt: BigNumberish;
-  enc_recipient_addr: BigNumberish;
 };
 
 /** Decrypted outgoing channel information */

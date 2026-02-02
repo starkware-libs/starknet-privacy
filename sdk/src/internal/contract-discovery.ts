@@ -1,4 +1,4 @@
-import { BigNumberish, BlockIdentifier } from "starknet";
+import { BlockIdentifier } from "starknet";
 import { ViewingKey, Note, Channel, StarknetAddressBigint } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { AbstractDiscoveryProvider } from "./abstract-discovery.js";
@@ -13,55 +13,15 @@ import {
   compute_outgoing_channel_key,
   compute_nullifier,
 } from "../utils/hashes.js";
-import {
-  encryptions,
-  type EncChannelInfo,
-  type EncSubchannelInfo,
-  type EncOutgoingChannelInfo,
-} from "../utils/encryptions.js";
+import { encryptions } from "../utils/encryptions.js";
 import { cloneNotesCursor, cloneChannelCursor } from "./channel.js";
 import type { NotesCursor } from "./channel.js";
 import { bisect, scan, Tracker } from "../utils/scan.js";
 import { createRateLimitedObject, type RateLimitOptions } from "../utils/rate-limiter.js";
+import type { PoolContractInterface, NoteData } from "./pool-contract-interface.js";
 
-/**
- * Note data returned by get_note(), matching Cairo's privacy::objects::Note struct.
- * - packed_value: (salt << 128) | amount - salt=1 for open notes, salt>=2 for encrypted
- * - token: non-zero for open notes, zero for encrypted notes
- * - depositor: non-zero for open notes (who can fill it), zero for encrypted notes
- */
-export type NoteData = {
-  packed_value: BigNumberish;
-  token: BigNumberish;
-  depositor: BigNumberish;
-};
-
-/**
- * Interface for pool contract view methods used by ContractDiscoveryProvider.
- * Both MockPoolContract and PrivacyPoolContract satisfy this interface.
- *
- * Return types are widened to accept what starknet.js typed contracts return:
- * - felt252 fields return BigNumberish (string | number | bigint)
- * - u64 fields return bigint | number
- *
- * ContractDiscoveryProvider defensively converts all values with toBigInt().
- */
-export interface IPoolContract {
-  get_public_key(userAddr: BigNumberish): BigNumberish | Promise<BigNumberish>;
-  get_num_of_channels(recipientAddr: BigNumberish): bigint | number | Promise<bigint | number>;
-  get_channel_info(
-    recipientAddr: BigNumberish,
-    index: number
-  ): EncChannelInfo | Promise<EncChannelInfo>;
-  get_subchannel_info(subchannelKey: BigNumberish): EncSubchannelInfo | Promise<EncSubchannelInfo>;
-  get_outgoing_channel_info(
-    outgoingChannelKey: BigNumberish
-  ): EncOutgoingChannelInfo | Promise<EncOutgoingChannelInfo>;
-  get_note(noteId: BigNumberish): NoteData | Promise<NoteData>;
-  channel_exists(channelId: BigNumberish): boolean | Promise<boolean>;
-  /** Check if a nullifier exists (note has been spent) */
-  nullifier_exists(nullifier: BigNumberish): boolean | Promise<boolean>;
-}
+// Re-export types from generated file
+export type { PoolContractInterface, NoteData } from "./pool-contract-interface.js";
 
 class NotesDiscovery {
   private readonly tracker = new Tracker();
@@ -72,7 +32,7 @@ class NotesDiscovery {
     private readonly viewingKey: ViewingKey,
     private readonly existingCursor: NotesCursor | undefined,
     private readonly tokens: Set<StarknetAddressBigint>,
-    private readonly pool: IPoolContract
+    private readonly pool: PoolContractInterface
   ) {
     this.cursor = cloneNotesCursor(this.existingCursor);
   }
@@ -279,7 +239,7 @@ class ChannelsDiscovery {
     private readonly viewingKey: bigint,
     private readonly recipients: StarknetAddressBigint[] | "all",
     private readonly cursor: AddressMap<Channel> | undefined,
-    private readonly pool: IPoolContract
+    private readonly pool: PoolContractInterface
   ) {
     this.channels = cloneChannelCursor(cursor);
   }
@@ -402,9 +362,9 @@ export type DiscoveryOptions = {
 };
 
 export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
-  private readonly pool: IPoolContract;
+  private readonly pool: PoolContractInterface;
 
-  constructor(pool: IPoolContract, options?: DiscoveryOptions) {
+  constructor(pool: PoolContractInterface, options?: DiscoveryOptions) {
     super();
     this.pool = options?.rateLimit ? createRateLimitedObject(pool, options.rateLimit) : pool;
   }

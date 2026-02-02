@@ -30,7 +30,10 @@ export {
 } from "../utils/hashes.js";
 export { CallMockProofProvider } from "./mock-proving.js";
 export { TracingRpcProvider, TracedRpcError, type DecodedError } from "./tracing-provider.js";
-export { ContractDiscoveryProvider, type IPoolContract } from "../internal/contract-discovery.js";
+export {
+  ContractDiscoveryProvider,
+  type PoolContractInterface,
+} from "../internal/contract-discovery.js";
 export {
   createConcurrencyProfiler,
   formatReport,

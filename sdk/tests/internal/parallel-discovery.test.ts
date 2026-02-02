@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 // Import directly from specific modules to avoid loading devnet.js (Node-only)
 import {
   ContractDiscoveryProvider,
-  type IPoolContract,
+  type PoolContractInterface,
 } from "../../src/internal/contract-discovery.js";
 import { createConcurrencyProfiler, formatReport } from "../../src/testing/concurrency-profiler.js";
 import { Mocknet } from "../../src/testing/mocknet.js";
@@ -90,7 +90,7 @@ describe("Parallel Discovery", () => {
     }
 
     // Wrap pool with profiler
-    const profiler = createConcurrencyProfiler(pool as unknown as IPoolContract, 5);
+    const profiler = createConcurrencyProfiler(pool as unknown as PoolContractInterface, 5);
     const discovery = new ContractDiscoveryProvider(profiler.pool);
 
     // Discover notes for Alice
@@ -183,7 +183,7 @@ describe("Parallel Discovery", () => {
     }
 
     // Wrap pool with profiler
-    const profiler = createConcurrencyProfiler(pool as unknown as IPoolContract, 5);
+    const profiler = createConcurrencyProfiler(pool as unknown as PoolContractInterface, 5);
     const discovery = new ContractDiscoveryProvider(profiler.pool);
 
     // Discover channels for Alice (outgoing channels to all recipients)

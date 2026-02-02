@@ -307,9 +307,6 @@ export interface SimplePrivateTransfersInterface {
   ): Promise<ExecuteResult>;
 }
 
-/** @deprecated Use SimplePrivateTransfersInterface instead */
-export type SimplePrivateTransfers = SimplePrivateTransfersInterface;
-
 /**
  * Main interface for clients to use. It is stateless.
  * The methods call the proof provider to generate a proof and prepare a public call to send to Starknet.
@@ -378,9 +375,6 @@ export interface PrivateTransfersInterface {
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
 }
-
-/** @deprecated Use PrivateTransfersInterface instead */
-export type PrivateTransfers = PrivateTransfersInterface;
 
 // ============ Builder Types ============
 
