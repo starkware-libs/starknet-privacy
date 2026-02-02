@@ -69,12 +69,12 @@ export class PoolSimulator {
         this.handleCreateEncNote(action.input);
         break;
 
-      case "Withdraw":
-        // Withdrawals don't affect tracking state (handled by MockPoolContract)
-        break;
-
       case "CreateOpenNote":
         this.handleCreateOpenNote(action.input);
+        break;
+
+      case "Withdraw":
+        // Withdrawals don't affect tracking state (handled by MockPoolContract)
         break;
 
       case "FollowupCall":
@@ -161,14 +161,12 @@ export class PoolSimulator {
     const { recipient_addr, recipient_public_key } = input;
 
     // Compute the real channel key using the viewing key from constructor
-    const channelKey = this.userViewingKey
-      ? compute_channel_key(
-          this.userAddress,
-          toBigInt(this.userViewingKey),
-          recipient_addr,
-          toBigInt(recipient_public_key)
-        )
-      : undefined;
+    const channelKey = compute_channel_key(
+      this.userAddress,
+      toBigInt(this.userViewingKey),
+      recipient_addr,
+      toBigInt(recipient_public_key)
+    );
 
     // Create/update channel
     const channel = this.channels.get(recipient_addr, () => new Channel(recipient_public_key))!;
