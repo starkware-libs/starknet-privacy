@@ -7,6 +7,7 @@ use starknet_types_core::felt::Felt;
 
 use super::DiscoveryError;
 use crate::decryption::decrypt_channel_info;
+use crate::io_budget::{IoBudget, COST_CHANNEL_INFO, COST_NUM_CHANNELS};
 use crate::storage::IViews;
 use crate::types::ChannelInfo;
 
@@ -38,6 +39,7 @@ pub struct DiscoveryResult {
 /// * `private_key` - The private viewing key of that account.
 /// * `start_index` - Starting index (inclusive). Pass 0 to discover all channels.
 ///   Use `total_n_channels` from a previous result to continue incremental discovery.
+/// * `budget` - I/O budget to limit storage operations.
 ///
 /// # Returns
 ///
@@ -53,7 +55,16 @@ pub async fn discover_incoming_channels<PrivacyPool: IViews>(
     recipient_addr: Felt,
     private_key: &Felt,
     start_index: u64,
+    budget: &IoBudget,
 ) -> Result<DiscoveryResult, DiscoveryError> {
+    // Consume budget for get_num_of_channels
+    if budget.consume(COST_NUM_CHANNELS).is_none() {
+        return Ok(DiscoveryResult {
+            channels: vec![],
+            total_n_channels: start_index,
+        });
+    }
+
     // Get total number of channels
     let total_n_channels = privacy_pool.get_num_of_channels(recipient_addr).await?;
 
@@ -71,6 +82,11 @@ pub async fn discover_incoming_channels<PrivacyPool: IViews>(
     let mut channels = Vec::with_capacity(capacity);
 
     for index in start_index..total_n_channels {
+        // Consume budget for get_channel_info
+        if budget.consume(COST_CHANNEL_INFO).is_none() {
+            break; // Out of budget
+        }
+
         let encrypted = privacy_pool.get_channel_info(recipient_addr, index).await?;
 
         let info = decrypt_channel_info(&encrypted, private_key)
@@ -96,14 +112,15 @@ mod tests {
         let backend = MockBackend::empty();
         let recipient = Felt::from_hex_unchecked("0x123");
         let key = Felt::from(1u64);
+        let budget = IoBudget::new(100);
 
         // Test with 0 (start from beginning)
-        let result1 = discover_incoming_channels(&backend, recipient, &key, 0)
+        let result1 = discover_incoming_channels(&backend, recipient, &key, 0, &budget)
             .await
             .unwrap();
 
         // Test with 5 (arbitrary index beyond total)
-        let result2 = discover_incoming_channels(&backend, recipient, &key, 5)
+        let result2 = discover_incoming_channels(&backend, recipient, &key, 5, &budget)
             .await
             .unwrap();
 
@@ -118,12 +135,14 @@ mod tests {
     async fn test_discover_alice_self_channel() {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
+        let budget = IoBudget::new(100);
 
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
             &fixture.constants.alice_viewing_key,
             0,
+            &budget,
         )
         .await
         .unwrap();
@@ -142,12 +161,14 @@ mod tests {
     async fn test_discover_bob_incoming_channel() {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
+        let budget = IoBudget::new(100);
 
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.bob_address,
             &fixture.constants.bob_viewing_key,
             0,
+            &budget,
         )
         .await
         .unwrap();
@@ -166,6 +187,7 @@ mod tests {
     async fn test_discover_incremental() {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
+        let budget = IoBudget::new(100);
 
         // First discovery - get all channels
         let result1 = discover_incoming_channels(
@@ -173,6 +195,7 @@ mod tests {
             fixture.constants.alice_address,
             &fixture.constants.alice_viewing_key,
             0,
+            &budget,
         )
         .await
         .unwrap();
@@ -187,11 +210,48 @@ mod tests {
             fixture.constants.alice_address,
             &fixture.constants.alice_viewing_key,
             result1.total_n_channels, // Start from 1, but only 1 channel exists
+            &budget,
         )
         .await
         .unwrap();
 
         assert_eq!(result2.channels.len(), 0);
         assert_eq!(result2.total_n_channels, 1); // Total unchanged
+    }
+
+    #[tokio::test]
+    async fn test_discover_out_of_budget() {
+        let fixture = load_devnet_fixture();
+        let backend = MockBackend::new(fixture.slots);
+
+        // Budget exhausted before starting
+        let budget = IoBudget::new(0);
+        let result = discover_incoming_channels(
+            &backend,
+            fixture.constants.alice_address,
+            &fixture.constants.alice_viewing_key,
+            0,
+            &budget,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.channels.len(), 0);
+
+        // Budget allows get_num_of_channels but not get_channel_info
+        // COST_NUM_CHANNELS = 1, COST_CHANNEL_INFO = 3
+        let budget = IoBudget::new(2);
+        let result = discover_incoming_channels(
+            &backend,
+            fixture.constants.alice_address,
+            &fixture.constants.alice_viewing_key,
+            0,
+            &budget,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.channels.len(), 0);
+        assert_eq!(result.total_n_channels, 1); // We got the count
     }
 }
