@@ -8,6 +8,7 @@ use privacy::actions::{
     OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
     TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
 };
+use privacy::events;
 use privacy::hashes::{
     compute_channel_id, compute_channel_key, compute_enc_address_hash, compute_enc_channel_key_hash,
     compute_enc_private_key_hash, compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash,
@@ -64,7 +65,7 @@ pub impl NoteZero of Zero<Note> {
 }
 
 #[generate_trait]
-pub(crate) impl CreateEncNoteInputIntoServerAction of CreateEncNoteInputIntoServerActionTrait {
+pub(crate) impl CreateEncNoteInputIntoServerActionImpl of CreateEncNoteInputIntoServerActionTrait {
     fn into_server_action(self: @CreateEncNoteInput, user: User) -> ServerAction {
         let (note_id, note) = user.compute_enc_note(create_note_input: *self);
         let storage_path = map_entry_address(
@@ -79,13 +80,25 @@ pub(crate) impl CreateEncNoteInputIntoServerAction of CreateEncNoteInputIntoServ
 }
 
 #[generate_trait]
-pub(crate) impl CreateOpenNoteInputIntoServerAction of CreateOpenNoteInputIntoServerActionTrait {
+pub(crate) impl CreateOpenNoteInputIntoServerActionImpl of CreateOpenNoteInputIntoServerActionTrait {
     fn into_server_actions(self: @CreateOpenNoteInput, user: User) -> Span<ServerAction> {
         let (note_id, note) = user.compute_open_note(create_note_input: *self);
         let storage_path = map_entry_address(
             map_selector: selector!("notes"), keys: [note_id].span(),
         );
-        [note.to_write_once_action(storage_address: storage_path)].span()
+        let enc_sender_addr = encrypt_user_addr(
+            ephemeral_secret: *self.random,
+            compliance_public_key: user.privacy.get_compliance_public_key(),
+            user_addr: user.address,
+        );
+
+        [
+            note.to_write_once_action(storage_address: storage_path),
+            ServerAction::EmitOpenNoteCreated(
+                events::OpenNoteCreated { enc_sender_addr, token: note.token, note_id },
+            ),
+        ]
+            .span()
     }
 }
 
@@ -905,6 +918,7 @@ pub(crate) impl UserImpl of UserTrait {
         token: ContractAddress,
         index: usize,
         depositor: ContractAddress,
+        random: felt252,
     ) -> CreateOpenNoteInput {
         CreateOpenNoteInput {
             recipient_addr: recipient.address,
@@ -912,7 +926,19 @@ pub(crate) impl UserImpl of UserTrait {
             token,
             index,
             depositor,
+            random,
         }
+    }
+
+    fn new_open_note_with_generated_random(
+        ref self: User,
+        recipient: User,
+        token: ContractAddress,
+        index: usize,
+        depositor: ContractAddress,
+    ) -> CreateOpenNoteInput {
+        let random = self.get_random();
+        self.new_open_note(:recipient, :token, :index, :depositor, :random)
     }
 
     fn deposit_and_create_note_e2e(ref self: User, token: Token, amount: u128) {
