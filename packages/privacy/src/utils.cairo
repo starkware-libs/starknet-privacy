@@ -1,7 +1,7 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
 use core::never;
-use core::num::traits::Zero;
+use core::num::traits::{WrappingAdd, WrappingSub, Zero};
 use privacy::actions::ServerAction;
 use privacy::errors;
 use privacy::errors::internal_errors;
@@ -209,11 +209,9 @@ pub(crate) fn is_canonical_key(key: felt252) -> bool {
 pub(crate) fn encrypt_note_amount(
     channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
 ) -> felt252 {
-    let enc_amount = (compute_enc_amount_hash(:channel_key, :token, :index, :salt) + amount.into())
-        .into() % TWO_POW_128;
-    packing(
-        value_1: salt, value_2: enc_amount.try_into().expect(internal_errors::ENC_AMOUNT_OVERFLOW),
-    )
+    let enc_amount_hash: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt).into();
+    let enc_amount: u128 = enc_amount_hash.low.wrapping_add(amount);
+    packing(value_1: salt, value_2: enc_amount)
 }
 
 /// Decrypts `enc_amount` using the other parameters.
@@ -221,11 +219,8 @@ pub(crate) fn encrypt_note_amount(
 pub(crate) fn decrypt_note_amount(
     enc_amount: u128, salt: u128, channel_key: felt252, token: ContractAddress, index: usize,
 ) -> u128 {
-    let enc_amount_u256: u256 = enc_amount.into(); // already < 2^128 by construction
-    let pad: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt)
-        .into() % TWO_POW_128;
-    let amount: u256 = (enc_amount_u256 + TWO_POW_128 - pad) % TWO_POW_128;
-    amount.try_into().expect(internal_errors::AMOUNT_OVERFLOW)
+    let enc_amount_hash: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt).into();
+    enc_amount.wrapping_sub(enc_amount_hash.low)
 }
 
 /// Returns the actual note amount from a packed value.
