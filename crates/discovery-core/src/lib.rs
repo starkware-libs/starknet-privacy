@@ -1,6 +1,7 @@
 pub mod decryption;
 pub mod discovery;
 pub mod hashes;
+pub mod io_budget;
 pub mod mock_backend;
 pub mod storage;
 pub mod storage_slots;

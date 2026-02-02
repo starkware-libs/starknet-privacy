@@ -138,8 +138,10 @@ pub async fn get_channel_key(
     viewing_key: &starknet_types_core::felt::Felt,
 ) -> Option<starknet_types_core::felt::Felt> {
     use crate::discovery::incoming_channels::discover_incoming_channels;
+    use crate::io_budget::IoBudget;
 
-    let result = discover_incoming_channels(backend, recipient, viewing_key, 0)
+    let budget = IoBudget::new(100);
+    let result = discover_incoming_channels(backend, recipient, viewing_key, 0, &budget)
         .await
         .ok()?;
 
@@ -152,8 +154,12 @@ pub async fn get_subchannel_token(
     channel_key: starknet_types_core::felt::Felt,
 ) -> Option<starknet_types_core::felt::Felt> {
     use crate::discovery::subchannels::discover_subchannels;
+    use crate::io_budget::IoBudget;
 
-    let result = discover_subchannels(backend, channel_key, 0).await.ok()?;
+    let budget = IoBudget::new(100);
+    let result = discover_subchannels(backend, channel_key, 0, &budget)
+        .await
+        .ok()?;
 
     result.subchannels.first().map(|s| s.token)
 }
