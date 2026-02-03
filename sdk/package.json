@@ -50,6 +50,7 @@
     "ci": "npm run generate && npm run check",
     "clean": "rm -rf dist",
     "decode-error": "npx tsx scripts/decode-error.ts",
+    "deploy:devnet": "npx tsx scripts/deploy-devnet.ts",
     "prepare": "cd .. && git config core.hooksPath .husky || true"
   },
   "lint-staged": {
