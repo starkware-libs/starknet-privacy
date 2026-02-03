@@ -120,8 +120,9 @@ pub struct EncOutgoingChannelInfo {
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
 pub struct Note {
     /// The packed value of the note `(salt, amount)`:
-    /// - For open notes: salt = OPEN_NOTE_SALT (=1), amount = 0 (awaiting deposit).
-    /// - For encrypted notes: salt > OPEN_NOTE_SALT (>=2), amount = encrypted_amount.
+    /// - For open notes: salt = OPEN_NOTE_SALT (=1), amount = zero (awaiting deposit) / non-zero
+    /// amount if already deposited.
+    /// - For encrypted notes: salt > OPEN_NOTE_SALT (>=2), amount = encrypted amount.
     pub packed_value: felt252,
     /// The token address of the note (zero for encrypted notes, non-zero for open notes).
     pub token: ContractAddress,
