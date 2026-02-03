@@ -498,7 +498,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
             privateKey,
             action.input.token,
             action.input.channel_key,
-            action.input.note_index
+            action.input.index
           ),
         ];
 
@@ -663,7 +663,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     ownerPrivateKey: ViewingKey,
     token: StarknetAddressBigint,
     channelKey: Hash,
-    noteIndex: number
+    index: number
   ): MockServerAction {
     const ownerPublicKey = this.get_public_key(owner);
     assert(
@@ -671,10 +671,10 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       () => `Token ${token} does not exist`
     );
 
-    const noteId = compute_note_id(channelKey, token, noteIndex);
+    const noteId = compute_note_id(channelKey, token, index);
     assert(this.notes.has(noteId), () => `Note ${noteId} does not exist`);
 
-    const nullifier = compute_nullifier(channelKey, token, noteIndex, toBigInt(ownerPrivateKey));
+    const nullifier = compute_nullifier(channelKey, token, index, toBigInt(ownerPrivateKey));
 
     return {
       type: "UseNote",
@@ -828,7 +828,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
         case "UseNote": {
           const noteData = this.get_decrypted_note(
             action.input.channel_key,
-            action.input.note_index,
+            action.input.index,
             action.input.token
           );
           assert(noteData, () => `Note not found`);
