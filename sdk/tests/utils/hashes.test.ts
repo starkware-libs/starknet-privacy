@@ -9,7 +9,7 @@ import { describe, it, expect } from "vitest";
 import {
   compute_channel_key,
   compute_channel_marker,
-  compute_subchannel_key,
+  compute_subchannel_id,
   compute_subchannel_marker,
   compute_note_id,
   compute_nullifier,
@@ -19,7 +19,7 @@ import {
   compute_enc_channel_key_hash,
   compute_enc_sender_addr_hash,
   compute_enc_recipient_addr_hash,
-  compute_outgoing_channel_key,
+  compute_outgoing_channel_id,
 } from "../../src/utils/hashes.js";
 import referenceHashes from "../fixtures/cairo-reference-data.json" with { type: "json" };
 
@@ -47,9 +47,9 @@ describe("Hash Compatibility with Cairo", () => {
     expect(result.toString(16)).toBe(BigInt(outputs.channelMarker).toString(16));
   });
 
-  it("compute_subchannel_key matches Cairo", () => {
-    const result = compute_subchannel_key(channelKey, index);
-    expect(result.toString(16)).toBe(BigInt(outputs.subchannelKey).toString(16));
+  it("compute_subchannel_id matches Cairo", () => {
+    const result = compute_subchannel_id(channelKey, index);
+    expect(result.toString(16)).toBe(BigInt(outputs.subchannelId).toString(16));
   });
 
   it("compute_subchannel_marker matches Cairo", () => {
@@ -97,8 +97,8 @@ describe("Hash Compatibility with Cairo", () => {
     expect(result.toString(16)).toBe(BigInt(outputs.encRecipientAddrHash).toString(16));
   });
 
-  it("compute_outgoing_channel_key matches Cairo", () => {
-    const result = compute_outgoing_channel_key(sender, senderPrivateKey, index);
-    expect(result.toString(16)).toBe(BigInt(outputs.outgoingChannelKey).toString(16));
+  it("compute_outgoing_channel_id matches Cairo", () => {
+    const result = compute_outgoing_channel_id(sender, senderPrivateKey, index);
+    expect(result.toString(16)).toBe(BigInt(outputs.outgoingChannelId).toString(16));
   });
 });

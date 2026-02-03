@@ -8,7 +8,7 @@ use starknet_types_core::felt::Felt;
 
 use super::DiscoveryError;
 use crate::decryption::decrypt_subchannel_token;
-use crate::hashes::compute_subchannel_key;
+use crate::hashes::compute_subchannel_id;
 use crate::io_budget::{IoBudget, COST_SUBCHANNEL_INFO};
 use crate::storage::IViews;
 
@@ -39,7 +39,7 @@ pub struct SubchannelDiscoveryResult {
 /// # Algorithm
 ///
 /// For each subchannel index starting from `start_index`:
-/// 1. Compute `subchannel_key = hash(SUBCHANNEL_KEY_TAG, channel_key, index, 0)`
+/// 1. Compute `subchannel_id = hash(SUBCHANNEL_ID_TAG, channel_key, index, 0)`
 /// 2. Fetch `EncSubchannelInfo { salt, enc_token }` from storage
 /// 3. If `salt == 0`, stop (sentinel - no more subchannels)
 /// 4. Decrypt: `token = enc_token - hash(ENC_TOKEN_TAG, channel_key, index, 0, salt)`
@@ -73,8 +73,8 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
             break;
         }
 
-        let subchannel_key = compute_subchannel_key(channel_key, index);
-        let encrypted = privacy_pool.get_subchannel_info(subchannel_key).await?;
+        let subchannel_id = compute_subchannel_id(channel_key, index);
+        let encrypted = privacy_pool.get_subchannel_info(subchannel_id).await?;
 
         // Check for sentinel (salt == 0 means no more subchannels)
         if encrypted.salt == Felt::ZERO {

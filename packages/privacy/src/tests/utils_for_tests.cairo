@@ -13,7 +13,7 @@ use privacy::hashes::{
     compute_channel_key, compute_channel_marker, compute_enc_address_hash,
     compute_enc_channel_key_hash, compute_enc_private_key_hash, compute_enc_recipient_addr_hash,
     compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
-    compute_outgoing_channel_key, compute_subchannel_key, compute_subchannel_marker, hash,
+    compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker, hash,
 };
 use privacy::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
@@ -731,8 +731,8 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    fn compute_outgoing_channel_key(self: @User, index: usize) -> felt252 {
-        compute_outgoing_channel_key(
+    fn compute_outgoing_channel_id(self: @User, index: usize) -> felt252 {
+        compute_outgoing_channel_id(
             sender_addr: *self.address, sender_private_key: *self.private_key, :index,
         )
     }
@@ -758,9 +758,9 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    fn compute_subchannel_key(self: @User, recipient: User, index: usize) -> felt252 {
+    fn compute_subchannel_id(self: @User, recipient: User, index: usize) -> felt252 {
         let channel_key = self.compute_channel_key(:recipient);
-        compute_subchannel_key(:channel_key, :index)
+        compute_subchannel_id(:channel_key, :index)
     }
 
     fn compute_subchannel_marker(
@@ -1270,15 +1270,15 @@ pub(crate) impl TestImpl of TestTrait {
     }
 
     /// Mock function to generate a new subchannel.
-    /// Returns (subchannel_marker, subchannel_key, enc_subchannel_info).
+    /// Returns (subchannel_marker, subchannel_id, enc_subchannel_info).
     fn mock_new_subchannel(ref self: Test) -> (felt252, felt252, EncSubchannelInfo) {
         self.nonce += 1;
         let subchannel_marker = 'SUBCHANNEL_MARKER' + self.nonce.into();
-        let subchannel_key = 'SUBCHANNEL_KEY' + self.nonce.into();
+        let subchannel_id = 'SUBCHANNEL_ID' + self.nonce.into();
         let enc_subchannel_info = EncSubchannelInfo {
             salt: 'SALT' + self.nonce.into(), enc_token: 'ENC_TOKEN' + self.nonce.into(),
         };
-        (subchannel_marker, subchannel_key, enc_subchannel_info)
+        (subchannel_marker, subchannel_id, enc_subchannel_info)
     }
 
     /// Mock function to generate a new note.
@@ -1355,14 +1355,14 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.views.subchannel_exists(:subchannel_marker)
     }
 
-    fn get_subchannel_info(self: @PrivacyCfg, subchannel_key: felt252) -> EncSubchannelInfo {
-        self.views.get_subchannel_info(:subchannel_key)
+    fn get_subchannel_info(self: @PrivacyCfg, subchannel_id: felt252) -> EncSubchannelInfo {
+        self.views.get_subchannel_info(:subchannel_id)
     }
 
     fn get_outgoing_channel_info(
-        self: @PrivacyCfg, outgoing_channel_key: felt252,
+        self: @PrivacyCfg, outgoing_channel_id: felt252,
     ) -> EncOutgoingChannelInfo {
-        self.views.get_outgoing_channel_info(:outgoing_channel_key)
+        self.views.get_outgoing_channel_info(:outgoing_channel_id)
     }
 
     /// Cheat create a note in the server side (no client side).

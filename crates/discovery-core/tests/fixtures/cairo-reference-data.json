@@ -20,7 +20,7 @@
     "userAddr": "0x999",
     "userPrivateKey": "0x888",
     "channelMarker": "0x7309a89bdfa0bb6b922eacee506760a8b68c53256b4ef7dd0181181f6671bcb",
-    "subchannelKey": "0x3a8c0e4f11d30d06a65772a5ddbf598f40446d41dede067aaa9b321b79dc90a",
+    "subchannelId": "0x3a8c0e4f11d30d06a65772a5ddbf598f40446d41dede067aaa9b321b79dc90a",
     "subchannelMarker": "0x5d017d0ab753ba429478f7b484cd49ec19f15d272272de7ebd5c2051822d959",
     "noteId": "0x70221e8eadc952c74cf4cb481069330705bccd96dcfb9cabbf0bbb301fdf9f5",
     "nullifier": "0x6934fcf1d982c246779f75fda7340a81592af6bc1ea4f627ae67a41bceca0fc"
@@ -43,7 +43,7 @@
   "outputs": {
     "channelKey": "0x67db9bd0362ca14c4418ecd78e743d96b069a24c0a5abe7cdb01f95cd0174e",
     "channelMarker": "0x7309a89bdfa0bb6b922eacee506760a8b68c53256b4ef7dd0181181f6671bcb",
-    "subchannelKey": "0x3a8c0e4f11d30d06a65772a5ddbf598f40446d41dede067aaa9b321b79dc90a",
+    "subchannelId": "0x3a8c0e4f11d30d06a65772a5ddbf598f40446d41dede067aaa9b321b79dc90a",
     "subchannelMarker": "0x5d017d0ab753ba429478f7b484cd49ec19f15d272272de7ebd5c2051822d959",
     "noteId": "0x70221e8eadc952c74cf4cb481069330705bccd96dcfb9cabbf0bbb301fdf9f5",
     "nullifier": "0x6934fcf1d982c246779f75fda7340a81592af6bc1ea4f627ae67a41bceca0fc",
@@ -53,7 +53,7 @@
     "encChannelKeyHash": "0x6384aa078e9499027caeff23f77d40bf64327730073680a225bcf39471af982",
     "encSenderAddrHash": "0x64624488f110b7a72cf913789912ab67d997fd69e3502042886d9a78fdda0c3",
     "encRecipientAddrHash": "0x6db9825fb4ddec3934d97213cc2011feee61f7b02912357ab7c0563f7786998",
-    "outgoingChannelKey": "0x3d17c547716c2f9b675f963f99fea948eaa45a1ac68f22904b498847cc6dcfa",
+    "outgoingChannelId": "0x3d17c547716c2f9b675f963f99fea948eaa45a1ac68f22904b498847cc6dcfa",
     "encSubchannelSalt": "0x5678",
     "encSubchannelToken": "0x754ef9df43705e07275d270046a4d46e2c573ce7e54694b4b388bb9de364c9c",
     "encChannelEphemeralPubkey": "0x43299cc92ce884c67fa0353094e10e3d80b77f10607f266c79972941a42518a",

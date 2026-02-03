@@ -772,7 +772,7 @@ export const PrivacyPoolABI = [
         "name": "get_subchannel_info",
         "inputs": [
           {
-            "name": "subchannel_key",
+            "name": "subchannel_id",
             "type": "core::felt252"
           }
         ],
@@ -788,7 +788,7 @@ export const PrivacyPoolABI = [
         "name": "get_outgoing_channel_info",
         "inputs": [
           {
-            "name": "outgoing_channel_key",
+            "name": "outgoing_channel_id",
             "type": "core::felt252"
           }
         ],
