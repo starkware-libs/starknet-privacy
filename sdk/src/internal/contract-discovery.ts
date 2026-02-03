@@ -187,7 +187,8 @@ class NotesDiscovery {
     const packedValue = toBigInt(noteData.packed_value);
 
     // Extract salt from upper 128 bits to determine note type
-    // OPEN_NOTE_SALT = 1
+    // salt = OPEN_NOTE_SALT (=1) indicates an open note
+    // salt > OPEN_NOTE_SALT (>=2) indicates an encrypted note
     const packedSalt = packedValue >> 128n;
     const isOpenNote = packedSalt === 1n;
 
