@@ -875,14 +875,14 @@ fn test_open_channel() {
         ServerAction::VerifyValue(
             VerifyValueInput { storage_address: public_key_storage_path, value: user_2.public_key },
         ),
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: channel_exists_storage_path, value: [true.into()].span(),
-            },
-        ),
         ServerAction::AppendToVec(
             AppendToVecInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
+            },
+        ),
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: channel_exists_storage_path, value: [true.into()].span(),
             },
         ),
         expected_enc_outgoing_channel_info
@@ -925,14 +925,14 @@ fn test_open_channel_self_channel() {
         ServerAction::VerifyValue(
             VerifyValueInput { storage_address: public_key_storage_path, value: user.public_key },
         ),
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: channel_exists_storage_path, value: [true.into()].span(),
-            },
-        ),
         ServerAction::AppendToVec(
             AppendToVecInput {
                 recipient_addr: user.address, enc_channel_info: expected_enc_channel_info,
+            },
+        ),
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: channel_exists_storage_path, value: [true.into()].span(),
             },
         ),
         expected_enc_outgoing_channel_info
@@ -1179,14 +1179,14 @@ fn test_open_channel_multiple_channels_same_sender() {
                 storage_address: public_key_storage_path_1, value: user_2.public_key,
             },
         ),
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: channel_exists_storage_path_1, value: [true.into()].span(),
-            },
-        ),
         ServerAction::AppendToVec(
             AppendToVecInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info_1,
+            },
+        ),
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: channel_exists_storage_path_1, value: [true.into()].span(),
             },
         ),
         expected_enc_outgoing_channel_info_1
@@ -1199,14 +1199,14 @@ fn test_open_channel_multiple_channels_same_sender() {
                 storage_address: public_key_storage_path_2, value: user_3.public_key,
             },
         ),
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: channel_exists_storage_path_2, value: [true.into()].span(),
-            },
-        ),
         ServerAction::AppendToVec(
             AppendToVecInput {
                 recipient_addr: user_3.address, enc_channel_info: expected_enc_channel_info_2,
+            },
+        ),
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: channel_exists_storage_path_2, value: [true.into()].span(),
             },
         ),
         expected_enc_outgoing_channel_info_2
@@ -1299,14 +1299,14 @@ fn test_open_channel_multiple_channels_same_recipient() {
                 storage_address: public_key_storage_path_1, value: user_1.public_key,
             },
         ),
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: channel_exists_storage_path_1, value: [true.into()].span(),
-            },
-        ),
         ServerAction::AppendToVec(
             AppendToVecInput {
                 recipient_addr: user_1.address, enc_channel_info: expected_enc_channel_info_1,
+            },
+        ),
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: channel_exists_storage_path_1, value: [true.into()].span(),
             },
         ),
         expected_enc_outgoing_channel_info_1
@@ -1319,14 +1319,14 @@ fn test_open_channel_multiple_channels_same_recipient() {
                 storage_address: public_key_storage_path_2, value: user_1.public_key,
             },
         ),
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: channel_exists_storage_path_2, value: [true.into()].span(),
-            },
-        ),
         ServerAction::AppendToVec(
             AppendToVecInput {
                 recipient_addr: user_1.address, enc_channel_info: expected_enc_channel_info_2,
+            },
+        ),
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: channel_exists_storage_path_2, value: [true.into()].span(),
             },
         ),
         expected_enc_outgoing_channel_info_2
@@ -1415,14 +1415,14 @@ fn test_open_channel_zero_salt() {
         ServerAction::VerifyValue(
             VerifyValueInput { storage_address: public_key_storage_path, value: user.public_key },
         ),
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: channel_exists_storage_path, value: [true.into()].span(),
-            },
-        ),
         ServerAction::AppendToVec(
             AppendToVecInput {
                 recipient_addr: user.address, enc_channel_info: expected_enc_channel_info,
+            },
+        ),
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: channel_exists_storage_path, value: [true.into()].span(),
             },
         ),
         expected_enc_outgoing_channel_info
@@ -1456,13 +1456,13 @@ fn test_open_subchannel() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
     );
     let expected_actions = [
+        expected_enc_subchannel_info
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
     ]
         .span();
     assert_eq!(channel_output, expected_actions);
@@ -1490,13 +1490,13 @@ fn test_open_subchannel_self_channel() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
     );
     let expected_actions = [
+        expected_enc_subchannel_info
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
     ]
         .span();
     assert_eq!(channel_output, expected_actions);
@@ -1527,13 +1527,13 @@ fn test_open_subchannel_zero_salt() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
     );
     let expected_actions = [
+        expected_enc_subchannel_info
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -1825,23 +1825,23 @@ fn test_open_subchannel_multiple() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_2].span(),
     );
     let expected_actions_1 = [
+        expected_enc_subchannel_info_1
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_1),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt_1, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info_1
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_1),
     ]
         .span();
     let expected_actions_2 = [
+        expected_enc_subchannel_info_2
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_2),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt_2, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info_2
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_2),
     ]
         .span();
     assert_eq!(c1_output, expected_actions_1);
@@ -1880,23 +1880,23 @@ fn test_open_subchannel_multiple() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_2].span(),
     );
     let expected_actions_1 = [
+        expected_enc_subchannel_info_1
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_1),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info_1
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_1),
     ]
         .span();
     let expected_actions_2 = [
+        expected_enc_subchannel_info_2
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_2),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info_2
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_2),
     ]
         .span();
     assert_eq!(c1_output, expected_actions_1);
@@ -1944,23 +1944,23 @@ fn test_open_subchannel_multiple() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
     );
     let expected_actions_1 = [
+        expected_enc_subchannel_info_1
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt_1, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info_1
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
     ]
         .span();
     let expected_actions_2 = [
+        expected_enc_subchannel_info_2
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt_2, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info_2
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
     ]
         .span();
     assert_eq!(c1_output, expected_actions_1);
@@ -2017,23 +2017,23 @@ fn test_open_subchannel_multiple_self_channel() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_2].span(),
     );
     let expected_actions_1 = [
+        expected_enc_subchannel_info_1
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_1),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt_1, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info_1
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_1),
     ]
         .span();
     let expected_actions_2 = [
+        expected_enc_subchannel_info_2
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_2),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt_2, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info_2
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt_2),
     ]
         .span();
     assert_eq!(c1_output, expected_actions_1);
@@ -3697,14 +3697,14 @@ fn test_client_execute_open_channel() {
                 storage_address: recipient_public_key_storage_path, value: user_2.public_key,
             },
         ),
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: channel_exists_storage_path, value: [true.into()].span(),
-            },
-        ),
         ServerAction::AppendToVec(
             AppendToVecInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
+            },
+        ),
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: channel_exists_storage_path, value: [true.into()].span(),
             },
         ),
         expected_enc_outgoing_channel_info
@@ -3770,13 +3770,13 @@ fn test_client_execute_open_subchannel() {
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
     );
     let expected_actions = [
+        expected_enc_subchannel_info
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path_felt, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path_felt),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -4033,14 +4033,14 @@ fn test_internal_actions() {
         ServerAction::VerifyValue(
             VerifyValueInput { storage_address: public_key_storage_path, value: user_2.public_key },
         ),
-        ServerAction::WriteOnce(
-            WriteOnceInput {
-                storage_address: channel_exists_storage_path, value: [true.into()].span(),
-            },
-        ),
         ServerAction::AppendToVec(
             AppendToVecInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
+            },
+        ),
+        ServerAction::WriteOnce(
+            WriteOnceInput {
+                storage_address: channel_exists_storage_path, value: [true.into()].span(),
             },
         ),
         expected_enc_outgoing_channel_info
@@ -4066,13 +4066,13 @@ fn test_internal_actions() {
             recipient: user_2, :token_address, index: 0, salt: salt_subchannel,
         );
     let expected_actions = [
+        expected_enc_subchannel_info
+            .to_write_once_action(storage_address: subchannel_tokens_storage_path),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path, value: [true.into()].span(),
             },
         ),
-        expected_enc_subchannel_info
-            .to_write_once_action(storage_address: subchannel_tokens_storage_path),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -4894,21 +4894,21 @@ fn test_client_execute_writes() {
         ServerAction::VerifyValue(
             VerifyValueInput { storage_address: public_key_storage_path, value: public_key },
         ),
+        ServerAction::AppendToVec(AppendToVecInput { recipient_addr: address, enc_channel_info }),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: channel_exists_storage_path, value: [true.into()].span(),
             },
         ),
-        ServerAction::AppendToVec(AppendToVecInput { recipient_addr: address, enc_channel_info }),
         enc_outgoing_channel_info
             .to_write_once_action(storage_address: outgoing_channels_storage_path),
         // Open subchannel.
+        enc_subchannel_info.to_write_once_action(storage_address: subchannel_tokens_storage_path),
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address: subchannel_exists_storage_path, value: [true.into()].span(),
             },
         ),
-        enc_subchannel_info.to_write_once_action(storage_address: subchannel_tokens_storage_path),
         // Deposit.
         ServerAction::TransferFrom(
             TransferFromInput { sender_addr: address, token: token_address, amount },
