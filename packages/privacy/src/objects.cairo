@@ -83,20 +83,6 @@ pub struct EncSubchannelInfo {
     pub enc_token: felt252,
 }
 
-pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
-    fn zero() -> EncSubchannelInfo {
-        EncSubchannelInfo { salt: Zero::zero(), enc_token: Zero::zero() }
-    }
-    /// Check if `enc_token` field is zero.
-    fn is_zero(self: @EncSubchannelInfo) -> bool {
-        return self.enc_token.is_zero();
-    }
-    /// Check if `enc_token` field is non-zero.
-    fn is_non_zero(self: @EncSubchannelInfo) -> bool {
-        !self.is_zero()
-    }
-}
-
 /// Ciphertext for an ECDH-based encryption of user address.
 /// Used for compliance to be able to decrypt the user address when withdrawing.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
@@ -127,21 +113,6 @@ pub struct EncOutgoingChannelInfo {
     pub salt: felt252,
     /// The encrypted recipient address.
     pub enc_recipient_addr: felt252,
-}
-
-
-pub impl EncOutgoingChannelInfoZero of Zero<EncOutgoingChannelInfo> {
-    fn zero() -> EncOutgoingChannelInfo {
-        EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() }
-    }
-    /// Check if `enc_recipient_addr` field is zero.
-    fn is_zero(self: @EncOutgoingChannelInfo) -> bool {
-        return self.enc_recipient_addr.is_zero();
-    }
-    /// Check if `enc_recipient_addr` field is non-zero.
-    fn is_non_zero(self: @EncOutgoingChannelInfo) -> bool {
-        !self.is_zero()
-    }
 }
 
 /// A note containing encrypted value and token information.
