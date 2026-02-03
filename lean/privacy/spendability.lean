@@ -45,7 +45,7 @@ theorem spendable_note
 
   refine ⟨⟨?_, ?_, ?_, ?_, ?_⟩, ?_⟩
   · have := note_imp.subchannel.subchannel_hash
-    simp only [CreateSubchannelInput.subchannel_hash] at this
+    simp only [OpenSubchannelInput.subchannel_hash] at this
     rw [h_addrbob, h_Kbob] at this
     simp only [h_sn] at this
     exact this

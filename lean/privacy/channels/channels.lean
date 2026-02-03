@@ -11,9 +11,9 @@ def channel_exists (crypto: Crypto) (m: Memory) (c: ℕ) : Prop :=
     m .ChannelHashes [crypto.hash [c, addralice, addrbob, Kbob]] ≠ 0
 
 structure ChannelImplies
-    {crypto: Crypto} (rm: ReachableMemory crypto) (inp: CreateChannelInput) where
-  h_action: .CreateChannel inp ∈ rm.actions
-  success: ∃ rm₀: ReachableMemory crypto, ∃ success, rm.extends (rm₀.add (.CreateChannel inp) success)
+    {crypto: Crypto} (rm: ReachableMemory crypto) (inp: OpenChannelInput) where
+  h_action: .OpenChannel inp ∈ rm.actions
+  success: ∃ rm₀: ReachableMemory crypto, ∃ success, rm.extends (rm₀.add (.OpenChannel inp) success)
   kbob: crypto.PrivateKeys
   h_Kbob: inp.Kbob = crypto.priv_to_pub kbob
   alice_registered: RegisterImplies rm ⟨inp.addralice, inp.kalice⟩
@@ -24,18 +24,18 @@ structure ChannelImplies
   channel_enc: rm.m .Channels [inp.addrbob, j] = inp.enc crypto
 
 abbrev ChannelImplies.c
-    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateChannelInput}
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenChannelInput}
     (_: ChannelImplies rm inp) : ℕ :=
   inp.c crypto
 
 theorem ChannelImplies.h_channel_exists
-    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateChannelInput}
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenChannelInput}
     (channel_imp: ChannelImplies rm inp) :
     channel_exists crypto rm (inp.c crypto) :=
   ⟨inp.addralice, inp.addrbob, inp.Kbob, by simp [channel_imp.channel_hashes]⟩
 
 theorem ChannelImplies.next
-    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateChannelInput}
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenChannelInput}
     {action: Action} (success: (run_action crypto action rm.m).success)
     (channel_imp: ChannelImplies rm inp) :
     Nonempty (ChannelImplies (rm.add action success) inp) := by
@@ -55,12 +55,12 @@ theorem ChannelImplies.next
   }⟩
 
   · cases action
-    case CreateChannel inp' =>
-      let info := create_channel_info crypto inp' rm success
+    case OpenChannel inp' =>
+      let info := open_channel_info crypto inp' rm success
       rw [rm.add_m, run_action, ←info.h_m']
       by_cases h_is_same: inp.channel_hash crypto = inp'.channel_hash crypto
       case pos =>
-        rw [←CreateChannelInput.channel_hash, h_is_same]
+        rw [←OpenChannelInput.channel_hash, h_is_same]
         simp [info.memory_diff₂]
       case neg =>
         rw [info.no_change _ _ (by simp; simp [h_is_same])]
@@ -68,8 +68,8 @@ theorem ChannelImplies.next
     all_goals exact channel_imp.channel_hashes
 
   · cases action
-    case CreateChannel inp' =>
-      let info := create_channel_info crypto inp' rm success
+    case OpenChannel inp' =>
+      let info := open_channel_info crypto inp' rm success
       rw [rm.add_m, run_action, ←info.h_m']
       by_cases h_addrbob: inp.addrbob = inp'.addrbob
       case pos =>
@@ -83,8 +83,8 @@ theorem ChannelImplies.next
     all_goals exact channel_imp.h_j_lt
 
   · cases action
-    case CreateChannel inp' =>
-      let info := create_channel_info crypto inp' rm success
+    case OpenChannel inp' =>
+      let info := open_channel_info crypto inp' rm success
       rw [rm.add_m, run_action, ←info.h_m']
       have h: inp.addrbob = inp'.addrbob → ¬channel_imp.j = info.j := by
         intro h_addrbob
@@ -97,8 +97,8 @@ theorem ChannelImplies.next
     all_goals exact channel_imp.channel_enc
 
 theorem ChannelImplies.from_action
-    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateChannelInput}
-    (h: .CreateChannel inp ∈ rm.actions) :
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenChannelInput}
+    (h: .OpenChannel inp ∈ rm.actions) :
     Nonempty (ChannelImplies rm inp) := by
   revert rm
   apply ReachableMemory.induction
@@ -107,7 +107,7 @@ theorem ChannelImplies.from_action
   intro action rm ih success h
   cases h
   case head =>
-    let info := create_channel_info crypto inp rm success
+    let info := open_channel_info crypto inp rm success
     have ⟨kbob, res_bob⟩ := RegisterImplies.from_public_key (info.h_Kbob ▸ info.bob_registered)
     have : rm.m MemoryType.PublicKeys [inp.addralice] ≠ 0 := by
       rw [info.alice_registered]
@@ -141,12 +141,12 @@ theorem ChannelImplies.from_channel_hashes
     ∃ (kalice s r: ℕ) (res: ChannelImplies rm ⟨addralice, kalice, addrbob, Kbob, s, r⟩),
     res.c = c := by
   suffices h' : ∃ kalice s r: ℕ,
-      (.CreateChannel ⟨addralice, kalice, addrbob, Kbob, s, r⟩) ∈ rm.actions ∧
+      (.OpenChannel ⟨addralice, kalice, addrbob, Kbob, s, r⟩) ∈ rm.actions ∧
       c = crypto.hash [addralice, kalice, addrbob, Kbob] from by
     obtain ⟨kalice, s, r, h'⟩ := h'
     have ⟨res⟩ := ChannelImplies.from_action h'.1
     use kalice, s, r, res
-    simp [ChannelImplies.c, CreateChannelInput.c, h'.2]
+    simp [ChannelImplies.c, OpenChannelInput.c, h'.2]
 
   revert rm
   apply ReachableMemory.induction
@@ -154,8 +154,8 @@ theorem ChannelImplies.from_channel_hashes
 
   intro action rm ih success h
   cases action
-  case CreateChannel inp =>
-    let info := create_channel_info crypto inp rm success
+  case OpenChannel inp =>
+    let info := open_channel_info crypto inp rm success
     dsimp only [ReachableMemory.add, ReachableMemory.m] at h
     rw [run_all_cons₁, run_action, ←info.h_m'] at h
 
@@ -180,7 +180,7 @@ theorem ChannelImplies.from_channel_hashes
     use kalice, s, r, by simp [h_actions]
 
 theorem ChannelImplies.same_c
-    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateChannelInput}
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenChannelInput}
     (channel_imp: ChannelImplies rm inp)
     {addralice kalice addrbob Kbob: ℕ}
     (h: channel_imp.c = crypto.hash [addralice, kalice, addrbob, Kbob]) :
@@ -188,7 +188,7 @@ theorem ChannelImplies.same_c
   apply crypto.h_hash at h; injections; simp [*]
 
 theorem ChannelImplies.same_c_priv
-    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateChannelInput}
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenChannelInput}
     (channel_imp: ChannelImplies rm inp)
     {addralice kalice addrbob: ℕ}
     {kbob: crypto.PrivateKeys}
@@ -203,7 +203,7 @@ theorem ChannelImplies.same_c_priv
 theorem ChannelImplies.from_channel_exists
     {crypto: Crypto} {rm: ReachableMemory crypto} {c: ℕ}
     (h: channel_exists crypto rm c) :
-    ∃ (inp: CreateChannelInput) (channel_imp: ChannelImplies rm inp),
+    ∃ (inp: OpenChannelInput) (channel_imp: ChannelImplies rm inp),
     channel_imp.c = c := by
   replace ⟨addralice, addrbob, Kbob, h⟩ := h
   have ⟨kalice, s, r, ⟨channel_imp, h_c⟩⟩ := ChannelImplies.from_channel_hashes h

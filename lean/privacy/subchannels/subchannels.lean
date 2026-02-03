@@ -7,13 +7,13 @@ structure SubchannelImplies₀
   (k₀ k₁ r kalice channel_s channel_r: ℕ)
   h_k₀: k₀ < crypto.MAX_K₀
   r_ne_zero: r ≠ 0
-  h_action: .CreateSubchannel ⟨c, addralice, addrbob, Kbob, token, k₀, k₁, r⟩ ∈ rm.actions
+  h_action: .OpenSubchannel ⟨c, addralice, addrbob, Kbob, token, k₀, k₁, r⟩ ∈ rm.actions
   channel: ChannelImplies rm ⟨addralice, kalice, addrbob, Kbob, channel_s, channel_r⟩
   h_c: c = channel.c
 
 abbrev SubchannelImplies₀.subchannel_input
     {crypto: Crypto} {rm: ReachableMemory crypto} {c addralice addrbob Kbob token: ℕ}
-    (subchannel_imp: SubchannelImplies₀ rm c addralice addrbob Kbob token) : CreateSubchannelInput :=
+    (subchannel_imp: SubchannelImplies₀ rm c addralice addrbob Kbob token) : OpenSubchannelInput :=
   ⟨c, addralice, addrbob, Kbob, token, subchannel_imp.k₀, subchannel_imp.k₁, subchannel_imp.r⟩
 
 structure SubchannelImplies
@@ -50,8 +50,8 @@ theorem SubchannelImplies.next
   }
 
   cases action
-  case CreateSubchannel inp =>
-    let info := create_subchannel_info crypto inp rm success
+  case OpenSubchannel inp =>
+    let info := open_subchannel_info crypto inp rm success
     have h_subchannel_id_ne : subchannel_imp₀.subchannel_input.subchannel_id crypto ≠ inp.subchannel_id crypto := by
       by_contra h'
       have := subchannel_imp.subchannel_tokens₀ ▸ h' ▸ info.old_token_was_zero
@@ -79,13 +79,13 @@ theorem SubchannelImplies.next
       case neg =>
         have prev_exists := Or.resolve_left subchannel_imp.prev_subchannel_exists h
         apply Or.inr
-        have : crypto.hash [c, subchannel_imp₀.k₀, subchannel_imp₀.k₁ - 1] ≠ CreateSubchannelInput.subchannel_id crypto inp := by
+        have : crypto.hash [c, subchannel_imp₀.k₀, subchannel_imp₀.k₁ - 1] ≠ OpenSubchannelInput.subchannel_id crypto inp := by
           by_contra h'
           have := crypto.h_hash h'
           injections
           rename_i h₀ h₁ h₂
           have := info.old_token_was_zero
-          simp only [CreateSubchannelInput.subchannel_id, ←h₀, ←h₁, ←h₂] at this
+          simp only [OpenSubchannelInput.subchannel_id, ←h₀, ←h₁, ←h₂] at this
           exact prev_exists this
         rw [rm.add_m, run_action, ←info.h_m', info.no_change _ _ (by simp) (by simp [this]) (by simp)]
         exact prev_exists
@@ -99,8 +99,8 @@ theorem SubchannelImplies.next
   }⟩
 
 theorem SubchannelImplies.from_action
-    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateSubchannelInput}
-    (h: .CreateSubchannel inp ∈ rm.actions) :
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenSubchannelInput}
+    (h: .OpenSubchannel inp ∈ rm.actions) :
     Nonempty (SubchannelImplies rm inp.c inp.addralice inp.addrbob inp.Kbob inp.token) := by
   revert rm
   apply ReachableMemory.induction
@@ -109,7 +109,7 @@ theorem SubchannelImplies.from_action
   intro action rm ih success h
   cases h
   case head =>
-    let info := create_subchannel_info crypto inp rm success
+    let info := open_subchannel_info crypto inp rm success
     obtain ⟨kalice, channel_s, channel_r, ⟨channel_imp, h_c⟩⟩ := ChannelImplies.from_channel_hashes info.channel_exists
 
     refine ⟨{
@@ -134,7 +134,7 @@ theorem SubchannelImplies.from_action
       case pos => simp [h]
       case neg =>
         apply Or.inr
-        have : crypto.hash [inp.c, inp.k₀, inp.k₁ - 1] ≠ CreateSubchannelInput.subchannel_id crypto inp := by
+        have : crypto.hash [inp.c, inp.k₀, inp.k₁ - 1] ≠ OpenSubchannelInput.subchannel_id crypto inp := by
           by_contra h
           have := crypto.h_hash h
           injections
@@ -156,8 +156,8 @@ theorem SubchannelImplies.from_subchannel_hash_exists
 
   intro action rm ih success h'
   cases action
-  case CreateSubchannel inp =>
-    let info := create_subchannel_info crypto inp rm success
+  case OpenSubchannel inp =>
+    let info := open_subchannel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m'] at h'
 
     by_cases h_is_same: crypto.hash [c, addrbob, Kbob, token] = crypto.hash [inp.c, inp.addrbob, inp.Kbob, inp.token]
@@ -190,11 +190,11 @@ theorem subchannel_exists_monotone
 := by
   unfold subchannel_exists
   cases action
-  case CreateSubchannel inp =>
+  case OpenSubchannel inp =>
     obtain ⟨addrbob, Kbob, h⟩ := h
     use addrbob, Kbob
 
-    let info := create_subchannel_info crypto inp rm success
+    let info := open_subchannel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
     by_cases h_is_same : crypto.hash [c, addrbob, Kbob, token] = inp.subchannel_hash crypto

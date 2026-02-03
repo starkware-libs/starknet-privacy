@@ -5,8 +5,8 @@ import privacy.notes.note_implies
 def Action.check_owner (action: Action) (owner: ℕ) : Prop :=
   match action with
   | .Register inp => inp.addralice = owner
-  | .CreateChannel inp => inp.addralice = owner
-  | .CreateSubchannel inp => inp.addralice = owner
+  | .OpenChannel inp => inp.addralice = owner
+  | .OpenSubchannel inp => inp.addralice = owner
   | .CreateNote inp => inp.addralice = owner
   | .CancelNote inp => inp.addrbob = owner
   | .OpenDeposit _ => true

@@ -12,9 +12,9 @@ theorem channel_exists_monotone (crypto: Crypto) (rm: ReachableMemory crypto) (a
 := by
   unfold channel_exists
   cases action
-  case CreateChannel inp =>
+  case OpenChannel inp =>
     simp only
-    let info := create_channel_info crypto inp rm success
+    let info := open_channel_info crypto inp rm success
     obtain ⟨addralice, addrbob, Kbob, h⟩ := h
     use addralice, addrbob, Kbob
     rw [ReachableMemory.add_m, run_action, ←info.h_m']
@@ -35,10 +35,10 @@ theorem channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypto) (addrb
 
   intro action rm
   cases action
-  case CreateChannel inp =>
+  case OpenChannel inp =>
     intro h success j
 
-    have info := create_channel_info crypto inp rm success
+    have info := open_channel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
     by_cases h_bob: addrbob = inp.addrbob
@@ -83,9 +83,9 @@ theorem outgoing_channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypt
 
   intro action rm ih success
   cases action
-  case CreateChannel inp =>
+  case OpenChannel inp =>
     obtain ⟨s_bound, ih⟩ := ih
-    let info := create_channel_info crypto inp rm success
+    let info := open_channel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
     by_cases h₀ : addralice = inp.addralice ∧ kalice = inp.kalice
@@ -103,7 +103,7 @@ theorem outgoing_channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypt
         case inl h_prev => omega
         case inr h_prev =>
           have := (ih (inp.s - 1)).2
-          simp only [h₀, CreateChannelInput.prev_outgoing_channel_id] at h_prev this
+          simp only [h₀, OpenChannelInput.prev_outgoing_channel_id] at h_prev this
           omega
 
       have h_s : s_bound = inp.s := by omega
@@ -115,7 +115,7 @@ theorem outgoing_channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypt
         exact info.r_ne_zero
       case neg =>
         have h_hash_ne : crypto.hash [inp.addralice, inp.kalice, s] ≠ inp.outgoing_channel_id crypto := by
-          simp only [CreateChannelInput.outgoing_channel_id, ne_eq]
+          simp only [OpenChannelInput.outgoing_channel_id, ne_eq]
           intro h
           apply crypto.h_hash at h
           injections h
@@ -129,7 +129,7 @@ theorem outgoing_channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypt
       use s_bound
       intro s
       have h_hash_ne : crypto.hash [addralice, kalice, s] ≠ inp.outgoing_channel_id crypto := by
-        simp only [CreateChannelInput.outgoing_channel_id, ne_eq]
+        simp only [OpenChannelInput.outgoing_channel_id, ne_eq]
         intro h
         apply crypto.h_hash at h
         injections h

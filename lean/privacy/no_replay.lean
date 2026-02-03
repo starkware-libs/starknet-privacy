@@ -19,12 +19,12 @@ theorem no_replay
     have register_imp := RegisterImplies.from_action h
     have := register_imp.public_key ▸ info.alice_was_not_registered
     exact crypto.zero_not_public_key ⟨_, register_imp.h_kalice⟩ this
-  case CreateChannel inp =>
-    let info := create_channel_info crypto inp rm success
+  case OpenChannel inp =>
+    let info := open_channel_info crypto inp rm success
     have ⟨channel_imp⟩ := ChannelImplies.from_action h
     exact channel_imp.channel_hashes info.channel_didnt_exist
-  case CreateSubchannel inp =>
-    let info := create_subchannel_info crypto inp rm success
+  case OpenSubchannel inp =>
+    let info := open_subchannel_info crypto inp rm success
     have ⟨subchannel_imp⟩ := SubchannelImplies.from_action h
     exact subchannel_imp.subchannel_hash info.old_hash_was_zero
   case CreateNote inp =>
