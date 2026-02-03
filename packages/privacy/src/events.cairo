@@ -50,6 +50,9 @@ pub struct CompliancePublicKeySet {
 pub struct OpenNoteCreated {
     /// Encrypted sender address. Can be decrypted by the compliance.
     pub enc_sender_addr: EncUserAddr,
+    /// The address who is allowed to deposit into the note.
+    #[key]
+    pub depositor: ContractAddress,
     /// The token's address.
     #[key]
     pub token: ContractAddress,

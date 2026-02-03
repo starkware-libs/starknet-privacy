@@ -640,7 +640,7 @@ pub mod Privacy {
             array![
                 to_write_once_action(:storage_address, value: note),
                 ServerAction::EmitOpenNoteCreated(
-                    events::OpenNoteCreated { enc_sender_addr, token, note_id },
+                    events::OpenNoteCreated { enc_sender_addr, depositor, token, note_id },
                 ),
             ]
         }

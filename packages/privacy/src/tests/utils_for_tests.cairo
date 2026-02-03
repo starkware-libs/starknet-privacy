@@ -95,7 +95,9 @@ pub(crate) impl CreateOpenNoteInputIntoServerActionImpl of CreateOpenNoteInputIn
         [
             to_write_once_action(storage_address: storage_path, value: note),
             ServerAction::EmitOpenNoteCreated(
-                events::OpenNoteCreated { enc_sender_addr, token: note.token, note_id },
+                events::OpenNoteCreated {
+                    enc_sender_addr, depositor: note.depositor, token: note.token, note_id,
+                },
             ),
         ]
             .span()
