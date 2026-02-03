@@ -3753,7 +3753,7 @@ fn test_withdraw_decrypt_user_addr() {
 }
 
 #[test]
-fn test_create_open_note_decrypt_sender_addr() {
+fn test_create_open_note_decrypt_recipient_addr() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -3778,13 +3778,15 @@ fn test_create_open_note_decrypt_sender_addr() {
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 1);
     let (_, event) = events[0];
-    let enc_sender_addr = EncUserAddr {
+    let enc_recipient_addr = EncUserAddr {
         compliance_public_key: *event.data[0],
         ephemeral_pubkey: *event.data[1],
         enc_user_addr: *event.data[2],
     };
-    let decrypted_sender_addr = test.compliance.decrypt_user_addr(enc_user_addr: enc_sender_addr);
-    assert_eq!(decrypted_sender_addr, user_1.address);
+    let decrypted_recipient_addr = test
+        .compliance
+        .decrypt_user_addr(enc_user_addr: enc_recipient_addr);
+    assert_eq!(decrypted_recipient_addr, user_2.address);
 }
 
 #[test]
