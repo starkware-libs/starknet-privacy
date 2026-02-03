@@ -54,7 +54,7 @@ export type DepositInput = {
 export type UseNoteInput = {
   channel_key: bigint;
   token: StarknetAddressBigint;
-  note_index: number;
+  index: number;
 };
 
 export type WithdrawInput = {

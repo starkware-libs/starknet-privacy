@@ -103,7 +103,7 @@ pub struct UseNoteInput {
     /// The note's token address.
     pub token: ContractAddress,
     /// The index of the note within the channel.
-    pub note_index: usize,
+    pub index: usize,
 }
 
 /// Input for the `Withdraw` action.

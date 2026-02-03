@@ -523,7 +523,7 @@ pub mod Privacy {
         ) -> Array<ServerAction> {
             let channel_key = input.channel_key;
             let token = input.token;
-            let index = input.note_index;
+            let index = input.index;
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
 
