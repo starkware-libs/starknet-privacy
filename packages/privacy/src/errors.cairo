@@ -37,6 +37,7 @@ pub const ZERO_NOTE_ID: felt252 = 'ZERO_NOTE_ID';
 pub const ZERO_SALT: felt252 = 'ZERO_SALT';
 
 pub(crate) mod internal_errors {
+    pub const ZERO_SWAP_OUTPUT: felt252 = 'ZERO_SWAP_OUTPUT';
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';
     pub const ZERO_CHANNEL_MARKER: felt252 = 'ZERO_CHANNEL_MARKER';
     pub const ZERO_NOTE_ID: felt252 = 'ZERO_NOTE_ID';

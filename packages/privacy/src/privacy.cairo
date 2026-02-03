@@ -8,7 +8,8 @@ pub mod Privacy {
     use privacy::actions::{
         AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
         DepositInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
-        SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+        SetViewingKeyInput, SwapInput, TransferFromInput, TransferToInput, UseNoteInput,
+        WithdrawInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -21,6 +22,7 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
         TokenBalancesTrait,
     };
+    use privacy::swap_executor::interface::{ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait};
     use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
@@ -754,6 +756,7 @@ pub mod Privacy {
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
                     ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
+                    ServerAction::Swap(input) => { self._execute_swap(:input); },
                 };
             };
         }
@@ -855,6 +858,19 @@ pub mod Privacy {
             let target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
             let current_value = target.read();
             assert(current_value == value, errors::VALUE_MISMATCH);
+        }
+
+        fn _execute_swap(ref self: ContractState, input: SwapInput) {
+            ISwapExecutorDispatcher { contract_address: input.swap_executor }
+                .swap(
+                    swap_contract: input.swap_contract,
+                    swap_selector: input.swap_selector,
+                    swap_calldata: input.swap_calldata,
+                    in_token: input.in_token,
+                    out_token: input.out_token,
+                    in_amount: input.in_amount,
+                    note_id: input.note_id,
+                );
         }
     }
 
