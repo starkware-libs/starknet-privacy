@@ -651,18 +651,18 @@ pub mod Privacy {
             let note = open_note(:token, :depositor);
             assert(note.packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
 
-            // Encrypt the sender address for the compliance.
-            let enc_sender_addr = encrypt_user_addr(
+            // Encrypt the recipient address for the compliance.
+            let enc_recipient_addr = encrypt_user_addr(
                 ephemeral_secret: random,
                 compliance_public_key: self.compliance_public_key.read(),
-                user_addr: sender_addr,
+                user_addr: recipient_addr,
             );
-            assert(enc_sender_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
+            assert(enc_recipient_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
 
             array![
                 to_write_once_action(:storage_address, value: note),
                 ServerAction::EmitOpenNoteCreated(
-                    events::OpenNoteCreated { enc_sender_addr, depositor, token, note_id },
+                    events::OpenNoteCreated { enc_recipient_addr, depositor, token, note_id },
                 ),
             ]
         }
