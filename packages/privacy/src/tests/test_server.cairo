@@ -583,9 +583,10 @@ fn test_execute_emit_deposit() {
 fn test_execute_emit_open_note_created() {
     let mut test: Test = Default::default();
     let token = test.mock_new_token();
+    let depositor = test.mock_new_depositor();
     let enc_sender_addr = test.mock_new_enc_address();
     let note_id = 'NOTE_ID';
-    let expected_event = events::OpenNoteCreated { enc_sender_addr, token, note_id };
+    let expected_event = events::OpenNoteCreated { enc_sender_addr, depositor, token, note_id };
     let actions = array![ServerAction::EmitOpenNoteCreated(expected_event)];
     let mut spy = spy_events();
     test.privacy.execute_actions(actions.span());
