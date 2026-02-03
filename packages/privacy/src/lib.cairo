@@ -5,6 +5,7 @@ pub mod hashes;
 pub mod interface;
 pub mod objects;
 pub mod privacy;
+pub mod swap_executor;
 #[cfg(test)]
 pub mod tests;
 pub mod utils;

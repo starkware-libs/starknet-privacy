@@ -21,7 +21,9 @@ starkware_utils_testing.workspace = true
 
 [[test]]
 name = "privacy_unittest"
-build-external-contracts = ["starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock"]
+build-external-contracts = [
+    "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
+]
 
 [scripts]
 test = "snforge test"
