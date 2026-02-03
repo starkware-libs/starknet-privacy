@@ -27,6 +27,7 @@ pub mod SwapExecutor {
             note_id: felt252,
         ) {
             // Validate all inputs are non-zero.
+            // TODO: Remove validations, client validation should handle this.
             assert(swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
             assert(swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
             assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);

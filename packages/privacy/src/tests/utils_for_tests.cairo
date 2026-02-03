@@ -4,8 +4,8 @@ use core::traits::Neg;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
-    TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
+    OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, SwapInput,
+    TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
 };
 use privacy::events;
 use privacy::hashes::{
@@ -330,6 +330,26 @@ pub(crate) impl UserImpl of UserTrait {
         let random = self.get_random();
         let output = self.internal_withdraw(:withdrawal_target, :token_address, :amount, :random);
         (random, output)
+    }
+
+    fn internal_swap(self: @User, input: SwapInput) -> Span<ServerAction> {
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                let mut token_balances: TokenBalances = Default::default();
+                // Swap internally calls withdraw which subtracts from balance.
+                token_balances.add_balance(token: input.in_token, amount: input.in_amount);
+                state
+                    .swap(
+                        user_addr: *self.address,
+                        user_private_key: *self.private_key,
+                        :input,
+                        ref :token_balances,
+                    )
+            },
+        )
+            .span()
     }
 
     fn safe_withdraw(
