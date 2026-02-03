@@ -1,0 +1,35 @@
+[package]
+name = "swap_executor"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[tool]
+fmt.workspace = true
+scarb.workspace = true
+
+[dependencies]
+starknet.workspace = true
+openzeppelin.workspace = true
+privacy = { path = "../privacy" }
+
+[dev-dependencies]
+assert_macros.workspace = true
+snforge_std.workspace = true
+starkware_utils_testing.workspace = true
+
+[[test]]
+name = "swap_executor_unittest"
+build-external-contracts = [
+    "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
+    "privacy::privacy::Privacy",
+]
+
+[scripts]
+test = "snforge test"
+
+[lib]
+
+[[target.starknet-contract]]
+sierra = true
+casm = true

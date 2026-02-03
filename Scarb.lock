@@ -181,3 +181,13 @@ dependencies = [
  "snforge_std",
  "starkware_utils",
 ]
+
+[[package]]
+name = "swap_executor"
+version = "0.1.0"
+dependencies = [
+ "openzeppelin",
+ "privacy",
+ "snforge_std",
+ "starkware_utils_testing",
+]
