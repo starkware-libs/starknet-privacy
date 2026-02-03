@@ -1,10 +1,9 @@
 use core::dict::{Felt252Dict, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
-use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::errors;
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_note_amount, packing};
-use starknet::{ContractAddress, Store};
+use starknet::ContractAddress;
 
 pub(crate) type TokenBalances = Felt252Dict<u128>;
 pub(crate) type SquashedTokenBalances = SquashedFelt252Dict<u128>;
@@ -175,17 +174,5 @@ pub impl NoteImpl of NoteTrait {
             token: Zero::zero(),
             depositor: Zero::zero(),
         }
-    }
-}
-
-#[generate_trait]
-pub(crate) impl ToServerActionsImpl<T, +Serde<T>, +Store<T>> of ToServerActionsTrait<T> {
-    /// IMPORTANT: This function only works for types whose serialization format
-    /// exactly matches their in-storage representation.
-    /// Use with care.
-    fn to_write_once_action(self: @T, storage_address: felt252) -> ServerAction {
-        let mut value = array![];
-        self.serialize(ref output: value);
-        ServerAction::WriteOnce(WriteOnceInput { storage_address, value: value.span() })
     }
 }

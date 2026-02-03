@@ -1,3 +1,4 @@
+use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::hashes::hash;
 use privacy::tests::utils_for_tests::{
     decrypt_channel_info, decrypt_enc_user_addr, decrypt_private_key, decrypt_subchannel_token,
@@ -5,8 +6,10 @@ use privacy::tests::utils_for_tests::{
 use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     decode_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
-    encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, packing, unpacking,
+    encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, packing, to_write_once_action,
+    unpacking,
 };
+use snforge_std::map_entry_address;
 use starknet::ContractAddress;
 use starkware_utils::constants::{MAX_U128, MAX_U32, TWO_POW_128};
 
@@ -145,4 +148,15 @@ fn test_decode_note_amount_open_note_empty() {
     let index: usize = 0;
     let packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: 0);
     decode_note_amount(:packed_value, :channel_key, :token, :index);
+}
+
+#[test]
+fn test_to_write_once_action_felt() {
+    let value = 'VALUE';
+    let key = 'KEY';
+    let storage_address = map_entry_address(map_selector: selector!("value"), keys: [key].span());
+    let action = to_write_once_action(:storage_address, :value);
+    assert_eq!(
+        action, ServerAction::WriteOnce(WriteOnceInput { storage_address, value: [value].span() }),
+    );
 }

@@ -24,7 +24,7 @@ use privacy::interface::{
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
-    ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
+    TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
@@ -32,7 +32,7 @@ use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_ac
 use privacy::utils::constants::{OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     derive_public_key, encrypt_note_amount, encrypt_outgoing_channel_info, encrypt_private_key,
-    encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, packing,
+    encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, packing, to_write_once_action,
 };
 use snforge_std::{
     CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
@@ -71,7 +71,7 @@ pub(crate) impl CreateEncNoteInputIntoServerActionImpl of CreateEncNoteInputInto
         let storage_path = map_entry_address(
             map_selector: selector!("notes"), keys: [note_id].span(),
         );
-        note.packed_value.to_write_once_action(storage_address: storage_path)
+        to_write_once_action(storage_address: storage_path, value: note.packed_value)
     }
 
     fn into_server_actions(self: @CreateEncNoteInput, user: User) -> Span<ServerAction> {
@@ -93,7 +93,7 @@ pub(crate) impl CreateOpenNoteInputIntoServerActionImpl of CreateOpenNoteInputIn
         );
 
         [
-            note.to_write_once_action(storage_address: storage_path),
+            to_write_once_action(storage_address: storage_path, value: note),
             ServerAction::EmitOpenNoteCreated(
                 events::OpenNoteCreated { enc_sender_addr, token: note.token, note_id },
             ),
@@ -1125,13 +1125,11 @@ pub(crate) impl UserImpl of UserTrait {
         nullifier: felt252,
     ) {
         let actions = [
-            ServerAction::WriteOnce(
-                WriteOnceInput {
-                    storage_address: map_entry_address(
-                        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
-                    ),
-                    value: [true.into()].span(),
-                },
+            to_write_once_action(
+                storage_address: map_entry_address(
+                    map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+                ),
+                value: true,
             ),
             ServerAction::TransferTo(
                 TransferToInput { recipient_addr, token: token.contract_address(), amount },
@@ -1307,13 +1305,11 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         channel_id: felt252,
     ) {
         let actions = [
-            ServerAction::WriteOnce(
-                WriteOnceInput {
-                    storage_address: map_entry_address(
-                        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
-                    ),
-                    value: [true.into()].span(),
-                },
+            to_write_once_action(
+                storage_address: map_entry_address(
+                    map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+                ),
+                value: true,
             ),
             ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
         ]
@@ -1345,20 +1341,13 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     /// Cheat use a note in the server side (no client side).
     fn cheat_use_note(self: @PrivacyCfg, nullifier: felt252) {
-        let storage_path_felt = map_entry_address(
+        let storage_address = map_entry_address(
             map_selector: selector!("nullifiers"), keys: [nullifier].span(),
         );
         self
             .server
             .execute_actions(
-                actions: array![
-                    ServerAction::WriteOnce(
-                        WriteOnceInput {
-                            storage_address: storage_path_felt, value: [true.into()].span(),
-                        },
-                    ),
-                ]
-                    .span(),
+                actions: array![to_write_once_action(:storage_address, value: true)].span(),
             )
     }
 

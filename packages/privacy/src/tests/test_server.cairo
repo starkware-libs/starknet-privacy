@@ -1,13 +1,13 @@
 use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
-    WriteOnceInput,
 };
-use privacy::objects::{EncPrivateKeyTrait, Note, ToServerActionsTrait};
+use privacy::objects::{EncPrivateKeyTrait, Note};
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants,
 };
+use privacy::utils::to_write_once_action;
 use privacy::{errors, events};
 use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
@@ -67,41 +67,33 @@ fn test_execute_write_once() {
     let (subchannel_id, _, _) = test.mock_new_subchannel();
 
     // Compute storage path felt using contract state.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
     );
 
     // Verify channel doesn't exist and write.
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
 
     // Verify channel exists.
     assert!(test.privacy.channel_exists(:channel_id));
 
     // Verify subchannel doesn't exist and write.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
 
     // Verify subchannel exists.
     assert!(test.privacy.subchannel_exists(:subchannel_id));
 
     // Verify user is not registered and write public key.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        user.public_key.to_write_once_action(storage_address: storage_path_felt),
+        to_write_once_action(:storage_address, value: user.public_key),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -110,15 +102,11 @@ fn test_execute_write_once() {
 
     // Verify nullifier doesn't exist and write.
     let nullifier = test.mock_new_nullifier();
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     assert_eq!(test.privacy.nullifier_exists(:nullifier), false);
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
 
     // Verify nullifier was written.
@@ -133,39 +121,31 @@ fn test_execute_write_once_assertions() {
     let (subchannel_id, _, _) = test.mock_new_subchannel();
 
     // Catch NON_ZERO_VALUE for channel exists.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
     assert!(test.privacy.channel_exists(:channel_id));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for subchannel_exists.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
     assert!(test.privacy.subchannel_exists(:subchannel_id));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for public key.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        user.public_key.to_write_once_action(storage_address: storage_path_felt),
+        to_write_once_action(:storage_address, value: user.public_key),
     ];
     test.privacy.execute_actions(actions.span());
     assert_eq!(user.get_public_key(), user.public_key);
@@ -174,14 +154,10 @@ fn test_execute_write_once_assertions() {
 
     // Catch NON_ZERO_VALUE for nullifiers.
     let nullifier = test.mock_new_nullifier();
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
     assert!(test.privacy.nullifier_exists(:nullifier));
     let result = test.privacy.safe_execute_actions(actions.span());
@@ -203,7 +179,7 @@ fn test_execute_write_once_subchannel() {
     let storage_address = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
-    let actions = [enc_subchannel_info.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_subchannel_info)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify subchannel exists.
@@ -220,7 +196,7 @@ fn test_execute_write_once_subchannel_assertions() {
     let storage_address = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
-    let actions = [enc_subchannel_info.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_subchannel_info)].span();
     test.privacy.execute_actions(:actions);
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), enc_subchannel_info);
     let result = test.privacy.safe_execute_actions(:actions);
@@ -243,7 +219,7 @@ fn test_execute_write_once_private_key() {
     let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
-    let actions = [enc_private_key.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_private_key)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify private key exists.
@@ -261,7 +237,7 @@ fn test_execute_write_once_private_key_assertions() {
     let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
-    let actions = [enc_private_key.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_private_key)].span();
     test.privacy.execute_actions(:actions);
     assert_eq!(user.get_enc_private_key(), enc_private_key);
     let result = test.privacy.safe_execute_actions(:actions);
@@ -285,7 +261,7 @@ fn test_execute_write_once_outgoing_channel() {
     let storage_address = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
     );
-    let actions = [enc_outgoing_channel_info.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_outgoing_channel_info)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify outgoing channel info exists.
@@ -307,7 +283,7 @@ fn test_execute_write_once_outgoing_channel_assertions() {
     let storage_address = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
     );
-    let actions = [enc_outgoing_channel_info.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_outgoing_channel_info)].span();
     test.privacy.execute_actions(:actions);
     assert_eq!(
         test.privacy.get_outgoing_channel_info(:outgoing_channel_key), enc_outgoing_channel_info,
@@ -330,7 +306,7 @@ fn test_execute_write_once_enc_note() {
         map_selector: selector!("notes"), keys: [note_id].span(),
     );
     let actions: Array<ServerAction> = array![
-        note.packed_value.to_write_once_action(:storage_address),
+        to_write_once_action(:storage_address, value: note.packed_value),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -351,7 +327,7 @@ fn test_execute_write_once_enc_note_assertions() {
         map_selector: selector!("notes"), keys: [note_id].span(),
     );
     let actions: Array<ServerAction> = array![
-        note.packed_value.to_write_once_action(:storage_address),
+        to_write_once_action(:storage_address, value: note.packed_value),
     ];
     test.privacy.execute_actions(actions.span());
     // Verify the value was written
@@ -506,20 +482,18 @@ fn test_execute_verify_value() {
     let user = test.new_user();
 
     // Write initial value.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
-    let actions = array![user.public_key.to_write_once_action(storage_address: storage_path_felt)];
-    test.privacy.execute_actions(actions.span());
+    let actions = array![to_write_once_action(:storage_address, value: user.public_key)].span();
+    test.privacy.execute_actions(actions);
 
     // Verify value by loading from storage.
     assert_eq!(user.get_public_key(), user.public_key);
 
     // Verify value by action.
     let actions = array![
-        ServerAction::VerifyValue(
-            VerifyValueInput { storage_address: storage_path_felt, value: user.public_key },
-        ),
+        ServerAction::VerifyValue(VerifyValueInput { storage_address, value: user.public_key }),
     ];
     test.privacy.execute_actions(actions.span());
 }
@@ -658,7 +632,7 @@ fn test_execute_write_once_open_note() {
     let storage_address = map_entry_address(
         map_selector: selector!("notes"), keys: [note_id].span(),
     );
-    let actions = [expected_note.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: expected_note)].span();
 
     // Verify storage before execution.
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
