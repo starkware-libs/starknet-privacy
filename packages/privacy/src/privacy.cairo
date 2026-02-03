@@ -332,6 +332,7 @@ pub mod Privacy {
             assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            assert(salt.is_non_zero(), errors::ZERO_SALT);
 
             // Assert sender is registered with the given private key.
             let sender_public_key = self.public_key.read(sender_addr);
@@ -351,7 +352,7 @@ pub mod Privacy {
                                 :sender_addr, :sender_private_key, index: index - 1,
                             ),
                         )
-                        .enc_recipient_addr
+                        .salt
                         .read()
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
@@ -378,10 +379,6 @@ pub mod Privacy {
             assert(enc_channel_info.is_all_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
             assert(channel_id.is_non_zero(), internal_errors::ZERO_CHANNEL_ID);
             assert(outgoing_channel_key.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_KEY);
-            assert(
-                enc_outgoing_channel_info.enc_recipient_addr.is_non_zero(),
-                internal_errors::ZERO_ENC_OUTGOING_CHANNEL_INFO,
-            );
 
             array![
                 ServerAction::VerifyValue(
@@ -416,6 +413,7 @@ pub mod Privacy {
             assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(salt.is_non_zero(), errors::ZERO_SALT);
 
             // Assert channel key is valid for the given sender and recipient.
             let channel_id = compute_channel_id(
@@ -429,7 +427,7 @@ pub mod Privacy {
                     || self
                         .subchannel_tokens
                         .entry(compute_subchannel_key(:channel_key, index: index - 1))
-                        .enc_token
+                        .salt
                         .read()
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
@@ -442,10 +440,6 @@ pub mod Privacy {
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
             assert(subchannel_key.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_KEY);
-            assert(
-                enc_subchannel_info.enc_token.is_non_zero(),
-                internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN,
-            );
             assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
 
             array![
@@ -591,6 +585,7 @@ pub mod Privacy {
 
             // Validate inputs.
             assert_note_creation_params(:recipient_addr, :recipient_public_key, :token);
+            assert(salt.is_non_zero(), errors::ZERO_SALT);
             assert(salt > OPEN_NOTE_SALT, errors::SALT_TOO_SMALL);
             assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
             // Zero `amount` is allowed to enable note creation on reverted transaction indexes,
