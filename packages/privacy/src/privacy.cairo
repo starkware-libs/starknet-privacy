@@ -18,16 +18,17 @@ pub mod Privacy {
     use privacy::interface::{IClient, ICompliance, IServer, IViews};
     use privacy::objects::{
         EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
-        EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, NoteTrait, TokenBalances,
+        EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
         TokenBalancesTrait,
     };
     use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
         assert_valid_signature, decode_note_amount, derive_public_key, encrypt_channel_info,
-        encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, is_canonical_key, panic_with_server_actions, send_message_to_server,
-        to_write_once_action, unwrap_execute_and_panic_result,
+        encrypt_note_amount, encrypt_outgoing_channel_info, encrypt_private_key,
+        encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, open_note,
+        panic_with_server_actions, send_message_to_server, to_write_once_action,
+        unwrap_execute_and_panic_result,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -605,13 +606,14 @@ pub mod Privacy {
                     :index,
                 );
 
-            let note = NoteTrait::enc_note(:channel_key, :token, :index, :salt, :amount);
-            assert(note.packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
+            let packed_value = encrypt_note_amount(:channel_key, :token, :index, :salt, :amount);
+            assert(packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
 
             token_balances.subtract_balance(:token, :amount);
 
-            // Only `packed_value` needs to be written, `token` is initialized to zero.
-            array![to_write_once_action(:storage_address, value: note.packed_value)]
+            // Only `packed_value` needs to be written to storage, `token` and `depositor` are
+            // initialized to zero.
+            array![to_write_once_action(:storage_address, value: packed_value)]
         }
 
         /// Returns the server action to create an open note.
@@ -646,7 +648,7 @@ pub mod Privacy {
                     :index,
                 );
 
-            let note = NoteTrait::open_note(:token, :depositor);
+            let note = open_note(:token, :depositor);
             assert(note.packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
 
             // Encrypt the sender address for the compliance.

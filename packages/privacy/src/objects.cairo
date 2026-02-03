@@ -1,8 +1,6 @@
 use core::dict::{Felt252Dict, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
 use privacy::errors;
-use privacy::utils::constants::OPEN_NOTE_SALT;
-use privacy::utils::{encrypt_note_amount, packing};
 use starknet::ContractAddress;
 
 pub(crate) type TokenBalances = Felt252Dict<u128>;
@@ -129,21 +127,3 @@ pub struct Note {
     pub depositor: ContractAddress,
 }
 
-#[generate_trait]
-pub impl NoteImpl of NoteTrait {
-    fn open_note(token: ContractAddress, depositor: ContractAddress) -> Note {
-        Note {
-            packed_value: packing(value_1: OPEN_NOTE_SALT, value_2: Zero::zero()), token, depositor,
-        }
-    }
-
-    fn enc_note(
-        channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
-    ) -> Note {
-        Note {
-            packed_value: encrypt_note_amount(:channel_key, :token, :index, :salt, :amount),
-            token: Zero::zero(),
-            depositor: Zero::zero(),
-        }
-    }
-}
