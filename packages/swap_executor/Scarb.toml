@@ -17,12 +17,14 @@ privacy = { path = "../privacy" }
 assert_macros.workspace = true
 snforge_std.workspace = true
 starkware_utils_testing.workspace = true
+test_mocks = { path = "../test_mocks" }
 
 [[test]]
 name = "swap_executor_unittest"
 build-external-contracts = [
     "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
     "privacy::privacy::Privacy",
+    "test_mocks::mock_amm::MockAMM",
 ]
 
 [scripts]

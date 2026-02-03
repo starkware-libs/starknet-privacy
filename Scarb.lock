@@ -190,4 +190,12 @@ dependencies = [
  "privacy",
  "snforge_std",
  "starkware_utils_testing",
+ "test_mocks",
+]
+
+[[package]]
+name = "test_mocks"
+version = "0.1.0"
+dependencies = [
+ "openzeppelin",
 ]

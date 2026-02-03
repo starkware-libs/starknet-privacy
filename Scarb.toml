@@ -2,6 +2,7 @@
 members = [
     "packages/privacy",
     "packages/swap_executor",
+    "packages/test_mocks",
 ]
 
 

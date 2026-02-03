@@ -16,12 +16,12 @@ use swap_executor::interface::{
     ISwapExecutorSafeDispatcherTrait,
 };
 use swap_executor::swap_executor::SwapExecutor::deploy_for_test as deploy_swap_executor_for_test;
-use crate::tests::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
+use test_mocks::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 
 pub(crate) mod constants {
     use core::num::traits::Pow;
     use starknet::ContractAddress;
-    use crate::tests::mock_amm::RATE_DENOMINATOR;
+    use test_mocks::mock_amm::RATE_DENOMINATOR;
 
     pub const DECIMALS: u8 = 18;
     pub const TOKEN_SUPPLY: u256 = 10_u256.pow(12 + DECIMALS.into());

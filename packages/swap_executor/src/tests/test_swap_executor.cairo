@@ -3,10 +3,10 @@ use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherT
 use snforge_std::{TokenTrait, set_balance};
 use starkware_utils_testing::test_utils::{assert_panic_with_felt_error, cheat_caller_address_once};
 use swap_executor::errors;
-use swap_executor::tests::mock_amm::RATE_DENOMINATOR;
 use swap_executor::tests::test_utils::{
     SwapExecutorCfgTrait, Test, TestTrait, constants, deploy_mock_amm,
 };
+use test_mocks::mock_amm::RATE_DENOMINATOR;
 
 #[test]
 fn test_swap_basic() {

@@ -1,7 +1,7 @@
 use starknet::ContractAddress;
 
 /// Denominator for exchange rate calculation.
-pub(crate) const RATE_DENOMINATOR: u256 = 1000;
+pub const RATE_DENOMINATOR: u256 = 1000;
 
 /// Interface for the mock AMM.
 #[starknet::interface]
