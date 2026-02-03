@@ -380,7 +380,7 @@ pub mod Privacy {
             assert(outgoing_channel_key.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_KEY);
             assert(
                 enc_outgoing_channel_info.enc_recipient_addr.is_non_zero(),
-                internal_errors::ZERO_ENC_OUTGOING_CHANNEL_INFO,
+                internal_errors::ZERO_ENC_OUTGOING_RECIPIENT,
             );
 
             array![
