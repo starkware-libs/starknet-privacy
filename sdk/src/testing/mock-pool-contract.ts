@@ -498,7 +498,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
             privateKey,
             action.input.token,
             action.input.channel_key,
-            action.input.note_index
+            action.input.index
           ),
         ];
 
@@ -828,7 +828,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
         case "UseNote": {
           const noteData = this.get_decrypted_note(
             action.input.channel_key,
-            action.input.note_index,
+            action.input.index,
             action.input.token
           );
           assert(noteData, () => `Note not found`);
