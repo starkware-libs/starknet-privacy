@@ -168,7 +168,7 @@ export const PrivacyPoolABI = [
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
-        "name": "note_index",
+        "name": "index",
         "type": "core::integer::u32"
       }
     ]
