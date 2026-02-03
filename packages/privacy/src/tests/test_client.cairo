@@ -5,7 +5,7 @@ use privacy::actions::{
     TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_key};
-use privacy::objects::EncUserAddr;
+use privacy::objects::{EncSubchannelInfo, EncUserAddr};
 use privacy::tests::utils_for_tests::{
     ComplianceTrait, CreateEncNoteInputIntoServerActionTrait,
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
@@ -1475,7 +1475,7 @@ fn test_open_subchannel_zero_salt() {
     let expected_enc_subchannel_info = user
         .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, :salt);
     let expected_subchannel_id = user.compute_subchannel_id(recipient: user, :token_address);
-    assert!(expected_enc_subchannel_info.is_non_zero());
+    assert!(expected_enc_subchannel_info.enc_token.is_non_zero());
     assert!(expected_subchannel_id.is_non_zero());
     assert!(expected_subchannel_key.is_non_zero());
     let subchannel_exists_storage_path_felt = map_entry_address(
@@ -3700,7 +3700,8 @@ fn test_client_execute_open_subchannel() {
     assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.subchannel_exists(subchannel_id: expected_subchannel_id));
     assert_eq!(
-        test.privacy.get_subchannel_info(subchannel_key: expected_subchannel_key), Zero::zero(),
+        test.privacy.get_subchannel_info(subchannel_key: expected_subchannel_key),
+        EncSubchannelInfo { salt: Zero::zero(), enc_token: Zero::zero() },
     );
 
     test.privacy.execute_actions(:actions);
