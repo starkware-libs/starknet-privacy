@@ -53,9 +53,9 @@ pub fn enc_private_key(user_address: Felt) -> Result<EncPrivateKeySlots> {
 }
 
 /// Storage slot for checking if a channel exists.
-/// Cairo: `channel_exists: LegacyMap<ChannelId, bool>`
-pub fn channel_exists(channel_id: Felt) -> Result<Felt> {
-    get_storage_var_address("channel_exists", &[channel_id])
+/// Cairo: `channel_exists: LegacyMap<ChannelMarker, bool>`
+pub fn channel_exists(channel_marker: Felt) -> Result<Felt> {
+    get_storage_var_address("channel_exists", &[channel_marker])
         .context("failed to compute channel_exists storage address")
 }
 
@@ -83,9 +83,9 @@ pub fn recipient_channels_element(
 }
 
 /// Storage slot for checking if a subchannel exists.
-/// Cairo: `subchannel_exists: LegacyMap<SubchannelId, bool>`
-pub fn subchannel_exists(subchannel_id: Felt) -> Result<Felt> {
-    get_storage_var_address("subchannel_exists", &[subchannel_id])
+/// Cairo: `subchannel_exists: LegacyMap<SubchannelMarker, bool>`
+pub fn subchannel_exists(subchannel_marker: Felt) -> Result<Felt> {
+    get_storage_var_address("subchannel_exists", &[subchannel_marker])
         .context("failed to compute subchannel_exists storage address")
 }
 
@@ -147,7 +147,7 @@ mod tests {
         );
 
         assert_eq!(
-            channel_exists(f.inputs.channel_id).unwrap(),
+            channel_exists(f.inputs.channel_marker).unwrap(),
             f.slots.channel_exists_address
         );
         assert_eq!(
@@ -162,7 +162,7 @@ mod tests {
         );
 
         assert_eq!(
-            subchannel_exists(f.inputs.subchannel_id).unwrap(),
+            subchannel_exists(f.inputs.subchannel_marker).unwrap(),
             f.slots.subchannel_exists_address
         );
 

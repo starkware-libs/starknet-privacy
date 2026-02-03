@@ -16,9 +16,9 @@ export { MockProofInvocationFactory } from "./mock-proof-invocation-factory.js";
 export { createMockProof, createMockCallAndProof, Withdrawal } from "./helpers.js";
 export {
   compute_channel_key,
-  compute_channel_id,
+  compute_channel_marker,
   compute_subchannel_key,
-  compute_subchannel_id,
+  compute_subchannel_marker,
   compute_note_id,
   compute_nullifier,
   compute_enc_amount_hash,

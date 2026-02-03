@@ -8,9 +8,9 @@
 import { describe, it, expect } from "vitest";
 import {
   compute_channel_key,
-  compute_channel_id,
+  compute_channel_marker,
   compute_subchannel_key,
-  compute_subchannel_id,
+  compute_subchannel_marker,
   compute_note_id,
   compute_nullifier,
   compute_enc_amount_hash,
@@ -42,9 +42,9 @@ describe("Hash Compatibility with Cairo", () => {
     expect(result.toString(16)).toBe(BigInt(outputs.channelKey).toString(16));
   });
 
-  it("compute_channel_id matches Cairo", () => {
-    const result = compute_channel_id(channelKey, sender, recipient, recipientPublicKey);
-    expect(result.toString(16)).toBe(BigInt(outputs.channelId).toString(16));
+  it("compute_channel_marker matches Cairo", () => {
+    const result = compute_channel_marker(channelKey, sender, recipient, recipientPublicKey);
+    expect(result.toString(16)).toBe(BigInt(outputs.channelMarker).toString(16));
   });
 
   it("compute_subchannel_key matches Cairo", () => {
@@ -52,9 +52,9 @@ describe("Hash Compatibility with Cairo", () => {
     expect(result.toString(16)).toBe(BigInt(outputs.subchannelKey).toString(16));
   });
 
-  it("compute_subchannel_id matches Cairo", () => {
-    const result = compute_subchannel_id(channelKey, recipient, recipientPublicKey, token);
-    expect(result.toString(16)).toBe(BigInt(outputs.subchannelId).toString(16));
+  it("compute_subchannel_marker matches Cairo", () => {
+    const result = compute_subchannel_marker(channelKey, recipient, recipientPublicKey, token);
+    expect(result.toString(16)).toBe(BigInt(outputs.subchannelMarker).toString(16));
   });
 
   it("compute_note_id matches Cairo", () => {

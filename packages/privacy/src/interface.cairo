@@ -447,11 +447,11 @@ pub trait IViews<T> {
     /// Checks if a channel exists.
     ///
     /// #### Parameters
-    /// - `channel_id` (`felt252`): The id of the channel.
+    /// - `channel_marker` (`felt252`): The marker of the channel.
     ///
     /// #### Returns
     /// (`bool`): True if the channel exists in the contract, false otherwise.
-    fn channel_exists(self: @T, channel_id: felt252) -> bool;
+    fn channel_exists(self: @T, channel_marker: felt252) -> bool;
 
     /// Returns the number of open channels for the given recipient address.
     ///
@@ -487,11 +487,11 @@ pub trait IViews<T> {
     /// Checks if a subchannel exists.
     ///
     /// #### Parameters
-    /// - `subchannel_id` (`felt252`): The id of the subchannel.
+    /// - `subchannel_marker` (`felt252`): The marker of the subchannel.
     ///
     /// #### Returns
     /// (`bool`): True if the subchannel exists in the contract, false otherwise.
-    fn subchannel_exists(self: @T, subchannel_id: felt252) -> bool;
+    fn subchannel_exists(self: @T, subchannel_marker: felt252) -> bool;
 
     /// Returns the encrypted subchannel information for a given subchannel key.
     ///

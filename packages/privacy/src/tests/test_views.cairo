@@ -53,12 +53,12 @@ fn test_channel_exists() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let recipient_addr = user.address;
-    let (enc_channel_info, channel_id) = test.mock_new_channel();
-    assert_eq!(test.privacy.channel_exists(:channel_id), false);
-    test.privacy.cheat_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
-    assert_eq!(test.privacy.channel_exists(:channel_id), true);
-    let (_, channel_id) = test.mock_new_channel();
-    assert_eq!(test.privacy.channel_exists(:channel_id), false);
+    let (enc_channel_info, channel_marker) = test.mock_new_channel();
+    assert_eq!(test.privacy.channel_exists(:channel_marker), false);
+    test.privacy.cheat_open_channel(:recipient_addr, :enc_channel_info, :channel_marker);
+    assert_eq!(test.privacy.channel_exists(:channel_marker), true);
+    let (_, channel_marker) = test.mock_new_channel();
+    assert_eq!(test.privacy.channel_exists(:channel_marker), false);
 }
 
 #[test]
@@ -86,29 +86,29 @@ fn test_get_channel_info() {
     let mut test = Default::default();
     let user_1 = test.new_user();
     let user_2 = test.new_user();
-    let (channel_1_user_1, channel_id_1_user_1) = test.mock_new_channel();
-    let (channel_2_user_1, channel_id_2_user_1) = test.mock_new_channel();
-    let (channel_1_user_2, channel_id_1_user_2) = test.mock_new_channel();
+    let (channel_1_user_1, channel_marker_1_user_1) = test.mock_new_channel();
+    let (channel_2_user_1, channel_marker_2_user_1) = test.mock_new_channel();
+    let (channel_1_user_2, channel_marker_1_user_2) = test.mock_new_channel();
     test
         .privacy
         .cheat_open_channel(
             recipient_addr: user_1.address,
             enc_channel_info: channel_1_user_1,
-            channel_id: channel_id_1_user_1,
+            channel_marker: channel_marker_1_user_1,
         );
     test
         .privacy
         .cheat_open_channel(
             recipient_addr: user_1.address,
             enc_channel_info: channel_2_user_1,
-            channel_id: channel_id_2_user_1,
+            channel_marker: channel_marker_2_user_1,
         );
     test
         .privacy
         .cheat_open_channel(
             recipient_addr: user_2.address,
             enc_channel_info: channel_1_user_2,
-            channel_id: channel_id_1_user_2,
+            channel_marker: channel_marker_1_user_2,
         );
 
     assert_eq!(user_1.get_channel_info(channel_index: 0), channel_1_user_1);
@@ -123,8 +123,10 @@ fn test_get_channel_info_index_out_of_bounds() {
     let result = user.safe_get_channel_info(channel_index: 0);
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
 
-    let (enc_channel_info, channel_id) = test.mock_new_channel();
-    test.privacy.cheat_open_channel(recipient_addr: user.address, :enc_channel_info, :channel_id);
+    let (enc_channel_info, channel_marker) = test.mock_new_channel();
+    test
+        .privacy
+        .cheat_open_channel(recipient_addr: user.address, :enc_channel_info, :channel_marker);
 
     let result = user.safe_get_channel_info(channel_index: 0);
     assert!(result.is_ok());
@@ -253,13 +255,13 @@ fn test_subchannel_exists() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token_address = test.mock_new_token();
-    let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
-    assert_eq!(test.privacy.subchannel_exists(:subchannel_id), false);
+    let subchannel_marker = user_1.compute_subchannel_marker(recipient: user_2, :token_address);
+    assert_eq!(test.privacy.subchannel_exists(:subchannel_marker), false);
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
     user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
-    assert_eq!(test.privacy.subchannel_exists(:subchannel_id), true);
+    assert_eq!(test.privacy.subchannel_exists(:subchannel_marker), true);
 }
 
 #[test]

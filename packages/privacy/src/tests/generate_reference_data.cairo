@@ -5,10 +5,11 @@
 ///
 /// The output should be used to update: sdk/tests/fixtures/cairo-reference-data.json
 use privacy::hashes::{
-    compute_channel_id, compute_channel_key, compute_enc_amount_hash, compute_enc_channel_key_hash,
-    compute_enc_private_key_hash, compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash, compute_note_id, compute_nullifier, compute_outgoing_channel_key,
-    compute_subchannel_id, compute_subchannel_key, domain_separation::*,
+    compute_channel_key, compute_channel_marker, compute_enc_amount_hash,
+    compute_enc_channel_key_hash, compute_enc_private_key_hash, compute_enc_recipient_addr_hash,
+    compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
+    compute_outgoing_channel_key, compute_subchannel_key, compute_subchannel_marker,
+    domain_separation::*,
 };
 use privacy::utils::{
     decode_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
@@ -49,9 +50,13 @@ fn generate_reference_hashes() {
     let channel_key = compute_channel_key(
         sender, SENDER_PRIVATE_KEY, recipient, RECIPIENT_PUBLIC_KEY,
     );
-    let channel_id = compute_channel_id(CHANNEL_KEY, sender, recipient, RECIPIENT_PUBLIC_KEY);
+    let channel_marker = compute_channel_marker(
+        CHANNEL_KEY, sender, recipient, RECIPIENT_PUBLIC_KEY,
+    );
     let subchannel_key = compute_subchannel_key(CHANNEL_KEY, INDEX);
-    let subchannel_id = compute_subchannel_id(CHANNEL_KEY, recipient, RECIPIENT_PUBLIC_KEY, token);
+    let subchannel_marker = compute_subchannel_marker(
+        CHANNEL_KEY, recipient, RECIPIENT_PUBLIC_KEY, token,
+    );
     let note_id = compute_note_id(CHANNEL_KEY, token, INDEX);
     let nullifier = compute_nullifier(CHANNEL_KEY, token, INDEX, SENDER_PRIVATE_KEY);
 
@@ -126,9 +131,9 @@ fn generate_reference_hashes() {
 
     // Outputs (computed hashes)
     println!("outputs.channelKey: 0x{:x}", channel_key);
-    println!("outputs.channelId: 0x{:x}", channel_id);
+    println!("outputs.channelMarker: 0x{:x}", channel_marker);
     println!("outputs.subchannelKey: 0x{:x}", subchannel_key);
-    println!("outputs.subchannelId: 0x{:x}", subchannel_id);
+    println!("outputs.subchannelMarker: 0x{:x}", subchannel_marker);
     println!("outputs.noteId: 0x{:x}", note_id);
     println!("outputs.nullifier: 0x{:x}", nullifier);
     println!("outputs.encAmountHash: 0x{:x}", enc_amount_hash);
@@ -181,9 +186,13 @@ fn generate_reference_storage_slots() {
     let token = to_address(TOKEN);
 
     // Compute hash values needed as keys
-    let channel_id = compute_channel_id(CHANNEL_KEY, sender, recipient, RECIPIENT_PUBLIC_KEY);
+    let channel_marker = compute_channel_marker(
+        CHANNEL_KEY, sender, recipient, RECIPIENT_PUBLIC_KEY,
+    );
     let subchannel_key = compute_subchannel_key(CHANNEL_KEY, INDEX);
-    let subchannel_id = compute_subchannel_id(CHANNEL_KEY, recipient, RECIPIENT_PUBLIC_KEY, token);
+    let subchannel_marker = compute_subchannel_marker(
+        CHANNEL_KEY, recipient, RECIPIENT_PUBLIC_KEY, token,
+    );
     let note_id = compute_note_id(CHANNEL_KEY, token, INDEX);
     let nullifier = compute_nullifier(CHANNEL_KEY, token, INDEX, SENDER_PRIVATE_KEY);
 
@@ -211,9 +220,9 @@ fn generate_reference_storage_slots() {
         map_selector: selector!("enc_private_key"), keys: [SENDER].span(),
     );
 
-    // channel_exists[channel_id] - Map<felt252, bool>
+    // channel_exists[channel_marker] - Map<felt252, bool>
     let channel_exists_slot = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
     );
 
     // recipient_channels[recipient_addr] - Vec<EncChannelInfo>
@@ -227,9 +236,9 @@ fn generate_reference_storage_slots() {
         map_selector: recipient_channels_base, keys: [vec_index].span(),
     );
 
-    // subchannel_exists[subchannel_id] - Map<felt252, bool>
+    // subchannel_exists[subchannel_marker] - Map<felt252, bool>
     let subchannel_exists_slot = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_marker].span(),
     );
 
     // subchannel_tokens[subchannel_key] - Map<felt252, EncSubchannelInfo>
@@ -264,9 +273,9 @@ fn generate_reference_storage_slots() {
     // Inputs used for key computation
     println!("inputs.sender: 0x{:x}", SENDER);
     println!("inputs.recipient: 0x{:x}", RECIPIENT);
-    println!("inputs.channelId: 0x{:x}", channel_id);
+    println!("inputs.channelMarker: 0x{:x}", channel_marker);
     println!("inputs.subchannelKey: 0x{:x}", subchannel_key);
-    println!("inputs.subchannelId: 0x{:x}", subchannel_id);
+    println!("inputs.subchannelMarker: 0x{:x}", subchannel_marker);
     println!("inputs.noteId: 0x{:x}", note_id);
     println!("inputs.nullifier: 0x{:x}", nullifier);
 

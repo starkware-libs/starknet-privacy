@@ -7,7 +7,7 @@ import { toBigInt } from "../utils/crypto.js";
 import { toHex } from "../utils/convert.js";
 import {
   compute_channel_key,
-  compute_channel_id,
+  compute_channel_marker,
   compute_subchannel_key,
   compute_note_id,
   compute_outgoing_channel_key,
@@ -305,9 +305,9 @@ class ChannelsDiscovery {
       toBigInt(publicKey)
     );
 
-    const channelId = compute_channel_id(channelKey, this.address, recipient, toBigInt(publicKey));
+    const channelMarker = compute_channel_marker(channelKey, this.address, recipient, toBigInt(publicKey));
 
-    if (await this.pool.channel_exists(channelId)) {
+    if (await this.pool.channel_exists(channelMarker)) {
       channel.key = channelKey;
       void this.tracker.add(this.discoverSubchannels(recipient, channel));
     }
