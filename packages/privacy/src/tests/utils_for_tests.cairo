@@ -10,10 +10,10 @@ use privacy::actions::{
 };
 use privacy::events;
 use privacy::hashes::{
-    compute_channel_id, compute_channel_key, compute_enc_address_hash, compute_enc_channel_key_hash,
-    compute_enc_private_key_hash, compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash, compute_note_id, compute_nullifier, compute_outgoing_channel_key,
-    compute_subchannel_id, compute_subchannel_key, hash,
+    compute_channel_key, compute_channel_marker, compute_enc_address_hash,
+    compute_enc_channel_key_hash, compute_enc_private_key_hash, compute_enc_recipient_addr_hash,
+    compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
+    compute_outgoing_channel_key, compute_subchannel_key, compute_subchannel_marker, hash,
 };
 use privacy::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
@@ -749,8 +749,8 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    fn compute_channel_id(self: @User, recipient: User) -> felt252 {
-        compute_channel_id(
+    fn compute_channel_marker(self: @User, recipient: User) -> felt252 {
+        compute_channel_marker(
             channel_key: self.compute_channel_key(:recipient),
             sender_addr: *self.address,
             recipient_addr: recipient.address,
@@ -763,10 +763,10 @@ pub(crate) impl UserImpl of UserTrait {
         compute_subchannel_key(:channel_key, :index)
     }
 
-    fn compute_subchannel_id(
+    fn compute_subchannel_marker(
         self: @User, recipient: User, token_address: ContractAddress,
     ) -> felt252 {
-        compute_subchannel_id(
+        compute_subchannel_marker(
             channel_key: self.compute_channel_key(:recipient),
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
@@ -1257,7 +1257,7 @@ pub(crate) impl TestImpl of TestTrait {
     }
 
     /// Mock function to generate a new note.
-    /// Returns (enc_channel_info, channel_id).
+    /// Returns (enc_channel_info, channel_marker).
     fn mock_new_channel(ref self: Test) -> (EncChannelInfo, felt252) {
         self.nonce += 1;
         let enc_channel_info = EncChannelInfo {
@@ -1265,20 +1265,20 @@ pub(crate) impl TestImpl of TestTrait {
             enc_channel_key: 'ENC_CHANNEL_KEY' + self.nonce.into(),
             enc_sender_addr: 'ENC_SENDER_ADDR' + self.nonce.into(),
         };
-        let channel_id = 'CHANNEL_ID' + self.nonce.into();
-        (enc_channel_info, channel_id)
+        let channel_marker = 'CHANNEL_MARKER' + self.nonce.into();
+        (enc_channel_info, channel_marker)
     }
 
     /// Mock function to generate a new subchannel.
-    /// Returns (subchannel_id, subchannel_key, enc_subchannel_info).
+    /// Returns (subchannel_marker, subchannel_key, enc_subchannel_info).
     fn mock_new_subchannel(ref self: Test) -> (felt252, felt252, EncSubchannelInfo) {
         self.nonce += 1;
-        let subchannel_id = 'SUBCHANNEL_ID' + self.nonce.into();
+        let subchannel_marker = 'SUBCHANNEL_MARKER' + self.nonce.into();
         let subchannel_key = 'SUBCHANNEL_KEY' + self.nonce.into();
         let enc_subchannel_info = EncSubchannelInfo {
             salt: 'SALT' + self.nonce.into(), enc_token: 'ENC_TOKEN' + self.nonce.into(),
         };
-        (subchannel_id, subchannel_key, enc_subchannel_info)
+        (subchannel_marker, subchannel_key, enc_subchannel_info)
     }
 
     /// Mock function to generate a new note.
@@ -1332,12 +1332,12 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self: @PrivacyCfg,
         recipient_addr: ContractAddress,
         enc_channel_info: EncChannelInfo,
-        channel_id: felt252,
+        channel_marker: felt252,
     ) {
         let actions = [
             to_write_once_action(
                 storage_address: map_entry_address(
-                    map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+                    map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
                 ),
                 value: true,
             ),
@@ -1347,12 +1347,12 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.execute_actions(:actions);
     }
 
-    fn channel_exists(self: @PrivacyCfg, channel_id: felt252) -> bool {
-        self.views.channel_exists(:channel_id)
+    fn channel_exists(self: @PrivacyCfg, channel_marker: felt252) -> bool {
+        self.views.channel_exists(:channel_marker)
     }
 
-    fn subchannel_exists(self: @PrivacyCfg, subchannel_id: felt252) -> bool {
-        self.views.subchannel_exists(:subchannel_id)
+    fn subchannel_exists(self: @PrivacyCfg, subchannel_marker: felt252) -> bool {
+        self.views.subchannel_exists(:subchannel_marker)
     }
 
     fn get_subchannel_info(self: @PrivacyCfg, subchannel_key: felt252) -> EncSubchannelInfo {

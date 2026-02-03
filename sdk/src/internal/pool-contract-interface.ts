@@ -47,10 +47,10 @@ export type EncPrivateKey = {
  * - Implementations should defensively convert values with toBigInt()
  */
 export interface PoolContractInterface {
-  channel_exists(channelId: BigNumberish): boolean | Promise<boolean>;
+  channel_exists(channelMarker: BigNumberish): boolean | Promise<boolean>;
   get_num_of_channels(recipientAddr: BigNumberish): bigint | number | Promise<bigint | number>;
   get_channel_info(recipientAddr: BigNumberish, channelIndex: BigNumberish): EncChannelInfo | Promise<EncChannelInfo>;
-  subchannel_exists(subchannelId: BigNumberish): boolean | Promise<boolean>;
+  subchannel_exists(subchannelMarker: BigNumberish): boolean | Promise<boolean>;
   get_subchannel_info(subchannelKey: BigNumberish): EncSubchannelInfo | Promise<EncSubchannelInfo>;
   get_outgoing_channel_info(outgoingChannelKey: BigNumberish): EncOutgoingChannelInfo | Promise<EncOutgoingChannelInfo>;
   get_note(noteId: BigNumberish): NoteData | Promise<NoteData>;

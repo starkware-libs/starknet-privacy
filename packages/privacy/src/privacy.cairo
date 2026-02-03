@@ -12,8 +12,8 @@ pub mod Privacy {
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
-        compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
-        compute_outgoing_channel_key, compute_subchannel_id, compute_subchannel_key,
+        compute_channel_key, compute_channel_marker, compute_note_id, compute_nullifier,
+        compute_outgoing_channel_key, compute_subchannel_key, compute_subchannel_marker,
     };
     use privacy::interface::{IClient, ICompliance, IServer, IViews};
     use privacy::objects::{
@@ -72,11 +72,11 @@ pub mod Privacy {
         recipient_channels: Map<ContractAddress, Vec<EncChannelInfo>>,
         /// Map of outgoing-channel keys to their encrypted recipient addresses.
         outgoing_channels: Map<felt252, EncOutgoingChannelInfo>,
-        /// Map of channel id to whether it exists.
+        /// Map of channel marker to whether it exists.
         channel_exists: Map<felt252, bool>,
         /// Map of subchannel keys to their encrypted tokens.
         subchannel_tokens: Map<felt252, EncSubchannelInfo>,
-        /// Map of subchannel id to whether it exists.
+        /// Map of subchannel marker to whether it exists.
         subchannel_exists: Map<felt252, bool>,
         /// Map of note ids to their note information.
         notes: Map<felt252, Note>,
@@ -366,7 +366,7 @@ pub mod Privacy {
             let enc_channel_info = encrypt_channel_info(
                 ephemeral_secret: random, :recipient_public_key, :channel_key, :sender_addr,
             );
-            let channel_id = compute_channel_id(
+            let channel_marker = compute_channel_marker(
                 :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
             );
             let outgoing_channel_key = compute_outgoing_channel_key(
@@ -377,7 +377,7 @@ pub mod Privacy {
             );
 
             assert(enc_channel_info.is_all_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
-            assert(channel_id.is_non_zero(), internal_errors::ZERO_CHANNEL_ID);
+            assert(channel_marker.is_non_zero(), internal_errors::ZERO_CHANNEL_MARKER);
             assert(outgoing_channel_key.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_KEY);
 
             array![
@@ -389,7 +389,7 @@ pub mod Privacy {
                 ),
                 ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
                 to_write_once_action(
-                    storage_address: self.channel_exists.entry(channel_id).into(), value: true,
+                    storage_address: self.channel_exists.entry(channel_marker).into(), value: true,
                 ),
                 to_write_once_action(
                     storage_address: self.outgoing_channels.entry(outgoing_channel_key).into(),
@@ -416,10 +416,10 @@ pub mod Privacy {
             assert(salt.is_non_zero(), errors::ZERO_SALT);
 
             // Assert channel key is valid for the given sender and recipient.
-            let channel_id = compute_channel_id(
+            let channel_marker = compute_channel_marker(
                 :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
             );
-            assert(self.channel_exists.read(channel_id), errors::INVALID_CHANNEL);
+            assert(self.channel_exists.read(channel_marker), errors::INVALID_CHANNEL);
 
             // Assert index is sequential, i.e. the previous subchannel exists.
             assert(
@@ -436,11 +436,11 @@ pub mod Privacy {
             // Compute subchannel values.
             let subchannel_key = compute_subchannel_key(:channel_key, :index);
             let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :index, :token, :salt);
-            let subchannel_id = compute_subchannel_id(
+            let subchannel_marker = compute_subchannel_marker(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
             assert(subchannel_key.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_KEY);
-            assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
+            assert(subchannel_marker.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_MARKER);
 
             array![
                 to_write_once_action(
@@ -448,7 +448,7 @@ pub mod Privacy {
                     value: enc_subchannel_info,
                 ),
                 to_write_once_action(
-                    storage_address: self.subchannel_exists.entry(subchannel_id).into(),
+                    storage_address: self.subchannel_exists.entry(subchannel_marker).into(),
                     value: true,
                 ),
             ]
@@ -534,13 +534,13 @@ pub mod Privacy {
 
             // Assert subchannel exists and is connected to owner's address and public key.
             let owner_public_key = derive_public_key(private_key: owner_private_key);
-            let subchannel_id = compute_subchannel_id(
+            let subchannel_marker = compute_subchannel_marker(
                 :channel_key,
                 recipient_addr: owner_addr,
                 recipient_public_key: owner_public_key,
                 :token,
             );
-            assert(self.subchannel_exists.read(subchannel_id), errors::SUBCHANNEL_NOT_FOUND);
+            assert(self.subchannel_exists.read(subchannel_marker), errors::SUBCHANNEL_NOT_FOUND);
 
             // Compute note id.
             let note_id = compute_note_id(:channel_key, :token, :index);
@@ -681,10 +681,10 @@ pub mod Privacy {
             assert(channel_key.is_non_zero(), internal_errors::UNEXPECTED_ZERO_CHANNEL_KEY);
 
             // Assert subchannel exists.
-            let subchannel_id = compute_subchannel_id(
+            let subchannel_marker = compute_subchannel_marker(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
-            assert(self.subchannel_exists.read(subchannel_id), errors::SUBCHANNEL_NOT_FOUND);
+            assert(self.subchannel_exists.read(subchannel_marker), errors::SUBCHANNEL_NOT_FOUND);
 
             // Assert index is sequential, i.e. the previous note exists.
             assert(
@@ -868,8 +868,8 @@ pub mod Privacy {
 
     #[abi(embed_v0)]
     pub impl ViewsImpl of IViews<ContractState> {
-        fn channel_exists(self: @ContractState, channel_id: felt252) -> bool {
-            self.channel_exists.read(channel_id)
+        fn channel_exists(self: @ContractState, channel_marker: felt252) -> bool {
+            self.channel_exists.read(channel_marker)
         }
 
         fn get_num_of_channels(self: @ContractState, recipient_addr: ContractAddress) -> u64 {
@@ -888,8 +888,8 @@ pub mod Privacy {
             self.outgoing_channels.read(outgoing_channel_key)
         }
 
-        fn subchannel_exists(self: @ContractState, subchannel_id: felt252) -> bool {
-            self.subchannel_exists.read(subchannel_id)
+        fn subchannel_exists(self: @ContractState, subchannel_marker: felt252) -> bool {
+            self.subchannel_exists.read(subchannel_marker)
         }
 
         fn get_subchannel_info(self: @ContractState, subchannel_key: felt252) -> EncSubchannelInfo {

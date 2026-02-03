@@ -704,7 +704,7 @@ export const PrivacyPoolABI = [
         "name": "channel_exists",
         "inputs": [
           {
-            "name": "channel_id",
+            "name": "channel_marker",
             "type": "core::felt252"
           }
         ],
@@ -756,7 +756,7 @@ export const PrivacyPoolABI = [
         "name": "subchannel_exists",
         "inputs": [
           {
-            "name": "subchannel_id",
+            "name": "subchannel_marker",
             "type": "core::felt252"
           }
         ],
