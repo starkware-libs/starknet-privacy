@@ -19,6 +19,7 @@ pub mod MockAMM {
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use starkware_utils::constants::MAX_U128;
+    use super::IMockAMM;
 
     #[storage]
     struct Storage {}
@@ -27,7 +28,7 @@ pub mod MockAMM {
     fn constructor(ref self: ContractState) {}
 
     #[abi(embed_v0)]
-    impl MockAMMImpl of super::IMockAMM<ContractState> {
+    impl MockAMMImpl of IMockAMM<ContractState> {
         fn swap(
             ref self: ContractState,
             in_token: ContractAddress,

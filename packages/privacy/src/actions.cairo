@@ -228,6 +228,27 @@ pub struct DepositToOpenNoteInput {
     pub amount: u128,
 }
 
+/// Input for the `ExecuteSwap` server action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct ExecuteSwapInput {
+    /// The swap executor contract address.
+    pub swap_executor: ContractAddress,
+    /// The AMM/DEX contract to call for the swap.
+    pub swap_contract: ContractAddress,
+    /// The selector of the swap function to call.
+    pub swap_selector: felt252,
+    /// The calldata to pass to the swap function.
+    pub swap_calldata: Span<felt252>,
+    /// The token address to swap from.
+    pub in_token: ContractAddress,
+    /// The token address to swap to.
+    pub out_token: ContractAddress,
+    /// The note id for the open note to deposit into.
+    pub note_id: felt252,
+    /// The input amount for swap.
+    pub in_amount: u128,
+}
+
 /// An action to be executed by the server.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ServerAction {
@@ -251,4 +272,6 @@ pub enum ServerAction {
     EmitOpenNoteCreated: events::OpenNoteCreated,
     /// Deposit to an open note with funds from a depositor.
     DepositToOpenNote: DepositToOpenNoteInput,
+    /// Execute a swap via the swap executor contract.
+    ExecuteSwap: ExecuteSwapInput,
 }
