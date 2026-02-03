@@ -251,27 +251,21 @@ pub(crate) impl StoragePathIntoFelt<
     }
 }
 
-/// Packing two felt252 values into a single felt252 value.
+/// Packs two u128 values into a single felt252 value.
 /// Equivalent to (value_1 << 128) | value_2.
 /// Assumes: value_1 is 120 bits, value_2 is 128 bits.
 pub(crate) fn packing(value_1: u128, value_2: u128) -> felt252 {
-    (value_1.into() * TWO_POW_128 + value_2.into())
-        .try_into()
-        .expect(internal_errors::PACK_OVERFLOW)
+    let packed = u256 { high: value_1, low: value_2 };
+    packed.try_into().expect(internal_errors::PACK_OVERFLOW)
 }
 
-/// Unpacking a single felt252 into two felt252 values (120 bits for value_1, 128 bits for value_2).
+/// Unpacks a single felt252 into two u128 values (120 bits for value_1, 128 bits for value_2).
 /// Inverse of `packing`: `packed_value = value_1 * 2^128 + value_2`
 pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
     let packed_u256: u256 = packed_value.into();
-    let value_1 = packed_u256 / TWO_POW_128;
-    let value_2 = packed_u256 % TWO_POW_128;
-    // Sanity check that value_1 is 120 bits.
-    assert(value_1 < TWO_POW_120.into(), internal_errors::UNPACK1_OUT_OF_BOUNDS);
-    (
-        value_1.try_into().expect(internal_errors::UNPACK1_OVERFLOW),
-        value_2.try_into().expect(internal_errors::UNPACK2_OVERFLOW),
-    )
+    // Sanity check that value_1 (high bits) is 120 bits.
+    assert(packed_u256.high < TWO_POW_120, internal_errors::UNPACK1_OUT_OF_BOUNDS);
+    (packed_u256.high, packed_u256.low)
 }
 
 pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
