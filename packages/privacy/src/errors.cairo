@@ -44,8 +44,6 @@ pub(crate) mod internal_errors {
     pub const ZERO_ENC_PRIVATE_KEY: felt252 = 'ZERO_ENC_PRIVATE_KEY';
     pub const DESERIALIZE_FAILED: felt252 = 'DESERIALIZE_FAILED';
     pub const EXPECTED_PANIC: felt252 = 'EXPECTED_PANIC';
-    pub const ENC_AMOUNT_OVERFLOW: felt252 = 'ENC_AMOUNT_OVERFLOW';
-    pub const AMOUNT_OVERFLOW: felt252 = 'AMOUNT_OVERFLOW';
     pub const PACK_OVERFLOW: felt252 = 'PACK_OVERFLOW';
     pub const UNPACK1_OUT_OF_BOUNDS: felt252 = 'UNPACK1_OUT_OF_BOUNDS';
     pub const ZERO_OUTGOING_CHANNEL_KEY: felt252 = 'ZERO_OUTGOING_CHANNEL_KEY';
