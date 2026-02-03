@@ -24,6 +24,11 @@ use starkware_utils::constants::TWO_POW_128;
 pub mod constants {
     use core::num::traits::{Pow, Zero};
 
+    /// The salt value in the [`Note`](privacy::objects::Note) (packed with the amount in
+    /// `packed_value`) identifies which type of note it is;
+    /// salt = 0 means the note does not exist.
+    /// salt = OPEN_NOTE_SALT (=1) means the note is an open note (store amounts in plaintext).
+    /// salt > OPEN_NOTE_SALT (>=2) means the note is an encrypted note (store encrypted amounts).
     pub const OPEN_NOTE_SALT: u128 = 1;
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
