@@ -11,7 +11,7 @@ use privacy::hashes::{
     compute_subchannel_id, compute_subchannel_key, domain_separation::*,
 };
 use privacy::utils::{
-    decode_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
+    decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
     encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
 };
 use snforge_std::map_entry_address;
@@ -82,7 +82,7 @@ fn generate_reference_hashes() {
     );
 
     // Encrypt/decode note amount
-    let enc_note_amount = encrypt_note_amount(CHANNEL_KEY, token, INDEX, SALT, AMOUNT);
+    let enc_note_amount = enc_note_packed_value(CHANNEL_KEY, token, INDEX, SALT, AMOUNT);
     let dec_note_amount = decode_note_amount(enc_note_amount, CHANNEL_KEY, token, INDEX);
 
     // Derive compliance public key for ECDH tests

@@ -31,7 +31,7 @@ use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_p
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
 use privacy::utils::constants::{OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
-    derive_public_key, encrypt_note_amount, encrypt_outgoing_channel_info, encrypt_private_key,
+    derive_public_key, enc_note_packed_value, encrypt_outgoing_channel_info, encrypt_private_key,
     encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, packing, to_write_once_action,
 };
 use snforge_std::{
@@ -793,7 +793,7 @@ pub(crate) impl UserImpl of UserTrait {
         let note_id = compute_note_id(
             :channel_key, token: create_note_input.token, index: create_note_input.index,
         );
-        let packed_value = encrypt_note_amount(
+        let packed_value = enc_note_packed_value(
             :channel_key,
             token: create_note_input.token,
             index: create_note_input.index,

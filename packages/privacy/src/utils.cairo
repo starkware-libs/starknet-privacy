@@ -28,6 +28,7 @@ pub mod constants {
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
     pub const TX_V3: u64 = 3;
+    /// The packed value for open notes: `packing(salt = OPEN_NOTE_SALT = 1, amount = 0)`.
     pub const OPEN_NOTE_PACKED_VALUE: felt252 = u256 { high: OPEN_NOTE_SALT, low: Zero::zero() }
         .try_into()
         .unwrap();
@@ -39,7 +40,7 @@ pub fn GEN_P() -> EcPoint {
 }
 
 /// Encrypts the subchannel info.
-/// Assumes `channel_key` and `token` are not zero.
+/// Assumes all the inputs (except `index`) are not zero.
 ///
 /// The salt is used to guarantee one-time key usage, preventing privacy-related data leakage
 /// if a transaction is reverted and the same subchannel key is reused.
@@ -75,7 +76,7 @@ fn _compute_shared_x(ephemeral_secret: felt252, public_key: felt252) -> (felt252
 }
 
 /// Encrypts the outgoing channel info.
-/// Assumes all the inputs (except `index` and `salt`) are not zero.
+/// Assumes all the inputs (except `index`) are not zero.
 ///
 /// `enc_outgoing_channel_info = (salt, enc_recipient_addr)`.
 /// `enc_recipient_addr = h(ENC_RECIPIENT_ADDR_TAG, sender_addr, sender_private_key, index, salt) +
@@ -199,26 +200,38 @@ pub(crate) fn is_canonical_key(key: felt252) -> bool {
     key.into() < (ORDER.into() / 2_u256)
 }
 
-/// Encrypts the note amount. The result is packed into a single felt252 value.
-/// The first 120 bits are the salt, and the last 128 bits are the encrypted amount.
+/// Encrypts the note amount for encrypted notes.
 /// The encrypted amount is computed modulo 2^128.
-/// Assumes `channel_key`, `token` and `amount` are not zero, and `salt` is 120 bits.
+/// Assumes all the inputs (except `index`) are not zero.
 ///
 /// The salt is used to guarantee one-time key usage, preventing privacy-related data leakage
 /// if a transaction is reverted and the same note id is reused.
 ///
-/// `enc_amount = packing(salt, (h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt) + amount)
-/// % 2^128)`.
-pub(crate) fn encrypt_note_amount(
+/// `enc_amount = (h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt) + amount) % 2^128`.
+pub(crate) fn _encrypt_note_amount(
+    channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
+) -> u128 {
+    let enc_amount_hash: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt).into();
+    enc_amount_hash.low.wrapping_add(amount)
+}
+
+/// Returns the packed value for an encrypted note.
+/// Encrypts the note amount using `_encrypt_note_amount`. The result is packed into a single
+/// felt252 value.
+/// The first 120 bits are the salt, and the last 128 bits are the encrypted amount.
+/// Assumes all the inputs (except `index`) are not zero and `salt` is 120 bits.
+///
+/// `packed_value = packing(salt, enc_amount)`.
+/// `enc_amount = (h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt) + amount) % 2^128`.
+pub(crate) fn enc_note_packed_value(
     channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
 ) -> felt252 {
-    let enc_amount_hash: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt).into();
-    let enc_amount: u128 = enc_amount_hash.low.wrapping_add(amount);
+    let enc_amount: u128 = _encrypt_note_amount(:channel_key, :token, :index, :salt, :amount);
     packing(value_1: salt, value_2: enc_amount)
 }
 
 /// Decrypts `enc_amount` using the other parameters.
-/// This is the inverse of `encrypt_note_amount`.
+/// This is the inverse of `_encrypt_note_amount`.
 pub(crate) fn decrypt_note_amount(
     enc_amount: u128, salt: u128, channel_key: felt252, token: ContractAddress, index: usize,
 ) -> u128 {

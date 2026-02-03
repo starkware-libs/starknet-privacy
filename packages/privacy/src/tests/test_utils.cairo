@@ -1,3 +1,4 @@
+use core::num::traits::Zero;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::hashes::hash;
 use privacy::tests::utils_for_tests::{
@@ -5,9 +6,9 @@ use privacy::tests::utils_for_tests::{
 };
 use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
-    decode_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
-    encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, open_note, packing,
-    to_write_once_action, unpacking,
+    _encrypt_note_amount, decode_note_amount, decrypt_note_amount, derive_public_key,
+    enc_note_packed_value, encrypt_channel_info, encrypt_private_key, encrypt_subchannel_info,
+    encrypt_user_addr, open_note, packing, to_write_once_action, unpacking,
 };
 use snforge_std::map_entry_address;
 use starknet::ContractAddress;
@@ -85,11 +86,65 @@ fn test_encrypt_decrypt_note_amount() {
         nonce += 1;
         let index_u256: u256 = hash(['INDEX', nonce.into()].span()).into();
         let index: usize = (index_u256 % MAX_U32.into()).try_into().unwrap();
-        let enc_amount = encrypt_note_amount(
+        let enc_amount = _encrypt_note_amount(
             :channel_key, :token, :index, salt: salt_120_bits, amount: *amount,
         );
-        let dec_amount = decode_note_amount(packed_value: enc_amount, :channel_key, :token, :index);
+        let dec_amount = decrypt_note_amount(
+            :enc_amount, salt: salt_120_bits, :channel_key, :token, :index,
+        );
         assert_eq!(dec_amount, *amount);
+    }
+}
+
+#[test]
+fn test_enc_note_packed_value_decode_note_amount() {
+    let amounts = [1, 123456789, MAX_U128];
+    let mut nonce = 0;
+    for amount in amounts.span() {
+        nonce += 1;
+        let channel_key = hash(['CHANNEL_KEY', nonce.into()].span());
+        nonce += 1;
+        let salt_120_bits_u256: u256 = hash(['SALT', nonce.into()].span())
+            .into() % TWO_POW_120
+            .into();
+        let salt_120_bits: u128 = salt_120_bits_u256.try_into().unwrap();
+        nonce += 1;
+        let token: ContractAddress = hash(['TOKEN', nonce.into()].span()).try_into().unwrap();
+        nonce += 1;
+        let index_u256: u256 = hash(['INDEX', nonce.into()].span()).into();
+        let index: usize = (index_u256 % MAX_U32.into()).try_into().unwrap();
+        let packed_value = enc_note_packed_value(
+            :channel_key, :token, :index, salt: salt_120_bits, amount: *amount,
+        );
+        let dec_amount = decode_note_amount(:packed_value, :channel_key, :token, :index);
+        assert_eq!(dec_amount, *amount);
+    }
+}
+
+#[test]
+fn test_open_note_packed_value_decode_note_amount() {
+    let amounts = [1, 123456789, MAX_U128];
+    let mut nonce = 0;
+    for amount in amounts.span() {
+        nonce += 1;
+        let token: ContractAddress = hash(['TOKEN', nonce.into()].span()).try_into().unwrap();
+        nonce += 1;
+        let depositor: ContractAddress = hash(['DEPOSITOR', nonce.into()].span())
+            .try_into()
+            .unwrap();
+        let note = open_note(:token, :depositor);
+        let dec_amount = decode_note_amount(
+            packed_value: note.packed_value, channel_key: Zero::zero(), :token, index: Zero::zero(),
+        );
+        assert_eq!(dec_amount, Zero::zero());
+        let packed_value_with_amount = packing(value_1: OPEN_NOTE_SALT, value_2: *amount);
+        let dec_amount_with_amount = decode_note_amount(
+            packed_value: packed_value_with_amount,
+            channel_key: Zero::zero(),
+            :token,
+            index: Zero::zero(),
+        );
+        assert_eq!(dec_amount_with_amount, *amount);
     }
 }
 
