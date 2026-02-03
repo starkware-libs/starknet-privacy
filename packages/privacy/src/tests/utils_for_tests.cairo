@@ -269,12 +269,10 @@ pub(crate) impl UserImpl of UserTrait {
         token: Token,
         amount: u128,
         channel_key: felt252,
-        note_index: usize,
+        index: usize,
     ) {
         let random = self.get_random();
-        let use_note_input = UseNoteInput {
-            channel_key, token: token.contract_address(), note_index,
-        };
+        let use_note_input = UseNoteInput { channel_key, token: token.contract_address(), index };
         let withdraw_input = WithdrawInput {
             withdrawal_target, token: token.contract_address(), amount, random,
         };
@@ -879,12 +877,12 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn compute_nullifier(
-        self: @User, sender: User, token_address: ContractAddress, note_index: usize,
+        self: @User, sender: User, token_address: ContractAddress, index: usize,
     ) -> felt252 {
         compute_nullifier(
             channel_key: sender.compute_channel_key(recipient: *self),
             token: token_address,
-            index: note_index,
+            :index,
             owner_private_key: *self.private_key,
         )
     }

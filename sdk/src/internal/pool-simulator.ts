@@ -202,12 +202,12 @@ export class PoolSimulator {
   }
 
   private handleUseNote(input: UseNoteInput): void {
-    const { token, channel_key, note_index } = input;
+    const { token, channel_key, index } = input;
 
     // Remove the note from tracking (it's being spent)
     const tokenNotes = this.notes.get(token)!;
 
-    const noteId = compute_note_id(channel_key, token, note_index);
+    const noteId = compute_note_id(channel_key, token, index);
 
     tokenNotes.delete(noteId);
 
