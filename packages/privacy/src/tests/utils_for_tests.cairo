@@ -27,7 +27,13 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
+use privacy::swap_executor::interface::{
+    ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait, ISwapExecutorSafeDispatcher,
+    ISwapExecutorSafeDispatcherTrait,
+};
+use privacy::swap_executor::swap_executor::SwapExecutor::deploy_for_test as deploy_swap_executor_for_test;
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
+use privacy::tests::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::utils::constants::{OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     derive_public_key, enc_note_packed_value, encrypt_outgoing_channel_info, encrypt_private_key,
@@ -111,6 +117,7 @@ pub(crate) mod constants {
     pub const TOKEN_SUPPLY: u256 = 10_u256.pow(12 + DECIMALS.into());
     pub const TOKEN_OWNER: ContractAddress = 'TOKEN_OWNER'.try_into().unwrap();
     pub const DEFAULT_AMOUNT: u128 = 10_u128.pow(DECIMALS.into());
+    pub const TWO_POW_128: u256 = 2_u256.pow(128);
 }
 
 
@@ -131,6 +138,16 @@ impl DefaultRolesImpl of Default<Roles> {
             token_admin: 'TOKEN_ADMIN'.try_into().unwrap(),
         }
     }
+}
+
+#[derive(Copy, Drop)]
+pub(crate) struct SwapExecutorCfg {
+    pub address: ContractAddress,
+}
+
+#[derive(Copy, Drop)]
+pub(crate) struct MockAMMCfg {
+    pub address: ContractAddress,
 }
 
 #[derive(Copy, Drop)]
@@ -1203,6 +1220,8 @@ pub(crate) struct Test {
     pub privacy: PrivacyCfg,
     pub nonce: usize,
     pub compliance: Compliance,
+    pub swap_executor: SwapExecutorCfg,
+    pub mock_amm: MockAMMCfg,
 }
 
 #[generate_trait]
@@ -1574,7 +1593,10 @@ impl DefaultTestImpl of Default<Test> {
         let compliance: Compliance = Default::default();
         let roles: Roles = Default::default();
         let privacy = deploy_privacy(:roles, compliance_public_key: compliance.public_key);
-        Test { privacy, nonce: Zero::zero(), compliance }
+        let swap_executor = deploy_swap_executor();
+        let mock_amm = deploy_mock_amm();
+
+        Test { privacy, nonce: Zero::zero(), compliance, swap_executor, mock_amm }
     }
 }
 
@@ -1640,6 +1662,74 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
     )
         .expect('MockAccount deployment failed');
     contract_address
+}
+
+/// Deploy a new swap executor contract.
+fn deploy_swap_executor() -> SwapExecutorCfg {
+    let class_hash = declare(contract: "SwapExecutor").unwrap_syscall().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_swap_executor_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('SwapExecutor deploy failed');
+    SwapExecutorCfg { address: contract_address }
+}
+
+/// Deploy a new mock AMM contract.
+fn deploy_mock_amm() -> MockAMMCfg {
+    let class_hash = declare(contract: "MockAMM").unwrap_syscall().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_amm_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('MockAMM deploy failed');
+    MockAMMCfg { address: contract_address }
+}
+
+#[generate_trait]
+pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
+    fn swap(
+        self: @SwapExecutorCfg,
+        swap_contract: ContractAddress,
+        swap_selector: felt252,
+        swap_calldata: Span<felt252>,
+        in_token: ContractAddress,
+        out_token: ContractAddress,
+        in_amount: u128,
+    ) -> u128 {
+        let dispatcher = ISwapExecutorDispatcher { contract_address: *self.address };
+        ISwapExecutorDispatcherTrait::swap(
+            dispatcher,
+            :swap_contract,
+            :swap_selector,
+            :swap_calldata,
+            :in_token,
+            :out_token,
+            :in_amount,
+        )
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_swap(
+        self: @SwapExecutorCfg,
+        swap_contract: ContractAddress,
+        swap_selector: felt252,
+        swap_calldata: Span<felt252>,
+        in_token: ContractAddress,
+        out_token: ContractAddress,
+        in_amount: u128,
+    ) -> Result<u128, Array<felt252>> {
+        ISwapExecutorSafeDispatcher { contract_address: *self.address }
+            .swap(:swap_contract, :swap_selector, :swap_calldata, :in_token, :out_token, :in_amount)
+    }
+}
+
+/// Compute packed value for open notes: packing(OPEN_NOTE_SALT, amount).
+pub(crate) fn compute_open_note_packed_value(amount: u128) -> felt252 {
+    let salt: u256 = OPEN_NOTE_SALT.into();
+    let amount_u256: u256 = amount.into();
+    let packed: u256 = salt * constants::TWO_POW_128 + amount_u256;
+    packed.try_into().unwrap()
 }
 
 /// Returns private_key decrypted from the given `enc_private_key` and
