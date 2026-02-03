@@ -92,8 +92,8 @@ pub fn subchannel_exists(subchannel_marker: Felt) -> Result<Felt> {
 /// Storage slots for encrypted subchannel info.
 /// Cairo: `subchannel_tokens: Map<felt252, EncSubchannelInfo>`
 /// EncSubchannelInfo has 2 fields: salt and enc_token.
-pub fn subchannel_tokens(subchannel_key: Felt) -> Result<EncSubchannelInfoSlots> {
-    let base = get_storage_var_address("subchannel_tokens", &[subchannel_key])
+pub fn subchannel_tokens(subchannel_id: Felt) -> Result<EncSubchannelInfoSlots> {
+    let base = get_storage_var_address("subchannel_tokens", &[subchannel_id])
         .context("failed to compute subchannel_tokens storage address")?;
     Ok(EncSubchannelInfoSlots {
         salt: base,
@@ -166,7 +166,7 @@ mod tests {
             f.slots.subchannel_exists_address
         );
 
-        let tokens = subchannel_tokens(f.inputs.subchannel_key).unwrap();
+        let tokens = subchannel_tokens(f.inputs.subchannel_id).unwrap();
         assert_eq!(tokens.salt, f.slots.subchannel_tokens_salt_address);
         assert_eq!(
             tokens.enc_token,

@@ -169,38 +169,38 @@ fn test_execute_write_once_assertions() {
 #[test]
 fn test_execute_write_once_subchannel() {
     let mut test: Test = Default::default();
-    let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
+    let (_, subchannel_id, enc_subchannel_info) = test.mock_new_subchannel();
     assert!(enc_subchannel_info.enc_token.is_non_zero());
 
     // Verify subchannel info is zero before writing.
-    let subchannel_info = test.privacy.get_subchannel_info(:subchannel_key);
+    let subchannel_info = test.privacy.get_subchannel_info(:subchannel_id);
     assert_eq!(subchannel_info.salt, Zero::zero());
     assert_eq!(subchannel_info.enc_token, Zero::zero());
 
     // Verify subchannel doesn't exist and write.
     let storage_address = map_entry_address(
-        map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
+        map_selector: selector!("subchannel_tokens"), keys: [subchannel_id].span(),
     );
     let actions = [to_write_once_action(:storage_address, value: enc_subchannel_info)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify subchannel exists.
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), enc_subchannel_info);
+    assert_eq!(test.privacy.get_subchannel_info(:subchannel_id), enc_subchannel_info);
 }
 
 #[test]
 fn test_execute_write_once_subchannel_assertions() {
     let mut test: Test = Default::default();
-    let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
+    let (_, subchannel_id, enc_subchannel_info) = test.mock_new_subchannel();
     assert!(enc_subchannel_info.enc_token.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
-        map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
+        map_selector: selector!("subchannel_tokens"), keys: [subchannel_id].span(),
     );
     let actions = [to_write_once_action(:storage_address, value: enc_subchannel_info)].span();
     test.privacy.execute_actions(:actions);
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), enc_subchannel_info);
+    assert_eq!(test.privacy.get_subchannel_info(:subchannel_id), enc_subchannel_info);
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -250,48 +250,48 @@ fn test_execute_write_once_private_key_assertions() {
 fn test_execute_write_once_outgoing_channel() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
+    let outgoing_channel_id = user.compute_outgoing_channel_id(index: 0);
     let enc_outgoing_channel_info = user
         .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: Zero::zero());
-    assert!(outgoing_channel_key.is_non_zero());
+    assert!(outgoing_channel_id.is_non_zero());
     assert!(enc_outgoing_channel_info.enc_recipient_addr.is_non_zero());
 
     // Verify outgoing channel info is zero before writing.
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(:outgoing_channel_key),
+        test.privacy.get_outgoing_channel_info(:outgoing_channel_id),
         EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
     );
 
     // Write outgoing channel info.
     let storage_address = map_entry_address(
-        map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
+        map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_id].span(),
     );
     let actions = [to_write_once_action(:storage_address, value: enc_outgoing_channel_info)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify outgoing channel info exists.
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(:outgoing_channel_key), enc_outgoing_channel_info,
+        test.privacy.get_outgoing_channel_info(:outgoing_channel_id), enc_outgoing_channel_info,
     );
 }
 #[test]
 fn test_execute_write_once_outgoing_channel_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
+    let outgoing_channel_id = user.compute_outgoing_channel_id(index: 0);
     let enc_outgoing_channel_info = user
         .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: Zero::zero());
-    assert!(outgoing_channel_key.is_non_zero());
+    assert!(outgoing_channel_id.is_non_zero());
     assert!(enc_outgoing_channel_info.enc_recipient_addr.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
-        map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
+        map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_id].span(),
     );
     let actions = [to_write_once_action(:storage_address, value: enc_outgoing_channel_info)].span();
     test.privacy.execute_actions(:actions);
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(:outgoing_channel_key), enc_outgoing_channel_info,
+        test.privacy.get_outgoing_channel_info(:outgoing_channel_id), enc_outgoing_channel_info,
     );
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);

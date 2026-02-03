@@ -8,7 +8,7 @@ use privacy::hashes::{
     compute_channel_key, compute_channel_marker, compute_enc_amount_hash,
     compute_enc_channel_key_hash, compute_enc_private_key_hash, compute_enc_recipient_addr_hash,
     compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
-    compute_outgoing_channel_key, compute_subchannel_key, compute_subchannel_marker,
+    compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker,
     domain_separation::*,
 };
 use privacy::utils::{
@@ -53,7 +53,7 @@ fn generate_reference_hashes() {
     let channel_marker = compute_channel_marker(
         CHANNEL_KEY, sender, recipient, RECIPIENT_PUBLIC_KEY,
     );
-    let subchannel_key = compute_subchannel_key(CHANNEL_KEY, INDEX);
+    let subchannel_id = compute_subchannel_id(CHANNEL_KEY, INDEX);
     let subchannel_marker = compute_subchannel_marker(
         CHANNEL_KEY, recipient, RECIPIENT_PUBLIC_KEY, token,
     );
@@ -61,7 +61,7 @@ fn generate_reference_hashes() {
     let nullifier = compute_nullifier(CHANNEL_KEY, token, INDEX, SENDER_PRIVATE_KEY);
 
     // Outgoing channel key
-    let outgoing_channel_key = compute_outgoing_channel_key(sender, SENDER_PRIVATE_KEY, INDEX);
+    let outgoing_channel_id = compute_outgoing_channel_id(sender, SENDER_PRIVATE_KEY, INDEX);
 
     // Encryption hashes
     let enc_amount_hash = compute_enc_amount_hash(CHANNEL_KEY, token, INDEX, SALT);
@@ -132,7 +132,7 @@ fn generate_reference_hashes() {
     // Outputs (computed hashes)
     println!("outputs.channelKey: 0x{:x}", channel_key);
     println!("outputs.channelMarker: 0x{:x}", channel_marker);
-    println!("outputs.subchannelKey: 0x{:x}", subchannel_key);
+    println!("outputs.subchannelId: 0x{:x}", subchannel_id);
     println!("outputs.subchannelMarker: 0x{:x}", subchannel_marker);
     println!("outputs.noteId: 0x{:x}", note_id);
     println!("outputs.nullifier: 0x{:x}", nullifier);
@@ -142,7 +142,7 @@ fn generate_reference_hashes() {
     println!("outputs.encChannelKeyHash: 0x{:x}", enc_channel_key_hash);
     println!("outputs.encSenderAddrHash: 0x{:x}", enc_sender_addr_hash);
     println!("outputs.encRecipientAddrHash: 0x{:x}", enc_recipient_addr_hash);
-    println!("outputs.outgoingChannelKey: 0x{:x}", outgoing_channel_key);
+    println!("outputs.outgoingChannelId: 0x{:x}", outgoing_channel_id);
 
     // Encryption outputs
     println!("outputs.encSubchannelSalt: 0x{:x}", enc_subchannel.salt);
@@ -189,7 +189,7 @@ fn generate_reference_storage_slots() {
     let channel_marker = compute_channel_marker(
         CHANNEL_KEY, sender, recipient, RECIPIENT_PUBLIC_KEY,
     );
-    let subchannel_key = compute_subchannel_key(CHANNEL_KEY, INDEX);
+    let subchannel_id = compute_subchannel_id(CHANNEL_KEY, INDEX);
     let subchannel_marker = compute_subchannel_marker(
         CHANNEL_KEY, recipient, RECIPIENT_PUBLIC_KEY, token,
     );
@@ -241,10 +241,10 @@ fn generate_reference_storage_slots() {
         map_selector: selector!("subchannel_exists"), keys: [subchannel_marker].span(),
     );
 
-    // subchannel_tokens[subchannel_key] - Map<felt252, EncSubchannelInfo>
+    // subchannel_tokens[subchannel_id] - Map<felt252, EncSubchannelInfo>
     // EncSubchannelInfo is a struct with 2 fields stored at consecutive addresses
     let subchannel_tokens_slot = map_entry_address(
-        map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
+        map_selector: selector!("subchannel_tokens"), keys: [subchannel_id].span(),
     );
 
     // notes[note_id] - Map<felt252, felt252>
@@ -274,7 +274,7 @@ fn generate_reference_storage_slots() {
     println!("inputs.sender: 0x{:x}", SENDER);
     println!("inputs.recipient: 0x{:x}", RECIPIENT);
     println!("inputs.channelMarker: 0x{:x}", channel_marker);
-    println!("inputs.subchannelKey: 0x{:x}", subchannel_key);
+    println!("inputs.subchannelId: 0x{:x}", subchannel_id);
     println!("inputs.subchannelMarker: 0x{:x}", subchannel_marker);
     println!("inputs.noteId: 0x{:x}", note_id);
     println!("inputs.nullifier: 0x{:x}", nullifier);

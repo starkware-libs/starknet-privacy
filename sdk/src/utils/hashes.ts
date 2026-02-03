@@ -10,7 +10,7 @@ import { hash } from "./crypto.js";
 const CHANNEL_MARKER_TAG = "CHANNEL_MARKER_TAG:V1";
 const CHANNEL_KEY_TAG = "CHANNEL_KEY_TAG:V1";
 const SUBCHANNEL_MARKER_TAG = "SUBCHANNEL_MARKER_TAG:V1";
-const SUBCHANNEL_KEY_TAG = "SUBCHANNEL_KEY_TAG:V1";
+const SUBCHANNEL_ID_TAG = "SUBCHANNEL_ID_TAG:V1";
 const NULLIFIER_TAG = "NULLIFIER_TAG:V1";
 const ENC_CHANNEL_KEY_TAG = "ENC_CHANNEL_KEY_TAG:V1";
 const ENC_SENDER_ADDR_TAG = "ENC_SENDER_ADDR_TAG:V1";
@@ -20,7 +20,7 @@ const ENC_TOKEN_TAG = "ENC_TOKEN_TAG:V1";
 const ENC_PRIVATE_KEY_TAG = "ENC_PRIVATE_KEY_TAG:V1";
 const ENC_USER_ADDR_TAG = "ENC_USER_ADDR_TAG:V1";
 const ENC_RECIPIENT_ADDR_TAG = "ENC_RECIPIENT_ADDR_TAG:V1";
-const OUTGOING_CHANNEL_KEY_TAG = "OUTGOING_CHANNEL_KEY_TAG:V1";
+const OUTGOING_CHANNEL_ID_TAG = "OUTGOING_CHANNEL_ID_TAG:V1";
 
 /** See packages/privacy/src/hashes.cairo for documentation. */
 export function compute_enc_private_key_hash(shared_x: bigint): bigint {
@@ -58,8 +58,8 @@ export function compute_channel_key(sender_addr: bigint, sender_private_key: big
 }
 
 /** See packages/privacy/src/hashes.cairo for documentation. */
-export function compute_outgoing_channel_key(sender_addr: bigint, sender_private_key: bigint, index: number): bigint {
-  return hash(OUTGOING_CHANNEL_KEY_TAG, sender_addr, sender_private_key, index, 0n);
+export function compute_outgoing_channel_id(sender_addr: bigint, sender_private_key: bigint, index: number): bigint {
+  return hash(OUTGOING_CHANNEL_ID_TAG, sender_addr, sender_private_key, index, 0n);
 }
 
 /** See packages/privacy/src/hashes.cairo for documentation. */
@@ -68,8 +68,8 @@ export function compute_channel_marker(channel_key: bigint, sender_addr: bigint,
 }
 
 /** See packages/privacy/src/hashes.cairo for documentation. */
-export function compute_subchannel_key(channel_key: bigint, index: number): bigint {
-  return hash(SUBCHANNEL_KEY_TAG, channel_key, index, 0n);
+export function compute_subchannel_id(channel_key: bigint, index: number): bigint {
+  return hash(SUBCHANNEL_ID_TAG, channel_key, index, 0n);
 }
 
 /** See packages/privacy/src/hashes.cairo for documentation. */

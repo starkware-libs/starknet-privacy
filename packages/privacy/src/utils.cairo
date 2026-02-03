@@ -47,7 +47,7 @@ pub fn GEN_P() -> EcPoint {
 /// Assumes `channel_key` and `token` are not zero.
 ///
 /// The salt is used to guarantee one-time key usage, preventing privacy-related data leakage
-/// if a transaction is reverted and the same subchannel key is reused.
+/// if a transaction is reverted and the same subchannel id is reused.
 ///
 /// `enc_subchannel_info = (salt, enc_token)`.
 /// `enc_token = h(ENC_TOKEN_TAG, channel_key, index, 0, salt) + token`

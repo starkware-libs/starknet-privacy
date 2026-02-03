@@ -13,9 +13,9 @@ static ENC_CHANNEL_KEY_TAG: LazyLock<Felt> =
 static ENC_SENDER_ADDR_TAG: LazyLock<Felt> =
     LazyLock::new(|| short_string_to_felt("ENC_SENDER_ADDR_TAG:V1"));
 
-/// Domain separation tag for subchannel key derivation.
-static SUBCHANNEL_KEY_TAG: LazyLock<Felt> =
-    LazyLock::new(|| short_string_to_felt("SUBCHANNEL_KEY_TAG:V1"));
+/// Domain separation tag for subchannel id derivation.
+static SUBCHANNEL_ID_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("SUBCHANNEL_ID_TAG:V1"));
 
 /// Domain separation tag for encrypted token.
 static ENC_TOKEN_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("ENC_TOKEN_TAG:V1"));
@@ -56,10 +56,10 @@ pub fn compute_enc_sender_addr_hash(shared_x: Felt) -> Felt {
 
 /// Computes the subchannel key from channel key and index.
 ///
-/// `subchannel_key = hash(SUBCHANNEL_KEY_TAG, channel_key, index, 0)`
-pub fn compute_subchannel_key(channel_key: Felt, index: u64) -> Felt {
+/// `subchannel_id = hash(SUBCHANNEL_ID_TAG, channel_key, index, 0)`
+pub fn compute_subchannel_id(channel_key: Felt, index: u64) -> Felt {
     hash(&[
-        *SUBCHANNEL_KEY_TAG,
+        *SUBCHANNEL_ID_TAG,
         channel_key,
         Felt::from(index),
         Felt::ZERO,
@@ -131,11 +131,11 @@ mod tests {
     }
 
     #[test]
-    fn test_compute_subchannel_key() {
+    fn test_compute_subchannel_id() {
         let f = load_cairo_ref_fixture();
         assert_eq!(
-            compute_subchannel_key(f.inputs.channel_key, f.inputs.index),
-            f.outputs.subchannel_key
+            compute_subchannel_id(f.inputs.channel_key, f.inputs.index),
+            f.outputs.subchannel_id
         );
     }
 
