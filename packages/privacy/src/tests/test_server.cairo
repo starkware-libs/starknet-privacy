@@ -3,13 +3,13 @@ use privacy::actions::{
     AppendToVecInput, DepositToOpenNoteInput, ServerAction, TransferFromInput, TransferToInput,
     VerifyValueInput,
 };
-use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note, NoteTrait};
+use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note};
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
-use privacy::utils::{to_write_once_action, unpacking};
+use privacy::utils::{open_note, to_write_once_action, unpacking};
 use privacy::{errors, events};
 use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
@@ -789,8 +789,8 @@ fn test_execute_deposit_to_open_note_assertions() {
 
     // Catch NOTE_ALREADY_DEPOSITED - Deposit to an open note, then try to deposit again.
     let (note_id_filled, _) = test.mock_new_note(:amount);
-    let open_note = NoteTrait::open_note(token: token_address, depositor: depositor.address);
-    test.privacy.cheat_create_note(note_id: note_id_filled, note: open_note);
+    let note = open_note(token: token_address, depositor: depositor.address);
+    test.privacy.cheat_create_note(note_id: note_id_filled, :note);
 
     // Deposit to the open note first time.
     depositor
@@ -809,7 +809,7 @@ fn test_execute_deposit_to_open_note_assertions() {
 
     // Catch CALLER_NOT_DEPOSITOR - Create open note with depositor A, caller is depositor B.
     let (note_id_mismatch, _) = test.mock_new_note(:amount);
-    let open_note_a = NoteTrait::open_note(token: token_address, depositor: depositor.address);
+    let open_note_a = open_note(token: token_address, depositor: depositor.address);
     test.privacy.cheat_create_note(note_id: note_id_mismatch, note: open_note_a);
 
     // Try to deposit with other_depositor as caller instead of depositor.
