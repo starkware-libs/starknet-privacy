@@ -63,10 +63,10 @@ pub trait IViews: Send + Sync {
     /// Checks if a subchannel with the given marker exists.
     async fn subchannel_exists(&self, subchannel_marker: Felt) -> Result<bool, StorageError>;
 
-    /// Returns encrypted subchannel info for the given key.
+    /// Returns encrypted subchannel info for the given id.
     async fn get_subchannel_info(
         &self,
-        subchannel_key: Felt,
+        subchannel_id: Felt,
     ) -> Result<EncSubchannelInfo, StorageError>;
 
     /// Returns the note value for the given note ID.
@@ -145,9 +145,9 @@ impl<T: RawStorageAccess> IViews for T {
     #[tracing::instrument(name = "get_subchannel_info", level = "debug", skip(self))]
     async fn get_subchannel_info(
         &self,
-        subchannel_key: Felt,
+        subchannel_id: Felt,
     ) -> Result<EncSubchannelInfo, StorageError> {
-        let slots = storage_slots::subchannel_tokens(subchannel_key)?;
+        let slots = storage_slots::subchannel_tokens(subchannel_id)?;
         let values = self.read_slots(vec![slots.salt, slots.enc_token]).await?;
         Ok(EncSubchannelInfo {
             salt: values[0],

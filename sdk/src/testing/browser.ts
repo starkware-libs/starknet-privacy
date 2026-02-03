@@ -17,7 +17,7 @@ export { createMockProof, createMockCallAndProof, Withdrawal } from "./helpers.j
 export {
   compute_channel_key,
   compute_channel_marker,
-  compute_subchannel_key,
+  compute_subchannel_id,
   compute_subchannel_marker,
   compute_note_id,
   compute_nullifier,

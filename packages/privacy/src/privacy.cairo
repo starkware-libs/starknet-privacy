@@ -13,7 +13,7 @@ pub mod Privacy {
     use privacy::errors::internal_errors;
     use privacy::hashes::{
         compute_channel_key, compute_channel_marker, compute_note_id, compute_nullifier,
-        compute_outgoing_channel_key, compute_subchannel_key, compute_subchannel_marker,
+        compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker,
     };
     use privacy::interface::{IClient, ICompliance, IServer, IViews};
     use privacy::objects::{
@@ -70,11 +70,11 @@ pub mod Privacy {
         src5: SRC5Component::Storage,
         /// Map of recipient_addr to a list of their encrypted channels.
         recipient_channels: Map<ContractAddress, Vec<EncChannelInfo>>,
-        /// Map of outgoing-channel keys to their encrypted recipient addresses.
+        /// Map of outgoing-channel ids to their encrypted recipient addresses.
         outgoing_channels: Map<felt252, EncOutgoingChannelInfo>,
         /// Map of channel marker to whether it exists.
         channel_exists: Map<felt252, bool>,
-        /// Map of subchannel keys to their encrypted tokens.
+        /// Map of subchannel ids to their encrypted tokens.
         subchannel_tokens: Map<felt252, EncSubchannelInfo>,
         /// Map of subchannel marker to whether it exists.
         subchannel_exists: Map<felt252, bool>,
@@ -348,7 +348,7 @@ pub mod Privacy {
                     || self
                         .outgoing_channels
                         .entry(
-                            compute_outgoing_channel_key(
+                            compute_outgoing_channel_id(
                                 :sender_addr, :sender_private_key, index: index - 1,
                             ),
                         )
@@ -369,7 +369,7 @@ pub mod Privacy {
             let channel_marker = compute_channel_marker(
                 :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
             );
-            let outgoing_channel_key = compute_outgoing_channel_key(
+            let outgoing_channel_id = compute_outgoing_channel_id(
                 :sender_addr, :sender_private_key, :index,
             );
             let enc_outgoing_channel_info = encrypt_outgoing_channel_info(
@@ -378,7 +378,7 @@ pub mod Privacy {
 
             assert(enc_channel_info.is_all_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
             assert(channel_marker.is_non_zero(), internal_errors::ZERO_CHANNEL_MARKER);
-            assert(outgoing_channel_key.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_KEY);
+            assert(outgoing_channel_id.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_ID);
 
             array![
                 ServerAction::VerifyValue(
@@ -392,7 +392,7 @@ pub mod Privacy {
                     storage_address: self.channel_exists.entry(channel_marker).into(), value: true,
                 ),
                 to_write_once_action(
-                    storage_address: self.outgoing_channels.entry(outgoing_channel_key).into(),
+                    storage_address: self.outgoing_channels.entry(outgoing_channel_id).into(),
                     value: enc_outgoing_channel_info,
                 ),
             ]
@@ -426,7 +426,7 @@ pub mod Privacy {
                 index.is_zero()
                     || self
                         .subchannel_tokens
-                        .entry(compute_subchannel_key(:channel_key, index: index - 1))
+                        .entry(compute_subchannel_id(:channel_key, index: index - 1))
                         .salt
                         .read()
                         .is_non_zero(),
@@ -434,17 +434,17 @@ pub mod Privacy {
             );
 
             // Compute subchannel values.
-            let subchannel_key = compute_subchannel_key(:channel_key, :index);
+            let subchannel_id = compute_subchannel_id(:channel_key, :index);
             let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :index, :token, :salt);
             let subchannel_marker = compute_subchannel_marker(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
-            assert(subchannel_key.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_KEY);
+            assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
             assert(subchannel_marker.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_MARKER);
 
             array![
                 to_write_once_action(
-                    storage_address: self.subchannel_tokens.entry(subchannel_key).into(),
+                    storage_address: self.subchannel_tokens.entry(subchannel_id).into(),
                     value: enc_subchannel_info,
                 ),
                 to_write_once_action(
@@ -883,17 +883,17 @@ pub mod Privacy {
         }
 
         fn get_outgoing_channel_info(
-            self: @ContractState, outgoing_channel_key: felt252,
+            self: @ContractState, outgoing_channel_id: felt252,
         ) -> EncOutgoingChannelInfo {
-            self.outgoing_channels.read(outgoing_channel_key)
+            self.outgoing_channels.read(outgoing_channel_id)
         }
 
         fn subchannel_exists(self: @ContractState, subchannel_marker: felt252) -> bool {
             self.subchannel_exists.read(subchannel_marker)
         }
 
-        fn get_subchannel_info(self: @ContractState, subchannel_key: felt252) -> EncSubchannelInfo {
-            self.subchannel_tokens.read(subchannel_key)
+        fn get_subchannel_info(self: @ContractState, subchannel_id: felt252) -> EncSubchannelInfo {
+            self.subchannel_tokens.read(subchannel_id)
         }
 
         fn get_note(self: @ContractState, note_id: felt252) -> Note {
