@@ -1,7 +1,7 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    AppendToVecInput, DepositToOpenNoteInput, ReadAssertInput, ServerAction, TransferFromInput,
-    TransferToInput,
+    AppendToVecInput, DepositToOpenNoteInput, ExecuteSwapInput, ReadAssertInput, ServerAction,
+    TransferFromInput, TransferToInput,
 };
 use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note};
 use privacy::tests::utils_for_tests::{
@@ -746,7 +746,6 @@ fn test_execute_deposit_to_open_note_assertions() {
     let token = test.new_token();
     let mut user = test.new_user();
     let depositor = test.new_user();
-    let other_depositor = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
     let token_address = token.contract_address();
 
@@ -806,21 +805,6 @@ fn test_execute_deposit_to_open_note_assertions() {
             input: DepositToOpenNoteInput { note_id: note_id_filled, amount },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
-
-    // Catch CALLER_NOT_DEPOSITOR - Create open note with depositor A, caller is depositor B.
-    let (note_id_mismatch, _) = test.mock_new_note(:amount);
-    let open_note_a = open_note(token: token_address, depositor: depositor.address);
-    test.privacy.cheat_create_note(note_id: note_id_mismatch, note: open_note_a);
-
-    // Try to deposit with other_depositor as caller instead of depositor.
-    other_depositor.increase_token_balance(:token, :amount);
-    other_depositor.approve(:token, amount: amount.into());
-
-    let result = other_depositor
-        .safe_deposit_to_open_note(
-            input: DepositToOpenNoteInput { note_id: note_id_mismatch, amount },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
 }
 
 #[test]
@@ -853,4 +837,360 @@ fn test_execute_deposit_to_open_note_transfer_assertions() {
     let result = depositor
         .safe_deposit_to_open_note(input: DepositToOpenNoteInput { note_id, amount });
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
+}
+
+#[test]
+fn test_execute_swap() {
+    let mut test: Test = Default::default();
+    let input_token = test.new_token();
+    let output_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let executor_address = test.swap_executor.address;
+    let amm_address = test.mock_amm;
+
+    // Create an open note with swap_executor as depositor.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    let recipient = user;
+    user.open_channel_e2e(:recipient, index: 0);
+    user.open_subchannel_e2e(:recipient, token_address: output_token.contract_address(), index: 0);
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient,
+            token: output_token.contract_address(),
+            index: 0,
+            depositor: executor_address,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id, _) = user.compute_open_note(:create_note_input);
+
+    // Verify open note was created with zero amount.
+    let initial_note = test.privacy.get_note(:note_id);
+    let (initial_salt, initial_amount) = unpacking(packed_value: initial_note.packed_value);
+    assert_eq!(initial_salt, OPEN_NOTE_SALT);
+    assert_eq!(initial_amount, 0);
+
+    // Fund swap executor with input tokens.
+    input_token.supply(address: executor_address, amount: swap_amount);
+
+    // Fund AMM with output tokens.
+    output_token.supply(address: amm_address, amount: swap_amount);
+
+    // Verify balances before swap.
+    assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(input_token.balance_of(address: executor_address), swap_amount.into());
+    assert_eq!(input_token.balance_of(address: amm_address), 0);
+    assert_eq!(output_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(output_token.balance_of(address: executor_address), 0);
+    assert_eq!(output_token.balance_of(address: amm_address), swap_amount.into());
+
+    // Prepare swap calldata: [input_token, output_token, amount (u256 = low, high)].
+    let swap_calldata = array![
+        input_token.contract_address().into(), output_token.contract_address().into(),
+        swap_amount.into(), 0,
+    ];
+
+    // Create ExecuteSwap input.
+    let execute_swap_input = ExecuteSwapInput {
+        swap_executor: executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        note_id,
+        in_amount: swap_amount,
+    };
+
+    // Execute the swap action.
+    test.privacy.execute_actions([ServerAction::ExecuteSwap(execute_swap_input)].span());
+
+    // Verify open note was filled with swap amount.
+    let filled_note = test.privacy.get_note(:note_id);
+    let (filled_salt, filled_amount) = unpacking(packed_value: filled_note.packed_value);
+    assert_eq!(filled_salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, swap_amount);
+
+    // Verify balances after swap.
+    // Input tokens: swap_executor -> AMM (via swap).
+    assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(input_token.balance_of(address: executor_address), 0);
+    assert_eq!(input_token.balance_of(address: amm_address), swap_amount.into());
+    // Output tokens: AMM -> swap_executor -> privacy (via deposit).
+    assert_eq!(output_token.balance_of(address: test.privacy.address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: executor_address), 0);
+    assert_eq!(output_token.balance_of(address: amm_address), 0);
+}
+
+#[test]
+fn test_execute_swap_note_not_found() {
+    let mut test: Test = Default::default();
+    let input_token = test.new_token();
+    let output_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let executor_address = test.swap_executor.address;
+    let amm_address = test.mock_amm;
+
+    // Fund swap executor with input tokens.
+    input_token.supply(address: executor_address, amount: swap_amount);
+
+    // Fund AMM with output tokens.
+    output_token.supply(address: amm_address, amount: swap_amount);
+
+    // Verify balances before swap.
+    assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(input_token.balance_of(address: executor_address), swap_amount.into());
+    assert_eq!(input_token.balance_of(address: amm_address), 0);
+    assert_eq!(output_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(output_token.balance_of(address: executor_address), 0);
+    assert_eq!(output_token.balance_of(address: amm_address), swap_amount.into());
+
+    // Prepare swap calldata: [input_token, output_token, amount (u256 = low, high)].
+    let swap_calldata = array![
+        input_token.contract_address().into(), output_token.contract_address().into(),
+        swap_amount.into(), 0,
+    ];
+
+    // Use a note_id that doesn't exist.
+    let nonexistent_note_id = 'NONEXISTENT_NOTE';
+
+    let execute_swap_input = ExecuteSwapInput {
+        swap_executor: executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        note_id: nonexistent_note_id,
+        in_amount: swap_amount,
+    };
+
+    // Should fail because the note doesn't exist.
+    let result = test
+        .privacy
+        .safe_execute_actions([ServerAction::ExecuteSwap(execute_swap_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+    // Note: Balance assertions after revert skipped due to snforge revert handling bug.
+// Expected: all balances unchanged from before the failed transaction.
+}
+
+#[test]
+fn test_execute_swap_wrong_depositor() {
+    let mut test: Test = Default::default();
+    let input_token = test.new_token();
+    let output_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let executor_address = test.swap_executor.address;
+    let amm_address = test.mock_amm;
+
+    // Create an open note with a DIFFERENT depositor (not swap_executor).
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    let recipient = user;
+    user.open_channel_e2e(:recipient, index: 0);
+    user.open_subchannel_e2e(:recipient, token_address: output_token.contract_address(), index: 0);
+
+    let wrong_depositor: starknet::ContractAddress = 'WRONG_DEPOSITOR'.try_into().unwrap();
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient,
+            token: output_token.contract_address(),
+            index: 0,
+            depositor: wrong_depositor,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id, _) = user.compute_open_note(:create_note_input);
+
+    // Fund swap executor with input tokens.
+    input_token.supply(address: executor_address, amount: swap_amount);
+
+    // Fund AMM with output tokens.
+    output_token.supply(address: amm_address, amount: swap_amount);
+
+    // Verify balances before swap.
+    assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(input_token.balance_of(address: executor_address), swap_amount.into());
+    assert_eq!(input_token.balance_of(address: amm_address), 0);
+    assert_eq!(output_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(output_token.balance_of(address: executor_address), 0);
+    assert_eq!(output_token.balance_of(address: amm_address), swap_amount.into());
+
+    // Prepare swap calldata: [input_token, output_token, amount (u256 = low, high)].
+    let swap_calldata = array![
+        input_token.contract_address().into(), output_token.contract_address().into(),
+        swap_amount.into(), 0,
+    ];
+
+    let execute_swap_input = ExecuteSwapInput {
+        swap_executor: executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        note_id,
+        in_amount: swap_amount,
+    };
+
+    // Should fail because the depositor on the note is not swap_executor.
+    // The transfer_from will fail since wrong_depositor has no balance (the swap_executor
+    // received the tokens, but we're trying to transfer from wrong_depositor).
+    let result = test
+        .privacy
+        .safe_execute_actions([ServerAction::ExecuteSwap(execute_swap_input)].span());
+    assert_panic_with_error(
+        :result,
+        expected_error: starkware_utils::erc20::erc20_errors::Erc20Error::INSUFFICIENT_BALANCE
+            .describe(),
+    );
+    // Note: Balance assertions after revert skipped due to snforge revert handling bug.
+// Expected: all balances unchanged from before the failed transaction.
+}
+
+#[test]
+fn test_execute_swap_note_already_deposited() {
+    let mut test: Test = Default::default();
+    let input_token = test.new_token();
+    let output_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let executor_address = test.swap_executor.address;
+    let amm_address = test.mock_amm;
+
+    // Create an open note with swap_executor as depositor.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    let recipient = user;
+    user.open_channel_e2e(:recipient, index: 0);
+    user.open_subchannel_e2e(:recipient, token_address: output_token.contract_address(), index: 0);
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient,
+            token: output_token.contract_address(),
+            index: 0,
+            depositor: executor_address,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id, _) = user.compute_open_note(:create_note_input);
+
+    // Fund swap executor with input tokens (double for two swaps).
+    input_token.supply(address: executor_address, amount: swap_amount * 2);
+
+    // Fund AMM with output tokens (double for two swaps).
+    output_token.supply(address: amm_address, amount: swap_amount * 2);
+
+    // Verify balances before first swap.
+    assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(input_token.balance_of(address: executor_address), (swap_amount * 2).into());
+    assert_eq!(input_token.balance_of(address: amm_address), 0);
+    assert_eq!(output_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(output_token.balance_of(address: executor_address), 0);
+    assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 2).into());
+
+    // Prepare swap calldata: [input_token, output_token, amount (u256 = low, high)].
+    let swap_calldata = array![
+        input_token.contract_address().into(), output_token.contract_address().into(),
+        swap_amount.into(), 0,
+    ];
+
+    let execute_swap_input = ExecuteSwapInput {
+        swap_executor: executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        note_id,
+        in_amount: swap_amount,
+    };
+
+    // Execute swap first time - should succeed.
+    test.privacy.execute_actions([ServerAction::ExecuteSwap(execute_swap_input)].span());
+
+    // Verify note was filled.
+    let filled_note = test.privacy.get_note(:note_id);
+    let (_, filled_amount) = unpacking(packed_value: filled_note.packed_value);
+    assert_eq!(filled_amount, swap_amount);
+
+    // Verify balances after first swap.
+    assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(input_token.balance_of(address: executor_address), swap_amount.into());
+    assert_eq!(input_token.balance_of(address: amm_address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: test.privacy.address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: executor_address), 0);
+    assert_eq!(output_token.balance_of(address: amm_address), swap_amount.into());
+
+    // Try to swap again to the same note - should fail.
+    let result = test
+        .privacy
+        .safe_execute_actions([ServerAction::ExecuteSwap(execute_swap_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
+    // Note: Balance assertions after revert skipped due to snforge revert handling bug.
+// Expected: balances unchanged from after the first successful swap.
+}
+
+#[test]
+fn test_execute_swap_zero_received() {
+    let mut test: Test = Default::default();
+    let input_token = test.new_token();
+    let output_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let executor_address = test.swap_executor.address;
+    let amm_address = test.mock_amm;
+
+    // Create an open note with swap_executor as depositor.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    let recipient = user;
+    user.open_channel_e2e(:recipient, index: 0);
+    user.open_subchannel_e2e(:recipient, token_address: output_token.contract_address(), index: 0);
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient,
+            token: output_token.contract_address(),
+            index: 0,
+            depositor: executor_address,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id, _) = user.compute_open_note(:create_note_input);
+
+    // Fund swap executor with input tokens.
+    input_token.supply(address: executor_address, amount: swap_amount);
+
+    // DON'T fund AMM with output tokens - swap will return 0.
+
+    // Verify balances before swap.
+    assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(input_token.balance_of(address: executor_address), swap_amount.into());
+    assert_eq!(input_token.balance_of(address: amm_address), 0);
+    assert_eq!(output_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(output_token.balance_of(address: executor_address), 0);
+    assert_eq!(output_token.balance_of(address: amm_address), 0);
+
+    // Use noop_swap which returns 0 tokens.
+    let execute_swap_input = ExecuteSwapInput {
+        swap_executor: executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("noop_swap"),
+        swap_calldata: [].span(),
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        note_id,
+        in_amount: swap_amount,
+    };
+
+    // Should fail because swap executor rejects zero received amount.
+    let result = test
+        .privacy
+        .safe_execute_actions([ServerAction::ExecuteSwap(execute_swap_input)].span());
+    assert_panic_with_felt_error(
+        :result, expected_error: privacy::swap_executor::errors::ZERO_OUT_AMOUNT,
+    );
+
+    // Verify balances unchanged (noop_swap doesn't transfer any tokens before the panic).
+    assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(input_token.balance_of(address: executor_address), swap_amount.into());
+    assert_eq!(input_token.balance_of(address: amm_address), 0);
+    assert_eq!(output_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(output_token.balance_of(address: executor_address), 0);
+    assert_eq!(output_token.balance_of(address: amm_address), 0);
 }

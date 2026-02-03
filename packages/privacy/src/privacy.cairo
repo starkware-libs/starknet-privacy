@@ -7,8 +7,9 @@ pub mod Privacy {
     use openzeppelin::introspection::src5::SRC5Component;
     use privacy::actions::{
         AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
-        DepositInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
-        SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+        DepositInput, ExecuteSwapInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput,
+        ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput,
+        WithdrawInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -21,6 +22,7 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
         TokenBalancesTrait,
     };
+    use privacy::swap_executor::interface::{ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait};
     use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
@@ -40,8 +42,7 @@ pub mod Privacy {
     };
     use starknet::syscalls::{call_contract_syscall, storage_read_syscall, storage_write_syscall};
     use starknet::{
-        ContractAddress, SyscallResultTrait, VALIDATED, get_caller_address, get_contract_address,
-        get_execution_info,
+        ContractAddress, SyscallResultTrait, VALIDATED, get_contract_address, get_execution_info,
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -760,6 +761,7 @@ pub mod Privacy {
                                 note_id: input.note_id, amount: input.amount,
                             );
                     },
+                    ServerAction::ExecuteSwap(input) => { self._execute_swap(:input); },
                 };
             };
         }
@@ -848,11 +850,7 @@ pub mod Privacy {
             // Assert the note hasn't been deposited to yet (current_amount == 0).
             assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
 
-            // Assert the caller is the depositor.
-            let caller = get_caller_address();
-            assert(caller == depositor, errors::CALLER_NOT_DEPOSITOR);
-
-            // Transfer funds from the depositor (caller).
+            // Transfer funds from the depositor.
             self._execute_transfer_from(sender_addr: depositor, :token, :amount);
 
             // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
@@ -861,6 +859,20 @@ pub mod Privacy {
 
             // Emit the OpenNoteDeposited event.
             self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
+        }
+
+        fn _execute_swap(ref self: ContractState, input: ExecuteSwapInput) {
+            let out_amount = ISwapExecutorDispatcher { contract_address: input.swap_executor }
+                .swap(
+                    swap_contract: input.swap_contract,
+                    swap_selector: input.swap_selector,
+                    swap_calldata: input.swap_calldata,
+                    in_token: input.in_token,
+                    out_token: input.out_token,
+                    in_amount: input.in_amount,
+                );
+            assert(out_amount.is_non_zero(), internal_errors::ZERO_SWAP_OUTPUT);
+            self._execute_deposit_to_open_note(note_id: input.note_id, amount: out_amount);
         }
     }
 
