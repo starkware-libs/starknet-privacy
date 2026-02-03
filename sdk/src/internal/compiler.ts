@@ -352,7 +352,7 @@ export class ActionCompiler {
           input: {
             channel_key: action.note.witness.channelKey,
             token: action.token,
-            note_index: action.note.witness.nonce,
+            index: action.note.witness.nonce,
           },
         } as const; // typescipt magic
         if (!pool.hasNote(action.token, toBigInt(action.note.id))) {
