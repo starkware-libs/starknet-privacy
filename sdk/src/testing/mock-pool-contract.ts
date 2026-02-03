@@ -34,11 +34,11 @@ import type { MockContracts, MockContract } from "./contracts.js";
 import {
   compute_channel_key,
   compute_channel_marker,
-  compute_subchannel_key,
+  compute_subchannel_id,
   compute_subchannel_marker,
   compute_note_id,
   compute_nullifier,
-  compute_outgoing_channel_key,
+  compute_outgoing_channel_id,
 } from "../utils/hashes.js";
 
 import { toHex } from "../utils/convert.js";
@@ -131,12 +131,12 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     return channelList[index] ?? { ephemeral_pubkey: 0n, enc_channel_key: 0n, enc_sender_addr: 0n };
   }
 
-  get_subchannel_info(subchannelKey: bigint): EncSubchannelInfo {
-    return this.subchannels.get(subchannelKey) ?? { salt: 0n, enc_token: 0n };
+  get_subchannel_info(subchannelId: bigint): EncSubchannelInfo {
+    return this.subchannels.get(subchannelId) ?? { salt: 0n, enc_token: 0n };
   }
 
-  get_outgoing_channel_info(outgoingChannelKey: bigint): EncOutgoingChannelInfo {
-    return this.outgoingChannels.get(outgoingChannelKey) ?? { salt: 0n, enc_recipient_addr: 0n };
+  get_outgoing_channel_info(outgoingChannelId: bigint): EncOutgoingChannelInfo {
+    return this.outgoingChannels.get(outgoingChannelId) ?? { salt: 0n, enc_recipient_addr: 0n };
   }
 
   get_note(noteId: bigint): {
@@ -207,8 +207,8 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
    * Returns false if subchannel doesn't exist.
    */
   get_token(channelKey: Hash, nonce: number): StarknetAddressBigint | false {
-    const subchannelKey = compute_subchannel_key(channelKey, nonce);
-    const encrypted = this.subchannels.get(subchannelKey);
+    const subchannelId = compute_subchannel_id(channelKey, nonce);
+    const encrypted = this.subchannels.get(subchannelId);
     if (!encrypted) return false;
     return encryptions.decryptSubchannelInfo(encrypted, channelKey, nonce).token;
   }
@@ -578,17 +578,17 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
 
     const s = this.outgoingChannelCounters.get(from)!;
     if (s > 0) {
-      const prevOutgoingChannelKey = compute_outgoing_channel_key(
+      const prevOutgoingChannelId = compute_outgoing_channel_id(
         from,
         toBigInt(fromPrivateKey),
         s - 1
       );
       assert(
-        this.outgoingChannels.has(prevOutgoingChannelKey),
+        this.outgoingChannels.has(prevOutgoingChannelId),
         () => `Outgoing channel index ${s} is not sequential for sender ${toHex(from)}`
       );
     }
-    const outgoingChannelKey = compute_outgoing_channel_key(from, toBigInt(fromPrivateKey), s);
+    const outgoingChannelId = compute_outgoing_channel_id(from, toBigInt(fromPrivateKey), s);
     const outgoingSalt = generateRandom();
     const encOutgoingChannelInfo = encryptions.encryptOutgoingChannelInfo(
       from,
@@ -607,7 +607,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
         assert(!this.channelMarkers.has(channelMarker), () => `Channel ${toHex(channelMarker)} already exists`);
         this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
         this.channelMarkers.add(channelMarker);
-        this.outgoingChannels.set(outgoingChannelKey, encOutgoingChannelInfo);
+        this.outgoingChannels.set(outgoingChannelId, encOutgoingChannelInfo);
         this.outgoingChannelCounters.set(from, s + 1);
       },
     };
@@ -630,12 +630,12 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     );
 
     assert(
-      index == 0 || this.subchannels.has(compute_subchannel_key(channelKey, index - 1)),
+      index == 0 || this.subchannels.has(compute_subchannel_id(channelKey, index - 1)),
       () => `Nonce ${index} is not sequential`
     );
 
-    const subchannelKey = compute_subchannel_key(channelKey, index);
-    assert(!this.subchannels.has(subchannelKey), () => `Token ${toHex(token)} already exists`);
+    const subchannelId = compute_subchannel_id(channelKey, index);
+    assert(!this.subchannels.has(subchannelId), () => `Token ${toHex(token)} already exists`);
 
     const subchannelMarker = compute_subchannel_marker(channelKey, to, toBigInt(toPublicKey), token);
     const encryptedSubchannelInfo = encryptions.encryptSubchannelInfo(
@@ -652,7 +652,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
           !this.subchannelMarkers.has(subchannelMarker),
           () => `Subchannel ${toHex(subchannelMarker)} already exists`
         );
-        this.subchannels.set(subchannelKey, encryptedSubchannelInfo);
+        this.subchannels.set(subchannelId, encryptedSubchannelInfo);
         this.subchannelMarkers.add(subchannelMarker);
       },
     };

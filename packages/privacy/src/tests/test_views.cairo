@@ -141,31 +141,31 @@ fn test_get_outgoing_channel_info() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let outgoing_channel_key_1 = user_1.compute_outgoing_channel_key(index: 0);
-    let outgoing_channel_key_2 = user_1.compute_outgoing_channel_key(index: 1);
+    let outgoing_channel_id_1 = user_1.compute_outgoing_channel_id(index: 0);
+    let outgoing_channel_id_2 = user_1.compute_outgoing_channel_id(index: 1);
     let enc_outgoing_channel_info_1 = user_1
         .compute_enc_outgoing_channel_info(recipient: user_1, index: 0, salt: Zero::zero());
     let enc_outgoing_channel_info_2 = user_1
         .compute_enc_outgoing_channel_info(recipient: user_2, index: 1, salt: Zero::zero());
-    assert_ne!(outgoing_channel_key_1, outgoing_channel_key_2);
+    assert_ne!(outgoing_channel_id_1, outgoing_channel_id_2);
     assert_ne!(enc_outgoing_channel_info_1, enc_outgoing_channel_info_2);
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_1),
+        test.privacy.get_outgoing_channel_info(outgoing_channel_id: outgoing_channel_id_1),
         EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
     );
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
+        test.privacy.get_outgoing_channel_info(outgoing_channel_id: outgoing_channel_id_2),
         EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
     );
     let (_, salt_channel_1) = user_1.open_channel_e2e(recipient: user_1, index: 0);
     let enc_outgoing_channel_info_1 = user_1
         .compute_enc_outgoing_channel_info(recipient: user_1, index: 0, salt: salt_channel_1);
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_1),
+        test.privacy.get_outgoing_channel_info(outgoing_channel_id: outgoing_channel_id_1),
         enc_outgoing_channel_info_1,
     );
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
+        test.privacy.get_outgoing_channel_info(outgoing_channel_id: outgoing_channel_id_2),
         EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
     );
     let (_, salt_channel_2) = user_1.open_channel_e2e(recipient: user_2, index: 1);
@@ -173,11 +173,11 @@ fn test_get_outgoing_channel_info() {
         .compute_enc_outgoing_channel_info(recipient: user_2, index: 1, salt: salt_channel_2);
     assert_ne!(enc_outgoing_channel_info_1, enc_outgoing_channel_info_2);
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_1),
+        test.privacy.get_outgoing_channel_info(outgoing_channel_id: outgoing_channel_id_1),
         enc_outgoing_channel_info_1,
     );
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
+        test.privacy.get_outgoing_channel_info(outgoing_channel_id: outgoing_channel_id_2),
         enc_outgoing_channel_info_2,
     );
 }
@@ -270,9 +270,9 @@ fn test_get_subchannel_info() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token_address = test.mock_new_token();
-    let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
+    let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, index: 0);
     assert_eq!(
-        test.privacy.get_subchannel_info(:subchannel_key),
+        test.privacy.get_subchannel_info(:subchannel_id),
         EncSubchannelInfo { salt: Zero::zero(), enc_token: Zero::zero() },
     );
     user_1.set_viewing_key_e2e();
@@ -282,7 +282,7 @@ fn test_get_subchannel_info() {
     let expected_subchannel_info = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :salt);
     assert!(expected_subchannel_info.enc_token.is_non_zero());
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), expected_subchannel_info);
+    assert_eq!(test.privacy.get_subchannel_info(:subchannel_id), expected_subchannel_info);
 }
 
 #[test]

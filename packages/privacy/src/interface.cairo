@@ -493,25 +493,25 @@ pub trait IViews<T> {
     /// (`bool`): True if the subchannel exists in the contract, false otherwise.
     fn subchannel_exists(self: @T, subchannel_marker: felt252) -> bool;
 
-    /// Returns the encrypted subchannel information for a given subchannel key.
+    /// Returns the encrypted subchannel information for a given subchannel id.
     ///
     /// #### Parameters
-    /// - `subchannel_key` (`felt252`): The key of the subchannel.
+    /// - `subchannel_id` (`felt252`): The id of the subchannel.
     ///
     /// #### Returns
     /// ([`EncSubchannelInfo`](privacy::objects::EncSubchannelInfo)): The encrypted subchannel
     /// information, or a zero struct if the subchannel does not exist.
-    fn get_subchannel_info(self: @T, subchannel_key: felt252) -> EncSubchannelInfo;
+    fn get_subchannel_info(self: @T, subchannel_id: felt252) -> EncSubchannelInfo;
 
-    /// Returns the encrypted outgoing channel information for a given outgoing channel key.
+    /// Returns the encrypted outgoing channel information for a given outgoing channel id.
     ///
     /// #### Parameters
-    /// - `outgoing_channel_key` (`felt252`): The key of the outgoing channel.
+    /// - `outgoing_channel_id` (`felt252`): The id of the outgoing channel.
     ///
     /// #### Returns
     /// - ([`EncOutgoingChannelInfo`](privacy::objects::EncOutgoingChannelInfo)): The encrypted
     /// outgoing channel information, or a zero struct if the outgoing channel does not exist.
-    fn get_outgoing_channel_info(self: @T, outgoing_channel_key: felt252) -> EncOutgoingChannelInfo;
+    fn get_outgoing_channel_info(self: @T, outgoing_channel_id: felt252) -> EncOutgoingChannelInfo;
 
     /// Returns the note for a given note id.
     ///

@@ -51,8 +51,8 @@ export interface PoolContractInterface {
   get_num_of_channels(recipientAddr: BigNumberish): bigint | number | Promise<bigint | number>;
   get_channel_info(recipientAddr: BigNumberish, channelIndex: BigNumberish): EncChannelInfo | Promise<EncChannelInfo>;
   subchannel_exists(subchannelMarker: BigNumberish): boolean | Promise<boolean>;
-  get_subchannel_info(subchannelKey: BigNumberish): EncSubchannelInfo | Promise<EncSubchannelInfo>;
-  get_outgoing_channel_info(outgoingChannelKey: BigNumberish): EncOutgoingChannelInfo | Promise<EncOutgoingChannelInfo>;
+  get_subchannel_info(subchannelId: BigNumberish): EncSubchannelInfo | Promise<EncSubchannelInfo>;
+  get_outgoing_channel_info(outgoingChannelId: BigNumberish): EncOutgoingChannelInfo | Promise<EncOutgoingChannelInfo>;
   get_note(noteId: BigNumberish): NoteData | Promise<NoteData>;
   nullifier_exists(nullifier: BigNumberish): boolean | Promise<boolean>;
   get_public_key(userAddr: BigNumberish): BigNumberish | Promise<BigNumberish>;
