@@ -229,7 +229,7 @@ export const encryptions = {
 
   /**
    * Encrypt note amount.
-   * Matches Cairo's encrypt_note_amount in utils.cairo.
+   * Matches Cairo's enc_note_packed_value in utils.cairo.
    *
    * Result is packed: (salt << 128) | enc_amount
    * enc_amount = (hash + amount) % 2^128
