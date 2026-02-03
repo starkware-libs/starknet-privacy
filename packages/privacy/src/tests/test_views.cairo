@@ -1,4 +1,5 @@
 use core::num::traits::Zero;
+use privacy::objects::{EncOutgoingChannelInfo, EncSubchannelInfo};
 use privacy::privacy::Privacy;
 use privacy::tests::utils_for_tests::constants::DEFAULT_AMOUNT;
 use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
@@ -144,11 +145,11 @@ fn test_get_outgoing_channel_info() {
     assert_ne!(enc_outgoing_channel_info_1, enc_outgoing_channel_info_2);
     assert_eq!(
         test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_1),
-        Zero::zero(),
+        EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
     );
     assert_eq!(
         test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
-        Zero::zero(),
+        EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
     );
     let (_, salt_channel_1) = user_1.open_channel_e2e(recipient: user_1, index: 0);
     let enc_outgoing_channel_info_1 = user_1
@@ -159,7 +160,7 @@ fn test_get_outgoing_channel_info() {
     );
     assert_eq!(
         test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
-        Zero::zero(),
+        EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
     );
     let (_, salt_channel_2) = user_1.open_channel_e2e(recipient: user_2, index: 1);
     let enc_outgoing_channel_info_2 = user_1
@@ -252,14 +253,17 @@ fn test_get_subchannel_info() {
     let mut user_2 = test.new_user();
     let token_address = test.mock_new_token();
     let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
+    assert_eq!(
+        test.privacy.get_subchannel_info(:subchannel_key),
+        EncSubchannelInfo { salt: Zero::zero(), enc_token: Zero::zero() },
+    );
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
     let salt = user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
     let expected_subchannel_info = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :salt);
-    assert!(expected_subchannel_info.is_non_zero());
+    assert!(expected_subchannel_info.enc_token.is_non_zero());
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), expected_subchannel_info);
 }
 
