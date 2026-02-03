@@ -189,6 +189,9 @@ pub mod Privacy {
 
     #[generate_trait]
     pub(crate) impl ClientInternalImpl of ClientInternalTrait {
+        /// Processes a sequence of client actions and returns the corresponding server actions.
+        /// Validates action phases, tracks token balances, and ensures at least one privacy action
+        /// is included.
         /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical
         /// (checked in `execute_and_panic`).
         fn main(
@@ -268,6 +271,7 @@ pub mod Privacy {
             server_actions.span()
         }
 
+        /// Returns the server actions to set a viewing key.
         /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical
         /// (checked in `execute_and_panic`).
         fn set_viewing_key(
@@ -308,6 +312,7 @@ pub mod Privacy {
             ]
         }
 
+        /// Returns the server actions to open a channel.
         /// Assumes `sender_addr` is non-zero and `sender_private_key` is non-zero and canonical
         /// (checked in `execute_and_panic`).
         fn open_channel(
@@ -367,8 +372,8 @@ pub mod Privacy {
                 :sender_addr, :sender_private_key, :index, :recipient_addr, :salt,
             );
 
-            assert(channel_id.is_non_zero(), internal_errors::ZERO_CHANNEL_ID);
             assert(enc_channel_info.is_all_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
+            assert(channel_id.is_non_zero(), internal_errors::ZERO_CHANNEL_ID);
             assert(outgoing_channel_key.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_KEY);
             assert(
                 enc_outgoing_channel_info.enc_recipient_addr.is_non_zero(),
@@ -393,6 +398,7 @@ pub mod Privacy {
             ]
         }
 
+        /// Returns the server actions to open a subchannel.
         /// Assumes `sender_addr` is non-zero (checked in `execute_and_panic`).
         fn open_subchannel(
             self: @ContractState, sender_addr: ContractAddress, input: OpenSubchannelInput,
@@ -427,17 +433,17 @@ pub mod Privacy {
             );
 
             // Compute subchannel values.
+            let subchannel_key = compute_subchannel_key(:channel_key, :index);
+            let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :index, :token, :salt);
             let subchannel_id = compute_subchannel_id(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
-            let subchannel_key = compute_subchannel_key(:channel_key, :index);
-            let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :index, :token, :salt);
-            assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
             assert(subchannel_key.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_KEY);
             assert(
                 enc_subchannel_info.enc_token.is_non_zero(),
                 internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN,
             );
+            assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
 
             array![
                 to_write_once_action(
@@ -451,6 +457,7 @@ pub mod Privacy {
             ]
         }
 
+        /// Returns the server actions to deposit funds into the contract.
         /// Assumes `user_addr` is non-zero (checked in `execute_and_panic`).
         fn deposit(
             self: @ContractState,
@@ -474,6 +481,7 @@ pub mod Privacy {
             ]
         }
 
+        /// Returns the server actions to withdraw funds from the contract.
         /// Assumes `user_addr` is non-zero (checked in `execute_and_panic`).
         fn withdraw(
             self: @ContractState,
@@ -511,7 +519,7 @@ pub mod Privacy {
             ]
         }
 
-        /// Returns the server action to use a note.
+        /// Returns the server actions to use a note.
         /// Assumes `owner_addr` is non-zero and `owner_private_key` is non-zero and canonical
         /// (checked in `execute_and_panic`).
         fn use_note(
@@ -528,9 +536,12 @@ pub mod Privacy {
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
 
             // Assert subchannel exists and is connected to owner's address and public key.
-            let recipient_public_key = derive_public_key(private_key: owner_private_key);
+            let owner_public_key = derive_public_key(private_key: owner_private_key);
             let subchannel_id = compute_subchannel_id(
-                :channel_key, recipient_addr: owner_addr, :recipient_public_key, :token,
+                :channel_key,
+                recipient_addr: owner_addr,
+                recipient_public_key: owner_public_key,
+                :token,
             );
             assert(self.subchannel_exists.read(subchannel_id), errors::SUBCHANNEL_NOT_FOUND);
 
@@ -548,7 +559,6 @@ pub mod Privacy {
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
-
             assert(nullifier.is_non_zero(), internal_errors::ZERO_NULLIFIER);
 
             token_balances.add_balance(:token, :amount);
@@ -560,7 +570,7 @@ pub mod Privacy {
             ]
         }
 
-        /// Returns the server action to create an encrypted note.
+        /// Returns the server actions to create an encrypted note.
         /// Assumes `sender_addr` is non-zero and `sender_private_key` is non-zero and canonical
         /// (checked in `execute_and_panic`).
         fn create_enc_note(
@@ -581,10 +591,12 @@ pub mod Privacy {
             assert_note_creation_params(:recipient_addr, :recipient_public_key, :token);
             assert(salt > OPEN_NOTE_SALT, errors::SALT_TOO_SMALL);
             assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
+            // Zero `amount` is allowed to enable note creation on reverted transaction indexes,
+            // preventing data leakage from index reuse after a revert.
 
             // Validate and compute note values.
             let (channel_key, storage_address, _) = self
-                .prepare_note_creation(
+                ._prepare_note_creation(
                     :sender_addr,
                     :sender_private_key,
                     :recipient_addr,
@@ -593,9 +605,10 @@ pub mod Privacy {
                     :index,
                 );
 
-            token_balances.subtract_balance(:token, :amount);
             let note = NoteTrait::enc_note(:channel_key, :token, :index, :salt, :amount);
             assert(note.packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
+
+            token_balances.subtract_balance(:token, :amount);
 
             // Only `packed_value` needs to be written, `token` is initialized to zero.
             array![to_write_once_action(:storage_address, value: note.packed_value)]
@@ -624,7 +637,7 @@ pub mod Privacy {
 
             // Validate and compute note values.
             let (_, storage_address, note_id) = self
-                .prepare_note_creation(
+                ._prepare_note_creation(
                     :sender_addr,
                     :sender_private_key,
                     :recipient_addr,
@@ -654,7 +667,7 @@ pub mod Privacy {
 
         /// Validates preconditions and computes values needed for creating a note.
         /// Returns `(channel_key, storage_address, note_id)`.
-        fn prepare_note_creation(
+        fn _prepare_note_creation(
             self: @ContractState,
             sender_addr: ContractAddress,
             sender_private_key: felt252,
@@ -666,6 +679,7 @@ pub mod Privacy {
             let channel_key = compute_channel_key(
                 :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key,
             );
+            assert(channel_key.is_non_zero(), internal_errors::UNEXPECTED_ZERO_CHANNEL_KEY);
 
             // Assert subchannel exists.
             let subchannel_id = compute_subchannel_id(
@@ -737,10 +751,10 @@ pub mod Privacy {
                                 storage_address: input.storage_address, value: input.value,
                             );
                     },
-                    ServerAction::EmitViewingKeySet(event) => { self.emit(event); },
-                    ServerAction::EmitWithdrawal(event) => { self.emit(event); },
-                    ServerAction::EmitDeposit(event) => { self.emit(event); },
-                    ServerAction::EmitOpenNoteCreated(event) => { self.emit(event); },
+                    ServerAction::EmitViewingKeySet(event) => self.emit(event),
+                    ServerAction::EmitWithdrawal(event) => self.emit(event),
+                    ServerAction::EmitDeposit(event) => self.emit(event),
+                    ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
                 };
             };
         }
