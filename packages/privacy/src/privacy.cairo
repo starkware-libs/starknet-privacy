@@ -6,9 +6,10 @@ pub mod Privacy {
     use openzeppelin::interfaces::token::erc20::IERC20Dispatcher;
     use openzeppelin::introspection::src5::SRC5Component;
     use privacy::actions::{
-        AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
-        DepositInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
-        SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+        AppendToVecInput, ClientAction, ClientActionTrait, ClientSwapInput, CreateEncNoteInput,
+        CreateOpenNoteInput, DepositInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput,
+        ServerAction, ServerSwapInput, SetViewingKeyInput, TransferFromInput, TransferToInput,
+        UseNoteInput, WithdrawInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -261,6 +262,9 @@ pub mod Privacy {
                     ),
                     ClientAction::Withdraw(input) => (
                         self.withdraw(:user_addr, :input, ref :token_balances), false,
+                    ),
+                    ClientAction::Swap(input) => (
+                        self.swap(:user_addr, :input, ref :token_balances), false,
                     ),
                 };
                 if should_execute {
@@ -515,6 +519,52 @@ pub mod Privacy {
                     events::Withdrawal { enc_user_addr, withdrawal_target, token, amount },
                 ),
             ]
+        }
+
+        /// Triggers a swap: transfers input tokens to swap executor and executes swap.
+        fn swap(
+            self: @ContractState,
+            user_addr: ContractAddress,
+            input: ClientSwapInput,
+            ref token_balances: TokenBalances,
+        ) -> Array<ServerAction> {
+            // Validate swap-specific inputs.
+            assert(input.swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
+            assert(input.swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
+            assert(input.out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
+            assert(input.note_id.is_non_zero(), errors::ZERO_NOTE_ID);
+
+            // Use withdraw to transfer funds to the swap executor.
+            // This validates in_token (as token), in_amount (as amount), swap_executor (as
+            // withdrawal_target), and random, subtracts from token_balances, and returns TransferTo
+            // + EmitWithdrawal actions.
+            let withdraw_input = WithdrawInput {
+                withdrawal_target: input.swap_executor,
+                token: input.in_token,
+                amount: input.in_amount,
+                random: input.random,
+            };
+            let mut server_actions = self
+                .withdraw(:user_addr, input: withdraw_input, ref :token_balances);
+
+            // Append the swap action.
+            server_actions
+                .append(
+                    ServerAction::Swap(
+                        ServerSwapInput {
+                            swap_executor: input.swap_executor,
+                            swap_contract: input.swap_contract,
+                            swap_selector: input.swap_selector,
+                            swap_calldata: input.swap_calldata,
+                            in_token: input.in_token,
+                            out_token: input.out_token,
+                            in_amount: input.in_amount,
+                            note_id: input.note_id,
+                        },
+                    ),
+                );
+
+            server_actions
         }
 
         /// Returns the server actions to use a note.

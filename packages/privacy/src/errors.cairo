@@ -35,6 +35,10 @@ pub const NOTE_ALREADY_DEPOSITED: felt252 = 'NOTE_ALREADY_DEPOSITED';
 pub const CALLER_NOT_DEPOSITOR: felt252 = 'CALLER_NOT_DEPOSITOR';
 pub const ZERO_NOTE_ID: felt252 = 'ZERO_NOTE_ID';
 pub const ZERO_SALT: felt252 = 'ZERO_SALT';
+pub const ZERO_SWAP_EXECUTOR: felt252 = 'ZERO_SWAP_EXECUTOR';
+pub const ZERO_SWAP_CONTRACT: felt252 = 'ZERO_SWAP_CONTRACT';
+pub const ZERO_SWAP_SELECTOR: felt252 = 'ZERO_SWAP_SELECTOR';
+pub const ZERO_OUT_TOKEN: felt252 = 'ZERO_OUT_TOKEN';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';

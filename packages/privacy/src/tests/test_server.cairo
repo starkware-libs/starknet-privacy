@@ -1,6 +1,7 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    AppendToVecInput, ReadAssertInput, ServerAction, SwapInput, TransferFromInput, TransferToInput,
+    AppendToVecInput, ReadAssertInput, ServerAction, ServerSwapInput, TransferFromInput,
+    TransferToInput,
 };
 use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note};
 use privacy::swap_executor::errors as swap_executor_errors;
@@ -902,7 +903,7 @@ fn test_execute_swap() {
         .span();
 
     // Create Swap input.
-    let swap_input = SwapInput {
+    let swap_input = ServerSwapInput {
         swap_executor: executor_address,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
@@ -987,7 +988,7 @@ fn test_execute_swap_executor_assertions() {
         .span();
 
     // Base valid swap input (will be modified for each error case).
-    let valid_swap_input = SwapInput {
+    let valid_swap_input = ServerSwapInput {
         swap_executor: executor_address,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
@@ -999,37 +1000,37 @@ fn test_execute_swap_executor_assertions() {
     };
 
     // Catch ZERO_SWAP_CONTRACT.
-    let swap_input = SwapInput { swap_contract: Zero::zero(), ..valid_swap_input };
+    let swap_input = ServerSwapInput { swap_contract: Zero::zero(), ..valid_swap_input };
     let result = test.privacy.safe_execute_actions([ServerAction::Swap(swap_input)].span());
     assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_SWAP_CONTRACT);
 
     // Catch ZERO_SWAP_SELECTOR.
-    let swap_input = SwapInput { swap_selector: Zero::zero(), ..valid_swap_input };
+    let swap_input = ServerSwapInput { swap_selector: Zero::zero(), ..valid_swap_input };
     let result = test.privacy.safe_execute_actions([ServerAction::Swap(swap_input)].span());
     assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_SWAP_SELECTOR);
 
     // Catch ZERO_IN_TOKEN.
-    let swap_input = SwapInput { in_token: Zero::zero(), ..valid_swap_input };
+    let swap_input = ServerSwapInput { in_token: Zero::zero(), ..valid_swap_input };
     let result = test.privacy.safe_execute_actions([ServerAction::Swap(swap_input)].span());
     assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_IN_TOKEN);
 
     // Catch ZERO_OUT_TOKEN.
-    let swap_input = SwapInput { out_token: Zero::zero(), ..valid_swap_input };
+    let swap_input = ServerSwapInput { out_token: Zero::zero(), ..valid_swap_input };
     let result = test.privacy.safe_execute_actions([ServerAction::Swap(swap_input)].span());
     assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_OUT_TOKEN);
 
     // Catch ZERO_AMOUNT.
-    let swap_input = SwapInput { in_amount: Zero::zero(), ..valid_swap_input };
+    let swap_input = ServerSwapInput { in_amount: Zero::zero(), ..valid_swap_input };
     let result = test.privacy.safe_execute_actions([ServerAction::Swap(swap_input)].span());
     assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_AMOUNT);
 
     // Catch ZERO_NOTE_ID.
-    let swap_input = SwapInput { note_id: Zero::zero(), ..valid_swap_input };
+    let swap_input = ServerSwapInput { note_id: Zero::zero(), ..valid_swap_input };
     let result = test.privacy.safe_execute_actions([ServerAction::Swap(swap_input)].span());
     assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_NOTE_ID);
 
     // Catch ZERO_OUT_AMOUNT
-    let swap_input = SwapInput {
+    let swap_input = ServerSwapInput {
         swap_selector: selector!("noop_swap"), swap_calldata: [].span(), ..valid_swap_input,
     };
     let result = test.privacy.safe_execute_actions([ServerAction::Swap(swap_input)].span());
@@ -1041,7 +1042,7 @@ fn test_execute_swap_executor_assertions() {
     output_token.supply(address: amm_address, amount: 1);
     // Fund swap executor with input tokens.
     input_token.supply(address: executor_address, amount: swap_amount);
-    let swap_input = SwapInput {
+    let swap_input = ServerSwapInput {
         swap_selector: selector!("overflow_swap"),
         swap_calldata: [output_token.contract_address().into()].span(),
         ..valid_swap_input,
@@ -1085,7 +1086,7 @@ fn test_execute_swap_deposit_assertions() {
 
     // Catch NOTE_NOT_FOUND
     let nonexistent_note_id = 'NONEXISTENT_NOTE';
-    let swap_input = SwapInput {
+    let swap_input = ServerSwapInput {
         swap_executor: executor_address,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
@@ -1106,7 +1107,7 @@ fn test_execute_swap_deposit_assertions() {
     user.cheat_create_enc_note_e2e(:create_note_input);
     let (note_id_enc, _) = user.compute_enc_note(:create_note_input);
 
-    let swap_input = SwapInput {
+    let swap_input = ServerSwapInput {
         swap_executor: executor_address,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
@@ -1127,7 +1128,7 @@ fn test_execute_swap_deposit_assertions() {
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id_filled, _) = user.compute_open_note(:create_note_input);
 
-    let swap_input = SwapInput {
+    let swap_input = ServerSwapInput {
         swap_executor: executor_address,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
@@ -1154,7 +1155,7 @@ fn test_execute_swap_deposit_assertions() {
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id_mismatch, _) = user.compute_open_note(:create_note_input);
 
-    let swap_input = SwapInput {
+    let swap_input = ServerSwapInput {
         swap_executor: executor_address,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
