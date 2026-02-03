@@ -72,8 +72,8 @@ theorem immutability₀ (crypto: Crypto) (m: Memory) (action: Action) (t: Memory
       (λ h' ↦ h_nonzero (by rw [Prod.mk.injEq] at h'; simp [h'.1, h'.2, info.old_value_was_zero]))
       (by simp [h_t])]
 
-  case CancelNote inp =>
-    let info := cancel_note_info crypto inp m success
+  case UseNote inp =>
+    let info := use_note_info crypto inp m success
     rw [run_action, ←info.h_m', info.no_change _ _
       (λ h' ↦ h_nonzero (by rw [Prod.mk.injEq] at h'; simp [h'.1, h'.2, info.nullifier_didnt_exist]))]
 
@@ -263,13 +263,13 @@ theorem create_note_immutable
       simp only [Function.comp_apply, decide_eq_true_eq, mem_cell_fn] at this
       conv => lhs; arg 1; rw [this]
 
-theorem cancel_note_immutable
-    {crypto: Crypto} {m₀ m₁: Memory} (inp: CancelNoteInput)
+theorem use_note_immutable
+    {crypto: Crypto} {m₀ m₁: Memory} (inp: UseNoteInput)
     (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelMarkers x))
     (imm₂: ∀ x, immutable_fn m₀ m₁ (note_modified_value_fn crypto x))
-    (success: (run_action₀ crypto (.CancelNote inp) m₀).2) :
-    run_action₀ crypto (.CancelNote inp) m₁ = run_action₀ crypto (.CancelNote inp) m₀ := by
-  dsimp only [run_action₀, cancel_note] at *
+    (success: (run_action₀ crypto (.UseNote inp) m₀).2) :
+    run_action₀ crypto (.UseNote inp) m₁ = run_action₀ crypto (.UseNote inp) m₀ := by
+  dsimp only [run_action₀, use_note] at *
   rw [decide_eq_true_iff] at success
   have ⟨h₀, h₁, h₂, h₃, h₅⟩ := success
 
@@ -316,7 +316,7 @@ theorem run_action₀_immutable
   case OpenChannel inp => exact open_channel_immutable inp imm.imm₃ imm.imm₄ success
   case OpenSubchannel inp => exact open_subchannel_immutable inp imm.imm₀ imm.imm₁ success
   case CreateNote inp => exact create_note_immutable inp imm.imm₂ imm.imm₅ success
-  case CancelNote inp => exact cancel_note_immutable inp imm.imm₂ imm.imm₆ success
+  case UseNote inp => exact use_note_immutable inp imm.imm₂ imm.imm₆ success
   case OpenDeposit inp => trivial
 
 theorem ImmutableCells.of_extends

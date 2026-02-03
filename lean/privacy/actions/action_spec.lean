@@ -113,25 +113,25 @@ def create_note (crypto: Crypto) (inp: CreateNoteInput) (m: Memory) : List Serve
   ], inp.r ≠ 0 ∧ prev_note_exists ∧ inp.i₀ < crypto.MAX_I₀ ∧ subchannel_exists ∧ (inp.r = 1 → inp.amount = 0))
 
 -----------------
--- Cancel Note --
+-- Use Note --
 -----------------
 
-structure CancelNoteInput where
+structure UseNoteInput where
   (c addrbob kbob token i₀ i₁: ℕ)
   -- `amount` is not really an input since it can be computed from the memory and the other inputs.
   -- It is included here for convenience.
   (amount: ℕ)
 
-abbrev CancelNoteInput.nullifier (crypto: Crypto) (inp: CancelNoteInput) : ℕ :=
+abbrev UseNoteInput.nullifier (crypto: Crypto) (inp: UseNoteInput) : ℕ :=
   crypto.hash [inp.c, inp.token, inp.i₀, inp.i₁, inp.kbob]
 
-abbrev CancelNoteInput.note_id (crypto: Crypto) (inp: CancelNoteInput) : ℕ :=
+abbrev UseNoteInput.note_id (crypto: Crypto) (inp: UseNoteInput) : ℕ :=
   crypto.hash [inp.c, inp.token, inp.i₀, inp.i₁]
 
-abbrev CancelNoteInput.Kbob (crypto: Crypto) (inp: CancelNoteInput) : ℕ :=
+abbrev UseNoteInput.Kbob (crypto: Crypto) (inp: UseNoteInput) : ℕ :=
   crypto.priv_to_pub inp.kbob
 
-def cancel_note (crypto: Crypto) (inp: CancelNoteInput) (m: Memory) : List ServerAction × Bool :=
+def use_note (crypto: Crypto) (inp: UseNoteInput) (m: Memory) : List ServerAction × Bool :=
   let subchannel_exists := m .SubchannelMarkers [crypto.hash [inp.c, inp.addrbob, inp.Kbob crypto, inp.token]] ≠ 0
   let r := m .Notes [inp.note_id crypto, 0]
   let dec_amount := note_amount crypto m (inp.note_id crypto) inp.c inp.token inp.i₀ inp.i₁
@@ -161,7 +161,7 @@ inductive Action where
   | OpenChannel (inp: OpenChannelInput)
   | OpenSubchannel (inp: OpenSubchannelInput)
   | CreateNote (inp: CreateNoteInput)
-  | CancelNote (inp: CancelNoteInput)
+  | UseNote (inp: UseNoteInput)
   | OpenDeposit (inp: OpenDepositInput)
 
 abbrev filter_CreateNote (action: Action) : Option CreateNoteInput :=
@@ -173,13 +173,13 @@ theorem filter_CreateNote_some (action: Action) :
     filter_CreateNote action = some inp ↔ action = .CreateNote inp := by
   cases action; all_goals simp
 
-abbrev filter_CancelNote (action: Action) : Option CancelNoteInput :=
+abbrev filter_UseNote (action: Action) : Option UseNoteInput :=
   match action with
-    | .CancelNote inp => some inp
+    | .UseNote inp => some inp
     | _ => none
 
-theorem filter_CancelNote_some (action: Action) :
-    filter_CancelNote action = some inp ↔ action = .CancelNote inp := by
+theorem filter_UseNote_some (action: Action) :
+    filter_UseNote action = some inp ↔ action = .UseNote inp := by
   cases action; all_goals simp
 
 abbrev filter_OpenDeposit (action: Action) : Option OpenDepositInput :=

@@ -7,7 +7,7 @@ abbrev run_action₀ (crypto: Crypto) (action: Action) (m: Memory) : List Server
     | .OpenChannel inp => open_channel crypto inp m
     | .OpenSubchannel inp => open_subchannel crypto inp m
     | .CreateNote inp => create_note crypto inp m
-    | .CancelNote inp => cancel_note crypto inp m
+    | .UseNote inp => use_note crypto inp m
     | .OpenDeposit inp => open_deposit crypto inp m
 
 def run_action (crypto: Crypto) (action: Action) (m: Memory) : RunResult :=
