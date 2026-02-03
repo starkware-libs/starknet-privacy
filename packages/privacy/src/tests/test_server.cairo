@@ -65,12 +65,12 @@ fn test_set_viewing_key_multiple_users_same_public_key() {
 fn test_execute_write_once() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let (_, channel_id) = test.mock_new_channel();
-    let (subchannel_id, _, _) = test.mock_new_subchannel();
+    let (_, channel_marker) = test.mock_new_channel();
+    let (subchannel_marker, _, _) = test.mock_new_subchannel();
 
     // Compute storage path felt using contract state.
     let storage_address = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
     );
 
     // Verify channel doesn't exist and write.
@@ -78,17 +78,17 @@ fn test_execute_write_once() {
     test.privacy.execute_actions(actions.span());
 
     // Verify channel exists.
-    assert!(test.privacy.channel_exists(:channel_id));
+    assert!(test.privacy.channel_exists(:channel_marker));
 
     // Verify subchannel doesn't exist and write.
     let storage_address = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_marker].span(),
     );
     let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
 
     // Verify subchannel exists.
-    assert!(test.privacy.subchannel_exists(:subchannel_id));
+    assert!(test.privacy.subchannel_exists(:subchannel_marker));
 
     // Verify user is not registered and write public key.
     let storage_address = map_entry_address(
@@ -119,26 +119,26 @@ fn test_execute_write_once() {
 fn test_execute_write_once_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let (_, channel_id) = test.mock_new_channel();
-    let (subchannel_id, _, _) = test.mock_new_subchannel();
+    let (_, channel_marker) = test.mock_new_channel();
+    let (subchannel_marker, _, _) = test.mock_new_subchannel();
 
     // Catch NON_ZERO_VALUE for channel exists.
     let storage_address = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
     );
     let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
-    assert!(test.privacy.channel_exists(:channel_id));
+    assert!(test.privacy.channel_exists(:channel_marker));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for subchannel_exists.
     let storage_address = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_marker].span(),
     );
     let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
-    assert!(test.privacy.subchannel_exists(:subchannel_id));
+    assert!(test.privacy.subchannel_exists(:subchannel_marker));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 

@@ -1,6 +1,6 @@
 use privacy::hashes::{
-    compute_channel_id, compute_channel_key, compute_note_id, compute_nullifier,
-    compute_outgoing_channel_key, compute_subchannel_id, compute_subchannel_key, hash,
+    compute_channel_key, compute_channel_marker, compute_note_id, compute_nullifier,
+    compute_outgoing_channel_key, compute_subchannel_key, compute_subchannel_marker, hash,
 };
 use starkware_utils::constants::MAX_U32;
 
@@ -79,12 +79,12 @@ fn test_compute_outgoing_channel_key_different_inputs() {
 }
 
 #[test]
-fn test_compute_channel_id_different_inputs() {
+fn test_compute_channel_marker_different_inputs() {
     let channel_key = hash(['CHANNEL_KEY'].span());
     let sender_addr = hash(['SENDER_ADDR'].span()).try_into().unwrap();
     let recipient_addr = hash(['RECIPIENT_ADDR'].span()).try_into().unwrap();
     let recipient_public_key = hash(['RECIPIENT_PUBLIC_KEY'].span());
-    let channel_id = compute_channel_id(
+    let channel_marker = compute_channel_marker(
         :channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
     );
     let other_channel_key = hash(['OTHER_CHANNEL_KEY'].span());
@@ -95,25 +95,25 @@ fn test_compute_channel_id_different_inputs() {
     assert_ne!(sender_addr, other_sender_addr);
     assert_ne!(recipient_addr, other_recipient_addr);
     assert_ne!(recipient_public_key, other_recipient_public_key);
-    let channel_id_diff_channel_key = compute_channel_id(
+    let channel_marker_diff_channel_key = compute_channel_marker(
         channel_key: other_channel_key, :sender_addr, :recipient_addr, :recipient_public_key,
     );
-    let channel_id_diff_sender_addr = compute_channel_id(
+    let channel_marker_diff_sender_addr = compute_channel_marker(
         :channel_key, sender_addr: other_sender_addr, :recipient_addr, :recipient_public_key,
     );
-    let channel_id_diff_recipient_addr = compute_channel_id(
+    let channel_marker_diff_recipient_addr = compute_channel_marker(
         :channel_key, :sender_addr, recipient_addr: other_recipient_addr, :recipient_public_key,
     );
-    let channel_id_diff_recipient_public_key = compute_channel_id(
+    let channel_marker_diff_recipient_public_key = compute_channel_marker(
         :channel_key,
         :sender_addr,
         :recipient_addr,
         recipient_public_key: other_recipient_public_key,
     );
-    assert_ne!(channel_id, channel_id_diff_channel_key);
-    assert_ne!(channel_id, channel_id_diff_sender_addr);
-    assert_ne!(channel_id, channel_id_diff_recipient_addr);
-    assert_ne!(channel_id, channel_id_diff_recipient_public_key);
+    assert_ne!(channel_marker, channel_marker_diff_channel_key);
+    assert_ne!(channel_marker, channel_marker_diff_sender_addr);
+    assert_ne!(channel_marker, channel_marker_diff_recipient_addr);
+    assert_ne!(channel_marker, channel_marker_diff_recipient_public_key);
 }
 
 #[test]
@@ -136,12 +136,12 @@ fn test_compute_subchannel_key_different_inputs() {
 }
 
 #[test]
-fn test_compute_subchannel_id_different_inputs() {
+fn test_compute_subchannel_marker_different_inputs() {
     let channel_key = hash(['CHANNEL_KEY'].span());
     let recipient_addr = hash(['RECIPIENT_ADDR'].span()).try_into().unwrap();
     let recipient_public_key = hash(['RECIPIENT_PUBLIC_KEY'].span());
     let token = hash(['TOKEN'].span()).try_into().unwrap();
-    let subchannel_id = compute_subchannel_id(
+    let subchannel_marker = compute_subchannel_marker(
         :channel_key, :recipient_addr, :recipient_public_key, :token,
     );
     let other_channel_key = hash(['OTHER_CHANNEL_KEY'].span());
@@ -152,22 +152,22 @@ fn test_compute_subchannel_id_different_inputs() {
     assert_ne!(recipient_addr, other_recipient_addr);
     assert_ne!(recipient_public_key, other_recipient_public_key);
     assert_ne!(token, other_token);
-    let subchannel_id_diff_channel_key = compute_subchannel_id(
+    let subchannel_marker_diff_channel_key = compute_subchannel_marker(
         channel_key: other_channel_key, :recipient_addr, :recipient_public_key, :token,
     );
-    let subchannel_id_diff_recipient_addr = compute_subchannel_id(
+    let subchannel_marker_diff_recipient_addr = compute_subchannel_marker(
         :channel_key, recipient_addr: other_recipient_addr, :recipient_public_key, :token,
     );
-    let subchannel_id_diff_recipient_public_key = compute_subchannel_id(
+    let subchannel_marker_diff_recipient_public_key = compute_subchannel_marker(
         :channel_key, :recipient_addr, recipient_public_key: other_recipient_public_key, :token,
     );
-    let subchannel_id_diff_token = compute_subchannel_id(
+    let subchannel_marker_diff_token = compute_subchannel_marker(
         :channel_key, :recipient_addr, :recipient_public_key, token: other_token,
     );
-    assert_ne!(subchannel_id, subchannel_id_diff_channel_key);
-    assert_ne!(subchannel_id, subchannel_id_diff_recipient_addr);
-    assert_ne!(subchannel_id, subchannel_id_diff_recipient_public_key);
-    assert_ne!(subchannel_id, subchannel_id_diff_token);
+    assert_ne!(subchannel_marker, subchannel_marker_diff_channel_key);
+    assert_ne!(subchannel_marker, subchannel_marker_diff_recipient_addr);
+    assert_ne!(subchannel_marker, subchannel_marker_diff_recipient_public_key);
+    assert_ne!(subchannel_marker, subchannel_marker_diff_token);
 }
 
 #[test]
