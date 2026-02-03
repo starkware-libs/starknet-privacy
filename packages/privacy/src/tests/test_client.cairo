@@ -665,13 +665,16 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
-    // Catch SALT_TOO_SMALL.
+    // Catch ZERO_SALT.
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
-            notes_to_create: [CreateEncNoteInput { salt: 0, ..create_note_input }].span(),
+            notes_to_create: [CreateEncNoteInput { salt: Zero::zero(), ..create_note_input }]
+                .span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
+
+    // Catch SALT_TOO_SMALL.
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
@@ -958,6 +961,18 @@ fn test_open_channel_assertions() {
     let result = user_1
         .safe_open_channel_execute_view(recipient: user_2, :index, random: Zero::zero(), :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+
+    // Catch ZERO_SALT.
+    let result = user_1.safe_open_channel(recipient: user_2, :index, :random, salt: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(
+            recipient: user_2, :index, :random, salt: Zero::zero(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
+    let result = user_1
+        .safe_open_channel_execute_view(recipient: user_2, :index, :random, salt: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
     let mut user_invalid_private_key = user_1;
@@ -1321,54 +1336,6 @@ fn test_open_channel_decrypt_outgoing_channel_info() {
 }
 
 #[test]
-fn test_open_channel_zero_salt() {
-    let mut test = Default::default();
-    let mut user = test.new_user();
-    user.set_viewing_key_e2e();
-    let index = 0;
-    let random = user.get_random();
-    let salt = Zero::zero();
-    let actions = user.internal_open_channel(recipient: user, :index, :random, :salt);
-    let expected_channel_id = user.compute_channel_id(recipient: user);
-    let expected_channel_key = user.compute_channel_key(recipient: user);
-    let expected_enc_channel_info = encrypt_channel_info(
-        ephemeral_secret: random,
-        recipient_public_key: user.public_key,
-        channel_key: expected_channel_key,
-        sender_addr: user.address,
-    );
-    let expected_outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
-    let expected_enc_outgoing_channel_info = user
-        .compute_enc_outgoing_channel_info(recipient: user, index: 0, :salt);
-    let public_key_storage_path = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
-    );
-    let channel_exists_storage_path = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
-    );
-    let outgoing_channels_storage_path = map_entry_address(
-        map_selector: selector!("outgoing_channels"), keys: [expected_outgoing_channel_key].span(),
-    );
-    let expected_actions = [
-        ServerAction::VerifyValue(
-            VerifyValueInput { storage_address: public_key_storage_path, value: user.public_key },
-        ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
-                recipient_addr: user.address, enc_channel_info: expected_enc_channel_info,
-            },
-        ),
-        to_write_once_action(storage_address: channel_exists_storage_path, value: true),
-        to_write_once_action(
-            storage_address: outgoing_channels_storage_path,
-            value: expected_enc_outgoing_channel_info,
-        ),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
-}
-
-#[test]
 fn test_open_subchannel() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
@@ -1432,41 +1399,6 @@ fn test_open_subchannel_self_channel() {
     ]
         .span();
     assert_eq!(channel_output, expected_actions);
-}
-
-#[test]
-fn test_open_subchannel_zero_salt() {
-    let mut test = Default::default();
-    let mut user = test.new_user();
-    user.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
-    user.open_channel_e2e(recipient: user, index: 0);
-
-    let salt = 0;
-    let index = 0;
-    let actions = user.internal_open_subchannel(recipient: user, :token_address, :index, :salt);
-    let expected_subchannel_key = user.compute_subchannel_key(recipient: user, index: 0);
-    let expected_enc_subchannel_info = user
-        .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, :salt);
-    let expected_subchannel_id = user.compute_subchannel_id(recipient: user, :token_address);
-    assert!(expected_enc_subchannel_info.enc_token.is_non_zero());
-    assert!(expected_subchannel_id.is_non_zero());
-    assert!(expected_subchannel_key.is_non_zero());
-    let subchannel_exists_storage_path_felt = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id].span(),
-    );
-    let subchannel_tokens_storage_path_felt = map_entry_address(
-        map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
-    );
-    let expected_actions = [
-        to_write_once_action(
-            storage_address: subchannel_tokens_storage_path_felt,
-            value: expected_enc_subchannel_info,
-        ),
-        to_write_once_action(storage_address: subchannel_exists_storage_path_felt, value: true),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -1565,6 +1497,21 @@ fn test_open_subchannel_assertions() {
             recipient: user_2, token_address: Zero::zero(), :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+
+    // Catch ZERO_SALT.
+    let result = user_1
+        .safe_open_subchannel(recipient: user_2, :token_address, :index, salt: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
+    let result = user_1
+        .safe_open_subchannel_execute_and_panic(
+            recipient: user_2, :token_address, :index, salt: Zero::zero(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
+    let result = user_1
+        .safe_open_subchannel_execute_view(
+            recipient: user_2, :token_address, :index, salt: Zero::zero(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
 
     // Catch ZERO_RECIPIENT_PUBLIC_KEY.
     let mut user_zero_public_key = user_2;
@@ -2238,32 +2185,36 @@ fn test_create_enc_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
-    // Catch SALT_TOO_SMALL.
+    // Catch ZERO_SALT.
     let result = user
         .safe_create_enc_note(
             create_note_input: CreateEncNoteInput { salt: Zero::zero(), ..create_note_input },
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
-    let result = user
-        .safe_create_enc_note(
-            create_note_input: CreateEncNoteInput { salt: 1, ..create_note_input },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
     let result = user
         .safe_create_enc_note_execute_and_panic(
             create_note_input: CreateEncNoteInput { salt: Zero::zero(), ..create_note_input },
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
-    let result = user
-        .safe_create_enc_note_execute_and_panic(
-            create_note_input: CreateEncNoteInput { salt: 1, ..create_note_input },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
     let result = user
         .safe_create_enc_note_execute_view(
             create_note_input: CreateEncNoteInput { salt: Zero::zero(), ..create_note_input },
         );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
+
+    // Catch SALT_TOO_SMALL.
+    let result = user
+        .safe_create_enc_note(
+            create_note_input: CreateEncNoteInput { salt: 1, ..create_note_input },
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+
+    let result = user
+        .safe_create_enc_note_execute_and_panic(
+            create_note_input: CreateEncNoteInput { salt: 1, ..create_note_input },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
+
     let result = user
         .safe_create_enc_note_execute_view(
             create_note_input: CreateEncNoteInput { salt: 1, ..create_note_input },
