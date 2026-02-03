@@ -86,17 +86,17 @@ pub(crate) impl CreateOpenNoteInputIntoServerActionImpl of CreateOpenNoteInputIn
         let storage_path = map_entry_address(
             map_selector: selector!("notes"), keys: [note_id].span(),
         );
-        let enc_sender_addr = encrypt_user_addr(
+        let enc_recipient_addr = encrypt_user_addr(
             ephemeral_secret: *self.random,
             compliance_public_key: user.privacy.get_compliance_public_key(),
-            user_addr: user.address,
+            user_addr: *self.recipient_addr,
         );
 
         [
             to_write_once_action(storage_address: storage_path, value: note),
             ServerAction::EmitOpenNoteCreated(
                 events::OpenNoteCreated {
-                    enc_sender_addr, depositor: note.depositor, token: note.token, note_id,
+                    enc_recipient_addr, depositor: note.depositor, token: note.token, note_id,
                 },
             ),
         ]
