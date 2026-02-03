@@ -379,13 +379,13 @@ pub mod Privacy {
                         value: recipient_public_key,
                     },
                 ),
+                ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
                 ServerAction::WriteOnce(
                     WriteOnceInput {
                         storage_address: self.channel_exists.entry(channel_id).into(),
                         value: [true.into()].span(),
                     },
                 ),
-                ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
                 enc_outgoing_channel_info
                     .to_write_once_action(
                         storage_address: self.outgoing_channels.entry(outgoing_channel_key).into(),
@@ -435,16 +435,16 @@ pub mod Privacy {
             assert(enc_subchannel_info.is_non_zero(), internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN);
 
             array![
+                enc_subchannel_info
+                    .to_write_once_action(
+                        storage_address: self.subchannel_tokens.entry(subchannel_key).into(),
+                    ),
                 ServerAction::WriteOnce(
                     WriteOnceInput {
                         storage_address: self.subchannel_exists.entry(subchannel_id).into(),
                         value: [true.into()].span(),
                     },
                 ),
-                enc_subchannel_info
-                    .to_write_once_action(
-                        storage_address: self.subchannel_tokens.entry(subchannel_key).into(),
-                    ),
             ]
         }
 
