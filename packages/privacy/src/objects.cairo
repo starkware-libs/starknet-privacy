@@ -150,7 +150,7 @@ pub impl EncOutgoingChannelInfoZero of Zero<EncOutgoingChannelInfo> {
 pub struct Note {
     /// The packed value of the note `(salt, amount)`:
     /// - For open notes: salt = OPEN_NOTE_SALT (=1), amount = 0 (awaiting deposit).
-    /// - For encrypted notes: salt >= ENC_NOTE_MIN_SALT (=2), amount = encrypted_amount.
+    /// - For encrypted notes: salt > OPEN_NOTE_SALT (>=2), amount = encrypted_amount.
     pub packed_value: felt252,
     /// The token address of the note (zero for encrypted notes, non-zero for open notes).
     pub token: ContractAddress,

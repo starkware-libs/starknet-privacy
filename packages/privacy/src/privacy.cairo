@@ -21,7 +21,7 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, NoteTrait, TokenBalances,
         TokenBalancesTrait,
     };
-    use privacy::utils::constants::{ENC_NOTE_MIN_SALT, TWO_POW_120};
+    use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
         assert_valid_signature, decode_note_amount, derive_public_key, encrypt_channel_info,
@@ -572,7 +572,7 @@ pub mod Privacy {
 
             // Validate inputs.
             assert_note_creation_params(:recipient_addr, :recipient_public_key, :token);
-            assert(salt >= ENC_NOTE_MIN_SALT, errors::SALT_TOO_SMALL);
+            assert(salt > OPEN_NOTE_SALT, errors::SALT_TOO_SMALL);
             assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
 
             // Validate and compute note values.
