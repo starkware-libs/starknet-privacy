@@ -12,14 +12,14 @@ use starkware_utils_testing::test_utils::{
 #[test]
 fn test_set_compliance_public_key() {
     let mut test: Test = Default::default();
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance_public_key);
-    let compliance_public_key_before = test.compliance_public_key;
+    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
+    let compliance_public_key_before = test.compliance.public_key;
     let mut spy = spy_events();
     test.replace_compliance_key();
-    assert_ne!(test.compliance_public_key, compliance_public_key_before);
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance_public_key);
+    assert_ne!(test.compliance.public_key, compliance_public_key_before);
+    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
     let expected_event = events::CompliancePublicKeySet {
-        compliance_public_key: test.compliance_public_key,
+        compliance_public_key: test.compliance.public_key,
     };
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 1);
@@ -31,8 +31,8 @@ fn test_set_compliance_public_key() {
     );
     // Set the same key again.
     let mut spy = spy_events();
-    test.privacy.set_compliance_public_key(compliance_public_key: test.compliance_public_key);
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance_public_key);
+    test.privacy.set_compliance_public_key(compliance_public_key: test.compliance.public_key);
+    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 1);
     assert_expected_event_emitted(
@@ -50,7 +50,7 @@ fn test_set_compliance_public_key_assertions() {
     // Catch ONLY_TOKEN_ADMIN.
     let result = test
         .privacy
-        .safe_set_compliance_public_key(compliance_public_key: test.compliance_public_key);
+        .safe_set_compliance_public_key(compliance_public_key: test.compliance.public_key);
     assert_panic_with_error(:result, expected_error: AccessErrors::ONLY_TOKEN_ADMIN.describe());
 
     // Catch ZERO_COMPLIANCE_PUBLIC_KEY.

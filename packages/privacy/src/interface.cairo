@@ -1,5 +1,7 @@
 use privacy::actions::{ClientAction, ServerAction};
-use privacy::objects::{EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo};
+use privacy::objects::{
+    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
+};
 use starknet::ContractAddress;
 
 #[starknet::interface]
@@ -184,8 +186,6 @@ pub trait IClient<T> {
     /// **Errors for [`Deposit`](privacy::actions::ClientAction::Deposit) action:**
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
     /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if the deposit amount is zero.
-    /// - `INSUFFICIENT_BALANCE`: Thrown if the sender has insufficient token balance.
-    /// - `INSUFFICIENT_ALLOWANCE`: Thrown if the sender has insufficient token allowance.
     ///
     /// **Errors for [`UseNote`](privacy::actions::ClientAction::UseNote) action:**
     /// - [`ZERO_CHANNEL_KEY`](privacy::errors::ZERO_CHANNEL_KEY): Thrown if the channel key is
@@ -401,8 +401,7 @@ pub trait IServer<T> {
     ///
     /// #### Preconditions
     /// - The contract must not be paused.
-    /// - Client proof verification (TODO: currently not implemented, will be verified in the
-    /// future).
+    /// - `proof_facts` field in the TX info must be valid.
     /// - For [`WriteOnce`](privacy::actions::ServerAction::WriteOnce) actions, the storage location
     /// must be empty (zero) before writing.
     /// - For [`VerifyValue`](privacy::actions::ServerAction::VerifyValue) actions, the storage
@@ -435,7 +434,7 @@ pub trait IServer<T> {
     /// ERC20 contract).
     ///
     /// #### Access Control
-    /// - TODO: Access control requirements need to be specified.
+    /// - Any address can call this function.
     ///
     /// #### Notes
     /// - All actions are executed sequentially in the order they appear in the span.
@@ -514,14 +513,14 @@ pub trait IViews<T> {
     /// outgoing channel information, or a zero struct if the outgoing channel does not exist.
     fn get_outgoing_channel_info(self: @T, outgoing_channel_key: felt252) -> EncOutgoingChannelInfo;
 
-    /// Returns the encrypted note value for a given note id.
+    /// Returns the note for a given note id.
     ///
     /// #### Parameters
     /// - `note_id` (`felt252`): The id of the note.
     ///
     /// #### Returns
-    /// (`felt252`): The encrypted note value, or zero if the note does not exist.
-    fn get_note(self: @T, note_id: felt252) -> felt252;
+    /// ([`Note`](privacy::objects::Note)): The note, or a zero struct if the note does not exist.
+    fn get_note(self: @T, note_id: felt252) -> Note;
 
     /// Checks if a nullifier exists.
     ///

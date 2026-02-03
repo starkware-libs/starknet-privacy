@@ -1,117 +1,66 @@
 /**
- * Client action input types - TypeScript equivalents of Cairo ClientAction inputs.
- * These are the "unwrapped" action types that contain all information needed
- * for proof generation and on-chain execution.
- *
- * See packages/privacy/src/actions.cairo for the Cairo definitions.
+ * AUTO-GENERATED FILE - DO NOT EDIT DIRECTLY
+ * Generated from sdk/src/internal/abi.ts
+ * Run: npx tsx scripts/generate-client-actions.ts
  */
 
 import { Call } from "starknet";
-import type { Amount, Open, ViewingKey } from "../interfaces.js";
+import { StarknetAddressBigint } from "../interfaces.js";
 
-/**
- * Input for the SetViewingKey action.
- */
 export type SetViewingKeyInput = {
-  /** The viewing key (private key) to set */
-  privateKey: ViewingKey;
-  /** Random value use to encrypt the private key for compliance */
   random: bigint;
 };
 
-/**
- * Input for the OpenChannel action.
- */
 export type OpenChannelInput = {
-  /** The sender's private key (viewing key) */
-  senderPrivateKey: ViewingKey;
-  /** The recipient's address */
-  recipientAddr: bigint;
-  /** The recipient's public key */
-  recipientPublicKey: bigint;
-  /** The channel index within the sender's outgoing channels */
+  recipient_addr: StarknetAddressBigint;
+  recipient_public_key: bigint;
   index: number;
-  /** Random value used to encrypt the channel info for the recipient */
   random: bigint;
-  /** Salt used to guarantee one-time key usage for encrypted outgoing channel info */
   salt: bigint;
 };
 
-/**
- * Input for the OpenSubchannel (token channel) action.
- */
 export type OpenSubchannelInput = {
-  /** The recipient's address */
-  recipientAddr: bigint;
-  /** The recipient's public key */
-  recipientPublicKey: bigint;
-  /** The channel key of the subchannel */
-  channelKey: bigint;
-  /** The index of the subchannel within the channel (token nonce) */
+  recipient_addr: StarknetAddressBigint;
+  recipient_public_key: bigint;
+  channel_key: bigint;
   index: number;
-  /** The token address */
-  token: bigint;
-  /** Random value used to encrypt the subchannel token */
+  token: StarknetAddressBigint;
+  salt: bigint;
+};
+
+export type CreateEncNoteInput = {
+  recipient_addr: StarknetAddressBigint;
+  recipient_public_key: bigint;
+  token: StarknetAddressBigint;
+  amount: bigint;
+  index: number;
+  salt: bigint;
+};
+
+export type CreateOpenNoteInput = {
+  recipient_addr: StarknetAddressBigint;
+  recipient_public_key: bigint;
+  token: StarknetAddressBigint;
+  index: number;
+  depositor: StarknetAddressBigint;
   random: bigint;
 };
 
-/**
- * Input for the CreateNote action.
- */
-export type CreateNoteInput = {
-  /** The sender's private key (viewing key) */
-  senderPrivateKey: ViewingKey;
-  /** The recipient's address */
-  recipientAddr: bigint;
-  /** The recipient's public key */
-  recipientPublicKey: bigint;
-  /** The token's address */
-  token: bigint;
-  /** The amount the note represents */
-  amount: Amount | Open;
-  /** The index of the note within the channel (note nonce) */
-  index: number;
-  /** Random value used to encrypt the note amount (must be 120 bits) */
-  random: bigint;
-};
-
-/**
- * Input for the Deposit action.
- */
 export type DepositInput = {
-  /** The token's address */
-  token: bigint;
-  /** The amount to deposit */
-  amount: Amount;
-  /** The note id to deposit to (open note) */
-  noteId?: bigint;
+  token: StarknetAddressBigint;
+  amount: bigint;
 };
 
-/**
- * Input for the UseNote action.
- */
 export type UseNoteInput = {
-  /** The owner's private key (viewing key) */
-  ownerPrivateKey: ViewingKey;
-  /** The channel key of the note's channel */
-  channelKey: bigint;
-  /** The note's token address */
-  token: bigint;
-  /** The index of the note within the channel (note nonce) */
-  noteIndex: number;
+  channel_key: bigint;
+  token: StarknetAddressBigint;
+  note_index: number;
 };
 
-/**
- * Input for the Withdraw action.
- */
 export type WithdrawInput = {
-  /** The target of the withdrawal */
-  withdrawalTarget: bigint;
-  /** The token's address */
-  token: bigint;
-  /** The amount to withdraw */
-  amount: Amount;
-  /** Random value used to encrypt the user address for compliance */
+  withdrawal_target: StarknetAddressBigint;
+  token: StarknetAddressBigint;
+  amount: bigint;
   random: bigint;
 };
 
@@ -119,12 +68,31 @@ export type FollowupCallInput = {
   call: Call;
 };
 
+/**
+ * Union of all client actions.
+ */
 export type ClientAction =
   | { type: "SetViewingKey"; input: SetViewingKeyInput }
   | { type: "OpenChannel"; input: OpenChannelInput }
   | { type: "OpenSubchannel"; input: OpenSubchannelInput }
+  | { type: "CreateEncNote"; input: CreateEncNoteInput }
+  | { type: "CreateOpenNote"; input: CreateOpenNoteInput }
   | { type: "Deposit"; input: DepositInput }
   | { type: "UseNote"; input: UseNoteInput }
-  | { type: "CreateNote"; input: CreateNoteInput }
   | { type: "Withdraw"; input: WithdrawInput }
   | { type: "FollowupCall"; input: FollowupCallInput };
+
+/** All valid client action type names */
+export const CLIENT_ACTION_TYPES = [
+  "SetViewingKey",
+  "OpenChannel",
+  "OpenSubchannel",
+  "CreateEncNote",
+  "CreateOpenNote",
+  "Deposit",
+  "UseNote",
+  "Withdraw",
+  "FollowupCall",
+] as const;
+
+export type ClientActionType = (typeof CLIENT_ACTION_TYPES)[number];

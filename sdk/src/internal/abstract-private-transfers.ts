@@ -24,7 +24,7 @@ import { SetupRequirement } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { toBigInt } from "../utils/crypto.js";
 import { PrivateTransfersBuilderImpl } from "./builders.js";
-import { NotesCursor } from "./channel.js";
+import type { NotesCursor } from "./channel.js";
 
 /**
  * Abstract base class that implements the common functionality for PrivateTransfers.

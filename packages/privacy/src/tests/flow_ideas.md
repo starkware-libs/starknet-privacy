@@ -64,6 +64,13 @@
 1. Try to create same note twice in one transfer.
 2. Try to create same note twice in different transfers.
 3. Create note with non-sequential index (should fail - INDEX_NOT_SEQUENTIAL).
+4. Create open and enc note for the same note id in same tx (enc first, should fail - NON_ZERO_VALUE).
+5. Create open and enc note for the same note id in same tx (open first, should fail - NON_ZERO_VALUE).
+6. Create enc note, then open note for the same note id in different tx (should fail - NON_ZERO_VALUE).
+7. Create open note, then enc note for the same note id in different tx (should fail - NON_ZERO_VALUE).
+
+## Open note
+1. Use open note and then try to reuse/refill the note (for later - when open note filling is implemented).
 
 ## Use note
 1. Use note, change viewing key, try to use note again.

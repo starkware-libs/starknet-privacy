@@ -3,15 +3,16 @@
  */
 
 export { ERC20, MockContracts, MockSwapHelper } from "./contracts.js";
-export { PrivacyPool } from "./pool.js";
-export { MockDiscoveryProvider } from "./discovery.js";
-export { MockPrivateTransfers } from "./transfers.js";
+export { MockPoolContract } from "./mock-pool-contract.js";
 export {
-  createMockProof,
-  createMockCallAndProof,
-  Withdrawal,
-  applyStateChanges,
-} from "./helpers.js";
+  Mocknet,
+  type MocknetOptions,
+  type MockAccount,
+  type MocknetEnvironment,
+} from "./mocknet.js";
+export { MockProofProvider } from "./mock-proof-provider.js";
+export { MockProofInvocationFactory } from "./mock-proof-invocation-factory.js";
+export { createMockProof, createMockCallAndProof, Withdrawal } from "./helpers.js";
 export {
   compute_channel_key,
   compute_channel_id,
@@ -26,7 +27,22 @@ export {
   compute_enc_channel_key_hash,
   compute_enc_sender_addr_hash,
 } from "../utils/hashes.js";
-export { CallMockProofProvider } from "./proving.js";
+export { CallMockProofProvider } from "./mock-proving.js";
 export { TracingRpcProvider, TracedRpcError, type DecodedError } from "./tracing-provider.js";
-export { ContractDiscoveryProvider } from "./contract-discovery.js";
-export { Devnet, type DevnetEnvironment } from "./devnet.js";
+export {
+  ContractDiscoveryProvider,
+  type PoolContractInterface,
+} from "../internal/contract-discovery.js";
+export {
+  createConcurrencyProfiler,
+  formatReport,
+  type ConcurrencyReport,
+  type ConcurrencyProfiler,
+  type CallRecord,
+} from "./concurrency-profiler.js";
+export {
+  Devnet,
+  createDevnetTestEnv,
+  type DevnetEnvironment,
+  type DevnetTestEnv,
+} from "./devnet.js";

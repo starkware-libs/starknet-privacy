@@ -1,4 +1,4 @@
-import { BlockIdentifier, BlockNumber } from "starknet";
+import { BlockIdentifier } from "starknet";
 import {
   SetupRequirement,
   StarknetAddressBigint,
@@ -40,46 +40,43 @@ export type IncomingChannelCursor = {
 export type NotesCursor = {
   /* when was this cursor valid */
   /** @internal */ blockId: BlockIdentifier;
-  /* the number of channels opened */
-  /** @internal */ incomingChannelsCount: number;
   /* per sender, a cursor to the subcahnels they opened and notes they created */
   /** @internal */ incomingChannels: AddressMap<IncomingChannelCursor>; // sender -> cursor
 };
 
-// Base nonce class with shared logic and methods.
-class Nonce {
-  created?: BlockNumber;
-  readonly sequence: number;
-
-  protected constructor(sequence: number, created?: BlockNumber) {
-    assert(isUint(sequence), () => "Invalid nonce: sequence must be a non-negative integer");
-    this.sequence = sequence;
-    this.created = created;
+export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
+  if (!cursor) {
+    return {
+      blockId: 0,
+      incomingChannels: new AddressMap<IncomingChannelCursor>(),
+    };
   }
 
-  /** Returns a new instance of the same class with the sequence incremented by 1. */
-  increment(): this {
-    const Ctor = this.constructor as new (sequence: number) => this;
-    return new Ctor(this.sequence + 1);
-  }
+  const cloneIncomingChannelCursor = (sc: IncomingChannelCursor): IncomingChannelCursor => ({
+    channelKey: sc.channelKey,
+    subchannelKeyIndex: sc.subchannelKeyIndex,
+    noteIndexes: new AddressMap<number>(sc.noteIndexes.entries()),
+  });
 
-  decrement(): this {
-    assert(this.sequence > 0, () => "Invalid nonce: cannot decrement below 0");
-    const Ctor = this.constructor as new (sequence: number) => this;
-    return new Ctor(this.sequence - 1);
-  }
+  const incomingChannels = new AddressMap<IncomingChannelCursor>(
+    [...cursor.incomingChannels.entries()].map(
+      ([k, v]): [StarknetAddressBigint, IncomingChannelCursor] => [k, cloneIncomingChannelCursor(v)]
+    )
+  );
+  return {
+    blockId: cursor.blockId,
+    incomingChannels: incomingChannels,
+  };
 }
 
-export class TokenNonce extends Nonce {
-  constructor(sequence: number = 0, created?: BlockNumber) {
-    super(sequence, created);
+export function cloneChannelCursor(cursor?: AddressMap<Channel>): AddressMap<Channel> {
+  if (!cursor) {
+    return new AddressMap<Channel>();
   }
-}
 
-export class NoteNonce extends Nonce {
-  constructor(sequence: number = 0, created?: BlockNumber) {
-    super(sequence, created);
-  }
+  return new AddressMap<Channel>(
+    [...cursor.entries()].map(([k, v]): [StarknetAddressBigint, Channel] => [k, v.clone()])
+  );
 }
 
 type ChannelKey = bigint;
@@ -143,8 +140,8 @@ export const channelSerde: ChannelSerde = {
       tokens: Array.from(channel.tokens.entries()).map(([k, v]) => [
         k,
         {
-          tokenNonce: { sequence: v.tokenIndex },
-          noteNonce: { sequence: v.noteNonce },
+          tokenIndex: v.tokenIndex,
+          noteNonce: v.noteNonce,
         },
       ]),
     });
@@ -157,8 +154,8 @@ export const channelSerde: ChannelSerde = {
       throw new Error("Invalid channel payload");
     }
     const { key, recipientPublicKey, tokens } = parsed as Record<string, unknown>;
-    const decodedKey = assertChannelKey(key);
-    const decodedPublicKey = assertChannelKey(recipientPublicKey); // same format as key
+    const decodedKey = assertOptionalChannelKey(key);
+    const decodedPublicKey = assertChannelKey(recipientPublicKey);
     const decodedTokens = assertTokenEntries(tokens);
 
     return new Channel(decodedPublicKey, decodedKey, decodedTokens);
@@ -210,6 +207,13 @@ function assertChannelKey(value: unknown): ChannelKey {
     return BigInt(value);
   }
   throw new Error("Invalid channel key");
+}
+
+function assertOptionalChannelKey(value: unknown): ChannelKey | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return assertChannelKey(value);
 }
 
 function assertBigInt(value: unknown): bigint {

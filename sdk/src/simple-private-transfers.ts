@@ -49,10 +49,12 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
     amount: Amount | All
   ): Promise<ExecuteResult> {
     const builder = this.build(token);
-    if (!isAll(amount)) {
-      builder.transfer({ recipient, amount });
+    if (isAll(amount)) {
+      // Transfer all: send everything as surplus to recipient
+      return builder.surplusTo(recipient, false).execute();
     }
-    return builder.surplusTo(recipient, false).execute();
+    // Transfer specific amount: send amount to recipient, keep surplus
+    return builder.transfer({ recipient, amount }).surplusTo(this.inner.user, false).execute();
   }
 
   swap(
@@ -63,12 +65,17 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
   ): Promise<ExecuteResult> {
     return this.build(fromToken)
       .withdraw({ recipient: helperCall.contractAddress, amount: fromAmount })
+      .surplusTo(this.inner.user, false) // Keep ACE surplus as private note
       .with(toToken)
-      .transfer({ recipient: this.inner.user, amount: Open })
+      .transfer({ recipient: this.inner.user, amount: Open, depositor: helperCall.contractAddress })
+      .done()
+      .call(helperCall)
       .execute();
   }
 
   private build(token: StarknetAddress) {
+    // Clear notes before refresh to avoid stale entries (already-spent notes)
+    this.registry.notes.clear();
     return this.inner
       .build({
         autoDiscover: { notes: "refresh", channels: "refresh" },

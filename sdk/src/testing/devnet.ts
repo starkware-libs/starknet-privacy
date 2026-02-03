@@ -9,6 +9,7 @@ import {
   Account,
   CairoAssembly,
   CompiledContract,
+  constants,
   Contract,
   DeclareContractPayload,
   DeclareContractResponse,
@@ -26,9 +27,16 @@ import {
   type GetTransactionReceiptResponse,
 } from "starknet";
 import { TracingRpcProvider } from "./tracing-provider.js";
-import type { CallAndProof } from "../interfaces.js";
+import type { CallAndProof, PrivateTransfersInterface } from "../interfaces.js";
+import { createPrivateTransfers } from "../factory.js";
+import { CallMockProofProvider } from "./mock-proving.js";
+import {
+  ContractDiscoveryProvider,
+  type DiscoveryOptions,
+} from "../internal/contract-discovery.js";
+import { toBigInt } from "../utils/crypto.js";
 import { Devnet as StarknetDevnet } from "starknet-devnet";
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { PrivacyPoolABI } from "../internal/abi.js";
@@ -380,11 +388,124 @@ export class Devnet {
   }
 
   /**
-   * Terminate the devnet process
+   * Dump contract storage state to a JSON file for Rust discovery tests.
+   * Iterates through all blocks and accumulates storage diffs for the privacy contract.
    */
-  cleanup(): void {
+  async dumpContractState(outputPath: string): Promise<void> {
+    if (!this.setup || !this.provider) {
+      throw new Error("Devnet not initialized");
+    }
+
+    // 1. Get latest block number
+    const latestBlock = await this.provider.getBlockNumber();
+
+    // 2. Accumulate storage state across all blocks
+    const storageState: Record<string, string> = {};
+
+    for (let blockNum = 0; blockNum <= latestBlock; blockNum++) {
+      const stateUpdate = await this.provider.getStateUpdate(blockNum);
+
+      // 3. Filter storage_diffs by privacy contract address
+      for (const diff of stateUpdate.state_diff.storage_diffs) {
+        if (diff.address.toLowerCase() === this.setup.privacy.address.toLowerCase()) {
+          // 4. Merge entries (later blocks override earlier)
+          for (const entry of diff.storage_entries) {
+            storageState[entry.key] = entry.value;
+          }
+        }
+      }
+    }
+
+    // 5. Write JSON output with constants needed for discovery
+    const output = {
+      _comment:
+        "Devnet storage dump for Rust discovery tests. Regenerate by running SDK devnet tests with DUMP_STATE_PATH set.",
+      constants: {
+        contract_address: this.setup.privacy.address,
+        alice_address: this.setup.alice.address,
+        alice_viewing_key: "0xa11ce", // Hardcoded in devnet.test.ts
+        bob_address: this.setup.bob.address,
+        bob_viewing_key: "0xb0b", // Hardcoded in devnet.test.ts
+        admin_address: this.setup.admin.address,
+        eth_token: this.setup.eth,
+        strk_token: this.setup.strk,
+      },
+      block: latestBlock,
+      slots: storageState,
+    };
+
+    writeFileSync(outputPath, JSON.stringify(output, null, 2));
+    console.log(`Dumped ${Object.keys(storageState).length} storage slots to ${outputPath}`);
+  }
+
+  /**
+   * Terminate the devnet process.
+   * If DUMP_STATE_PATH env var is set, dumps contract state before cleanup.
+   */
+  async cleanup(): Promise<void> {
+    const dumpPath = process.env.DUMP_STATE_PATH;
+    if (dumpPath && this.setup) {
+      console.log(`Dumping contract state to: ${dumpPath}`);
+      await this.dumpContractState(dumpPath);
+    }
+
     if (this.devnet) {
       this.devnet.kill("SIGINT");
     }
   }
+}
+
+/**
+ * Test environment for Devnet - mirrors MockTestEnv structure.
+ */
+export interface DevnetTestEnv {
+  devnet: Devnet;
+  env: DevnetEnvironment;
+  transfers: {
+    alice: PrivateTransfersInterface;
+    bob: PrivateTransfersInterface;
+  };
+}
+
+/**
+ * Configuration for createDevnetTestEnv.
+ */
+export interface DevnetTestEnvConfig {
+  /** Options for discovery (rate limiting, etc.) */
+  discoveryOptions?: DiscoveryOptions;
+}
+
+/**
+ * Create a complete test environment with initialized devnet, accounts, and transfers.
+ * This is the recommended way for SDK consumers to set up integration tests.
+ *
+ * @param devnet - The Devnet instance (must be created by caller for cleanup control)
+ * @param config - Optional configuration for the test environment
+ * @returns DevnetTestEnv with devnet, env, and transfers
+ */
+export async function createDevnetTestEnv(
+  devnet: Devnet,
+  config?: DevnetTestEnvConfig
+): Promise<DevnetTestEnv> {
+  const env = await devnet.initialize();
+  const chainId = constants.StarknetChainId.SN_SEPOLIA;
+
+  const transfers = {
+    alice: createPrivateTransfers({
+      account: env.alice,
+      viewingKeyProvider: { getViewingKey: () => toBigInt("0xA11CE") },
+      provingProvider: new CallMockProofProvider(env.provider, chainId),
+      discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
+      poolContractAddress: env.privacy.address,
+    }),
+    bob: createPrivateTransfers({
+      account: env.bob,
+      viewingKeyProvider: { getViewingKey: () => toBigInt("0xB0B") },
+      provingProvider: new CallMockProofProvider(env.provider, chainId),
+      discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
+      poolContractAddress: env.privacy.address,
+    }),
+  };
+
+  return { devnet, env, transfers };
 }

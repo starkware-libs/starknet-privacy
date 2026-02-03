@@ -1,61 +1,51 @@
 import { describe, expect, it, beforeEach } from "vitest";
-import {
-  createTestEnv,
-  setupSelfChannel,
-  setupRecipientChannel,
-  applyStateChanges,
-  AUTO_ALL,
-  ACE,
-  BEE,
-  ALICE,
-  BOB,
-  TestEnv,
-} from "../helpers/test-fixtures.js";
+import { createTestEnv, AUTO_ALL, MockTestEnv } from "../helpers/test-fixtures.js";
 import { SetupRequirement } from "../../src/interfaces.js";
+import { toBigInt } from "../../src/utils/index.js";
 
 describe("Edge Cases", () => {
-  let env: TestEnv;
+  let testEnv: MockTestEnv;
 
   beforeEach(() => {
-    env = createTestEnv();
+    testEnv = createTestEnv();
   });
 
   describe("Validation", () => {
     it("rejects negative deposit amount", async () => {
-      const { alice } = env;
-      await setupSelfChannel(alice, ALICE.address, ACE);
+      const { env, transfers } = testEnv;
+      const { alice } = transfers;
 
       await expect(
         alice
           .build(AUTO_ALL)
-          .with(ACE)
-          .deposit({ amount: -100n, recipient: ALICE.address })
+          .with(env.ace)
+          .deposit({ amount: -100n, recipient: env.alice.address })
           .execute()
       ).rejects.toThrow(/Deposit amount must be positive/);
     });
 
     it("rejects negative withdraw amount", async () => {
-      const { alice, bob } = env;
+      const { mocknet, env, transfers } = testEnv;
+      const { alice, bob } = transfers;
+      const ace = toBigInt(env.ace);
 
       // Setup Alice -> Bob and create a note
-      applyStateChanges(await alice.build().register().execute());
-      const registry = await setupRecipientChannel(alice, bob, BOB.address, ACE);
-
-      applyStateChanges(
+      mocknet.executeOutside(await bob.build().register().execute());
+      mocknet.executeOutside(
         await alice
-          .build({ ...AUTO_ALL, registry })
-          .with(ACE)
-          .deposit({ amount: 100n, recipient: BOB.address })
+          .build(AUTO_ALL)
+          .with(env.ace)
+          .deposit({ amount: 100n, recipient: env.bob.address })
           .execute()
       );
 
-      const notes = (await bob.discoverNotes()).notes.get(ACE) ?? [];
+      const notes = (await bob.discoverNotes()).notes.get(ace) ?? [];
       expect(notes.length).toBe(1);
 
       await expect(
         bob
           .build(AUTO_ALL)
-          .with(ACE)
+          .with(env.ace)
           .inputs(...notes)
           .withdraw({ amount: -50n })
           .execute()
@@ -63,29 +53,30 @@ describe("Edge Cases", () => {
     });
 
     it("rejects negative transfer amount (created note)", async () => {
-      const { alice, bob } = env;
+      const { mocknet, env, transfers } = testEnv;
+      const { alice, bob } = transfers;
+      const ace = toBigInt(env.ace);
 
       // Setup Alice's self channel and Alice -> Bob channel
-      const selfRegistry = await setupSelfChannel(alice, ALICE.address, ACE);
-      await setupRecipientChannel(alice, bob, BOB.address, ACE);
+      mocknet.executeOutside(await bob.build().register().execute());
 
       // prettier-ignore
-      applyStateChanges(
+      mocknet.executeOutside(
         await alice
-          .build({ ...AUTO_ALL, registry: selfRegistry })
-          .with(ACE)
-            .deposit({ amount: 100n, recipient: ALICE.address })
+          .build(AUTO_ALL)
+          .with(env.ace)
+            .deposit({ amount: 100n, recipient: env.alice.address })
           .execute()
       );
 
-      const notes = (await alice.discoverNotes()).notes.get(ACE) ?? [];
+      const notes = (await alice.discoverNotes()).notes.get(ace) ?? [];
 
       await expect(
         alice
           .build(AUTO_ALL)
-          .with(ACE)
+          .with(env.ace)
           .inputs(...notes)
-          .transfer({ recipient: BOB.address, amount: -50n })
+          .transfer({ recipient: env.bob.address, amount: -50n })
           .execute()
       ).rejects.toThrow(/Created note amount must be positive/);
     });
@@ -101,15 +92,23 @@ describe("Edge Cases", () => {
 
   describe("Token Setup Independence", () => {
     it("different tokens require separate setup", async () => {
-      const { alice, bob } = env;
+      const { mocknet, env, transfers } = testEnv;
+      const { alice, bob } = transfers;
+
+      mocknet.executeOutside(await bob.build().register().execute());
 
       // Setup Alice -> Bob with ACE only
-      applyStateChanges(await alice.build().register().execute());
-      await setupRecipientChannel(alice, bob, BOB.address, ACE);
+      mocknet.executeOutside(
+        await alice.build(AUTO_ALL).register().with(env.ace).setup(env.bob.address).execute()
+      );
 
       // ACE is ready, BEE still needs setup
-      expect(await alice.discoverRequirement(BOB.address, ACE)).toBe(SetupRequirement.Ready);
-      expect(await alice.discoverRequirement(BOB.address, BEE)).toBe(SetupRequirement.SetupToken);
+      expect(await alice.discoverRequirement(env.bob.address, env.ace)).toBe(
+        SetupRequirement.Ready
+      );
+      expect(await alice.discoverRequirement(env.bob.address, env.bee)).toBe(
+        SetupRequirement.SetupToken
+      );
     });
   });
 });

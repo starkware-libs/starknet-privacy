@@ -1,7 +1,15 @@
 // ============ Logging Utilities ============
-import { AsyncLocalStorage } from "async_hooks";
-import type { BigNumberish } from "starknet";
-import { toBigInt } from "./crypto.js";
+import { toHex } from "./convert.js";
+
+// --- Environment Access (Browser-Compatible) ---
+
+/** Safely get environment variable (works in both Node.js and browser) */
+const getEnv = (key: string): string | undefined => {
+  if (typeof process !== "undefined" && process.env) {
+    return process.env[key];
+  }
+  return undefined;
+};
 
 // --- Tracing Context ---
 
@@ -10,14 +18,32 @@ type TraceContext = {
   childCounter: number; // Counter for children
 };
 
-const traceStorage = new AsyncLocalStorage<TraceContext>();
+// Try to use AsyncLocalStorage if available (Node.js only)
+// In browsers, we fall back to simple counter-based trace IDs
+type AsyncLocalStorageType = import("async_hooks").AsyncLocalStorage<TraceContext>;
+let traceStorage: AsyncLocalStorageType | undefined;
+
+try {
+  // Only attempt to load in Node.js environment
+  if (typeof window === "undefined" && typeof process !== "undefined") {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const asyncHooks = require("async_hooks");
+    traceStorage = new asyncHooks.AsyncLocalStorage();
+  }
+} catch {
+  // async_hooks not available (browser or unsupported environment)
+  traceStorage = undefined;
+}
+
 let rootTraceCounter = 0;
 
 function getTraceId(): string {
-  const current = traceStorage.getStore();
-  if (current) {
-    current.childCounter++;
-    return `${current.id}.${current.childCounter}`;
+  if (traceStorage) {
+    const current = traceStorage.getStore();
+    if (current) {
+      current.childCounter++;
+      return `${current.id}.${current.childCounter}`;
+    }
   }
   rootTraceCounter++;
   return `${rootTraceCounter}`;
@@ -58,7 +84,7 @@ export function withLogging<T extends object>(target: T, name: string, callback:
           const traceId = getTraceId();
           const context: TraceContext = { id: traceId, childCounter: 0 };
 
-          return traceStorage.run(context, () => {
+          const executeWithLogging = () => {
             try {
               // Log Enter
               callback(name, prop, args, undefined, "ENTER", traceId);
@@ -87,7 +113,13 @@ export function withLogging<T extends object>(target: T, name: string, callback:
               callback(name, prop, args, error, "ERROR", traceId);
               throw error;
             }
-          });
+          };
+
+          // Use AsyncLocalStorage if available (Node.js), otherwise just execute
+          if (traceStorage) {
+            return traceStorage.run(context, executeWithLogging);
+          }
+          return executeWithLogging();
         };
       }
       return value;
@@ -100,7 +132,7 @@ export const DEBUG_ENV_VAR = "SDK_DEBUG";
 
 /** Check if debug logging is enabled */
 export const isDebugEnabled = (targetName?: string) => {
-  const env = process.env[DEBUG_ENV_VAR];
+  const env = getEnv(DEBUG_ENV_VAR);
   if (!env) return false;
   if (env === "1" || env === "true") return true;
   if (targetName) {
@@ -114,7 +146,7 @@ export const isDebugEnabled = (targetName?: string) => {
 
 /** Check if debug logging could be enabled for any method of a target */
 const isDebugEnabledForTarget = (name: string) => {
-  const env = process.env[DEBUG_ENV_VAR];
+  const env = getEnv(DEBUG_ENV_VAR);
   if (!env) return false;
   if (env === "1" || env === "true") return true;
   const patterns = env.split(",");
@@ -130,9 +162,11 @@ const RED = 31;
 
 // Check if we are in a TTY environment or if color is forced
 const useColor = () => {
-  if (process.env.SDK_DEBUG_COLOR === "0" || process.env.NO_COLOR) return false;
-  if (process.env.SDK_DEBUG_COLOR === "1" || process.env.FORCE_COLOR) return true;
-  return process.stdout?.isTTY;
+  if (getEnv("SDK_DEBUG_COLOR") === "0" || getEnv("NO_COLOR")) return false;
+  if (getEnv("SDK_DEBUG_COLOR") === "1" || getEnv("FORCE_COLOR")) return true;
+  // Check if stdout exists and is TTY (Node.js only)
+  if (typeof process !== "undefined" && process.stdout?.isTTY) return true;
+  return false;
 };
 
 /** Apply color if environment supports it */
@@ -142,19 +176,6 @@ const color = (text: string, code: number) => {
 };
 
 // ... existing code ...
-
-/** Helper to format bigint/BigNumberish as hex string */
-export const hex = (v: BigNumberish | Uint8Array) => {
-  if (v instanceof Uint8Array) {
-    return (
-      "0x" +
-      Array.from(v)
-        .map((b) => b.toString(16).toUpperCase().padStart(2, "0"))
-        .join("")
-    );
-  }
-  return `0x${toBigInt(v).toString(16).toUpperCase()}`;
-};
 
 /** Get current timestamp as HH:MM:SS.mmm */
 const getTimestamp = () => {
@@ -169,9 +190,9 @@ const getTimestamp = () => {
 const createReplacer = () => {
   const seen = new WeakSet();
   return (_: string, v: unknown) => {
-    if (typeof v === "bigint") return `0x${v.toString(16)}`;
+    if (typeof v === "bigint") return toHex(v);
     if (typeof v === "function") return "[Function]";
-    if (v instanceof Uint8Array) return hex(v);
+    if (v instanceof Uint8Array) return toHex(v);
     if (typeof v === "object" && v !== null) {
       if (seen.has(v)) return "[Circular]";
       seen.add(v);
@@ -228,7 +249,7 @@ export const consoleLogCallback: LogCallback = (
 export const debugLog = (target: string, sub: string, ...args: unknown[]) => {
   if (isDebugEnabled(`${target}.${sub}`)) {
     // Attempt to get current trace ID if inside a logged context
-    const current = traceStorage.getStore();
+    const current = traceStorage?.getStore();
     const traceId = current ? current.id : "?";
 
     const timestamp = color(`[${getTimestamp()}]`, 90); // Gray color for timestamp

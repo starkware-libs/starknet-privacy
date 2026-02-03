@@ -1,9 +1,9 @@
 use core::dict::{Felt252Dict, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
-use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::errors;
-use privacy::utils::encrypt_note_amount;
-use starknet::{ContractAddress, Store};
+use privacy::utils::constants::OPEN_NOTE_SALT;
+use privacy::utils::{encrypt_note_amount, packing};
+use starknet::ContractAddress;
 
 pub(crate) type TokenBalances = Felt252Dict<u128>;
 pub(crate) type SquashedTokenBalances = SquashedFelt252Dict<u128>;
@@ -83,20 +83,6 @@ pub struct EncSubchannelInfo {
     pub enc_token: felt252,
 }
 
-pub impl EncSubchannelInfoZero of Zero<EncSubchannelInfo> {
-    fn zero() -> EncSubchannelInfo {
-        EncSubchannelInfo { salt: Zero::zero(), enc_token: Zero::zero() }
-    }
-    /// Check if `enc_token` field is zero.
-    fn is_zero(self: @EncSubchannelInfo) -> bool {
-        return self.enc_token.is_zero();
-    }
-    /// Check if `enc_token` field is non-zero.
-    fn is_non_zero(self: @EncSubchannelInfo) -> bool {
-        !self.is_zero()
-    }
-}
-
 /// Ciphertext for an ECDH-based encryption of user address.
 /// Used for compliance to be able to decrypt the user address when withdrawing.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
@@ -129,51 +115,35 @@ pub struct EncOutgoingChannelInfo {
     pub enc_recipient_addr: felt252,
 }
 
-
-pub impl EncOutgoingChannelInfoZero of Zero<EncOutgoingChannelInfo> {
-    fn zero() -> EncOutgoingChannelInfo {
-        EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() }
-    }
-    /// Check if `enc_recipient_addr` field is zero.
-    fn is_zero(self: @EncOutgoingChannelInfo) -> bool {
-        return self.enc_recipient_addr.is_zero();
-    }
-    /// Check if `enc_recipient_addr` field is non-zero.
-    fn is_non_zero(self: @EncOutgoingChannelInfo) -> bool {
-        !self.is_zero()
-    }
-}
-
 /// A note containing encrypted value and token information.
+// TODO: Ask if we should add getters for specific fields.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
-pub(crate) struct Note {
-    /// The encrypted value of the note.
-    // TODO: Implement open notes.
-    pub enc_value: felt252,
-    /// The token address of the note (zero for encrypted notes).
+pub struct Note {
+    /// The packed value of the note `(salt, amount)`:
+    /// - For open notes: salt = OPEN_NOTE_SALT (=1), amount = 0 (awaiting deposit).
+    /// - For encrypted notes: salt > OPEN_NOTE_SALT (>=2), amount = encrypted_amount.
+    pub packed_value: felt252,
+    /// The token address of the note (zero for encrypted notes, non-zero for open notes).
     pub token: ContractAddress,
+    /// The address of the contract permitted to deposit into the note (zero for encrypted notes).
+    pub depositor: ContractAddress,
 }
 
 #[generate_trait]
 pub impl NoteImpl of NoteTrait {
-    fn encrypt(
+    fn open_note(token: ContractAddress, depositor: ContractAddress) -> Note {
+        Note {
+            packed_value: packing(value_1: OPEN_NOTE_SALT, value_2: Zero::zero()), token, depositor,
+        }
+    }
+
+    fn enc_note(
         channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
     ) -> Note {
         Note {
-            enc_value: encrypt_note_amount(:channel_key, :token, :index, :salt, :amount),
+            packed_value: encrypt_note_amount(:channel_key, :token, :index, :salt, :amount),
             token: Zero::zero(),
+            depositor: Zero::zero(),
         }
-    }
-}
-
-#[generate_trait]
-pub(crate) impl ToServerActionsImpl<T, +Serde<T>, +Store<T>> of ToServerActionsTrait<T> {
-    /// IMPORTANT: This function only works for types whose serialization format
-    /// exactly matches their in-storage representation.
-    /// Use with care.
-    fn to_write_once_action(self: @T, storage_address: felt252) -> ServerAction {
-        let mut value = array![];
-        self.serialize(ref output: value);
-        ServerAction::WriteOnce(WriteOnceInput { storage_address, value: value.span() })
     }
 }

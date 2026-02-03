@@ -15,18 +15,13 @@ export { assert, assertViewingKey, assertRecipientAddress, isOpen } from "./vali
 export {
   hash,
   shortStringToFelt,
-  encryptChannelInfo,
-  decryptChannelInfo,
   derivePublicKey,
   encryptSymmetric,
   decryptSymmetric,
-  toBigInt,
   type Hash,
   type ChannelKey,
   type PublicKey,
   type PrivateKey,
-  type EncChannelInfo,
-  type ChannelInfo,
   type SymmetricEncryption,
 } from "./crypto.js";
 export {
@@ -52,3 +47,4 @@ export {
   addSelectors,
   type DecodedError,
 } from "./error-decoder.js";
+export { toBigInt, toBytes, toHex, type Numeric } from "./convert.js";

@@ -1,9 +1,11 @@
 import type {
+  AccountInvocationsFactoryDetails,
   AllowArray,
   BigNumberish,
   BlockIdentifier,
   BlockNumber,
   Call,
+  constants,
   Invocation,
 } from "starknet";
 import { ec } from "starknet";
@@ -49,9 +51,11 @@ export enum SetupRequirement {
 /** A Starknet address normalized to bigint (for use as Map keys, etc.) */
 export type StarknetAddressBigint = bigint;
 
-// Import and re-export Witness class from internal.ts
-import { Witness, Channel, NotesCursor } from "./internal/channel.js";
-export { Witness, Channel, NotesCursor as DiscoveryCursor };
+// Import and re-export from internal channel
+import { Witness, Channel } from "./internal/channel.js";
+import type { NotesCursor } from "./internal/channel.js";
+export { Witness, Channel };
+export type { NotesCursor as DiscoveryCursor };
 
 export type Note = {
   readonly id: NoteId;
@@ -61,6 +65,7 @@ export type Note = {
   readonly viewingKey?: ViewingKey; // in case the viewing key is different than the privacy pool's.
   readonly sender: StarknetAddress;
   readonly open?: boolean;
+  readonly depositor?: StarknetAddress;
 };
 
 /** Unique identifier for a note, used for semi-transparent (preprepared) notes */
@@ -142,8 +147,7 @@ export type UseNoteAction = {
 export type CreateNoteAction = {
   recipient: StarknetAddressBigint;
   token: StarknetAddressBigint;
-  amount: Amount | Open;
-};
+} & ({ amount: Amount } | { amount: Open; depositor: StarknetAddressBigint });
 
 export type WithdrawAction = {
   recipient: StarknetAddressBigint;
@@ -240,6 +244,14 @@ export type ExecuteOptions = {
   registryConst?: boolean;
 };
 
+export type Warning = {
+  code: WarningCode;
+  message: string;
+};
+
+export enum WarningCode {
+  USER_LINKAGE = "USER_LINKAGE",
+}
 /**
  * Result of execute, including the call/proof and updated registry.
  */
@@ -247,6 +259,8 @@ export type ExecuteResult = {
   callAndProof: CallAndProof;
   /** Updated registry (new object if registryConst was true, same object otherwise) */
   registry: PrivateRegistry;
+
+  warnings: Warning[];
 };
 
 /**
@@ -292,9 +306,6 @@ export interface SimplePrivateTransfersInterface {
     helperCall: Call
   ): Promise<ExecuteResult>;
 }
-
-/** @deprecated Use SimplePrivateTransfersInterface instead */
-export type SimplePrivateTransfers = SimplePrivateTransfersInterface;
 
 /**
  * Main interface for clients to use. It is stateless.
@@ -365,15 +376,15 @@ export interface PrivateTransfersInterface {
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
 }
 
-/** @deprecated Use PrivateTransfersInterface instead */
-export type PrivateTransfers = PrivateTransfersInterface;
-
 // ============ Builder Types ============
 
 /**
  * Output specification for transfer/withdraw operations
  */
-export type TransferOutput = { recipient: StarknetAddress; amount: Amount | Open };
+export type TransferOutput = { recipient: StarknetAddress } & (
+  | { amount: Amount }
+  | { amount: Open; depositor: StarknetAddress }
+);
 export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
 export type DepositInput = { recipient?: StarknetAddress } & {
   amount: Amount;
@@ -409,7 +420,7 @@ export interface TokenOperationsBuilder {
    * Transfer this token privately to one or more recipients.
    * Context for each recipient is resolved from registry or discovery.
    */
-  transfer(...outputs: Array<{ recipient: StarknetAddress; amount: Amount | Open }>): this;
+  transfer(...outputs: TransferOutput[]): this;
 
   /**
    * Set the recipient for any surplus for this token.
@@ -522,16 +533,25 @@ export interface PrivateTransfersBuilder {
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
 }
 
-////// The following are more likely to change /////////
+export type ProofInvocation = Invocation;
+
 /**
- * Configuration used to bootstrap the proving provider REST client.
+ * Factory details for creating proof invocations.
+ * Extends AccountInvocationsFactoryDetails with chainId for signing.
  */
+export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
+  chainId: constants.StarknetChainId;
+};
+
+////// The following are more likely to change /////////
 
 /**
  * Operator API contract — the proving service must implement this surface.
  */
 export interface ProofProviderInterface {
-  prove(invocation: Invocation): Promise<Proof>;
+  /** Get the default factory details for creating proof invocations */
+  getDefaultDetails(): ProofInvocationFactoryDetails;
+  prove(invocation: ProofInvocation): Promise<Proof>;
 }
 
 export interface DiscoveryProviderInterface {

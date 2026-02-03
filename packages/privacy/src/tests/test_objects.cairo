@@ -2,11 +2,11 @@ use core::num::traits::Zero;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::objects::{
     EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey, EncPrivateKeyTrait,
-    EncSubchannelInfo, Note, NoteTrait, ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
+    EncSubchannelInfo, Note, NoteTrait, TokenBalances, TokenBalancesTrait,
 };
 use privacy::tests::test_objects::MockContract::deploy_for_test as deploy_mock_contract_for_test;
 use privacy::tests::utils_for_tests::{Test, TestTrait, UserTrait, constants};
-use privacy::utils::{decrypt_note_amount, encrypt_note_amount};
+use privacy::utils::{decrypt_note_amount, encrypt_note_amount, to_write_once_action, unpacking};
 use snforge_std::{DeclareResultTrait, declare, map_entry_address};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
@@ -35,45 +35,6 @@ fn test_enc_channel_info_is_all_non_zero() {
     };
     assert_eq!(enc_channel_info_zero.is_all_non_zero(), false);
 }
-#[test]
-fn test_enc_subchannel_info_zero() {
-    let enc_subchannel_info_zero: EncSubchannelInfo = Zero::zero();
-    assert_eq!(enc_subchannel_info_zero.is_zero(), true);
-    assert_eq!(enc_subchannel_info_zero.is_non_zero(), false);
-    assert_eq!(
-        enc_subchannel_info_zero, EncSubchannelInfo { salt: Zero::zero(), enc_token: Zero::zero() },
-    );
-}
-
-#[test]
-fn test_enc_subchannel_info_is_zero() {
-    let mut enc_subchannel_info = EncSubchannelInfo {
-        salt: 'SALT'.try_into().unwrap(), enc_token: 'ENC_TOKEN'.try_into().unwrap(),
-    };
-    assert_eq!(enc_subchannel_info.is_zero(), false);
-    enc_subchannel_info.salt = Zero::zero();
-    assert_eq!(enc_subchannel_info.is_zero(), false);
-    enc_subchannel_info.salt = 'SALT'.try_into().unwrap();
-    enc_subchannel_info.enc_token = Zero::zero();
-    assert_eq!(enc_subchannel_info.is_zero(), true);
-    enc_subchannel_info.salt = Zero::zero();
-    assert_eq!(enc_subchannel_info.is_zero(), true);
-}
-
-#[test]
-fn test_enc_subchannel_info_is_non_zero() {
-    let mut enc_subchannel_info = EncSubchannelInfo {
-        salt: 'SALT'.try_into().unwrap(), enc_token: 'ENC_TOKEN'.try_into().unwrap(),
-    };
-    assert_eq!(enc_subchannel_info.is_non_zero(), true);
-    enc_subchannel_info.salt = Zero::zero();
-    assert_eq!(enc_subchannel_info.is_non_zero(), true);
-    enc_subchannel_info.salt = 'SALT'.try_into().unwrap();
-    enc_subchannel_info.enc_token = Zero::zero();
-    assert_eq!(enc_subchannel_info.is_non_zero(), false);
-    enc_subchannel_info.salt = Zero::zero();
-    assert_eq!(enc_subchannel_info.is_non_zero(), false);
-}
 
 #[test]
 fn test_enc_private_key_is_all_non_zero() {
@@ -90,49 +51,6 @@ fn test_enc_private_key_is_all_non_zero() {
     assert_eq!(enc_private_key.is_all_non_zero(), false);
     enc_private_key.ephemeral_pubkey = Zero::zero();
     assert_eq!(enc_private_key.is_all_non_zero(), false);
-}
-
-#[test]
-fn test_enc_outgoing_channel_info_zero() {
-    let enc_outgoing_channel_info_zero: EncOutgoingChannelInfo = Zero::zero();
-    assert_eq!(enc_outgoing_channel_info_zero.is_zero(), true);
-    assert_eq!(enc_outgoing_channel_info_zero.is_non_zero(), false);
-    assert_eq!(
-        enc_outgoing_channel_info_zero,
-        EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
-    );
-}
-
-#[test]
-fn test_enc_outgoing_channel_info_is_zero() {
-    let mut enc_outgoing_channel_info = EncOutgoingChannelInfo {
-        salt: 'salt'.try_into().unwrap(),
-        enc_recipient_addr: 'ENC_RECIPIENT_ADDR'.try_into().unwrap(),
-    };
-    assert_eq!(enc_outgoing_channel_info.is_zero(), false);
-    enc_outgoing_channel_info.salt = Zero::zero();
-    assert_eq!(enc_outgoing_channel_info.is_zero(), false);
-    enc_outgoing_channel_info.salt = 'salt'.try_into().unwrap();
-    enc_outgoing_channel_info.enc_recipient_addr = Zero::zero();
-    assert_eq!(enc_outgoing_channel_info.is_zero(), true);
-    enc_outgoing_channel_info.salt = Zero::zero();
-    assert_eq!(enc_outgoing_channel_info.is_zero(), true);
-}
-
-#[test]
-fn test_enc_outgoing_channel_info_is_non_zero() {
-    let mut enc_outgoing_channel_info = EncOutgoingChannelInfo {
-        salt: 'salt'.try_into().unwrap(),
-        enc_recipient_addr: 'ENC_RECIPIENT_ADDR'.try_into().unwrap(),
-    };
-    assert_eq!(enc_outgoing_channel_info.is_non_zero(), true);
-    enc_outgoing_channel_info.salt = Zero::zero();
-    assert_eq!(enc_outgoing_channel_info.is_non_zero(), true);
-    enc_outgoing_channel_info.salt = 'salt'.try_into().unwrap();
-    enc_outgoing_channel_info.enc_recipient_addr = Zero::zero();
-    assert_eq!(enc_outgoing_channel_info.is_non_zero(), false);
-    enc_outgoing_channel_info.salt = Zero::zero();
-    assert_eq!(enc_outgoing_channel_info.is_non_zero(), false);
 }
 
 #[test]
@@ -160,24 +78,24 @@ fn test_token_balances_assert_valid_empty() {
 }
 
 #[test]
-#[should_panic(expected_error: 'NEGATIVE_INTERMEDIATE_BALANCE')]
+#[should_panic(expected: 'NEGATIVE_INTERMEDIATE_BALANCE')]
 fn test_token_balances_negative_intermediate_balance_from_zero() {
     let token = 'TOKEN'.try_into().unwrap();
     let mut token_balances: TokenBalances = Default::default();
-    token_balances.subtract_balance(token: token, amount: 1);
+    token_balances.subtract_balance(:token, amount: 1);
 }
 
 #[test]
-#[should_panic(expected_error: 'NEGATIVE_INTERMEDIATE_BALANCE')]
+#[should_panic(expected: 'NEGATIVE_INTERMEDIATE_BALANCE')]
 fn test_token_balances_negative_intermediate_balance() {
     let token = 'TOKEN'.try_into().unwrap();
     let mut token_balances: TokenBalances = Default::default();
-    token_balances.add_balance(token: token, amount: 1);
-    token_balances.subtract_balance(token: token, amount: 2);
+    token_balances.add_balance(:token, amount: 1);
+    token_balances.subtract_balance(:token, amount: 2);
 }
 
 #[test]
-#[should_panic(expected_error: 'FINAL_BALANCE_MUST_BE_ZERO')]
+#[should_panic(expected: 'FINAL_BALANCE_MUST_BE_ZERO')]
 fn test_token_balances_final_balance_must_be_zero() {
     let token_1: ContractAddress = 'TOKEN_1'.try_into().unwrap();
     let token_2: ContractAddress = 'TOKEN_2'.try_into().unwrap();
@@ -204,13 +122,19 @@ fn test_note_encrypt() {
     let channel_key = user.compute_channel_key(recipient: user);
     let index = 0;
 
-    let note = NoteTrait::encrypt(:channel_key, token: token_address, :index, :salt, :amount);
-    let enc_value = encrypt_note_amount(:channel_key, token: token_address, :index, :salt, :amount);
-    let expected_note = Note { enc_value, token: Zero::zero() };
+    let note = NoteTrait::enc_note(:channel_key, token: token_address, :index, :salt, :amount);
+    let expected_note = Note {
+        packed_value: encrypt_note_amount(
+            :channel_key, token: token_address, :index, :salt, :amount,
+        ),
+        token: Zero::zero(),
+        depositor: Zero::zero(),
+    };
     assert_eq!(note, expected_note);
+    let (note_salt, enc_amount) = unpacking(note.packed_value);
+    assert_eq!(note_salt, salt);
     assert_eq!(
-        decrypt_note_amount(enc_note_value: enc_value, :channel_key, token: token_address, :index),
-        amount,
+        decrypt_note_amount(:enc_amount, :salt, :channel_key, token: token_address, :index), amount,
     );
 }
 
@@ -226,7 +150,7 @@ fn test_enc_private_key_to_write_once_action() {
     let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [key].span(),
     );
-    let action = enc_private_key_obj.to_write_once_action(:storage_address);
+    let action = to_write_once_action(:storage_address, value: enc_private_key_obj);
     assert_eq!(
         action,
         ServerAction::WriteOnce(
@@ -247,7 +171,7 @@ fn test_enc_subchannel_info_to_write_once_action() {
     let storage_address = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [key].span(),
     );
-    let action = enc_subchannel_info.to_write_once_action(:storage_address);
+    let action = to_write_once_action(:storage_address, value: enc_subchannel_info);
     assert_eq!(
         action,
         ServerAction::WriteOnce(
@@ -265,7 +189,7 @@ fn test_enc_outgoing_channel_info_to_write_once_action() {
     let storage_address = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [key].span(),
     );
-    let action = enc_outgoing_channel_info.to_write_once_action(:storage_address);
+    let action = to_write_once_action(:storage_address, value: enc_outgoing_channel_info);
     assert_eq!(
         action,
         ServerAction::WriteOnce(
@@ -277,16 +201,35 @@ fn test_enc_outgoing_channel_info_to_write_once_action() {
 #[test]
 fn test_note_to_write_once_action() {
     let enc_value = 'ENC_VALUE';
-    let token = 'TOKEN'.try_into().unwrap();
-    let note = Note { enc_value, token };
+    let token: ContractAddress = 'TOKEN'.try_into().unwrap();
+    let depositor: ContractAddress = 'DEPOSITOR'.try_into().unwrap();
+    let note = Note { packed_value: enc_value, token, depositor };
     let key = 'KEY';
     let storage_address = map_entry_address(map_selector: selector!("notes"), keys: [key].span());
-    let action = note.to_write_once_action(:storage_address);
+    let action = to_write_once_action(:storage_address, value: note);
     assert_eq!(
         action,
         ServerAction::WriteOnce(
-            WriteOnceInput { storage_address, value: [enc_value, token.into()].span() },
+            WriteOnceInput {
+                storage_address, value: [enc_value, token.into(), depositor.into()].span(),
+            },
         ),
+    );
+}
+
+#[test]
+fn test_bool_to_write_once_action() {
+    let key = 'KEY';
+    let storage_address = map_entry_address(map_selector: selector!("bool"), keys: [key].span());
+    let action = to_write_once_action(:storage_address, value: true);
+    assert_eq!(
+        action,
+        ServerAction::WriteOnce(WriteOnceInput { storage_address, value: [true.into()].span() }),
+    );
+    let action = to_write_once_action(:storage_address, value: false);
+    assert_eq!(
+        action,
+        ServerAction::WriteOnce(WriteOnceInput { storage_address, value: [false.into()].span() }),
     );
 }
 
@@ -297,10 +240,14 @@ trait IMockContract<T> {
     fn get_enc_subchannel_info(self: @T) -> EncSubchannelInfo;
     fn get_enc_outgoing_channel_info(self: @T) -> EncOutgoingChannelInfo;
     fn get_note(self: @T) -> Note;
+    fn get_felt(self: @T) -> felt252;
+    fn get_bool(self: @T) -> bool;
     fn write_serialized_enc_private_key(ref self: T, serialized_value: Span<felt252>);
     fn write_serialized_enc_subchannel_info(ref self: T, serialized_value: Span<felt252>);
     fn write_serialized_enc_outgoing_channel_info(ref self: T, serialized_value: Span<felt252>);
     fn write_serialized_note(ref self: T, serialized_value: Span<felt252>);
+    fn write_serialized_felt(ref self: T, serialized_value: Span<felt252>);
+    fn write_serialized_bool(ref self: T, serialized_value: Span<felt252>);
 }
 
 /// Mock contract to test serialization format exactly matches in-storage representation for
@@ -322,6 +269,8 @@ mod MockContract {
         enc_subchannel_info: EncSubchannelInfo,
         enc_outgoing_channel_info: EncOutgoingChannelInfo,
         note: Note,
+        felt: felt252,
+        boolean: bool,
     }
 
     #[constructor]
@@ -340,6 +289,12 @@ mod MockContract {
         }
         fn get_note(self: @ContractState) -> Note {
             self.note.read()
+        }
+        fn get_felt(self: @ContractState) -> felt252 {
+            self.felt.read()
+        }
+        fn get_bool(self: @ContractState) -> bool {
+            self.boolean.read()
         }
         fn write_serialized_enc_private_key(
             ref self: ContractState, serialized_value: Span<felt252>,
@@ -363,6 +318,16 @@ mod MockContract {
             let storage_address = self.note.__base_address__;
             self._write(:storage_address, :serialized_value);
         }
+        fn write_serialized_felt(ref self: ContractState, serialized_value: Span<felt252>) {
+            assert(serialized_value.len() == 1, 'EXPECTED_LENGTH_1');
+            let storage_address = self.felt.__base_address__;
+            self._write(:storage_address, :serialized_value);
+        }
+        fn write_serialized_bool(ref self: ContractState, serialized_value: Span<felt252>) {
+            assert(serialized_value.len() == 1, 'EXPECTED_LENGTH_1');
+            let storage_address = self.boolean.__base_address__;
+            self._write(:storage_address, :serialized_value);
+        }
     }
 
     #[generate_trait]
@@ -371,14 +336,18 @@ mod MockContract {
             ref self: ContractState, storage_address: felt252, serialized_value: Span<felt252>,
         ) {
             let len = serialized_value.len();
-            assert(len == 2 || len == 3, 'EXPECTED_LENGTH_2_OR_3');
+            assert(len >= 1 && len <= 3, 'EXPECTED_LENGTH_1_TO_3');
             let base = storage_base_address_from_felt252(addr: storage_address);
             let addr_0 = storage_address_from_base_and_offset(:base, offset: 0);
-            let addr_1 = storage_address_from_base_and_offset(:base, offset: 1);
             storage_write_syscall(address_domain: 0, address: addr_0, value: *serialized_value[0])
                 .unwrap_syscall();
-            storage_write_syscall(address_domain: 0, address: addr_1, value: *serialized_value[1])
-                .unwrap_syscall();
+            if len >= 2 {
+                let addr_1 = storage_address_from_base_and_offset(:base, offset: 1);
+                storage_write_syscall(
+                    address_domain: 0, address: addr_1, value: *serialized_value[1],
+                )
+                    .unwrap_syscall();
+            }
             if len == 3 {
                 let addr_2 = storage_address_from_base_and_offset(:base, offset: 2);
                 storage_write_syscall(
@@ -449,10 +418,39 @@ fn note_serialization_format() {
     let mock_contract_address = deploy_mock_contract();
     let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
     let note = Note {
-        enc_value: 'ENC_VALUE'.try_into().unwrap(), token: 'TOKEN'.try_into().unwrap(),
+        packed_value: 'ENC_VALUE',
+        token: 'TOKEN'.try_into().unwrap(),
+        depositor: 'DEPOSITOR'.try_into().unwrap(),
     };
     let mut serialized_value = array![];
     note.serialize(ref output: serialized_value);
     mock_contract.write_serialized_note(serialized_value: serialized_value.span());
     assert_eq!(mock_contract.get_note(), note);
+}
+
+#[test]
+fn felt_serialization_format() {
+    let mock_contract_address = deploy_mock_contract();
+    let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
+    let felt = 'FELT';
+    let mut serialized_value = array![];
+    felt.serialize(ref output: serialized_value);
+    mock_contract.write_serialized_felt(serialized_value: serialized_value.span());
+    assert_eq!(mock_contract.get_felt(), felt);
+}
+
+#[test]
+fn bool_serialization_format() {
+    let mock_contract_address = deploy_mock_contract();
+    let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
+    let boolean = true;
+    let mut serialized_value = array![];
+    boolean.serialize(ref output: serialized_value);
+    mock_contract.write_serialized_bool(serialized_value: serialized_value.span());
+    assert_eq!(mock_contract.get_bool(), boolean);
+    let boolean = false;
+    serialized_value = array![];
+    boolean.serialize(ref output: serialized_value);
+    mock_contract.write_serialized_bool(serialized_value: serialized_value.span());
+    assert_eq!(mock_contract.get_bool(), boolean);
 }

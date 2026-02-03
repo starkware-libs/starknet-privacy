@@ -1,260 +1,22 @@
 use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
-    WriteOnceInput,
 };
-use privacy::objects::{EncPrivateKeyTrait, Note, ToServerActionsTrait};
+use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note};
 use privacy::tests::utils_for_tests::{
-    PrivacyCfgTrait, PrivacyTokenTrait, Test, TestTrait, UserTrait, constants,
+    CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
+    constants,
 };
+use privacy::utils::to_write_once_action;
 use privacy::{errors, events};
 use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
-use starkware_utils::components::replaceability::interface::{
-    IReplaceableDispatcher, IReplaceableDispatcherTrait,
-};
-use starkware_utils::components::roles::interface::{IRolesDispatcher, IRolesDispatcherTrait};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{
-    assert_expected_event_emitted, assert_panic_with_error, assert_panic_with_felt_error,
-    generic_load,
+    TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_error,
+    assert_panic_with_felt_error,
 };
-
-// TODO: Different file for Views tests?
-
-#[test]
-fn test_constructor() {
-    let mut test: Test = Default::default();
-    // Test compliance public key.
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance_public_key);
-    // Test roles.
-    let contract_roles = IRolesDispatcher { contract_address: test.privacy.address };
-    assert!(contract_roles.is_governance_admin(account: test.privacy.roles.governance_admin));
-    assert!(contract_roles.is_security_admin(account: test.privacy.roles.governance_admin));
-    let user = test.new_user();
-    assert!(!contract_roles.is_governance_admin(account: user.address));
-    assert!(!contract_roles.is_security_admin(account: user.address));
-    // Test replaceability.
-    let contract_replaceability = IReplaceableDispatcher { contract_address: test.privacy.address };
-    assert_eq!(contract_replaceability.get_upgrade_delay(), Zero::zero());
-}
-// TODO: Test constructor assertions.
-
-#[test]
-fn test_get_compliance_public_key() {
-    let mut test: Test = Default::default();
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance_public_key);
-}
-
-#[test]
-fn test_channel_exists() {
-    let mut test: Test = Default::default();
-    let user = test.new_user();
-    let recipient_addr = user.address;
-    let (enc_channel_info, channel_id) = test.mock_new_channel();
-    assert_eq!(test.privacy.channel_exists(:channel_id), false);
-    test.privacy.cheat_open_channel(:recipient_addr, :enc_channel_info, :channel_id);
-    assert_eq!(test.privacy.channel_exists(:channel_id), true);
-    let (_, channel_id) = test.mock_new_channel();
-    assert_eq!(test.privacy.channel_exists(:channel_id), false);
-}
-
-#[test]
-fn test_get_num_of_channels() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    // Before registration.
-    assert_eq!(user.get_num_of_channels(), 0);
-    // After registration.
-    user.set_viewing_key_e2e();
-    assert_eq!(user.get_num_of_channels(), 0);
-    // After opening a channel.
-    user.open_channel_e2e(recipient: user, index: 0);
-    assert_eq!(user.get_num_of_channels(), 1);
-    // After opening a second channel.
-    let mut different_user = test.new_user();
-    different_user.set_viewing_key_e2e();
-    different_user.open_channel_e2e(recipient: user, index: 0);
-    assert_eq!(user.get_num_of_channels(), 2);
-    assert_eq!(different_user.get_num_of_channels(), 0);
-}
-
-#[test]
-fn test_get_channel_info() {
-    let mut test = Default::default();
-    let user_1 = test.new_user();
-    let user_2 = test.new_user();
-    let (channel_1_user_1, channel_id_1_user_1) = test.mock_new_channel();
-    let (channel_2_user_1, channel_id_2_user_1) = test.mock_new_channel();
-    let (channel_1_user_2, channel_id_1_user_2) = test.mock_new_channel();
-    test
-        .privacy
-        .cheat_open_channel(
-            recipient_addr: user_1.address,
-            enc_channel_info: channel_1_user_1,
-            channel_id: channel_id_1_user_1,
-        );
-    test
-        .privacy
-        .cheat_open_channel(
-            recipient_addr: user_1.address,
-            enc_channel_info: channel_2_user_1,
-            channel_id: channel_id_2_user_1,
-        );
-    test
-        .privacy
-        .cheat_open_channel(
-            recipient_addr: user_2.address,
-            enc_channel_info: channel_1_user_2,
-            channel_id: channel_id_1_user_2,
-        );
-
-    assert_eq!(user_1.get_channel_info(channel_index: 0), channel_1_user_1);
-    assert_eq!(user_1.get_channel_info(channel_index: 1), channel_2_user_1);
-    assert_eq!(user_2.get_channel_info(channel_index: 0), channel_1_user_2);
-}
-
-#[test]
-fn test_get_channel_info_index_out_of_bounds() {
-    let mut test: Test = Default::default();
-    let user = test.new_user();
-    let result = user.safe_get_channel_info(channel_index: 0);
-    assert_panic_with_error(:result, expected_error: "Index out of bounds");
-
-    let (enc_channel_info, channel_id) = test.mock_new_channel();
-    test.privacy.cheat_open_channel(recipient_addr: user.address, :enc_channel_info, :channel_id);
-
-    let result = user.safe_get_channel_info(channel_index: 0);
-    assert!(result.is_ok());
-    let result = user.safe_get_channel_info(channel_index: 1);
-    assert_panic_with_error(:result, expected_error: "Index out of bounds");
-}
-
-#[test]
-fn test_get_outgoing_channel_info() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    let outgoing_channel_key_1 = user_1.compute_outgoing_channel_key(index: 0);
-    let outgoing_channel_key_2 = user_1.compute_outgoing_channel_key(index: 1);
-    let enc_outgoing_channel_info_1 = user_1
-        .compute_enc_outgoing_channel_info(recipient: user_1, index: 0, salt: Zero::zero());
-    let enc_outgoing_channel_info_2 = user_1
-        .compute_enc_outgoing_channel_info(recipient: user_2, index: 1, salt: Zero::zero());
-    assert_ne!(outgoing_channel_key_1, outgoing_channel_key_2);
-    assert_ne!(enc_outgoing_channel_info_1, enc_outgoing_channel_info_2);
-    assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_1),
-        Zero::zero(),
-    );
-    assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
-        Zero::zero(),
-    );
-    let (_, salt_channel_1) = user_1.open_channel_e2e(recipient: user_1, index: 0);
-    let enc_outgoing_channel_info_1 = user_1
-        .compute_enc_outgoing_channel_info(recipient: user_1, index: 0, salt: salt_channel_1);
-    assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_1),
-        enc_outgoing_channel_info_1,
-    );
-    assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
-        Zero::zero(),
-    );
-    let (_, salt_channel_2) = user_1.open_channel_e2e(recipient: user_2, index: 1);
-    let enc_outgoing_channel_info_2 = user_1
-        .compute_enc_outgoing_channel_info(recipient: user_2, index: 1, salt: salt_channel_2);
-    assert_ne!(enc_outgoing_channel_info_1, enc_outgoing_channel_info_2);
-    assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_1),
-        enc_outgoing_channel_info_1,
-    );
-    assert_eq!(
-        test.privacy.get_outgoing_channel_info(outgoing_channel_key: outgoing_channel_key_2),
-        enc_outgoing_channel_info_2,
-    );
-}
-
-#[test]
-fn test_get_note() {
-    let mut test: Test = Default::default();
-    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    assert_eq!(test.privacy.get_note(note_id: note.id), Zero::zero());
-    test.privacy.cheat_create_note(:note);
-    let enc_value = test.privacy.get_note(note_id: note.id);
-    assert_eq!(enc_value, note.enc_amount);
-}
-
-#[test]
-fn test_nullifier_exists() {
-    let mut test: Test = Default::default();
-    let nullifier = test.mock_new_nullifier();
-    assert_eq!(test.privacy.nullifier_exists(:nullifier), false);
-    test.privacy.cheat_use_note(:nullifier);
-    assert_eq!(test.privacy.nullifier_exists(:nullifier), true);
-}
-
-#[test]
-fn test_get_public_key() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    // Don't register the user.
-    assert_eq!(user.get_public_key(), Zero::zero());
-    // Register the user.
-    user.set_viewing_key_e2e();
-    assert_eq!(user.get_public_key(), user.public_key);
-}
-
-#[test]
-fn test_subchannel_exists() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
-    assert_eq!(test.privacy.subchannel_exists(:subchannel_id), false);
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    user_1.open_channel_e2e(recipient: user_2, index: 0);
-    user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
-    assert_eq!(test.privacy.subchannel_exists(:subchannel_id), true);
-}
-
-#[test]
-fn test_get_subchannel_info() {
-    let mut test: Test = Default::default();
-    let mut user_1 = test.new_user();
-    let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), Zero::zero());
-    user_1.set_viewing_key_e2e();
-    user_2.set_viewing_key_e2e();
-    user_1.open_channel_e2e(recipient: user_2, index: 0);
-    let salt = user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
-    let expected_subchannel_info = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :salt);
-    assert!(expected_subchannel_info.is_non_zero());
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), expected_subchannel_info);
-}
-
-#[test]
-fn test_get_enc_private_key() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    // Before registration.
-    let enc_private_key = user.get_enc_private_key();
-    assert_eq!(enc_private_key.ephemeral_pubkey, Zero::zero());
-    assert_eq!(enc_private_key.enc_private_key, Zero::zero());
-    // After registration.
-    let random = user.set_viewing_key_e2e();
-    let expected_enc_private_key_1 = user.compute_enc_private_key(:random);
-    assert_eq!(user.get_enc_private_key(), expected_enc_private_key_1);
-}
 
 #[test]
 fn test_set_viewing_key_multiple_users() {
@@ -305,43 +67,33 @@ fn test_execute_write_once() {
     let (subchannel_id, _, _) = test.mock_new_subchannel();
 
     // Compute storage path felt using contract state.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
     );
 
     // Verify channel doesn't exist and write.
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
 
     // Verify channel exists.
     assert!(test.privacy.channel_exists(:channel_id));
 
     // Verify subchannel doesn't exist and write.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
 
     // Verify subchannel exists.
     assert!(test.privacy.subchannel_exists(:subchannel_id));
 
     // Verify user is not registered and write public key.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [user.public_key].span() },
-        ),
+        to_write_once_action(:storage_address, value: user.public_key),
     ];
     test.privacy.execute_actions(actions.span());
 
@@ -350,18 +102,11 @@ fn test_execute_write_once() {
 
     // Verify nullifier doesn't exist and write.
     let nullifier = test.mock_new_nullifier();
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
-    let current_value: bool = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, false);
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    assert_eq!(test.privacy.nullifier_exists(:nullifier), false);
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
 
     // Verify nullifier was written.
@@ -376,71 +121,45 @@ fn test_execute_write_once_assertions() {
     let (subchannel_id, _, _) = test.mock_new_subchannel();
 
     // Catch NON_ZERO_VALUE for channel exists.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [channel_id].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
-    let current_value: bool = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, true);
+    assert!(test.privacy.channel_exists(:channel_id));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for subchannel_exists.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
-    let current_value: bool = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, true);
+    assert!(test.privacy.subchannel_exists(:subchannel_id));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for public key.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [user.public_key].span() },
-        ),
+        to_write_once_action(:storage_address, value: user.public_key),
     ];
     test.privacy.execute_actions(actions.span());
-    let current_value: felt252 = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, user.public_key);
+    assert_eq!(user.get_public_key(), user.public_key);
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for nullifiers.
     let nullifier = test.mock_new_nullifier();
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
-    let actions: Array<ServerAction> = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [true.into()].span() },
-        ),
-    ];
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
-    let current_value: bool = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, true);
+    assert!(test.privacy.nullifier_exists(:nullifier));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -449,7 +168,7 @@ fn test_execute_write_once_assertions() {
 fn test_execute_write_once_subchannel() {
     let mut test: Test = Default::default();
     let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
-    assert!(enc_subchannel_info.is_non_zero());
+    assert!(enc_subchannel_info.enc_token.is_non_zero());
 
     // Verify subchannel info is zero before writing.
     let subchannel_info = test.privacy.get_subchannel_info(:subchannel_key);
@@ -460,7 +179,7 @@ fn test_execute_write_once_subchannel() {
     let storage_address = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
-    let actions = [enc_subchannel_info.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_subchannel_info)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify subchannel exists.
@@ -471,16 +190,15 @@ fn test_execute_write_once_subchannel() {
 fn test_execute_write_once_subchannel_assertions() {
     let mut test: Test = Default::default();
     let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
-    assert!(enc_subchannel_info.is_non_zero());
+    assert!(enc_subchannel_info.enc_token.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
     );
-    let actions = [enc_subchannel_info.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_subchannel_info)].span();
     test.privacy.execute_actions(:actions);
-    let current_value = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, enc_subchannel_info);
+    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), enc_subchannel_info);
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -501,7 +219,7 @@ fn test_execute_write_once_private_key() {
     let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
-    let actions = [enc_private_key.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_private_key)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify private key exists.
@@ -519,10 +237,9 @@ fn test_execute_write_once_private_key_assertions() {
     let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [user.address.into()].span(),
     );
-    let actions = [enc_private_key.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_private_key)].span();
     test.privacy.execute_actions(:actions);
-    let current_value = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, enc_private_key);
+    assert_eq!(user.get_enc_private_key(), enc_private_key);
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -535,16 +252,19 @@ fn test_execute_write_once_outgoing_channel() {
     let enc_outgoing_channel_info = user
         .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: Zero::zero());
     assert!(outgoing_channel_key.is_non_zero());
-    assert!(enc_outgoing_channel_info.is_non_zero());
+    assert!(enc_outgoing_channel_info.enc_recipient_addr.is_non_zero());
 
     // Verify outgoing channel info is zero before writing.
-    assert_eq!(test.privacy.get_outgoing_channel_info(:outgoing_channel_key), Zero::zero());
+    assert_eq!(
+        test.privacy.get_outgoing_channel_info(:outgoing_channel_key),
+        EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
+    );
 
     // Write outgoing channel info.
     let storage_address = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
     );
-    let actions = [enc_outgoing_channel_info.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_outgoing_channel_info)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify outgoing channel info exists.
@@ -560,60 +280,63 @@ fn test_execute_write_once_outgoing_channel_assertions() {
     let enc_outgoing_channel_info = user
         .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: Zero::zero());
     assert!(outgoing_channel_key.is_non_zero());
-    assert!(enc_outgoing_channel_info.is_non_zero());
+    assert!(enc_outgoing_channel_info.enc_recipient_addr.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
     );
-    let actions = [enc_outgoing_channel_info.to_write_once_action(:storage_address)].span();
+    let actions = [to_write_once_action(:storage_address, value: enc_outgoing_channel_info)].span();
     test.privacy.execute_actions(:actions);
-    let current_value = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, enc_outgoing_channel_info);
+    assert_eq!(
+        test.privacy.get_outgoing_channel_info(:outgoing_channel_key), enc_outgoing_channel_info,
+    );
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
-fn test_execute_write_once_note() {
+fn test_execute_write_once_enc_note() {
     let mut test: Test = Default::default();
-    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    let note_value = note.into();
-    assert!(note.enc_amount.is_non_zero());
+    let (note_id, note) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    assert!(note.packed_value.is_non_zero());
 
     // Verify stored note is zero before writing.
-    let storage_address = map_entry_address(
-        map_selector: selector!("notes"), keys: [note.id].span(),
-    );
-    let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(current_value, Note { enc_value: Zero::zero(), token: Zero::zero() });
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
     // Write stored note.
-    let actions: Array<ServerAction> = array![note_value.to_write_once_action(:storage_address)];
+    let storage_address = map_entry_address(
+        map_selector: selector!("notes"), keys: [note_id].span(),
+    );
+    let actions: Array<ServerAction> = array![
+        to_write_once_action(:storage_address, value: note.packed_value),
+    ];
     test.privacy.execute_actions(actions.span());
 
     // Verify stored note was written.
-    let written_value: Note = generic_load(target: test.privacy.address, :storage_address);
-    assert_eq!(written_value, note_value);
-    assert_eq!(test.privacy.get_note(note_id: note.id), note_value.enc_value);
+    assert_eq!(
+        test.privacy.get_note(:note_id), Note { packed_value: note.packed_value, ..Zero::zero() },
+    );
 }
 
 #[test]
-fn test_execute_write_once_note_assertions() {
+fn test_execute_write_once_enc_note_assertions() {
     let mut test: Test = Default::default();
-    let note = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
-    let note_value = note.into();
-    assert!(note.enc_amount.is_non_zero());
+    let (note_id, note) = test.mock_new_note(amount: constants::DEFAULT_AMOUNT);
+    assert!(note.packed_value.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
-        map_selector: selector!("notes"), keys: [note.id].span(),
+        map_selector: selector!("notes"), keys: [note_id].span(),
     );
-    let actions: Array<ServerAction> = array![note_value.to_write_once_action(:storage_address)];
+    let actions: Array<ServerAction> = array![
+        to_write_once_action(:storage_address, value: note.packed_value),
+    ];
     test.privacy.execute_actions(actions.span());
-    let current_value: Note = generic_load(target: test.privacy.address, :storage_address);
     // Verify the value was written
-    assert_eq!(current_value, note_value);
+    assert_eq!(
+        test.privacy.get_note(:note_id), Note { packed_value: note.packed_value, ..Zero::zero() },
+    );
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -677,7 +400,7 @@ fn test_execute_transfer_from_assertions() {
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom(
             TransferFromInput {
-                sender_addr: user.address, token: token.contract_address(), amount: amount,
+                sender_addr: user.address, token: token.contract_address(), amount,
             },
         ),
     ];
@@ -689,7 +412,7 @@ fn test_execute_transfer_from_assertions() {
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom(
             TransferFromInput {
-                sender_addr: user.address, token: token.contract_address(), amount: amount,
+                sender_addr: user.address, token: token.contract_address(), amount,
             },
         ),
     ];
@@ -705,10 +428,17 @@ fn test_execute_transfer_to() {
     let amount = constants::DEFAULT_AMOUNT;
 
     // Supply tokens to the server (via deposit).
-    let user = test.new_user();
-    let note = test.mock_new_note(:amount);
+    let mut user = test.new_user();
+    let token_address = token.contract_address();
+    user.set_viewing_key_e2e();
+    user
+        .open_channel_with_token_e2e(
+            recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+    let note = user
+        .new_enc_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
     user.increase_token_balance(:token, :amount);
-    user.cheat_deposit(:token, :amount, :note);
+    user.cheat_deposit(:token, :amount, create_note_input: note);
 
     // Verify balances before transfer.
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
@@ -755,27 +485,18 @@ fn test_execute_verify_value() {
     let user = test.new_user();
 
     // Write initial value.
-    let storage_path_felt = map_entry_address(
+    let storage_address = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
-    let actions = array![
-        ServerAction::WriteOnce(
-            WriteOnceInput { storage_address: storage_path_felt, value: [user.public_key].span() },
-        ),
-    ];
-    test.privacy.execute_actions(actions.span());
+    let actions = array![to_write_once_action(:storage_address, value: user.public_key)].span();
+    test.privacy.execute_actions(actions);
 
     // Verify value by loading from storage.
-    let current_value = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_eq!(current_value, user.public_key);
+    assert_eq!(user.get_public_key(), user.public_key);
 
     // Verify value by action.
     let actions = array![
-        ServerAction::VerifyValue(
-            VerifyValueInput { storage_address: storage_path_felt, value: user.public_key },
-        ),
+        ServerAction::VerifyValue(VerifyValueInput { storage_address, value: user.public_key }),
     ];
     test.privacy.execute_actions(actions.span());
 }
@@ -789,10 +510,7 @@ fn test_execute_verify_value_assertions() {
     );
 
     // Catch VALUE_MISMATCH.
-    let current_value = generic_load(
-        target: test.privacy.address, storage_address: storage_path_felt,
-    );
-    assert_ne!(current_value, user.public_key);
+    assert_ne!(user.get_public_key(), user.public_key);
     let actions = array![
         ServerAction::VerifyValue(
             VerifyValueInput { storage_address: storage_path_felt, value: user.public_key },
@@ -865,9 +583,95 @@ fn test_execute_emit_deposit() {
 }
 
 #[test]
+fn test_execute_emit_open_note_created() {
+    let mut test: Test = Default::default();
+    let token = test.mock_new_token();
+    let depositor = test.mock_new_depositor();
+    let enc_sender_addr = test.mock_new_enc_address();
+    let note_id = 'NOTE_ID';
+    let expected_event = events::OpenNoteCreated { enc_sender_addr, depositor, token, note_id };
+    let actions = array![ServerAction::EmitOpenNoteCreated(expected_event)];
+    let mut spy = spy_events();
+    test.privacy.execute_actions(actions.span());
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("OpenNoteCreated"),
+        expected_event_name: "OpenNoteCreated",
+    );
+}
+
+#[test]
 fn test_execute_actions_paused() {
     let mut test: Test = Default::default();
     test.privacy.pause();
     let result = test.privacy.safe_execute_actions([].span());
     assert_panic_with_felt_error(:result, expected_error: PausableErrors::PAUSED);
+}
+
+#[test]
+fn test_execute_write_once_open_note() {
+    // Test that server correctly writes all open note fields.
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let depositor = test.mock_new_depositor();
+    let token_address = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1
+        .open_channel_with_token_e2e(
+            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+
+    let create_note_input = user_1
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 0, :depositor,
+        );
+    let (note_id, expected_note) = user_1.compute_open_note(:create_note_input);
+
+    // Compute the server actions to write the note to storage.
+    let storage_address = map_entry_address(
+        map_selector: selector!("notes"), keys: [note_id].span(),
+    );
+    let actions = [to_write_once_action(:storage_address, value: expected_note)].span();
+
+    // Verify storage before execution.
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
+
+    // Execute server actions.
+    test.privacy.execute_actions(:actions);
+
+    // Verify storage after execution - both fields should be set.
+    assert_eq!(test.privacy.get_note(:note_id), expected_note);
+}
+
+#[test]
+fn test_execute_write_once_open_note_assertions() {
+    // Test that trying to overwrite an existing open note fails.
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let depositor = test.mock_new_depositor();
+    let token_address = test.mock_new_token();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1
+        .open_channel_with_token_e2e(
+            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+
+    // Create open note first.
+    let create_note_input = user_1
+        .new_open_note_with_generated_random(
+            recipient: user_2, token: token_address, index: 0, :depositor,
+        );
+    user_1.cheat_create_open_note_e2e(:create_note_input);
+
+    // Try to write again - should fail.
+    let actions = create_note_input.into_server_actions(user: user_1);
+    let result = test.privacy.safe_execute_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }

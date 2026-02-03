@@ -2,31 +2,35 @@
  * Builder implementations for constructing private transfer operations.
  */
 
-import type {
-  CreateNoteAction,
-  DepositAction,
-  ExecuteOptions,
-  ExecuteResult,
-  Note,
-  OpenChannelAction,
-  OpenTokenChannelAction,
-  PrivateTransfers,
-  PrivateTransfersBuilder,
-  Actions,
-  SetViewingKeyAction,
-  StarknetAddress,
-  TokenOperationsBuilder,
-  UseNoteAction,
-  WithdrawAction,
-  WithdrawOutput,
-  DepositInput,
-  TransferOutput,
-  SurplusAction,
-  FollowupCallAction,
+import {
+  type CreateNoteAction,
+  type DepositAction,
+  type ExecuteOptions,
+  type ExecuteResult,
+  type Note,
+  type OpenChannelAction,
+  type OpenTokenChannelAction,
+  type PrivateTransfersBuilder,
+  type Actions,
+  type SetViewingKeyAction,
+  type StarknetAddress,
+  type StarknetAddressBigint,
+  type TokenOperationsBuilder,
+  type UseNoteAction,
+  type WithdrawAction,
+  type WithdrawOutput,
+  type DepositInput,
+  type TransferOutput,
+  type SurplusAction,
+  type FollowupCallAction,
+  type Amount,
+  Open,
+  PrivateTransfersInterface,
 } from "../interfaces.js";
 import type { Call } from "starknet";
 import { AddressMap, toBigInt } from "../utils/index.js";
 import { debugLog } from "../utils/logging.js";
+import { isOpenNote } from "../utils/validation.js";
 
 // ============ Token Operations Builder ============
 
@@ -40,37 +44,39 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   // Surplus recipient (overrides parent builder's surplus recipient for this token)
   public surplusAction?: SurplusAction;
 
+  public readonly token: StarknetAddressBigint;
+
   constructor(
     private parentBuilder: PrivateTransfersBuilderImpl,
-    public readonly token: StarknetAddress
+    token: StarknetAddress
   ) {
+    this.token = toBigInt(token);
     debugLog("builder", `TokenBuilder created for ${token}`);
   }
 
   setup(recipient: StarknetAddress): this {
     debugLog("builder", `TokenBuilder.setup for ${this.token} -> ${recipient}`);
-    this.openTokenChannels.push({ recipient: toBigInt(recipient), token: toBigInt(this.token) });
+    this.openTokenChannels.push({ recipient: toBigInt(recipient), token: this.token });
     return this;
   }
 
   inputs(...notes: Note[]): this {
     for (const note of notes) {
-      this.useNotes.push({ token: toBigInt(this.token), note });
+      this.useNotes.push({ token: this.token, note });
     }
     return this;
   }
 
   deposit(...inputs: DepositInput[]): this {
     debugLog("builder", `TokenBuilder.deposit for ${this.token}`, inputs);
-    const token = toBigInt(this.token);
     for (const input of inputs) {
-      this.deposits.push({ token, amount: input.amount });
+      this.deposits.push({ token: this.token, amount: input.amount });
       // If recipient is specified, set surplus recipient for this token
       // Surplus handling will create a note for them with the remaining balance
       if ("recipient" in input && input.recipient !== undefined) {
         this.surplusAction = {
           recipient: toBigInt(input.recipient),
-          token,
+          token: this.token,
           withdraw: false,
         };
       }
@@ -79,10 +85,9 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   }
 
   withdraw(...outputs: WithdrawOutput[]): this {
-    const token = toBigInt(this.token);
     for (const output of outputs) {
       this.withdraws.push({
-        token,
+        token: this.token,
         recipient: toBigInt(output.recipient ?? this.parentBuilder.userAddress),
         amount: output.amount,
       });
@@ -91,19 +96,27 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   }
 
   transfer(...outputs: TransferOutput[]): this {
-    const token = toBigInt(this.token);
     for (const output of outputs) {
-      this.createNotes.push({
-        token,
-        recipient: toBigInt(output.recipient),
-        amount: output.amount,
-      });
+      if (isOpenNote(output)) {
+        this.createNotes.push({
+          token: this.token,
+          recipient: toBigInt(output.recipient),
+          amount: Open,
+          depositor: toBigInt(output.depositor),
+        });
+      } else {
+        this.createNotes.push({
+          token: this.token,
+          recipient: toBigInt(output.recipient),
+          amount: output.amount as Amount,
+        });
+      }
     }
     return this;
   }
 
   surplusTo(recipient: StarknetAddress, withdraw?: boolean): this {
-    this.surplusAction = { recipient: toBigInt(recipient), token: toBigInt(this.token), withdraw };
+    this.surplusAction = { recipient: toBigInt(recipient), token: this.token, withdraw };
     return this;
   }
 
@@ -146,7 +159,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   private buildOptions?: ExecuteOptions;
 
   constructor(
-    private transfers: PrivateTransfers,
+    private transfers: PrivateTransfersInterface,
     public readonly userAddress: StarknetAddress,
     options?: ExecuteOptions
   ) {

@@ -1,8 +1,8 @@
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
 use core::never;
-use core::num::traits::Zero;
-use privacy::actions::ServerAction;
+use core::num::traits::{WrappingAdd, WrappingSub, Zero};
+use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::errors;
 use privacy::errors::internal_errors;
 use privacy::hashes::{
@@ -13,16 +13,15 @@ use privacy::hashes::{
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr,
 };
-use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, TWO_POW_120, TX_V3};
+use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120, TX_V3};
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
-use starknet::{ContractAddress, ExecutionInfo, SyscallResultTrait, TxInfo, VALIDATED};
-use starkware_utils::constants::TWO_POW_128;
+use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
 
 pub mod constants {
     use core::num::traits::Pow;
 
-    pub const CREATE_NOTE_MIN_SALT: u128 = 2;
+    pub const OPEN_NOTE_SALT: u128 = 1;
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
@@ -208,24 +207,33 @@ pub(crate) fn is_canonical_key(key: felt252) -> bool {
 pub(crate) fn encrypt_note_amount(
     channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
 ) -> felt252 {
-    let enc_amount = (compute_enc_amount_hash(:channel_key, :token, :index, :salt) + amount.into())
-        .into() % TWO_POW_128;
-    packing(
-        value_1: salt, value_2: enc_amount.try_into().expect(internal_errors::ENC_AMOUNT_OVERFLOW),
-    )
+    let enc_amount_hash: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt).into();
+    let enc_amount: u128 = enc_amount_hash.low.wrapping_add(amount);
+    packing(value_1: salt, value_2: enc_amount)
 }
 
-/// Decrypts the note amount from `enc_note_value`.
+/// Decrypts `enc_amount` using the other parameters.
 /// This is the inverse of `encrypt_note_amount`.
 pub(crate) fn decrypt_note_amount(
-    enc_note_value: felt252, channel_key: felt252, token: ContractAddress, index: usize,
+    enc_amount: u128, salt: u128, channel_key: felt252, token: ContractAddress, index: usize,
 ) -> u128 {
-    let (salt, enc_amount) = unpacking(packed_value: enc_note_value);
-    let enc_amount_u256: u256 = enc_amount.into(); // already < 2^128 by construction
-    let pad: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt)
-        .into() % TWO_POW_128;
-    let amount: u256 = (enc_amount_u256 + TWO_POW_128 - pad) % TWO_POW_128;
-    amount.try_into().expect(internal_errors::AMOUNT_OVERFLOW)
+    let enc_amount_hash: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt).into();
+    enc_amount.wrapping_sub(enc_amount_hash.low)
+}
+
+/// Returns the actual note amount from a packed value.
+/// For open notes (OPEN_NOTE_SALT): returns the value directly.
+/// For encrypted notes: decrypts using channel_key, token, and index.
+/// In both cases, the returned amount may be zero.
+pub(crate) fn decode_note_amount(
+    packed_value: felt252, channel_key: felt252, token: ContractAddress, index: usize,
+) -> u128 {
+    let (salt, amount) = unpacking(:packed_value);
+    if salt == OPEN_NOTE_SALT {
+        amount
+    } else {
+        decrypt_note_amount(enc_amount: amount, :salt, :channel_key, :token, :index)
+    }
 }
 
 pub(crate) impl StoragePathIntoFelt<
@@ -236,27 +244,21 @@ pub(crate) impl StoragePathIntoFelt<
     }
 }
 
-/// Packing two felt252 values into a single felt252 value.
+/// Packs two u128 values into a single felt252 value.
 /// Equivalent to (value_1 << 128) | value_2.
 /// Assumes: value_1 is 120 bits, value_2 is 128 bits.
 pub(crate) fn packing(value_1: u128, value_2: u128) -> felt252 {
-    (value_1.into() * TWO_POW_128 + value_2.into())
-        .try_into()
-        .expect(internal_errors::PACK_OVERFLOW)
+    let packed = u256 { high: value_1, low: value_2 };
+    packed.try_into().expect(internal_errors::PACK_OVERFLOW)
 }
 
-/// Unpacking a single felt252 into two felt252 values (120 bits for value_1, 128 bits for value_2).
+/// Unpacks a single felt252 into two u128 values (120 bits for value_1, 128 bits for value_2).
 /// Inverse of `packing`: `packed_value = value_1 * 2^128 + value_2`
 pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
     let packed_u256: u256 = packed_value.into();
-    let value_1 = packed_u256 / TWO_POW_128;
-    let value_2 = packed_u256 % TWO_POW_128;
-    // Sanity check that value_1 is 120 bits.
-    assert(value_1 < TWO_POW_120.into(), internal_errors::UNPACK1_OUT_OF_BOUNDS);
-    (
-        value_1.try_into().expect(internal_errors::UNPACK1_OVERFLOW),
-        value_2.try_into().expect(internal_errors::UNPACK2_OVERFLOW),
-    )
+    // Sanity check that value_1 (high bits) is 120 bits.
+    assert(packed_u256.high < TWO_POW_120, internal_errors::UNPACK1_OUT_OF_BOUNDS);
+    (packed_u256.high, packed_u256.low)
 }
 
 pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
@@ -321,4 +323,24 @@ pub(crate) fn panic_with_server_actions(server_actions: Span<ServerAction>) -> n
     server_actions.serialize(ref panic_data);
     panic_data.append(OK_WRAPPER);
     panic(panic_data);
+}
+
+/// Validates common input parameters for note creation.
+pub(crate) fn assert_note_creation_params(
+    recipient_addr: ContractAddress, recipient_public_key: felt252, token: ContractAddress,
+) {
+    assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
+    assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
+    assert(token.is_non_zero(), errors::ZERO_TOKEN);
+}
+
+/// IMPORTANT: This function only works for types whose serialization format
+/// exactly matches their in-storage representation.
+/// Use with care.
+pub(crate) fn to_write_once_action<T, +Serde<T>, +Store<T>, +Drop<T>>(
+    storage_address: felt252, value: T,
+) -> ServerAction {
+    let mut serialized_value = array![];
+    value.serialize(ref output: serialized_value);
+    ServerAction::WriteOnce(WriteOnceInput { storage_address, value: serialized_value.span() })
 }

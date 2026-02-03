@@ -75,4 +75,7 @@ __pycache__
 
 # cursor
 .cursor
-.claude
+
+# claude code - keep local settings private, share skills and commands
+.claude/settings.local.json
+.claude/projects/

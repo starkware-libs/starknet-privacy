@@ -1,5 +1,11 @@
 import { num } from "starknet";
-import type { Amount, PrivateRecipient, StarknetAddress, ViewingKey } from "../interfaces.js";
+import type {
+  Amount,
+  PrivateRecipient,
+  StarknetAddress,
+  StarknetAddressBigint,
+  ViewingKey,
+} from "../interfaces.js";
 import { All, MAX_VIEWING_KEY, Open } from "../interfaces.js";
 
 // ============ Validation Utilities ============
@@ -49,6 +55,17 @@ export function assertRecipientAddress(
  */
 export function isOpen(value: Amount | Open): value is Open {
   return value === Open;
+}
+
+/**
+ * Type guard to check if a value is an Open note action.
+ * @param obj - The object to check
+ * @returns true if the object is an Open note action, false if it's an Amount note action
+ */
+export function isOpenNote<T extends { amount: Amount | Open }>(
+  obj: T
+): obj is T & { amount: Open; depositor: StarknetAddressBigint } {
+  return isOpen(obj.amount);
 }
 
 /**
