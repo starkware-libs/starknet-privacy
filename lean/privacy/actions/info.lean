@@ -60,18 +60,18 @@ structure OpenChannelInfo (crypto: Crypto) (inp: OpenChannelInput) (m: Memory) w
   kalice_valid: inp.kalice ∈ crypto.PrivateKeys
   r_ne_zero: inp.r ≠ 0
   prev_outgoing_exists: inp.s = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
-  channel_didnt_exist: m .ChannelHashes [inp.channel_hash crypto] = 0
+  channel_didnt_exist: m .ChannelMarkers [inp.channel_marker crypto] = 0
   outgoing_channel_didnt_exist: m .OutgoingChannels [inp.outgoing_channel_id crypto, 0] = 0
   no_change: ∀ t, ∀ x, (
     (t, x) ≠ (.ChannelsJ, [inp.addrbob]) ∧
     (t, x) ≠ (.Channels, [inp.addrbob, j]) ∧
-    (t, x) ≠ (.ChannelHashes, [inp.channel_hash crypto]) ∧
+    (t, x) ≠ (.ChannelMarkers, [inp.channel_marker crypto]) ∧
     (t, x) ≠ (.OutgoingChannels, [inp.outgoing_channel_id crypto, 0]) ∧
     (t, x) ≠ (.OutgoingChannels, [inp.outgoing_channel_id crypto, 1])
   ) → m' t x = m t x
   memory_diff₀: m' .ChannelsJ [inp.addrbob] = m .ChannelsJ [inp.addrbob] + 1
   memory_diff₁: m' .Channels [inp.addrbob, j] = inp.enc crypto
-  memory_diff₂: m' .ChannelHashes [inp.channel_hash crypto] = 1
+  memory_diff₂: m' .ChannelMarkers [inp.channel_marker crypto] = 1
   memory_diff₃: m' .OutgoingChannels [inp.outgoing_channel_id crypto, 0] = inp.r
   memory_diff₄: m' .OutgoingChannels [inp.outgoing_channel_id crypto, 1] = inp.enc_addrbob crypto
 
@@ -129,19 +129,19 @@ structure OpenSubchannelInfo (crypto: Crypto) (inp: OpenSubchannelInput) (m: Mem
   m': Memory
   h_m': m' = (open_subchannel crypto inp m |> process_action crypto m).m
   r_ne_zero: inp.r ≠ 0
-  channel_exists: m .ChannelHashes [crypto.hash [inp.c, inp.addralice, inp.addrbob, inp.Kbob]] ≠ 0
+  channel_exists: m .ChannelMarkers [crypto.hash [inp.c, inp.addralice, inp.addrbob, inp.Kbob]] ≠ 0
   prev_subchannel_exists: inp.k₁ = 0 ∨ m .SubchannelTokens [crypto.hash [inp.c, inp.k₀, inp.k₁ - 1], 0] ≠ 0
   old_token_was_zero: m .SubchannelTokens [inp.subchannel_id crypto, 0] = 0
-  old_hash_was_zero: m .SubchannelHashes [inp.subchannel_hash crypto] = 0
+  old_hash_was_zero: m .SubchannelMarkers [inp.subchannel_marker crypto] = 0
   k₀_lt_MAX_K₀: inp.k₀ < crypto.MAX_K₀
   no_change: ∀ t, ∀ x,
-    (t, x) ≠ (.SubchannelHashes, [inp.subchannel_hash crypto]) →
+    (t, x) ≠ (.SubchannelMarkers, [inp.subchannel_marker crypto]) →
     (t, x) ≠ (.SubchannelTokens, [inp.subchannel_id crypto, 0]) →
     (t, x) ≠ (.SubchannelTokens, [inp.subchannel_id crypto, 1]) →
     m' t x = m t x
   memory_diff₀: m' .SubchannelTokens [inp.subchannel_id crypto, 0] = inp.r
   memory_diff₁: m' .SubchannelTokens [inp.subchannel_id crypto, 1] = inp.enc crypto
-  memory_diff₂: m' .SubchannelHashes [inp.subchannel_hash crypto] = 1
+  memory_diff₂: m' .SubchannelMarkers [inp.subchannel_marker crypto] = 1
 
 def open_subchannel_info
   (crypto: Crypto) (inp: OpenSubchannelInput) (m: Memory)
@@ -194,7 +194,7 @@ structure CreateNoteInfo (crypto: Crypto) (inp: CreateNoteInput) (m: Memory) whe
   old_value_was_zero: m .Notes [inp.note_id crypto, 0] = 0
   prev_note_exists: inp.i₁ = 0 ∨ m .Notes [crypto.hash [inp.c crypto, inp.token, inp.i₀, inp.i₁ - 1], 0] ≠ 0
   i₀_lt_MAX_I₀: inp.i₀ < crypto.MAX_I₀
-  subchannel_exists : m .SubchannelHashes [crypto.hash [inp.c crypto, inp.addrbob, inp.Kbob, inp.token]] ≠ 0
+  subchannel_exists : m .SubchannelMarkers [crypto.hash [inp.c crypto, inp.addrbob, inp.Kbob, inp.token]] ≠ 0
   h_open_note_amount_zero: inp.r = 1 → inp.amount = 0
   memory_diff₀: m' .Notes [inp.note_id crypto, 0] = crypto.pack inp.r (inp.enc crypto)
   memory_diff₁: m' .OpenNoteToken [inp.note_id crypto] = if inp.r = 1 then inp.token else 0
@@ -244,7 +244,7 @@ def create_note_info
 structure CancelNoteInfo (crypto: Crypto) (inp: CancelNoteInput) (m: Memory) where
   m': Memory
   h_m': m' = (cancel_note crypto inp m |> process_action crypto m).m
-  subchannel_exists: m .SubchannelHashes [crypto.hash [inp.c, inp.addrbob, inp.Kbob crypto, inp.token]] ≠ 0
+  subchannel_exists: m .SubchannelMarkers [crypto.hash [inp.c, inp.addrbob, inp.Kbob crypto, inp.token]] ≠ 0
   nullifier_didnt_exist: m .Nullifiers [inp.nullifier crypto] = 0
   r_ne_zero: m .Notes [inp.note_id crypto, 0] ≠ 0
   h_amount: note_amount crypto m (inp.note_id crypto) inp.c inp.token inp.i₀ inp.i₁= inp.amount

@@ -8,7 +8,7 @@ import privacy.registration
 
 def channel_exists (crypto: Crypto) (m: Memory) (c: ℕ) : Prop :=
   ∃ (addralice addrbob Kbob: ℕ),
-    m .ChannelHashes [crypto.hash [c, addralice, addrbob, Kbob]] ≠ 0
+    m .ChannelMarkers [crypto.hash [c, addralice, addrbob, Kbob]] ≠ 0
 
 structure ChannelImplies
     {crypto: Crypto} (rm: ReachableMemory crypto) (inp: OpenChannelInput) where
@@ -18,7 +18,7 @@ structure ChannelImplies
   h_Kbob: inp.Kbob = crypto.priv_to_pub kbob
   alice_registered: RegisterImplies rm ⟨inp.addralice, inp.kalice⟩
   bob_registered: RegisterImplies rm ⟨inp.addrbob, kbob⟩
-  channel_hashes: rm.m .ChannelHashes [crypto.hash [inp.c crypto, inp.addralice, inp.addrbob, inp.Kbob]] ≠ 0
+  channel_markers: rm.m .ChannelMarkers [crypto.hash [inp.c crypto, inp.addralice, inp.addrbob, inp.Kbob]] ≠ 0
   j: ℕ
   h_j_lt: j < rm.m .ChannelsJ [inp.addrbob]
   channel_enc: rm.m .Channels [inp.addrbob, j] = inp.enc crypto
@@ -32,7 +32,7 @@ theorem ChannelImplies.h_channel_exists
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenChannelInput}
     (channel_imp: ChannelImplies rm inp) :
     channel_exists crypto rm (inp.c crypto) :=
-  ⟨inp.addralice, inp.addrbob, inp.Kbob, by simp [channel_imp.channel_hashes]⟩
+  ⟨inp.addralice, inp.addrbob, inp.Kbob, by simp [channel_imp.channel_markers]⟩
 
 theorem ChannelImplies.next
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenChannelInput}
@@ -48,7 +48,7 @@ theorem ChannelImplies.next
     h_Kbob := channel_imp.h_Kbob,
     alice_registered := channel_imp.alice_registered.next success,
     bob_registered := channel_imp.bob_registered.next success,
-    channel_hashes := ?_
+    channel_markers := ?_
     h_j_lt := ?_,
     j := channel_imp.j,
     channel_enc := ?_
@@ -58,14 +58,14 @@ theorem ChannelImplies.next
     case OpenChannel inp' =>
       let info := open_channel_info crypto inp' rm success
       rw [rm.add_m, run_action, ←info.h_m']
-      by_cases h_is_same: inp.channel_hash crypto = inp'.channel_hash crypto
+      by_cases h_is_same: inp.channel_marker crypto = inp'.channel_marker crypto
       case pos =>
-        rw [←OpenChannelInput.channel_hash, h_is_same]
+        rw [←OpenChannelInput.channel_marker, h_is_same]
         simp [info.memory_diff₂]
       case neg =>
         rw [info.no_change _ _ (by simp; simp [h_is_same])]
-        exact channel_imp.channel_hashes
-    all_goals exact channel_imp.channel_hashes
+        exact channel_imp.channel_markers
+    all_goals exact channel_imp.channel_markers
 
   · cases action
     case OpenChannel inp' =>
@@ -124,7 +124,7 @@ theorem ChannelImplies.from_action
       h_Kbob := by rw [←info.h_Kbob, res_bob.public_key]
       alice_registered := h_kalice ▸ res_alice.next success
       bob_registered := res_bob.next success
-      channel_hashes := by rw [rm.add_m, run_action, ←info.h_m', info.memory_diff₂]; simp
+      channel_markers := by rw [rm.add_m, run_action, ←info.h_m', info.memory_diff₂]; simp
       j := info.j
       h_j_lt := by rw [rm.add_m, run_action, ←info.h_m', info.memory_diff₀, info.h_j]; simp
       channel_enc := by rw [rm.add_m, run_action, ←info.h_m', info.memory_diff₁]
@@ -135,9 +135,9 @@ theorem ChannelImplies.from_action
     exact ih.next success
 
 -- Channel hash entry implies c is a valid channel id and Kbob is a valid public key.
-theorem ChannelImplies.from_channel_hashes
+theorem ChannelImplies.from_channel_markers
     {crypto: Crypto} {rm: ReachableMemory crypto} {c addralice addrbob Kbob: ℕ}
-    (h: rm.m .ChannelHashes [crypto.hash [c, addralice, addrbob, Kbob]] ≠ 0) :
+    (h: rm.m .ChannelMarkers [crypto.hash [c, addralice, addrbob, Kbob]] ≠ 0) :
     ∃ (kalice s r: ℕ) (res: ChannelImplies rm ⟨addralice, kalice, addrbob, Kbob, s, r⟩),
     res.c = c := by
   suffices h' : ∃ kalice s r: ℕ,
@@ -206,5 +206,5 @@ theorem ChannelImplies.from_channel_exists
     ∃ (inp: OpenChannelInput) (channel_imp: ChannelImplies rm inp),
     channel_imp.c = c := by
   replace ⟨addralice, addrbob, Kbob, h⟩ := h
-  have ⟨kalice, s, r, ⟨channel_imp, h_c⟩⟩ := ChannelImplies.from_channel_hashes h
+  have ⟨kalice, s, r, ⟨channel_imp, h_c⟩⟩ := ChannelImplies.from_channel_markers h
   use ⟨addralice, kalice, addrbob, Kbob, s, r⟩, channel_imp

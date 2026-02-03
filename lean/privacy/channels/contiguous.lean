@@ -18,7 +18,7 @@ theorem channel_exists_monotone (crypto: Crypto) (rm: ReachableMemory crypto) (a
     obtain ⟨addralice, addrbob, Kbob, h⟩ := h
     use addralice, addrbob, Kbob
     rw [ReachableMemory.add_m, run_action, ←info.h_m']
-    by_cases h₀ : crypto.hash [c, addralice, addrbob, Kbob] = inp.channel_hash crypto
+    by_cases h₀ : crypto.hash [c, addralice, addrbob, Kbob] = inp.channel_marker crypto
     case pos =>
       simp [h₀, info.memory_diff₂]
     case neg =>

@@ -215,7 +215,7 @@ theorem open_channel_immutable
 
 theorem open_subchannel_immutable
     {crypto: Crypto} {m₀ m₁: Memory} (inp: OpenSubchannelInput)
-    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .ChannelHashes x))
+    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .ChannelMarkers x))
     (imm₁: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelTokens [x, 0]))
     (success: (run_action₀ crypto (.OpenSubchannel inp) m₀).2) :
     run_action₀ crypto (.OpenSubchannel inp) m₁ = run_action₀ crypto (.OpenSubchannel inp) m₀ := by
@@ -238,7 +238,7 @@ theorem open_subchannel_immutable
 
 theorem create_note_immutable
     {crypto: Crypto} {m₀ m₁: Memory} (inp: CreateNoteInput)
-    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelHashes x))
+    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelMarkers x))
     (imm₁: ∀ x, immutable_fn m₀ m₁ (note_exists_fn x))
     (success: (run_action₀ crypto (.CreateNote inp) m₀).2) :
     run_action₀ crypto (.CreateNote inp) m₁ = run_action₀ crypto (.CreateNote inp) m₀ := by
@@ -265,7 +265,7 @@ theorem create_note_immutable
 
 theorem cancel_note_immutable
     {crypto: Crypto} {m₀ m₁: Memory} (inp: CancelNoteInput)
-    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelHashes x))
+    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelMarkers x))
     (imm₂: ∀ x, immutable_fn m₀ m₁ (note_modified_value_fn crypto x))
     (success: (run_action₀ crypto (.CancelNote inp) m₀).2) :
     run_action₀ crypto (.CancelNote inp) m₁ = run_action₀ crypto (.CancelNote inp) m₀ := by
@@ -298,9 +298,9 @@ theorem cancel_note_immutable
     rw [this.2]
 
 structure ImmutableCells (crypto: Crypto) (m₀ m₁: Memory) where
-  (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .ChannelHashes x))
+  (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .ChannelMarkers x))
   (imm₁: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelTokens [x, 0]))
-  (imm₂: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelHashes x))
+  (imm₂: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelMarkers x))
   (imm₃: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .PublicKeys x))
   (imm₄: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .OutgoingChannels [x, 0]))
   (imm₅: ∀ x, immutable_fn m₀ m₁ (note_exists_fn x))
@@ -468,7 +468,7 @@ theorem ImmutableCells.reflected_immutability'
   constructor
   case imm₀ =>
     intro x
-    apply reflected_immutability e _ (reflection₀ _ .ChannelHashes x id (by simp))
+    apply reflected_immutability e _ (reflection₀ _ .ChannelMarkers x id (by simp))
     exact imm₀ x
   case imm₁ =>
     intro x
@@ -476,7 +476,7 @@ theorem ImmutableCells.reflected_immutability'
     exact imm₁ x
   case imm₂ =>
     intro x
-    apply reflected_immutability e _ (reflection₀ _ .SubchannelHashes x id (by simp))
+    apply reflected_immutability e _ (reflection₀ _ .SubchannelMarkers x id (by simp))
     exact imm₂ x
   case imm₃ =>
     intro x
