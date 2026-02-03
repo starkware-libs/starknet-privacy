@@ -6,8 +6,8 @@ use privacy::tests::utils_for_tests::{
 use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     decode_note_amount, derive_public_key, encrypt_channel_info, encrypt_note_amount,
-    encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, packing, to_write_once_action,
-    unpacking,
+    encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, open_note, packing,
+    to_write_once_action, unpacking,
 };
 use snforge_std::map_entry_address;
 use starknet::ContractAddress;
@@ -91,6 +91,18 @@ fn test_encrypt_decrypt_note_amount() {
         let dec_amount = decode_note_amount(packed_value: enc_amount, :channel_key, :token, :index);
         assert_eq!(dec_amount, *amount);
     }
+}
+
+#[test]
+fn test_open_note() {
+    let token = 'TOKEN'.try_into().unwrap();
+    let depositor = 'DEPOSITOR'.try_into().unwrap();
+    let note = open_note(:token, :depositor);
+    let (salt, amount) = unpacking(note.packed_value);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(amount, 0);
+    assert_eq!(note.token, token);
+    assert_eq!(note.depositor, depositor);
 }
 
 #[test]

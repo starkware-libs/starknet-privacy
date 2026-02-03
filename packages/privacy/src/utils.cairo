@@ -11,22 +11,27 @@ use privacy::hashes::{
     compute_enc_token_hash,
 };
 use privacy::objects::{
-    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr,
+    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
 };
-use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120, TX_V3};
+use privacy::utils::constants::{
+    ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
+};
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
 use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
 use starkware_utils::constants::TWO_POW_128;
 
 pub mod constants {
-    use core::num::traits::Pow;
+    use core::num::traits::{Pow, Zero};
 
     pub const OPEN_NOTE_SALT: u128 = 1;
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
     pub const TX_V3: u64 = 3;
+    pub const OPEN_NOTE_PACKED_VALUE: felt252 = u256 { high: OPEN_NOTE_SALT, low: Zero::zero() }
+        .try_into()
+        .unwrap();
 }
 
 /// Returns the generator point.
@@ -350,4 +355,8 @@ pub(crate) fn to_write_once_action<T, +Serde<T>, +Store<T>, +Drop<T>>(
     let mut serialized_value = array![];
     value.serialize(ref output: serialized_value);
     ServerAction::WriteOnce(WriteOnceInput { storage_address, value: serialized_value.span() })
+}
+
+pub(crate) fn open_note(token: ContractAddress, depositor: ContractAddress) -> Note {
+    Note { packed_value: OPEN_NOTE_PACKED_VALUE, token, depositor }
 }
