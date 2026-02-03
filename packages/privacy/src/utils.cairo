@@ -2,7 +2,7 @@ use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
 use core::never;
 use core::num::traits::Zero;
-use privacy::actions::ServerAction;
+use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::errors;
 use privacy::errors::internal_errors;
 use privacy::hashes::{
@@ -16,7 +16,7 @@ use privacy::objects::{
 use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120, TX_V3};
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
-use starknet::{ContractAddress, ExecutionInfo, SyscallResultTrait, TxInfo, VALIDATED};
+use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
 use starkware_utils::constants::TWO_POW_128;
 
 pub mod constants {
@@ -339,4 +339,15 @@ pub(crate) fn assert_note_creation_params(
     assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
     assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
     assert(token.is_non_zero(), errors::ZERO_TOKEN);
+}
+
+/// IMPORTANT: This function only works for types whose serialization format
+/// exactly matches their in-storage representation.
+/// Use with care.
+pub(crate) fn to_write_once_action<T, +Serde<T>, +Store<T>, +Drop<T>>(
+    storage_address: felt252, value: T,
+) -> ServerAction {
+    let mut serialized_value = array![];
+    value.serialize(ref output: serialized_value);
+    ServerAction::WriteOnce(WriteOnceInput { storage_address, value: serialized_value.span() })
 }

@@ -2,11 +2,11 @@ use core::num::traits::Zero;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::objects::{
     EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey, EncPrivateKeyTrait,
-    EncSubchannelInfo, Note, NoteTrait, ToServerActionsTrait, TokenBalances, TokenBalancesTrait,
+    EncSubchannelInfo, Note, NoteTrait, TokenBalances, TokenBalancesTrait,
 };
 use privacy::tests::test_objects::MockContract::deploy_for_test as deploy_mock_contract_for_test;
 use privacy::tests::utils_for_tests::{Test, TestTrait, UserTrait, constants};
-use privacy::utils::{decrypt_note_amount, encrypt_note_amount, unpacking};
+use privacy::utils::{decrypt_note_amount, encrypt_note_amount, to_write_once_action, unpacking};
 use snforge_std::{DeclareResultTrait, declare, map_entry_address};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
@@ -232,7 +232,7 @@ fn test_enc_private_key_to_write_once_action() {
     let storage_address = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [key].span(),
     );
-    let action = enc_private_key_obj.to_write_once_action(:storage_address);
+    let action = to_write_once_action(:storage_address, value: enc_private_key_obj);
     assert_eq!(
         action,
         ServerAction::WriteOnce(
@@ -253,7 +253,7 @@ fn test_enc_subchannel_info_to_write_once_action() {
     let storage_address = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [key].span(),
     );
-    let action = enc_subchannel_info.to_write_once_action(:storage_address);
+    let action = to_write_once_action(:storage_address, value: enc_subchannel_info);
     assert_eq!(
         action,
         ServerAction::WriteOnce(
@@ -271,7 +271,7 @@ fn test_enc_outgoing_channel_info_to_write_once_action() {
     let storage_address = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [key].span(),
     );
-    let action = enc_outgoing_channel_info.to_write_once_action(:storage_address);
+    let action = to_write_once_action(:storage_address, value: enc_outgoing_channel_info);
     assert_eq!(
         action,
         ServerAction::WriteOnce(
@@ -288,7 +288,7 @@ fn test_note_to_write_once_action() {
     let note = Note { packed_value: enc_value, token, depositor };
     let key = 'KEY';
     let storage_address = map_entry_address(map_selector: selector!("notes"), keys: [key].span());
-    let action = note.to_write_once_action(:storage_address);
+    let action = to_write_once_action(:storage_address, value: note);
     assert_eq!(
         action,
         ServerAction::WriteOnce(
@@ -300,16 +300,18 @@ fn test_note_to_write_once_action() {
 }
 
 #[test]
-fn test_public_key_to_write_once_action() {
-    let public_key = 'PUBLIC_KEY';
+fn test_bool_to_write_once_action() {
     let key = 'KEY';
-    let storage_address = map_entry_address(
-        map_selector: selector!("public_key"), keys: [key].span(),
-    );
-    let action = public_key.to_write_once_action(:storage_address);
+    let storage_address = map_entry_address(map_selector: selector!("bool"), keys: [key].span());
+    let action = to_write_once_action(:storage_address, value: true);
     assert_eq!(
         action,
-        ServerAction::WriteOnce(WriteOnceInput { storage_address, value: [public_key].span() }),
+        ServerAction::WriteOnce(WriteOnceInput { storage_address, value: [true.into()].span() }),
+    );
+    let action = to_write_once_action(:storage_address, value: false);
+    assert_eq!(
+        action,
+        ServerAction::WriteOnce(WriteOnceInput { storage_address, value: [false.into()].span() }),
     );
 }
 
@@ -320,12 +322,14 @@ trait IMockContract<T> {
     fn get_enc_subchannel_info(self: @T) -> EncSubchannelInfo;
     fn get_enc_outgoing_channel_info(self: @T) -> EncOutgoingChannelInfo;
     fn get_note(self: @T) -> Note;
-    fn get_public_key(self: @T) -> felt252;
+    fn get_felt(self: @T) -> felt252;
+    fn get_bool(self: @T) -> bool;
     fn write_serialized_enc_private_key(ref self: T, serialized_value: Span<felt252>);
     fn write_serialized_enc_subchannel_info(ref self: T, serialized_value: Span<felt252>);
     fn write_serialized_enc_outgoing_channel_info(ref self: T, serialized_value: Span<felt252>);
     fn write_serialized_note(ref self: T, serialized_value: Span<felt252>);
-    fn write_serialized_public_key(ref self: T, serialized_value: Span<felt252>);
+    fn write_serialized_felt(ref self: T, serialized_value: Span<felt252>);
+    fn write_serialized_bool(ref self: T, serialized_value: Span<felt252>);
 }
 
 /// Mock contract to test serialization format exactly matches in-storage representation for
@@ -347,7 +351,8 @@ mod MockContract {
         enc_subchannel_info: EncSubchannelInfo,
         enc_outgoing_channel_info: EncOutgoingChannelInfo,
         note: Note,
-        public_key: felt252,
+        felt: felt252,
+        boolean: bool,
     }
 
     #[constructor]
@@ -367,8 +372,11 @@ mod MockContract {
         fn get_note(self: @ContractState) -> Note {
             self.note.read()
         }
-        fn get_public_key(self: @ContractState) -> felt252 {
-            self.public_key.read()
+        fn get_felt(self: @ContractState) -> felt252 {
+            self.felt.read()
+        }
+        fn get_bool(self: @ContractState) -> bool {
+            self.boolean.read()
         }
         fn write_serialized_enc_private_key(
             ref self: ContractState, serialized_value: Span<felt252>,
@@ -392,9 +400,14 @@ mod MockContract {
             let storage_address = self.note.__base_address__;
             self._write(:storage_address, :serialized_value);
         }
-        fn write_serialized_public_key(ref self: ContractState, serialized_value: Span<felt252>) {
+        fn write_serialized_felt(ref self: ContractState, serialized_value: Span<felt252>) {
             assert(serialized_value.len() == 1, 'EXPECTED_LENGTH_1');
-            let storage_address = self.public_key.__base_address__;
+            let storage_address = self.felt.__base_address__;
+            self._write(:storage_address, :serialized_value);
+        }
+        fn write_serialized_bool(ref self: ContractState, serialized_value: Span<felt252>) {
+            assert(serialized_value.len() == 1, 'EXPECTED_LENGTH_1');
+            let storage_address = self.boolean.__base_address__;
             self._write(:storage_address, :serialized_value);
         }
     }
@@ -501,9 +514,25 @@ fn note_serialization_format() {
 fn felt_serialization_format() {
     let mock_contract_address = deploy_mock_contract();
     let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
-    let public_key = 'PUBLIC_KEY';
+    let felt = 'FELT';
     let mut serialized_value = array![];
-    public_key.serialize(ref output: serialized_value);
-    mock_contract.write_serialized_public_key(serialized_value: serialized_value.span());
-    assert_eq!(mock_contract.get_public_key(), public_key);
+    felt.serialize(ref output: serialized_value);
+    mock_contract.write_serialized_felt(serialized_value: serialized_value.span());
+    assert_eq!(mock_contract.get_felt(), felt);
+}
+
+#[test]
+fn bool_serialization_format() {
+    let mock_contract_address = deploy_mock_contract();
+    let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
+    let boolean = true;
+    let mut serialized_value = array![];
+    boolean.serialize(ref output: serialized_value);
+    mock_contract.write_serialized_bool(serialized_value: serialized_value.span());
+    assert_eq!(mock_contract.get_bool(), boolean);
+    let boolean = false;
+    serialized_value = array![];
+    boolean.serialize(ref output: serialized_value);
+    mock_contract.write_serialized_bool(serialized_value: serialized_value.span());
+    assert_eq!(mock_contract.get_bool(), boolean);
 }
