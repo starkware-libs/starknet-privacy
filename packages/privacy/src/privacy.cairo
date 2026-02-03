@@ -338,11 +338,13 @@ pub mod Privacy {
                 index.is_zero()
                     || self
                         .outgoing_channels
-                        .read(
+                        .entry(
                             compute_outgoing_channel_key(
                                 :sender_addr, :sender_private_key, index: index - 1,
                             ),
                         )
+                        .enc_recipient_addr
+                        .read()
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
             );
@@ -369,7 +371,7 @@ pub mod Privacy {
             assert(enc_channel_info.is_all_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
             assert(outgoing_channel_key.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_KEY);
             assert(
-                enc_outgoing_channel_info.is_non_zero(),
+                enc_outgoing_channel_info.enc_recipient_addr.is_non_zero(),
                 internal_errors::ZERO_ENC_OUTGOING_CHANNEL_INFO,
             );
 
@@ -417,7 +419,9 @@ pub mod Privacy {
                 index.is_zero()
                     || self
                         .subchannel_tokens
-                        .read(compute_subchannel_key(:channel_key, index: index - 1))
+                        .entry(compute_subchannel_key(:channel_key, index: index - 1))
+                        .enc_token
+                        .read()
                         .is_non_zero(),
                 errors::INDEX_NOT_SEQUENTIAL,
             );
@@ -430,7 +434,10 @@ pub mod Privacy {
             let enc_subchannel_info = encrypt_subchannel_info(:channel_key, :index, :token, :salt);
             assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
             assert(subchannel_key.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_KEY);
-            assert(enc_subchannel_info.is_non_zero(), internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN);
+            assert(
+                enc_subchannel_info.enc_token.is_non_zero(),
+                internal_errors::ZERO_ENC_SUBCHANNEL_TOKEN,
+            );
 
             array![
                 to_write_once_action(
