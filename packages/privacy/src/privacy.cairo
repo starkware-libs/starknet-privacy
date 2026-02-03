@@ -21,6 +21,7 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
         TokenBalancesTrait,
     };
+    use privacy::swap_executor::interface::{ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait};
     use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
@@ -750,6 +751,19 @@ pub mod Privacy {
                                 storage_address: input.storage_address, value: input.value,
                             );
                     },
+                    ServerAction::Swap(input) => {
+                        self
+                            ._execute_swap(
+                                swap_executor: input.swap_executor,
+                                swap_contract: input.swap_contract,
+                                swap_selector: input.swap_selector,
+                                swap_calldata: input.swap_calldata,
+                                in_token: input.in_token,
+                                out_token: input.out_token,
+                                in_amount: input.in_amount,
+                                note_id: input.note_id,
+                            );
+                    },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
@@ -856,6 +870,29 @@ pub mod Privacy {
             let target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
             let current_value = target.read();
             assert(current_value == value, errors::VALUE_MISMATCH);
+        }
+
+        fn _execute_swap(
+            ref self: ContractState,
+            swap_executor: ContractAddress,
+            swap_contract: ContractAddress,
+            swap_selector: felt252,
+            swap_calldata: Span<felt252>,
+            in_token: ContractAddress,
+            out_token: ContractAddress,
+            in_amount: u128,
+            note_id: felt252,
+        ) {
+            ISwapExecutorDispatcher { contract_address: swap_executor }
+                .swap(
+                    :swap_contract,
+                    :swap_selector,
+                    :swap_calldata,
+                    :in_token,
+                    :out_token,
+                    :in_amount,
+                    :note_id,
+                );
         }
     }
 
