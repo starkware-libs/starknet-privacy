@@ -23,7 +23,6 @@ pub mod constants {
     use core::num::traits::Pow;
 
     pub const OPEN_NOTE_SALT: u128 = 1;
-    pub const ENC_NOTE_MIN_SALT: u128 = 2;
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
