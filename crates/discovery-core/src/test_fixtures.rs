@@ -130,3 +130,30 @@ pub fn load_cairo_ref_fixture() -> CairoRefFixture {
     const JSON: &str = include_str!("../tests/fixtures/cairo-reference-data.json");
     serde_json::from_str(JSON).expect("failed to parse Cairo reference fixture")
 }
+
+/// Helper to discover channels and get the first channel key for a recipient.
+pub async fn get_channel_key(
+    backend: &crate::mock_backend::MockBackend,
+    recipient: starknet_types_core::felt::Felt,
+    viewing_key: &starknet_types_core::felt::Felt,
+) -> Option<starknet_types_core::felt::Felt> {
+    use crate::discovery::incoming_channels::discover_incoming_channels;
+
+    let result = discover_incoming_channels(backend, recipient, viewing_key, 0)
+        .await
+        .ok()?;
+
+    result.channels.first().map(|c| c.info.channel_key)
+}
+
+/// Helper to discover subchannels and get the first token for a channel.
+pub async fn get_subchannel_token(
+    backend: &crate::mock_backend::MockBackend,
+    channel_key: starknet_types_core::felt::Felt,
+) -> Option<starknet_types_core::felt::Felt> {
+    use crate::discovery::subchannels::discover_subchannels;
+
+    let result = discover_subchannels(backend, channel_key, 0).await.ok()?;
+
+    result.subchannels.first().map(|s| s.token)
+}

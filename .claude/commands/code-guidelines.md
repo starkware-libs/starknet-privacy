@@ -55,6 +55,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Inline directly in function arguments if it doesn't hurt readability
 - *Example:* `spawn(foo.clone(), bar.clone())` instead of `let foo = foo.clone(); let bar = bar.clone(); spawn(foo, bar)`
 
+### Check for existing utilities before adding new ones
+- Before writing a local helper function, search the codebase for existing shared utilities
+- If similar code exists in multiple places, extract to a shared module (e.g., `test_fixtures.rs` for test helpers)
+- *Example:* Test helpers like `get_channel_key()` belong in `test_fixtures.rs`, not duplicated in each test module
+
 ---
 
 ## Comments

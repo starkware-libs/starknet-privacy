@@ -20,6 +20,12 @@ static SUBCHANNEL_KEY_TAG: LazyLock<Felt> =
 /// Domain separation tag for encrypted token.
 static ENC_TOKEN_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("ENC_TOKEN_TAG:V1"));
 
+/// Domain separation tag for note ID derivation.
+static NOTE_ID_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("NOTE_ID_TAG:V1"));
+
+/// Domain separation tag for encrypted amount.
+static ENC_AMOUNT_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("ENC_AMOUNT_TAG:V1"));
+
 /// Converts a short string (up to 31 ASCII chars) to Felt.
 fn short_string_to_felt(s: &str) -> Felt {
     assert!(
@@ -73,6 +79,33 @@ pub fn compute_enc_token_hash(channel_key: Felt, index: u64, salt: Felt) -> Felt
     ])
 }
 
+/// Computes the note ID from channel key, token, and note index.
+///
+/// `note_id = hash(NOTE_ID_TAG, channel_key, token, index, 0)`
+pub fn compute_note_id(channel_key: Felt, token: Felt, index: u64) -> Felt {
+    hash(&[
+        *NOTE_ID_TAG,
+        channel_key,
+        token,
+        Felt::from(index),
+        Felt::ZERO,
+    ])
+}
+
+/// Computes the encryption mask for note amount.
+///
+/// `enc_amount_hash = hash(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt)`
+pub fn compute_enc_amount_hash(channel_key: Felt, token: Felt, index: u64, salt: u128) -> Felt {
+    hash(&[
+        *ENC_AMOUNT_TAG,
+        channel_key,
+        token,
+        Felt::from(index),
+        Felt::ZERO,
+        Felt::from(salt),
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -112,6 +145,27 @@ mod tests {
         assert_eq!(
             compute_enc_token_hash(f.inputs.channel_key, f.inputs.index, f.inputs.salt),
             f.outputs.enc_token_hash
+        );
+    }
+
+    #[test]
+    fn test_compute_note_id() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_note_id(f.inputs.channel_key, f.inputs.token, f.inputs.index),
+            f.outputs.note_id
+        );
+    }
+
+    #[test]
+    fn test_compute_enc_amount_hash() {
+        use crate::types::felt_low_u128;
+
+        let f = load_cairo_ref_fixture();
+        let salt = felt_low_u128(f.inputs.salt);
+        assert_eq!(
+            compute_enc_amount_hash(f.inputs.channel_key, f.inputs.token, f.inputs.index, salt),
+            f.outputs.enc_amount_hash
         );
     }
 }

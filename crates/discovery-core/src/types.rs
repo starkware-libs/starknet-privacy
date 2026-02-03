@@ -5,6 +5,12 @@
 
 use starknet_types_core::felt::Felt;
 
+/// Extracts low 128 bits from a Felt.
+pub fn felt_low_u128(felt: Felt) -> u128 {
+    let d = felt.to_le_digits();
+    d[0] as u128 | (d[1] as u128) << 64
+}
+
 /// Trait for securely zeroing sensitive data from memory.
 ///
 /// This is a simplified version of the `zeroize` crate's `Zeroize` trait,
