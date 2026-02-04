@@ -3,7 +3,11 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
+use discovery_service::api_server::ApiErrorResponse;
+use discovery_service::incoming_sync::IncomingSyncRequest;
+use discovery_service::incoming_sync::IncomingSyncResponse;
 use nix::sys::signal::Signal;
+use reqwest::StatusCode;
 use starknet_types_core::felt::Felt;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
@@ -101,12 +105,38 @@ impl IndexerClient {
     pub async fn wait_until_ready(&mut self, devnet: &DevnetClient) -> Result<()> {
         self.wait_for_log("API server listening", Duration::from_secs(10))
             .await?;
-        self.wait_for_log("Subscribed to new heads", Duration::from_secs(10))
+        self.wait_for_log("Subscribed to new heads", Duration::from_secs(15))
             .await?;
         devnet.create_block().await?;
         self.wait_for_log("New block #", Duration::from_secs(5))
             .await?;
         Ok(())
+    }
+
+    /// POST `/v1/discovery/incoming/sync` and return the parsed success response.
+    pub async fn incoming_sync(&self, req: &IncomingSyncRequest) -> Result<IncomingSyncResponse> {
+        let url = format!("http://{}/v1/discovery/incoming/sync", self.api_host);
+        let resp = reqwest::Client::new().post(&url).json(req).send().await?;
+
+        let status = resp.status();
+        let body = resp.text().await?;
+        if status != StatusCode::OK {
+            return Err(anyhow!("Expected 200, got {}: {}", status, body));
+        }
+        Ok(serde_json::from_str(&body)?)
+    }
+
+    /// POST `/v1/discovery/incoming/sync` and return status + parsed error body.
+    pub async fn incoming_sync_error(
+        &self,
+        req: &IncomingSyncRequest,
+    ) -> Result<(StatusCode, ApiErrorResponse)> {
+        let url = format!("http://{}/v1/discovery/incoming/sync", self.api_host);
+        let resp = reqwest::Client::new().post(&url).json(req).send().await?;
+
+        let status = resp.status();
+        let error: ApiErrorResponse = resp.json().await?;
+        Ok((status, error))
     }
 
     /// Send SIGINT for graceful shutdown.

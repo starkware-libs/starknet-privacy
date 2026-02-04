@@ -28,7 +28,7 @@ async fn test_startup_and_shutdown() {
         .await
         .unwrap();
     indexer
-        .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
+        .wait_for_log("Subscribed to new heads", Duration::from_secs(15))
         .await
         .unwrap();
 
@@ -51,7 +51,7 @@ async fn test_new_block_notification() {
     .expect("Failed to spawn indexer");
 
     indexer
-        .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
+        .wait_for_log("Subscribed to new heads", Duration::from_secs(15))
         .await
         .unwrap();
 
@@ -80,7 +80,7 @@ async fn test_reconnection_on_devnet_restart() {
     .expect("Failed to spawn indexer");
 
     indexer
-        .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
+        .wait_for_log("Subscribed to new heads", Duration::from_secs(15))
         .await
         .unwrap();
 

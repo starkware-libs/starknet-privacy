@@ -154,6 +154,7 @@ impl StorageBackend for RpcBackend {
 }
 
 /// Snapshot of storage at a specific block, accessed via RPC.
+#[derive(Clone)]
 pub struct RpcSnapshot {
     backend: RpcBackend,
     block_id: BlockId,
