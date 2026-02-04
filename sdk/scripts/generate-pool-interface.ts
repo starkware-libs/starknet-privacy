@@ -88,9 +88,7 @@ const findStruct = (name: string): AbiStruct | undefined =>
   PrivacyPoolABI.find((e) => e.type === "struct" && e.name === name) as AbiStruct | undefined;
 
 const findInterface = (name: string): AbiInterface | undefined =>
-  PrivacyPoolABI.find((e) => e.type === "interface" && e.name === name) as
-    | AbiInterface
-    | undefined;
+  PrivacyPoolABI.find((e) => e.type === "interface" && e.name === name) as AbiInterface | undefined;
 
 const getTypeName = (cairoType: string): string => {
   if (STRUCT_RENAMES[cairoType]) return STRUCT_RENAMES[cairoType];
@@ -152,8 +150,7 @@ ${struct.members.map((m) => `  ${m.name}: ${mapOutputType(m.type)};`).join("\n")
       const params = fn.inputs
         .map((input) => `${toCamelCase(input.name)}: ${mapInputType(input.type)}`)
         .join(", ");
-      const returnType =
-        fn.outputs.length === 0 ? "void" : mapOutputType(fn.outputs[0].type);
+      const returnType = fn.outputs.length === 0 ? "void" : mapOutputType(fn.outputs[0].type);
       console.log(`  - ${fn.name}(${fn.inputs.map((i) => i.name).join(", ")}) -> ${returnType}`);
       return `  ${fn.name}(${params}): ${returnType} | Promise<${returnType}>;`;
     })
