@@ -305,7 +305,12 @@ class ChannelsDiscovery {
       toBigInt(publicKey)
     );
 
-    const channelMarker = compute_channel_marker(channelKey, this.address, recipient, toBigInt(publicKey));
+    const channelMarker = compute_channel_marker(
+      channelKey,
+      this.address,
+      recipient,
+      toBigInt(publicKey)
+    );
 
     if (await this.pool.channel_exists(channelMarker)) {
       channel.key = channelKey;
