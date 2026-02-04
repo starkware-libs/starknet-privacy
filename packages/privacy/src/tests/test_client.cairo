@@ -1,8 +1,8 @@
 use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    DepositToOpenNoteInput, OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput,
-    TransferFromInput, TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput,
+    DepositToOpenNoteInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
+    SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
 use privacy::objects::{EncSubchannelInfo, EncUserAddr};
@@ -825,8 +825,8 @@ fn test_open_channel() {
     let expected_enc_outgoing_channel_info = user_1
         .compute_enc_outgoing_channel_info(recipient: user_2, index: 0, :salt);
     let expected_actions = [
-        ServerAction::VerifyValue(
-            VerifyValueInput { storage_address: public_key_storage_path, value: user_2.public_key },
+        ServerAction::ReadAssert(
+            ReadAssertInput { storage_address: public_key_storage_path, value: user_2.public_key },
         ),
         ServerAction::AppendToVec(
             AppendToVecInput {
@@ -873,8 +873,8 @@ fn test_open_channel_self_channel() {
     let expected_enc_outgoing_channel_info = user
         .compute_enc_outgoing_channel_info(recipient: user, index: 0, :salt);
     let expected_actions = [
-        ServerAction::VerifyValue(
-            VerifyValueInput { storage_address: public_key_storage_path, value: user.public_key },
+        ServerAction::ReadAssert(
+            ReadAssertInput { storage_address: public_key_storage_path, value: user.public_key },
         ),
         ServerAction::AppendToVec(
             AppendToVecInput {
@@ -1133,8 +1133,8 @@ fn test_open_channel_multiple_channels_same_sender() {
         map_selector: selector!("outgoing_channels"), keys: [expected_outgoing_channel_id_2].span(),
     );
     let expected_actions_1 = [
-        ServerAction::VerifyValue(
-            VerifyValueInput {
+        ServerAction::ReadAssert(
+            ReadAssertInput {
                 storage_address: public_key_storage_path_1, value: user_2.public_key,
             },
         ),
@@ -1151,8 +1151,8 @@ fn test_open_channel_multiple_channels_same_sender() {
     ]
         .span();
     let expected_actions_2 = [
-        ServerAction::VerifyValue(
-            VerifyValueInput {
+        ServerAction::ReadAssert(
+            ReadAssertInput {
                 storage_address: public_key_storage_path_2, value: user_3.public_key,
             },
         ),
@@ -1247,8 +1247,8 @@ fn test_open_channel_multiple_channels_same_recipient() {
         map_selector: selector!("outgoing_channels"), keys: [expected_outgoing_channel_id_2].span(),
     );
     let expected_actions_1 = [
-        ServerAction::VerifyValue(
-            VerifyValueInput {
+        ServerAction::ReadAssert(
+            ReadAssertInput {
                 storage_address: public_key_storage_path_1, value: user_1.public_key,
             },
         ),
@@ -1265,8 +1265,8 @@ fn test_open_channel_multiple_channels_same_recipient() {
     ]
         .span();
     let expected_actions_2 = [
-        ServerAction::VerifyValue(
-            VerifyValueInput {
+        ServerAction::ReadAssert(
+            ReadAssertInput {
                 storage_address: public_key_storage_path_2, value: user_1.public_key,
             },
         ),
@@ -3858,8 +3858,8 @@ fn test_client_execute_open_channel() {
         map_selector: selector!("outgoing_channels"), keys: [expected_outgoing_channel_id].span(),
     );
     let expected_actions = [
-        ServerAction::VerifyValue(
-            VerifyValueInput {
+        ServerAction::ReadAssert(
+            ReadAssertInput {
                 storage_address: recipient_public_key_storage_path, value: user_2.public_key,
             },
         ),
@@ -4187,8 +4187,8 @@ fn test_internal_actions() {
     let expected_enc_outgoing_channel_info = user_1
         .compute_enc_outgoing_channel_info(recipient: user_2, index: 0, salt: salt_channel);
     let expected_actions = [
-        ServerAction::VerifyValue(
-            VerifyValueInput { storage_address: public_key_storage_path, value: user_2.public_key },
+        ServerAction::ReadAssert(
+            ReadAssertInput { storage_address: public_key_storage_path, value: user_2.public_key },
         ),
         ServerAction::AppendToVec(
             AppendToVecInput {
@@ -5054,8 +5054,8 @@ fn test_client_execute_writes() {
         to_write_once_action(storage_address: enc_private_key_storage_path, value: enc_private_key),
         ServerAction::EmitViewingKeySet(expected_event_viewing_key_set),
         // Open channel.
-        ServerAction::VerifyValue(
-            VerifyValueInput { storage_address: public_key_storage_path, value: public_key },
+        ServerAction::ReadAssert(
+            ReadAssertInput { storage_address: public_key_storage_path, value: public_key },
         ),
         ServerAction::AppendToVec(AppendToVecInput { recipient_addr: address, enc_channel_info }),
         to_write_once_action(storage_address: channel_exists_storage_path, value: true),

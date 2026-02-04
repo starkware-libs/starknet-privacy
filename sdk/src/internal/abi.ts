@@ -337,7 +337,7 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "privacy::actions::VerifyValueInput",
+    "name": "privacy::actions::ReadAssertInput",
     "members": [
       {
         "name": "storage_address",
@@ -500,8 +500,8 @@ export const PrivacyPoolABI = [
         "type": "privacy::actions::TransferToInput"
       },
       {
-        "name": "VerifyValue",
-        "type": "privacy::actions::VerifyValueInput"
+        "name": "ReadAssert",
+        "type": "privacy::actions::ReadAssertInput"
       },
       {
         "name": "EmitViewingKeySet",
