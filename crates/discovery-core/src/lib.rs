@@ -1,11 +1,7 @@
-pub mod decryption;
 pub mod discovery;
-pub mod hashes;
 pub mod io_budget;
-pub mod mock_backend;
-pub mod storage;
-pub mod storage_slots;
-pub mod types;
+pub mod privacy_pool;
+pub mod storage_backend;
 
 #[cfg(test)]
 mod test_fixtures;
