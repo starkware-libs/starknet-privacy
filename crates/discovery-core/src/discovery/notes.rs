@@ -14,16 +14,19 @@
 //! - Multiple subchannel scans (for notes) can run in parallel
 //! - Multiple channel scans (for subchannels) can run in parallel
 
+use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
-use super::{DiscoveryError, COST_NOTE};
+use super::cursor::SubchannelCursor;
+use super::DiscoveryError;
+use super::COST_NOTE;
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::{decrypt_note_amount, unpack_note_amount};
 use crate::privacy_pool::hashes::compute_note_id;
 use crate::privacy_pool::views::IViews;
 
 /// A discovered and decrypted note.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecryptedNote {
     /// The index of this note within the subchannel.
     pub index: u64,
@@ -40,8 +43,8 @@ pub struct DecryptedNote {
 pub struct NotesDiscoveryResult {
     /// List of discovered and decrypted notes.
     pub notes: Vec<DecryptedNote>,
-    /// Index of the last discovered note, or `None` if no notes
-    /// were discovered.
+    /// Index of the last discovered note, or `None` if no notes were discovered.
+    /// Use for cursor updates: `cursor.last_note_index = result.last_index`.
     pub last_index: Option<u64>,
     /// Whether there may be more notes to discover.
     /// `true` if stopped due to budget exhaustion, `false` if sentinel was found.
@@ -119,6 +122,27 @@ pub async fn discover_notes<PrivacyPool: IViews>(
         last_index,
         has_more: out_of_budget,
     })
+}
+
+/// Discovers notes with cursor-based pagination.
+///
+/// Delegates to [`discover_notes`] and updates the cursor.
+///
+/// Returns discovered notes and `has_more`. `has_more = false` means
+/// the sentinel was found (no more notes in this subchannel).
+pub async fn discover_notes_paginated<S: IViews>(
+    pool: &S,
+    channel_key: Felt,
+    token: Felt,
+    cursor: &mut SubchannelCursor,
+    budget: &IoBudget,
+) -> Result<(Vec<DecryptedNote>, bool), DiscoveryError> {
+    let start_index = cursor.last_note_index.map_or(0, |i| i + 1);
+    let result = discover_notes(pool, channel_key, token, start_index, budget).await?;
+
+    cursor.last_note_index = result.last_index.or(cursor.last_note_index);
+
+    Ok((result.notes, result.has_more))
 }
 
 #[cfg(test)]
@@ -233,17 +257,12 @@ mod tests {
             .unwrap();
         assert!(!result1.notes.is_empty());
         assert!(!result1.has_more);
+        let last_index = result1.last_index.unwrap();
 
         // Incremental discovery starting from last_index + 1 - should find 0 new notes
-        let result2 = discover_notes(
-            &backend,
-            channel_key,
-            token,
-            result1.last_index.unwrap() + 1,
-            &budget,
-        )
-        .await
-        .unwrap();
+        let result2 = discover_notes(&backend, channel_key, token, last_index + 1, &budget)
+            .await
+            .unwrap();
         assert_eq!(result2.notes.len(), 0);
         assert_eq!(result2.last_index, None);
         assert!(!result2.has_more);
@@ -276,5 +295,57 @@ mod tests {
         assert_eq!(result.notes.len(), 0);
         assert_eq!(result.last_index, None);
         assert!(result.has_more);
+    }
+
+    #[tokio::test]
+    async fn test_paginated_full_discovery() {
+        let fixture = load_devnet_fixture();
+        let backend = MockBackend::new(fixture.slots);
+
+        let channel_key = get_channel_key(
+            &backend,
+            fixture.constants.bob_address,
+            &fixture.constants.bob_viewing_key,
+        )
+        .await
+        .unwrap();
+        let token = get_subchannel_token(&backend, channel_key).await.unwrap();
+
+        let mut cursor = SubchannelCursor::default();
+        let budget = IoBudget::new(100);
+        let (notes, has_more) =
+            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &budget)
+                .await
+                .unwrap();
+
+        assert!(!notes.is_empty(), "should discover at least one note");
+        assert!(!has_more, "sentinel should be found");
+    }
+
+    #[tokio::test]
+    async fn test_paginated_budget_limited() {
+        let fixture = load_devnet_fixture();
+        let backend = MockBackend::new(fixture.slots);
+
+        let channel_key = get_channel_key(
+            &backend,
+            fixture.constants.bob_address,
+            &fixture.constants.bob_viewing_key,
+        )
+        .await
+        .unwrap();
+        let token = get_subchannel_token(&backend, channel_key).await.unwrap();
+
+        let mut cursor = SubchannelCursor::default();
+        // Budget for exactly 1 note (COST_NOTE=1), not enough to hit sentinel
+        let budget = IoBudget::new(COST_NOTE);
+        let (notes, has_more) =
+            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &budget)
+                .await
+                .unwrap();
+
+        assert_eq!(notes.len(), 1, "should discover exactly 1 note");
+        assert!(has_more, "sentinel not reached");
+        assert_eq!(cursor.last_note_index, Some(0));
     }
 }

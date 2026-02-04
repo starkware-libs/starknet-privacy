@@ -2,10 +2,23 @@
 //!
 //! This module provides functionality to discover and decrypt incoming channels
 //! for a recipient address.
+//!
+//! # Usage
+//!
+//! ```ignore
+//! // First request: get count, then discover
+//! let count = get_incoming_channel_count(&pool, recipient, &budget).await?;
+//! let result = discover_incoming_channels(&pool, recipient, &key, 0, count, &budget).await?;
+//!
+//! // Subsequent requests: use cached count
+//! let result = discover_incoming_channels(&pool, recipient, &key, start, cached_count, &budget).await?;
+//! ```
 
 use starknet_types_core::felt::Felt;
 
-use super::{DiscoveryError, COST_CHANNEL_INFO, COST_NUM_CHANNELS};
+use super::cursor::{ChannelCursor, DiscoveryCursor};
+use super::DiscoveryError;
+use super::{COST_CHANNEL_INFO, COST_NUM_CHANNELS};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::decrypt_channel_info;
 use crate::privacy_pool::types::ChannelInfo;
@@ -25,18 +38,29 @@ pub struct IncomingChannel {
 pub struct ChannelDiscoveryResult {
     /// List of discovered and decrypted incoming channels.
     pub channels: Vec<IncomingChannel>,
-    /// Index of the last discovered channel, or `None` if no channels
-    /// were discovered.
+    /// Index of the last discovered channel, or `None` if no channels were discovered.
+    /// Use for cursor updates: `cursor.last_channel_index = result.last_index.or(cursor.last_channel_index)`.
     pub last_index: Option<u64>,
     /// Whether there may be more channels to discover.
     /// `true` if stopped due to budget exhaustion, `false` if all channels were scanned.
     pub has_more: bool,
 }
 
-/// Reads the on-chain channel count for a recipient.
+/// Gets the total number of incoming channels for a recipient.
 ///
-/// This is a thin wrapper around `IViews::get_num_of_channels` that
-/// consumes the appropriate I/O budget.
+/// Call this once to get the count, then pass it to [`discover_incoming_channels`]
+/// to avoid re-fetching on every call.
+///
+/// # Arguments
+///
+/// * `privacy_pool` - Storage backend implementing the IViews trait.
+/// * `recipient_addr` - The recipient's account address.
+/// * `budget` - I/O budget to limit storage operations.
+///
+/// # Returns
+///
+/// `Ok(Some(count))` - The total number of channels.
+/// `Ok(None)` - Budget exhausted before fetching the count.
 pub async fn get_incoming_channel_count<PrivacyPool: IViews>(
     privacy_pool: &PrivacyPool,
     recipient_addr: Felt,
@@ -57,15 +81,12 @@ pub async fn get_incoming_channel_count<PrivacyPool: IViews>(
 /// * `recipient_addr` - The recipient's account address.
 /// * `private_key` - The private viewing key of that account.
 /// * `start_index` - Starting index (inclusive). Pass 0 to discover all channels.
-/// * `total_n_channels` - Total number of channels for this recipient (from
-///   [`get_incoming_channel_count`]). The function will scan indices
-///   `start_index..total_n_channels`.
+/// * `total_n_channels` - Total number of channels (from [`get_incoming_channel_count`]).
 /// * `budget` - I/O budget to limit storage operations.
 ///
 /// # Returns
 ///
-/// A `ChannelDiscoveryResult` containing all discovered channels and metadata for
-/// incremental discovery.
+/// A `DiscoveryResult` containing all discovered channels and whether more remain.
 ///
 /// # Security
 ///
@@ -125,6 +146,59 @@ pub async fn discover_incoming_channels<PrivacyPool: IViews>(
     })
 }
 
+/// Discovers incoming channels with cursor-based pagination.
+///
+/// Fetches and caches `total_n_channels` if not already in the cursor,
+/// then delegates to [`discover_incoming_channels`] for new channels.
+pub async fn discover_channels_paginated<S: IViews>(
+    pool: &S,
+    recipient: Felt,
+    decryption_key: &Felt,
+    cursor: &mut DiscoveryCursor,
+    budget: &IoBudget,
+) -> Result<Vec<IncomingChannel>, DiscoveryError> {
+    // 1. Get/cache total_n_channels.
+    let total = match cursor.total_n_channels {
+        Some(count) => count,
+        None => match get_incoming_channel_count(pool, recipient, budget).await? {
+            Some(count) => {
+                cursor.total_n_channels = Some(count);
+                count
+            }
+            // Budget exhausted before getting count.
+            None => return Ok(Vec::new()),
+        },
+    };
+
+    // 2. All channels already enumerated — skip.
+    let start_index = cursor.last_channel_index.map_or(0, |i| i + 1);
+    if start_index >= total {
+        return Ok(Vec::new());
+    }
+
+    // 3. Discover new channels.
+    let result =
+        discover_incoming_channels(pool, recipient, decryption_key, start_index, total, budget)
+            .await?;
+
+    // 4. Register new channels in cursor.
+    for channel in &result.channels {
+        cursor
+            .channels
+            .entry(channel.info.channel_key)
+            .or_insert(ChannelCursor {
+                sender_addr: channel.info.sender_addr,
+                total_n_subchannels: None,
+                last_subchannel_index: None,
+                subchannels: Default::default(),
+            });
+    }
+
+    cursor.last_channel_index = result.last_index.or(cursor.last_channel_index);
+
+    Ok(result.channels)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -138,13 +212,19 @@ mod tests {
         let key = Felt::from(1u64);
         let budget = IoBudget::new(100);
 
+        let count = get_incoming_channel_count(&backend, recipient, &budget)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(count, 0);
+
         // Test with 0 (start from beginning)
-        let result1 = discover_incoming_channels(&backend, recipient, &key, 0, 0, &budget)
+        let result1 = discover_incoming_channels(&backend, recipient, &key, 0, count, &budget)
             .await
             .unwrap();
 
         // Test with 5 (arbitrary index beyond total)
-        let result2 = discover_incoming_channels(&backend, recipient, &key, 5, 0, &budget)
+        let result2 = discover_incoming_channels(&backend, recipient, &key, 5, count, &budget)
             .await
             .unwrap();
 
@@ -275,9 +355,8 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        // No budget for the count query (COST_NUM_CHANNELS = 1)
+        // Budget exhausted before getting count
         let budget = IoBudget::new(0);
-
         let count = get_incoming_channel_count(&backend, fixture.constants.alice_address, &budget)
             .await
             .unwrap();
@@ -289,16 +368,16 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        // Budget for count but not channel info
-        // COST_NUM_CHANNELS = 1, COST_CHANNEL_INFO = 3
-        let budget = IoBudget::new(2);
-
+        // Get count first with sufficient budget
+        let budget = IoBudget::new(100);
         let count = get_incoming_channel_count(&backend, fixture.constants.alice_address, &budget)
             .await
             .unwrap()
             .unwrap();
         assert_eq!(count, 1);
 
+        // Now discover with insufficient budget (COST_CHANNEL_INFO = 3)
+        let budget = IoBudget::new(2);
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
@@ -313,5 +392,62 @@ mod tests {
         assert_eq!(result.channels.len(), 0);
         assert_eq!(result.last_index, None);
         assert!(result.has_more);
+    }
+
+    #[tokio::test]
+    async fn test_paginated_full_discovery_populates_cursor() {
+        let fixture = load_devnet_fixture();
+        let backend = MockBackend::new(fixture.slots);
+
+        let mut cursor = DiscoveryCursor::default();
+        let budget = IoBudget::new(100);
+
+        let channels = discover_channels_paginated(
+            &backend,
+            fixture.constants.bob_address,
+            &fixture.constants.bob_viewing_key,
+            &mut cursor,
+            &budget,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(channels.len(), 1, "Bob should have 1 channel");
+        assert_eq!(cursor.total_n_channels, Some(1));
+        assert_eq!(cursor.last_channel_index, Some(0));
+        assert_eq!(cursor.channels.len(), 1, "1 channel in cursor");
+
+        let channel_key = channels[0].info.channel_key;
+        assert!(cursor.channels.contains_key(&channel_key));
+        assert_eq!(
+            cursor.channels[&channel_key].sender_addr,
+            fixture.constants.alice_address
+        );
+    }
+
+    #[tokio::test]
+    async fn test_paginated_budget_limited_count_returns_empty() {
+        let fixture = load_devnet_fixture();
+        let backend = MockBackend::new(fixture.slots);
+
+        let mut cursor = DiscoveryCursor::default();
+        // Budget = 0: can't even fetch channel count
+        let budget = IoBudget::new(0);
+
+        let channels = discover_channels_paginated(
+            &backend,
+            fixture.constants.bob_address,
+            &fixture.constants.bob_viewing_key,
+            &mut cursor,
+            &budget,
+        )
+        .await
+        .unwrap();
+
+        assert!(channels.is_empty(), "no budget for count fetch");
+        assert!(
+            cursor.total_n_channels.is_none(),
+            "count should not be cached"
+        );
     }
 }
