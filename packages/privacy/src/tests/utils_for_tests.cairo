@@ -1,4 +1,3 @@
-use core::dict::Felt252Dict;
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
@@ -1733,14 +1732,4 @@ fn deserialize_server_actions(message: @MessageToL1) -> Span<ServerAction> {
 pub(crate) fn spy_messages_to_server_actions(ref spy: MessageToL1Spy) -> Span<ServerAction> {
     let (_from, message) = spy.get_messages().messages.at(0);
     deserialize_server_actions(:message)
-}
-
-// TODO: Move to utils repo.
-pub(crate) fn assert_unique_felts(felts: Span<felt252>) {
-    let mut buckets: Felt252Dict<usize> = Default::default();
-    for felt in felts {
-        let current_count = buckets[*felt];
-        assert!(current_count.is_zero(), "Duplicate felt found: {:?}", felt);
-        buckets.insert(*felt, value: 1);
-    }
 }
