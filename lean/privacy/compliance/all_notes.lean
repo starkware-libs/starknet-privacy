@@ -9,18 +9,18 @@ theorem ScanAllNotesContext.from {crypto: Crypto} (rm: ReachableMemory crypto) :
     ScanAllNotesContext crypto rm.m rm.events :=
   {
     toScanNoteContext := .from rm,
-    h_scan_users_private_key := λ user ↦ scan_users_private_key rm user.prop,
+    h_scan_users_private_key := λ user ↦ (RegisterImplies.from_scan user.prop).h_kalice,
   }
 
 def scan_all_notes {crypto: Crypto} {m: Memory} {events: List Event}
-    (context: ScanAllNotesContext crypto m events) : List ScannedNote := do
+    (context: ScanAllNotesContext crypto m events) : List ExScannedNote := do
   scan_users crypto events
   |>.attach
   |>.flatMap (λ user ↦
     scan_notes_for_recipient (context.toScanNoteContext) user.val.1 ⟨user.val.2, context.h_scan_users_private_key user⟩
   )
 
-theorem scan_all_notes_iff {crypto: Crypto} {rm: ReachableMemory crypto} {sn: ScannedNote} :
+private theorem scan_all_notes_iff {crypto: Crypto} {rm: ReachableMemory crypto} {sn: ExScannedNote} :
     sn ∈ scan_all_notes (.from rm) ↔
     ∃ (addralice: ℕ), ∃ (kalice: crypto.PrivateKeys),
       (addralice, ↑kalice) ∈ scan_users crypto rm.events ∧
@@ -29,15 +29,16 @@ theorem scan_all_notes_iff {crypto: Crypto} {rm: ReachableMemory crypto} {sn: Sc
   constructor
   · intro h
     have ⟨⟨⟨addralice, kalice⟩, h_in_scan_users⟩, h₀, h₁⟩ := h
-    use addralice, ⟨kalice, scan_users_private_key rm h_in_scan_users⟩, h_in_scan_users, h₁
+    have register_imp := RegisterImplies.from_scan h_in_scan_users
+    use addralice, ⟨kalice, register_imp.h_kalice⟩, h_in_scan_users, h₁
   · intro h
     have ⟨addralice, kalice, h₀, h₁⟩ := h
     use ⟨⟨addralice, kalice⟩, h₀⟩, List.mem_attach _ ⟨_, h₀⟩, h₁
 
 -- All notes can be retrieved given the compliance private key.
-theorem NoteImplies.scan_all_notes {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
+theorem NoteImplies.in_scan_all_notes {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
   (note_imp: NoteImplies rm inp) :
-  inp.to_scanned_note crypto ∈ scan_all_notes (.from rm) := by
+  inp.to_ex_scanned_note crypto ∈ scan_all_notes (.from rm) := by
   rw [scan_all_notes_iff]
   exact ⟨
     inp.addrbob,
@@ -45,3 +46,17 @@ theorem NoteImplies.scan_all_notes {crypto: Crypto} {rm: ReachableMemory crypto}
     note_imp.subchannel.channel.bob_registered.scan,
     note_imp.scan_for_recipient
   ⟩
+
+theorem NoteImplies.from_scan_all_notes
+    {crypto: Crypto} {rm: ReachableMemory crypto} {esn: ExScannedNote}
+    (h: esn ∈ scan_all_notes (.from rm)) :
+    ∃ (inp: CreateNoteInput) (_note_imp: NoteImplies rm inp),
+    inp.to_ex_scanned_note crypto = esn ∧
+    inp.addralice = esn.addralice ∧ inp.addrbob = esn.addrbob := by
+  have ⟨addralice, kalice, h₀, h₁⟩ := scan_all_notes_iff.1 h
+  have register_imp := RegisterImplies.from_scan h₀
+  have ⟨inp, note_imp, h⟩ := NoteImplies.from_scan_notes_for_recipient
+    (by rw [register_imp.public_key]) h₁
+  refine ⟨inp, note_imp, ?_, by simp [*], by simp [*]⟩
+  apply ExScannedNote.ext
+  all_goals simp [h]

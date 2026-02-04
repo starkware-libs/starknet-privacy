@@ -244,7 +244,7 @@ theorem create_note_immutable
     run_action₀ crypto (.CreateNote inp) m₁ = run_action₀ crypto (.CreateNote inp) m₀ := by
   dsimp only [run_action₀, create_note] at *
   rw [decide_eq_true_iff] at success
-  have ⟨h₀, h₁, h₂, h₃⟩ := success
+  have ⟨h₀, h₁, h₂, h₃, h₄⟩ := success
 
   dsimp only [immutable_fn, mem_cell_fn] at imm₀
   dsimp only [note_exists_fn] at imm₁
