@@ -7,6 +7,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use discovery_core::io_budget::IoBudget;
+use discovery_core::privacy_pool::types::Zeroize;
 use discovery_core::storage_backend::StorageBackend;
 use tracing::warn;
 
@@ -26,11 +27,7 @@ where
     B::Snapshot: Clone + Send + Sync + 'static,
 {
     match incoming_sync_impl(&state, request).await {
-        Ok(response) => (
-            StatusCode::OK,
-            Json(serde_json::to_value(response).unwrap()),
-        )
-            .into_response(),
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err((status, error)) => (status, Json(error)).into_response(),
     }
 }
@@ -43,7 +40,7 @@ where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
     B::Snapshot: Clone + Send + Sync + 'static,
 {
-    let validated = ValidatedRequest::from_request(request, &state.backend).await?;
+    let mut validated = ValidatedRequest::from_request(request, &state.backend).await?;
 
     let snapshot = state
         .backend
@@ -51,6 +48,7 @@ where
         .await
         .map_err(|e| {
             warn!("Failed to create snapshot: {}", e);
+            validated.decryption_key.zeroize();
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ApiErrorResponse::new(
@@ -69,8 +67,11 @@ where
         validated.cursor,
         &budget,
     )
-    .await
-    .map_err(discovery_error_to_response)?;
+    .await;
+
+    validated.decryption_key.zeroize();
+
+    let discovery_output = discovery_output.map_err(discovery_error_to_response)?;
 
     Ok(IncomingSyncResponse {
         block_ref: validated.block_ref,
@@ -95,7 +96,7 @@ fn discovery_error_to_response(
         DiscoveryError::Decryption { index, source } => (
             StatusCode::BAD_REQUEST,
             ApiErrorResponse::with_details(
-                error_codes::INVALID_REQUEST,
+                error_codes::DECRYPTION_FAILED,
                 format!("Decryption failed at index {}: {}", index, source),
                 serde_json::json!({ "index": index }),
             ),

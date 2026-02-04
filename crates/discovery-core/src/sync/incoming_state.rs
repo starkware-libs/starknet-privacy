@@ -61,6 +61,10 @@ struct SubchannelResult {
 /// and channels are pruned from the cursor so subsequent calls skip them.
 ///
 /// Channel and subchannel processing is parallelised via [`JoinSet`].
+// TODO: Derive nullifiers and filter spent notes (spec 6.5)
+// TODO: Handle open notes — notes with salt==OPEN_NOTE_SALT(1) have plaintext
+//       amounts, non-zero token and depositor fields (see Cairo objects.cairo
+//       Note struct)
 pub async fn sync_incoming_state<S>(
     pool: &S,
     recipient: Felt,
@@ -80,6 +84,11 @@ where
         });
     }
 
+    // TODO(security): Cap cursor.channels size before spawning tasks — the
+    //   HashMap is deserialized from an untrusted request with no size limit.
+    //   An attacker can send 50K+ entries within the 2MB body limit, each
+    //   spawning a tokio task → OOM / scheduler exhaustion.
+    //   Fix: reject or truncate cursor.channels to a max size (e.g., 256).
     let channels = std::mem::take(&mut cursor.channels);
     let mut join_set = JoinSet::new();
     for (channel_key, ch_cursor) in channels {
@@ -123,6 +132,9 @@ where
         .into_iter()
         .collect();
 
+    // TODO(security): Cap cursor.subchannels size before spawning tasks —
+    //   same unbounded-HashMap attack vector as cursor.channels above,
+    //   multiplied per channel (N channels × M subchannels = N×M tasks).
     let mut join_set = JoinSet::new();
     for (token, sc_cursor) in subchannels {
         let pool = pool.clone();

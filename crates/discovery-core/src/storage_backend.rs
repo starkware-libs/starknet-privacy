@@ -21,6 +21,14 @@ pub enum StorageError {
     /// Backend-specific error.
     #[error("{0}")]
     Backend(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// `read_slots` returned a different number of values than requested.
+    #[error("slot count mismatch: expected {expected}, got {got}")]
+    SlotCountMismatch {
+        /// Number of slots requested.
+        expected: usize,
+        /// Number of values returned.
+        got: usize,
+    },
 }
 
 /// Low-level storage access for reading raw storage slots.
@@ -30,6 +38,8 @@ pub trait RawStorageAccess: Send + Sync {
     async fn read_slot(&self, slot: Felt) -> Result<Felt, StorageError>;
 
     /// Reads multiple storage slots.
+    ///
+    /// The returned `Vec` must have the same length as `slots`.
     async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError>;
 }
 

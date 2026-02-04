@@ -41,6 +41,9 @@ impl ValidatedRequest {
         request: IncomingSyncRequest,
         backend: &B,
     ) -> Result<Self, (StatusCode, ApiErrorResponse)> {
+        // TODO(security): Consider rejecting max_reads == 0 — currently accepted,
+        //   wastes work on snapshot creation for guaranteed-empty results.
+
         // 1. Validate and convert max_reads
         let max_reads: usize = match request.max_reads {
             Some(v) => {

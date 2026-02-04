@@ -49,6 +49,18 @@ pub trait IViews: Send + Sync {
     async fn get_compliance_public_key(&self) -> Result<Felt, StorageError>;
 }
 
+/// Checks that `values` has exactly `expected` elements, returning
+/// [`StorageError::SlotCountMismatch`] otherwise.
+fn check_slots_len(values: &[Felt], expected: usize) -> Result<(), StorageError> {
+    if values.len() != expected {
+        return Err(StorageError::SlotCountMismatch {
+            expected,
+            got: values.len(),
+        });
+    }
+    Ok(())
+}
+
 /// Blanket implementation of `IViews` for any type implementing `RawStorageAccess`.
 #[async_trait]
 impl<T: RawStorageAccess> IViews for T {
@@ -82,6 +94,7 @@ impl<T: RawStorageAccess> IViews for T {
                 slots.enc_sender_addr,
             ])
             .await?;
+        check_slots_len(&values, 3)?;
         Ok(EncChannelInfo {
             ephemeral_pubkey: values[0],
             enc_channel_key: values[1],
@@ -103,6 +116,7 @@ impl<T: RawStorageAccess> IViews for T {
     ) -> Result<EncSubchannelInfo, StorageError> {
         let slots = storage_slots::subchannel_tokens(subchannel_id);
         let values = self.read_slots(vec![slots.salt, slots.enc_token]).await?;
+        check_slots_len(&values, 2)?;
         Ok(EncSubchannelInfo {
             salt: values[0],
             enc_token: values[1],
@@ -134,6 +148,7 @@ impl<T: RawStorageAccess> IViews for T {
         let values = self
             .read_slots(vec![slots.ephemeral_pubkey, slots.enc_private_key])
             .await?;
+        check_slots_len(&values, 2)?;
         Ok(EncPrivateKey {
             ephemeral_pubkey: values[0],
             enc_private_key: values[1],

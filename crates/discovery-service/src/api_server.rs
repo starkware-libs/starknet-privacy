@@ -63,13 +63,24 @@ where
             health_max_lag_secs: self.config.health_max_lag_secs,
         });
 
+        // TODO: Add TLS termination (spec 5.1)
         let app = Router::new()
             .route("/health", get(health_handler::<B>))
             .route(
                 "/v1/discovery/incoming/sync",
                 post(incoming_sync_handler::<B>),
             )
+            // TODO: Implement POST /v1/discovery/outgoing/sync endpoint (spec 6.6,
+            //       see SDK contract-discovery.ts discoverChannels)
+            // TODO: Implement POST /v1/discovery/history endpoint (spec 6.7)
             .with_state(app_state);
+
+        // TODO(security): Add DefaultBodyLimit layer — current Axum 2MB default is
+        //   far larger than needed (~500 bytes for a legitimate request) and allows
+        //   cursor-stuffing attacks. Cap at 64KB.
+        // TODO(security): Add tower::timeout::TimeoutLayer — without a request
+        //   timeout, slow RPC responses can block tokio worker threads indefinitely
+        //   (100 reads × 60s RPC timeout = ~100min per request).
 
         let listener = TcpListener::bind(&self.config.api_host)
             .await
@@ -192,10 +203,8 @@ impl ApiErrorResponse {
 /// Error codes for the API endpoints.
 pub mod error_codes {
     pub const INVALID_REQUEST: &str = "INVALID_REQUEST";
-    #[allow(dead_code)]
-    pub const INVALID_ADDRESS: &str = "INVALID_ADDRESS";
+    pub const DECRYPTION_FAILED: &str = "DECRYPTION_FAILED";
     pub const MAX_READS_EXCEEDED: &str = "MAX_READS_EXCEEDED";
-    pub const BLOCK_NOT_FOUND: &str = "BLOCK_NOT_FOUND";
     pub const BLOCK_REORGED: &str = "BLOCK_REORGED";
     pub const SERVICE_UNAVAILABLE: &str = "SERVICE_UNAVAILABLE";
     pub const RPC_UNAVAILABLE: &str = "RPC_UNAVAILABLE";

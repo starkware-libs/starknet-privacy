@@ -109,9 +109,13 @@ pub async fn discover_incoming_channels<PrivacyPool: IViews>(
         });
     }
 
-    // Discover and decrypt each channel
+    // Discover and decrypt each channel.
+    // Cap pre-allocation: total_n_channels may come from an untrusted cursor,
+    // so a malicious value must not cause OOM via Vec::with_capacity.
+    const MAX_CAPACITY: usize = 1024;
     let capacity = usize::try_from(total_n_channels.saturating_sub(start_index))
-        .expect("channel count exceeds usize");
+        .unwrap_or(0)
+        .min(MAX_CAPACITY);
     let mut channels = Vec::with_capacity(capacity);
     let mut index = start_index;
     let mut out_of_budget = false;

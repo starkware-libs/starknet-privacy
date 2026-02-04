@@ -30,6 +30,18 @@ Apply these guidelines when writing or reviewing code in this codebase.
 
 ## Edge Cases
 
+### Treat all user-provided values as adversarial
+- Any value deserialized from an HTTP request, cursor, query parameter, or other external input must be assumed hostile
+- Trace user-controlled values through the full call graph and analyze whether they can cause DoS, OOM, panics, or other resource exhaustion
+- Cap allocations derived from user input with hard limits (e.g., `const MAX_CAPACITY: usize = 1024`)
+- *Example:* A cursor field `total_n_channels: u64` can be set to `u64::MAX` by an attacker; using it directly in `Vec::with_capacity` causes OOM before any budget check runs
+
+### Never panic on data reachable from requests
+- Code reachable from HTTP handlers, RPC calls, or any external input must never use `.unwrap()`, `.expect()`, or unchecked indexing on values derived from that input
+- Reserve panics for compile-time invariants (hardcoded constants, static strings) where failure is a programmer bug, not a runtime possibility
+- For fallible operations: return `Result` with a descriptive error variant, or use saturating/capping alternatives when the exact value doesn't matter
+- *Example:* `check_slots_len(&values, 3)?` before indexing a returned Vec
+
 ### Prefer intuitive semantics over internal convenience
 - Design APIs so callers don't need to know implementation details
 - *Example:* A `start_index` should work as-is; avoid requiring `start_index + 1` adjustments
@@ -38,10 +50,6 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - If `None` just means a default value, consider using a plain type instead
 - *Example:* `start_index: u64` with default 0 is simpler than `Option<u64>` where `None` means 0
 
-### Use safe type conversions
-- Avoid conversions that silently fail on edge cases
-- *Example:* `usize::try_from(value).expect("msg")` instead of `as usize` which truncates on overflow
-
 ### Prefer defensive arithmetic
 - Use operations that handle edge cases gracefully, even if guards exist
 - *Example:* `saturating_sub` instead of subtraction that could underflow if guards are later refactored
@@ -49,6 +57,12 @@ Apply these guidelines when writing or reviewing code in this codebase.
 ---
 
 ## Brevity
+
+### Inline expressions that save >2 lines
+- Inline expressions where doing so saves more than 2 lines without making the resulting line excessively long
+- Prefer `map_or(default, |x| x + 1)` over `map(|x| x + 1).unwrap_or(default)` - it's shorter and more idiomatic
+- Use `.or()` to update optional values instead of `if let Some(x) = ... { field = Some(x) }`
+- *Example:* `cursor.last_index = result.last_index.or(cursor.last_index);` instead of a 3-line `if let`
 
 ### Inline trivial expressions
 - Avoid separate `let` bindings for trivial expressions like `.clone()` when used immediately
@@ -94,6 +108,25 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Test names should precisely describe the scenario being verified
 - *Example:* `test_empty_collection` vs `test_no_new_items` convey different conditions
 
+### Match assertions to fixture guarantees
+- Only assert on data presence when the fixture explicitly guarantees that data exists
+- For structural/protocol tests, verify correctness of whatever data is returned without assuming specific content
+- *Example:* Assert `channels_done == true` (protocol correctness) separately from asserting `!channels.is_empty()` (data presence)
+
+### Verify base state before debugging failures
+- When a test fails unexpectedly, first verify the code at HEAD actually compiles and tests pass
+- Broken imports or syntax errors can mask that tests were never working
+- *Example:* `git stash && cargo build` to check if the original code even compiles before investigating test logic
+
+---
+
+## Module Organization
+
+### Public entry points first
+- Place public functions at the top of the module, before their private helpers
+- Readers should encounter the high-level orchestration first and drill into details top-down
+- *Example:* `pub async fn sync_incoming_state(...)` at the top, followed by `process_channel(...)`, then `process_subchannel(...)`
+
 ---
 
 ## WIP: Guidelines to add
@@ -101,4 +134,3 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - [ ] Error handling patterns
 - [ ] Async patterns
 - [ ] Trait design
-- [ ] Module organization
