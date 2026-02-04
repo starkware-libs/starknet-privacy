@@ -199,7 +199,9 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
   ): boolean {
     const toPublicKey = this.publicKeys.get(to);
     if (!toPublicKey) return false;
-    return this.channelMarkers.has(compute_channel_marker(channelKey, from, to, toBigInt(toPublicKey)));
+    return this.channelMarkers.has(
+      compute_channel_marker(channelKey, from, to, toBigInt(toPublicKey))
+    );
   }
 
   /**
@@ -604,7 +606,10 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       type: "OpenChannel",
       apply: () => {
         // Matches Cairo's WriteOnce for channel_exists - fails if channel already exists
-        assert(!this.channelMarkers.has(channelMarker), () => `Channel ${toHex(channelMarker)} already exists`);
+        assert(
+          !this.channelMarkers.has(channelMarker),
+          () => `Channel ${toHex(channelMarker)} already exists`
+        );
         this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
         this.channelMarkers.add(channelMarker);
         this.outgoingChannels.set(outgoingChannelId, encOutgoingChannelInfo);
@@ -637,7 +642,12 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     const subchannelId = compute_subchannel_id(channelKey, index);
     assert(!this.subchannels.has(subchannelId), () => `Token ${toHex(token)} already exists`);
 
-    const subchannelMarker = compute_subchannel_marker(channelKey, to, toBigInt(toPublicKey), token);
+    const subchannelMarker = compute_subchannel_marker(
+      channelKey,
+      to,
+      toBigInt(toPublicKey),
+      token
+    );
     const encryptedSubchannelInfo = encryptions.encryptSubchannelInfo(
       channelKey,
       index,
@@ -667,7 +677,9 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
   ): MockServerAction {
     const ownerPublicKey = this.get_public_key(owner);
     assert(
-      this.subchannelMarkers.has(compute_subchannel_marker(channelKey, owner, ownerPublicKey, token)),
+      this.subchannelMarkers.has(
+        compute_subchannel_marker(channelKey, owner, ownerPublicKey, token)
+      ),
       () => `Token ${token} does not exist`
     );
 
@@ -702,7 +714,12 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       to,
       toBigInt(toPublicKey)
     );
-    const subchannelMarker = compute_subchannel_marker(channelKey, to, toBigInt(toPublicKey), token);
+    const subchannelMarker = compute_subchannel_marker(
+      channelKey,
+      to,
+      toBigInt(toPublicKey),
+      token
+    );
     assert(this.subchannelMarkers.has(subchannelMarker), () => `Token ${token} does not exist`);
 
     assert(
@@ -743,7 +760,12 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       to,
       toBigInt(toPublicKey)
     );
-    const subchannelMarker = compute_subchannel_marker(channelKey, to, toBigInt(toPublicKey), token);
+    const subchannelMarker = compute_subchannel_marker(
+      channelKey,
+      to,
+      toBigInt(toPublicKey),
+      token
+    );
     assert(this.subchannelMarkers.has(subchannelMarker), () => `Token ${token} does not exist`);
 
     assert(
