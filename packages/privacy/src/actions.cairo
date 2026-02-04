@@ -1,5 +1,5 @@
+use privacy::events;
 use privacy::objects::EncChannelInfo;
-use privacy::{errors, events};
 use starknet::ContractAddress;
 
 /// Input for the `SetViewingKey` action.
@@ -155,8 +155,8 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
     const CREATE_NOTES_PHASE: u8 = 5;
     const WITHDRAW_PHASE: u8 = 6;
 
-    /// Returns the phase that the action is intended for.
-    fn intended_phase(self: @ClientAction) -> u8 {
+    /// Returns the phase associated with this action.
+    fn phase(self: @ClientAction) -> u8 {
         match self {
             ClientAction::SetViewingKey(_) => Self::ACCOUNT_PHASE,
             ClientAction::OpenChannel(_) => Self::CHANNEL_PHASE,
@@ -166,19 +166,6 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
             ClientAction::CreateOpenNote(_) => Self::CREATE_NOTES_PHASE,
             ClientAction::UseNote(_) => Self::USE_NOTES_PHASE,
             ClientAction::Withdraw(_) => Self::WITHDRAW_PHASE,
-        }
-    }
-
-    /// Asserts that the action is valid for the current phase and updates the phase.
-    fn assert_and_set_phase(self: @ClientAction, ref current_phase: u8) {
-        let intended_phase = self.intended_phase();
-        assert(current_phase <= intended_phase, errors::ACTIONS_OUT_OF_ORDER);
-
-        // Account phase is only allowed 1 action.
-        if intended_phase == Self::ACCOUNT_PHASE {
-            current_phase = intended_phase + 1;
-        } else {
-            current_phase = intended_phase;
         }
     }
 }

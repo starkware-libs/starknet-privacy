@@ -46,7 +46,6 @@ pub(crate) mod internal_errors {
     pub const ZERO_SUBCHANNEL_ID: felt252 = 'ZERO_SUBCHANNEL_ID';
     pub const ZERO_DERIVED_PUBLIC_KEY: felt252 = 'ZERO_DERIVED_PUBLIC_KEY';
     pub const ZERO_ENC_PRIVATE_KEY: felt252 = 'ZERO_ENC_PRIVATE_KEY';
-    pub const DESERIALIZE_FAILED: felt252 = 'DESERIALIZE_FAILED';
     pub const EXPECTED_PANIC: felt252 = 'EXPECTED_PANIC';
     pub const PACK_OVERFLOW: felt252 = 'PACK_OVERFLOW';
     pub const UNPACK1_OUT_OF_BOUNDS: felt252 = 'UNPACK1_OUT_OF_BOUNDS';

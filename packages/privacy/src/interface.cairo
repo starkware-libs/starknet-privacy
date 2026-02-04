@@ -230,6 +230,7 @@ pub trait IClient<T> {
     /// - This function always panics. On success, it panics with serialized server actions wrapped
     /// with [`OK_WRAPPER`](privacy::utils::constants::OK_WRAPPER). On error, it panics with the
     /// error.
+    /// - This function ensures that the contract state cannot be modified by client's functions.
     fn execute_and_panic(
         ref self: T,
         user_addr: ContractAddress,
