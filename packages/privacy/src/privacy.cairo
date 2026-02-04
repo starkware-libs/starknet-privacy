@@ -24,8 +24,8 @@ pub mod Privacy {
     use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
-        assert_valid_signature, decode_note_amount, derive_public_key, encrypt_channel_info,
-        encrypt_note_amount, encrypt_outgoing_channel_info, encrypt_private_key,
+        assert_valid_signature, decode_note_amount, derive_public_key, enc_note_packed_value,
+        encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
         encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, open_note, packing,
         panic_with_server_actions, send_message_to_server, to_write_once_action, unpacking,
         unwrap_execute_and_panic_result,
@@ -602,8 +602,8 @@ pub mod Privacy {
                     :index,
                 );
 
-            // `packed_value` contains `(salt, amount)`.
-            let packed_value = encrypt_note_amount(:channel_key, :token, :index, :salt, :amount);
+            // `packed_value` contains `(salt, enc_amount)`.
+            let packed_value = enc_note_packed_value(:channel_key, :token, :index, :salt, :amount);
             assert(packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
 
             token_balances.subtract_balance(:token, :amount);
