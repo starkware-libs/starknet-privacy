@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn test_compute_enc_amount_hash() {
-        use crate::types::felt_low_u128;
+        use crate::privacy_pool::types::felt_low_u128;
 
         let f = load_cairo_ref_fixture();
         let salt = felt_low_u128(f.inputs.salt);

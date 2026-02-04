@@ -18,7 +18,8 @@ mod common;
 use std::path::Path;
 
 use common::{DevnetClient, DevnetConfig, DumpMetadata};
-use discovery_core::storage::{IViews, StorageBackend};
+use discovery_core::privacy_pool::views::IViews;
+use discovery_core::storage_backend::StorageBackend;
 use discovery_service::rpc_backend::{RpcBackend, RpcConfig};
 use expect_test::expect;
 use starknet_core::types::Felt;

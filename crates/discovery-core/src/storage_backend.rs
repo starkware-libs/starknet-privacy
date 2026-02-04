@@ -1,14 +1,55 @@
-//! Mock storage backend for testing.
+//! Storage backend abstraction and mock implementation.
 //!
-//! This backend uses an in-memory HashMap to simulate storage reads,
-//! allowing unit tests to run without a real RPC endpoint.
+//! This module defines the storage access traits used by the privacy pool
+//! discovery logic, and provides a mock backend for testing.
 
 use std::collections::HashMap;
 
 use async_trait::async_trait;
+use starknet_core::types::BlockId;
 use starknet_types_core::felt::Felt;
+use thiserror::Error;
 
-use crate::storage::{RawStorageAccess, StorageError};
+use crate::privacy_pool::views::IViews;
+
+/// Errors that can occur during storage operations.
+#[derive(Debug, Error)]
+pub enum StorageError {
+    /// Failed to convert value to u64.
+    #[error("value is too large to convert to u64: {0}")]
+    CastToU64Error(Felt),
+    /// Backend-specific error.
+    #[error("{0}")]
+    Backend(#[source] Box<dyn std::error::Error + Send + Sync>),
+}
+
+/// Low-level storage access for reading raw storage slots.
+#[async_trait]
+pub trait RawStorageAccess: Send + Sync {
+    /// Reads a single storage slot.
+    async fn read_slot(&self, slot: Felt) -> Result<Felt, StorageError>;
+
+    /// Reads multiple storage slots.
+    async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError>;
+}
+
+/// Factory for creating storage snapshots bound to a specific block.
+#[async_trait]
+pub trait StorageBackend: Send + Sync {
+    /// The snapshot type produced by this backend.
+    type Snapshot: StorageSnapshot;
+
+    /// Creates a snapshot at the specified block.
+    /// If `block_id` is `None`, uses the latest block.
+    async fn snapshot(&self, block_id: Option<BlockId>) -> Result<Self::Snapshot, StorageError>;
+}
+
+/// Consistent view of storage at a specific block.
+#[async_trait]
+pub trait StorageSnapshot: IViews {
+    /// Returns the block ID this snapshot is bound to.
+    fn block_id(&self) -> BlockId;
+}
 
 /// Mock storage backend backed by an in-memory HashMap.
 ///
