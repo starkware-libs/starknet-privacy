@@ -15,6 +15,7 @@ use tempfile::NamedTempFile;
 use super::process::{find_free_port, signal_process, wait_for_log_pattern};
 
 /// Metadata from devnet dump, written by SDK during fixture generation.
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct DumpMetadata {
     pub timestamp: u64,
@@ -37,6 +38,7 @@ pub struct DevnetClient {
     _temp_dump: Option<NamedTempFile>,
 }
 
+#[allow(dead_code)]
 impl DevnetClient {
     pub fn spawn(config: DevnetConfig) -> Result<Self> {
         let port = config.port.unwrap_or(find_free_port()?);
