@@ -54,6 +54,7 @@ pub trait StorageSnapshot: IViews {
 /// Mock storage backend backed by an in-memory HashMap.
 ///
 /// Returns `Felt::ZERO` for any slot not in the map, mirroring the behavior of Cairo map.
+#[derive(Clone)]
 pub struct MockBackend {
     slots: HashMap<Felt, Felt>,
 }

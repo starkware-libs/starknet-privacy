@@ -11,6 +11,7 @@ starknet-core = "0.16"
 starknet-crypto = "0.8"
 starknet-types-core = { version = "0.2", features = ["curve", "serde"] }
 starknet-providers = "0.16"
+tokio = { version = "1", features = ["rt"] }
 tracing = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 url = "2"
