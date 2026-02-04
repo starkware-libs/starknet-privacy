@@ -1,7 +1,7 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    AppendToVecInput, DepositToOpenNoteInput, ServerAction, TransferFromInput, TransferToInput,
-    VerifyValueInput,
+    AppendToVecInput, DepositToOpenNoteInput, ReadAssertInput, ServerAction, TransferFromInput,
+    TransferToInput,
 };
 use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note};
 use privacy::tests::utils_for_tests::{
@@ -482,7 +482,7 @@ fn test_execute_transfer_to_assertions() {
 }
 
 #[test]
-fn test_execute_verify_value() {
+fn test_execute_read_assert() {
     let mut test: Test = Default::default();
     let user = test.new_user();
 
@@ -498,13 +498,13 @@ fn test_execute_verify_value() {
 
     // Verify value by action.
     let actions = array![
-        ServerAction::VerifyValue(VerifyValueInput { storage_address, value: user.public_key }),
+        ServerAction::ReadAssert(ReadAssertInput { storage_address, value: user.public_key }),
     ];
     test.privacy.execute_actions(actions.span());
 }
 
 #[test]
-fn test_execute_verify_value_assertions() {
+fn test_execute_read_assert_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let storage_path_felt = map_entry_address(
@@ -514,8 +514,8 @@ fn test_execute_verify_value_assertions() {
     // Catch VALUE_MISMATCH.
     assert_ne!(user.get_public_key(), user.public_key);
     let actions = array![
-        ServerAction::VerifyValue(
-            VerifyValueInput { storage_address: storage_path_felt, value: user.public_key },
+        ServerAction::ReadAssert(
+            ReadAssertInput { storage_address: storage_path_felt, value: user.public_key },
         ),
     ];
     let result = test.privacy.safe_execute_actions(actions.span());

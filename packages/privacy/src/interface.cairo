@@ -269,7 +269,7 @@ pub trait IClient<T> {
     /// [`ViewingKeySet`](privacy::events::ViewingKeySet) event.
     ///
     /// **For [`OpenChannel`](privacy::actions::ClientAction::OpenChannel) action:**
-    /// - [`VerifyValue`](privacy::actions::ServerAction::VerifyValue): Verifies that the
+    /// - [`ReadAssert`](privacy::actions::ServerAction::ReadAssert): Verifies that the
     /// recipient's public key in storage matches the provided public key.
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the channel existence
     /// flag to storage.
@@ -387,8 +387,8 @@ pub trait IServer<T> {
     ///   user to the contract via ERC20 `transfer_from`.
     ///   - [`TransferTo`](privacy::actions::ServerAction::TransferTo): Transfer tokens from the
     ///   contract to a recipient via ERC20 `transfer`.
-    ///   - [`VerifyValue`](privacy::actions::ServerAction::VerifyValue): Verify that a storage
-    ///   value is equal to a given value.
+    ///   - [`ReadAssert`](privacy::actions::ServerAction::ReadAssert): Read and assert that a
+    ///   storage value is equal to a given value.
     ///   - [`EmitViewingKeySet`](privacy::actions::ServerAction::EmitViewingKeySet): Emit a
     ///   [`ViewingKeySet`](privacy::events::ViewingKeySet) event.
     ///   - [`EmitWithdrawal`](privacy::actions::ServerAction::EmitWithdrawal): Emit a
@@ -404,7 +404,7 @@ pub trait IServer<T> {
     /// - `proof_facts` field in the TX info must be valid.
     /// - For [`WriteOnce`](privacy::actions::ServerAction::WriteOnce) actions, the storage location
     /// must be empty (zero) before writing.
-    /// - For [`VerifyValue`](privacy::actions::ServerAction::VerifyValue) actions, the storage
+    /// - For [`ReadAssert`](privacy::actions::ServerAction::ReadAssert) actions, the storage
     /// value must match the expected value.
     /// - For [`TransferFrom`](privacy::actions::ServerAction::TransferFrom) actions, the sender
     /// must have sufficient token balance and allowance.
@@ -423,7 +423,7 @@ pub trait IServer<T> {
     /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the value at the specified
     /// storage path already exists (is not zero).
     ///
-    /// **Errors for [`VerifyValue`](privacy::actions::ServerAction::VerifyValue) action:**
+    /// **Errors for [`ReadAssert`](privacy::actions::ServerAction::ReadAssert) action:**
     /// - [`VALUE_MISMATCH`](privacy::errors::VALUE_MISMATCH): Thrown if the storage value does not
     /// match the expected value.
     ///

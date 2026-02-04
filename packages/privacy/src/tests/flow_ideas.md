@@ -3,7 +3,7 @@
 1. Open 2 channels in succession.
 2. Open same channel twice, should fail in the second.
 3. open channel end-to-end.
-4. Open channel before recipient registered (should fail - VerifyValue checks recipient viewing key).
+4. Open channel before recipient registered (should fail - ReadAssert checks recipient viewing key).
 5. Open channel with wrong sender key (should fail - SENDER_NOT_AUTHENTICATED).
 
 ## Open Subchannel
