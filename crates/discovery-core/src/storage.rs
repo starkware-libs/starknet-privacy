@@ -47,8 +47,8 @@ pub trait StorageSnapshot: IViews {
 /// Privacy contract view methods.
 #[async_trait]
 pub trait IViews: Send + Sync {
-    /// Checks if a channel with the given ID exists.
-    async fn channel_exists(&self, channel_id: Felt) -> Result<bool, StorageError>;
+    /// Checks if a channel with the given marker exists.
+    async fn channel_exists(&self, channel_marker: Felt) -> Result<bool, StorageError>;
 
     /// Returns the number of channels for a recipient.
     async fn get_num_of_channels(&self, recipient_addr: Felt) -> Result<u64, StorageError>;
@@ -60,8 +60,8 @@ pub trait IViews: Send + Sync {
         channel_index: u64,
     ) -> Result<EncChannelInfo, StorageError>;
 
-    /// Checks if a subchannel with the given ID exists.
-    async fn subchannel_exists(&self, subchannel_id: Felt) -> Result<bool, StorageError>;
+    /// Checks if a subchannel with the given marker exists.
+    async fn subchannel_exists(&self, subchannel_marker: Felt) -> Result<bool, StorageError>;
 
     /// Returns encrypted subchannel info for the given key.
     async fn get_subchannel_info(
@@ -99,8 +99,8 @@ pub trait RawStorageAccess: Send + Sync {
 #[async_trait]
 impl<T: RawStorageAccess> IViews for T {
     #[tracing::instrument(name = "channel_exists", level = "debug", skip(self))]
-    async fn channel_exists(&self, channel_id: Felt) -> Result<bool, StorageError> {
-        let slot = storage_slots::channel_exists(channel_id)?;
+    async fn channel_exists(&self, channel_marker: Felt) -> Result<bool, StorageError> {
+        let slot = storage_slots::channel_exists(channel_marker)?;
         let value = self.read_slot(slot).await?;
         Ok(value != Felt::ZERO)
     }
@@ -136,8 +136,8 @@ impl<T: RawStorageAccess> IViews for T {
     }
 
     #[tracing::instrument(name = "subchannel_exists", level = "debug", skip(self))]
-    async fn subchannel_exists(&self, subchannel_id: Felt) -> Result<bool, StorageError> {
-        let slot = storage_slots::subchannel_exists(subchannel_id)?;
+    async fn subchannel_exists(&self, subchannel_marker: Felt) -> Result<bool, StorageError> {
+        let slot = storage_slots::subchannel_exists(subchannel_marker)?;
         let value = self.read_slot(slot).await?;
         Ok(value != Felt::ZERO)
     }

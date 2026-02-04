@@ -38,11 +38,11 @@ pub const ZERO_SALT: felt252 = 'ZERO_SALT';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';
-    pub const ZERO_CHANNEL_ID: felt252 = 'ZERO_CHANNEL_ID';
+    pub const ZERO_CHANNEL_MARKER: felt252 = 'ZERO_CHANNEL_MARKER';
     pub const ZERO_NOTE_ID: felt252 = 'ZERO_NOTE_ID';
     pub const ZERO_NOTE_VALUE: felt252 = 'ZERO_NOTE_VALUE';
     pub const ZERO_NULLIFIER: felt252 = 'ZERO_NULLIFIER';
-    pub const ZERO_SUBCHANNEL_ID: felt252 = 'ZERO_SUBCHANNEL_ID';
+    pub const ZERO_SUBCHANNEL_MARKER: felt252 = 'ZERO_SUBCHANNEL_MARKER';
     pub const ZERO_SUBCHANNEL_KEY: felt252 = 'ZERO_SUBCHANNEL_KEY';
     pub const ZERO_DERIVED_PUBLIC_KEY: felt252 = 'ZERO_DERIVED_PUBLIC_KEY';
     pub const ZERO_ENC_PRIVATE_KEY: felt252 = 'ZERO_ENC_PRIVATE_KEY';

@@ -61,9 +61,9 @@ pub struct CairoRefInputs {
     pub compliance_public_key: Felt,
     pub user_addr: Felt,
     pub user_private_key: Felt,
-    pub channel_id: Felt,
+    pub channel_marker: Felt,
     pub subchannel_key: Felt,
-    pub subchannel_id: Felt,
+    pub subchannel_marker: Felt,
     pub note_id: Felt,
     pub nullifier: Felt,
 }
@@ -73,9 +73,9 @@ pub struct CairoRefInputs {
 #[serde(rename_all = "camelCase")]
 pub struct CairoRefOutputs {
     pub channel_key: Felt,
-    pub channel_id: Felt,
+    pub channel_marker: Felt,
     pub subchannel_key: Felt,
-    pub subchannel_id: Felt,
+    pub subchannel_marker: Felt,
     pub note_id: Felt,
     pub nullifier: Felt,
     pub enc_amount_hash: Felt,

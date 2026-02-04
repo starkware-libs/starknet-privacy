@@ -811,12 +811,12 @@ fn test_open_channel() {
         :channel_key,
         sender_addr: user_1.address,
     );
-    let expected_channel_id = user_1.compute_channel_id(recipient: user_2);
+    let expected_channel_marker = user_1.compute_channel_marker(recipient: user_2);
     let public_key_storage_path = map_entry_address(
         map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
     );
     let channel_exists_storage_path = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
+        map_selector: selector!("channel_exists"), keys: [expected_channel_marker].span(),
     );
     let expected_outgoing_channel_key = user_1.compute_outgoing_channel_key(index: 0);
     let outgoing_channels_storage_path = map_entry_address(
@@ -859,12 +859,12 @@ fn test_open_channel_self_channel() {
         :channel_key,
         sender_addr: user.address,
     );
-    let expected_channel_id = user.compute_channel_id(recipient: user);
+    let expected_channel_marker = user.compute_channel_marker(recipient: user);
     let public_key_storage_path = map_entry_address(
         map_selector: selector!("public_key"), keys: [user.address.into()].span(),
     );
     let channel_exists_storage_path = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
+        map_selector: selector!("channel_exists"), keys: [expected_channel_marker].span(),
     );
     let expected_outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
     let outgoing_channels_storage_path = map_entry_address(
@@ -1098,9 +1098,9 @@ fn test_open_channel_multiple_channels_same_sender() {
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    let expected_channel_id_1 = user_1.compute_channel_id(recipient: user_2);
-    let expected_channel_id_2 = user_1.compute_channel_id(recipient: user_3);
-    assert_ne!(expected_channel_id_1, expected_channel_id_2);
+    let expected_channel_marker_1 = user_1.compute_channel_marker(recipient: user_2);
+    let expected_channel_marker_2 = user_1.compute_channel_marker(recipient: user_3);
+    assert_ne!(expected_channel_marker_1, expected_channel_marker_2);
     let expected_outgoing_channel_key_1 = user_1.compute_outgoing_channel_key(index: 0);
     let expected_outgoing_channel_key_2 = user_1.compute_outgoing_channel_key(index: 1);
     assert_ne!(expected_outgoing_channel_key_1, expected_outgoing_channel_key_2);
@@ -1121,10 +1121,10 @@ fn test_open_channel_multiple_channels_same_sender() {
         map_selector: selector!("public_key"), keys: [user_3.address.into()].span(),
     );
     let channel_exists_storage_path_1 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
+        map_selector: selector!("channel_exists"), keys: [expected_channel_marker_1].span(),
     );
     let channel_exists_storage_path_2 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
+        map_selector: selector!("channel_exists"), keys: [expected_channel_marker_2].span(),
     );
     let outgoing_channels_storage_path_1 = map_entry_address(
         map_selector: selector!("outgoing_channels"),
@@ -1214,9 +1214,9 @@ fn test_open_channel_multiple_channels_same_recipient() {
     assert_ne!(
         expected_enc_channel_info_1.enc_sender_addr, expected_enc_channel_info_2.enc_sender_addr,
     );
-    let expected_channel_id_1 = user_2.compute_channel_id(recipient: user_1);
-    let expected_channel_id_2 = user_3.compute_channel_id(recipient: user_1);
-    assert_ne!(expected_channel_id_1, expected_channel_id_2);
+    let expected_channel_marker_1 = user_2.compute_channel_marker(recipient: user_1);
+    let expected_channel_marker_2 = user_3.compute_channel_marker(recipient: user_1);
+    assert_ne!(expected_channel_marker_1, expected_channel_marker_2);
     let public_key_storage_path_1 = map_entry_address(
         map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
     );
@@ -1224,10 +1224,10 @@ fn test_open_channel_multiple_channels_same_recipient() {
         map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
     );
     let channel_exists_storage_path_1 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_1].span(),
+        map_selector: selector!("channel_exists"), keys: [expected_channel_marker_1].span(),
     );
     let channel_exists_storage_path_2 = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id_2].span(),
+        map_selector: selector!("channel_exists"), keys: [expected_channel_marker_2].span(),
     );
     let expected_outgoing_channel_key_1 = user_2.compute_outgoing_channel_key(index: 0);
     let expected_outgoing_channel_key_2 = user_3.compute_outgoing_channel_key(index: 0);
@@ -1350,10 +1350,11 @@ fn test_open_subchannel() {
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :salt);
-    let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
+    let expected_subchannel_marker = user_1
+        .compute_subchannel_marker(recipient: user_2, :token_address);
 
     let subchannel_exists_storage_path_felt = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker].span(),
     );
     let subchannel_tokens_storage_path_felt = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
@@ -1382,10 +1383,11 @@ fn test_open_subchannel_self_channel() {
     let expected_subchannel_key = user.compute_subchannel_key(recipient: user, index: 0);
     let expected_enc_subchannel_info = user
         .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, :salt);
-    let expected_subchannel_id = user.compute_subchannel_id(recipient: user, :token_address);
+    let expected_subchannel_marker = user
+        .compute_subchannel_marker(recipient: user, :token_address);
 
     let subchannel_exists_storage_path_felt = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker].span(),
     );
     let subchannel_tokens_storage_path_felt = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
@@ -1681,19 +1683,19 @@ fn test_open_subchannel_multiple() {
         .compute_enc_subchannel_info(
             recipient: user_2, token_address: token_address_2, index: 1, salt: salt_2,
         );
-    let expected_subchannel_id_1 = user_1
-        .compute_subchannel_id(recipient: user_2, token_address: token_address_1);
-    let expected_subchannel_id_2 = user_1
-        .compute_subchannel_id(recipient: user_2, token_address: token_address_2);
+    let expected_subchannel_marker_1 = user_1
+        .compute_subchannel_marker(recipient: user_2, token_address: token_address_1);
+    let expected_subchannel_marker_2 = user_1
+        .compute_subchannel_marker(recipient: user_2, token_address: token_address_2);
     assert_ne!(expected_subchannel_key_1, expected_subchannel_key_2);
     assert_ne!(expected_enc_subchannel_info_1.salt, expected_enc_subchannel_info_2.salt);
     assert_ne!(expected_enc_subchannel_info_1.enc_token, expected_enc_subchannel_info_2.enc_token);
-    assert_ne!(expected_subchannel_id_1, expected_subchannel_id_2);
+    assert_ne!(expected_subchannel_marker_1, expected_subchannel_marker_2);
     let subchannel_exists_storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id_1].span(),
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker_1].span(),
     );
     let subchannel_exists_storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id_2].span(),
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker_2].span(),
     );
     let subchannel_tokens_storage_path_felt_1 = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_1].span(),
@@ -1739,12 +1741,13 @@ fn test_open_subchannel_multiple() {
     let expected_enc_subchannel_info_2 = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 1, salt: salt_2);
     // Id will be the same since the token is the same.
-    let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
+    let expected_subchannel_marker = user_1
+        .compute_subchannel_marker(recipient: user_2, :token_address);
     assert_ne!(expected_subchannel_key_1, expected_subchannel_key_2);
     assert_ne!(expected_enc_subchannel_info_1.salt, expected_enc_subchannel_info_2.salt);
     assert_ne!(expected_enc_subchannel_info_1.enc_token, expected_enc_subchannel_info_2.enc_token);
     let subchannel_exists_storage_path_felt = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker].span(),
     );
     let subchannel_tokens_storage_path_felt_1 = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_1].span(),
@@ -1796,18 +1799,18 @@ fn test_open_subchannel_multiple() {
         .compute_enc_subchannel_info(
             recipient: user_2, token_address: token_address_2, index: 0, salt: salt_2,
         );
-    let expected_subchannel_id_1 = user_1
-        .compute_subchannel_id(recipient: user_2, token_address: token_address_1);
-    let expected_subchannel_id_2 = user_1
-        .compute_subchannel_id(recipient: user_2, token_address: token_address_2);
+    let expected_subchannel_marker_1 = user_1
+        .compute_subchannel_marker(recipient: user_2, token_address: token_address_1);
+    let expected_subchannel_marker_2 = user_1
+        .compute_subchannel_marker(recipient: user_2, token_address: token_address_2);
     assert_ne!(expected_enc_subchannel_info_1.salt, expected_enc_subchannel_info_2.salt);
     assert_ne!(expected_enc_subchannel_info_1.enc_token, expected_enc_subchannel_info_2.enc_token);
-    assert_ne!(expected_subchannel_id_1, expected_subchannel_id_2);
+    assert_ne!(expected_subchannel_marker_1, expected_subchannel_marker_2);
     let subchannel_exists_storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id_1].span(),
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker_1].span(),
     );
     let subchannel_exists_storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id_2].span(),
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker_2].span(),
     );
     let subchannel_tokens_storage_path_felt = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
@@ -1861,19 +1864,19 @@ fn test_open_subchannel_multiple_self_channel() {
         .compute_enc_subchannel_info(
             recipient: user, token_address: token_address_2, index: 1, salt: salt_2,
         );
-    let expected_subchannel_id_1 = user
-        .compute_subchannel_id(recipient: user, token_address: token_address_1);
-    let expected_subchannel_id_2 = user
-        .compute_subchannel_id(recipient: user, token_address: token_address_2);
+    let expected_subchannel_marker_1 = user
+        .compute_subchannel_marker(recipient: user, token_address: token_address_1);
+    let expected_subchannel_marker_2 = user
+        .compute_subchannel_marker(recipient: user, token_address: token_address_2);
     assert_ne!(expected_subchannel_key_1, expected_subchannel_key_2);
     assert_ne!(expected_enc_subchannel_info_1.salt, expected_enc_subchannel_info_2.salt);
     assert_ne!(expected_enc_subchannel_info_1.enc_token, expected_enc_subchannel_info_2.enc_token);
-    assert_ne!(expected_subchannel_id_1, expected_subchannel_id_2);
+    assert_ne!(expected_subchannel_marker_1, expected_subchannel_marker_2);
     let subchannel_exists_storage_path_felt_1 = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id_1].span(),
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker_1].span(),
     );
     let subchannel_exists_storage_path_felt_2 = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id_2].span(),
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker_2].span(),
     );
     let subchannel_tokens_storage_path_felt_1 = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key_1].span(),
@@ -3839,7 +3842,7 @@ fn test_client_execute_open_channel() {
     ]
         .span();
     let actions = user_1.client_execute(:client_actions);
-    let expected_channel_id = user_1.compute_channel_id(recipient: user_2);
+    let expected_channel_marker = user_1.compute_channel_marker(recipient: user_2);
     let expected_channel_key = user_1.compute_channel_key(recipient: user_2);
     let expected_enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random,
@@ -3854,7 +3857,7 @@ fn test_client_execute_open_channel() {
         map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
     );
     let channel_exists_storage_path = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
+        map_selector: selector!("channel_exists"), keys: [expected_channel_marker].span(),
     );
     let outgoing_channels_storage_path = map_entry_address(
         map_selector: selector!("outgoing_channels"), keys: [expected_outgoing_channel_key].span(),
@@ -3882,14 +3885,14 @@ fn test_client_execute_open_channel() {
     assert_eq!(view_actions, actions);
     let panic_data_actions = user_1.execute_and_panic(:client_actions);
     assert_eq!(panic_data_actions, actions);
-    assert!(!test.privacy.channel_exists(channel_id: expected_channel_id));
+    assert!(!test.privacy.channel_exists(channel_marker: expected_channel_marker));
     assert_eq!(user_2.get_num_of_channels(), 0);
     let result = user_2.safe_get_channel_info(channel_index: 0);
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
     assert_eq!(user_1.get_num_of_channels(), 0);
 
     test.privacy.execute_actions(:actions);
-    assert!(test.privacy.channel_exists(channel_id: expected_channel_id));
+    assert!(test.privacy.channel_exists(channel_marker: expected_channel_marker));
     assert_eq!(user_2.get_num_of_channels(), 1);
     assert_eq!(user_2.get_channel_info(channel_index: 0), expected_enc_channel_info);
     assert_eq!(user_1.get_num_of_channels(), 0);
@@ -3925,12 +3928,13 @@ fn test_client_execute_open_subchannel() {
     ]
         .span();
     let actions = user_1.client_execute(:client_actions);
-    let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
+    let expected_subchannel_marker = user_1
+        .compute_subchannel_marker(recipient: user_2, :token_address);
     let expected_subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
         .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :salt);
     let subchannel_exists_storage_path_felt = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker].span(),
     );
     let subchannel_tokens_storage_path_felt = map_entry_address(
         map_selector: selector!("subchannel_tokens"), keys: [expected_subchannel_key].span(),
@@ -3948,14 +3952,14 @@ fn test_client_execute_open_subchannel() {
     assert_eq!(view_actions, actions);
     let panic_data_actions = user_1.execute_and_panic(:client_actions);
     assert_eq!(panic_data_actions, actions);
-    assert!(!test.privacy.subchannel_exists(subchannel_id: expected_subchannel_id));
+    assert!(!test.privacy.subchannel_exists(subchannel_marker: expected_subchannel_marker));
     assert_eq!(
         test.privacy.get_subchannel_info(subchannel_key: expected_subchannel_key),
         EncSubchannelInfo { salt: Zero::zero(), enc_token: Zero::zero() },
     );
 
     test.privacy.execute_actions(:actions);
-    assert!(test.privacy.subchannel_exists(subchannel_id: expected_subchannel_id));
+    assert!(test.privacy.subchannel_exists(subchannel_marker: expected_subchannel_marker));
     assert_eq!(
         test.privacy.get_subchannel_info(subchannel_key: expected_subchannel_key),
         expected_enc_subchannel_info,
@@ -4174,12 +4178,12 @@ fn test_internal_actions() {
         :channel_key,
         sender_addr: user_1.address,
     );
-    let expected_channel_id = user_1.compute_channel_id(recipient: user_2);
+    let expected_channel_marker = user_1.compute_channel_marker(recipient: user_2);
     let public_key_storage_path = map_entry_address(
         map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
     );
     let channel_exists_storage_path = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [expected_channel_id].span(),
+        map_selector: selector!("channel_exists"), keys: [expected_channel_marker].span(),
     );
     let expected_outgoing_channel_key = user_1.compute_outgoing_channel_key(index: 0);
     let outgoing_channels_storage_path = map_entry_address(
@@ -4209,9 +4213,9 @@ fn test_internal_actions() {
     // Open subchannel action.
     let (salt_subchannel, actions) = user_1
         .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_address, index: 0);
-    let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, :token_address);
+    let subchannel_marker = user_1.compute_subchannel_marker(recipient: user_2, :token_address);
     let subchannel_exists_storage_path = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_marker].span(),
     );
     let subchannel_key = user_1.compute_subchannel_key(recipient: user_2, index: 0);
     let subchannel_tokens_storage_path = map_entry_address(
@@ -5020,9 +5024,9 @@ fn test_client_execute_writes() {
     );
     let public_key = user.public_key;
     let enc_private_key = user.compute_enc_private_key(random: random.into());
-    let channel_id = user.compute_channel_id(recipient: user);
+    let channel_marker = user.compute_channel_marker(recipient: user);
     let channel_exists_storage_path = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
     );
     let enc_channel_info = encrypt_channel_info(
         ephemeral_secret: random.into(), :recipient_public_key, :channel_key, sender_addr: address,
@@ -5033,9 +5037,9 @@ fn test_client_execute_writes() {
     );
     let enc_outgoing_channel_info = user
         .compute_enc_outgoing_channel_info(recipient: user, :index, salt: salt.into());
-    let subchannel_id = user.compute_subchannel_id(recipient: user, :token_address);
+    let subchannel_marker = user.compute_subchannel_marker(recipient: user, :token_address);
     let subchannel_exists_storage_path = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_marker].span(),
     );
     let subchannel_key = user.compute_subchannel_key(recipient: user, :index);
     let subchannel_tokens_storage_path = map_entry_address(
