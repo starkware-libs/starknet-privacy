@@ -36,8 +36,10 @@ import {
 } from "../internal/contract-discovery.js";
 import { toBigInt } from "../utils/crypto.js";
 import { Devnet as StarknetDevnet } from "starknet-devnet";
-import { readFileSync, writeFileSync } from "fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from "fs";
+import { gzipSync } from "zlib";
 import { join, dirname } from "path";
+import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 import { PrivacyPoolABI } from "../internal/abi.js";
 import type { PrivacyPoolContract } from "../internal/private-transfers.js";
@@ -133,32 +135,47 @@ export class Devnet {
   private provider?: RpcProvider;
   public setup?: DevnetEnvironment;
   private accountNonces = new AddressMap<number>(() => 0);
+  private tempDevnetDumpPath?: string;
+  private spawnTimestamp?: number;
+  private alicePrivateKey?: string;
 
   /**
    * Initialize the devnet environment and deploy all contracts
    */
   async initialize(): Promise<DevnetEnvironment> {
+    // Build devnet args
+    const devnetArgs = [
+      "--lite-mode",
+      "--seed",
+      "42", // Use a seed for reproducible predeployed accounts
+      "--block-generation-on",
+      "transaction", // Generate blocks immediately on transaction
+      "--state-archive-capacity",
+      "none", // Disable state commitments for faster testing
+      "--accounts",
+      "3", // 3 accounts (alice, bob, admin)
+      "--l2-gas-price-fri",
+      "1",
+      "--data-gas-price-fri",
+      "1",
+      "--gas-price-fri",
+      "1",
+    ];
+
+    // Add dump args if DUMP_DEVNET_PATH is set (directory for devnet dump output)
+    const dumpDir = process.env.DUMP_DEVNET_PATH;
+    if (dumpDir) {
+      mkdirSync(dumpDir, { recursive: true });
+      this.tempDevnetDumpPath = join(tmpdir(), `devnet-dump-${Date.now()}.json`);
+      devnetArgs.push("--dump-on", "exit", "--dump-path", this.tempDevnetDumpPath);
+      console.log(`Devnet dump enabled, will write to: ${dumpDir}`);
+    }
+
     // Spawn a devnet instance on a random free port
     // Using latest version for Cairo 1.7.0 (Sierra 1.7.0) support
+    this.spawnTimestamp = Math.floor(Date.now() / 1000);
     this.devnet = await StarknetDevnet.spawnVersion("v0.7.2", {
-      args: [
-        "--lite-mode",
-        "--seed",
-        "42", // Use a seed for reproducible predeployed accounts
-        "--block-generation-on",
-        "transaction", // Generate blocks immediately on transaction
-        "--state-archive-capacity",
-        "none", // Disable state commitments for faster testing
-        "--accounts",
-        "3", // 3 accounts (alice, bob, admin)
-        "--l2-gas-price-fri",
-        "1",
-        "--data-gas-price-fri",
-        "1",
-        "--gas-price-fri",
-        "1",
-        // "--dump-on", "exit", "--dump-path", "/tmp/devnet_snapshot.json"
-      ],
+      args: devnetArgs,
     });
 
     console.log(`Devnet running at: ${this.devnet.provider.url}`);
@@ -193,6 +210,7 @@ export class Devnet {
 
     // Setup Alice (first account)
     const aliceAccount = accounts[0];
+    this.alicePrivateKey = aliceAccount.private_key;
     const alicePrivateKeyBytes = new Uint8Array(
       aliceAccount.private_key
         .replace("0x", "")
@@ -342,6 +360,7 @@ export class Devnet {
           deployer.address, // governance_admin
           "0x1", // compliance_public_key (dummy value)
         ],
+        salt: "0x0", // Deterministic salt for reproducible contract address
       },
       { retryInterval: 100 }
     );
@@ -440,17 +459,48 @@ export class Devnet {
 
   /**
    * Terminate the devnet process.
-   * If DUMP_STATE_PATH env var is set, dumps contract state before cleanup.
+   * If DUMP_STATE_PATH is set, dumps contract state before cleanup.
+   * If DUMP_DEVNET_PATH is set, compresses the devnet dump after exit.
    */
   async cleanup(): Promise<void> {
-    const dumpPath = process.env.DUMP_STATE_PATH;
-    if (dumpPath && this.setup) {
-      console.log(`Dumping contract state to: ${dumpPath}`);
-      await this.dumpContractState(dumpPath);
+    const dumpStatePath = process.env.DUMP_STATE_PATH;
+    if (dumpStatePath && this.setup) {
+      mkdirSync(dirname(dumpStatePath), { recursive: true });
+      await this.dumpContractState(dumpStatePath);
     }
 
     if (this.devnet) {
       this.devnet.kill("SIGINT");
+
+      // Compress devnet dump if requested (DUMP_DEVNET_PATH is the output directory)
+      const dumpDir = process.env.DUMP_DEVNET_PATH;
+      if (dumpDir && this.tempDevnetDumpPath && this.setup && this.spawnTimestamp) {
+        // Wait for dump file (devnet writes on exit)
+        for (let i = 0; i < 50 && !existsSync(this.tempDevnetDumpPath); i++) {
+          await new Promise((r) => setTimeout(r, 100));
+        }
+        if (existsSync(this.tempDevnetDumpPath)) {
+          mkdirSync(dumpDir, { recursive: true });
+
+          // Compress and write dump
+          const dumpPath = join(dumpDir, "devnet-dump.json.gz");
+          const rawDump = readFileSync(this.tempDevnetDumpPath);
+          writeFileSync(dumpPath, gzipSync(rawDump));
+          unlinkSync(this.tempDevnetDumpPath);
+          console.log(`Wrote dump: ${dumpPath}`);
+
+          // Write metadata file
+          const metadata = {
+            timestamp: this.spawnTimestamp,
+            contract_address: this.setup.privacy.address,
+            alice_address: this.setup.alice.address,
+            alice_private_key: this.alicePrivateKey,
+          };
+          const metadataPath = join(dumpDir, "devnet-dump.metadata.json");
+          writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+          console.log(`Wrote metadata: ${metadataPath}`);
+        }
+      }
     }
   }
 }
