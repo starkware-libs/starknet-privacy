@@ -6,11 +6,11 @@
 
 use starknet_types_core::felt::Felt;
 
-use super::DiscoveryError;
-use crate::decryption::decrypt_subchannel_token;
-use crate::hashes::compute_subchannel_id;
-use crate::io_budget::{IoBudget, COST_SUBCHANNEL_INFO};
-use crate::storage::IViews;
+use super::{DiscoveryError, COST_SUBCHANNEL_INFO};
+use crate::io_budget::IoBudget;
+use crate::privacy_pool::decryption::decrypt_subchannel_token;
+use crate::privacy_pool::hashes::compute_subchannel_id;
+use crate::privacy_pool::views::IViews;
 
 /// A discovered and decrypted subchannel.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,9 +26,9 @@ pub struct Subchannel {
 pub struct SubchannelDiscoveryResult {
     /// List of discovered and decrypted subchannels.
     pub subchannels: Vec<Subchannel>,
-    /// Next index to scan for incremental discovery.
-    /// Use this as `start_index` for the next discovery call.
-    pub total_n_subchannels: u64,
+    /// Index of the last discovered subchannel, or `None` if no
+    /// subchannels were discovered.
+    pub last_index: Option<u64>,
     /// Whether there may be more subchannels to discover.
     /// `true` if stopped due to budget exhaustion, `false` if sentinel was found.
     pub has_more: bool,
@@ -49,7 +49,7 @@ pub struct SubchannelDiscoveryResult {
 /// * `privacy_pool` - Storage backend implementing the IViews trait.
 /// * `channel_key` - The channel key to discover subchannels for.
 /// * `start_index` - Starting index (inclusive). For incremental discovery, pass
-///   `total_n_subchannels` from previous result.
+///   `last_index + 1` from previous result.
 /// * `budget` - I/O budget to limit storage operations.
 ///
 /// # Returns
@@ -87,9 +87,11 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
         index += 1;
     }
 
+    let last_index = subchannels.last().map(|s| s.index);
+
     Ok(SubchannelDiscoveryResult {
         subchannels,
-        total_n_subchannels: index,
+        last_index,
         has_more: out_of_budget,
     })
 }
@@ -97,7 +99,7 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mock_backend::MockBackend;
+    use crate::storage_backend::MockBackend;
     use crate::test_fixtures::{get_channel_key, load_devnet_fixture};
 
     #[tokio::test]
@@ -112,7 +114,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.subchannels.len(), 0);
-        assert_eq!(result.total_n_subchannels, 0);
+        assert_eq!(result.last_index, None);
         assert!(!result.has_more);
     }
 
@@ -141,7 +143,7 @@ mod tests {
             1,
             "Alice's self-channel should have 1 subchannel (STRK)"
         );
-        assert_eq!(result.total_n_subchannels, 1);
+        assert_eq!(result.last_index, Some(0));
         assert!(!result.has_more);
         assert_eq!(result.subchannels[0].index, 0);
         // The subchannel token should be STRK
@@ -173,7 +175,7 @@ mod tests {
             1,
             "Bob's channel should have 1 subchannel (STRK)"
         );
-        assert_eq!(result.total_n_subchannels, 1);
+        assert_eq!(result.last_index, Some(0));
         assert!(!result.has_more);
         assert_eq!(result.subchannels[0].index, 0);
         // The subchannel token should be STRK
@@ -200,16 +202,20 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(result1.subchannels.len(), 1);
-        assert_eq!(result1.total_n_subchannels, 1);
+        assert_eq!(result1.last_index, Some(0));
         assert!(!result1.has_more);
 
-        // Incremental discovery starting from total - should find 0 new subchannels
-        let result2 =
-            discover_subchannels(&backend, channel_key, result1.total_n_subchannels, &budget)
-                .await
-                .unwrap();
+        // Incremental discovery starting from last_index + 1 - should find 0 new subchannels
+        let result2 = discover_subchannels(
+            &backend,
+            channel_key,
+            result1.last_index.unwrap() + 1,
+            &budget,
+        )
+        .await
+        .unwrap();
         assert_eq!(result2.subchannels.len(), 0);
-        assert_eq!(result2.total_n_subchannels, 1);
+        assert_eq!(result2.last_index, None);
         assert!(!result2.has_more);
     }
 
@@ -234,7 +240,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.subchannels.len(), 0);
-        assert_eq!(result.total_n_subchannels, 0);
+        assert_eq!(result.last_index, None);
         assert!(result.has_more);
     }
 }
