@@ -1,15 +1,9 @@
-#[starknet::interface]
-pub(crate) trait AccountABI<TState> {
-    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
-}
-
-
 #[starknet::contract]
 pub mod MockAccount {
     use core::num::traits::Zero;
+    use privacy::utils::IAccount;
     use starknet::VALIDATED;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
-    use super::AccountABI;
 
     #[storage]
     struct Storage {
@@ -26,7 +20,7 @@ pub mod MockAccount {
     }
 
     #[abi(embed_v0)]
-    impl MockAccountImpl of AccountABI<ContractState> {
+    impl MockAccountImpl of IAccount<ContractState> {
         fn is_valid_signature(
             self: @ContractState, hash: felt252, signature: Array<felt252>,
         ) -> felt252 {

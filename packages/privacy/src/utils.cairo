@@ -17,8 +17,13 @@ use privacy::utils::constants::{
     ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
 };
 use starknet::storage::{StorageAsPointer, StoragePath};
-use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
+use starknet::syscalls::send_message_to_l1_syscall;
 use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
+
+#[starknet::interface]
+pub(crate) trait IAccount<TState> {
+    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
+}
 
 pub mod constants {
     use core::num::traits::{Pow, Zero};
@@ -301,20 +306,10 @@ pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
 
 pub(crate) fn assert_valid_signature(user_addr: ContractAddress, tx_info: Box<TxInfo>) {
     let tx_hash = tx_info.transaction_hash;
-    let signature = tx_info.signature;
+    let signature = tx_info.signature.into();
 
-    // Use syscall to wrap possible panics with `ERROR_WRAPPER`.
-    let mut calldata = array![];
-    tx_hash.serialize(ref calldata);
-    signature.serialize(ref calldata);
-    let syscall_result = call_contract_syscall(
-        address: user_addr,
-        entry_point_selector: selector!("is_valid_signature"),
-        calldata: calldata.span(),
-    );
-    let mut serialized_result = syscall_result.unwrap_syscall();
-    let is_valid: felt252 = Serde::deserialize(ref serialized_result)
-        .expect(internal_errors::DESERIALIZE_FAILED);
+    let user_account = IAccountDispatcher { contract_address: user_addr };
+    let is_valid = user_account.is_valid_signature(hash: tx_hash, :signature);
     assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
 }
 
