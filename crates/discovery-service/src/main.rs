@@ -2,10 +2,12 @@
 
 use clap::Parser;
 use discovery_service::indexer::{Indexer, IndexerConfig};
+use discovery_service::rpc_backend::{RpcBackend, RpcConfig};
 use discovery_service::shutdown::Shutdown;
 use tokio::task::JoinHandle;
 use tracing::{error, info, subscriber::set_global_default};
 use tracing_subscriber::filter::EnvFilter;
+use url::Url;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -42,12 +44,25 @@ async fn main() {
 
     let shutdown = Shutdown::default();
 
+    // TODO: load config from a file rather than environment variables
+
     let mut indexer_config = IndexerConfig::default();
     if let Ok(ws_url) = std::env::var("WS_URL") {
         indexer_config.ws_url = ws_url;
     }
 
-    let mut indexer = Indexer::new(indexer_config, shutdown.subscribe());
+    let mut rpc_config = RpcConfig::default();
+    if let Ok(rpc_url) = std::env::var("RPC_URL") {
+        rpc_config.rpc_url = Url::parse(&rpc_url).expect("Failed to parse RPC_URL");
+    }
+    if let Ok(contract_address) = std::env::var("CONTRACT_ADDRESS") {
+        rpc_config.contract_address = contract_address
+            .parse()
+            .expect("Failed to parse CONTRACT_ADDRESS");
+    }
+    let rpc_backend = RpcBackend::new(rpc_config).expect("Failed to create RPC backend");
+
+    let mut indexer = Indexer::new(indexer_config, shutdown.subscribe(), rpc_backend);
     let indexer_handle = tokio::spawn(async move { indexer.run().await });
     let shutdown_handle = tokio::spawn(async move { shutdown.run().await });
 
