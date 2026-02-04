@@ -1,5 +1,8 @@
 #![allow(unused)]
 
 mod devnet;
+mod indexer;
+mod process;
 
-pub use devnet::{Devnet, DevnetConfig};
+pub use devnet::{DevnetClient, DevnetConfig, DumpMetadata};
+pub use indexer::IndexerClient;

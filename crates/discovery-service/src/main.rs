@@ -1,13 +1,11 @@
 #![doc = include_str!("../README.md")]
 
 use clap::Parser;
+use discovery_service::indexer::{Indexer, IndexerConfig};
+use discovery_service::shutdown::Shutdown;
 use tokio::task::JoinHandle;
 use tracing::{error, info, subscriber::set_global_default};
 use tracing_subscriber::filter::EnvFilter;
-
-use crate::shutdown::Shutdown;
-
-mod shutdown;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -43,9 +41,17 @@ async fn main() {
     info!("Discovery service is launching...");
 
     let shutdown = Shutdown::default();
+
+    let mut indexer_config = IndexerConfig::default();
+    if let Ok(ws_url) = std::env::var("WS_URL") {
+        indexer_config.ws_url = ws_url;
+    }
+
+    let mut indexer = Indexer::new(indexer_config, shutdown.subscribe());
+    let indexer_handle = tokio::spawn(async move { indexer.run().await });
     let shutdown_handle = tokio::spawn(async move { shutdown.run().await });
 
-    match tokio::try_join!(flatten(shutdown_handle)) {
+    match tokio::try_join!(flatten(indexer_handle), flatten(shutdown_handle)) {
         Ok(_) => {
             info!("Discovery service has shut down");
             std::process::exit(0);
@@ -57,10 +63,10 @@ async fn main() {
     }
 }
 
-async fn flatten<T>(handle: JoinHandle<Result<T, ()>>) -> Result<T, ()> {
+async fn flatten<T, E>(handle: JoinHandle<Result<T, E>>) -> Result<T, ()> {
     match handle.await {
         Ok(Ok(result)) => Ok(result),
-        Ok(Err(err)) => Err(err),
+        Ok(Err(_)) => Err(()),
         Err(_) => Err(()),
     }
 }
