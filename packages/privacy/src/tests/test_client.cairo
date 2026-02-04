@@ -9,8 +9,7 @@ use privacy::objects::{EncSubchannelInfo, EncUserAddr};
 use privacy::tests::utils_for_tests::{
     ComplianceTrait, CreateEncNoteInputIntoServerActionTrait,
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
-    assert_unique_felts, constants, decrypt_channel_info, decrypt_outgoing_channel_info,
-    decrypt_subchannel_token,
+    constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
 };
 use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
@@ -24,6 +23,7 @@ use snforge_std::{
 use starknet::VALIDATED;
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
+use starkware_utils::span::SpanFeltsTrait;
 use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_error,
     assert_panic_with_felt_error,
@@ -2026,20 +2026,19 @@ fn test_create_note_twice() {
     let (note_id_3, expected_note_3) = user_1.compute_open_note(create_note_input: note_3);
     let (note_id_4, expected_note_4) = user_1.compute_open_note(create_note_input: note_4);
     let (note_id_5, expected_note_5) = user_1.compute_enc_note(create_note_input: note_5);
-    assert_unique_felts(felts: [note_id_1, note_id_2, note_id_3, note_id_4, note_id_5].span());
+    [note_id_1, note_id_2, note_id_3, note_id_4, note_id_5].span().assert_unique_felts();
 
     // Verify open note values are the same.
     assert_eq!(expected_note_3.packed_value, expected_note_4.packed_value);
 
     // Verify encrypted create_note_input values are unique (and differ from open note
     // value).
-    assert_unique_felts(
-        felts: [
-            expected_note_1.packed_value, expected_note_2.packed_value,
-            expected_note_3.packed_value, expected_note_5.packed_value,
-        ]
-            .span(),
-    );
+    [
+        expected_note_1.packed_value, expected_note_2.packed_value, expected_note_3.packed_value,
+        expected_note_5.packed_value,
+    ]
+        .span()
+        .assert_unique_felts();
 }
 
 #[test]
