@@ -6,11 +6,11 @@
 use starknet_types_core::{curve::AffinePoint, felt::Felt};
 use thiserror::Error;
 
-use crate::hashes::{
+use super::hashes::{
     compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
     compute_enc_token_hash,
 };
-use crate::types::{felt_low_u128, ChannelInfo, EncChannelInfo, EncSubchannelInfo};
+use super::types::{felt_low_u128, ChannelInfo, EncChannelInfo, EncSubchannelInfo};
 
 /// Errors that can occur during decryption.
 #[derive(Debug, Error)]
