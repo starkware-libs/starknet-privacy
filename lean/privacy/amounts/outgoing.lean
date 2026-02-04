@@ -1,6 +1,6 @@
 import privacy.notes.discoverable_outgoing
 import privacy.notes.open_deposits
-import privacy.amounts
+import privacy.amounts.amounts
 
 def nonopen_created_notes
   {crypto: Crypto} {m: Memory} (context: ScanOutgoingNoteContext crypto m)
