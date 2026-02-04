@@ -2,9 +2,9 @@ use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
 use core::never;
 use core::num::traits::{WrappingAdd, WrappingSub, Zero};
+use errors::internal_errors;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::errors;
-use privacy::errors::internal_errors;
 use privacy::hashes::{
     compute_enc_address_hash, compute_enc_amount_hash, compute_enc_channel_key_hash,
     compute_enc_private_key_hash, compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash,
@@ -311,20 +311,41 @@ pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
     send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
 }
 
+/// Pops the front element from `panic_data` and checks if it equals `expected`.
+/// Panics with an internal error if the span is empty.
+fn pop_and_expect(ref panic_data: Span<felt252>, expected: felt252) -> bool {
+    *panic_data.pop_front().expect(internal_errors::PANIC_DATA_TOO_SHORT) == expected
+}
+
 pub(crate) fn unwrap_execute_and_panic_result(
     syscall_result: Result<Span<felt252>, Array<felt252>>,
-) -> Span<felt252> {
-    let mut panic_message = syscall_result.expect_err(internal_errors::EXPECTED_PANIC);
-    let message_len = panic_message.len();
-    assert(*panic_message[message_len - 1] == ENTRYPOINT_FAILED, internal_errors::EXPECTED_PANIC);
-    #[allow(manual_assert)]
-    if *panic_message[0] != OK_WRAPPER || *panic_message[message_len - 2] != OK_WRAPPER {
-        panic(panic_message);
+) -> Span<ServerAction> {
+    let orig_panic_data = syscall_result.expect_err(internal_errors::EXPECTED_PANIC);
+    let mut panic_data = orig_panic_data.span();
+
+    // Assert that the first element is `OK_WRAPPER`.
+    if !pop_and_expect(ref :panic_data, expected: OK_WRAPPER) {
+        panic(orig_panic_data);
     }
 
-    let _ = panic_message.pop_front();
-    // TODO: Consider also popping the last 2 elements.
-    panic_message.span()
+    // Deserialize the server actions.
+    let server_actions: Span<ServerAction> = Serde::deserialize(ref panic_data)
+        .expect(internal_errors::DESERIALIZE_FAILED);
+
+    // Assert that the second to last element is `OK_WRAPPER`.
+    if !pop_and_expect(ref :panic_data, expected: OK_WRAPPER) {
+        panic(orig_panic_data);
+    }
+
+    // Assert that the last element is `ENTRYPOINT_FAILED`.
+    assert(
+        pop_and_expect(ref :panic_data, expected: ENTRYPOINT_FAILED),
+        internal_errors::EXPECTED_PANIC,
+    );
+
+    // Assert that all panic data has been consumed.
+    assert(panic_data.is_empty(), internal_errors::PANIC_DATA_TOO_LONG);
+    server_actions
 }
 
 /// Wraps the server actions with `OK_WRAPPER` in a panic data array.

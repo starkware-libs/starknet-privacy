@@ -169,9 +169,7 @@ pub mod Privacy {
                 calldata: calldata.span(),
             );
 
-            let mut serialized_server_actions = unwrap_execute_and_panic_result(:syscall_result);
-            Serde::deserialize(ref serialized_server_actions)
-                .expect(internal_errors::DESERIALIZE_FAILED)
+            unwrap_execute_and_panic_result(:syscall_result)
         }
 
         /// Panics directly for internal errors; external calls should be wrapped via syscall

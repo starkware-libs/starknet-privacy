@@ -54,4 +54,6 @@ pub(crate) mod internal_errors {
     pub const UNEXPECTED_ZERO_CHANNEL_KEY: felt252 = 'UNEXPECTED_ZERO_CHANNEL_KEY';
     pub const ZERO_ENC_USER_ADDR: felt252 = 'ZERO_ENC_USER_ADDR';
     pub const UNEXPECTED_ZERO_SALT: felt252 = 'UNEXPECTED_ZERO_SALT';
+    pub const PANIC_DATA_TOO_SHORT: felt252 = 'PANIC_DATA_TOO_SHORT';
+    pub const PANIC_DATA_TOO_LONG: felt252 = 'PANIC_DATA_TOO_LONG';
 }
