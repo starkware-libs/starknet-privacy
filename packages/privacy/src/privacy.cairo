@@ -26,9 +26,9 @@ pub mod Privacy {
         StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
         assert_valid_signature, decode_note_amount, derive_public_key, enc_note_packed_value,
         encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
-        encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, open_note, packing,
-        panic_with_server_actions, send_message_to_server, to_write_once_action, unpacking,
-        unwrap_execute_and_panic_result,
+        encrypt_subchannel_info, encrypt_user_addr, extract_server_actions_from_execute_and_panic,
+        is_canonical_key, open_note, packing, panic_with_server_actions, send_message_to_server,
+        to_write_once_action, unpacking,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -169,9 +169,7 @@ pub mod Privacy {
                 calldata: calldata.span(),
             );
 
-            let mut serialized_server_actions = unwrap_execute_and_panic_result(:syscall_result);
-            Serde::deserialize(ref serialized_server_actions)
-                .expect(internal_errors::DESERIALIZE_FAILED)
+            extract_server_actions_from_execute_and_panic(:syscall_result)
         }
 
         /// Panics directly for internal errors; external calls should be wrapped via syscall
@@ -182,9 +180,6 @@ pub mod Privacy {
             user_private_key: felt252,
             client_actions: Span<ClientAction>,
         ) {
-            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
-            assert(user_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
-            assert(is_canonical_key(key: user_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
             let server_actions = self.main(:user_addr, :user_private_key, :client_actions);
             panic_with_server_actions(:server_actions);
         }
@@ -195,21 +190,24 @@ pub mod Privacy {
         /// Processes a sequence of client actions and returns the corresponding server actions.
         /// Validates action phases, tracks token balances, and ensures at least one privacy action
         /// is included.
-        /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical
-        /// (checked in `execute_and_panic`).
         fn main(
             ref self: ContractState,
             user_addr: ContractAddress,
             user_private_key: felt252,
             client_actions: Span<ClientAction>,
         ) -> Span<ServerAction> {
+            // Assert input is valid.
+            assert(user_addr.is_non_zero(), errors::ZERO_USER_ADDR);
+            assert(user_private_key.is_non_zero(), errors::ZERO_PRIVATE_KEY);
+            assert(is_canonical_key(key: user_private_key), errors::PRIVATE_KEY_NOT_CANONICAL);
+
             let mut server_actions: Array<ServerAction> = array![];
             let mut current_phase = ClientActionTrait::ACCOUNT_PHASE;
             let mut token_balances: TokenBalances = Default::default();
             // Used to make sure a storage action was included in the client actions.
             let mut has_privacy_action = false;
             for client_action in client_actions {
-                client_action.assert_and_set_phase(ref :current_phase);
+                current_phase = client_action.validate_and_get_next_phase(:current_phase);
                 let (actions, should_execute) = match *client_action {
                     ClientAction::SetViewingKey(input) => (
                         self.set_viewing_key(:user_addr, :user_private_key, :input), true,
@@ -276,7 +274,7 @@ pub mod Privacy {
 
         /// Returns the server actions to set a viewing key.
         /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical
-        /// (checked in `execute_and_panic`).
+        /// (checked in `main`).
         fn set_viewing_key(
             self: @ContractState,
             user_addr: ContractAddress,
@@ -317,7 +315,7 @@ pub mod Privacy {
 
         /// Returns the server actions to open a channel.
         /// Assumes `sender_addr` is non-zero and `sender_private_key` is non-zero and canonical
-        /// (checked in `execute_and_panic`).
+        /// (checked in `main`).
         fn open_channel(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -399,7 +397,7 @@ pub mod Privacy {
         }
 
         /// Returns the server actions to open a subchannel.
-        /// Assumes `sender_addr` is non-zero (checked in `execute_and_panic`).
+        /// Assumes `sender_addr` is non-zero (checked in `main`).
         fn open_subchannel(
             self: @ContractState, sender_addr: ContractAddress, input: OpenSubchannelInput,
         ) -> Array<ServerAction> {
@@ -455,7 +453,7 @@ pub mod Privacy {
         }
 
         /// Returns the server actions to deposit funds into the contract.
-        /// Assumes `user_addr` is non-zero (checked in `execute_and_panic`).
+        /// Assumes `user_addr` is non-zero (checked in `main`).
         fn deposit(
             self: @ContractState,
             user_addr: ContractAddress,
@@ -479,7 +477,7 @@ pub mod Privacy {
         }
 
         /// Returns the server actions to withdraw funds from the contract.
-        /// Assumes `user_addr` is non-zero (checked in `execute_and_panic`).
+        /// Assumes `user_addr` is non-zero (checked in `main`).
         fn withdraw(
             self: @ContractState,
             user_addr: ContractAddress,
@@ -518,7 +516,7 @@ pub mod Privacy {
 
         /// Returns the server actions to use a note.
         /// Assumes `owner_addr` is non-zero and `owner_private_key` is non-zero and canonical
-        /// (checked in `execute_and_panic`).
+        /// (checked in `main`).
         fn use_note(
             self: @ContractState,
             owner_addr: ContractAddress,
@@ -568,7 +566,7 @@ pub mod Privacy {
 
         /// Returns the server actions to create an encrypted note.
         /// Assumes `sender_addr` is non-zero and `sender_private_key` is non-zero and canonical
-        /// (checked in `execute_and_panic`).
+        /// (checked in `main`).
         fn create_enc_note(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -615,7 +613,7 @@ pub mod Privacy {
 
         /// Returns the server action to create an open note.
         /// Assumes `sender_addr` is non-zero and `sender_private_key` is non-zero and canonical
-        /// (checked in `execute_and_panic`).
+        /// (checked in `main`).
         fn create_open_note(
             self: @ContractState,
             sender_addr: ContractAddress,

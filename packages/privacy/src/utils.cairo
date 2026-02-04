@@ -319,20 +319,25 @@ pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
     send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
 }
 
-pub(crate) fn unwrap_execute_and_panic_result(
+/// Gets the result from `execute_and_panic` and returns the server actions on success.
+/// Panics on failure with the result's panic data.
+pub(crate) fn extract_server_actions_from_execute_and_panic(
     syscall_result: Result<Span<felt252>, Array<felt252>>,
-) -> Span<felt252> {
-    let mut panic_message = syscall_result.expect_err(internal_errors::EXPECTED_PANIC);
-    let message_len = panic_message.len();
-    assert(*panic_message[message_len - 1] == ENTRYPOINT_FAILED, internal_errors::EXPECTED_PANIC);
-    #[allow(manual_assert)]
-    if *panic_message[0] != OK_WRAPPER || *panic_message[message_len - 2] != OK_WRAPPER {
-        panic(panic_message);
+) -> Span<ServerAction> {
+    let origin_panic_data = syscall_result.expect_err(internal_errors::EXPECTED_PANIC).span();
+    let mut panic_data = origin_panic_data;
+    if panic_data.pop_front() != Some(@OK_WRAPPER) {
+        panic(origin_panic_data.into());
     }
-
-    let _ = panic_message.pop_front();
-    // TODO: Consider also popping the last 2 elements.
-    panic_message.span()
+    let server_actions: Span<ServerAction> = Serde::deserialize(ref panic_data)
+        .unwrap_or_else(|| panic(origin_panic_data.into()));
+    if panic_data.pop_front() != Some(@OK_WRAPPER) {
+        panic(origin_panic_data.into());
+    }
+    if panic_data.pop_front() != Some(@ENTRYPOINT_FAILED) {
+        panic(origin_panic_data.into());
+    }
+    server_actions
 }
 
 /// Wraps the server actions with `OK_WRAPPER` in a panic data array.

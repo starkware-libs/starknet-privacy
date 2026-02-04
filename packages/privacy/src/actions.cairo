@@ -169,17 +169,11 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
         }
     }
 
-    /// Asserts that the action is valid for the current phase and updates the phase.
-    fn assert_and_set_phase(self: @ClientAction, ref current_phase: u8) {
+    /// Asserts that the action is valid for the current phase and returns the new phase.
+    fn validate_and_get_next_phase(self: @ClientAction, current_phase: u8) -> u8 {
         let intended_phase = self.intended_phase();
         assert(current_phase <= intended_phase, errors::ACTIONS_OUT_OF_ORDER);
-
-        // Account phase is only allowed 1 action.
-        if intended_phase == Self::ACCOUNT_PHASE {
-            current_phase = intended_phase + 1;
-        } else {
-            current_phase = intended_phase;
-        }
+        intended_phase
     }
 }
 
