@@ -7,8 +7,8 @@ pub mod Privacy {
     use openzeppelin::introspection::src5::SRC5Component;
     use privacy::actions::{
         AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
-        DepositInput, OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput,
-        TransferFromInput, TransferToInput, UseNoteInput, VerifyValueInput, WithdrawInput,
+        DepositInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
+        SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -381,8 +381,8 @@ pub mod Privacy {
             assert(outgoing_channel_id.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_ID);
 
             array![
-                ServerAction::VerifyValue(
-                    VerifyValueInput {
+                ServerAction::ReadAssert(
+                    ReadAssertInput {
                         storage_address: self.public_key.entry(recipient_addr).into(),
                         value: recipient_public_key,
                     },
@@ -744,9 +744,9 @@ pub mod Privacy {
                                 amount: input.amount,
                             );
                     },
-                    ServerAction::VerifyValue(input) => {
+                    ServerAction::ReadAssert(input) => {
                         self
-                            ._execute_verify_value(
+                            ._execute_read_assert(
                                 storage_address: input.storage_address, value: input.value,
                             );
                     },
@@ -820,9 +820,7 @@ pub mod Privacy {
                 .checked_transfer(recipient: recipient_addr, amount: amount.into());
         }
 
-        fn _execute_verify_value(
-            ref self: ContractState, storage_address: felt252, value: felt252,
-        ) {
+        fn _execute_read_assert(ref self: ContractState, storage_address: felt252, value: felt252) {
             let target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
             let current_value = target.read();
             assert(current_value == value, errors::VALUE_MISMATCH);
