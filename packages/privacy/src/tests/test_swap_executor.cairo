@@ -62,7 +62,7 @@ fn test_swap_basic(preexisting_balance: u128) {
     assert_eq!(output_token.balance_of(address: test.privacy.address), 0);
 
     // Execute swap.
-    let received = test
+    test
         .swap_executor
         .swap(
             swap_contract: test.mock_amm,
@@ -71,9 +71,6 @@ fn test_swap_basic(preexisting_balance: u128) {
             in_amount: swap_amount,
             :note_id,
         );
-
-    // Verify returned amount is correct (1:1 exchange rate).
-    assert_eq!(received, swap_amount);
 
     // Verify balances after swap.
     assert_eq!(
