@@ -7,6 +7,7 @@ use crate::storage_backend::StorageError;
 
 pub mod cursor;
 pub mod incoming_channels;
+pub mod last_note_index;
 pub mod notes;
 pub mod subchannels;
 
@@ -21,6 +22,9 @@ pub const COST_SUBCHANNEL_INFO: usize = 2;
 
 /// Cost for `get_note` + `nullifier_exists` (2 storage slot reads).
 pub const COST_NOTE: usize = 2;
+
+/// Cost for a single note existence probe (1 `get_note` read, no nullifier check).
+pub const COST_NOTE_PROBING: usize = 1;
 
 /// Errors that can occur during channel discovery.
 #[derive(Debug, Error)]
