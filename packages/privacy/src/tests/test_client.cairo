@@ -5870,8 +5870,8 @@ fn test_swap_client_action() {
         expected_event_name: "Withdrawal",
     );
 
-    // Verify OpenNoteDeposited event (output tokens deposited to open note).
-    let expected_deposit_event = events::OpenNoteDeposited {
+    // Verify OpenNoteDeposit event (output tokens deposited to open note).
+    let expected_deposit_event = events::OpenNoteDeposit {
         depositor: swap_executor_address,
         token: out_token_address,
         note_id: open_note_id,
@@ -5880,8 +5880,8 @@ fn test_swap_client_action() {
     assert_expected_event_emitted(
         spied_event: emitted_events[1],
         expected_event: expected_deposit_event,
-        expected_event_selector: @selector!("OpenNoteDeposited"),
-        expected_event_name: "OpenNoteDeposited",
+        expected_event_selector: @selector!("OpenNoteDeposit"),
+        expected_event_name: "OpenNoteDeposit",
     );
 }
 
@@ -6421,7 +6421,7 @@ fn test_swap_doesnt_execute_during_client_execute() {
         expected_event_selector: @selector!("Withdrawal"),
         expected_event_name: "Withdrawal",
     );
-    let expected_deposit_event = events::OpenNoteDeposited {
+    let expected_deposit_event = events::OpenNoteDeposit {
         depositor: swap_executor_address,
         token: out_token_address,
         note_id: open_note_id,
@@ -6430,7 +6430,7 @@ fn test_swap_doesnt_execute_during_client_execute() {
     assert_expected_event_emitted(
         spied_event: events_after[1],
         expected_event: expected_deposit_event,
-        expected_event_selector: @selector!("OpenNoteDeposited"),
-        expected_event_name: "OpenNoteDeposited",
+        expected_event_selector: @selector!("OpenNoteDeposit"),
+        expected_event_name: "OpenNoteDeposit",
     );
 }
