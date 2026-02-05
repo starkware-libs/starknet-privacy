@@ -479,7 +479,7 @@ pub mod Privacy {
 
             array![
                 ServerAction::TransferFrom(
-                    TransferFromInput { sender_addr: user_addr, token, amount },
+                    TransferFromInput { from_addr: user_addr, token, amount },
                 ),
                 ServerAction::EmitDeposit(events::Deposit { user_addr, token, amount }),
             ]
@@ -493,12 +493,12 @@ pub mod Privacy {
             input: WithdrawInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            let withdrawal_target = input.withdrawal_target;
+            let to_addr = input.to_addr;
             let token = input.token;
             let amount = input.amount;
             let random = input.random;
             // Assert valid input.
-            assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
+            assert(to_addr.is_non_zero(), errors::ZERO_TO_ADDR);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
@@ -514,11 +514,9 @@ pub mod Privacy {
             assert(enc_user_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
 
             array![
-                ServerAction::TransferTo(
-                    TransferToInput { recipient_addr: withdrawal_target, token, amount },
-                ),
+                ServerAction::TransferTo(TransferToInput { to_addr, token, amount }),
                 ServerAction::EmitWithdrawal(
-                    events::Withdrawal { enc_user_addr, withdrawal_target, token, amount },
+                    events::Withdrawal { enc_user_addr, to_addr, token, amount },
                 ),
             ]
         }
@@ -546,16 +544,12 @@ pub mod Privacy {
             let random = input.random;
 
             // Validate inputs.
-            // TODO: Consider rely on withdraw assertions.
-            assert(swap_executor.is_non_zero(), errors::ZERO_SWAP_EXECUTOR);
             assert(swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
             assert(swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
-            assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
-            assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
-            assert(in_amount.is_non_zero(), errors::ZERO_IN_AMOUNT);
-            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
+            // `swap_executor`, `in_token` and `in_amount` are asserted in `withdraw `.
+            // `out_token` and `channel_key` are asserted in `_checked_note_id`.
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
-            // TODO: Assert in_token != out_token.
+            assert(in_token != out_token, errors::SWAP_TO_SAME_TOKEN);
 
             // Verify the user owns the output note's subchannel.
             let note_id = self
@@ -566,7 +560,7 @@ pub mod Privacy {
 
             // Use withdraw to transfer funds to the swap executor and emit a withdrawal event.
             let withdraw_input = WithdrawInput {
-                withdrawal_target: swap_executor, token: in_token, amount: in_amount, random,
+                to_addr: swap_executor, token: in_token, amount: in_amount, random,
             };
             let mut server_actions = self
                 .withdraw(:user_addr, input: withdraw_input, ref :token_balances);
@@ -604,9 +598,6 @@ pub mod Privacy {
             let channel_key = input.channel_key;
             let token = input.token;
             let index = input.index;
-            // TODO: Consider moving asserts to _checked_note_id.
-            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
 
             // Compute note id.
             let note_id = self
@@ -649,6 +640,10 @@ pub mod Privacy {
             token: ContractAddress,
             index: usize,
         ) -> felt252 {
+            // Assert inputs are valid.
+            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+
             // Verify the user owns the note's subchannel.
             let user_public_key = derive_public_key(private_key: user_private_key);
             let subchannel_marker = compute_subchannel_marker(
@@ -660,7 +655,9 @@ pub mod Privacy {
             assert(self.subchannel_exists.read(subchannel_marker), errors::SUBCHANNEL_NOT_FOUND);
 
             // Compute note_id from the verified components.
-            compute_note_id(:channel_key, :token, :index)
+            let note_id = compute_note_id(:channel_key, :token, :index);
+            assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
+            note_id
         }
 
         /// Returns the server actions to create an encrypted note.
@@ -841,7 +838,7 @@ pub mod Privacy {
             assert(caller == depositor, errors::CALLER_NOT_DEPOSITOR);
 
             // Transfer funds from the depositor (caller).
-            self._execute_transfer_from(sender_addr: depositor, :token, :amount);
+            self._execute_transfer_from(from_addr: depositor, :token, :amount);
 
             // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
             let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
@@ -874,7 +871,7 @@ pub mod Privacy {
                     ServerAction::TransferFrom(input) => {
                         self
                             ._execute_transfer_from(
-                                sender_addr: input.sender_addr,
+                                from_addr: input.from_addr,
                                 token: input.token,
                                 amount: input.amount,
                             );
@@ -882,9 +879,7 @@ pub mod Privacy {
                     ServerAction::TransferTo(input) => {
                         self
                             ._execute_transfer_to(
-                                recipient_addr: input.recipient_addr,
-                                token: input.token,
-                                amount: input.amount,
+                                to_addr: input.to_addr, token: input.token, amount: input.amount,
                             );
                     },
                     ServerAction::ReadAssert(input) => {
@@ -946,25 +941,22 @@ pub mod Privacy {
 
         fn _execute_transfer_from(
             ref self: ContractState,
-            sender_addr: ContractAddress,
+            from_addr: ContractAddress,
             token: ContractAddress,
             amount: u128,
         ) {
             IERC20Dispatcher { contract_address: token }
                 .checked_transfer_from(
-                    sender: sender_addr, recipient: get_contract_address(), amount: amount.into(),
+                    sender: from_addr, recipient: get_contract_address(), amount: amount.into(),
                 );
         }
 
         fn _execute_transfer_to(
-            ref self: ContractState,
-            recipient_addr: ContractAddress,
-            token: ContractAddress,
-            amount: u128,
+            ref self: ContractState, to_addr: ContractAddress, token: ContractAddress, amount: u128,
         ) {
             // Note: This function should NOT panic as the contract should have the balance.
             IERC20Dispatcher { contract_address: token }
-                .checked_transfer(recipient: recipient_addr, amount: amount.into());
+                .checked_transfer(recipient: to_addr, amount: amount.into());
         }
 
         fn _execute_read_assert(ref self: ContractState, storage_address: felt252, value: felt252) {
