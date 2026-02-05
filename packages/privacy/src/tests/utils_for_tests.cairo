@@ -9,9 +9,9 @@ use privacy::actions::{
 };
 use privacy::events;
 use privacy::hashes::{
-    compute_channel_key, compute_channel_marker, compute_enc_address_hash,
-    compute_enc_channel_key_hash, compute_enc_private_key_hash, compute_enc_recipient_addr_hash,
-    compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
+    compute_channel_key, compute_channel_marker, compute_enc_channel_key_hash,
+    compute_enc_private_key_hash, compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash,
+    compute_enc_token_hash, compute_enc_user_addr_hash, compute_note_id, compute_nullifier,
     compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker, hash,
 };
 use privacy::interface::{
@@ -279,7 +279,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn withdraw_and_use_note_e2e(
         ref self: User,
-        withdrawal_target: ContractAddress,
+        to_addr: ContractAddress,
         token: Token,
         amount: u128,
         channel_key: felt252,
@@ -288,7 +288,7 @@ pub(crate) impl UserImpl of UserTrait {
         let random = self.get_random();
         let use_note_input = UseNoteInput { channel_key, token: token.contract_address(), index };
         let withdraw_input = WithdrawInput {
-            withdrawal_target, token: token.contract_address(), amount, random,
+            to_addr, token: token.contract_address(), amount, random,
         };
         let server_actions = self
             .client_execute(
@@ -302,7 +302,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn internal_withdraw(
         self: @User,
-        withdrawal_target: ContractAddress,
+        to_addr: ContractAddress,
         token_addr: ContractAddress,
         amount: u128,
         random: felt252,
@@ -313,7 +313,7 @@ pub(crate) impl UserImpl of UserTrait {
                 let mut state = Privacy::contract_state_for_testing();
                 let mut token_balances: TokenBalances = Default::default();
                 token_balances.add_balance(token: token_addr, :amount);
-                let input = WithdrawInput { withdrawal_target, token: token_addr, amount, random };
+                let input = WithdrawInput { to_addr, token: token_addr, amount, random };
                 state.withdraw(user_addr: *self.address, :input, ref :token_balances)
             },
         )
@@ -322,13 +322,10 @@ pub(crate) impl UserImpl of UserTrait {
 
     /// Returns (random, output) where output is the output of `withdraw`.
     fn internal_withdraw_with_generated_random(
-        ref self: User,
-        withdrawal_target: ContractAddress,
-        token_addr: ContractAddress,
-        amount: u128,
+        ref self: User, to_addr: ContractAddress, token_addr: ContractAddress, amount: u128,
     ) -> (felt252, Span<ServerAction>) {
         let random = self.get_random();
-        let output = self.internal_withdraw(:withdrawal_target, :token_addr, :amount, :random);
+        let output = self.internal_withdraw(:to_addr, :token_addr, :amount, :random);
         (random, output)
     }
 
@@ -354,12 +351,12 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn safe_withdraw(
         self: @User,
-        withdrawal_target: ContractAddress,
+        to_addr: ContractAddress,
         token_addr: ContractAddress,
         amount: u128,
         random: felt252,
     ) -> Result<(), Array<felt252>> {
-        let input = WithdrawInput { withdrawal_target, token: token_addr, amount, random };
+        let input = WithdrawInput { to_addr, token: token_addr, amount, random };
         self.safe_client_execute(client_actions: [ClientAction::Withdraw(input)].span())
     }
 
@@ -1167,7 +1164,7 @@ pub(crate) impl UserImpl of UserTrait {
             create_note_input.into_server_action(user: *self),
             ServerAction::TransferFrom(
                 TransferFromInput {
-                    sender_addr: *self.address, token: token.contract_address(), amount,
+                    from_addr: *self.address, token: token.contract_address(), amount,
                 },
             ),
         ]
@@ -1177,11 +1174,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     /// Cheat withdraw in the server side (no client side).
     fn cheat_withdraw(
-        self: @User,
-        recipient_addr: ContractAddress,
-        token: Token,
-        amount: u128,
-        nullifier: felt252,
+        self: @User, to_addr: ContractAddress, token: Token, amount: u128, nullifier: felt252,
     ) {
         let actions = [
             to_write_once_action(
@@ -1191,7 +1184,7 @@ pub(crate) impl UserImpl of UserTrait {
                 value: true,
             ),
             ServerAction::TransferTo(
-                TransferToInput { recipient_addr, token: token.contract_address(), amount },
+                TransferToInput { to_addr, token: token.contract_address(), amount },
             ),
         ]
             .span();
@@ -1848,7 +1841,7 @@ pub(crate) fn decrypt_enc_user_addr(
     let shared_x = _find_shared_x(
         ephemeral_pubkey: enc_user_addr.ephemeral_pubkey, private_key: compliance_private_key,
     );
-    let user_addr = enc_user_addr.enc_user_addr - compute_enc_address_hash(:shared_x);
+    let user_addr = enc_user_addr.enc_user_addr - compute_enc_user_addr_hash(:shared_x);
     user_addr.try_into().unwrap()
 }
 

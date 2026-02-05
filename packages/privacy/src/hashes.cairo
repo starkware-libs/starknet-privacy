@@ -54,8 +54,8 @@ pub(crate) fn compute_enc_private_key_hash(shared_x: felt252) -> felt252 {
 
 /// Computes the hash used to encrypt the address in `EncUserAddr`.
 ///
-/// Returns `h(ENC_ADDRESS_TAG, shared_x)`
-pub(crate) fn compute_enc_address_hash(shared_x: felt252) -> felt252 {
+/// Returns `h(ENC_USER_ADDR_TAG, shared_x)`
+pub(crate) fn compute_enc_user_addr_hash(shared_x: felt252) -> felt252 {
     hash([ENC_USER_ADDR_TAG, shared_x].span())
 }
 
