@@ -27,7 +27,7 @@ fn test_swap_basic(preexisting_balance: u128) {
     user_1
         .open_channel_with_token_e2e(
             recipient: user_2,
-            token_address: output_token.contract_address(),
+            token_addr: output_token.contract_address(),
             outgoing_channel_index: 0,
             subchannel_index: 0,
         );
@@ -36,7 +36,7 @@ fn test_swap_basic(preexisting_balance: u128) {
     let create_note_input = user_1
         .new_open_note_with_generated_random(
             recipient: user_2,
-            token: output_token.contract_address(),
+            token_addr: output_token.contract_address(),
             index: 0,
             depositor: test.swap_executor.address,
         );
@@ -316,7 +316,7 @@ fn test_swap_caller_not_privacy_contract() {
     user_1
         .open_channel_with_token_e2e(
             recipient: user_2,
-            token_address: output_token.contract_address(),
+            token_addr: output_token.contract_address(),
             outgoing_channel_index: 0,
             subchannel_index: 0,
         );
@@ -325,7 +325,7 @@ fn test_swap_caller_not_privacy_contract() {
     let create_note_input = user_1
         .new_open_note_with_generated_random(
             recipient: user_2,
-            token: output_token.contract_address(),
+            token_addr: output_token.contract_address(),
             index: 0,
             depositor: test.swap_executor.address,
         );
