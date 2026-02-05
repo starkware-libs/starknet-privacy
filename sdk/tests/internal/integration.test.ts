@@ -102,6 +102,35 @@ describe("Private Transfers Integration", () => {
   // Auto Setup Flow
   // ============================================================================
   describe("Auto Setup Flow", () => {
+    it("reuses next outgoing channel index after self deposit", async () => {
+      const { mocknet, env, transfers } = testEnv;
+      const { alice, bob } = transfers;
+      const ace = toBigInt(env.ace);
+
+      mocknet.executeOutside(await bob.build().register().execute());
+
+      const registry = mocknet.executeOutside(
+        await alice
+          .build(AUTO_ALL)
+          .with(env.ace)
+          .deposit({ amount: 100n, recipient: env.alice.address })
+          .execute()
+      );
+
+      mocknet.executeOutside(
+        await alice
+          .build({ ...AUTO_ALL, registry })
+          .surplusTo(env.alice.address)
+          .with(env.ace)
+          .transfer({ recipient: env.bob.address, amount: 50n })
+          .execute()
+      );
+
+      const bobNotes = (await bob.discoverNotes()).notes.get(ace) ?? [];
+      expect(bobNotes.length).toBe(1);
+      expect(bobNotes[0].amount).toBe(50n);
+    });
+
     it("auto setup handles registration, channels, and token setup", async () => {
       const { mocknet, env, transfers } = testEnv;
       const { alice, bob } = transfers;

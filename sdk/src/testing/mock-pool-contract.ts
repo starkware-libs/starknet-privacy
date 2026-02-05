@@ -347,7 +347,15 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     this.publicKeys.set(address, channel.publicKey);
 
     if (!channel.key) return;
-    this.setChannel(userAddress, viewingKey, address, channel.publicKey, generateRandom()).apply();
+    const outgoingIndex = this.outgoingChannelCounters.get(userAddress) ?? 0;
+    this.setChannel(
+      userAddress,
+      viewingKey,
+      address,
+      channel.publicKey,
+      outgoingIndex,
+      generateRandom()
+    ).apply();
 
     for (const [token, nonces] of channel.tokens.entries()) {
       this.setToken(
@@ -472,6 +480,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
             privateKey,
             action.input.recipient_addr,
             action.input.recipient_public_key,
+            action.input.index,
             action.input.random
           ),
         ];
@@ -562,6 +571,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     fromPrivateKey: ViewingKey,
     to: StarknetAddressBigint,
     toPublicKey: PublicKey,
+    index: number,
     random: bigint
   ): MockServerAction {
     this.assertRegistered(from);
@@ -579,6 +589,10 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     );
 
     const s = this.outgoingChannelCounters.get(from)!;
+    assert(
+      index === s,
+      () => `Outgoing channel index ${index} is not sequential for sender ${toHex(from)}`
+    );
     if (s > 0) {
       const prevOutgoingChannelId = compute_outgoing_channel_id(
         from,
