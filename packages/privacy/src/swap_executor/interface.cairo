@@ -17,7 +17,7 @@ pub trait ISwapExecutor<T> {
     /// - `note_id` (`felt252`) - The identifier of the open note to deposit the output to.
     ///
     /// #### Returns
-    /// - (`u128`) - The amount of output funds received from the swap.
+    /// None
     ///
     /// #### Preconditions
     /// - All parameters must be non-zero.
@@ -31,7 +31,6 @@ pub trait ISwapExecutor<T> {
     /// 3. Records output token balance, executes the swap, calculates received amount.
     /// 4. Approves the caller (privacy contract) to transfer the received output funds.
     /// 5. Calls `deposit_to_open_note` on the caller with `note_id` and the received amount.
-    /// 6. Returns the received amount.
     fn swap(
         ref self: T,
         swap_contract: ContractAddress,
@@ -41,5 +40,5 @@ pub trait ISwapExecutor<T> {
         out_token: ContractAddress,
         in_amount: u128,
         note_id: felt252,
-    ) -> u128;
+    );
 }

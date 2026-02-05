@@ -25,7 +25,7 @@ pub mod SwapExecutor {
             out_token: ContractAddress,
             in_amount: u128,
             note_id: felt252,
-        ) -> u128 {
+        ) {
             // Validate all inputs are non-zero.
             assert(swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
             assert(swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
@@ -66,8 +66,6 @@ pub mod SwapExecutor {
             // Deposit to the open note on the privacy contract.
             IServerDispatcher { contract_address: privacy_addr }
                 .deposit_to_open_note(:note_id, amount: out_amount);
-
-            out_amount
         }
     }
 }
