@@ -17,6 +17,7 @@ use crate::discovery::notes::{discover_notes_paginated, DecryptedNote};
 use crate::discovery::subchannels::discover_subchannels_paginated;
 use crate::discovery::DiscoveryError;
 use crate::io_budget::IoBudget;
+use crate::privacy_pool::types::SecretFelt;
 use crate::privacy_pool::views::IViews;
 
 /// Output from a single discovery run.
@@ -61,14 +62,13 @@ struct SubchannelResult {
 /// and channels are pruned from the cursor so subsequent calls skip them.
 ///
 /// Channel and subchannel processing is parallelised via [`JoinSet`].
-// TODO: Derive nullifiers and filter spent notes (spec 6.5)
 // TODO: Handle open notes — notes with salt==OPEN_NOTE_SALT(1) have plaintext
 //       amounts, non-zero token and depositor fields (see Cairo objects.cairo
 //       Note struct)
 pub async fn sync_incoming_state<S>(
     pool: &S,
     recipient: Felt,
-    decryption_key: &Felt,
+    decryption_key: &SecretFelt,
     mut cursor: DiscoveryCursor,
     budget: &IoBudget,
 ) -> Result<DiscoveryOutput, DiscoveryError>
@@ -94,8 +94,10 @@ where
     for (channel_key, ch_cursor) in channels {
         let pool = pool.clone();
         let budget = budget.clone();
-        join_set
-            .spawn(async move { process_channel(&pool, channel_key, ch_cursor, &budget).await });
+        let key = decryption_key.clone();
+        join_set.spawn(async move {
+            process_channel(&pool, channel_key, ch_cursor, &key, &budget).await
+        });
     }
 
     let mut channels_output: HashMap<Felt, ChannelOutput> = HashMap::new();
@@ -119,6 +121,7 @@ async fn process_channel<S>(
     pool: &S,
     channel_key: Felt,
     mut cursor: ChannelCursor,
+    decryption_key: &SecretFelt,
     budget: &IoBudget,
 ) -> Result<ChannelResult, DiscoveryError>
 where
@@ -139,8 +142,9 @@ where
     for (token, sc_cursor) in subchannels {
         let pool = pool.clone();
         let budget = budget.clone();
+        let key = decryption_key.clone();
         join_set.spawn(async move {
-            process_subchannel(&pool, channel_key, token, sc_cursor, &budget).await
+            process_subchannel(&pool, channel_key, token, sc_cursor, &key, &budget).await
         });
     }
 
@@ -171,10 +175,18 @@ async fn process_subchannel<S: IViews>(
     channel_key: Felt,
     token: Felt,
     mut cursor: SubchannelCursor,
+    decryption_key: &SecretFelt,
     budget: &IoBudget,
 ) -> Result<SubchannelResult, DiscoveryError> {
-    let (notes, has_more) =
-        discover_notes_paginated(pool, channel_key, token, &mut cursor, budget).await?;
+    let (notes, has_more) = discover_notes_paginated(
+        pool,
+        channel_key,
+        token,
+        &mut cursor,
+        decryption_key,
+        budget,
+    )
+    .await?;
 
     Ok(SubchannelResult {
         token,
@@ -211,7 +223,7 @@ mod tests {
         let f = load_devnet_fixture();
         let backend = MockBackend::new(f.slots);
         let recipient = f.constants.bob_address;
-        let decryption_key = f.constants.bob_viewing_key;
+        let decryption_key = SecretFelt::new(f.constants.bob_viewing_key);
 
         // Step 1: budget = COST_NUM_CHANNELS (1)
         // Fetches total_n_channels = 1. No budget left for channel discovery.
@@ -293,9 +305,10 @@ mod tests {
             "step 4: subchannel still in cursor (notes not started)"
         );
 
-        // Step 5: budget = COST_NOTE (1)
-        // Subchannels skipped (total cached). Discovers note 0.
-        // Can't check note sentinel (needs another COST_NOTE).
+        // Step 5: budget = COST_NOTE (2)
+        // Subchannels skipped (total cached). Discovers note 0 (1 get_note +
+        // 1 nullifier_exists). Note is spent → filtered out. Budget=0, can't
+        // check sentinel.
         let budget = IoBudget::new(COST_NOTE);
         let out = sync_incoming_state(&backend, recipient, &decryption_key, out.cursor, &budget)
             .await
@@ -306,11 +319,15 @@ mod tests {
             "step 5: channel still in cursor (note sentinel not checked)"
         );
         let notes = &out.channels[&channel_key].subchannels[&subchannel_token];
-        assert_eq!(notes.len(), 1, "step 5: 1 note discovered");
-        assert!(notes[0].amount > 0, "step 5: note has positive amount");
+        assert_eq!(
+            notes.len(),
+            0,
+            "step 5: note discovered but spent (filtered out)"
+        );
 
-        // Step 6: budget = COST_NOTE (1)
-        // Subchannels skipped (total cached). Reads note index 1 → sentinel.
+        // Step 6: budget = COST_NOTE (2)
+        // Subchannels skipped (total cached). Reads note index 1 → sentinel
+        // (packed_amount=0 → break, no nullifier check). 1 budget unit unused.
         // All done: subchannel + channel pruned from cursor.
         let budget = IoBudget::new(COST_NOTE);
         let out = sync_incoming_state(&backend, recipient, &decryption_key, out.cursor, &budget)

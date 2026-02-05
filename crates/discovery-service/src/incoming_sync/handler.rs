@@ -7,7 +7,6 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use discovery_core::io_budget::IoBudget;
-use discovery_core::privacy_pool::types::Zeroize;
 use discovery_core::storage_backend::StorageBackend;
 use tracing::warn;
 
@@ -40,7 +39,7 @@ where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
     B::Snapshot: Clone + Send + Sync + 'static,
 {
-    let mut validated = ValidatedRequest::from_request(request, &state.backend).await?;
+    let validated = ValidatedRequest::from_request(request, &state.backend).await?;
 
     let snapshot = state
         .backend
@@ -48,7 +47,6 @@ where
         .await
         .map_err(|e| {
             warn!("Failed to create snapshot: {}", e);
-            validated.decryption_key.zeroize();
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ApiErrorResponse::new(
@@ -67,11 +65,8 @@ where
         validated.cursor,
         &budget,
     )
-    .await;
-
-    validated.decryption_key.zeroize();
-
-    let discovery_output = discovery_output.map_err(discovery_error_to_response)?;
+    .await
+    .map_err(discovery_error_to_response)?;
 
     Ok(IncomingSyncResponse {
         block_ref: validated.block_ref,

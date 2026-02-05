@@ -3,7 +3,11 @@
 //! This module contains the data structures used by the privacy pool contract,
 //! including encrypted ciphertext types and decrypted plaintext types.
 
+use std::fmt;
+use std::ops::Deref;
+
 use starknet_types_core::felt::Felt;
+use zeroize::Zeroize;
 
 /// Extracts low 128 bits from a Felt.
 pub fn felt_low_u128(felt: Felt) -> u128 {
@@ -11,21 +15,45 @@ pub fn felt_low_u128(felt: Felt) -> u128 {
     d[0] as u128 | (d[1] as u128) << 64
 }
 
-/// Trait for securely zeroing sensitive data from memory.
+/// A Felt that automatically zeroes its memory on drop.
 ///
-/// This is a simplified version of the `zeroize` crate's `Zeroize` trait,
-/// implemented specifically for `Felt` to avoid the orphan rule.
-pub trait Zeroize {
-    /// Securely zeros the memory containing this value.
-    fn zeroize(&mut self);
+/// Implements `Deref<Target=Felt>` for transparent use where `&Felt` is expected.
+///
+/// Deliberately excludes `Copy` (silent copies of secrets are dangerous)
+/// and `Serde` (keys should be wrapped at the system boundary, not
+/// deserialized directly). `Debug` prints `[REDACTED]` to prevent
+/// accidental logging of key material.
+#[derive(Clone)]
+pub struct SecretFelt(Felt);
+
+impl SecretFelt {
+    pub fn new(felt: Felt) -> Self {
+        Self(felt)
+    }
 }
 
-impl Zeroize for Felt {
+impl Deref for SecretFelt {
+    type Target = Felt;
+    fn deref(&self) -> &Felt {
+        &self.0
+    }
+}
+
+impl Zeroize for SecretFelt {
     fn zeroize(&mut self) {
-        // Overwrite with zero
-        *self = Felt::ZERO;
-        // Use a compiler fence to prevent optimization from removing the write
-        std::sync::atomic::compiler_fence(std::sync::atomic::Ordering::SeqCst);
+        self.0 = Felt::ZERO;
+    }
+}
+
+impl Drop for SecretFelt {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
+}
+
+impl fmt::Debug for SecretFelt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[REDACTED]")
     }
 }
 
@@ -65,16 +93,4 @@ pub struct ChannelInfo {
     pub channel_key: Felt,
     /// The sender's address.
     pub sender_addr: Felt,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_zeroize_felt() {
-        let mut secret = Felt::from(42u64);
-        secret.zeroize();
-        assert_eq!(secret, Felt::ZERO);
-    }
 }

@@ -21,7 +21,7 @@ use super::DiscoveryError;
 use super::{COST_CHANNEL_INFO, COST_NUM_CHANNELS};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::decrypt_channel_info;
-use crate::privacy_pool::types::ChannelInfo;
+use crate::privacy_pool::types::{ChannelInfo, SecretFelt};
 use crate::privacy_pool::views::IViews;
 
 /// A discovered and decrypted incoming channel.
@@ -87,15 +87,10 @@ pub async fn get_incoming_channel_count<PrivacyPool: IViews>(
 /// # Returns
 ///
 /// A `DiscoveryResult` containing all discovered channels and whether more remain.
-///
-/// # Security
-///
-/// The caller should zero the `private_key` after use by calling
-/// `private_key.zeroize()` (see `crate::privacy_pool::types::Zeroize`).
 pub async fn discover_incoming_channels<PrivacyPool: IViews>(
     privacy_pool: &PrivacyPool,
     recipient_addr: Felt,
-    private_key: &Felt,
+    private_key: &SecretFelt,
     start_index: u64,
     total_n_channels: u64,
     budget: &IoBudget,
@@ -157,7 +152,7 @@ pub async fn discover_incoming_channels<PrivacyPool: IViews>(
 pub async fn discover_channels_paginated<S: IViews>(
     pool: &S,
     recipient: Felt,
-    decryption_key: &Felt,
+    decryption_key: &SecretFelt,
     cursor: &mut DiscoveryCursor,
     budget: &IoBudget,
 ) -> Result<Vec<IncomingChannel>, DiscoveryError> {
@@ -213,7 +208,7 @@ mod tests {
     async fn test_discover_no_channels() {
         let backend = MockBackend::empty();
         let recipient = Felt::from_hex_unchecked("0x123");
-        let key = Felt::from(1u64);
+        let key = SecretFelt::new(Felt::from(1u64));
         let budget = IoBudget::new(100);
 
         let count = get_incoming_channel_count(&backend, recipient, &budget)
@@ -252,10 +247,11 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
 
+        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &key,
             0,
             count,
             &budget,
@@ -286,10 +282,11 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
 
+        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &key,
             0,
             count,
             &budget,
@@ -320,11 +317,13 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
 
+        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+
         // First discovery - get all channels
         let result1 = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &key,
             0,
             count,
             &budget,
@@ -341,7 +340,7 @@ mod tests {
         let result2 = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &key,
             result1.last_index.unwrap() + 1,
             count,
             &budget,
@@ -382,10 +381,11 @@ mod tests {
 
         // Now discover with insufficient budget (COST_CHANNEL_INFO = 3)
         let budget = IoBudget::new(2);
+        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &key,
             0,
             count,
             &budget,
@@ -405,11 +405,12 @@ mod tests {
 
         let mut cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(100);
+        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
 
         let channels = discover_channels_paginated(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &key,
             &mut cursor,
             &budget,
         )
@@ -437,11 +438,12 @@ mod tests {
         let mut cursor = DiscoveryCursor::default();
         // Budget = 0: can't even fetch channel count
         let budget = IoBudget::new(0);
+        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
 
         let channels = discover_channels_paginated(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &key,
             &mut cursor,
             &budget,
         )

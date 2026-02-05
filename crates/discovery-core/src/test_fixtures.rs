@@ -142,11 +142,14 @@ pub async fn get_channel_key(
     };
     use crate::io_budget::IoBudget;
 
+    use crate::privacy_pool::types::SecretFelt;
+
     let budget = IoBudget::new(100);
     let count = get_incoming_channel_count(backend, recipient, &budget)
         .await
         .ok()??;
-    let result = discover_incoming_channels(backend, recipient, viewing_key, 0, count, &budget)
+    let key = SecretFelt::new(*viewing_key);
+    let result = discover_incoming_channels(backend, recipient, &key, 0, count, &budget)
         .await
         .ok()?;
 

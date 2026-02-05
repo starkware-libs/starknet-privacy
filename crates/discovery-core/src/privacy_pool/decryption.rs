@@ -10,7 +10,7 @@ use super::hashes::{
     compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
     compute_enc_token_hash,
 };
-use super::types::{felt_low_u128, ChannelInfo, EncChannelInfo, EncSubchannelInfo};
+use super::types::{felt_low_u128, ChannelInfo, EncChannelInfo, EncSubchannelInfo, SecretFelt};
 
 /// Errors that can occur during decryption.
 #[derive(Debug, Error)]
@@ -26,18 +26,14 @@ pub enum DecryptionError {
 /// 1. Recover the ephemeral public key point from its x-coordinate
 /// 2. Compute ECDH shared secret: `shared_point = ephemeral_pubkey * private_key`
 /// 3. Decrypt: `plaintext = ciphertext - hash(tag, shared_x)`
-///
-/// # Security
-///
-/// The caller should zero the `private_key` after use by calling `private_key.zeroize()`.
 pub fn decrypt_channel_info(
     enc: &EncChannelInfo,
-    private_key: &Felt,
+    private_key: &SecretFelt,
 ) -> Result<ChannelInfo, DecryptionError> {
     // Recover the ephemeral public key from x-coordinate..
     let ephemeral_point = AffinePoint::new_from_x(&enc.ephemeral_pubkey, false)
         .ok_or(DecryptionError::InvalidEphemeralPubkey)?;
-    let shared_point = &ephemeral_point * *private_key;
+    let shared_point = &ephemeral_point * **private_key;
     let shared_x = shared_point.x();
 
     // Decrypt: plaintext = ciphertext - hash(tag, shared_x)
@@ -111,7 +107,7 @@ mod tests {
             enc_channel_key: Felt::ONE,
             enc_sender_addr: Felt::TWO,
         };
-        let result = decrypt_channel_info(&enc, &Felt::from(12345u64));
+        let result = decrypt_channel_info(&enc, &SecretFelt::new(Felt::from(12345u64)));
         assert!(matches!(
             result,
             Err(DecryptionError::InvalidEphemeralPubkey)
@@ -128,8 +124,8 @@ mod tests {
             enc_sender_addr: f.outputs.enc_channel_sender_addr,
         };
 
-        let result = decrypt_channel_info(&encrypted, &f.inputs.recipient_private_key)
-            .expect("decryption should succeed");
+        let key = SecretFelt::new(f.inputs.recipient_private_key);
+        let result = decrypt_channel_info(&encrypted, &key).expect("decryption should succeed");
 
         assert_eq!(result.channel_key, f.inputs.channel_key);
         assert_eq!(result.sender_addr, f.inputs.sender);

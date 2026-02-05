@@ -26,6 +26,9 @@ static NOTE_ID_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("NOTE
 /// Domain separation tag for encrypted amount.
 static ENC_AMOUNT_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("ENC_AMOUNT_TAG:V1"));
 
+/// Domain separation tag for nullifier derivation.
+static NULLIFIER_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("NULLIFIER_TAG:V1"));
+
 /// Converts a short string (up to 31 ASCII chars) to Felt.
 fn short_string_to_felt(s: &str) -> Felt {
     assert!(
@@ -106,9 +109,29 @@ pub fn compute_enc_amount_hash(channel_key: Felt, token: Felt, index: u64, salt:
     ])
 }
 
+/// Computes the nullifier for a note.
+///
+/// `nullifier = hash(NULLIFIER_TAG, channel_key, token, index, 0, decryption_key)`
+pub fn compute_nullifier(
+    channel_key: Felt,
+    token: Felt,
+    index: u64,
+    decryption_key: &super::types::SecretFelt,
+) -> Felt {
+    hash(&[
+        *NULLIFIER_TAG,
+        channel_key,
+        token,
+        Felt::from(index),
+        Felt::ZERO,
+        **decryption_key,
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::privacy_pool::types::SecretFelt;
     use crate::test_fixtures::load_cairo_ref_fixture;
 
     #[test]
@@ -154,6 +177,22 @@ mod tests {
         assert_eq!(
             compute_note_id(f.inputs.channel_key, f.inputs.token, f.inputs.index),
             f.outputs.note_id
+        );
+    }
+
+    #[test]
+    fn test_compute_nullifier() {
+        let f = load_cairo_ref_fixture();
+        // Reference data uses sender_private_key as the owner (note owner
+        // in the reference scenario is the sender).
+        assert_eq!(
+            compute_nullifier(
+                f.inputs.channel_key,
+                f.inputs.token,
+                f.inputs.index,
+                &SecretFelt::new(f.inputs.sender_private_key),
+            ),
+            f.outputs.nullifier
         );
     }
 

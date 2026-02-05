@@ -19,8 +19,8 @@ pub const COST_CHANNEL_INFO: usize = 3;
 /// Cost for `get_subchannel_info` (2 storage slot reads).
 pub const COST_SUBCHANNEL_INFO: usize = 2;
 
-/// Cost for `get_note` (1 storage slot read).
-pub const COST_NOTE: usize = 1;
+/// Cost for `get_note` + `nullifier_exists` (2 storage slot reads).
+pub const COST_NOTE: usize = 2;
 
 /// Errors that can occur during channel discovery.
 #[derive(Debug, Error)]

@@ -22,7 +22,8 @@ use super::DiscoveryError;
 use super::COST_NOTE;
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::{decrypt_note_amount, unpack_note_amount};
-use crate::privacy_pool::hashes::compute_note_id;
+use crate::privacy_pool::hashes::{compute_note_id, compute_nullifier};
+use crate::privacy_pool::types::SecretFelt;
 use crate::privacy_pool::views::IViews;
 
 /// A discovered and decrypted note.
@@ -43,8 +44,9 @@ pub struct DecryptedNote {
 pub struct NotesDiscoveryResult {
     /// List of discovered and decrypted notes.
     pub notes: Vec<DecryptedNote>,
-    /// Index of the last discovered note, or `None` if no notes were discovered.
-    /// Use for cursor updates: `cursor.last_note_index = result.last_index`.
+    /// Index of the last scanned note, or `None` if no notes were scanned.
+    /// Includes spent (filtered) notes. Use for cursor updates:
+    /// `cursor.last_note_index = result.last_index`.
     pub last_index: Option<u64>,
     /// Whether there may be more notes to discover.
     /// `true` if stopped due to budget exhaustion, `false` if sentinel was found.
@@ -60,6 +62,7 @@ pub struct NotesDiscoveryResult {
 /// 2. Fetch `packed_amount` from storage
 /// 3. If `packed_amount == 0`, stop (sentinel - no more notes)
 /// 4. Decrypt to get `(amount, salt)`
+/// 5. Compute nullifier and check existence — skip spent notes
 ///
 /// # Arguments
 ///
@@ -68,25 +71,31 @@ pub struct NotesDiscoveryResult {
 /// * `token` - The token address for this subchannel.
 /// * `start_index` - Starting index (inclusive). For incremental discovery, pass
 ///   `last_index + 1` from previous result.
+/// * `decryption_key` - The owner's private (viewing) key for nullifier computation.
 /// * `budget` - I/O budget to limit storage operations.
 ///
 /// # Returns
 ///
 /// A `NotesDiscoveryResult` containing all discovered notes and metadata
 /// for incremental discovery.
+// TODO: Iterate in batches doing multiple RPC requests under the hood
+// (get_note + nullifier_exists per note), until reaching a non-existent note,
+// then bisect to find the exact boundary.
 pub async fn discover_notes<PrivacyPool: IViews>(
     privacy_pool: &PrivacyPool,
     channel_key: Felt,
     token: Felt,
     start_index: u64,
+    decryption_key: &SecretFelt,
     budget: &IoBudget,
 ) -> Result<NotesDiscoveryResult, DiscoveryError> {
     let mut notes = Vec::new();
     let mut index = start_index;
     let mut out_of_budget = false;
+    let mut last_scanned_index: Option<u64> = None;
 
     loop {
-        // Consume budget for get_note
+        // Consume budget for get_note + nullifier_exists
         if !budget.consume(COST_NOTE) {
             out_of_budget = true;
             break;
@@ -106,20 +115,25 @@ pub async fn discover_notes<PrivacyPool: IViews>(
         // so enc_amount is already the actual amount - no decryption needed.
         let amount = decrypt_note_amount(enc_amount, salt, channel_key, token, index);
 
-        notes.push(DecryptedNote {
-            index,
-            note_id,
-            amount,
-            salt,
-        });
+        let nullifier = compute_nullifier(channel_key, token, index, decryption_key);
+        let is_spent = privacy_pool.nullifier_exists(nullifier).await?;
+
+        last_scanned_index = Some(index);
+
+        if !is_spent {
+            notes.push(DecryptedNote {
+                index,
+                note_id,
+                amount,
+                salt,
+            });
+        }
         index += 1;
     }
 
-    let last_index = notes.last().map(|n| n.index);
-
     Ok(NotesDiscoveryResult {
         notes,
-        last_index,
+        last_index: last_scanned_index,
         has_more: out_of_budget,
     })
 }
@@ -135,10 +149,19 @@ pub async fn discover_notes_paginated<S: IViews>(
     channel_key: Felt,
     token: Felt,
     cursor: &mut SubchannelCursor,
+    decryption_key: &SecretFelt,
     budget: &IoBudget,
 ) -> Result<(Vec<DecryptedNote>, bool), DiscoveryError> {
     let start_index = cursor.last_note_index.map_or(0, |i| i + 1);
-    let result = discover_notes(pool, channel_key, token, start_index, budget).await?;
+    let result = discover_notes(
+        pool,
+        channel_key,
+        token,
+        start_index,
+        decryption_key,
+        budget,
+    )
+    .await?;
 
     cursor.last_note_index = result.last_index.or(cursor.last_note_index);
 
@@ -158,7 +181,8 @@ mod tests {
         let token = Felt::from_hex_unchecked("0x67890");
         let budget = IoBudget::new(100);
 
-        let result = discover_notes(&backend, channel_key, token, 0, &budget)
+        let zero_key = SecretFelt::new(Felt::ZERO);
+        let result = discover_notes(&backend, channel_key, token, 0, &zero_key, &budget)
             .await
             .unwrap();
 
@@ -186,19 +210,19 @@ mod tests {
             .expect("Alice's channel should have at least one subchannel");
 
         let budget = IoBudget::new(100);
-        let result = discover_notes(&backend, channel_key, token, 0, &budget)
+        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let result = discover_notes(&backend, channel_key, token, 0, &key, &budget)
             .await
             .unwrap();
 
-        assert!(
-            !result.notes.is_empty(),
-            "Alice's self-channel should have notes"
-        );
-        assert_eq!(result.last_index, result.notes.last().map(|n| n.index));
-        assert!(!result.has_more);
+        // Alice deposited 100 STRK, transferred 50 to Bob.
+        // The transfer consumed the deposit and wrote a change note (50 STRK)
+        // at index 0. This note is unspent.
+        assert_eq!(result.notes.len(), 1, "1 unspent change note");
         assert_eq!(result.notes[0].index, 0);
-        // The amount should be positive
         assert!(result.notes[0].amount > 0, "Note amount should be positive");
+        assert_eq!(result.last_index, Some(0));
+        assert!(!result.has_more);
     }
 
     #[tokio::test]
@@ -220,16 +244,15 @@ mod tests {
             .expect("Bob's channel should have at least one subchannel");
 
         let budget = IoBudget::new(100);
-        let result = discover_notes(&backend, channel_key, token, 0, &budget)
+        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let result = discover_notes(&backend, channel_key, token, 0, &key, &budget)
             .await
             .unwrap();
 
-        assert!(
-            !result.notes.is_empty(),
-            "Bob should have received notes from Alice"
-        );
+        // Bob withdrew his 50 STRK note → nullifier exists → filtered out
+        assert_eq!(result.notes.len(), 0, "Bob's note is spent");
+        assert_eq!(result.last_index, Some(0), "note 0 was scanned");
         assert!(!result.has_more);
-        assert!(result.notes[0].amount > 0, "Note amount should be positive");
     }
 
     #[tokio::test]
@@ -250,17 +273,18 @@ mod tests {
             .await
             .expect("Alice's channel should have at least one subchannel");
 
-        // First discovery
+        // First discovery — Alice has 1 unspent change note (50 STRK at index 0)
         let budget = IoBudget::new(100);
-        let result1 = discover_notes(&backend, channel_key, token, 0, &budget)
+        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let result1 = discover_notes(&backend, channel_key, token, 0, &key, &budget)
             .await
             .unwrap();
-        assert!(!result1.notes.is_empty());
+        assert_eq!(result1.notes.len(), 1, "1 unspent change note");
         assert!(!result1.has_more);
         let last_index = result1.last_index.unwrap();
 
         // Incremental discovery starting from last_index + 1 - should find 0 new notes
-        let result2 = discover_notes(&backend, channel_key, token, last_index + 1, &budget)
+        let result2 = discover_notes(&backend, channel_key, token, last_index + 1, &key, &budget)
             .await
             .unwrap();
         assert_eq!(result2.notes.len(), 0);
@@ -286,9 +310,10 @@ mod tests {
             .await
             .expect("Alice's channel should have at least one subchannel");
 
-        // Budget exhausted before starting (COST_NOTE = 1)
+        // Budget exhausted before starting (COST_NOTE = 2)
         let budget = IoBudget::new(0);
-        let result = discover_notes(&backend, channel_key, token, 0, &budget)
+        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let result = discover_notes(&backend, channel_key, token, 0, &key, &budget)
             .await
             .unwrap();
 
@@ -313,12 +338,14 @@ mod tests {
 
         let mut cursor = SubchannelCursor::default();
         let budget = IoBudget::new(100);
+        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
         let (notes, has_more) =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &budget)
+            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
                 .await
                 .unwrap();
 
-        assert!(!notes.is_empty(), "should discover at least one note");
+        // Bob's note is spent → filtered out
+        assert_eq!(notes.len(), 0, "Bob's note is spent");
         assert!(!has_more, "sentinel should be found");
     }
 
@@ -337,14 +364,16 @@ mod tests {
         let token = get_subchannel_token(&backend, channel_key).await.unwrap();
 
         let mut cursor = SubchannelCursor::default();
-        // Budget for exactly 1 note (COST_NOTE=1), not enough to hit sentinel
+        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        // Budget for exactly 1 note (COST_NOTE=2: get_note + nullifier_exists)
         let budget = IoBudget::new(COST_NOTE);
         let (notes, has_more) =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &budget)
+            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
                 .await
                 .unwrap();
 
-        assert_eq!(notes.len(), 1, "should discover exactly 1 note");
+        // Bob's note 0 is spent → filtered out, but still scanned
+        assert_eq!(notes.len(), 0, "Bob's note is spent");
         assert!(has_more, "sentinel not reached");
         assert_eq!(cursor.last_note_index, Some(0));
     }

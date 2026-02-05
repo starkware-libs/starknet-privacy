@@ -1,4 +1,8 @@
 //! RPC-based implementation of the storage interface and chain state.
+//!
+// TODO: Implement batched "deferred" requests to seamlessly provide
+// parallelization for discovery operations (e.g. note fetch + nullifier
+// check can be issued as a single batched RPC call).
 
 use std::sync::Arc;
 use std::time::Duration;

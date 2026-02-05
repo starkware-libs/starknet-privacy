@@ -2,6 +2,7 @@
 
 use axum::http::StatusCode;
 use discovery_core::discovery::cursor::DiscoveryCursor;
+use discovery_core::privacy_pool::types::SecretFelt;
 use starknet_core::types::{BlockId, Felt};
 use tracing::warn;
 
@@ -18,7 +19,7 @@ pub struct ValidatedRequest {
     /// The recipient's address.
     pub recipient_address: Felt,
     /// The recipient's private viewing key.
-    pub decryption_key: Felt,
+    pub decryption_key: SecretFelt,
     /// Resolved block ID for the query.
     pub query_block: BlockId,
     /// Block hash pinning all reads (from head or request).
@@ -121,7 +122,7 @@ impl ValidatedRequest {
 
         Ok(ValidatedRequest {
             recipient_address: request.recipient_address,
-            decryption_key: request.decryption_key,
+            decryption_key: SecretFelt::new(request.decryption_key),
             query_block: BlockId::Hash(block_ref),
             block_ref,
             cursor: request.cursor,
