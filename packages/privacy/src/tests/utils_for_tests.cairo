@@ -142,6 +142,7 @@ impl DefaultRolesImpl of Default<Roles> {
 #[derive(Copy, Drop)]
 pub(crate) struct SwapExecutorCfg {
     pub address: ContractAddress,
+    pub privacy_address: ContractAddress,
 }
 
 
@@ -1596,7 +1597,7 @@ impl DefaultTestImpl of Default<Test> {
         let compliance: Compliance = Default::default();
         let roles: Roles = Default::default();
         let privacy = deploy_privacy(:roles, compliance_public_key: compliance.public_key);
-        let swap_executor = deploy_swap_executor();
+        let swap_executor = deploy_swap_executor(privacy_address: privacy.address);
         let mock_amm = deploy_mock_amm();
 
         Test { privacy, nonce: Zero::zero(), compliance, swap_executor, mock_amm }
@@ -1668,14 +1669,14 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
 }
 
 /// Deploy a new swap executor contract.
-fn deploy_swap_executor() -> SwapExecutorCfg {
+fn deploy_swap_executor(privacy_address: ContractAddress) -> SwapExecutorCfg {
     let class_hash = declare(contract: "SwapExecutor").unwrap_syscall().contract_class().class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
     let (contract_address, _) = deploy_swap_executor_for_test(
         class_hash: *class_hash, :deployment_params,
     )
         .expect('SwapExecutor deployment failed');
-    SwapExecutorCfg { address: contract_address }
+    SwapExecutorCfg { address: contract_address, privacy_address }
 }
 
 /// Deploy a new mock AMM contract.
@@ -1697,19 +1698,24 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         in_token: ContractAddress,
         out_token: ContractAddress,
         in_amount: u128,
+        note_id: felt252,
     ) -> u128 {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.privacy_address,
+        );
         let dispatcher = ISwapExecutorDispatcher { contract_address: *self.address };
         let swap_selector = selector!("swap");
         let swap_calldata = [in_token.into(), out_token.into(), in_amount.into(), 0].span();
-        ISwapExecutorDispatcherTrait::swap(
-            dispatcher,
-            :swap_contract,
-            :swap_selector,
-            :swap_calldata,
-            :in_token,
-            :out_token,
-            :in_amount,
-        )
+        dispatcher
+            .swap(
+                :swap_contract,
+                :swap_selector,
+                :swap_calldata,
+                :in_token,
+                :out_token,
+                :in_amount,
+                :note_id,
+            )
     }
 
     #[feature("safe_dispatcher")]
@@ -1721,9 +1727,18 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         in_token: ContractAddress,
         out_token: ContractAddress,
         in_amount: u128,
+        note_id: felt252,
     ) -> Result<u128, Array<felt252>> {
         ISwapExecutorSafeDispatcher { contract_address: *self.address }
-            .swap(:swap_contract, :swap_selector, :swap_calldata, :in_token, :out_token, :in_amount)
+            .swap(
+                :swap_contract,
+                :swap_selector,
+                :swap_calldata,
+                :in_token,
+                :out_token,
+                :in_amount,
+                :note_id,
+            )
     }
 }
 
