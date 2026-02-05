@@ -1,4 +1,6 @@
 //! Hash functions and domain separation tags.
+//!
+//! TODO: rename primitives to match smart contract terminology
 
 use std::sync::LazyLock;
 
@@ -28,6 +30,18 @@ static ENC_AMOUNT_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("E
 
 /// Domain separation tag for nullifier derivation.
 static NULLIFIER_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("NULLIFIER_TAG:V1"));
+
+/// Domain separation tag for channel key derivation.
+static CHANNEL_KEY_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("CHANNEL_KEY_TAG:V1"));
+
+/// Domain separation tag for outgoing channel id derivation.
+static OUTGOING_CHANNEL_ID_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("OUTGOING_CHANNEL_ID_TAG:V1"));
+
+/// Domain separation tag for encrypted recipient address.
+static ENC_RECIPIENT_ADDR_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("ENC_RECIPIENT_ADDR_TAG:V1"));
 
 /// Converts a short string (up to 31 ASCII chars) to Felt.
 fn short_string_to_felt(s: &str) -> Felt {
@@ -128,6 +142,60 @@ pub fn compute_nullifier(
     ])
 }
 
+/// Computes the channel key from sender credentials and recipient identity.
+///
+/// `channel_key = hash(CHANNEL_KEY_TAG, sender_addr, viewing_key, recipient_addr, recipient_public_key)`
+pub fn compute_channel_key(
+    sender_addr: Felt,
+    viewing_key: &super::types::SecretFelt,
+    recipient_addr: Felt,
+    recipient_public_key: Felt,
+) -> Felt {
+    hash(&[
+        *CHANNEL_KEY_TAG,
+        sender_addr,
+        **viewing_key,
+        recipient_addr,
+        recipient_public_key,
+    ])
+}
+
+/// Computes the outgoing channel id for storage lookup.
+///
+/// `outgoing_channel_id = hash(OUTGOING_CHANNEL_ID_TAG, sender_addr, viewing_key, index, 0)`
+pub fn compute_outgoing_channel_id(
+    sender_addr: Felt,
+    viewing_key: &super::types::SecretFelt,
+    index: u64,
+) -> Felt {
+    hash(&[
+        *OUTGOING_CHANNEL_ID_TAG,
+        sender_addr,
+        **viewing_key,
+        Felt::from(index),
+        Felt::ZERO,
+    ])
+}
+
+/// Computes the encryption mask for the outgoing recipient address.
+///
+/// `enc_recipient_addr_hash = hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, viewing_key, index, 0, salt)`
+pub fn compute_enc_recipient_addr_hash(
+    sender_addr: Felt,
+    viewing_key: &super::types::SecretFelt,
+    index: u64,
+    salt: Felt,
+) -> Felt {
+    hash(&[
+        *ENC_RECIPIENT_ADDR_TAG,
+        sender_addr,
+        **viewing_key,
+        Felt::from(index),
+        Felt::ZERO,
+        salt,
+    ])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,6 +273,41 @@ mod tests {
         assert_eq!(
             compute_enc_amount_hash(f.inputs.channel_key, f.inputs.token, f.inputs.index, salt),
             f.outputs.enc_amount_hash
+        );
+    }
+
+    #[test]
+    fn test_compute_channel_key() {
+        let f = load_cairo_ref_fixture();
+        let key = SecretFelt::new(f.inputs.sender_private_key);
+        assert_eq!(
+            compute_channel_key(
+                f.inputs.sender,
+                &key,
+                f.inputs.recipient,
+                f.inputs.recipient_public_key,
+            ),
+            f.outputs.channel_key
+        );
+    }
+
+    #[test]
+    fn test_compute_outgoing_channel_id() {
+        let f = load_cairo_ref_fixture();
+        let key = SecretFelt::new(f.inputs.sender_private_key);
+        assert_eq!(
+            compute_outgoing_channel_id(f.inputs.sender, &key, f.inputs.index),
+            f.outputs.outgoing_channel_id
+        );
+    }
+
+    #[test]
+    fn test_compute_enc_recipient_addr_hash() {
+        let f = load_cairo_ref_fixture();
+        let key = SecretFelt::new(f.inputs.sender_private_key);
+        assert_eq!(
+            compute_enc_recipient_addr_hash(f.inputs.sender, &key, f.inputs.index, f.inputs.salt),
+            f.outputs.enc_recipient_addr_hash
         );
     }
 }

@@ -5,7 +5,7 @@ use num_traits::ToPrimitive;
 use starknet_types_core::felt::Felt;
 
 use super::storage_slots;
-use super::types::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
+use super::types::{EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use crate::storage_backend::{RawStorageAccess, StorageError};
 
 /// Privacy contract view methods.
@@ -32,6 +32,12 @@ pub trait IViews: Send + Sync {
         &self,
         subchannel_id: Felt,
     ) -> Result<EncSubchannelInfo, StorageError>;
+
+    /// Returns encrypted outgoing channel info for the given outgoing channel id.
+    async fn get_outgoing_channel_info(
+        &self,
+        outgoing_channel_id: Felt,
+    ) -> Result<EncOutgoingChannelInfo, StorageError>;
 
     /// Returns the note value for the given note ID.
     async fn get_note(&self, note_id: Felt) -> Result<Felt, StorageError>;
@@ -120,6 +126,22 @@ impl<T: RawStorageAccess> IViews for T {
         Ok(EncSubchannelInfo {
             salt: values[0],
             enc_token: values[1],
+        })
+    }
+
+    #[tracing::instrument(name = "get_outgoing_channel_info", level = "debug", skip(self))]
+    async fn get_outgoing_channel_info(
+        &self,
+        outgoing_channel_id: Felt,
+    ) -> Result<EncOutgoingChannelInfo, StorageError> {
+        let slots = storage_slots::outgoing_channels(outgoing_channel_id);
+        let values = self
+            .read_slots(vec![slots.salt, slots.enc_recipient_addr])
+            .await?;
+        check_slots_len(&values, 2)?;
+        Ok(EncOutgoingChannelInfo {
+            salt: values[0],
+            enc_recipient_addr: values[1],
         })
     }
 

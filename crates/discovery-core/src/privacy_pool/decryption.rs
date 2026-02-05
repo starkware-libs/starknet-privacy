@@ -7,10 +7,13 @@ use starknet_types_core::{curve::AffinePoint, felt::Felt};
 use thiserror::Error;
 
 use super::hashes::{
-    compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash,
+    compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_recipient_addr_hash,
+    compute_enc_sender_addr_hash, compute_enc_token_hash,
 };
-use super::types::{felt_low_u128, ChannelInfo, EncChannelInfo, EncSubchannelInfo, SecretFelt};
+use super::types::{
+    felt_low_u128, ChannelInfo, EncChannelInfo, EncOutgoingChannelInfo, EncSubchannelInfo,
+    SecretFelt,
+};
 
 /// Errors that can occur during decryption.
 #[derive(Debug, Error)]
@@ -95,6 +98,19 @@ pub fn decrypt_note_amount(
     enc_amount.wrapping_sub(pad)
 }
 
+/// Decrypts an outgoing channel's encrypted recipient address.
+///
+/// `recipient_addr = enc_recipient_addr - hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, viewing_key, index, 0, salt)`
+pub fn decrypt_outgoing_recipient_addr(
+    enc: &EncOutgoingChannelInfo,
+    sender_addr: Felt,
+    viewing_key: &SecretFelt,
+    index: u64,
+) -> Felt {
+    let mask = compute_enc_recipient_addr_hash(sender_addr, viewing_key, index, enc.salt);
+    enc.enc_recipient_addr - mask
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,5 +178,21 @@ mod tests {
             f.inputs.index,
         );
         assert_eq!(amount, f.outputs.dec_note_amount as u128);
+    }
+
+    #[test]
+    fn test_decrypt_outgoing_recipient_addr_with_cairo_vectors() {
+        let f = load_cairo_ref_fixture();
+
+        let enc = EncOutgoingChannelInfo {
+            salt: f.outputs.enc_outgoing_salt,
+            enc_recipient_addr: f.outputs.enc_outgoing_recipient_addr,
+        };
+
+        let key = SecretFelt::new(f.inputs.sender_private_key);
+        let recipient =
+            decrypt_outgoing_recipient_addr(&enc, f.inputs.sender, &key, f.inputs.index);
+
+        assert_eq!(recipient, f.inputs.recipient);
     }
 }
