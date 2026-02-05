@@ -80,6 +80,13 @@ export class ActionCompiler {
     const registry = options?.registryConst ? this.cloneRegistry(registry_) : registry_;
     const recipientsNeeded = this.getRecipientsNeeded(actions);
 
+    const needsOutgoingIndex = this.needsOutgoingChannelIndex(
+      actions,
+      options,
+      registry,
+      recipientsNeeded
+    );
+
     // Phase 1: Resolve recipient channels
     const channels = await this.resolveRecipientChannels(
       actions,
@@ -97,7 +104,28 @@ export class ActionCompiler {
     const pool = this.createPool(toBigInt(this.userViewingKey), registry, channels);
 
     // Phase 3: Transform Actions to ClientAction[]
-    const clientActions = this.transformToClientActions(actions, pool, recipientsNeeded, options);
+    const outgoingChannels = needsOutgoingIndex
+      ? (
+          await this.discoveryProvider.discoverChannels(
+            this.userAddress,
+            this.userViewingKey,
+            "all",
+            { cursor: registry.channels }
+          )
+        ).channels
+      : undefined;
+
+    const outgoingChannelIndexStart = needsOutgoingIndex
+      ? this.countOutgoingChannels(outgoingChannels, registry)
+      : undefined;
+
+    const clientActions = this.transformToClientActions(
+      actions,
+      pool,
+      recipientsNeeded,
+      options,
+      outgoingChannelIndexStart
+    );
 
     debugLog("compiler", "compile", "post transformToClientActions", clientActions);
 
@@ -191,7 +219,8 @@ export class ActionCompiler {
     actions: Actions,
     pool: PoolSimulator,
     recipientsNeeded: AddressMap<boolean>,
-    options?: ExecuteOptions
+    options?: ExecuteOptions,
+    outgoingChannelIndexStart?: number
   ): ClientAction[] {
     const clientActions: ClientActions = {
       setViewingKey: undefined,
@@ -258,6 +287,7 @@ export class ActionCompiler {
 
     // 2. OpenChannel (deduplicate by recipient to prevent duplicate channels)
     if (actions.openChannels) {
+      let outgoingChannelIndex = outgoingChannelIndexStart ?? 0;
       const seenRecipients = new Set<bigint>();
       for (const action of actions.openChannels) {
         if (seenRecipients.has(action.recipient)) continue;
@@ -270,12 +300,13 @@ export class ActionCompiler {
           input: {
             recipient_addr: action.recipient,
             recipient_public_key: channel.publicKey as bigint,
-            index: seenRecipients.size - 1, // TODO: track outgoing channel index properly
+            index: outgoingChannelIndex,
             random: generateRandom(),
             salt: generateRandom(),
           },
         } as const; // typescipt magic
         execute(input, clientActions.openChannels);
+        outgoingChannelIndex += 1;
       }
     }
 
@@ -647,6 +678,44 @@ export class ActionCompiler {
         }
       }
     }
+  }
+
+  private needsOutgoingChannelIndex(
+    actions: Actions,
+    options: ExecuteOptions | undefined,
+    registry: PrivateRegistry,
+    recipientsNeeded: AddressMap<boolean>
+  ): boolean {
+    if (actions.openChannels && actions.openChannels.length > 0) {
+      return true;
+    }
+
+    if (!options?.autoSetup) {
+      return false;
+    }
+
+    for (const recipient of recipientsNeeded.keys()) {
+      const channel = registry.channels.get(recipient);
+      if (!channel?.key) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private countOutgoingChannels(
+    channels: AddressMap<Channel> | undefined,
+    registry: PrivateRegistry
+  ): number {
+    const source = channels ?? registry.channels;
+    let count = 0;
+    for (const channel of source.values()) {
+      if (channel.key) {
+        count += 1;
+      }
+    }
+    return count;
   }
 
   private cloneRegistry(registry: PrivateRegistry): PrivateRegistry {
