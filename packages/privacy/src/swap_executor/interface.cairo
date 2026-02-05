@@ -20,17 +20,16 @@ pub trait ISwapExecutor<T> {
     /// None
     ///
     /// #### Preconditions
-    /// - All parameters must be non-zero.
+    /// - Assumes all parameters are non-zero.
     /// - The swap executor must have sufficient input token balance.
     /// - The caller must be the privacy contract that owns the open note.
     /// - The open note must exist and be ready to receive deposits.
     ///
     /// #### Flow
-    /// 1. Validates all inputs are valid.
-    /// 2. Approves swap contract to spend `in_amount` of in tokens.
-    /// 3. Records output token balance, executes the swap, calculates received amount.
-    /// 4. Approves the caller (privacy contract) to transfer the received output funds.
-    /// 5. Calls `deposit_to_open_note` on the caller with `note_id` and the received amount.
+    /// 1. Approves swap contract to spend `in_amount` of in tokens.
+    /// 2. Records output token balance, executes the swap, calculates received amount.
+    /// 3. Approves the caller (privacy contract) to transfer the received output funds.
+    /// 4. Calls `deposit_to_open_note` on the caller with `note_id` and the received amount.
     fn swap(
         ref self: T,
         swap_contract: ContractAddress,

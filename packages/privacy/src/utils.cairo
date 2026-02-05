@@ -7,9 +7,9 @@ use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::errors;
 use privacy::errors::internal_errors;
 use privacy::hashes::{
-    compute_enc_address_hash, compute_enc_amount_hash, compute_enc_channel_key_hash,
-    compute_enc_private_key_hash, compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash, hash,
+    compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_private_key_hash,
+    compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
+    compute_enc_user_addr_hash, hash,
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
@@ -202,7 +202,7 @@ pub(crate) fn encrypt_user_addr(
         :ephemeral_secret, public_key: compliance_public_key,
     );
     // Encrypt address.
-    let enc_user_addr = compute_enc_address_hash(:shared_x) + user_addr.into();
+    let enc_user_addr = compute_enc_user_addr_hash(:shared_x) + user_addr.into();
     EncUserAddr { compliance_public_key, ephemeral_pubkey: ephemeral_pub_x, enc_user_addr }
 }
 
@@ -335,6 +335,8 @@ pub(crate) fn extract_server_actions_from_execute_and_panic(
 ) -> Span<ServerAction> {
     let origin_panic_data = syscall_result.expect_err(internal_errors::EXPECTED_PANIC).span();
     let mut panic_data = origin_panic_data;
+    // On success, the panic data should be [`OK_WRAPPER`, <deserialized server actions>,
+    // `OK_WRAPPER`, `ENTRYPOINT_FAILED`].
     if panic_data.pop_front() != Some(@OK_WRAPPER) {
         panic(origin_panic_data.into());
     }

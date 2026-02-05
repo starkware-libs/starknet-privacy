@@ -382,9 +382,7 @@ fn test_execute_transfer_from() {
     // Test transfer_from.
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom(
-            TransferFromInput {
-                sender_addr: user.address, token: token.contract_address(), amount,
-            },
+            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
         ),
     ];
     test.privacy.execute_actions(actions.span());
@@ -404,9 +402,7 @@ fn test_execute_transfer_from_assertions() {
     // Catch INSUFFICIENT_BALANCE.
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom(
-            TransferFromInput {
-                sender_addr: user.address, token: token.contract_address(), amount,
-            },
+            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
         ),
     ];
     let result = test.privacy.safe_execute_actions(actions.span());
@@ -416,9 +412,7 @@ fn test_execute_transfer_from_assertions() {
     user.increase_token_balance(:token, :amount);
     let actions: Array<ServerAction> = array![
         ServerAction::TransferFrom(
-            TransferFromInput {
-                sender_addr: user.address, token: token.contract_address(), amount,
-            },
+            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
         ),
     ];
     let result = test.privacy.safe_execute_actions(actions.span());
@@ -453,7 +447,7 @@ fn test_execute_transfer_to() {
     let actions: Array<ServerAction> = array![
         ServerAction::TransferTo(
             TransferToInput {
-                recipient_addr: recipient.address, token: token.contract_address(), amount: amount,
+                to_addr: recipient.address, token: token.contract_address(), amount: amount,
             },
         ),
     ];
@@ -475,7 +469,7 @@ fn test_execute_transfer_to_assertions() {
     let actions: Array<ServerAction> = array![
         ServerAction::TransferTo(
             TransferToInput {
-                recipient_addr: recipient.address, token: token.contract_address(), amount: amount,
+                to_addr: recipient.address, token: token.contract_address(), amount: amount,
             },
         ),
     ];
@@ -553,7 +547,7 @@ fn test_execute_emit_withdrawal() {
     let token = test.mock_new_token();
     let enc_user_addr = test.mock_new_enc_address();
     let expected_event = events::Withdrawal {
-        enc_user_addr, withdrawal_target: user.address, token, amount: 1,
+        enc_user_addr, to_addr: user.address, token, amount: 1,
     };
     let actions = array![ServerAction::EmitWithdrawal(expected_event)];
     let mut spy = spy_events();
@@ -1046,48 +1040,6 @@ fn test_execute_swap_with_executor_assertions() {
         in_amount: swap_amount,
     };
 
-    // Catch ZERO_SWAP_CONTRACT.
-    let swap_input = SwapWithExecutorInput { swap_contract: Zero::zero(), ..valid_swap_input };
-    let result = test
-        .privacy
-        .safe_execute_actions([ServerAction::SwapWithExecutor(swap_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_SWAP_CONTRACT);
-
-    // Catch ZERO_SWAP_SELECTOR.
-    let swap_input = SwapWithExecutorInput { swap_selector: Zero::zero(), ..valid_swap_input };
-    let result = test
-        .privacy
-        .safe_execute_actions([ServerAction::SwapWithExecutor(swap_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_SWAP_SELECTOR);
-
-    // Catch ZERO_IN_TOKEN.
-    let swap_input = SwapWithExecutorInput { in_token: Zero::zero(), ..valid_swap_input };
-    let result = test
-        .privacy
-        .safe_execute_actions([ServerAction::SwapWithExecutor(swap_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_IN_TOKEN);
-
-    // Catch ZERO_OUT_TOKEN.
-    let swap_input = SwapWithExecutorInput { out_token: Zero::zero(), ..valid_swap_input };
-    let result = test
-        .privacy
-        .safe_execute_actions([ServerAction::SwapWithExecutor(swap_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_OUT_TOKEN);
-
-    // Catch ZERO_AMOUNT.
-    let swap_input = SwapWithExecutorInput { in_amount: Zero::zero(), ..valid_swap_input };
-    let result = test
-        .privacy
-        .safe_execute_actions([ServerAction::SwapWithExecutor(swap_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_AMOUNT);
-
-    // Catch ZERO_NOTE_ID.
-    let swap_input = SwapWithExecutorInput { note_id: Zero::zero(), ..valid_swap_input };
-    let result = test
-        .privacy
-        .safe_execute_actions([ServerAction::SwapWithExecutor(swap_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_NOTE_ID);
-
     // Catch ZERO_OUT_AMOUNT
     let swap_input = SwapWithExecutorInput {
         swap_selector: selector!("noop_swap"), swap_calldata: [].span(), ..valid_swap_input,
@@ -1096,6 +1048,12 @@ fn test_execute_swap_with_executor_assertions() {
         .privacy
         .safe_execute_actions([ServerAction::SwapWithExecutor(swap_input)].span());
     assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_OUT_AMOUNT);
+
+    // Catch INSUFFICIENT_BALANCE.
+    let result = test
+        .privacy
+        .safe_execute_actions([ServerAction::SwapWithExecutor(valid_swap_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: 'ERC20: insufficient balance');
 
     // Catch RECEIVED_AMOUNT_OVERFLOW
     // Fund AMM with MAX_U128 + 1 output tokens (supply takes u128, so we call it twice).
