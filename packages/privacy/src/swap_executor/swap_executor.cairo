@@ -26,15 +26,6 @@ pub mod SwapExecutor {
             in_amount: u128,
             note_id: felt252,
         ) {
-            // Validate all inputs are non-zero.
-            // TODO: Remove validations, client validation should handle this.
-            assert(swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
-            assert(swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
-            assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
-            assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
-            assert(in_amount.is_non_zero(), errors::ZERO_AMOUNT);
-            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
-
             let self_addr = get_contract_address();
             let privacy_addr = get_caller_address();
             let in_erc20 = IERC20Dispatcher { contract_address: in_token };
