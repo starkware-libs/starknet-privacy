@@ -441,6 +441,50 @@ pub trait IServer<T> {
     /// - All actions are executed sequentially in the order they appear in the span.
     /// - If any action fails, the entire transaction reverts and no state changes are applied.
     fn execute_actions(ref self: T, actions: Span<ServerAction>);
+
+    /// Deposits funds to an existing open note.
+    ///
+    /// This function transfers tokens from the caller to the contract and updates the open note
+    /// with the deposited amount. The caller must be the depositor that was specified when the
+    /// open note was created.
+    ///
+    /// #### Parameters
+    /// - `note_id` (`felt252`): The identifier of the open note to deposit to.
+    /// - `amount` (`u128`): The amount of tokens to deposit.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Preconditions
+    /// - `note_id` must not be zero.
+    /// - `amount` must not be zero.
+    /// - The note must exist in storage.
+    /// - The note must be an open note (salt == OPEN_NOTE_SALT).
+    /// - The note must not have been deposited to yet (current amount == 0).
+    /// - The caller must be the depositor specified when the note was created.
+    /// - The caller must have sufficient token balance and allowance.
+    ///
+    /// #### Events Emitted
+    /// - [`OpenNoteDeposited`](privacy::events::OpenNoteDeposited): Emitted when the deposit
+    /// succeeds.
+    ///
+    /// #### Reverts
+    /// - [`ZERO_NOTE_ID`](privacy::errors::ZERO_NOTE_ID): Thrown if `note_id` is zero.
+    /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
+    /// - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if the note does not exist.
+    /// - [`NOTE_NOT_OPEN`](privacy::errors::NOTE_NOT_OPEN): Thrown if the note is not an open note.
+    /// - [`NOTE_ALREADY_DEPOSITED`](privacy::errors::NOTE_ALREADY_DEPOSITED): Thrown if the note
+    /// has already been deposited to.
+    /// - [`CALLER_NOT_DEPOSITOR`](privacy::errors::CALLER_NOT_DEPOSITOR): Thrown if the caller is
+    /// not the depositor.
+    /// - `INSUFFICIENT_BALANCE`: Thrown if the caller has insufficient token balance (from ERC20
+    /// contract).
+    /// - `INSUFFICIENT_ALLOWANCE`: Thrown if the caller has insufficient token allowance (from
+    /// ERC20 contract).
+    ///
+    /// #### Access Control
+    /// - Only the depositor specified when the open note was created can call this function.
+    fn deposit_to_open_note(ref self: T, note_id: felt252, amount: u128);
 }
 
 #[starknet::interface]

@@ -1,8 +1,8 @@
 use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    DepositToOpenNoteInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
-    SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+    OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction, SetViewingKeyInput,
+    TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
 use privacy::objects::{EncSubchannelInfo, EncUserAddr};
@@ -2795,8 +2795,7 @@ fn test_use_deposited_open_note(open_note_self: bool) {
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // Deposit to the open note.
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
     // Verify the note now has the deposited amount (use unpacking to ensure it's an open note).
     let stored_note = test.privacy.get_note(:note_id);
     let (salt, stored_amount) = unpacking(packed_value: stored_note.packed_value);
@@ -2859,8 +2858,7 @@ fn test_use_deposited_open_note_withdraw() {
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // Depositor funds the open note.
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
 
     // Verify contract now has the tokens.
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
@@ -2925,14 +2923,8 @@ fn test_use_multiple_deposited_open_notes() {
     let (note_id_2, _) = user_1.compute_open_note(create_note_input: create_note_input_2);
 
     // Depositor funds both notes.
-    depositor
-        .fund_and_deposit_to_open_note(
-            :token, input: DepositToOpenNoteInput { note_id: note_id_1, amount: amount_1 },
-        );
-    depositor
-        .fund_and_deposit_to_open_note(
-            :token, input: DepositToOpenNoteInput { note_id: note_id_2, amount: amount_2 },
-        );
+    depositor.fund_and_deposit_to_open_note(:token, note_id: note_id_1, amount: amount_1);
+    depositor.fund_and_deposit_to_open_note(:token, note_id: note_id_2, amount: amount_2);
 
     // User_2 uses both notes in a single transfer to create one merged note for user_3.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -3005,10 +2997,7 @@ fn test_use_mixed_open_and_enc_notes() {
     let (open_note_id, _) = user_1.compute_open_note(create_note_input: open_note_input);
 
     // Depositor funds the open note.
-    depositor
-        .fund_and_deposit_to_open_note(
-            :token, input: DepositToOpenNoteInput { note_id: open_note_id, amount: open_amount },
-        );
+    depositor.fund_and_deposit_to_open_note(:token, note_id: open_note_id, amount: open_amount);
 
     // User_2 uses both notes (one encrypted, one open) in a transfer to user_3.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -3073,8 +3062,7 @@ fn test_use_deposited_open_note_double_spend() {
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // Depositor funds the open note.
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
 
     // First spend: user_2 uses the note successfully.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -4281,8 +4269,7 @@ fn test_internal_actions() {
     create_open_note_input.index = index;
     user_1.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
     let (note_id, _) = user_1.compute_open_note(create_note_input: create_open_note_input);
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
     let nullifier = user_2.compute_nullifier(sender: user_1, :token_address, :index);
     let use_open_note_input = UseNoteInput { channel_key, token: token_address, index };
     let actions = user_2.internal_use_note(note: use_open_note_input);
@@ -5514,10 +5501,7 @@ fn test_create_note_at_existing_note_id(initial_is_open: bool, colliding_is_open
     // Use the initial note (deposit first if open, then spend).
     if initial_is_open {
         let (note_id, _) = user_1.compute_open_note(create_note_input: open_note_input);
-        depositor
-            .fund_and_deposit_to_open_note(
-                :token, input: DepositToOpenNoteInput { note_id, amount },
-            );
+        depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
     }
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let use_note_input = UseNoteInput { channel_key, token: token_address, index: 0 };
@@ -5571,14 +5555,12 @@ fn test_deposit_to_open_note_twice() {
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // First deposit - should succeed.
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
 
     // Second deposit - should fail with NOTE_ALREADY_DEPOSITED.
     depositor.increase_token_balance(:token, :amount);
     depositor.approve(:token, amount: amount.into());
-    let result = depositor
-        .safe_deposit_to_open_note(input: DepositToOpenNoteInput { note_id, amount });
+    let result = depositor.safe_deposit_to_open_note(:note_id, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
     // Use the deposited note: spend it.
@@ -5597,8 +5579,7 @@ fn test_deposit_to_open_note_twice() {
     // Try to deposit again after using the note - should still fail with NOTE_ALREADY_DEPOSITED.
     depositor.increase_token_balance(:token, :amount);
     depositor.approve(:token, amount: amount.into());
-    let result = depositor
-        .safe_deposit_to_open_note(input: DepositToOpenNoteInput { note_id, amount });
+    let result = depositor.safe_deposit_to_open_note(:note_id, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 }
 
@@ -5629,8 +5610,7 @@ fn test_use_deposited_open_note_twice_single_tx() {
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // Deposit to the open note.
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
 
     // Try to use the same open note twice in a single transaction - should fail.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
