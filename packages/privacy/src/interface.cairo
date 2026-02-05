@@ -465,7 +465,7 @@ pub trait IServer<T> {
     /// - The caller must have sufficient token balance and allowance.
     ///
     /// #### Events Emitted
-    /// - [`OpenNoteDeposited`](privacy::events::OpenNoteDeposited): Emitted when the deposit
+    /// - [`OpenNoteDeposit`](privacy::events::OpenNoteDeposit): Emitted when the deposit
     /// succeeds.
     ///
     /// #### Reverts

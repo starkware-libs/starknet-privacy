@@ -725,8 +725,8 @@ fn test_deposit_to_open_note() {
     assert_eq!(token.balance_of(address: depositor.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 
-    // Verify OpenNoteDeposited event emitted.
-    let expected_event = events::OpenNoteDeposited {
+    // Verify OpenNoteDeposit event emitted.
+    let expected_event = events::OpenNoteDeposit {
         depositor: depositor.address, token: token_address, note_id, amount,
     };
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
@@ -734,8 +734,8 @@ fn test_deposit_to_open_note() {
     assert_expected_event_emitted(
         spied_event: emitted_events[0],
         :expected_event,
-        expected_event_selector: @selector!("OpenNoteDeposited"),
-        expected_event_name: "OpenNoteDeposited",
+        expected_event_selector: @selector!("OpenNoteDeposit"),
+        expected_event_name: "OpenNoteDeposit",
     );
 }
 

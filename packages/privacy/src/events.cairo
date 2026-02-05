@@ -62,7 +62,7 @@ pub struct OpenNoteCreated {
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
-pub struct OpenNoteDeposited {
+pub struct OpenNoteDeposit {
     /// The address of the contract that performed the deposit.
     #[key]
     pub depositor: ContractAddress,

@@ -108,7 +108,7 @@ pub mod Privacy {
         Deposit: events::Deposit,
         CompliancePublicKeySet: events::CompliancePublicKeySet,
         OpenNoteCreated: events::OpenNoteCreated,
-        OpenNoteDeposited: events::OpenNoteDeposited,
+        OpenNoteDeposit: events::OpenNoteDeposit,
     }
 
     #[constructor]
@@ -791,8 +791,8 @@ pub mod Privacy {
             let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
             note_entry.packed_value.write(new_packed_value);
 
-            // Emit the OpenNoteDeposited event.
-            self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
+            // Emit the OpenNoteDeposit event.
+            self.emit(events::OpenNoteDeposit { depositor, token, note_id, amount });
         }
     }
 
