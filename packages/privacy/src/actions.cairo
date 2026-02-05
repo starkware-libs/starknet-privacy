@@ -233,6 +233,7 @@ pub struct TransferFromInput {
 /// Input for the `TransferTo` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct TransferToInput {
+    // TODO: Rename recipient_addr here.
     /// The recipient's address.
     pub recipient_addr: ContractAddress,
     /// The token's address.
