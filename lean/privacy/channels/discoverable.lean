@@ -3,21 +3,26 @@ import privacy.actions
 import privacy.channels.channels
 import privacy.channels.contiguous
 
-def scan_channels (crypto: Crypto) (m: Memory) (addrbob: ℕ) (kbob: crypto.PrivateKeys) : List ℕ :=
+-- Scans the incoming channels for the given address `addrbob`.
+-- Returns a list of `(c, addralice)`.
+def scan_channels (crypto: Crypto) (m: Memory) (addrbob: ℕ) (kbob: crypto.PrivateKeys) : List (ℕ × ℕ) :=
   let num_channels := m .ChannelsJ [addrbob]
-  List.range num_channels |>.map (λ j ↦ (crypto.dec kbob (m .Channels [addrbob, j])).headD 0)
+  List.range num_channels |>.map (λ j ↦
+    let d := crypto.dec kbob (m .Channels [addrbob, j])
+    (d.getD 0 0, d.getD 1 0)
+  )
 
 theorem scan_channels_monotone
-   {crypto: Crypto} {m: Memory} {addrbob c: ℕ} {kbob: crypto.PrivateKeys}
+   {crypto: Crypto} {m: Memory} {addrbob: ℕ} {kbob: crypto.PrivateKeys}
    {action: Action} (success: (run_action crypto action m).success)
-   (h: c ∈ scan_channels crypto m addrbob kbob) :
-   c ∈ scan_channels crypto (run_action crypto action m).m addrbob kbob := by
+   (h: elm ∈ scan_channels crypto m addrbob kbob) :
+   elm ∈ scan_channels crypto (run_action crypto action m).m addrbob kbob := by
   cases action
   case CreateChannel inp =>
     simp only [scan_channels] at *
     let info := create_channel_info crypto inp m success
     rw [run_action, ←info.h_m']
-    simp only [List.headD_eq_head?_getD, List.mem_map, List.mem_range] at *
+    simp only [List.mem_map, List.mem_range] at *
     obtain ⟨j, h⟩ := h
     use j
 
@@ -42,7 +47,7 @@ theorem scan_channels_monotone
 
   all_goals exact h
 
--- If bob was not registered, then scan_channels will return an empty list.
+-- If bob was not registered, then `scan_channels` returns an empty list.
 theorem channels_j_zero
     {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ}
     (h: rm.m .PublicKeys [addrbob] = 0) :
@@ -88,7 +93,7 @@ theorem channels_j_zero
 -- Channel exists → it is discoverable by scanning.
 theorem ChannelImplies.scan {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateChannelInput}
     (channel_imp: ChannelImplies rm inp) :
-    inp.c crypto ∈ scan_channels crypto rm inp.addrbob channel_imp.kbob := by
+    (inp.c crypto, inp.addralice) ∈ scan_channels crypto rm inp.addrbob channel_imp.kbob := by
   simp only [scan_channels, List.mem_map]
 
   use channel_imp.j
@@ -100,13 +105,13 @@ theorem ChannelImplies.scan {crypto: Crypto} {rm: ReachableMemory crypto} {inp: 
 
 -- Discoverable channel → channel exists.
 theorem ChannelImplies.from_scan
-    {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} {kbob: crypto.PrivateKeys} {c: ℕ}
+    {crypto: Crypto} {rm: ReachableMemory crypto} {addralice addrbob: ℕ} {kbob: crypto.PrivateKeys} {c: ℕ}
     (k_kbob: rm.m .PublicKeys [addrbob] = crypto.priv_to_pub kbob)
-    (h: c ∈ scan_channels crypto rm addrbob kbob) :
+    (h: (c, addralice) ∈ scan_channels crypto rm addrbob kbob) :
     ∃ (inp: CreateChannelInput) (channel_imp: ChannelImplies rm inp),
-    inp.c crypto = c ∧ inp.addrbob = addrbob ∧ channel_imp.kbob = kbob := by
-  suffices h' : channel_exists crypto rm c ∧ ∃ addralice kalice, c = crypto.hash [addralice, kalice, addrbob, crypto.priv_to_pub kbob] from by
-    have ⟨h₀, ⟨addralice, kalice, h₁⟩⟩ := h'
+    inp.c crypto = c ∧ inp.addralice = addralice ∧ inp.addrbob = addrbob ∧ channel_imp.kbob = kbob := by
+  suffices h' : channel_exists crypto rm c ∧ ∃ kalice, c = crypto.hash [addralice, kalice, addrbob, crypto.priv_to_pub kbob] from by
+    have ⟨h₀, ⟨kalice, h₁⟩⟩ := h'
     have ⟨inp, channel_imp, h_c⟩ := ChannelImplies.from_channel_exists h₀
     refine ⟨inp, channel_imp, by rw [←h_c], ?_⟩
     simp [channel_imp.same_c_priv (h_c ▸ h₁)]
@@ -122,7 +127,7 @@ theorem ChannelImplies.from_scan
     let info := create_channel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m'] at *
     intro h_kbob h_channel_discoverable
-    simp only [scan_channels, List.headD_eq_head?_getD, List.mem_map, List.mem_range] at *
+    simp only [scan_channels, List.mem_map, List.mem_range] at *
     obtain ⟨j, j_lt, channel_decryption⟩ := h_channel_discoverable
     by_cases h_bob: addrbob = inp.addrbob
     case pos =>
@@ -134,16 +139,16 @@ theorem ChannelImplies.from_scan
         rw [←info.h_Kbob, h_kbob]
       by_cases same_j: j = info.j
       case pos =>
-        have h_c : c = inp.c crypto := by
-          rw [same_j, info.memory_diff₁, CreateChannelInput.enc, h_Kbob, crypto.dec_enc] at channel_decryption
+        rw [same_j, info.memory_diff₁, CreateChannelInput.enc, h_Kbob, crypto.dec_enc] at channel_decryption
+        have ⟨h_c, h_addralice⟩ : c = inp.c crypto ∧ addralice = inp.addralice := by
           simp at channel_decryption
           simp [channel_decryption]
         constructor
         · unfold channel_exists
           use inp.addralice, inp.addrbob, inp.Kbob
           simp [h_c, info.memory_diff₂]
-        · use inp.addralice, inp.kalice
-          rw [h_c, ←h_Kbob, h_bob]
+        · use inp.kalice
+          rw [h_c, ←h_Kbob, h_bob, h_addralice]
       case neg =>
         rw [info.no_change _ _ (by simp [same_j])] at channel_decryption
         have ⟨h₀, h₁⟩ := ih h_kbob ⟨j, (by omega), channel_decryption⟩

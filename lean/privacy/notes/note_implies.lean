@@ -8,7 +8,7 @@ structure NoteImplies {crypto: Crypto} (rm: ReachableMemory crypto) (inp: Create
   h_i₀: inp.i₀ < crypto.MAX_I₀
   subchannel: SubchannelImplies rm (inp.c crypto) inp.addralice inp.addrbob inp.Kbob inp.token
   h_note_exists: note_exists rm (inp.note_id crypto)
-  h_open_note: inp.r = 1 → rm.m .OpenNoteToken [inp.note_id crypto] = inp.token
+  h_open_note: inp.r = 1 → rm.m .OpenNoteToken [inp.note_id crypto] = inp.token ∧ inp.amount = 0
   h_r: (crypto.unpack (rm.m .Notes [inp.note_id crypto, 0])).1 = inp.r
 
 theorem NoteImplies.h_kalice
@@ -106,7 +106,7 @@ theorem NoteImplies.from_action
     case h_open_note =>
       intro r_eq_one
       rw [ReachableMemory.add_m, run_action, ←info.h_m', info.memory_diff₁]
-      simp [r_eq_one]
+      simp [r_eq_one, info.h_open_note_amount_zero]
     case h_r =>
       rw [ReachableMemory.add_m, run_action, ←info.h_m', info.memory_diff₀]
       rw [crypto.unpack_pack]
@@ -155,3 +155,37 @@ theorem NoteImplies.from_note_exists
     intro h
     obtain ⟨inp, ih₀, ih₁⟩ := ih h
     exact ⟨inp, by simp [ih₀], ih₁⟩
+
+theorem NoteImplies.from_open_note_event
+    {crypto: Crypto} {rm: ReachableMemory crypto} {note_id user_enc: ℕ}
+    (h_event: .CreateOpenNote note_id user_enc ∈ rm.events) :
+    ∃ (inp: CreateNoteInput) (_: NoteImplies rm inp),
+      inp.note_id crypto = note_id ∧
+      inp.r = 1 ∧
+      user_enc = crypto.enc crypto.council_pub_key [inp.addralice] := by
+  revert rm
+  apply ReachableMemory.induction
+  case inv₀ => intro h; contradiction
+
+  intro action rm ih success h_event
+  rw [ReachableMemory.add_events, List.mem_append] at h_event
+  cases h_event
+  case inl h_event =>
+    have ⟨inp, note_imp, h⟩ := ih h_event
+    exact ⟨inp, note_imp.next success |>.some, h⟩
+  case inr h_event =>
+    cases action
+    case CreateNote inp =>
+      let info := create_note_info crypto inp rm success
+
+      by_cases h_r: inp.r = 1
+      case pos =>
+        have ⟨note_imp⟩ := NoteImplies.from_action (rm:=rm.add (.CreateNote inp) success) (inp:=inp) (h:=by simp)
+        simp only [run_action, info.events₁ h_r, List.mem_cons, Event.CreateOpenNote.injEq,
+          List.not_mem_nil, or_false] at h_event
+        refine ⟨inp, note_imp, by simp [h_event], h_r, h_event.2⟩
+      case neg =>
+        rw [run_action, info.events₀ h_r] at h_event
+        contradiction
+
+    all_goals contradiction

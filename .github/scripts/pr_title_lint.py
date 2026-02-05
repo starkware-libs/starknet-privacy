@@ -6,8 +6,7 @@ Validate PR title against Starkware-style convention:
   type: description
 
 Rules:
-- Entire title must be lowercase
-- type ∈ {feat, fix, chore, ci, docs, test, perf, refactor}
+- type ∈ {feat, fix, chore, ci, docs, test, perf, refactor} (lowercase)
 - scope (optional): lowercase letters/digits, plus . _ / - (must start with [a-z0-9])
 - description: non-empty (at least one non-space char after ": ")
 """
@@ -37,16 +36,13 @@ def validate_title(title: str) -> list[str]:
     if not title:
         return ["Title is empty."]
 
-    if title != title.lower():
-        errors.append("Title must be all lowercase.")
-
     m = TITLE_RE.match(title)
     if not m:
         errors.append(
             "Title must match either:\n"
             "- type(scope): description\n"
             "- type: description\n"
-            f"Where type ∈ {{{', '.join(ALLOWED_TYPES)}}} and scope (if present) is lowercase."
+            f"Where type ∈ {{{', '.join(ALLOWED_TYPES)}}}."
         )
         return errors
 
@@ -71,8 +67,8 @@ def main() -> int:
             print(f"- {e}")
 
         print("\nExamples:")
-        print("- ci: add pr title linting")
-        print("- feat(client): add create note functionality")
+        print("- ci: add PR title linting")
+        print("- feat(client): add CreateNote functionality")
         return 1
 
     print(f"✅ PR title OK: {title}")

@@ -99,53 +99,74 @@ theorem NoteImplies.scan_for_channel
 def scan_notes_for_recipient
     {crypto: Crypto} {m: Memory} (context: ScanNoteContext crypto m)
     (addrbob: ℕ) (kbob: crypto.PrivateKeys)
-    : List ScannedNote := do
-  let c ← scan_channels crypto m addrbob kbob
+    : List ExScannedNote := List.dedup <| do
+  let (c, addralice) ← scan_channels crypto m addrbob kbob
   let token ← scan_tokens_for_channel (context.toScanTokenContext) c
-  scan_notes_for_channel context c token
+  let sn ← scan_notes_for_channel context c token
+  return { addralice := addralice, addrbob := addrbob, toScannedNote := sn }
+
+abbrev scan_notes_for_recipient₀
+    {crypto: Crypto} {m: Memory} (context: ScanNoteContext crypto m)
+    (addrbob: ℕ) (kbob: crypto.PrivateKeys)
+    : List ScannedNote :=
+  scan_notes_for_recipient context addrbob kbob |>.map ExScannedNote.toScannedNote
 
 theorem scan_notes_for_recipient'
     (crypto: Crypto)
     (rm: ReachableMemory crypto)
-    (sn: ScannedNote) (addrbob: ℕ) (kbob: crypto.PrivateKeys):
+    (sn: ExScannedNote) (addrbob: ℕ) (kbob: crypto.PrivateKeys):
     sn ∈ scan_notes_for_recipient (.from rm) addrbob kbob ↔ (
-      sn.c ∈ scan_channels crypto rm addrbob kbob ∧
+      sn.addrbob = addrbob ∧
+      (sn.c, sn.addralice) ∈ scan_channels crypto rm addrbob kbob ∧
       sn.token ∈ scan_tokens_for_channel (.from rm) sn.c ∧
-      sn ∈ scan_notes_for_channel (.from rm) sn.c sn.token
+      ↑sn ∈ scan_notes_for_channel (.from rm) sn.c sn.token
     ) := by
-  simp only [scan_notes_for_recipient, List.bind_eq_flatMap, List.mem_flatMap]
+  simp only [scan_notes_for_recipient, List.bind_eq_flatMap, List.mem_dedup, List.mem_flatMap, List.pure_def,
+    List.mem_cons, List.not_mem_nil, or_false]
   constructor
   · intro h
-    obtain ⟨c, h_c, token, h_token, h⟩ := h
+    obtain ⟨⟨c, addralice⟩, h_c, token, h_token, sn', h, h_sn⟩ := h
     have := scan_notes_for_channel_props h
-    rw [this.1, this.2]
+    rw [h_sn, this.1, this.2]
     trivial
-  · intro ⟨h₀, h₁, h₂⟩
-    use sn.c, h₀, sn.token, h₁, h₂
+  · intro ⟨h₀, h₁, h₂, h₃⟩
+    use ⟨sn.c, sn.addralice⟩, h₁, sn.token, h₂, ↑sn, h₃
+    rw [←h₀]
 
 -- Existing notes are discoverable by `scan_notes_for_recipient`.
 theorem NoteImplies.scan_for_recipient
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
     (note_imp: NoteImplies rm inp) :
-    inp.to_scanned_note crypto ∈ scan_notes_for_recipient (.from rm) inp.addrbob note_imp.subchannel.channel.kbob := by
+    ⟨inp.to_scanned_note crypto, inp.addralice, inp.addrbob⟩ ∈
+      scan_notes_for_recipient (.from rm) inp.addrbob note_imp.subchannel.channel.kbob := by
   rw [scan_notes_for_recipient']
-  refine ⟨?_, note_imp.subchannel.scan, note_imp.scan_for_channel⟩
+  refine ⟨by rfl, ?_, note_imp.subchannel.scan, note_imp.scan_for_channel⟩
   · have := note_imp.subchannel.channel.scan
     simp only [CreateChannelInput.c, CreateNoteInput.c, ←NoteImplies.h_kalice] at this
     exact this
 
+theorem NoteImplies.scan_for_recipient₀
+    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
+    (note_imp: NoteImplies rm inp) :
+    inp.to_scanned_note crypto ∈
+      scan_notes_for_recipient₀ (.from rm) inp.addrbob note_imp.subchannel.channel.kbob := by
+  rw [List.mem_map]
+  use ⟨inp.to_scanned_note crypto, inp.addralice, inp.addrbob⟩, note_imp.scan_for_recipient
+
 -- Discoverable note → note_exists and c is linked to (addrbob, kbob).
 theorem NoteImplies.from_scan_notes_for_recipient
     {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} {kbob: crypto.PrivateKeys}
-    {sn: ScannedNote}
+    {sn: ExScannedNote}
     (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
     (h: sn ∈ scan_notes_for_recipient (.from rm) addrbob kbob) :
     ∃ (inp: CreateNoteInput) (_: NoteImplies rm inp),
       inp.to_scanned_note crypto = sn ∧
       inp.addrbob = addrbob ∧
+      sn.addralice = inp.addralice ∧
+      sn.addrbob = inp.addrbob ∧
       inp.Kbob = crypto.priv_to_pub kbob := by
   rw [scan_notes_for_recipient'] at *
-  obtain ⟨h_scan_channels, _, h'⟩ := h
+  obtain ⟨h_addrbob, h_scan_channels, _, h'⟩ := h
   unfold scan_notes_for_channel at h'
   simp only [List.mem_flatMap, List.mem_range] at h'
   obtain ⟨i₀, i₀_lt, h'⟩ := h'
@@ -161,12 +182,54 @@ theorem NoteImplies.from_scan_notes_for_recipient
     apply CreateNoteInput.to_scanned_note_eq
     rw [h_note_id', ←h_sn, ScannedNote.note_id]
 
-  have ⟨inp_channel, channel_imp, h_c, h_addrbob, h_kbob⟩ := ChannelImplies.from_scan h_kbob h_scan_channels
+  have ⟨inp_channel, channel_imp, h_c, h_addralice', h_addrbob', h_kbob⟩ := ChannelImplies.from_scan h_kbob h_scan_channels
   rw [h_sn'] at h_c
   dsimp only [CreateNoteInput.to_scanned_note] at h_c
 
-  refine ⟨inp, note_imp, ?_, ?_, ?_⟩
+  refine ⟨inp, note_imp, ?_, ?_, ?_, ?_, ?_⟩
   · apply CreateNoteInput.to_scanned_note_eq
     rw [h_note_id', ←h_sn, ScannedNote.note_id]
-  · simp [channel_imp.same_c h_c, h_addrbob]
+  · simp [channel_imp.same_c h_c, h_addrbob']
+  · simp [h_addralice', channel_imp.same_c h_c]
+  · simp [h_addrbob, h_addrbob', channel_imp.same_c h_c]
   · simp [channel_imp.same_c h_c, channel_imp.h_Kbob, h_kbob]
+
+-- Discoverable note → note_exists and c is linked to (addrbob, kbob).
+theorem NoteImplies.from_scan_notes_for_recipient₀
+    {crypto: Crypto} {rm: ReachableMemory crypto} {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    {sn: ScannedNote}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob)
+    (h: sn ∈ scan_notes_for_recipient₀ (.from rm) addrbob kbob) :
+    ∃ (inp: CreateNoteInput) (_: NoteImplies rm inp),
+      inp.to_scanned_note crypto = sn ∧
+      inp.addrbob = addrbob ∧
+      inp.Kbob = crypto.priv_to_pub kbob := by
+  rw [List.mem_map] at h
+  have ⟨sn, h, h_sn⟩ := h
+  have ⟨inp, note_imp, h_sn, h_addrbob, h_sn_addralice, h_sn_addrbob, h_kbob⟩ := NoteImplies.from_scan_notes_for_recipient h_kbob h
+  use inp, note_imp
+  simp [*]
+
+theorem scan_notes_for_recipient₀.nodup
+    {crypto: Crypto} {rm: ReachableMemory crypto}
+    {addrbob: ℕ} {kbob: crypto.PrivateKeys}
+    (h_kbob: rm.m MemoryType.PublicKeys [addrbob] = crypto.priv_to_pub kbob) :
+    (scan_notes_for_recipient₀ (.from rm) addrbob kbob).Nodup := by
+  rw [scan_notes_for_recipient₀]
+  apply List.Nodup.map_on
+  · intro x h_x y h_y h_eq
+
+    have ⟨inp, note_imp, h₀, h₁, h₂, h₃, h₄⟩ := NoteImplies.from_scan_notes_for_recipient h_kbob h_x
+    have ⟨inp', note_imp', h₀', h₁', h₂', h₃', h₄'⟩ := NoteImplies.from_scan_notes_for_recipient h_kbob h_y
+
+    have : inp.c crypto = inp'.c crypto := by
+      have := h₀ ▸ h₀' ▸ congrArg ScannedNote.c h_eq
+      exact this
+
+    apply crypto.h_hash at this
+    injections
+
+    apply ExScannedNote.ext h_eq
+    · rw [h₂, h₂']; simp [*]
+    · rw [h₃, h₃']; simp [*]
+  · apply List.nodup_dedup

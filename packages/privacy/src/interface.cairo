@@ -230,6 +230,7 @@ pub trait IClient<T> {
     /// - This function always panics. On success, it panics with serialized server actions wrapped
     /// with [`OK_WRAPPER`](privacy::utils::constants::OK_WRAPPER). On error, it panics with the
     /// error.
+    /// - This function ensures that the contract state cannot be modified by client's functions.
     fn execute_and_panic(
         ref self: T,
         user_addr: ContractAddress,
@@ -269,7 +270,7 @@ pub trait IClient<T> {
     /// [`ViewingKeySet`](privacy::events::ViewingKeySet) event.
     ///
     /// **For [`OpenChannel`](privacy::actions::ClientAction::OpenChannel) action:**
-    /// - [`VerifyValue`](privacy::actions::ServerAction::VerifyValue): Verifies that the
+    /// - [`ReadAssert`](privacy::actions::ServerAction::ReadAssert): Verifies that the
     /// recipient's public key in storage matches the provided public key.
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the channel existence
     /// flag to storage.
@@ -387,8 +388,8 @@ pub trait IServer<T> {
     ///   user to the contract via ERC20 `transfer_from`.
     ///   - [`TransferTo`](privacy::actions::ServerAction::TransferTo): Transfer tokens from the
     ///   contract to a recipient via ERC20 `transfer`.
-    ///   - [`VerifyValue`](privacy::actions::ServerAction::VerifyValue): Verify that a storage
-    ///   value is equal to a given value.
+    ///   - [`ReadAssert`](privacy::actions::ServerAction::ReadAssert): Read and assert that a
+    ///   storage value is equal to a given value.
     ///   - [`EmitViewingKeySet`](privacy::actions::ServerAction::EmitViewingKeySet): Emit a
     ///   [`ViewingKeySet`](privacy::events::ViewingKeySet) event.
     ///   - [`EmitWithdrawal`](privacy::actions::ServerAction::EmitWithdrawal): Emit a
@@ -404,7 +405,7 @@ pub trait IServer<T> {
     /// - `proof_facts` field in the TX info must be valid.
     /// - For [`WriteOnce`](privacy::actions::ServerAction::WriteOnce) actions, the storage location
     /// must be empty (zero) before writing.
-    /// - For [`VerifyValue`](privacy::actions::ServerAction::VerifyValue) actions, the storage
+    /// - For [`ReadAssert`](privacy::actions::ServerAction::ReadAssert) actions, the storage
     /// value must match the expected value.
     /// - For [`TransferFrom`](privacy::actions::ServerAction::TransferFrom) actions, the sender
     /// must have sufficient token balance and allowance.
@@ -423,7 +424,7 @@ pub trait IServer<T> {
     /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the value at the specified
     /// storage path already exists (is not zero).
     ///
-    /// **Errors for [`VerifyValue`](privacy::actions::ServerAction::VerifyValue) action:**
+    /// **Errors for [`ReadAssert`](privacy::actions::ServerAction::ReadAssert) action:**
     /// - [`VALUE_MISMATCH`](privacy::errors::VALUE_MISMATCH): Thrown if the storage value does not
     /// match the expected value.
     ///
@@ -447,11 +448,11 @@ pub trait IViews<T> {
     /// Checks if a channel exists.
     ///
     /// #### Parameters
-    /// - `channel_id` (`felt252`): The id of the channel.
+    /// - `channel_marker` (`felt252`): The marker of the channel.
     ///
     /// #### Returns
     /// (`bool`): True if the channel exists in the contract, false otherwise.
-    fn channel_exists(self: @T, channel_id: felt252) -> bool;
+    fn channel_exists(self: @T, channel_marker: felt252) -> bool;
 
     /// Returns the number of open channels for the given recipient address.
     ///
@@ -487,31 +488,31 @@ pub trait IViews<T> {
     /// Checks if a subchannel exists.
     ///
     /// #### Parameters
-    /// - `subchannel_id` (`felt252`): The id of the subchannel.
+    /// - `subchannel_marker` (`felt252`): The marker of the subchannel.
     ///
     /// #### Returns
     /// (`bool`): True if the subchannel exists in the contract, false otherwise.
-    fn subchannel_exists(self: @T, subchannel_id: felt252) -> bool;
+    fn subchannel_exists(self: @T, subchannel_marker: felt252) -> bool;
 
-    /// Returns the encrypted subchannel information for a given subchannel key.
+    /// Returns the encrypted subchannel information for a given subchannel id.
     ///
     /// #### Parameters
-    /// - `subchannel_key` (`felt252`): The key of the subchannel.
+    /// - `subchannel_id` (`felt252`): The id of the subchannel.
     ///
     /// #### Returns
     /// ([`EncSubchannelInfo`](privacy::objects::EncSubchannelInfo)): The encrypted subchannel
     /// information, or a zero struct if the subchannel does not exist.
-    fn get_subchannel_info(self: @T, subchannel_key: felt252) -> EncSubchannelInfo;
+    fn get_subchannel_info(self: @T, subchannel_id: felt252) -> EncSubchannelInfo;
 
-    /// Returns the encrypted outgoing channel information for a given outgoing channel key.
+    /// Returns the encrypted outgoing channel information for a given outgoing channel id.
     ///
     /// #### Parameters
-    /// - `outgoing_channel_key` (`felt252`): The key of the outgoing channel.
+    /// - `outgoing_channel_id` (`felt252`): The id of the outgoing channel.
     ///
     /// #### Returns
     /// - ([`EncOutgoingChannelInfo`](privacy::objects::EncOutgoingChannelInfo)): The encrypted
     /// outgoing channel information, or a zero struct if the outgoing channel does not exist.
-    fn get_outgoing_channel_info(self: @T, outgoing_channel_key: felt252) -> EncOutgoingChannelInfo;
+    fn get_outgoing_channel_info(self: @T, outgoing_channel_id: felt252) -> EncOutgoingChannelInfo;
 
     /// Returns the note for a given note id.
     ///

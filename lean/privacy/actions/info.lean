@@ -195,8 +195,12 @@ structure CreateNoteInfo (crypto: Crypto) (inp: CreateNoteInput) (m: Memory) whe
   prev_note_exists: inp.i₁ = 0 ∨ m .Notes [crypto.hash [inp.c crypto, inp.token, inp.i₀, inp.i₁ - 1], 0] ≠ 0
   i₀_lt_MAX_I₀: inp.i₀ < crypto.MAX_I₀
   subchannel_exists : m .SubchannelHashes [crypto.hash [inp.c crypto, inp.addrbob, inp.Kbob, inp.token]] ≠ 0
+  h_open_note_amount_zero: inp.r = 1 → inp.amount = 0
   memory_diff₀: m' .Notes [inp.note_id crypto, 0] = crypto.pack inp.r (inp.enc crypto)
   memory_diff₁: m' .OpenNoteToken [inp.note_id crypto] = if inp.r = 1 then inp.token else 0
+  events₀: inp.r ≠ 1 → (create_note crypto inp m |> process_action crypto m).events = [.None]
+  events₁: inp.r = 1 → (create_note crypto inp m |> process_action crypto m).events = [
+    .CreateOpenNote (inp.note_id crypto) (crypto.enc crypto.council_pub_key [inp.addralice])]
 
 def create_note_info
   (crypto: Crypto) (inp: CreateNoteInput) (m: Memory)
@@ -205,13 +209,16 @@ def create_note_info
 
   simp only [Bool.and_eq_true] at success
   have ⟨success₀, success₁⟩ := success
-  simp [create_note] at success₀
-  let ⟨r_ne_zero, prev_note_exists, i₀_lt_MAX_I₀, subchannel_exists⟩ := success₀
+  simp only [create_note, decide_eq_true_eq] at success₀
+  let ⟨r_ne_zero, prev_note_exists, i₀_lt_MAX_I₀, subchannel_exists, h_open_note_amount_zero⟩ := success₀
 
   simp only [ServerAction.run_all, ServerAction.run, create_note] at success₁
-  simp only [Bool.decide_and, List.foldl_cons, Bool.true_and, Bool.and_true, List.foldl_nil,
-    decide_eq_true_eq] at success₁
-  have old_value_was_zero := success₁
+
+  have old_value_was_zero : m .Notes [inp.note_id crypto, 0] = 0 := by
+    simp at success₁
+    exact success₁
+  clear success₁
+
   exact {
     m' := m'
     h_m':= by rfl
@@ -220,11 +227,14 @@ def create_note_info
     prev_note_exists := prev_note_exists
     i₀_lt_MAX_I₀ := i₀_lt_MAX_I₀
     subchannel_exists := subchannel_exists
+    h_open_note_amount_zero := h_open_note_amount_zero
     no_change := by
       intro t x h₀ h₁
-      simp [m', h₀, h₁, create_note, ServerAction.run_all, ServerAction.run]
+      simp [ m', h₀, h₁, create_note, ServerAction.run_all, ServerAction.run]
     memory_diff₀ := by simp [m', create_note, ServerAction.run_all, ServerAction.run]
     memory_diff₁ := by simp [m', create_note, ServerAction.run_all, ServerAction.run]
+    events₀ := by intro h_r; simp [create_note, get_events, h_r]
+    events₁ := by intro h_r; simp [create_note, get_events, h_r]
   }
 
 -----------------

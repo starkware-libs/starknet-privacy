@@ -8,14 +8,14 @@ use starknet::ContractAddress;
 ///
 /// Template (uppercase): `<VAR_NAME>:V<VERSION>`.
 pub mod domain_separation {
-    /// Tag for `channel_id`.
-    pub const CHANNEL_ID_TAG: felt252 = 'CHANNEL_ID_TAG:V1';
+    /// Tag for `channel_marker`.
+    pub const CHANNEL_MARKER_TAG: felt252 = 'CHANNEL_MARKER_TAG:V1';
     /// Tag for `channel_key`.
     pub const CHANNEL_KEY_TAG: felt252 = 'CHANNEL_KEY_TAG:V1';
+    /// Tag for `subchannel_marker`.
+    pub const SUBCHANNEL_MARKER_TAG: felt252 = 'SUBCHANNEL_MARKER_TAG:V1';
     /// Tag for `subchannel_id`.
     pub const SUBCHANNEL_ID_TAG: felt252 = 'SUBCHANNEL_ID_TAG:V1';
-    /// Tag for `subchannel_key`.
-    pub const SUBCHANNEL_KEY_TAG: felt252 = 'SUBCHANNEL_KEY_TAG:V1';
     /// Tag for `nullifier`.
     pub const NULLIFIER_TAG: felt252 = 'NULLIFIER_TAG:V1';
     /// Tag for the `EncChannelInfo.enc_channel_key`.
@@ -34,8 +34,8 @@ pub mod domain_separation {
     pub const ENC_USER_ADDR_TAG: felt252 = 'ENC_USER_ADDR_TAG:V1';
     /// Tag for the `EncOutgoingChannelInfo.enc_recipient_addr`.
     pub const ENC_RECIPIENT_ADDR_TAG: felt252 = 'ENC_RECIPIENT_ADDR_TAG:V1';
-    /// Tag for `outgoing_channel_key`.
-    pub const OUTGOING_CHANNEL_KEY_TAG: felt252 = 'OUTGOING_CHANNEL_KEY_TAG:V1';
+    /// Tag for `outgoing_channel_id`.
+    pub const OUTGOING_CHANNEL_ID_TAG: felt252 = 'OUTGOING_CHANNEL_ID_TAG:V1';
 }
 
 
@@ -116,27 +116,28 @@ pub(crate) fn compute_channel_key(
     )
 }
 
-/// Computes the outgoing channel key.
+/// Computes the outgoing channel id.
 /// Assumes `sender_addr` and `sender_private_key` are not zero.
 ///
-/// `outgoing_channel_key = h(OUTGOING_CHANNEL_KEY_TAG, sender_addr, sender_private_key, index, 0)`
-pub(crate) fn compute_outgoing_channel_key(
+/// `outgoing_channel_id = h(OUTGOING_CHANNEL_ID_TAG, sender_addr, sender_private_key, index, 0)`
+pub(crate) fn compute_outgoing_channel_id(
     sender_addr: ContractAddress, sender_private_key: felt252, index: usize,
 ) -> felt252 {
     hash(
         [
-            OUTGOING_CHANNEL_KEY_TAG, sender_addr.into(), sender_private_key, index.into(),
+            OUTGOING_CHANNEL_ID_TAG, sender_addr.into(), sender_private_key, index.into(),
             Zero::zero(),
         ]
             .span(),
     )
 }
 
-/// Computes the channel id given the channel key.
+/// Computes the channel marker given the channel key.
 /// Assumes all the inputs are not zero.
 ///
-/// `channel_id = h(CHANNEL_ID_TAG, channel_key, sender_addr, recipient_addr, recipient_public_key)`
-pub(crate) fn compute_channel_id(
+/// `channel_marker = h(CHANNEL_MARKER_TAG, channel_key, sender_addr, recipient_addr,
+/// recipient_public_key)`
+pub(crate) fn compute_channel_marker(
     channel_key: felt252,
     sender_addr: ContractAddress,
     recipient_addr: ContractAddress,
@@ -144,35 +145,39 @@ pub(crate) fn compute_channel_id(
 ) -> felt252 {
     hash(
         [
-            CHANNEL_ID_TAG, channel_key, sender_addr.into(), recipient_addr.into(),
+            CHANNEL_MARKER_TAG, channel_key, sender_addr.into(), recipient_addr.into(),
             recipient_public_key,
         ]
             .span(),
     )
 }
 
-/// Computes the subchannel key given the channel key and index.
+/// Computes the subchannel id given the channel key and index.
 /// Assumes all the inputs are not zero.
 /// Includes a reserved zero placeholder for forward compatibility, occupying the position of a
 /// future hash component without affecting current behavior.
 ///
-/// `subchannel_key = h(SUBCHANNEL_KEY_TAG, channel_key, index, 0)`
-pub(crate) fn compute_subchannel_key(channel_key: felt252, index: usize) -> felt252 {
-    hash([SUBCHANNEL_KEY_TAG, channel_key, index.into(), Zero::zero()].span())
+/// `subchannel_id = h(SUBCHANNEL_ID_TAG, channel_key, index, 0)`
+pub(crate) fn compute_subchannel_id(channel_key: felt252, index: usize) -> felt252 {
+    hash([SUBCHANNEL_ID_TAG, channel_key, index.into(), Zero::zero()].span())
 }
 
-/// Computes the subchannel id given the channel key and token.
+/// Computes the subchannel marker given the channel key and token.
 /// Assumes all the inputs are not zero.
 ///
-/// `subchannel_id = h(SUBCHANNEL_ID_TAG, channel_key, recipient_addr, recipient_public_key, token)`
-pub(crate) fn compute_subchannel_id(
+/// `subchannel_marker = h(SUBCHANNEL_MARKER_TAG, channel_key, recipient_addr, recipient_public_key,
+/// token)`
+pub(crate) fn compute_subchannel_marker(
     channel_key: felt252,
     recipient_addr: ContractAddress,
     recipient_public_key: felt252,
     token: ContractAddress,
 ) -> felt252 {
     hash(
-        [SUBCHANNEL_ID_TAG, channel_key, recipient_addr.into(), recipient_public_key, token.into()]
+        [
+            SUBCHANNEL_MARKER_TAG, channel_key, recipient_addr.into(), recipient_public_key,
+            token.into(),
+        ]
             .span(),
     )
 }

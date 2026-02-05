@@ -7,10 +7,10 @@ import { toBigInt } from "../utils/crypto.js";
 import { toHex } from "../utils/convert.js";
 import {
   compute_channel_key,
-  compute_channel_id,
-  compute_subchannel_key,
+  compute_channel_marker,
+  compute_subchannel_id,
   compute_note_id,
-  compute_outgoing_channel_key,
+  compute_outgoing_channel_id,
   compute_nullifier,
 } from "../utils/hashes.js";
 import { encryptions } from "../utils/encryptions.js";
@@ -69,7 +69,7 @@ class NotesDiscovery {
         debugLog("contract-discovery", "discoverNotes", "channel", channel);
         const incomingChannelCursor = {
           channelKey: channel.key,
-          subchannelKeyIndex: 0,
+          subchannelIdIndex: 0,
           noteIndexes: new AddressMap<number>(),
         };
         this.cursor!.incomingChannels.set(channel.sender, incomingChannelCursor);
@@ -90,7 +90,7 @@ class NotesDiscovery {
     void scan(
       async (k) => {
         const encSubchannel = await this.pool.get_subchannel_info(
-          compute_subchannel_key(channelKey, k)
+          compute_subchannel_id(channelKey, k)
         );
         if (toBigInt(encSubchannel.salt) === 0n) return false;
 
@@ -100,7 +100,7 @@ class NotesDiscovery {
           "discoverNotes",
           "encSubchannel",
           encSubchannel,
-          () => compute_subchannel_key(channelKey, k),
+          () => compute_subchannel_id(channelKey, k),
           k
         );
         const { token } = encryptions.decryptSubchannelInfo(encSubchannel, channelKey, k);
@@ -111,8 +111,8 @@ class NotesDiscovery {
         }
         debugLog("contract-discovery", "discoverNotes", "subchannel", sender, token, k);
         incomingChannelCursor.noteIndexes.set(token, 0);
-        incomingChannelCursor.subchannelKeyIndex = Math.max(
-          incomingChannelCursor.subchannelKeyIndex,
+        incomingChannelCursor.subchannelIdIndex = Math.max(
+          incomingChannelCursor.subchannelIdIndex,
           k
         );
 
@@ -121,7 +121,7 @@ class NotesDiscovery {
 
         return true;
       },
-      incomingChannelCursor.subchannelKeyIndex,
+      incomingChannelCursor.subchannelIdIndex,
       this.tracker
     );
   }
@@ -187,7 +187,8 @@ class NotesDiscovery {
     const packedValue = toBigInt(noteData.packed_value);
 
     // Extract salt from upper 128 bits to determine note type
-    // OPEN_NOTE_SALT = 1
+    // salt = OPEN_NOTE_SALT (=1) indicates an open note
+    // salt > OPEN_NOTE_SALT (>=2) indicates an encrypted note
     const packedSalt = packedValue >> 128n;
     const isOpenNote = packedSalt === 1n;
 
@@ -249,7 +250,7 @@ class ChannelsDiscovery {
       void scan(
         async (s) => {
           const encOutgoingChannelInfo = await this.pool.get_outgoing_channel_info(
-            compute_outgoing_channel_key(this.address, toBigInt(this.viewingKey), s)
+            compute_outgoing_channel_id(this.address, toBigInt(this.viewingKey), s)
           );
           if (toBigInt(encOutgoingChannelInfo.salt) === 0n) return false;
           const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
@@ -304,9 +305,14 @@ class ChannelsDiscovery {
       toBigInt(publicKey)
     );
 
-    const channelId = compute_channel_id(channelKey, this.address, recipient, toBigInt(publicKey));
+    const channelMarker = compute_channel_marker(
+      channelKey,
+      this.address,
+      recipient,
+      toBigInt(publicKey)
+    );
 
-    if (await this.pool.channel_exists(channelId)) {
+    if (await this.pool.channel_exists(channelMarker)) {
       channel.key = channelKey;
       void this.tracker.add(this.discoverSubchannels(recipient, channel));
     }
@@ -319,7 +325,7 @@ class ChannelsDiscovery {
     void scan(
       async (k) => {
         const encSubchannel = await this.pool.get_subchannel_info(
-          compute_subchannel_key(channel.key!, k)
+          compute_subchannel_id(channel.key!, k)
         );
         if (toBigInt(encSubchannel.salt) === 0n) return false;
         const { token } = encryptions.decryptSubchannelInfo(encSubchannel, channel.key!, k);

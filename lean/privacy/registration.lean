@@ -1,1 +1,2 @@
+import privacy.registration.discoverable
 import privacy.registration.registration

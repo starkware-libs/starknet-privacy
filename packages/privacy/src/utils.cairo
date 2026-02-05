@@ -11,21 +11,37 @@ use privacy::hashes::{
     compute_enc_token_hash,
 };
 use privacy::objects::{
-    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr,
+    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
 };
-use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120, TX_V3};
+use privacy::utils::constants::{
+    ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
+};
 use starknet::storage::{StorageAsPointer, StoragePath};
-use starknet::syscalls::{call_contract_syscall, send_message_to_l1_syscall};
+use starknet::syscalls::send_message_to_l1_syscall;
 use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
 
-pub mod constants {
-    use core::num::traits::Pow;
+#[starknet::interface]
+pub(crate) trait IAccount<TState> {
+    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
+}
 
+pub mod constants {
+    use core::num::traits::{Pow, Zero};
+
+    /// The salt value in the [`Note`](privacy::objects::Note) (packed with the amount in
+    /// `packed_value`) identifies which type of note it is;
+    /// salt = 0 means the note does not exist.
+    /// salt = OPEN_NOTE_SALT (=1) means the note is an open note (store amounts in plaintext).
+    /// salt > OPEN_NOTE_SALT (>=2) means the note is an encrypted note (store encrypted amounts).
     pub const OPEN_NOTE_SALT: u128 = 1;
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
     pub const TX_V3: u64 = 3;
+    /// The packed value for open notes: `packing(salt = OPEN_NOTE_SALT = 1, amount = 0)`.
+    pub const OPEN_NOTE_PACKED_VALUE: felt252 = u256 { high: OPEN_NOTE_SALT, low: Zero::zero() }
+        .try_into()
+        .unwrap();
 }
 
 /// Returns the generator point.
@@ -34,10 +50,10 @@ pub fn GEN_P() -> EcPoint {
 }
 
 /// Encrypts the subchannel info.
-/// Assumes `channel_key` and `token` are not zero.
+/// Assumes all the inputs (except `index`) are not zero.
 ///
 /// The salt is used to guarantee one-time key usage, preventing privacy-related data leakage
-/// if a transaction is reverted and the same subchannel key is reused.
+/// if a transaction is reverted and the same subchannel id is reused.
 ///
 /// `enc_subchannel_info = (salt, enc_token)`.
 /// `enc_token = h(ENC_TOKEN_TAG, channel_key, index, 0, salt) + token`
@@ -63,14 +79,14 @@ fn _compute_shared_x(ephemeral_secret: felt252, public_key: felt252) -> (felt252
     let ephemeral_pub_point = GEN_P().mul(scalar: ephemeral_secret);
     let ephemeral_pub_x = ephemeral_pub_point.try_into().unwrap().x();
     // Compute shared point.
-    let recipient_public_point = EcPointTrait::new_from_x(x: public_key).unwrap();
-    let shared_point = recipient_public_point.mul(scalar: ephemeral_secret);
+    let public_point = EcPointTrait::new_from_x(x: public_key).unwrap();
+    let shared_point = public_point.mul(scalar: ephemeral_secret);
     let shared_x = shared_point.try_into().unwrap().x();
     (ephemeral_pub_x, shared_x)
 }
 
 /// Encrypts the outgoing channel info.
-/// Assumes all the inputs (except `index` and `salt`) are not zero.
+/// Assumes all the inputs (except `index`) are not zero.
 ///
 /// `enc_outgoing_channel_info = (salt, enc_recipient_addr)`.
 /// `enc_recipient_addr = h(ENC_RECIPIENT_ADDR_TAG, sender_addr, sender_private_key, index, salt) +
@@ -129,17 +145,17 @@ pub(crate) fn encrypt_channel_info(
 /// High level:
 /// - User picks a fresh random scalar `r` (= `ephemeral_secret`).
 /// - User publishes the ephemeral public key `R = rG` (only the x-coordinate is stored).
-/// - User derives a shared secret with the copmliance:
-///   `S = r * K_copmliance`, where `K_copmliance` is the copmliance's public key as a curve point
+/// - User derives a shared secret with the compliance:
+///   `S = r * K_compliance`, where `K_compliance` is the compliance's public key as a curve point
 ///   (only the x-coordinate is used as the shared secret material).
 ///
 /// Specifically, we output:
 /// - `ephemeral_pubkey = (rG).x`
-/// - `enc_private_key  = h( ENC_PRIVATE_KEY_TAG, (rK_copmliance).x ) + private_key`
+/// - `enc_private_key  = h( ENC_PRIVATE_KEY_TAG, (rK_compliance).x ) + private_key`
 ///
 /// Decryption (Compliance):
 /// - Reconstruct `R` from `R.x` (curve point recovery).
-/// - Compute `S = k_copmliance * R = k_copmliance * (rG)`.
+/// - Compute `S = k_compliance * R = k_compliance * (rG)`.
 /// - Take `S.x` and subtract the same hash masks to recover the plaintext fields.
 pub(crate) fn encrypt_private_key(
     ephemeral_secret: felt252, compliance_public_key: felt252, private_key: felt252,
@@ -158,17 +174,17 @@ pub(crate) fn encrypt_private_key(
 /// High level:
 /// - User picks a fresh random scalar `r` (= `ephemeral_secret`).
 /// - User publishes the ephemeral public key `R = rG` (only the x-coordinate is stored).
-/// - User derives a shared secret with the copmliance:
-///   `S = r * K_copmliance`, where `K_copmliance` is the copmliance's public key as a curve point
+/// - User derives a shared secret with the compliance:
+///   `S = r * K_compliance`, where `K_compliance` is the compliance's public key as a curve point
 ///   (only the x-coordinate is used as the shared secret material).
 ///
 /// Specifically, we output:
 /// - `ephemeral_pubkey = (rG).x`
-/// - `enc_user_addr  = h( ENC_USER_ADDR_TAG, (rK_copmliance).x ) + user_addr`
+/// - `enc_user_addr  = h( ENC_USER_ADDR_TAG, (rK_compliance).x ) + user_addr`
 ///
 /// Decryption (Compliance):
 /// - Reconstruct `R` from `R.x` (curve point recovery).
-/// - Compute `S = k_copmliance * R = k_copmliance * (rG)`.
+/// - Compute `S = k_compliance * R = k_compliance * (rG)`.
 /// - Take `S.x` and subtract the same hash masks to recover the plaintext fields.
 pub(crate) fn encrypt_user_addr(
     ephemeral_secret: felt252, compliance_public_key: felt252, user_addr: ContractAddress,
@@ -194,26 +210,38 @@ pub(crate) fn is_canonical_key(key: felt252) -> bool {
     key.into() < (ORDER.into() / 2_u256)
 }
 
-/// Encrypts the note amount. The result is packed into a single felt252 value.
-/// The first 120 bits are the salt, and the last 128 bits are the encrypted amount.
+/// Encrypts the note amount for encrypted notes.
 /// The encrypted amount is computed modulo 2^128.
-/// Assumes `channel_key`, `token` and `amount` are not zero, and `salt` is 120 bits.
+/// Assumes all the inputs (except `index`) are not zero.
 ///
 /// The salt is used to guarantee one-time key usage, preventing privacy-related data leakage
 /// if a transaction is reverted and the same note id is reused.
 ///
-/// `enc_amount = packing(salt, (h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt) + amount)
-/// % 2^128)`.
-pub(crate) fn encrypt_note_amount(
+/// `enc_amount = (h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt) + amount) % 2^128`.
+pub(crate) fn _encrypt_note_amount(
+    channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
+) -> u128 {
+    let enc_amount_hash: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt).into();
+    enc_amount_hash.low.wrapping_add(amount)
+}
+
+/// Returns the packed value for an encrypted note.
+/// Encrypts the note amount using `_encrypt_note_amount`. The result is packed into a single
+/// felt252 value.
+/// The first 120 bits are the salt, and the last 128 bits are the encrypted amount.
+/// Assumes all the inputs (except `index`) are not zero and `salt` is 120 bits.
+///
+/// `packed_value = packing(salt, enc_amount)`.
+/// `enc_amount = (h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt) + amount) % 2^128`.
+pub(crate) fn enc_note_packed_value(
     channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
 ) -> felt252 {
-    let enc_amount_hash: u256 = compute_enc_amount_hash(:channel_key, :token, :index, :salt).into();
-    let enc_amount: u128 = enc_amount_hash.low.wrapping_add(amount);
+    let enc_amount: u128 = _encrypt_note_amount(:channel_key, :token, :index, :salt, :amount);
     packing(value_1: salt, value_2: enc_amount)
 }
 
 /// Decrypts `enc_amount` using the other parameters.
-/// This is the inverse of `encrypt_note_amount`.
+/// This is the inverse of `_encrypt_note_amount`.
 pub(crate) fn decrypt_note_amount(
     enc_amount: u128, salt: u128, channel_key: felt252, token: ContractAddress, index: usize,
 ) -> u128 {
@@ -229,6 +257,7 @@ pub(crate) fn decode_note_amount(
     packed_value: felt252, channel_key: felt252, token: ContractAddress, index: usize,
 ) -> u128 {
     let (salt, amount) = unpacking(:packed_value);
+    assert(salt.is_non_zero(), internal_errors::UNEXPECTED_ZERO_SALT);
     if salt == OPEN_NOTE_SALT {
         amount
     } else {
@@ -277,20 +306,10 @@ pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
 
 pub(crate) fn assert_valid_signature(user_addr: ContractAddress, tx_info: Box<TxInfo>) {
     let tx_hash = tx_info.transaction_hash;
-    let signature = tx_info.signature;
+    let signature = tx_info.signature.into();
 
-    // Use syscall to wrap possible panics with `ERROR_WRAPPER`.
-    let mut calldata = array![];
-    tx_hash.serialize(ref calldata);
-    signature.serialize(ref calldata);
-    let syscall_result = call_contract_syscall(
-        address: user_addr,
-        entry_point_selector: selector!("is_valid_signature"),
-        calldata: calldata.span(),
-    );
-    let mut serialized_result = syscall_result.unwrap_syscall();
-    let is_valid: felt252 = Serde::deserialize(ref serialized_result)
-        .expect(internal_errors::DESERIALIZE_FAILED);
+    let user_account = IAccountDispatcher { contract_address: user_addr };
+    let is_valid = user_account.is_valid_signature(hash: tx_hash, :signature);
     assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
 }
 
@@ -300,20 +319,28 @@ pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
     send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
 }
 
-pub(crate) fn unwrap_execute_and_panic_result(
+/// Gets the result from `execute_and_panic` and returns the server actions on success.
+/// Panics on failure with the result's panic data.
+pub(crate) fn extract_server_actions_from_execute_and_panic(
     syscall_result: Result<Span<felt252>, Array<felt252>>,
-) -> Span<felt252> {
-    let mut panic_message = syscall_result.expect_err(internal_errors::EXPECTED_PANIC);
-    let message_len = panic_message.len();
-    assert(*panic_message[message_len - 1] == ENTRYPOINT_FAILED, internal_errors::EXPECTED_PANIC);
-    #[allow(manual_assert)]
-    if *panic_message[0] != OK_WRAPPER || *panic_message[message_len - 2] != OK_WRAPPER {
-        panic(panic_message);
+) -> Span<ServerAction> {
+    let origin_panic_data = syscall_result.expect_err(internal_errors::EXPECTED_PANIC).span();
+    let mut panic_data = origin_panic_data;
+    if panic_data.pop_front() != Some(@OK_WRAPPER) {
+        panic(origin_panic_data.into());
     }
-
-    let _ = panic_message.pop_front();
-    // TODO: Consider also popping the last 2 elements.
-    panic_message.span()
+    let server_actions: Span<ServerAction> = Serde::deserialize(ref panic_data)
+        .unwrap_or_else(|| panic(origin_panic_data.into()));
+    if panic_data.pop_front() != Some(@OK_WRAPPER) {
+        panic(origin_panic_data.into());
+    }
+    if panic_data.pop_front() != Some(@ENTRYPOINT_FAILED) {
+        panic(origin_panic_data.into());
+    }
+    if panic_data.len().is_non_zero() {
+        panic(origin_panic_data.into());
+    }
+    server_actions
 }
 
 /// Wraps the server actions with `OK_WRAPPER` in a panic data array.
@@ -343,4 +370,8 @@ pub(crate) fn to_write_once_action<T, +Serde<T>, +Store<T>, +Drop<T>>(
     let mut serialized_value = array![];
     value.serialize(ref output: serialized_value);
     ServerAction::WriteOnce(WriteOnceInput { storage_address, value: serialized_value.span() })
+}
+
+pub(crate) fn open_note(token: ContractAddress, depositor: ContractAddress) -> Note {
+    Note { packed_value: OPEN_NOTE_PACKED_VALUE, token, depositor }
 }

@@ -1,13 +1,15 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    AppendToVecInput, ServerAction, TransferFromInput, TransferToInput, VerifyValueInput,
+    AppendToVecInput, DepositToOpenNoteInput, ReadAssertInput, ServerAction, TransferFromInput,
+    TransferToInput,
 };
 use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note};
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants,
 };
-use privacy::utils::to_write_once_action;
+use privacy::utils::constants::OPEN_NOTE_SALT;
+use privacy::utils::{open_note, to_write_once_action, unpacking};
 use privacy::{errors, events};
 use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
@@ -63,12 +65,12 @@ fn test_set_viewing_key_multiple_users_same_public_key() {
 fn test_execute_write_once() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let (_, channel_id) = test.mock_new_channel();
-    let (subchannel_id, _, _) = test.mock_new_subchannel();
+    let (_, channel_marker) = test.mock_new_channel();
+    let (subchannel_marker, _, _) = test.mock_new_subchannel();
 
     // Compute storage path felt using contract state.
     let storage_address = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
     );
 
     // Verify channel doesn't exist and write.
@@ -76,17 +78,17 @@ fn test_execute_write_once() {
     test.privacy.execute_actions(actions.span());
 
     // Verify channel exists.
-    assert!(test.privacy.channel_exists(:channel_id));
+    assert!(test.privacy.channel_exists(:channel_marker));
 
     // Verify subchannel doesn't exist and write.
     let storage_address = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_marker].span(),
     );
     let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
 
     // Verify subchannel exists.
-    assert!(test.privacy.subchannel_exists(:subchannel_id));
+    assert!(test.privacy.subchannel_exists(:subchannel_marker));
 
     // Verify user is not registered and write public key.
     let storage_address = map_entry_address(
@@ -117,26 +119,26 @@ fn test_execute_write_once() {
 fn test_execute_write_once_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let (_, channel_id) = test.mock_new_channel();
-    let (subchannel_id, _, _) = test.mock_new_subchannel();
+    let (_, channel_marker) = test.mock_new_channel();
+    let (subchannel_marker, _, _) = test.mock_new_subchannel();
 
     // Catch NON_ZERO_VALUE for channel exists.
     let storage_address = map_entry_address(
-        map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
     );
     let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
-    assert!(test.privacy.channel_exists(:channel_id));
+    assert!(test.privacy.channel_exists(:channel_marker));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE for subchannel_exists.
     let storage_address = map_entry_address(
-        map_selector: selector!("subchannel_exists"), keys: [subchannel_id].span(),
+        map_selector: selector!("subchannel_exists"), keys: [subchannel_marker].span(),
     );
     let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, value: true)];
     test.privacy.execute_actions(actions.span());
-    assert!(test.privacy.subchannel_exists(:subchannel_id));
+    assert!(test.privacy.subchannel_exists(:subchannel_marker));
     let result = test.privacy.safe_execute_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
@@ -167,38 +169,38 @@ fn test_execute_write_once_assertions() {
 #[test]
 fn test_execute_write_once_subchannel() {
     let mut test: Test = Default::default();
-    let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
+    let (_, subchannel_id, enc_subchannel_info) = test.mock_new_subchannel();
     assert!(enc_subchannel_info.enc_token.is_non_zero());
 
     // Verify subchannel info is zero before writing.
-    let subchannel_info = test.privacy.get_subchannel_info(:subchannel_key);
+    let subchannel_info = test.privacy.get_subchannel_info(:subchannel_id);
     assert_eq!(subchannel_info.salt, Zero::zero());
     assert_eq!(subchannel_info.enc_token, Zero::zero());
 
     // Verify subchannel doesn't exist and write.
     let storage_address = map_entry_address(
-        map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
+        map_selector: selector!("subchannel_tokens"), keys: [subchannel_id].span(),
     );
     let actions = [to_write_once_action(:storage_address, value: enc_subchannel_info)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify subchannel exists.
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), enc_subchannel_info);
+    assert_eq!(test.privacy.get_subchannel_info(:subchannel_id), enc_subchannel_info);
 }
 
 #[test]
 fn test_execute_write_once_subchannel_assertions() {
     let mut test: Test = Default::default();
-    let (_, subchannel_key, enc_subchannel_info) = test.mock_new_subchannel();
+    let (_, subchannel_id, enc_subchannel_info) = test.mock_new_subchannel();
     assert!(enc_subchannel_info.enc_token.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
-        map_selector: selector!("subchannel_tokens"), keys: [subchannel_key].span(),
+        map_selector: selector!("subchannel_tokens"), keys: [subchannel_id].span(),
     );
     let actions = [to_write_once_action(:storage_address, value: enc_subchannel_info)].span();
     test.privacy.execute_actions(:actions);
-    assert_eq!(test.privacy.get_subchannel_info(:subchannel_key), enc_subchannel_info);
+    assert_eq!(test.privacy.get_subchannel_info(:subchannel_id), enc_subchannel_info);
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
@@ -248,48 +250,48 @@ fn test_execute_write_once_private_key_assertions() {
 fn test_execute_write_once_outgoing_channel() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
+    let outgoing_channel_id = user.compute_outgoing_channel_id(index: 0);
     let enc_outgoing_channel_info = user
         .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: Zero::zero());
-    assert!(outgoing_channel_key.is_non_zero());
+    assert!(outgoing_channel_id.is_non_zero());
     assert!(enc_outgoing_channel_info.enc_recipient_addr.is_non_zero());
 
     // Verify outgoing channel info is zero before writing.
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(:outgoing_channel_key),
+        test.privacy.get_outgoing_channel_info(:outgoing_channel_id),
         EncOutgoingChannelInfo { salt: Zero::zero(), enc_recipient_addr: Zero::zero() },
     );
 
     // Write outgoing channel info.
     let storage_address = map_entry_address(
-        map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
+        map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_id].span(),
     );
     let actions = [to_write_once_action(:storage_address, value: enc_outgoing_channel_info)].span();
     test.privacy.execute_actions(:actions);
 
     // Verify outgoing channel info exists.
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(:outgoing_channel_key), enc_outgoing_channel_info,
+        test.privacy.get_outgoing_channel_info(:outgoing_channel_id), enc_outgoing_channel_info,
     );
 }
 #[test]
 fn test_execute_write_once_outgoing_channel_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
-    let outgoing_channel_key = user.compute_outgoing_channel_key(index: 0);
+    let outgoing_channel_id = user.compute_outgoing_channel_id(index: 0);
     let enc_outgoing_channel_info = user
         .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: Zero::zero());
-    assert!(outgoing_channel_key.is_non_zero());
+    assert!(outgoing_channel_id.is_non_zero());
     assert!(enc_outgoing_channel_info.enc_recipient_addr.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
-        map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_key].span(),
+        map_selector: selector!("outgoing_channels"), keys: [outgoing_channel_id].span(),
     );
     let actions = [to_write_once_action(:storage_address, value: enc_outgoing_channel_info)].span();
     test.privacy.execute_actions(:actions);
     assert_eq!(
-        test.privacy.get_outgoing_channel_info(:outgoing_channel_key), enc_outgoing_channel_info,
+        test.privacy.get_outgoing_channel_info(:outgoing_channel_id), enc_outgoing_channel_info,
     );
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
@@ -480,7 +482,7 @@ fn test_execute_transfer_to_assertions() {
 }
 
 #[test]
-fn test_execute_verify_value() {
+fn test_execute_read_assert() {
     let mut test: Test = Default::default();
     let user = test.new_user();
 
@@ -496,13 +498,13 @@ fn test_execute_verify_value() {
 
     // Verify value by action.
     let actions = array![
-        ServerAction::VerifyValue(VerifyValueInput { storage_address, value: user.public_key }),
+        ServerAction::ReadAssert(ReadAssertInput { storage_address, value: user.public_key }),
     ];
     test.privacy.execute_actions(actions.span());
 }
 
 #[test]
-fn test_execute_verify_value_assertions() {
+fn test_execute_read_assert_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let storage_path_felt = map_entry_address(
@@ -512,8 +514,8 @@ fn test_execute_verify_value_assertions() {
     // Catch VALUE_MISMATCH.
     assert_ne!(user.get_public_key(), user.public_key);
     let actions = array![
-        ServerAction::VerifyValue(
-            VerifyValueInput { storage_address: storage_path_felt, value: user.public_key },
+        ServerAction::ReadAssert(
+            ReadAssertInput { storage_address: storage_path_felt, value: user.public_key },
         ),
     ];
     let result = test.privacy.safe_execute_actions(actions.span());
@@ -587,9 +589,9 @@ fn test_execute_emit_open_note_created() {
     let mut test: Test = Default::default();
     let token = test.mock_new_token();
     let depositor = test.mock_new_depositor();
-    let enc_sender_addr = test.mock_new_enc_address();
+    let enc_recipient_addr = test.mock_new_enc_address();
     let note_id = 'NOTE_ID';
-    let expected_event = events::OpenNoteCreated { enc_sender_addr, depositor, token, note_id };
+    let expected_event = events::OpenNoteCreated { enc_recipient_addr, depositor, token, note_id };
     let actions = array![ServerAction::EmitOpenNoteCreated(expected_event)];
     let mut spy = spy_events();
     test.privacy.execute_actions(actions.span());
@@ -674,4 +676,181 @@ fn test_execute_write_once_open_note_assertions() {
     let actions = create_note_input.into_server_actions(user: user_1);
     let result = test.privacy.safe_execute_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+}
+
+#[test]
+fn test_execute_deposit_to_open_note() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let mut depositor = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    let token_address = token.contract_address();
+
+    // Create an open note.
+    let create_note_input = depositor
+        .new_open_note_with_generated_random(
+            recipient: depositor, token: token_address, index: 0, depositor: depositor.address,
+        );
+    let (note_id, open_note) = depositor.compute_open_note(:create_note_input);
+
+    // Write the open note to storage.
+    test.privacy.cheat_create_note(:note_id, note: open_note);
+
+    // Verify note was written.
+    let stored_note = test.privacy.get_note(:note_id);
+    assert_eq!(stored_note, open_note);
+
+    // Set up depositor with token balance and approval.
+    depositor.increase_token_balance(:token, :amount);
+    depositor.approve(:token, amount: amount.into());
+
+    // Verify balances before deposit.
+    assert_eq!(token.balance_of(address: depositor.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+
+    // Spy on events before executing.
+    let mut spy = spy_events();
+
+    // Execute DepositToOpenNote action (caller must be the depositor).
+    depositor.deposit_to_open_note(input: DepositToOpenNoteInput { note_id, amount });
+
+    // Verify note packed_value updated with OPEN_NOTE_SALT and amount.
+    let filled_note = test.privacy.get_note(:note_id);
+    let (salt, stored_amount) = unpacking(packed_value: filled_note.packed_value);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(stored_amount, amount);
+    assert_eq!(filled_note.token, token_address);
+    assert_eq!(filled_note.depositor, depositor.address);
+
+    // Verify tokens transferred.
+    assert_eq!(token.balance_of(address: depositor.address), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+
+    // Verify OpenNoteDeposited event emitted.
+    let expected_event = events::OpenNoteDeposited {
+        depositor: depositor.address, token: token_address, note_id, amount,
+    };
+    let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(emitted_events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: emitted_events[0],
+        :expected_event,
+        expected_event_selector: @selector!("OpenNoteDeposited"),
+        expected_event_name: "OpenNoteDeposited",
+    );
+}
+
+#[test]
+fn test_execute_deposit_to_open_note_assertions() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let mut user = test.new_user();
+    let depositor = test.new_user();
+    let other_depositor = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    let token_address = token.contract_address();
+
+    // Setup: depositor has balance and approval.
+    depositor.increase_token_balance(:token, :amount);
+    depositor.approve(:token, amount: amount.into());
+
+    // Catch ZERO_NOTE_ID - Try to deposit with zero note_id.
+    let result = depositor
+        .safe_deposit_to_open_note(input: DepositToOpenNoteInput { note_id: 0, amount });
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NOTE_ID);
+
+    // Catch ZERO_AMOUNT - Try to deposit with zero amount.
+    let (some_note_id, _) = test.mock_new_note(:amount);
+    let result = depositor
+        .safe_deposit_to_open_note(
+            input: DepositToOpenNoteInput { note_id: some_note_id, amount: 0 },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
+
+    // Catch NOTE_NOT_FOUND - Try to deposit to a note that doesn't exist.
+    let (nonexistent_note_id, _) = test.mock_new_note(:amount);
+    // Note: mock_new_note returns a note_id but does NOT write it to storage.
+    let result = depositor
+        .safe_deposit_to_open_note(
+            input: DepositToOpenNoteInput { note_id: nonexistent_note_id, amount },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+
+    // Catch NOTE_NOT_OPEN - Write an encrypted note (salt >= 2), try to deposit to it.
+    let create_note_input = user
+        .new_enc_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
+    let (note_id_enc, enc_note) = user.compute_enc_note(:create_note_input);
+    // Write just the packed_value (encrypted note has zero token and depositor).
+    test.privacy.cheat_create_note(note_id: note_id_enc, note: enc_note);
+
+    let result = depositor
+        .safe_deposit_to_open_note(input: DepositToOpenNoteInput { note_id: note_id_enc, amount });
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
+
+    // Catch NOTE_ALREADY_DEPOSITED - Deposit to an open note, then try to deposit again.
+    let (note_id_filled, _) = test.mock_new_note(:amount);
+    let note = open_note(token: token_address, depositor: depositor.address);
+    test.privacy.cheat_create_note(note_id: note_id_filled, :note);
+
+    // Deposit to the open note first time.
+    depositor
+        .deposit_to_open_note(input: DepositToOpenNoteInput { note_id: note_id_filled, amount });
+
+    // Now try to deposit again - should fail with NOTE_ALREADY_DEPOSITED.
+    // Need to add more balance and approval for second attempt.
+    depositor.increase_token_balance(:token, :amount);
+    depositor.approve(:token, amount: amount.into());
+
+    let result = depositor
+        .safe_deposit_to_open_note(
+            input: DepositToOpenNoteInput { note_id: note_id_filled, amount },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
+
+    // Catch CALLER_NOT_DEPOSITOR - Create open note with depositor A, caller is depositor B.
+    let (note_id_mismatch, _) = test.mock_new_note(:amount);
+    let open_note_a = open_note(token: token_address, depositor: depositor.address);
+    test.privacy.cheat_create_note(note_id: note_id_mismatch, note: open_note_a);
+
+    // Try to deposit with other_depositor as caller instead of depositor.
+    other_depositor.increase_token_balance(:token, :amount);
+    other_depositor.approve(:token, amount: amount.into());
+
+    let result = other_depositor
+        .safe_deposit_to_open_note(
+            input: DepositToOpenNoteInput { note_id: note_id_mismatch, amount },
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
+}
+
+#[test]
+fn test_execute_deposit_to_open_note_transfer_assertions() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let mut user = test.new_user();
+    let depositor = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    let token_address = token.contract_address();
+
+    // Create an open note.
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            recipient: user, token: token_address, index: 0, depositor: depositor.address,
+        );
+    let (note_id, open_note) = user.compute_open_note(:create_note_input);
+    test.privacy.cheat_create_note(:note_id, note: open_note);
+
+    // Test 1: INSUFFICIENT_BALANCE - Depositor has no tokens.
+    let result = depositor
+        .safe_deposit_to_open_note(input: DepositToOpenNoteInput { note_id, amount });
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
+
+    // Test 2: INSUFFICIENT_ALLOWANCE - Depositor has tokens but no approval.
+    // Reuse the same note since Test 1 failed and didn't modify the note state.
+    depositor.increase_token_balance(:token, :amount);
+    // Note: NOT calling approve here.
+
+    let result = depositor
+        .safe_deposit_to_open_note(input: DepositToOpenNoteInput { note_id, amount });
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
 }

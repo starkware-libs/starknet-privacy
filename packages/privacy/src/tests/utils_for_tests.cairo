@@ -1,19 +1,18 @@
-use core::dict::Felt252Dict;
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
-    TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
+    DepositToOpenNoteInput, OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput,
+    TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
 };
 use privacy::events;
 use privacy::hashes::{
-    compute_channel_id, compute_channel_key, compute_enc_address_hash, compute_enc_channel_key_hash,
-    compute_enc_private_key_hash, compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash, compute_note_id, compute_nullifier, compute_outgoing_channel_key,
-    compute_subchannel_id, compute_subchannel_key, hash,
+    compute_channel_key, compute_channel_marker, compute_enc_address_hash,
+    compute_enc_channel_key_hash, compute_enc_private_key_hash, compute_enc_recipient_addr_hash,
+    compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
+    compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker, hash,
 };
 use privacy::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
@@ -28,10 +27,16 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
+use privacy::swap_executor::interface::{
+    ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait, ISwapExecutorSafeDispatcher,
+    ISwapExecutorSafeDispatcherTrait,
+};
+use privacy::swap_executor::swap_executor::SwapExecutor::deploy_for_test as deploy_swap_executor_for_test;
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
+use privacy::tests::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::utils::constants::{OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
-    derive_public_key, encrypt_note_amount, encrypt_outgoing_channel_info, encrypt_private_key,
+    derive_public_key, enc_note_packed_value, encrypt_outgoing_channel_info, encrypt_private_key,
     encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, packing, to_write_once_action,
 };
 use snforge_std::{
@@ -86,17 +91,17 @@ pub(crate) impl CreateOpenNoteInputIntoServerActionImpl of CreateOpenNoteInputIn
         let storage_path = map_entry_address(
             map_selector: selector!("notes"), keys: [note_id].span(),
         );
-        let enc_sender_addr = encrypt_user_addr(
+        let enc_recipient_addr = encrypt_user_addr(
             ephemeral_secret: *self.random,
             compliance_public_key: user.privacy.get_compliance_public_key(),
-            user_addr: user.address,
+            user_addr: *self.recipient_addr,
         );
 
         [
             to_write_once_action(storage_address: storage_path, value: note),
             ServerAction::EmitOpenNoteCreated(
                 events::OpenNoteCreated {
-                    enc_sender_addr, depositor: note.depositor, token: note.token, note_id,
+                    enc_recipient_addr, depositor: note.depositor, token: note.token, note_id,
                 },
             ),
         ]
@@ -133,6 +138,12 @@ impl DefaultRolesImpl of Default<Roles> {
         }
     }
 }
+
+#[derive(Copy, Drop)]
+pub(crate) struct SwapExecutorCfg {
+    pub address: ContractAddress,
+}
+
 
 #[derive(Copy, Drop)]
 pub(crate) struct PrivacyCfg {
@@ -269,12 +280,10 @@ pub(crate) impl UserImpl of UserTrait {
         token: Token,
         amount: u128,
         channel_key: felt252,
-        note_index: usize,
+        index: usize,
     ) {
         let random = self.get_random();
-        let use_note_input = UseNoteInput {
-            channel_key, token: token.contract_address(), note_index,
-        };
+        let use_note_input = UseNoteInput { channel_key, token: token.contract_address(), index };
         let withdraw_input = WithdrawInput {
             withdrawal_target, token: token.contract_address(), amount, random,
         };
@@ -733,8 +742,8 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    fn compute_outgoing_channel_key(self: @User, index: usize) -> felt252 {
-        compute_outgoing_channel_key(
+    fn compute_outgoing_channel_id(self: @User, index: usize) -> felt252 {
+        compute_outgoing_channel_id(
             sender_addr: *self.address, sender_private_key: *self.private_key, :index,
         )
     }
@@ -751,8 +760,8 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    fn compute_channel_id(self: @User, recipient: User) -> felt252 {
-        compute_channel_id(
+    fn compute_channel_marker(self: @User, recipient: User) -> felt252 {
+        compute_channel_marker(
             channel_key: self.compute_channel_key(:recipient),
             sender_addr: *self.address,
             recipient_addr: recipient.address,
@@ -760,15 +769,15 @@ pub(crate) impl UserImpl of UserTrait {
         )
     }
 
-    fn compute_subchannel_key(self: @User, recipient: User, index: usize) -> felt252 {
+    fn compute_subchannel_id(self: @User, recipient: User, index: usize) -> felt252 {
         let channel_key = self.compute_channel_key(:recipient);
-        compute_subchannel_key(:channel_key, :index)
+        compute_subchannel_id(:channel_key, :index)
     }
 
-    fn compute_subchannel_id(
+    fn compute_subchannel_marker(
         self: @User, recipient: User, token_address: ContractAddress,
     ) -> felt252 {
-        compute_subchannel_id(
+        compute_subchannel_marker(
             channel_key: self.compute_channel_key(:recipient),
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
@@ -795,7 +804,7 @@ pub(crate) impl UserImpl of UserTrait {
         let note_id = compute_note_id(
             :channel_key, token: create_note_input.token, index: create_note_input.index,
         );
-        let packed_value = encrypt_note_amount(
+        let packed_value = enc_note_packed_value(
             :channel_key,
             token: create_note_input.token,
             index: create_note_input.index,
@@ -879,12 +888,12 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn compute_nullifier(
-        self: @User, sender: User, token_address: ContractAddress, note_index: usize,
+        self: @User, sender: User, token_address: ContractAddress, index: usize,
     ) -> felt252 {
         compute_nullifier(
             channel_key: sender.compute_channel_key(recipient: *self),
             token: token_address,
-            index: note_index,
+            :index,
             owner_private_key: *self.private_key,
         )
     }
@@ -1101,6 +1110,36 @@ pub(crate) impl UserImpl of UserTrait {
             .approve(spender: *self.privacy.address, :amount);
     }
 
+    /// Execute the DepositToOpenNote action as this user (caller).
+    /// Assumes the user already has sufficient token balance and approval.
+    fn deposit_to_open_note(self: @User, input: DepositToOpenNoteInput) {
+        let deposit_action = ServerAction::DepositToOpenNote(input);
+        cheat_caller_address_once(
+            contract_address: *self.privacy.address, caller_address: *self.address,
+        );
+        self.privacy.execute_actions([deposit_action].span());
+    }
+
+    /// Safe version of `deposit_to_open_note` that returns a Result.
+    /// Assumes the user already has sufficient token balance and approval.
+    fn safe_deposit_to_open_note(
+        self: @User, input: DepositToOpenNoteInput,
+    ) -> Result<(), Array<felt252>> {
+        let deposit_action = ServerAction::DepositToOpenNote(input);
+        cheat_caller_address_once(
+            contract_address: *self.privacy.address, caller_address: *self.address,
+        );
+        self.privacy.safe_execute_actions([deposit_action].span())
+    }
+
+    /// Fund the user, approve, and deposit to an open note.
+    /// This sets up the token balance, approval, then executes the DepositToOpenNote action.
+    fn fund_and_deposit_to_open_note(self: @User, token: Token, input: DepositToOpenNoteInput) {
+        self.increase_token_balance(:token, amount: input.amount);
+        self.approve(:token, amount: input.amount.into());
+        self.deposit_to_open_note(:input);
+    }
+
     /// Cheat deposit in the server side (no client side).
     fn cheat_deposit(
         self: @User, token: Token, amount: u128, create_note_input: CreateEncNoteInput,
@@ -1176,6 +1215,8 @@ pub(crate) struct Test {
     pub privacy: PrivacyCfg,
     pub nonce: usize,
     pub compliance: Compliance,
+    pub swap_executor: SwapExecutorCfg,
+    pub mock_amm: ContractAddress,
 }
 
 #[generate_trait]
@@ -1229,7 +1270,7 @@ pub(crate) impl TestImpl of TestTrait {
     }
 
     /// Mock function to generate a new note.
-    /// Returns (enc_channel_info, channel_id).
+    /// Returns (enc_channel_info, channel_marker).
     fn mock_new_channel(ref self: Test) -> (EncChannelInfo, felt252) {
         self.nonce += 1;
         let enc_channel_info = EncChannelInfo {
@@ -1237,20 +1278,20 @@ pub(crate) impl TestImpl of TestTrait {
             enc_channel_key: 'ENC_CHANNEL_KEY' + self.nonce.into(),
             enc_sender_addr: 'ENC_SENDER_ADDR' + self.nonce.into(),
         };
-        let channel_id = 'CHANNEL_ID' + self.nonce.into();
-        (enc_channel_info, channel_id)
+        let channel_marker = 'CHANNEL_MARKER' + self.nonce.into();
+        (enc_channel_info, channel_marker)
     }
 
     /// Mock function to generate a new subchannel.
-    /// Returns (subchannel_id, subchannel_key, enc_subchannel_info).
+    /// Returns (subchannel_marker, subchannel_id, enc_subchannel_info).
     fn mock_new_subchannel(ref self: Test) -> (felt252, felt252, EncSubchannelInfo) {
         self.nonce += 1;
+        let subchannel_marker = 'SUBCHANNEL_MARKER' + self.nonce.into();
         let subchannel_id = 'SUBCHANNEL_ID' + self.nonce.into();
-        let subchannel_key = 'SUBCHANNEL_KEY' + self.nonce.into();
         let enc_subchannel_info = EncSubchannelInfo {
             salt: 'SALT' + self.nonce.into(), enc_token: 'ENC_TOKEN' + self.nonce.into(),
         };
-        (subchannel_id, subchannel_key, enc_subchannel_info)
+        (subchannel_marker, subchannel_id, enc_subchannel_info)
     }
 
     /// Mock function to generate a new note.
@@ -1304,12 +1345,12 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self: @PrivacyCfg,
         recipient_addr: ContractAddress,
         enc_channel_info: EncChannelInfo,
-        channel_id: felt252,
+        channel_marker: felt252,
     ) {
         let actions = [
             to_write_once_action(
                 storage_address: map_entry_address(
-                    map_selector: selector!("channel_exists"), keys: [channel_id].span(),
+                    map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
                 ),
                 value: true,
             ),
@@ -1319,22 +1360,32 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.execute_actions(:actions);
     }
 
-    fn channel_exists(self: @PrivacyCfg, channel_id: felt252) -> bool {
-        self.views.channel_exists(:channel_id)
+    fn channel_exists(self: @PrivacyCfg, channel_marker: felt252) -> bool {
+        self.views.channel_exists(:channel_marker)
     }
 
-    fn subchannel_exists(self: @PrivacyCfg, subchannel_id: felt252) -> bool {
-        self.views.subchannel_exists(:subchannel_id)
+    fn subchannel_exists(self: @PrivacyCfg, subchannel_marker: felt252) -> bool {
+        self.views.subchannel_exists(:subchannel_marker)
     }
 
-    fn get_subchannel_info(self: @PrivacyCfg, subchannel_key: felt252) -> EncSubchannelInfo {
-        self.views.get_subchannel_info(:subchannel_key)
+    fn get_subchannel_info(self: @PrivacyCfg, subchannel_id: felt252) -> EncSubchannelInfo {
+        self.views.get_subchannel_info(:subchannel_id)
     }
 
     fn get_outgoing_channel_info(
-        self: @PrivacyCfg, outgoing_channel_key: felt252,
+        self: @PrivacyCfg, outgoing_channel_id: felt252,
     ) -> EncOutgoingChannelInfo {
-        self.views.get_outgoing_channel_info(:outgoing_channel_key)
+        self.views.get_outgoing_channel_info(:outgoing_channel_id)
+    }
+
+    /// Cheat create a note in the server side (no client side).
+    fn cheat_create_note(self: @PrivacyCfg, note_id: felt252, note: Note) {
+        let storage_address = map_entry_address(
+            map_selector: selector!("notes"), keys: [note_id].span(),
+        );
+        self
+            .server
+            .execute_actions(actions: [to_write_once_action(:storage_address, value: note)].span())
     }
 
     fn get_note(self: @PrivacyCfg, note_id: felt252) -> Note {
@@ -1537,7 +1588,10 @@ impl DefaultTestImpl of Default<Test> {
         let compliance: Compliance = Default::default();
         let roles: Roles = Default::default();
         let privacy = deploy_privacy(:roles, compliance_public_key: compliance.public_key);
-        Test { privacy, nonce: Zero::zero(), compliance }
+        let swap_executor = deploy_swap_executor();
+        let mock_amm = deploy_mock_amm();
+
+        Test { privacy, nonce: Zero::zero(), compliance, swap_executor, mock_amm }
     }
 }
 
@@ -1603,6 +1657,66 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
     )
         .expect('MockAccount deployment failed');
     contract_address
+}
+
+/// Deploy a new swap executor contract.
+fn deploy_swap_executor() -> SwapExecutorCfg {
+    let class_hash = declare(contract: "SwapExecutor").unwrap_syscall().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_swap_executor_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('SwapExecutor deployment failed');
+    SwapExecutorCfg { address: contract_address }
+}
+
+/// Deploy a new mock AMM contract.
+fn deploy_mock_amm() -> ContractAddress {
+    let class_hash = declare(contract: "MockAMM").unwrap_syscall().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_amm_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('MockAMM deployment failed');
+    contract_address
+}
+
+#[generate_trait]
+pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
+    fn swap(
+        self: @SwapExecutorCfg,
+        swap_contract: ContractAddress,
+        in_token: ContractAddress,
+        out_token: ContractAddress,
+        in_amount: u128,
+    ) -> u128 {
+        let dispatcher = ISwapExecutorDispatcher { contract_address: *self.address };
+        let swap_selector = selector!("swap");
+        let swap_calldata = [in_token.into(), out_token.into(), in_amount.into(), 0].span();
+        ISwapExecutorDispatcherTrait::swap(
+            dispatcher,
+            :swap_contract,
+            :swap_selector,
+            :swap_calldata,
+            :in_token,
+            :out_token,
+            :in_amount,
+        )
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_swap(
+        self: @SwapExecutorCfg,
+        swap_contract: ContractAddress,
+        swap_selector: felt252,
+        swap_calldata: Span<felt252>,
+        in_token: ContractAddress,
+        out_token: ContractAddress,
+        in_amount: u128,
+    ) -> Result<u128, Array<felt252>> {
+        ISwapExecutorSafeDispatcher { contract_address: *self.address }
+            .swap(:swap_contract, :swap_selector, :swap_calldata, :in_token, :out_token, :in_amount)
+    }
 }
 
 /// Returns private_key decrypted from the given `enc_private_key` and
@@ -1695,14 +1809,4 @@ fn deserialize_server_actions(message: @MessageToL1) -> Span<ServerAction> {
 pub(crate) fn spy_messages_to_server_actions(ref spy: MessageToL1Spy) -> Span<ServerAction> {
     let (_from, message) = spy.get_messages().messages.at(0);
     deserialize_server_actions(:message)
-}
-
-// TODO: Move to utils repo.
-pub(crate) fn assert_unique_felts(felts: Span<felt252>) {
-    let mut buckets: Felt252Dict<usize> = Default::default();
-    for felt in felts {
-        let current_count = buckets[*felt];
-        assert!(current_count.is_zero(), "Duplicate felt found: {:?}", felt);
-        buckets.insert(*felt, value: 1);
-    }
 }

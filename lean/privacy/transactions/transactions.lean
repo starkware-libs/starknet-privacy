@@ -1,5 +1,6 @@
 import privacy.actions
 import privacy.transactions.transaction0
+import privacy.notes.note_implies
 
 def Action.check_owner (action: Action) (owner: ℕ) : Prop :=
   match action with
@@ -34,6 +35,23 @@ def ActionFunc.create : ActionFunc := {
     case CreateNote inp =>
       simp only [Option.some.injEq] at h_some
       rw [←h_some', ActionFuncRes.from_create, h_some]
+    all_goals contradiction
+}
+
+def ActionFunc.create_nonopen : ActionFunc := {
+  f := λ (a: Action) ↦ (filter_CreateNote a) |>.filter (λ inp ↦ inp.r ≠ 1) |>.map ActionFuncRes.from_create,
+  h_owner := by
+    intro action res h_some owner'
+    simp only [filter_CreateNote, Option.map_eq_some_iff, Action.check_owner] at h_some ⊢
+    obtain ⟨action', h_some, h_some'⟩ := h_some
+    cases action
+    case CreateNote inp =>
+      simp only [Option.filter_some] at h_some
+      by_cases h_r: inp.r ≠ 1
+      case pos =>
+        simp [h_r] at h_some
+        rw [←h_some', ActionFuncRes.from_create, h_some]
+      case neg => simp [h_r] at h_some
     all_goals contradiction
 }
 
@@ -86,3 +104,39 @@ abbrev SuccessfulTransactions.rm {crypto: Crypto} (stxs: SuccessfulTransactions 
       rw [←h]
       exact rm.success
   }
+
+theorem Transaction.sum_create_note_amounts_eq_nonopen
+    {crypto: Crypto} (stxs: SuccessfulTransactions crypto)
+    (tx: Transaction) (h: tx ∈ stxs.txs)
+    (token: ℕ) :
+    tx.sum_create_note_amounts token =
+    tx.sum_amounts .create_nonopen token := by
+  simp only [Transaction₀.sum_create_note_amounts, Transaction₀.sum_amounts, ActionFunc.create_nonopen, ActionFunc.create]
+  simp only [List.filter_filterMap, filterMap_map_sum_to_getD]
+  apply congrArg
+  apply List.map_congr_left
+
+  intro action h_action
+
+  cases action
+  case CreateNote inp =>
+    by_cases h_r: inp.r = 1
+    case pos =>
+      have h_action' : .CreateNote inp ∈ stxs.rm.actions := by
+        rw [SuccessfulTransactions.rm]
+        simp only [List.bind_eq_flatMap, List.mem_flatMap, List.mem_map, exists_exists_and_eq_and]
+        exact ⟨tx, h, h_action⟩
+      have h_amount : inp.amount = 0 := by
+        have ⟨note_imp⟩ := NoteImplies.from_action h_action'
+        exact (note_imp.h_open_note h_r).2
+      simp only [filter_CreateNote, Option.filter_some, h_r]
+
+      by_cases h_token: inp.token = token
+      case pos =>
+        simp [Option.filter_some, ActionFuncRes.from_create, h_token, h_amount]
+      case neg =>
+        simp [Option.filter_some, ActionFuncRes.from_create, h_token]
+    case neg =>
+      simp [filter_CreateNote, Option.filter_some, h_r]
+
+  all_goals simp

@@ -61,9 +61,9 @@ pub struct CairoRefInputs {
     pub compliance_public_key: Felt,
     pub user_addr: Felt,
     pub user_private_key: Felt,
-    pub channel_id: Felt,
-    pub subchannel_key: Felt,
+    pub channel_marker: Felt,
     pub subchannel_id: Felt,
+    pub subchannel_marker: Felt,
     pub note_id: Felt,
     pub nullifier: Felt,
 }
@@ -73,9 +73,9 @@ pub struct CairoRefInputs {
 #[serde(rename_all = "camelCase")]
 pub struct CairoRefOutputs {
     pub channel_key: Felt,
-    pub channel_id: Felt,
-    pub subchannel_key: Felt,
+    pub channel_marker: Felt,
     pub subchannel_id: Felt,
+    pub subchannel_marker: Felt,
     pub note_id: Felt,
     pub nullifier: Felt,
     pub enc_amount_hash: Felt,
@@ -84,7 +84,7 @@ pub struct CairoRefOutputs {
     pub enc_channel_key_hash: Felt,
     pub enc_sender_addr_hash: Felt,
     pub enc_recipient_addr_hash: Felt,
-    pub outgoing_channel_key: Felt,
+    pub outgoing_channel_id: Felt,
     pub enc_subchannel_salt: Felt,
     pub enc_subchannel_token: Felt,
     pub enc_channel_ephemeral_pubkey: Felt,
@@ -138,8 +138,10 @@ pub async fn get_channel_key(
     viewing_key: &starknet_types_core::felt::Felt,
 ) -> Option<starknet_types_core::felt::Felt> {
     use crate::discovery::incoming_channels::discover_incoming_channels;
+    use crate::io_budget::IoBudget;
 
-    let result = discover_incoming_channels(backend, recipient, viewing_key, 0)
+    let budget = IoBudget::new(100);
+    let result = discover_incoming_channels(backend, recipient, viewing_key, 0, &budget)
         .await
         .ok()?;
 
@@ -152,8 +154,12 @@ pub async fn get_subchannel_token(
     channel_key: starknet_types_core::felt::Felt,
 ) -> Option<starknet_types_core::felt::Felt> {
     use crate::discovery::subchannels::discover_subchannels;
+    use crate::io_budget::IoBudget;
 
-    let result = discover_subchannels(backend, channel_key, 0).await.ok()?;
+    let budget = IoBudget::new(100);
+    let result = discover_subchannels(backend, channel_key, 0, &budget)
+        .await
+        .ok()?;
 
     result.subchannels.first().map(|s| s.token)
 }

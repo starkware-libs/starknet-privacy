@@ -19,7 +19,7 @@ export type Amount = bigint;
  */
 export const MAX_VIEWING_KEY = ec.starkCurve.CURVE.n / 2n;
 
-/** Marker for creating an open note (a note whose amount is open and can be filled later with a deposit) */
+/** Marker for creating an open note (a note whose amount is open and can be deposited into later) */
 export const Open = Symbol("Open");
 export type Open = typeof Open;
 

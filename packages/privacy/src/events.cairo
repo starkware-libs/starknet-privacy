@@ -48,8 +48,8 @@ pub struct CompliancePublicKeySet {
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct OpenNoteCreated {
-    /// Encrypted sender address. Can be decrypted by the compliance.
-    pub enc_sender_addr: EncUserAddr,
+    /// Encrypted recipient address (the owner of the note). Can be decrypted by the compliance.
+    pub enc_recipient_addr: EncUserAddr,
     /// The address who is allowed to deposit into the note.
     #[key]
     pub depositor: ContractAddress,
@@ -59,4 +59,19 @@ pub struct OpenNoteCreated {
     /// The note ID.
     #[key]
     pub note_id: felt252,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct OpenNoteDeposited {
+    /// The address of the contract that performed the deposit.
+    #[key]
+    pub depositor: ContractAddress,
+    /// The token's address.
+    #[key]
+    pub token: ContractAddress,
+    /// The note id that was deposited into.
+    #[key]
+    pub note_id: felt252,
+    /// The amount deposited.
+    pub amount: u128,
 }

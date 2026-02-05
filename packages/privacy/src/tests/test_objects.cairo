@@ -2,11 +2,10 @@ use core::num::traits::Zero;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::objects::{
     EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey, EncPrivateKeyTrait,
-    EncSubchannelInfo, Note, NoteTrait, TokenBalances, TokenBalancesTrait,
+    EncSubchannelInfo, Note, TokenBalances, TokenBalancesTrait,
 };
 use privacy::tests::test_objects::MockContract::deploy_for_test as deploy_mock_contract_for_test;
-use privacy::tests::utils_for_tests::{Test, TestTrait, UserTrait, constants};
-use privacy::utils::{decrypt_note_amount, encrypt_note_amount, to_write_once_action, unpacking};
+use privacy::utils::to_write_once_action;
 use snforge_std::{DeclareResultTrait, declare, map_entry_address};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
@@ -110,32 +109,6 @@ fn test_token_balances_final_balance_must_be_zero() {
     token_balances.subtract_balance(token: token_2, amount: 1);
 
     token_balances.squash().assert_valid();
-}
-
-#[test]
-fn test_note_encrypt() {
-    let mut test: Test = Default::default();
-    let mut user = test.new_user();
-    let token_address = test.mock_new_token();
-    let amount = constants::DEFAULT_AMOUNT;
-    let salt = user.get_salt();
-    let channel_key = user.compute_channel_key(recipient: user);
-    let index = 0;
-
-    let note = NoteTrait::enc_note(:channel_key, token: token_address, :index, :salt, :amount);
-    let expected_note = Note {
-        packed_value: encrypt_note_amount(
-            :channel_key, token: token_address, :index, :salt, :amount,
-        ),
-        token: Zero::zero(),
-        depositor: Zero::zero(),
-    };
-    assert_eq!(note, expected_note);
-    let (note_salt, enc_amount) = unpacking(note.packed_value);
-    assert_eq!(note_salt, salt);
-    assert_eq!(
-        decrypt_note_amount(:enc_amount, :salt, :channel_key, token: token_address, :index), amount,
-    );
 }
 
 #[test]

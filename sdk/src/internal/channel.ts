@@ -33,7 +33,7 @@ function assert(condition: unknown, message: () => string): asserts condition {
 
 export type IncomingChannelCursor = {
   /** @internal */ channelKey: ChannelKey;
-  /** @internal */ subchannelKeyIndex: number;
+  /** @internal */ subchannelIdIndex: number;
   /** @internal */ noteIndexes: AddressMap<number>; // token -> i
 };
 
@@ -54,7 +54,7 @@ export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
 
   const cloneIncomingChannelCursor = (sc: IncomingChannelCursor): IncomingChannelCursor => ({
     channelKey: sc.channelKey,
-    subchannelKeyIndex: sc.subchannelKeyIndex,
+    subchannelIdIndex: sc.subchannelIdIndex,
     noteIndexes: new AddressMap<number>(sc.noteIndexes.entries()),
   });
 

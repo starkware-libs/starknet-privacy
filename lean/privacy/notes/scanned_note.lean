@@ -1,5 +1,6 @@
 import privacy.utils
 import privacy.actions
+import privacy.notes.note_implies
 
 structure ScannedNote where
   (c token i₀ i₁: ℕ)
@@ -26,6 +27,16 @@ theorem ScannedNote.note_id_eq {crypto: Crypto} {sn sn': ScannedNote} :
 abbrev ScannedNote.amount (crypto: Crypto) (m: Memory) (sn: ScannedNote) : ℕ :=
   note_amount crypto m (sn.note_id crypto) sn.c sn.token sn.i₀ sn.i₁
 
+abbrev NoteImplies.from_amount_nz
+    {crypto: Crypto} {rm: ReachableMemory crypto} {sn: ScannedNote}
+    (h_amount_nz: sn.amount crypto rm ≠ 0) :
+    ∃ (inp: CreateNoteInput) (_: NoteImplies rm inp), inp.note_id crypto = sn.note_id crypto := by
+  apply NoteImplies.from_note_exists
+  by_contra not_exists
+  dsimp only [ScannedNote.amount, note_amount] at h_amount_nz
+  simp only [note_exists, ne_eq, Decidable.not_not] at not_exists
+  simp [not_exists, crypto.unpack_zero] at h_amount_nz
+
 abbrev CreateNoteInput.to_scanned_note (crypto: Crypto) (inp: CreateNoteInput) : ScannedNote :=
   ⟨inp.c crypto, inp.token, inp.i₀, inp.i₁⟩
 
@@ -36,3 +47,26 @@ theorem CreateNoteInput.to_scanned_note_eq {crypto: Crypto} {inp: CreateNoteInpu
 
 abbrev CancelNoteInput.to_scanned_note (inp: CancelNoteInput) : ScannedNote :=
   ⟨inp.c, inp.token, inp.i₀, inp.i₁⟩
+
+structure ExScannedNote extends ScannedNote where
+  (addralice addrbob: ℕ)
+deriving DecidableEq
+
+instance : Coe ExScannedNote ScannedNote where
+  coe := ExScannedNote.toScannedNote
+
+@[ext] theorem ExScannedNote.ext {sn sn' : ExScannedNote}
+    (h_sn: sn.toScannedNote = sn'.toScannedNote)
+    (h_addralice: sn.addralice = sn'.addralice)
+    (h_addrbob: sn.addrbob = sn'.addrbob) :
+    sn = sn' := by
+  cases sn; cases sn'
+  simp at *
+  simp [*]
+
+abbrev CreateNoteInput.to_ex_scanned_note (crypto: Crypto) (inp: CreateNoteInput) : ExScannedNote :=
+  ⟨
+    inp.to_scanned_note crypto,
+    inp.addralice,
+    inp.addrbob,
+  ⟩

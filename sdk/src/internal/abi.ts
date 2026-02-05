@@ -168,7 +168,7 @@ export const PrivacyPoolABI = [
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
-        "name": "note_index",
+        "name": "index",
         "type": "core::integer::u32"
       }
     ]
@@ -337,7 +337,7 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "privacy::actions::VerifyValueInput",
+    "name": "privacy::actions::ReadAssertInput",
     "members": [
       {
         "name": "storage_address",
@@ -448,8 +448,12 @@ export const PrivacyPoolABI = [
     "name": "privacy::events::OpenNoteCreated",
     "members": [
       {
-        "name": "enc_sender_addr",
+        "name": "enc_recipient_addr",
         "type": "privacy::objects::EncUserAddr"
+      },
+      {
+        "name": "depositor",
+        "type": "core::starknet::contract_address::ContractAddress"
       },
       {
         "name": "token",
@@ -458,6 +462,20 @@ export const PrivacyPoolABI = [
       {
         "name": "note_id",
         "type": "core::felt252"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "privacy::actions::DepositToOpenNoteInput",
+    "members": [
+      {
+        "name": "note_id",
+        "type": "core::felt252"
+      },
+      {
+        "name": "amount",
+        "type": "core::integer::u128"
       }
     ]
   },
@@ -482,8 +500,8 @@ export const PrivacyPoolABI = [
         "type": "privacy::actions::TransferToInput"
       },
       {
-        "name": "VerifyValue",
-        "type": "privacy::actions::VerifyValueInput"
+        "name": "ReadAssert",
+        "type": "privacy::actions::ReadAssertInput"
       },
       {
         "name": "EmitViewingKeySet",
@@ -500,6 +518,10 @@ export const PrivacyPoolABI = [
       {
         "name": "EmitOpenNoteCreated",
         "type": "privacy::events::OpenNoteCreated"
+      },
+      {
+        "name": "DepositToOpenNote",
+        "type": "privacy::actions::DepositToOpenNoteInput"
       }
     ]
   },
@@ -704,7 +726,7 @@ export const PrivacyPoolABI = [
         "name": "channel_exists",
         "inputs": [
           {
-            "name": "channel_id",
+            "name": "channel_marker",
             "type": "core::felt252"
           }
         ],
@@ -756,7 +778,7 @@ export const PrivacyPoolABI = [
         "name": "subchannel_exists",
         "inputs": [
           {
-            "name": "subchannel_id",
+            "name": "subchannel_marker",
             "type": "core::felt252"
           }
         ],
@@ -772,7 +794,7 @@ export const PrivacyPoolABI = [
         "name": "get_subchannel_info",
         "inputs": [
           {
-            "name": "subchannel_key",
+            "name": "subchannel_id",
             "type": "core::felt252"
           }
         ],
@@ -788,7 +810,7 @@ export const PrivacyPoolABI = [
         "name": "get_outgoing_channel_info",
         "inputs": [
           {
-            "name": "outgoing_channel_key",
+            "name": "outgoing_channel_id",
             "type": "core::felt252"
           }
         ],
@@ -2297,9 +2319,14 @@ export const PrivacyPoolABI = [
     "kind": "struct",
     "members": [
       {
-        "name": "enc_sender_addr",
+        "name": "enc_recipient_addr",
         "type": "privacy::objects::EncUserAddr",
         "kind": "data"
+      },
+      {
+        "name": "depositor",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
       },
       {
         "name": "token",
@@ -2310,6 +2337,33 @@ export const PrivacyPoolABI = [
         "name": "note_id",
         "type": "core::felt252",
         "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "privacy::events::OpenNoteDeposited",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "depositor",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "token",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "note_id",
+        "type": "core::felt252",
+        "kind": "key"
+      },
+      {
+        "name": "amount",
+        "type": "core::integer::u128",
+        "kind": "data"
       }
     ]
   },
@@ -2366,6 +2420,11 @@ export const PrivacyPoolABI = [
       {
         "name": "OpenNoteCreated",
         "type": "privacy::events::OpenNoteCreated",
+        "kind": "nested"
+      },
+      {
+        "name": "OpenNoteDeposited",
+        "type": "privacy::events::OpenNoteDeposited",
         "kind": "nested"
       }
     ]
