@@ -294,7 +294,7 @@ mod tests {
         .unwrap();
 
         let mut cursor = ChannelCursor {
-            sender_addr: fixture.constants.alice_address,
+            channel_key: Some(channel_key),
             total_n_subchannels: None,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
@@ -333,7 +333,7 @@ mod tests {
         .unwrap();
 
         let mut cursor = ChannelCursor {
-            sender_addr: fixture.constants.alice_address,
+            channel_key: Some(channel_key),
             total_n_subchannels: None,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
@@ -374,7 +374,7 @@ mod tests {
 
         // Fresh cursor: empty map + no total → should discover subchannels
         let mut fresh = ChannelCursor {
-            sender_addr: fixture.constants.alice_address,
+            channel_key: Some(channel_key),
             total_n_subchannels: None,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
@@ -388,7 +388,7 @@ mod tests {
         // Fully enumerated cursor: empty map + total set → should skip entirely
         // (simulates state after all notes processed and entries pruned)
         let mut done = ChannelCursor {
-            sender_addr: fixture.constants.alice_address,
+            channel_key: Some(channel_key),
             total_n_subchannels: Some(1),
             last_subchannel_index: Some(0),
             subchannels: HashMap::new(),

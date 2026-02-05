@@ -67,7 +67,7 @@ pub struct IncomingSyncResponse {
     /// Block hash pinning all reads in this response. Pass back as
     /// `block_ref` in subsequent requests for consistency.
     pub block_ref: Felt,
-    /// Discovered channel results, keyed by channel_key.
+    /// Discovered channel results, keyed by sender address.
     pub channels: HashMap<Felt, ChannelOutput>,
     /// Updated cursor for continuation. Pass back as `cursor` in next request.
     pub cursor: DiscoveryCursor,

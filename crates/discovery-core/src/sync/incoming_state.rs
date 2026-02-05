@@ -12,7 +12,7 @@ use starknet_types_core::felt::Felt;
 use tokio::task::JoinSet;
 
 use crate::discovery::cursor::{ChannelCursor, DiscoveryCursor, SubchannelCursor};
-use crate::discovery::incoming_channels::discover_channels_paginated;
+use crate::discovery::incoming_channels::discover_incoming_channels_paginated;
 use crate::discovery::notes::{discover_notes_paginated, DecryptedNote};
 use crate::discovery::subchannels::discover_subchannels_paginated;
 use crate::discovery::DiscoveryError;
@@ -23,7 +23,7 @@ use crate::privacy_pool::views::IViews;
 /// Output from a single discovery run.
 #[derive(Debug, Clone, Serialize)]
 pub struct DiscoveryOutput {
-    /// Discovered data per channel, keyed by channel_key.
+    /// Discovered data per channel, keyed by sender address.
     pub channels: HashMap<Felt, ChannelOutput>,
     /// Updated cursor for the next run. Fully-discovered channels and
     /// subchannels are pruned. An empty `cursor.channels` map means
@@ -34,15 +34,16 @@ pub struct DiscoveryOutput {
 /// Discovered data for a single channel within a run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelOutput {
-    /// Sender address for this channel.
-    pub sender_addr: Felt,
+    /// Channel key (set for incoming sync, None for outgoing).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_key: Option<Felt>,
     /// Discovered notes per subchannel, keyed by token address.
     pub subchannels: HashMap<Felt, Vec<DecryptedNote>>,
 }
 
 /// Result of processing a single channel (internal).
 struct ChannelResult {
-    channel_key: Felt,
+    sender_addr: Felt,
     output: ChannelOutput,
     /// `None` means fully discovered — prune from cursor.
     cursor: Option<ChannelCursor>,
@@ -75,7 +76,8 @@ pub async fn sync_incoming_state<S>(
 where
     S: IViews + Clone + Send + Sync + 'static,
 {
-    discover_channels_paginated(pool, recipient, decryption_key, &mut cursor, budget).await?;
+    discover_incoming_channels_paginated(pool, recipient, decryption_key, &mut cursor, budget)
+        .await?;
 
     if cursor.channels.is_empty() {
         return Ok(DiscoveryOutput {
@@ -91,21 +93,21 @@ where
     //   Fix: reject or truncate cursor.channels to a max size (e.g., 256).
     let channels = std::mem::take(&mut cursor.channels);
     let mut join_set = JoinSet::new();
-    for (channel_key, ch_cursor) in channels {
+    for (sender_addr, ch_cursor) in channels {
         let pool = pool.clone();
         let budget = budget.clone();
         let key = decryption_key.clone();
         join_set.spawn(async move {
-            process_channel(&pool, channel_key, ch_cursor, &key, &budget).await
+            process_channel(&pool, sender_addr, ch_cursor, &key, &budget).await
         });
     }
 
     let mut channels_output: HashMap<Felt, ChannelOutput> = HashMap::new();
     while let Some(join_result) = join_set.join_next().await {
         let result = join_result.map_err(|e| DiscoveryError::TaskPanicked(e.to_string()))??;
-        channels_output.insert(result.channel_key, result.output);
+        channels_output.insert(result.sender_addr, result.output);
         if let Some(ch_cursor) = result.cursor {
-            cursor.channels.insert(result.channel_key, ch_cursor);
+            cursor.channels.insert(result.sender_addr, ch_cursor);
         }
     }
 
@@ -119,7 +121,7 @@ where
 /// discovery for each subchannel concurrently via [`JoinSet`].
 async fn process_channel<S>(
     pool: &S,
-    channel_key: Felt,
+    sender_addr: Felt,
     mut cursor: ChannelCursor,
     decryption_key: &SecretFelt,
     budget: &IoBudget,
@@ -127,7 +129,9 @@ async fn process_channel<S>(
 where
     S: IViews + Clone + Send + Sync + 'static,
 {
-    let sender_addr = cursor.sender_addr;
+    let channel_key = cursor.channel_key.ok_or_else(|| {
+        DiscoveryError::InvalidCursor("channel_key is required for incoming channel".into())
+    })?;
 
     discover_subchannels_paginated(pool, channel_key, &mut cursor, budget).await?;
 
@@ -160,9 +164,9 @@ where
     let fully_done = cursor.total_n_subchannels.is_some() && cursor.subchannels.is_empty();
 
     Ok(ChannelResult {
-        channel_key,
+        sender_addr,
         output: ChannelOutput {
-            sender_addr,
+            channel_key: Some(channel_key),
             subchannels: subchannel_notes,
         },
         cursor: if fully_done { None } else { Some(cursor) },
@@ -228,7 +232,10 @@ mod tests {
         // Step 1: budget = COST_NUM_CHANNELS (1)
         // Fetches total_n_channels = 1. No budget left for channel discovery.
         let budget = IoBudget::new(COST_NUM_CHANNELS);
-        let cursor = DiscoveryCursor::default();
+        let cursor = DiscoveryCursor {
+            discover_channels: true,
+            ..Default::default()
+        };
         let out = sync_incoming_state(&backend, recipient, &decryption_key, cursor, &budget)
             .await
             .unwrap();
@@ -253,10 +260,10 @@ mod tests {
             "step 2: channel 0 discovered"
         );
         assert_eq!(out.cursor.channels.len(), 1, "step 2: 1 channel in cursor");
-        let channel_key = *out.cursor.channels.keys().next().unwrap();
-        assert_eq!(
-            out.channels[&channel_key].sender_addr, f.constants.alice_address,
-            "step 2: sender is Alice"
+        let sender_addr = f.constants.alice_address;
+        assert!(
+            out.cursor.channels.contains_key(&sender_addr),
+            "step 2: cursor keyed by sender (Alice)"
         );
 
         // Step 3: budget = COST_SUBCHANNEL_INFO (2)
@@ -268,15 +275,15 @@ mod tests {
             .unwrap();
 
         assert!(
-            out.cursor.channels.contains_key(&channel_key),
+            out.cursor.channels.contains_key(&sender_addr),
             "step 3: channel still in cursor (not fully done)"
         );
         assert_eq!(
-            out.cursor.channels[&channel_key].subchannels.len(),
+            out.cursor.channels[&sender_addr].subchannels.len(),
             1,
             "step 3: 1 subchannel found"
         );
-        let subchannel_token = *out.cursor.channels[&channel_key]
+        let subchannel_token = *out.cursor.channels[&sender_addr]
             .subchannels
             .keys()
             .next()
@@ -295,11 +302,11 @@ mod tests {
             .unwrap();
 
         assert!(
-            out.cursor.channels.contains_key(&channel_key),
+            out.cursor.channels.contains_key(&sender_addr),
             "step 4: channel still in cursor (notes pending)"
         );
         assert!(
-            out.cursor.channels[&channel_key]
+            out.cursor.channels[&sender_addr]
                 .subchannels
                 .contains_key(&subchannel_token),
             "step 4: subchannel still in cursor (notes not started)"
@@ -315,10 +322,10 @@ mod tests {
             .unwrap();
 
         assert!(
-            out.cursor.channels.contains_key(&channel_key),
+            out.cursor.channels.contains_key(&sender_addr),
             "step 5: channel still in cursor (note sentinel not checked)"
         );
-        let notes = &out.channels[&channel_key].subchannels[&subchannel_token];
+        let notes = &out.channels[&sender_addr].subchannels[&subchannel_token];
         assert_eq!(
             notes.len(),
             0,
@@ -339,7 +346,7 @@ mod tests {
             "step 6: cursor empty (all discovery complete)"
         );
         assert_eq!(
-            out.channels[&channel_key].subchannels[&subchannel_token].len(),
+            out.channels[&sender_addr].subchannels[&subchannel_token].len(),
             0,
             "step 6: no new notes discovered"
         );

@@ -10,7 +10,7 @@ use std::future::Future;
 
 use starknet_types_core::felt::Felt;
 
-use super::cursor::IndexSearchCursor;
+use super::cursor::SubchannelCursor;
 use super::DiscoveryError;
 use super::COST_NOTE_PROBING;
 use crate::io_budget::IoBudget;
@@ -28,7 +28,7 @@ pub async fn find_last_note_index_paginated<S: IViews>(
     pool: &S,
     channel_key: Felt,
     token: Felt,
-    cursor: &mut IndexSearchCursor,
+    cursor: &mut SubchannelCursor,
     budget: &IoBudget,
 ) -> Result<(Option<u64>, bool), DiscoveryError> {
     // Returns (Some(idx), _) if note exists, (None, false) if empty, (None, true) if out of budget.
@@ -48,20 +48,20 @@ pub async fn find_last_note_index_paginated<S: IViews>(
     };
 
     // Phase 1: Ascending (find bounds)
-    if cursor.hi.is_none() {
+    if cursor.max_note_index.is_none() {
         let found_sentinel = exponential_ascend(&probe, cursor).await?;
         if !found_sentinel {
-            return Ok((cursor.lo, true));
+            return Ok((cursor.last_note_index, true));
         }
         // Empty subchannel: first probe found sentinel
-        if cursor.lo.is_none() {
+        if cursor.last_note_index.is_none() {
             return Ok((None, false));
         }
     }
 
     // Phase 2: Bisection (narrow down to exact boundary)
     let complete = bisect_boundary(&probe, cursor).await?;
-    Ok((cursor.lo, !complete))
+    Ok((cursor.last_note_index, !complete))
 }
 
 /// Exponential ascending: probes at `lo+step`, `lo+2*step`, `lo+4*step`...
@@ -71,7 +71,7 @@ pub async fn find_last_note_index_paginated<S: IViews>(
 // TODO: Issue probes in batches to amortise RPC round-trip latency.
 async fn exponential_ascend<F, Fut>(
     probe: F,
-    cursor: &mut IndexSearchCursor,
+    cursor: &mut SubchannelCursor,
 ) -> Result<bool, DiscoveryError>
 where
     F: Fn(u64) -> Fut,
@@ -79,21 +79,23 @@ where
 {
     // Compute step from lo: 2^k where k = trailing_zeros(lo + 1).
     // Reconstructs the exponential sequence: 0, 1, 3, 7, 15, ...
-    let mut step = match cursor.lo {
+    let mut step = match cursor.last_note_index {
         None | Some(0) => 1,
         Some(n) => 1u64 << (n + 1).trailing_zeros(),
     };
-    let mut probe_at = cursor.lo.map_or(0, |lo| lo.saturating_add(step));
+    let mut probe_at = cursor
+        .last_note_index
+        .map_or(0, |lo| lo.saturating_add(step));
 
     loop {
         match probe(probe_at).await? {
             (Some(_), _) => {
-                cursor.lo = Some(probe_at);
+                cursor.last_note_index = Some(probe_at);
                 probe_at = probe_at.saturating_add(step);
                 step = step.saturating_mul(2);
             }
             (None, false) => {
-                cursor.hi = Some(probe_at);
+                cursor.max_note_index = Some(probe_at);
                 return Ok(true);
             }
             (None, true) => return Ok(false),
@@ -107,13 +109,13 @@ where
 /// Updates cursor in place. Returns `true` if complete, `false` if budget exhausted.
 async fn bisect_boundary<F, Fut>(
     probe: F,
-    cursor: &mut IndexSearchCursor,
+    cursor: &mut SubchannelCursor,
 ) -> Result<bool, DiscoveryError>
 where
     F: Fn(u64) -> Fut,
     Fut: Future<Output = Result<(Option<u64>, bool), DiscoveryError>>,
 {
-    let (mut lo, mut hi) = match (cursor.lo, cursor.hi) {
+    let (mut lo, mut hi) = match (cursor.last_note_index, cursor.max_note_index) {
         (Some(lo), Some(hi)) => (lo, hi),
         _ => return Ok(true), // Nothing to bisect
     };
@@ -124,15 +126,15 @@ where
             (Some(_), _) => lo = mid,
             (None, false) => hi = mid,
             (None, true) => {
-                cursor.lo = Some(lo);
-                cursor.hi = Some(hi);
+                cursor.last_note_index = Some(lo);
+                cursor.max_note_index = Some(hi);
                 return Ok(false);
             }
         }
     }
 
-    cursor.lo = Some(lo);
-    cursor.hi = Some(hi);
+    cursor.last_note_index = Some(lo);
+    cursor.max_note_index = Some(hi);
     Ok(true)
 }
 
@@ -158,66 +160,66 @@ mod tests {
 
     #[tokio::test]
     async fn test_exponential_ascend_empty() {
-        let mut cursor = IndexSearchCursor::default();
+        let mut cursor = SubchannelCursor::default();
         let found = exponential_ascend(mock_probe(None), &mut cursor)
             .await
             .unwrap();
         assert!(found, "should find sentinel immediately");
-        assert_eq!(cursor.lo, None);
-        assert_eq!(cursor.hi, Some(0));
+        assert_eq!(cursor.last_note_index, None);
+        assert_eq!(cursor.max_note_index, Some(0));
     }
 
     #[tokio::test]
     async fn test_exponential_ascend_one_element() {
-        let mut cursor = IndexSearchCursor::default();
+        let mut cursor = SubchannelCursor::default();
         let found = exponential_ascend(mock_probe(Some(0)), &mut cursor)
             .await
             .unwrap();
         assert!(found);
-        assert_eq!(cursor.lo, Some(0));
-        assert_eq!(cursor.hi, Some(1));
+        assert_eq!(cursor.last_note_index, Some(0));
+        assert_eq!(cursor.max_note_index, Some(1));
     }
 
     #[tokio::test]
     async fn test_exponential_ascend_multiple_elements() {
         // Elements at 0, 1, 2, 3, 4 (last_index = 4)
-        let mut cursor = IndexSearchCursor::default();
+        let mut cursor = SubchannelCursor::default();
         let found = exponential_ascend(mock_probe(Some(4)), &mut cursor)
             .await
             .unwrap();
         assert!(found);
         // Probes: 0 (exists), 1 (exists), 3 (exists), 7 (empty)
-        assert_eq!(cursor.lo, Some(3));
-        assert_eq!(cursor.hi, Some(7));
+        assert_eq!(cursor.last_note_index, Some(3));
+        assert_eq!(cursor.max_note_index, Some(7));
     }
 
     #[tokio::test]
     async fn test_bisect_boundary_adjacent() {
         // lo=0, hi=1 → no bisection needed
-        let mut cursor = IndexSearchCursor {
-            lo: Some(0),
-            hi: Some(1),
+        let mut cursor = SubchannelCursor {
+            last_note_index: Some(0),
+            max_note_index: Some(1),
         };
         let complete = bisect_boundary(mock_probe(Some(0)), &mut cursor)
             .await
             .unwrap();
         assert!(complete);
-        assert_eq!(cursor.lo, Some(0));
+        assert_eq!(cursor.last_note_index, Some(0));
     }
 
     #[tokio::test]
     async fn test_bisect_boundary_gap() {
         // lo=3, hi=7, actual last is 4
-        let mut cursor = IndexSearchCursor {
-            lo: Some(3),
-            hi: Some(7),
+        let mut cursor = SubchannelCursor {
+            last_note_index: Some(3),
+            max_note_index: Some(7),
         };
         let complete = bisect_boundary(mock_probe(Some(4)), &mut cursor)
             .await
             .unwrap();
         assert!(complete);
-        assert_eq!(cursor.lo, Some(4));
-        assert_eq!(cursor.hi, Some(5));
+        assert_eq!(cursor.last_note_index, Some(4));
+        assert_eq!(cursor.max_note_index, Some(5));
     }
 
     #[tokio::test]
@@ -237,7 +239,7 @@ mod tests {
             .await
             .expect("Alice's channel should have at least one subchannel");
 
-        let mut cursor = IndexSearchCursor::default();
+        let mut cursor = SubchannelCursor::default();
         let budget = IoBudget::new(100);
 
         let (last_index, has_more) =
@@ -256,7 +258,7 @@ mod tests {
         let channel_key = Felt::from_hex_unchecked("0x12345");
         let token = Felt::from_hex_unchecked("0x67890");
 
-        let mut cursor = IndexSearchCursor::default();
+        let mut cursor = SubchannelCursor::default();
         let budget = IoBudget::new(100);
 
         let (last_index, has_more) =
@@ -285,7 +287,7 @@ mod tests {
             .await
             .expect("Alice's channel should have at least one subchannel");
 
-        let mut cursor = IndexSearchCursor::default();
+        let mut cursor = SubchannelCursor::default();
 
         // Budget for 1 probe: finds note at 0, exhausted before probing 1
         let budget = IoBudget::new(COST_NOTE_PROBING);
@@ -296,8 +298,8 @@ mod tests {
 
         assert_eq!(last_index, Some(0));
         assert!(has_more, "budget exhausted during ascending");
-        assert_eq!(cursor.lo, Some(0));
-        assert!(cursor.hi.is_none(), "sentinel not found yet");
+        assert_eq!(cursor.last_note_index, Some(0));
+        assert!(cursor.max_note_index.is_none(), "sentinel not found yet");
 
         // Resume with more budget
         let budget = IoBudget::new(100);

@@ -103,5 +103,9 @@ fn discovery_error_to_response(
                 ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
             )
         }
+        DiscoveryError::InvalidCursor(msg) => (
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::new(error_codes::INVALID_REQUEST, msg),
+        ),
     }
 }

@@ -8,11 +8,16 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
-/// Top-level cursor tracking discovery progress across all channels.
+/// Top-level cursor for channel discovery (shared by incoming and outgoing).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DiscoveryCursor {
-    /// Total number of channels (cached from `get_num_of_channels`).
-    /// When set, skips the channel count RPC call.
+    /// Whether to discover new channels. Set to `false` to skip channel
+    /// discovery and only process specific channels already in cursor.
+    #[serde(default)]
+    pub discover_channels: bool,
+
+    /// Total number of channels (cached from `get_num_of_channels` for incoming).
+    /// Used as optimization to avoid redundant RPC calls.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_n_channels: Option<u64>,
 
@@ -20,16 +25,19 @@ pub struct DiscoveryCursor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_channel_index: Option<u64>,
 
-    /// Channels with pending subchannel/note discovery, keyed by channel_key.
+    /// Channels with pending subchannel/note discovery.
+    /// - Incoming: keyed by sender address.
+    /// - Outgoing: keyed by recipient address.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub channels: HashMap<Felt, ChannelCursor>,
 }
 
-/// Cursor state for a single channel.
+/// Cursor state for a single channel (shared by incoming and outgoing).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelCursor {
-    /// Sender address (cached from channel discovery).
-    pub sender_addr: Felt,
+    /// Channel key (set for incoming, None for outgoing where it's derivable).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel_key: Option<Felt>,
 
     /// Total number of subchannels (cached when sentinel is found).
     /// When set, subchannel discovery is skipped entirely — zero budget cost.
@@ -45,24 +53,21 @@ pub struct ChannelCursor {
     pub subchannels: HashMap<Felt, SubchannelCursor>,
 }
 
-/// Cursor state for a single subchannel.
+/// Cursor state for a single subchannel (shared by incoming and outgoing).
+///
+/// For incoming (linear scan): only `last_note_index` is used.
+/// For outgoing (exponential search): `last_note_index` = lo, `max_note_index` = hi.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SubchannelCursor {
-    /// Last fully processed note index. `None` = start from index 0.
+    /// Last note index where a note exists.
+    /// - Incoming: last scanned index.
+    /// - Outgoing: lower bound (lo) for exponential search.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_note_index: Option<u64>,
-}
 
-/// Cursor for exponential search + bisection to find last occupied index.
-///
-/// Tracks the search boundary across ascending and bisection phases.
-/// - `lo: None, hi: None` — fresh start, ascending phase needed.
-/// - `lo: Some, hi: None` — ascending in progress, `lo` is last confirmed index.
-/// - `lo: Some, hi: Some` — ascending complete, bisection phase needed.
-#[derive(Debug, Clone, Default)]
-pub struct IndexSearchCursor {
-    /// Last index where an entry was confirmed to exist.
-    pub lo: Option<u64>,
-    /// First index where no entry exists (sentinel).
-    pub hi: Option<u64>,
+    /// First index where no note exists (sentinel).
+    /// - Incoming: not used.
+    /// - Outgoing: upper bound (hi) for exponential search; `Some` = bisection phase.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_note_index: Option<u64>,
 }

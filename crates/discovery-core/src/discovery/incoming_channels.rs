@@ -147,15 +147,21 @@ pub async fn discover_incoming_channels<PrivacyPool: IViews>(
 
 /// Discovers incoming channels with cursor-based pagination.
 ///
-/// Fetches and caches `total_n_channels` if not already in the cursor,
+/// If `cursor.discover_channels == false`, returns immediately without
+/// consuming budget. Otherwise fetches and caches `total_n_channels`,
 /// then delegates to [`discover_incoming_channels`] for new channels.
-pub async fn discover_channels_paginated<S: IViews>(
+pub async fn discover_incoming_channels_paginated<S: IViews>(
     pool: &S,
     recipient: Felt,
     decryption_key: &SecretFelt,
     cursor: &mut DiscoveryCursor,
     budget: &IoBudget,
 ) -> Result<Vec<IncomingChannel>, DiscoveryError> {
+    // Skip if channel discovery is disabled.
+    if !cursor.discover_channels {
+        return Ok(Vec::new());
+    }
+
     // 1. Get/cache total_n_channels.
     let total = match cursor.total_n_channels {
         Some(count) => count,
@@ -169,9 +175,10 @@ pub async fn discover_channels_paginated<S: IViews>(
         },
     };
 
-    // 2. All channels already enumerated — skip.
+    // 2. All channels already enumerated — stop discovering.
     let start_index = cursor.last_channel_index.map_or(0, |i| i + 1);
     if start_index >= total {
+        cursor.discover_channels = false;
         return Ok(Vec::new());
     }
 
@@ -180,13 +187,13 @@ pub async fn discover_channels_paginated<S: IViews>(
         discover_incoming_channels(pool, recipient, decryption_key, start_index, total, budget)
             .await?;
 
-    // 4. Register new channels in cursor.
+    // 4. Register new channels in cursor (keyed by sender_addr).
     for channel in &result.channels {
         cursor
             .channels
-            .entry(channel.info.channel_key)
+            .entry(channel.info.sender_addr)
             .or_insert(ChannelCursor {
-                sender_addr: channel.info.sender_addr,
+                channel_key: Some(channel.info.channel_key),
                 total_n_subchannels: None,
                 last_subchannel_index: None,
                 subchannels: Default::default(),
@@ -194,6 +201,11 @@ pub async fn discover_channels_paginated<S: IViews>(
     }
 
     cursor.last_channel_index = result.last_index.or(cursor.last_channel_index);
+
+    // Stop discovering once all channels are enumerated.
+    if !result.has_more {
+        cursor.discover_channels = false;
+    }
 
     Ok(result.channels)
 }
@@ -403,11 +415,14 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        let mut cursor = DiscoveryCursor::default();
+        let mut cursor = DiscoveryCursor {
+            discover_channels: true,
+            ..Default::default()
+        };
         let budget = IoBudget::new(100);
         let key = SecretFelt::new(fixture.constants.bob_viewing_key);
 
-        let channels = discover_channels_paginated(
+        let channels = discover_incoming_channels_paginated(
             &backend,
             fixture.constants.bob_address,
             &key,
@@ -421,12 +436,13 @@ mod tests {
         assert_eq!(cursor.total_n_channels, Some(1));
         assert_eq!(cursor.last_channel_index, Some(0));
         assert_eq!(cursor.channels.len(), 1, "1 channel in cursor");
+        assert!(!cursor.discover_channels, "discovery complete");
 
-        let channel_key = channels[0].info.channel_key;
-        assert!(cursor.channels.contains_key(&channel_key));
+        let sender_addr = channels[0].info.sender_addr;
+        assert!(cursor.channels.contains_key(&sender_addr));
         assert_eq!(
-            cursor.channels[&channel_key].sender_addr,
-            fixture.constants.alice_address
+            cursor.channels[&sender_addr].channel_key,
+            Some(channels[0].info.channel_key)
         );
     }
 
@@ -435,12 +451,15 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        let mut cursor = DiscoveryCursor::default();
+        let mut cursor = DiscoveryCursor {
+            discover_channels: true,
+            ..Default::default()
+        };
         // Budget = 0: can't even fetch channel count
         let budget = IoBudget::new(0);
         let key = SecretFelt::new(fixture.constants.bob_viewing_key);
 
-        let channels = discover_channels_paginated(
+        let channels = discover_incoming_channels_paginated(
             &backend,
             fixture.constants.bob_address,
             &key,
