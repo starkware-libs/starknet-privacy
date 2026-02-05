@@ -112,3 +112,6 @@
 
 # Set compliance public key
 - register+withdraw (enc with compliance pub key), set compliance pub key, register+withdraw, test its the right compliance key + right encryption (try to decrypt) for both before and after the set.
+
+# General
+- Test actions phases (all actions together in the correct order)

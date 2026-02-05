@@ -159,6 +159,8 @@ pub(crate) struct PrivacyCfg {
     safe_views: IViewsSafeDispatcher,
     compliance: IComplianceDispatcher,
     safe_compliance: IComplianceSafeDispatcher,
+    pub swap_executor: SwapExecutorCfg,
+    pub mock_amm: ContractAddress,
 }
 
 #[derive(Copy, Drop)]
@@ -1194,6 +1196,31 @@ pub(crate) impl UserImpl of UserTrait {
     fn increase_token_balance(self: @User, token: Token, amount: u128) {
         token.supply(address: *self.address, :amount);
     }
+
+    /// Returns (random, swap_input).
+    fn swap_input_with_generated_random(
+        ref self: User,
+        in_token: ContractAddress,
+        out_token: ContractAddress,
+        amount: u128,
+        channel_key: felt252,
+        index: usize,
+    ) -> (felt252, SwapInput) {
+        let random = self.get_random();
+        let swap_input = SwapInput {
+            swap_executor: self.privacy.swap_executor.address,
+            swap_contract: self.privacy.mock_amm,
+            swap_selector: selector!("swap"),
+            swap_calldata: array![in_token.into(), out_token.into(), amount.into(), 0].span(),
+            in_token,
+            out_token,
+            in_amount: amount,
+            channel_key,
+            index,
+            random,
+        };
+        (random, swap_input)
+    }
 }
 
 #[derive(Drop, Copy)]
@@ -1226,8 +1253,6 @@ pub(crate) struct Test {
     pub privacy: PrivacyCfg,
     pub nonce: usize,
     pub compliance: Compliance,
-    pub swap_executor: SwapExecutorCfg,
-    pub mock_amm: ContractAddress,
 }
 
 #[generate_trait]
@@ -1643,10 +1668,8 @@ impl DefaultTestImpl of Default<Test> {
         let compliance: Compliance = Default::default();
         let roles: Roles = Default::default();
         let privacy = deploy_privacy(:roles, compliance_public_key: compliance.public_key);
-        let swap_executor = deploy_swap_executor(privacy_address: privacy.address);
-        let mock_amm = deploy_mock_amm();
 
-        Test { privacy, nonce: Zero::zero(), compliance, swap_executor, mock_amm }
+        Test { privacy, nonce: Zero::zero(), compliance }
     }
 }
 
@@ -1674,6 +1697,8 @@ fn deploy_privacy(roles: Roles, compliance_public_key: felt252) -> PrivacyCfg {
         governance_admin: roles.governance_admin, compliance_public_key: compliance_public_key,
     );
     let roles = _set_privacy_roles(contract: contract_address, :roles);
+    let swap_executor = deploy_swap_executor();
+    let mock_amm = deploy_mock_amm();
     PrivacyCfg {
         address: contract_address,
         roles,
@@ -1685,6 +1710,10 @@ fn deploy_privacy(roles: Roles, compliance_public_key: felt252) -> PrivacyCfg {
         safe_views: IViewsSafeDispatcher { contract_address },
         compliance: IComplianceDispatcher { contract_address },
         safe_compliance: IComplianceSafeDispatcher { contract_address },
+        swap_executor: SwapExecutorCfg {
+            address: swap_executor, privacy_address: contract_address,
+        },
+        mock_amm,
     }
 }
 
@@ -1715,14 +1744,14 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
 }
 
 /// Deploy a new swap executor contract.
-fn deploy_swap_executor(privacy_address: ContractAddress) -> SwapExecutorCfg {
+fn deploy_swap_executor() -> ContractAddress {
     let class_hash = declare(contract: "SwapExecutor").unwrap_syscall().contract_class().class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
     let (contract_address, _) = deploy_swap_executor_for_test(
         class_hash: *class_hash, :deployment_params,
     )
         .expect('SwapExecutor deployment failed');
-    SwapExecutorCfg { address: contract_address, privacy_address }
+    contract_address
 }
 
 /// Deploy a new mock AMM contract.

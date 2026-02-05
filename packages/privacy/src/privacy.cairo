@@ -546,6 +546,7 @@ pub mod Privacy {
             let random = input.random;
 
             // Validate inputs.
+            // TODO: Consider rely on withdraw assertions.
             assert(swap_executor.is_non_zero(), errors::ZERO_SWAP_EXECUTOR);
             assert(swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
             assert(swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
@@ -554,6 +555,7 @@ pub mod Privacy {
             assert(in_amount.is_non_zero(), errors::ZERO_IN_AMOUNT);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            // TODO: Assert in_token != out_token.
 
             // Verify the user owns the output note's subchannel.
             let note_id = self
@@ -602,6 +604,7 @@ pub mod Privacy {
             let channel_key = input.channel_key;
             let token = input.token;
             let index = input.index;
+            // TODO: Consider moving asserts to _checked_note_id.
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
 
