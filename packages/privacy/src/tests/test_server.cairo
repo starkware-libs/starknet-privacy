@@ -852,8 +852,8 @@ fn test_execute_swap_with_executor() {
     let input_token = test.new_token();
     let output_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
-    let executor_addr = test.swap_executor.address;
-    let amm_address = test.mock_amm;
+    let executor_addr = test.privacy.swap_executor.address;
+    let amm_address = test.privacy.mock_amm;
 
     // Create an open note with swap_executor as depositor.
     let mut user = test.new_user();
@@ -957,8 +957,8 @@ fn test_execute_swap_with_executor_assertions() {
     let input_token = test.new_token();
     let output_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
-    let executor_addr = test.swap_executor.address;
-    let amm_address = test.mock_amm;
+    let executor_addr = test.privacy.swap_executor.address;
+    let amm_address = test.privacy.mock_amm;
 
     // Create an open note with swap_executor as depositor.
     let mut user = test.new_user();
@@ -1072,8 +1072,8 @@ fn test_execute_swap_with_executor_deposit_assertions() {
     let input_token = test.new_token();
     let output_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
-    let executor_addr = test.swap_executor.address;
-    let amm_address = test.mock_amm;
+    let executor_addr = test.privacy.swap_executor.address;
+    let amm_address = test.privacy.mock_amm;
     let token_addr = output_token.contract_address();
 
     // Setup user with viewing key and subchannel.
