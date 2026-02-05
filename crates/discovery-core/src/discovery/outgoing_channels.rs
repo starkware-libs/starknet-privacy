@@ -11,7 +11,7 @@ use super::DiscoveryError;
 use super::COST_OUTGOING_CHANNEL_INFO;
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::decrypt_outgoing_recipient_addr;
-use crate::privacy_pool::hashes::compute_outgoing_channel_id;
+use crate::privacy_pool::hashes::{compute_channel_key, compute_outgoing_channel_id};
 use crate::privacy_pool::types::SecretFelt;
 use crate::privacy_pool::views::IViews;
 
@@ -22,6 +22,8 @@ pub struct OutgoingChannel {
     pub index: u64,
     /// The decrypted recipient address.
     pub recipient_addr: Felt,
+    /// The channel key derived from sender + recipient identity.
+    pub channel_key: Felt,
 }
 
 /// Result of outgoing channel discovery operation.
@@ -83,10 +85,18 @@ pub async fn discover_outgoing_channels<PrivacyPool: IViews>(
 
         let recipient_addr =
             decrypt_outgoing_recipient_addr(&encrypted, sender_addr, viewing_key, index);
+        let recipient_public_key = privacy_pool.get_public_key(recipient_addr).await?;
+        let channel_key = compute_channel_key(
+            sender_addr,
+            viewing_key,
+            recipient_addr,
+            recipient_public_key,
+        );
 
         channels.push(OutgoingChannel {
             index,
             recipient_addr,
+            channel_key,
         });
         index += 1;
     }
@@ -121,6 +131,19 @@ pub async fn discover_outgoing_channels_paginated<S: IViews>(
     let start_index = cursor.last_channel_index.map_or(0, |i| i + 1);
     let result =
         discover_outgoing_channels(pool, sender_addr, viewing_key, start_index, budget).await?;
+
+    // Register discovered channels in cursor with their channel_key.
+    for ch in &result.channels {
+        let entry = cursor.channels.entry(ch.recipient_addr).or_insert_with(|| {
+            super::cursor::ChannelCursor {
+                channel_key: None,
+                total_n_subchannels: None,
+                last_subchannel_index: None,
+                subchannels: std::collections::HashMap::new(),
+            }
+        });
+        entry.channel_key = Some(ch.channel_key);
+    }
 
     cursor.last_channel_index = result.last_index.or(cursor.last_channel_index);
     // Stop discovering once sentinel is found.
@@ -245,7 +268,7 @@ mod tests {
             ..Default::default()
         };
 
-        // Budget for 1 channel (COST_OUTGOING_CHANNEL_INFO = 2)
+        // Budget for 1 channel (COST_OUTGOING_CHANNEL_INFO = 3)
         let budget = IoBudget::new(COST_OUTGOING_CHANNEL_INFO);
         let channels = discover_outgoing_channels_paginated(
             &backend,
