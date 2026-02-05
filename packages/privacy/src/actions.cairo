@@ -250,9 +250,9 @@ pub struct ReadAssertInput {
     pub value: felt252,
 }
 
-/// Input for the `SwapExecutor` server action.
+/// Input for the `SwapWithExecutor` server action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct SwapExecutorInput {
+pub struct SwapWithExecutorInput {
     /// The swap executor contract address.
     // TODO: Move to storage.
     pub swap_executor: ContractAddress,
@@ -294,5 +294,5 @@ pub enum ServerAction {
     /// Emit [`OpenNoteCreated`](privacy::events::OpenNoteCreated) event.
     EmitOpenNoteCreated: events::OpenNoteCreated,
     /// Execute a swap via the swap executor contract.
-    SwapExecutor: SwapExecutorInput,
+    SwapWithExecutor: SwapWithExecutorInput,
 }
