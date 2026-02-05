@@ -36,10 +36,8 @@ import {
 } from "../internal/contract-discovery.js";
 import { toBigInt } from "../utils/crypto.js";
 import { Devnet as StarknetDevnet } from "starknet-devnet";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from "fs";
-import { gzipSync } from "zlib";
+import { readFileSync } from "fs";
 import { join, dirname } from "path";
-import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 import { PrivacyPoolABI } from "../internal/abi.js";
 import type { PrivacyPoolContract } from "../internal/private-transfers.js";
@@ -135,9 +133,17 @@ export class Devnet {
   private provider?: RpcProvider;
   public setup?: DevnetEnvironment;
   private accountNonces = new AddressMap<number>(() => 0);
-  private tempDevnetDumpPath?: string;
-  private spawnTimestamp?: number;
-  private alicePrivateKey?: string;
+
+  /** HTTP RPC URL of the running devnet (e.g. `http://127.0.0.1:5050`). */
+  get url(): string {
+    if (!this.devnet) throw new Error("Devnet not initialized");
+    return this.devnet.provider.url;
+  }
+
+  /** WebSocket URL of the running devnet (e.g. `ws://127.0.0.1:5050/ws`). */
+  get wsUrl(): string {
+    return this.url.replace(/^http/, "ws") + "/ws";
+  }
 
   /**
    * Initialize the devnet environment and deploy all contracts
@@ -160,20 +166,12 @@ export class Devnet {
       "1",
       "--gas-price-fri",
       "1",
+      "--dump-on",
+      "request", // Enable devnet_dump RPC (no-op unless explicitly called)
     ];
-
-    // Add dump args if DUMP_DEVNET_PATH is set (directory for devnet dump output)
-    const dumpDir = process.env.DUMP_DEVNET_PATH;
-    if (dumpDir) {
-      mkdirSync(dumpDir, { recursive: true });
-      this.tempDevnetDumpPath = join(tmpdir(), `devnet-dump-${Date.now()}.json`);
-      devnetArgs.push("--dump-on", "exit", "--dump-path", this.tempDevnetDumpPath);
-      console.log(`Devnet dump enabled, will write to: ${dumpDir}`);
-    }
 
     // Spawn a devnet instance on a random free port
     // Using latest version for Cairo 1.7.0 (Sierra 1.7.0) support
-    this.spawnTimestamp = Math.floor(Date.now() / 1000);
     this.devnet = await StarknetDevnet.spawnVersion("v0.7.2", {
       args: devnetArgs,
     });
@@ -210,7 +208,6 @@ export class Devnet {
 
     // Setup Alice (first account)
     const aliceAccount = accounts[0];
-    this.alicePrivateKey = aliceAccount.private_key;
     const alicePrivateKeyBytes = new Uint8Array(
       aliceAccount.private_key
         .replace("0x", "")
@@ -407,100 +404,11 @@ export class Devnet {
   }
 
   /**
-   * Dump contract storage state to a JSON file for Rust discovery tests.
-   * Iterates through all blocks and accumulates storage diffs for the privacy contract.
-   */
-  async dumpContractState(outputPath: string): Promise<void> {
-    if (!this.setup || !this.provider) {
-      throw new Error("Devnet not initialized");
-    }
-
-    // 1. Get latest block number
-    const latestBlock = await this.provider.getBlockNumber();
-
-    // 2. Accumulate storage state across all blocks
-    const storageState: Record<string, string> = {};
-
-    for (let blockNum = 0; blockNum <= latestBlock; blockNum++) {
-      const stateUpdate = await this.provider.getStateUpdate(blockNum);
-
-      // 3. Filter storage_diffs by privacy contract address
-      for (const diff of stateUpdate.state_diff.storage_diffs) {
-        if (diff.address.toLowerCase() === this.setup.privacy.address.toLowerCase()) {
-          // 4. Merge entries (later blocks override earlier)
-          for (const entry of diff.storage_entries) {
-            storageState[entry.key] = entry.value;
-          }
-        }
-      }
-    }
-
-    // 5. Write JSON output with constants needed for discovery
-    const output = {
-      _comment:
-        "Devnet storage dump for Rust discovery tests. Regenerate by running SDK devnet tests with DUMP_STATE_PATH set.",
-      constants: {
-        contract_address: this.setup.privacy.address,
-        alice_address: this.setup.alice.address,
-        alice_viewing_key: "0xa11ce", // Hardcoded in devnet.test.ts
-        bob_address: this.setup.bob.address,
-        bob_viewing_key: "0xb0b", // Hardcoded in devnet.test.ts
-        admin_address: this.setup.admin.address,
-        eth_token: this.setup.eth,
-        strk_token: this.setup.strk,
-      },
-      block: latestBlock,
-      slots: storageState,
-    };
-
-    writeFileSync(outputPath, JSON.stringify(output, null, 2));
-    console.log(`Dumped ${Object.keys(storageState).length} storage slots to ${outputPath}`);
-  }
-
-  /**
    * Terminate the devnet process.
-   * If DUMP_STATE_PATH is set, dumps contract state before cleanup.
-   * If DUMP_DEVNET_PATH is set, compresses the devnet dump after exit.
    */
   async cleanup(): Promise<void> {
-    const dumpStatePath = process.env.DUMP_STATE_PATH;
-    if (dumpStatePath && this.setup) {
-      mkdirSync(dirname(dumpStatePath), { recursive: true });
-      await this.dumpContractState(dumpStatePath);
-    }
-
     if (this.devnet) {
       this.devnet.kill("SIGINT");
-
-      // Compress devnet dump if requested (DUMP_DEVNET_PATH is the output directory)
-      const dumpDir = process.env.DUMP_DEVNET_PATH;
-      if (dumpDir && this.tempDevnetDumpPath && this.setup && this.spawnTimestamp) {
-        // Wait for dump file (devnet writes on exit)
-        for (let i = 0; i < 50 && !existsSync(this.tempDevnetDumpPath); i++) {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-        if (existsSync(this.tempDevnetDumpPath)) {
-          mkdirSync(dumpDir, { recursive: true });
-
-          // Compress and write dump
-          const dumpPath = join(dumpDir, "devnet-dump.json.gz");
-          const rawDump = readFileSync(this.tempDevnetDumpPath);
-          writeFileSync(dumpPath, gzipSync(rawDump));
-          unlinkSync(this.tempDevnetDumpPath);
-          console.log(`Wrote dump: ${dumpPath}`);
-
-          // Write metadata file
-          const metadata = {
-            timestamp: this.spawnTimestamp,
-            contract_address: this.setup.privacy.address,
-            alice_address: this.setup.alice.address,
-            alice_private_key: this.alicePrivateKey,
-          };
-          const metadataPath = join(dumpDir, "devnet-dump.metadata.json");
-          writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-          console.log(`Wrote metadata: ${metadataPath}`);
-        }
-      }
     }
   }
 }

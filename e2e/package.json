@@ -1,0 +1,21 @@
+{
+  "name": "starknet-privacy-e2e",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:e2e": "vitest run",
+    "generate-dump": "tsx scripts/generate-dump.ts"
+  },
+  "dependencies": {
+    "starknet-sdk": "file:../sdk",
+    "starknet": "^9.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.19.4",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.15"
+  }
+}
