@@ -1697,6 +1697,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         in_token: ContractAddress,
         out_token: ContractAddress,
         in_amount: u128,
+        note_id: felt252,
     ) -> u128 {
         let dispatcher = ISwapExecutorDispatcher { contract_address: *self.address };
         let swap_selector = selector!("swap");
@@ -1709,6 +1710,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
             :in_token,
             :out_token,
             :in_amount,
+            :note_id,
         )
     }
 
@@ -1721,9 +1723,18 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         in_token: ContractAddress,
         out_token: ContractAddress,
         in_amount: u128,
+        note_id: felt252,
     ) -> Result<u128, Array<felt252>> {
         ISwapExecutorSafeDispatcher { contract_address: *self.address }
-            .swap(:swap_contract, :swap_selector, :swap_calldata, :in_token, :out_token, :in_amount)
+            .swap(
+                :swap_contract,
+                :swap_selector,
+                :swap_calldata,
+                :in_token,
+                :out_token,
+                :in_amount,
+                :note_id,
+            )
     }
 }
 
