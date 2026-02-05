@@ -4325,7 +4325,7 @@ fn test_internal_actions() {
         token_address.into(), out_token_address.into(), swap_amount.into(), 0,
     ];
     let channel_key_swap = user_1.compute_channel_key(recipient: user_1);
-    let note_index: usize = 0;
+    let index: usize = 0;
     let swap_random = user_1.get_random();
 
     let swap_input = SwapInput {
@@ -4337,7 +4337,7 @@ fn test_internal_actions() {
         out_token: out_token_address,
         in_amount: swap_amount,
         channel_key: channel_key_swap,
-        note_index,
+        index,
         random: swap_random,
     };
     let actions = user_1.internal_swap(input: swap_input);
@@ -4351,7 +4351,7 @@ fn test_internal_actions() {
         amount: swap_amount,
     };
     let expected_note_id = compute_note_id(
-        channel_key: channel_key_swap, token: out_token_address, index: note_index,
+        channel_key: channel_key_swap, token: out_token_address, :index,
     );
     let expected_actions = [
         ServerAction::TransferTo(
@@ -5408,7 +5408,7 @@ fn test_no_privacy_actions() {
             out_token: out_token_address,
             in_amount: amount,
             channel_key,
-            note_index: 0,
+            index: 0,
             random: user.get_random(),
         },
     );
@@ -5817,7 +5817,7 @@ fn test_swap_client_action() {
         out_token: out_token_address,
         in_amount: swap_amount,
         channel_key: out_channel_key,
-        note_index: 0,
+        index: 0,
         random,
     };
 
@@ -5927,7 +5927,7 @@ fn test_swap_client_action_validation_errors() {
         out_token: out_token_address,
         in_amount: swap_amount,
         channel_key,
-        note_index: 0,
+        index: 0,
         random,
     };
 
@@ -6091,7 +6091,7 @@ fn test_swap_client_action_deposit_errors() {
         out_token: out_token_address,
         in_amount: swap_amount,
         channel_key,
-        note_index: 0, // No note has been created at this index yet.
+        index: 0, // No note has been created at this index yet.
         random,
     };
     let client_actions = [ClientAction::UseNote(use_note_input_0), ClientAction::Swap(swap_input)]
@@ -6130,7 +6130,7 @@ fn test_swap_client_action_deposit_errors() {
         out_token: out_token_address,
         in_amount: swap_amount,
         channel_key,
-        note_index: 0, // Points to the enc note (not open).
+        index: 0, // Points to the enc note (not open).
         random,
     };
     let client_actions = [ClientAction::UseNote(use_note_input_1), ClientAction::Swap(swap_input)]
@@ -6169,7 +6169,7 @@ fn test_swap_client_action_deposit_errors() {
         out_token: out_token_address,
         in_amount: swap_amount,
         channel_key,
-        note_index: 1, // Points to the open note at index 1.
+        index: 1, // Points to the open note at index 1.
         random,
     };
 
@@ -6202,7 +6202,7 @@ fn test_swap_client_action_deposit_errors() {
         out_token: out_token_address,
         in_amount: swap_amount,
         channel_key,
-        note_index: 1, // Same note index as first swap.
+        index: 1, // Same note index as first swap.
         random,
     };
     let client_actions = [ClientAction::UseNote(use_note_input_3), ClientAction::Swap(swap_input)]
@@ -6242,7 +6242,7 @@ fn test_swap_client_action_deposit_errors() {
         out_token: out_token_address,
         in_amount: swap_amount,
         channel_key,
-        note_index: 2, // Points to open note with wrong depositor.
+        index: 2, // Points to open note with wrong depositor.
         random,
     };
     let client_actions = [ClientAction::UseNote(use_note_input_4), ClientAction::Swap(swap_input)]
@@ -6326,7 +6326,7 @@ fn test_swap_doesnt_execute_during_client_execute() {
         out_token: out_token_address,
         in_amount: swap_amount,
         channel_key,
-        note_index: 0,
+        index: 0,
         random,
     };
 
