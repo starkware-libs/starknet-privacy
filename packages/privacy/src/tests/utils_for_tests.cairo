@@ -1699,7 +1699,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         out_token: ContractAddress,
         in_amount: u128,
         note_id: felt252,
-    ) -> u128 {
+    ) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.privacy_address,
         );
@@ -1715,7 +1715,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
                 :out_token,
                 :in_amount,
                 :note_id,
-            )
+            );
     }
 
     #[feature("safe_dispatcher")]
@@ -1728,7 +1728,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         out_token: ContractAddress,
         in_amount: u128,
         note_id: felt252,
-    ) -> Result<u128, Array<felt252>> {
+    ) -> Result<(), Array<felt252>> {
         ISwapExecutorSafeDispatcher { contract_address: *self.address }
             .swap(
                 :swap_contract,
