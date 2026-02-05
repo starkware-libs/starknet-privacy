@@ -4,8 +4,8 @@ use core::traits::Neg;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    DepositToOpenNoteInput, OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput,
-    TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
+    OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
+    TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
 };
 use privacy::events;
 use privacy::hashes::{
@@ -1110,34 +1110,31 @@ pub(crate) impl UserImpl of UserTrait {
             .approve(spender: *self.privacy.address, :amount);
     }
 
-    /// Execute the DepositToOpenNote action as this user (caller).
+    /// Execute deposit_to_open_note as this user (caller).
     /// Assumes the user already has sufficient token balance and approval.
-    fn deposit_to_open_note(self: @User, input: DepositToOpenNoteInput) {
-        let deposit_action = ServerAction::DepositToOpenNote(input);
+    fn deposit_to_open_note(self: @User, note_id: felt252, amount: u128) {
         cheat_caller_address_once(
             contract_address: *self.privacy.address, caller_address: *self.address,
         );
-        self.privacy.execute_actions([deposit_action].span());
+        self.privacy.deposit_to_open_note(:note_id, :amount);
     }
 
     /// Safe version of `deposit_to_open_note` that returns a Result.
     /// Assumes the user already has sufficient token balance and approval.
     fn safe_deposit_to_open_note(
-        self: @User, input: DepositToOpenNoteInput,
+        self: @User, note_id: felt252, amount: u128,
     ) -> Result<(), Array<felt252>> {
-        let deposit_action = ServerAction::DepositToOpenNote(input);
         cheat_caller_address_once(
             contract_address: *self.privacy.address, caller_address: *self.address,
         );
-        self.privacy.safe_execute_actions([deposit_action].span())
+        self.privacy.safe_deposit_to_open_note(:note_id, :amount)
     }
 
     /// Fund the user, approve, and deposit to an open note.
-    /// This sets up the token balance, approval, then executes the DepositToOpenNote action.
-    fn fund_and_deposit_to_open_note(self: @User, token: Token, input: DepositToOpenNoteInput) {
-        self.increase_token_balance(:token, amount: input.amount);
-        self.approve(:token, amount: input.amount.into());
-        self.deposit_to_open_note(:input);
+    fn fund_and_deposit_to_open_note(self: @User, token: Token, note_id: felt252, amount: u128) {
+        self.increase_token_balance(:token, :amount);
+        self.approve(:token, amount: amount.into());
+        self.deposit_to_open_note(:note_id, :amount);
     }
 
     /// Cheat deposit in the server side (no client side).
@@ -1421,6 +1418,17 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self: @PrivacyCfg, actions: Span<ServerAction>,
     ) -> Result<(), Array<felt252>> {
         self.safe_server.execute_actions(:actions)
+    }
+
+    fn deposit_to_open_note(self: @PrivacyCfg, note_id: felt252, amount: u128) {
+        self.server.deposit_to_open_note(:note_id, :amount);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_deposit_to_open_note(
+        self: @PrivacyCfg, note_id: felt252, amount: u128,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_server.deposit_to_open_note(:note_id, :amount)
     }
 
     fn pause(self: @PrivacyCfg) {
