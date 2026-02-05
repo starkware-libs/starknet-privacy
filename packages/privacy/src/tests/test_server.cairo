@@ -1040,7 +1040,25 @@ fn test_execute_swap_with_executor_assertions() {
         in_amount: swap_amount,
     };
 
+    // Catch INSUFFICIENT_BALANCE.
+    let result = test
+        .privacy
+        .safe_execute_actions([ServerAction::SwapWithExecutor(valid_swap_input)].span());
+    assert_panic_with_felt_error(
+        :result, expected_error: swap_executor_errors::INSUFFICIENT_BALANCE,
+    );
+
+    // Catch INSUFFICIENT_BALANCE from AMM.
+    // Fund swap executor with input tokens.
+    input_token.supply(address: executor_addr, amount: swap_amount);
+    let result = test
+        .privacy
+        .safe_execute_actions([ServerAction::SwapWithExecutor(valid_swap_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: 'ERC20: insufficient balance');
+
     // Catch ZERO_OUT_AMOUNT
+    // Fund swap executor with input tokens.
+    input_token.supply(address: executor_addr, amount: swap_amount);
     let swap_input = SwapWithExecutorInput {
         swap_selector: selector!("noop_swap"), swap_calldata: [].span(), ..valid_swap_input,
     };
@@ -1048,12 +1066,6 @@ fn test_execute_swap_with_executor_assertions() {
         .privacy
         .safe_execute_actions([ServerAction::SwapWithExecutor(swap_input)].span());
     assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_OUT_AMOUNT);
-
-    // Catch INSUFFICIENT_BALANCE.
-    let result = test
-        .privacy
-        .safe_execute_actions([ServerAction::SwapWithExecutor(valid_swap_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: 'ERC20: insufficient balance');
 
     // Catch RECEIVED_AMOUNT_OVERFLOW
     // Fund AMM with MAX_U128 + 1 output tokens (supply takes u128, so we call it twice).

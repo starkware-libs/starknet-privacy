@@ -111,7 +111,10 @@ fn test_swap_propagates_amm_error() {
     assert_eq!(output_token.balance_of(address: test.privacy.swap_executor.address), 0);
     assert_eq!(output_token.balance_of(address: test.privacy.mock_amm), 0);
 
-    // Don't fund swap executor - AMM's transfer_from will fail due to insufficient balance.
+    // Fund swap executor with input tokens.
+    input_token.supply(address: test.privacy.swap_executor.address, amount: swap_amount);
+
+    // Don't fund AMM - transfer will fail due to insufficient balance.
     let swap_calldata: Array<felt252> = array![
         input_token.contract_address().into(), output_token.contract_address().into(),
         swap_amount.into(), // amount low
@@ -210,6 +213,34 @@ fn test_swap_received_amount_overflow() {
             :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::RECEIVED_AMOUNT_OVERFLOW);
+}
+
+#[test]
+fn test_swap_insufficient_balance() {
+    // Test that swap fails when the swap executor has insufficient balance.
+    let mut test: Test = Default::default();
+    let input_token = test.new_token();
+    let output_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let note_id: felt252 = 'NOTE_ID';
+
+    let result = test
+        .privacy
+        .swap_executor
+        .safe_swap(
+            swap_contract: test.privacy.mock_amm,
+            swap_selector: selector!("swap"),
+            swap_calldata: [
+                input_token.contract_address().into(), output_token.contract_address().into(),
+                swap_amount.into(), 0,
+            ]
+                .span(),
+            in_token: input_token.contract_address(),
+            out_token: output_token.contract_address(),
+            in_amount: swap_amount,
+            :note_id,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INSUFFICIENT_BALANCE);
 }
 
 #[test]

@@ -32,6 +32,10 @@ pub mod SwapExecutor {
             let out_erc20 = IERC20Dispatcher { contract_address: out_token };
 
             // Approve swap contract to spend `in_amount` of `in_token`.
+            assert(
+                in_erc20.balance_of(account: self_addr) >= in_amount.into(),
+                errors::INSUFFICIENT_BALANCE,
+            );
             in_erc20.approve(spender: swap_contract, amount: in_amount.into());
 
             // Get output token balance before swap.
