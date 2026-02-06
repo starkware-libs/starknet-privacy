@@ -88,7 +88,7 @@ structure Transaction extends TimedTransaction where
 
 structure SuccessfulTransactions (crypto: Crypto) where
   txs: List Transaction
-  success: (run_transactions crypto ttxs).success
+  success: (run_transactions crypto (txs.map Transaction.toTimedTransaction)).success
 
 abbrev SuccessfulTransactions.timed_txs {crypto: Crypto} (stxs: SuccessfulTransactions crypto) :=
   stxs.txs.map Transaction.toTimedTransaction
