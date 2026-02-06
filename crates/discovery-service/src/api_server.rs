@@ -12,10 +12,11 @@ use discovery_core::storage_backend::StorageBackend;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::chain_state::{ChainHead, ChainState};
 use crate::incoming_sync::incoming_sync_handler;
+use crate::outgoing_sync::outgoing_sync_handler;
 
 /// Configuration for the API server.
 #[derive(Debug, Clone)]
@@ -66,12 +67,8 @@ where
         // TODO: Add TLS termination (spec 5.1)
         let app = Router::new()
             .route("/health", get(health_handler::<B>))
-            .route(
-                "/v1/discovery/incoming/sync",
-                post(incoming_sync_handler::<B>),
-            )
-            // TODO: Implement POST /v1/discovery/outgoing/sync endpoint (spec 6.6,
-            //       see SDK contract-discovery.ts discoverChannels)
+            .route("/v1/sync/incoming_state", post(incoming_sync_handler::<B>))
+            .route("/v1/sync/outgoing_state", post(outgoing_sync_handler::<B>))
             // TODO: Implement POST /v1/discovery/history endpoint (spec 6.7)
             .with_state(app_state);
 
@@ -197,6 +194,42 @@ impl ApiErrorResponse {
                 details: Some(details),
             },
         }
+    }
+}
+
+/// Maps [`DiscoveryError`] to an HTTP status + API error response.
+pub(crate) fn discovery_error_to_response(
+    e: discovery_core::discovery::DiscoveryError,
+) -> (StatusCode, ApiErrorResponse) {
+    use discovery_core::discovery::DiscoveryError;
+
+    match e {
+        DiscoveryError::Storage(storage_err) => {
+            warn!("Storage error during discovery: {}", storage_err);
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorResponse::new(error_codes::RPC_UNAVAILABLE, "Upstream RPC is unavailable"),
+            )
+        }
+        DiscoveryError::Decryption { index, source } => (
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::with_details(
+                error_codes::DECRYPTION_FAILED,
+                format!("Decryption failed at index {}: {}", index, source),
+                serde_json::json!({ "index": index }),
+            ),
+        ),
+        DiscoveryError::TaskPanicked(msg) => {
+            warn!("Discovery task panicked: {}", msg);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
+            )
+        }
+        DiscoveryError::InvalidCursor(msg) => (
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::new(error_codes::INVALID_REQUEST, msg),
+        ),
     }
 }
 

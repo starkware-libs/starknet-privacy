@@ -1,4 +1,4 @@
-//! Request validation for the incoming sync endpoint.
+//! Request validation for sync endpoints.
 
 use axum::http::StatusCode;
 use discovery_core::discovery::cursor::DiscoveryCursor;
@@ -11,7 +11,116 @@ use crate::chain_state::{ChainState, ChainStateError};
 
 use super::types::{IncomingSyncRequest, DEFAULT_MAX_READS, MAX_READS_CAP};
 
-/// Validated and resolved request data.
+/// Validated sync parameters shared by incoming and outgoing endpoints.
+pub(crate) struct ValidatedSyncParams {
+    /// Resolved block ID for the query.
+    pub query_block: BlockId,
+    /// Block hash pinning all reads (from head or request).
+    pub block_ref: Felt,
+    /// Cursor for pagination.
+    pub cursor: DiscoveryCursor,
+    /// Validated max_reads value.
+    pub max_reads: usize,
+}
+
+/// Validates sync parameters common to both incoming and outgoing endpoints.
+///
+/// Performs the following:
+/// 1. Validates max_reads doesn't exceed cap
+/// 2. Checks last_known_block hasn't been reorged (if provided)
+/// 3. Resolves block_ref (if provided) or uses current head
+pub(crate) async fn validate_sync_params<B: ChainState>(
+    last_known_block: Option<Felt>,
+    block_ref: Option<Felt>,
+    cursor: DiscoveryCursor,
+    max_reads: Option<u32>,
+    backend: &B,
+) -> Result<ValidatedSyncParams, (StatusCode, ApiErrorResponse)> {
+    // TODO(security): Consider rejecting max_reads == 0 — currently accepted,
+    //   wastes work on snapshot creation for guaranteed-empty results.
+
+    // 1. Validate and convert max_reads
+    let max_reads: usize = match max_reads {
+        Some(v) => {
+            if v > MAX_READS_CAP {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    ApiErrorResponse::with_details(
+                        error_codes::MAX_READS_EXCEEDED,
+                        format!("max_reads {} exceeds maximum {}", v, MAX_READS_CAP),
+                        serde_json::json!({ "max_allowed": MAX_READS_CAP }),
+                    ),
+                ));
+            }
+            v.try_into().map_err(|_| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    ApiErrorResponse::new(
+                        error_codes::INVALID_REQUEST,
+                        "max_reads value cannot be represented on this platform",
+                    ),
+                )
+            })?
+        }
+        None => DEFAULT_MAX_READS,
+    };
+
+    // 2. If last_known_block provided, check is_canonical
+    if let Some(last_known) = last_known_block {
+        match backend.is_canonical(last_known).await {
+            Ok(true) => {}
+            Ok(false) => {
+                return Err((
+                    StatusCode::CONFLICT,
+                    ApiErrorResponse::new(
+                        error_codes::BLOCK_REORGED,
+                        "last_known_block was reorged out; client should re-sync",
+                    ),
+                ));
+            }
+            Err(ChainStateError::RpcError(e)) => {
+                warn!("RPC error checking is_canonical: {}", e);
+                return Err((
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    ApiErrorResponse::new(
+                        error_codes::RPC_UNAVAILABLE,
+                        "Upstream RPC is unavailable",
+                    ),
+                ));
+            }
+        }
+    }
+
+    // 3. Resolve query block
+    //
+    // If block_ref is specified, use it directly without validation.
+    // It's the client's responsibility to use a valid block_ref (typically
+    // from the cursor returned in a previous response). If invalid, the RPC
+    // call will fail and discovery will return an error.
+    let block_ref = if let Some(block_ref) = block_ref {
+        block_ref
+    } else {
+        let head = backend.get_head().await.ok_or_else(|| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorResponse::new(
+                    error_codes::SERVICE_UNAVAILABLE,
+                    "No indexed head available yet",
+                ),
+            )
+        })?;
+        head.block_hash
+    };
+
+    Ok(ValidatedSyncParams {
+        query_block: BlockId::Hash(block_ref),
+        block_ref,
+        cursor,
+        max_reads,
+    })
+}
+
+/// Validated and resolved request data for the incoming sync endpoint.
 ///
 /// Contains all data needed to run discovery after validation passes.
 #[derive(Debug)]
@@ -32,101 +141,26 @@ pub struct ValidatedRequest {
 
 impl ValidatedRequest {
     /// Validates and resolves the incoming sync request.
-    ///
-    /// Performs the following validations:
-    /// 1. Validates max_reads doesn't exceed cap
-    /// 2. Checks last_known_block hasn't been reorged (if provided)
-    /// 3. Resolves block_ref (if provided) or uses current head
-    /// 4. Gets current chain head
     pub async fn from_request<B: ChainState>(
         request: IncomingSyncRequest,
         backend: &B,
     ) -> Result<Self, (StatusCode, ApiErrorResponse)> {
-        // TODO(security): Consider rejecting max_reads == 0 — currently accepted,
-        //   wastes work on snapshot creation for guaranteed-empty results.
-
-        // 1. Validate and convert max_reads
-        let max_reads: usize = match request.max_reads {
-            Some(v) => {
-                if v > MAX_READS_CAP {
-                    return Err((
-                        StatusCode::BAD_REQUEST,
-                        ApiErrorResponse::with_details(
-                            error_codes::MAX_READS_EXCEEDED,
-                            format!("max_reads {} exceeds maximum {}", v, MAX_READS_CAP),
-                            serde_json::json!({ "max_allowed": MAX_READS_CAP }),
-                        ),
-                    ));
-                }
-                v.try_into().map_err(|_| {
-                    (
-                        StatusCode::BAD_REQUEST,
-                        ApiErrorResponse::new(
-                            error_codes::INVALID_REQUEST,
-                            "max_reads value cannot be represented on this platform",
-                        ),
-                    )
-                })?
-            }
-            None => DEFAULT_MAX_READS,
-        };
-
-        // 2. If last_known_block provided, check is_canonical
-        if let Some(last_known) = request.last_known_block {
-            match backend.is_canonical(last_known).await {
-                Ok(true) => {}
-                Ok(false) => {
-                    return Err((
-                        StatusCode::CONFLICT,
-                        ApiErrorResponse::new(
-                            error_codes::BLOCK_REORGED,
-                            "last_known_block was reorged out; client should re-sync",
-                        ),
-                    ));
-                }
-                Err(ChainStateError::RpcError(e)) => {
-                    warn!("RPC error checking is_canonical: {}", e);
-                    return Err((
-                        StatusCode::SERVICE_UNAVAILABLE,
-                        ApiErrorResponse::new(
-                            error_codes::RPC_UNAVAILABLE,
-                            "Upstream RPC is unavailable",
-                        ),
-                    ));
-                }
-            }
-        }
-
-        // 3. Resolve query block
-        //
-        // If block_ref is specified, use it directly without validation.
-        // It's the client's responsibility to use a valid block_ref (typically
-        // from the cursor returned in a previous response). If invalid, the RPC
-        // call will fail and discovery will return an error.
-        let block_ref = if let Some(block_ref) = request.block_ref {
-            // Use block_ref directly - no validation, no head fetch needed
-            block_ref
-        } else {
-            // Use current head
-            let head = backend.get_head().await.ok_or_else(|| {
-                (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    ApiErrorResponse::new(
-                        error_codes::SERVICE_UNAVAILABLE,
-                        "No indexed head available yet",
-                    ),
-                )
-            })?;
-            head.block_hash
-        };
+        let params = validate_sync_params(
+            request.last_known_block,
+            request.block_ref,
+            request.cursor,
+            request.max_reads,
+            backend,
+        )
+        .await?;
 
         Ok(ValidatedRequest {
             recipient_address: request.recipient_address,
             decryption_key: SecretFelt::new(request.decryption_key),
-            query_block: BlockId::Hash(block_ref),
-            block_ref,
-            cursor: request.cursor,
-            max_reads,
+            query_block: params.query_block,
+            block_ref: params.block_ref,
+            cursor: params.cursor,
+            max_reads: params.max_reads,
         })
     }
 }

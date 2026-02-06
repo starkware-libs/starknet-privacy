@@ -1,4 +1,4 @@
-//! Handler and supporting logic for POST /v1/sync/incoming_state.
+//! Handler and supporting logic for POST /v1/sync/outgoing_state.
 
 use std::sync::Arc;
 
@@ -7,43 +7,51 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use discovery_core::io_budget::IoBudget;
+use discovery_core::privacy_pool::types::SecretFelt;
 use discovery_core::storage_backend::StorageBackend;
 use tracing::warn;
 
 use crate::api_server::{discovery_error_to_response, error_codes, ApiErrorResponse, AppState};
 use crate::chain_state::ChainState;
+use crate::incoming_sync::validation::validate_sync_params;
 
-use super::types::{IncomingSyncRequest, IncomingSyncResponse};
-use super::validation::ValidatedRequest;
+use super::types::{OutgoingSyncRequest, OutgoingSyncResponse};
 
-/// Handler for POST /v1/sync/incoming_state.
-pub async fn incoming_sync_handler<B>(
+/// Handler for POST /v1/sync/outgoing_state.
+pub async fn outgoing_sync_handler<B>(
     State(state): State<Arc<AppState<B>>>,
-    Json(request): Json<IncomingSyncRequest>,
+    Json(request): Json<OutgoingSyncRequest>,
 ) -> impl IntoResponse
 where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
     B::Snapshot: Clone + Send + Sync + 'static,
 {
-    match incoming_sync_impl(&state, request).await {
+    match outgoing_sync_impl(&state, request).await {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
         Err((status, error)) => (status, Json(error)).into_response(),
     }
 }
 
-async fn incoming_sync_impl<B>(
+async fn outgoing_sync_impl<B>(
     state: &AppState<B>,
-    request: IncomingSyncRequest,
-) -> Result<IncomingSyncResponse, (StatusCode, ApiErrorResponse)>
+    request: OutgoingSyncRequest,
+) -> Result<OutgoingSyncResponse, (StatusCode, ApiErrorResponse)>
 where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
     B::Snapshot: Clone + Send + Sync + 'static,
 {
-    let validated = ValidatedRequest::from_request(request, &state.backend).await?;
+    let params = validate_sync_params(
+        request.last_known_block,
+        request.block_ref,
+        request.cursor,
+        request.max_reads,
+        &state.backend,
+    )
+    .await?;
 
     let snapshot = state
         .backend
-        .snapshot(Some(validated.query_block))
+        .snapshot(Some(params.query_block))
         .await
         .map_err(|e| {
             warn!("Failed to create snapshot: {}", e);
@@ -56,20 +64,21 @@ where
             )
         })?;
 
-    let budget = IoBudget::new(validated.max_reads);
+    let viewing_key = SecretFelt::new(request.viewing_key);
+    let budget = IoBudget::new(params.max_reads);
 
-    let discovery_output = discovery_core::sync::incoming_state::sync_incoming_state(
+    let discovery_output = discovery_core::sync::outgoing_state::sync_outgoing_state(
         &snapshot,
-        validated.recipient_address,
-        &validated.decryption_key,
-        validated.cursor,
+        request.sender_address,
+        &viewing_key,
+        params.cursor,
         &budget,
     )
     .await
     .map_err(discovery_error_to_response)?;
 
-    Ok(IncomingSyncResponse {
-        block_ref: validated.block_ref,
+    Ok(OutgoingSyncResponse {
+        block_ref: params.block_ref,
         channels: discovery_output.channels,
         cursor: discovery_output.cursor,
     })

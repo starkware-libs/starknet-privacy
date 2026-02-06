@@ -80,6 +80,11 @@ export class IndexerClient {
     const existing = this.lines.find((l) => l.includes(pattern));
     if (existing) return Promise.resolve(existing);
 
+    return this.waitForNewLog(pattern, timeoutMs);
+  }
+
+  /** Like waitForLog but ignores already-buffered lines. */
+  waitForNewLog(pattern: string, timeoutMs = 10_000): Promise<string> {
     return new Promise((resolve, reject) => {
       const entry = { pattern, resolve };
       this.waiters.push(entry);

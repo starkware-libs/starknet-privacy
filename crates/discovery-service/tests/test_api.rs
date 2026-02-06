@@ -1,4 +1,4 @@
-//! API server tests: health endpoint, incoming sync.
+//! API server tests: health endpoint, incoming sync, outgoing sync.
 //!
 //! Run with: `cargo test -p discovery-service --test api_tests`
 //!
@@ -14,6 +14,7 @@ use common::{
 };
 use discovery_service::api_server::HealthResponse;
 use discovery_service::incoming_sync::{IncomingSyncRequest, MAX_READS_CAP};
+use discovery_service::outgoing_sync::OutgoingSyncRequest;
 use starknet_core::types::Felt;
 
 #[tokio::test]
@@ -46,7 +47,7 @@ async fn test_incoming_sync_basic() {
 
     let request = IncomingSyncRequest {
         recipient_address: metadata.alice_address,
-        decryption_key: metadata.alice_private_key,
+        decryption_key: metadata.alice_viewing_key,
         last_known_block: None,
         block_ref: None,
         cursor: Default::default(),
@@ -62,6 +63,12 @@ async fn test_incoming_sync_basic() {
     assert!(
         response.cursor.channels.is_empty(),
         "All channels should be fully discovered (pruned from cursor)"
+    );
+
+    // Alice has at least 1 incoming channel (self-channel from deposit)
+    assert!(
+        !response.channels.is_empty(),
+        "Alice should have at least 1 incoming channel"
     );
 
     // Verify result structure
@@ -84,7 +91,7 @@ async fn test_incoming_sync_pagination() {
     // First sync with very small budget (1 read - should just get channel count)
     let request1 = IncomingSyncRequest {
         recipient_address: metadata.alice_address,
-        decryption_key: metadata.alice_private_key,
+        decryption_key: metadata.alice_viewing_key,
         last_known_block: None,
         block_ref: None,
         cursor: Default::default(),
@@ -96,7 +103,7 @@ async fn test_incoming_sync_pagination() {
     // Second sync using block_ref and cursor from previous response
     let request2 = IncomingSyncRequest {
         recipient_address: metadata.alice_address,
-        decryption_key: metadata.alice_private_key,
+        decryption_key: metadata.alice_viewing_key,
         last_known_block: None,
         block_ref: Some(response1.block_ref),
         cursor: response1.cursor.clone(),
@@ -125,7 +132,7 @@ async fn test_incoming_sync_block_reorged() {
 
     let request = IncomingSyncRequest {
         recipient_address: metadata.alice_address,
-        decryption_key: metadata.alice_private_key,
+        decryption_key: metadata.alice_viewing_key,
         last_known_block: Some(fake_block),
         block_ref: None,
         cursor: Default::default(),
@@ -176,6 +183,105 @@ async fn test_incoming_sync_no_head() {
     // Should return 503 SERVICE_UNAVAILABLE since no head is indexed yet
     assert_eq!(status, 503);
     assert_eq!(error.error.code, "SERVICE_UNAVAILABLE");
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_outgoing_sync_basic() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    let request = OutgoingSyncRequest {
+        sender_address: metadata.alice_address,
+        viewing_key: metadata.alice_viewing_key,
+        last_known_block: None,
+        block_ref: None,
+        cursor: Default::default(),
+        max_reads: Some(MAX_READS_CAP),
+    };
+
+    let response = indexer.outgoing_sync(&request).await.unwrap();
+
+    assert!(response.block_ref != Felt::ZERO, "block_ref should be set");
+
+    // Alice has 2 outgoing channels: self-channel (deposit) + Bob (transfer)
+    assert_eq!(
+        response.channels.len(),
+        2,
+        "Alice should have 2 outgoing channels (self + Bob)"
+    );
+
+    // With a large budget, all discovery should complete
+    assert!(
+        response.cursor.channels.is_empty(),
+        "All channels should be fully discovered (pruned from cursor)"
+    );
+
+    // Each channel should have at least one subchannel with last_note_index = Some(0)
+    for channel in response.channels.values() {
+        assert!(
+            !channel.subchannels.is_empty(),
+            "Each channel should have at least one subchannel"
+        );
+        for last_index in channel.subchannels.values() {
+            assert_eq!(
+                *last_index,
+                Some(0),
+                "Each subchannel should have last_note_index=0"
+            );
+        }
+    }
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_outgoing_sync_pagination() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    // First sync with small budget — enough to discover channels but not subchannels
+    let request1 = OutgoingSyncRequest {
+        sender_address: metadata.alice_address,
+        viewing_key: metadata.alice_viewing_key,
+        last_known_block: None,
+        block_ref: None,
+        cursor: Default::default(),
+        max_reads: Some(1),
+    };
+
+    let response1 = indexer.outgoing_sync(&request1).await.unwrap();
+
+    // Should NOT be complete yet with budget=1
+    assert!(
+        !response1.cursor.channels.is_empty() || !response1.cursor.skip_channel_discovery,
+        "Should have pending work with budget=1"
+    );
+
+    // Second sync with large budget to finish
+    let request2 = OutgoingSyncRequest {
+        sender_address: metadata.alice_address,
+        viewing_key: metadata.alice_viewing_key,
+        last_known_block: None,
+        block_ref: Some(response1.block_ref),
+        cursor: response1.cursor.clone(),
+        max_reads: Some(MAX_READS_CAP),
+    };
+
+    let response2 = indexer.outgoing_sync(&request2).await.unwrap();
+
+    assert!(
+        response2.cursor.channels.is_empty(),
+        "Should complete with larger budget"
+    );
+    assert_eq!(
+        response2.channels.len(),
+        2,
+        "Should discover all 2 channels across pages"
+    );
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();

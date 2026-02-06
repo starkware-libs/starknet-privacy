@@ -173,10 +173,7 @@ mod tests {
         let backend = MockBackend::new(f.slots);
         let viewing_key = SecretFelt::new(f.constants.alice_viewing_key);
 
-        let cursor = DiscoveryCursor {
-            discover_channels: true,
-            ..Default::default()
-        };
+        let cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(100);
 
         let out = sync_outgoing_state(
@@ -228,10 +225,7 @@ mod tests {
 
         // Step 1: budget = 3 × COST_OUTGOING_CHANNEL_INFO = 9
         // Discovers 2 channels + sentinel. No budget left for subchannels.
-        let cursor = DiscoveryCursor {
-            discover_channels: true,
-            ..Default::default()
-        };
+        let cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(3 * COST_OUTGOING_CHANNEL_INFO);
 
         let out = sync_outgoing_state(
@@ -250,7 +244,7 @@ mod tests {
             "step 1: 2 channels registered in cursor"
         );
         assert!(
-            !out.cursor.discover_channels,
+            out.cursor.skip_channel_discovery,
             "step 1: channel discovery complete (sentinel found)"
         );
 

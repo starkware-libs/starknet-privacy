@@ -11,10 +11,11 @@ use starknet_types_core::felt::Felt;
 /// Top-level cursor for channel discovery (shared by incoming and outgoing).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DiscoveryCursor {
-    /// Whether to discover new channels. Set to `false` to skip channel
-    /// discovery and only process specific channels already in cursor.
+    /// Skip channel discovery. When `true`, only processes channels already
+    /// in the cursor — use this after channel discovery is complete.
+    /// Defaults to `false` (discover new channels).
     #[serde(default)]
-    pub discover_channels: bool,
+    pub skip_channel_discovery: bool,
 
     /// Total number of channels (cached from `get_num_of_channels` for incoming).
     /// Used as optimization to avoid redundant RPC calls.

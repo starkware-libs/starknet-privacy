@@ -1,6 +1,6 @@
 //! Incoming sync endpoint for discovering channels, subchannels, and notes.
 //!
-//! Provides the `/v1/discovery/incoming/sync` endpoint.
+//! Provides the `POST /v1/sync/incoming_state` endpoint.
 
 mod handler;
 mod types;

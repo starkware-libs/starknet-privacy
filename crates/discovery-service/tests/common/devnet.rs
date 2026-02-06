@@ -21,7 +21,7 @@ pub struct DumpMetadata {
     pub timestamp: u64,
     pub contract_address: Felt,
     pub alice_address: Felt,
-    pub alice_private_key: Felt,
+    pub alice_viewing_key: Felt,
 }
 
 #[derive(Debug, Clone, Default)]

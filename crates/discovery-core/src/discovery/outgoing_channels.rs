@@ -112,9 +112,10 @@ pub async fn discover_outgoing_channels<PrivacyPool: IViews>(
 
 /// Discovers outgoing channels with cursor-based pagination.
 ///
-/// Manages resume state across calls. If `cursor.discover_channels == false`,
-/// returns immediately without consuming budget — use this to skip channel
-/// discovery and only process specific recipients/tokens already in cursor.
+/// Manages resume state across calls. If `cursor.skip_channel_discovery` is
+/// set, returns immediately without consuming budget — use this to skip
+/// channel discovery and only process specific recipients/tokens already in
+/// cursor.
 ///
 /// Returns discovered channels.
 pub async fn discover_outgoing_channels_paginated<S: IViews>(
@@ -124,7 +125,7 @@ pub async fn discover_outgoing_channels_paginated<S: IViews>(
     cursor: &mut DiscoveryCursor,
     budget: &IoBudget,
 ) -> Result<Vec<OutgoingChannel>, DiscoveryError> {
-    if !cursor.discover_channels {
+    if cursor.skip_channel_discovery {
         return Ok(Vec::new());
     }
 
@@ -148,7 +149,7 @@ pub async fn discover_outgoing_channels_paginated<S: IViews>(
     cursor.last_channel_index = result.last_index.or(cursor.last_channel_index);
     // Stop discovering once sentinel is found.
     if !result.has_more {
-        cursor.discover_channels = false;
+        cursor.skip_channel_discovery = true;
     }
 
     Ok(result.channels)
@@ -223,10 +224,7 @@ mod tests {
         let backend = MockBackend::new(fixture.slots);
 
         let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
-        let mut cursor = DiscoveryCursor {
-            discover_channels: true,
-            ..Default::default()
-        };
+        let mut cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(100);
 
         let channels = discover_outgoing_channels_paginated(
@@ -241,7 +239,7 @@ mod tests {
 
         assert_eq!(channels.len(), 2);
         assert_eq!(cursor.last_channel_index, Some(1));
-        assert!(!cursor.discover_channels, "discovery complete");
+        assert!(cursor.skip_channel_discovery, "discovery complete");
 
         // Second call should return empty (already complete)
         let channels2 = discover_outgoing_channels_paginated(
@@ -263,10 +261,7 @@ mod tests {
         let backend = MockBackend::new(fixture.slots);
 
         let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
-        let mut cursor = DiscoveryCursor {
-            discover_channels: true,
-            ..Default::default()
-        };
+        let mut cursor = DiscoveryCursor::default();
 
         // Budget for 1 channel (COST_OUTGOING_CHANNEL_INFO = 3)
         let budget = IoBudget::new(COST_OUTGOING_CHANNEL_INFO);
@@ -282,7 +277,7 @@ mod tests {
 
         assert_eq!(channels.len(), 1);
         assert_eq!(cursor.last_channel_index, Some(0));
-        assert!(cursor.discover_channels, "discovery not complete yet");
+        assert!(!cursor.skip_channel_discovery, "discovery not complete yet");
 
         // Resume with more budget
         let budget = IoBudget::new(100);
@@ -298,6 +293,6 @@ mod tests {
 
         assert_eq!(channels2.len(), 1, "second channel discovered");
         assert_eq!(cursor.last_channel_index, Some(1));
-        assert!(!cursor.discover_channels, "discovery complete");
+        assert!(cursor.skip_channel_discovery, "discovery complete");
     }
 }

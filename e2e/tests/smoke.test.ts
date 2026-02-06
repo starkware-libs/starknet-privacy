@@ -44,15 +44,22 @@ describe("E2E Smoke", () => {
 
     await devnet.executeOutside(callAndProof);
 
-    // Wait for the indexer to process the new blocks
-    await env.indexer.waitForLog("New block #", 15_000);
+    // Create a block so the indexer catches up with the transaction blocks
+    await fetch(devnet.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
+    });
+    await env.indexer.waitForNewLog("New block #", 15_000);
 
-    // TODO: Replace raw endpoint call with SDK discovery provider flow.
+    // TODO: Replace raw endpoint calls with SDK discovery provider flow.
     // Next step: implement IndexerDiscoveryProvider (implements DiscoveryProviderInterface)
     // and run discovery via transfers.alice.discoverNotes() / discoverChannels() instead.
     // The harness should inject IndexerDiscoveryProvider into transfers so the e2e test
     // exercises the real wallet flow end-to-end.
-    const resp = await fetch(`${env.indexer.apiUrl}/v1/discovery/incoming/sync`, {
+
+    // Incoming sync: Alice should see at least 1 incoming channel (self-channel from deposit)
+    const incomingResp = await fetch(`${env.indexer.apiUrl}/v1/sync/incoming_state`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -60,10 +67,25 @@ describe("E2E Smoke", () => {
         decryption_key: "0xa11ce",
       }),
     });
-    expect(resp.ok).toBe(true);
-    const response = await resp.json() as Record<string, unknown>;
+    expect(incomingResp.ok).toBe(true);
+    const incoming = await incomingResp.json() as Record<string, unknown>;
 
-    expect(response.block_ref).toBeDefined();
-    expect(Object.keys(response.channels as object).length).toBeGreaterThanOrEqual(1);
+    expect(incoming.block_ref).toBeDefined();
+    expect(Object.keys(incoming.channels as object).length).toBeGreaterThanOrEqual(1);
+
+    // Outgoing sync: Alice should see 2 outgoing channels (self-channel + transfer to Bob)
+    const outgoingResp = await fetch(`${env.indexer.apiUrl}/v1/sync/outgoing_state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sender_address: de.alice.address,
+        viewing_key: "0xa11ce",
+      }),
+    });
+    expect(outgoingResp.ok).toBe(true);
+    const outgoing = await outgoingResp.json() as Record<string, unknown>;
+
+    expect(outgoing.block_ref).toBeDefined();
+    expect(Object.keys(outgoing.channels as object).length).toBeGreaterThanOrEqual(2);
   });
 });

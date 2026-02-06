@@ -1,27 +1,21 @@
-//! Request/response types for the incoming sync endpoint.
+//! Request/response types for the outgoing sync endpoint.
 
 use std::collections::HashMap;
 
 use discovery_core::discovery::cursor::DiscoveryCursor;
-use discovery_core::sync::incoming_state::ChannelOutput;
+use discovery_core::sync::outgoing_state::OutgoingChannelOutput;
 use serde::{Deserialize, Serialize};
 use starknet_core::types::Felt;
 
-/// Default max_reads if not specified.
-pub const DEFAULT_MAX_READS: usize = 50;
-
-/// Server-enforced maximum for max_reads.
-pub const MAX_READS_CAP: u32 = 100;
-
-/// Request body for POST /v1/sync/incoming_state.
+/// Request body for POST /v1/sync/outgoing_state.
 ///
 /// # Sync Flow
 ///
-/// **First request** (fresh sync or new session):
+/// **First request** (fresh sync):
 /// ```json
 /// {
-///   "recipient_address": "0x...",
-///   "decryption_key": "0x...",
+///   "sender_address": "0x...",
+///   "viewing_key": "0x...",
 ///   "last_known_block": "0x..."  // Optional: for reorg detection
 /// }
 /// ```
@@ -29,22 +23,21 @@ pub const MAX_READS_CAP: u32 = 100;
 /// **Subsequent requests** (pagination within same session):
 /// ```json
 /// {
-///   "recipient_address": "0x...",
-///   "decryption_key": "0x...",
+///   "sender_address": "0x...",
+///   "viewing_key": "0x...",
 ///   "block_ref": "0x...",  // From previous response
 ///   "cursor": { ... }      // From previous response
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IncomingSyncRequest {
-    /// The recipient's address.
-    pub recipient_address: Felt,
-    /// The recipient's private viewing key.
-    pub decryption_key: Felt,
+pub struct OutgoingSyncRequest {
+    /// The sender's address.
+    pub sender_address: Felt,
+    /// The sender's private viewing key.
+    pub viewing_key: Felt,
     /// Block hash for reorg detection. Set on first request of a new sync
     /// session to the `block_hash` from your last completed sync.
     /// Server returns 409 if this block was reorged out.
-    /// Leave empty on pagination requests or fresh syncs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_known_block: Option<Felt>,
     /// Block hash to query state at. Ensures consistent reads across
@@ -61,14 +54,14 @@ pub struct IncomingSyncRequest {
     pub max_reads: Option<u32>,
 }
 
-/// Response body for POST /v1/sync/incoming_state.
+/// Response body for POST /v1/sync/outgoing_state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IncomingSyncResponse {
+pub struct OutgoingSyncResponse {
     /// Block hash pinning all reads in this response. Pass back as
     /// `block_ref` in subsequent requests for consistency.
     pub block_ref: Felt,
-    /// Discovered channel results, keyed by sender address.
-    pub channels: HashMap<Felt, ChannelOutput>,
+    /// Discovered outgoing channel results, keyed by recipient address.
+    pub channels: HashMap<Felt, OutgoingChannelOutput>,
     /// Updated cursor for continuation. Pass back as `cursor` in next request.
     pub cursor: DiscoveryCursor,
 }

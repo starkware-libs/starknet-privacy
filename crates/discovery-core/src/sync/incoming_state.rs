@@ -216,10 +216,7 @@ mod tests {
         // Step 1: budget = COST_NUM_CHANNELS (1)
         // Fetches total_n_channels = 1. No budget left for channel discovery.
         let budget = IoBudget::new(COST_NUM_CHANNELS);
-        let cursor = DiscoveryCursor {
-            discover_channels: true,
-            ..Default::default()
-        };
+        let cursor = DiscoveryCursor::default();
         let out = sync_incoming_state(&backend, recipient, &decryption_key, cursor, &budget)
             .await
             .unwrap();

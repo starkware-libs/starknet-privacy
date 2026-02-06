@@ -13,7 +13,14 @@ import { gzipSync } from "zlib";
 import { join, dirname } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
-import { Devnet, createDevnetTestEnv, type DevnetEnvironment } from "starknet-sdk/testing";
+import { constants } from "starknet";
+import { createPrivateTransfers } from "starknet-sdk";
+import {
+  Devnet,
+  type DevnetEnvironment,
+  CallMockProofProvider,
+  ContractDiscoveryProvider,
+} from "starknet-sdk/testing";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "../..");
@@ -21,8 +28,29 @@ const repoRoot = join(__dirname, "../..");
 const DISCOVERY_CORE_FIXTURES = join(repoRoot, "crates/discovery-core/tests/fixtures");
 const DISCOVERY_SERVICE_FIXTURES = join(repoRoot, "crates/discovery-service/tests/fixtures");
 
+const ALICE_VIEWING_KEY = BigInt("0xA11CE");
+const BOB_VIEWING_KEY = BigInt("0xB0B");
+
 const devnet = new Devnet();
-const { env, transfers } = await createDevnetTestEnv(devnet);
+const env = await devnet.initialize();
+const chainId = constants.StarknetChainId.SN_SEPOLIA;
+
+const transfers = {
+  alice: createPrivateTransfers({
+    account: env.alice,
+    viewingKeyProvider: { getViewingKey: () => ALICE_VIEWING_KEY },
+    provingProvider: new CallMockProofProvider(env.provider, chainId),
+    discoveryProvider: new ContractDiscoveryProvider(env.privacy),
+    poolContractAddress: env.privacy.address,
+  }),
+  bob: createPrivateTransfers({
+    account: env.bob,
+    viewingKeyProvider: { getViewingKey: () => BOB_VIEWING_KEY },
+    provingProvider: new CallMockProofProvider(env.provider, chainId),
+    discoveryProvider: new ContractDiscoveryProvider(env.privacy),
+    poolContractAddress: env.privacy.address,
+  }),
+};
 
 // Approve STRK spending for alice
 await env.alice.execute({
@@ -64,11 +92,6 @@ console.log("Scenario complete, generating fixtures...");
 
 const spawnTimestamp = Math.floor(Date.now() / 1000);
 
-// Extract alice's private key from the Account signer (Signer.pk is protected)
-const alicePk = (env.alice.signer as any).pk as Uint8Array | string;
-const rawHex = typeof alicePk === "string" ? alicePk : Buffer.from(alicePk).toString("hex");
-const alicePrivateKey = rawHex.startsWith("0x") ? rawHex : "0x" + rawHex;
-
 // All dumps happen while devnet is still running — no race conditions.
 await dumpContractState(env, join(DISCOVERY_CORE_FIXTURES, "devnet-state.json"));
 await dumpDevnet(devnet.url, DISCOVERY_SERVICE_FIXTURES);
@@ -79,7 +102,7 @@ writeFileSync(
       timestamp: spawnTimestamp,
       contract_address: env.privacy.address,
       alice_address: env.alice.address,
-      alice_private_key: alicePrivateKey,
+      alice_viewing_key: "0x" + ALICE_VIEWING_KEY.toString(16),
     },
     null,
     2
@@ -121,9 +144,9 @@ async function dumpContractState(
     constants: {
       contract_address: env.privacy.address,
       alice_address: env.alice.address,
-      alice_viewing_key: "0xa11ce",
+      alice_viewing_key: "0x" + ALICE_VIEWING_KEY.toString(16),
       bob_address: env.bob.address,
-      bob_viewing_key: "0xb0b",
+      bob_viewing_key: "0x" + BOB_VIEWING_KEY.toString(16),
       admin_address: env.admin.address,
       eth_token: env.eth,
       strk_token: env.strk,
