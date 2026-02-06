@@ -37,9 +37,9 @@ The service works with soft finality to provide updates as soon as possible. All
 
 For use cases requiring stronger finality, clients should wait for L1 confirmation before acting on discovered notes.
 
-## 6.5 Incoming Notes Discovery Endpoint
+## 6.5 Incoming State Sync Endpoint
 
-`POST /v1/discovery/incoming/sync`
+`POST /v1/sync/incoming_state`
 
 A unified endpoint that discovers channels, subchannels, and notes in one call with a composite cursor. This is the primary endpoint for incoming notes discovery.
 
@@ -52,22 +52,24 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
   "last_known_block": "0x...",
   "block_ref": "0x...",
   "cursor": {
+    "skip_channel_discovery": false,
     "total_n_channels": 100,
     "last_channel_index": 5,
     "channels": {
-      "0x_channel_key": {
-        "sender_addr": "0x...",
-        "total_n_subchannels": 10,
+      "0x_sender_addr": {
+        "channel_key": "0x...",
+        "skip_subchannel_discovery": true,
         "last_subchannel_index": 2,
         "subchannels": {
           "0x_token_address": {
-            "last_note_index": 3
+            "last_note_index": 3,
+            "max_note_index": 10
           }
         }
       }
     }
   },
-  "max_reads": 1000
+  "max_reads": 50
 }
 ```
 
@@ -78,18 +80,20 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
 - `last_known_block`: Block hash from last completed sync session. Used for reorg detection on the first request of a new session. Server returns `409 BLOCK_REORGED` if this block is no longer canonical. Omit on fresh syncs or pagination requests.
 - `block_ref`: Block hash to query state at. Ensures consistent reads across paginated requests. Omit on first request (server resolves current head and returns it in the response).
 - `cursor`: Discovery pagination state (see below). Omit or send `{}` on first request.
-- `max_reads`: Maximum number of storage reads per request. Defaults to 1000, capped at 5000.
+- `max_reads`: Maximum number of storage reads per request. Defaults to 50, capped at 100.
 
 **Cursor fields:**
 
+- `skip_channel_discovery`: When `true`, only processes channels already in the cursor — use this after channel discovery is complete. Defaults to `false`.
 - `total_n_channels`: Cached total channel count. Populated by the server after the first channel-count fetch. Avoids re-fetching on subsequent pages.
 - `last_channel_index`: Last fully processed channel index. Omit to start from the beginning.
-- `channels`: Map of in-progress channels keyed by channel key. Each channel entry contains:
-  - `sender_addr`: Sender address for this channel.
-  - `total_n_subchannels`: Cached total subchannel count for this channel.
+- `channels`: Map of in-progress channels keyed by **sender address**. Each channel entry contains:
+  - `channel_key`: The channel key for this channel.
+  - `skip_subchannel_discovery`: When `true`, only processes subchannels already in the cursor (skips discovery of new subchannels).
   - `last_subchannel_index`: Last fully processed subchannel index.
   - `subchannels`: Map of in-progress subchannels keyed by token address, each with:
-    - `last_note_index`: Last fully processed note index.
+    - `last_note_index`: Last scanned note index.
+    - `max_note_index`: Last index confirmed to exist by exponential probe. Linear scan reads notes up to this index. Re-probe triggers when `last_note_index == max_note_index`.
 
 All cursor fields are optional and omitted when empty/null, keeping the cursor compact.
 
@@ -99,38 +103,23 @@ All cursor fields are optional and omitted when empty/null, keeping the cursor c
 {
   "block_ref": "0x...",
   "channels": {
-    "0x_channel_key_1": {
-      "sender_addr": "0x...",
+    "0x_sender_addr": {
+      "channel_key": "0x...",
       "subchannels": {
-        "0x_token_address_1": [
-          { "index": 1, "note_id": "0x...", "amount": 1000 }
+        "0x_token_address": [
+          { "index": 1, "note_id": "0x...", "amount": 1000, "salt": 42 }
         ]
       }
     }
   },
-  "cursor": {
-    "total_n_channels": 100,
-    "last_channel_index": 10,
-    "channels": {
-      "0x_channel_key_1": {
-        "sender_addr": "0x...",
-        "total_n_subchannels": 5,
-        "last_subchannel_index": 3,
-        "subchannels": {
-          "0x_token_address_1": {
-            "last_note_index": 10
-          }
-        }
-      }
-    }
-  }
+  "cursor": { "..." }
 }
 ```
 
 **Response fields:**
 
 - `block_ref`: Block hash pinning all reads in this response. Pass back as-is on pagination requests. Use as `last_known_block` for the next sync session.
-- `channels`: Discovered data for this page — channels with their subchannels and decrypted notes.
+- `channels`: Discovered data for this page, keyed by **sender address**. Each channel contains `channel_key` and `subchannels` (a map of token address to arrays of decrypted notes). Each note has `index`, `note_id`, `amount`, and `salt`.
 - `cursor`: Updated pagination state. Pass back as-is on the next request.
 
 **Completion detection:** Discovery is complete when `cursor.channels` is empty (all channels and subchannels have been fully processed and pruned from the cursor).
@@ -143,35 +132,77 @@ All cursor fields are optional and omitted when empty/null, keeping the cursor c
 
 **Future: Note filtering.** For each decrypted note, the service will derive the nullifier and check if it exists in contract state. Only unspent notes (those whose nullifier does not exist) will be included in the response. This is not yet implemented.
 
-## 6.6 Outgoing Channel Sync Endpoint
+## 6.6 Outgoing State Sync Endpoint
 
-Whenever a user wants to make a private transfer there are several things to determine:
+`POST /v1/sync/outgoing_state`
 
-1. Is the sender registered in the pool?
-2. Is the receiver registered in the pool?
-3. Is there an existing outgoing channel for the destination address?
-4. Is there an existing subchannel for the target token?
-5. What is the latest note index in that subchannel (if it exists)?
-
-The channel key is computed on the client using the viewing key. This avoids sending additional secrets to the service.
-
-Typically users should have this information cached locally but in case there's a need to recover it, the following method would do all the checks and encrypted note discovery.
-
-`POST /v1/discovery/outgoing/sync`
+Discovers all outgoing channels for a sender, their subchannels, and the last note index in each subchannel. Uses the same cursor structure as the incoming endpoint, but channels are keyed by **recipient address** and subchannels contain `last_note_index` (the last used note index) instead of decrypted notes.
 
 **Request:**
 
 ```json
 {
-  "sender_addr": "0x...",
-  "recipient_addr": "0x...",
-  "channel_key": "0x...",
-  "token_address": "0x...",
+  "sender_address": "0x...",
+  "viewing_key": "0x...",
+  "last_known_block": "0x...",
   "block_ref": "0x...",
   "cursor": {
-    "start_note_index": 0
+    "skip_channel_discovery": false,
+    "total_n_channels": null,
+    "last_channel_index": null,
+    "channels": {}
   },
-  "max_reads": 1000
+  "max_reads": 50
+}
+```
+
+**Top-level request fields:**
+
+- `sender_address`: The sender's Starknet address.
+- `viewing_key`: The sender's private viewing key (used to derive outgoing channel IDs and decrypt recipient addresses).
+- `last_known_block`, `block_ref`, `cursor`, `max_reads`: Same semantics as incoming (§6.5).
+
+**Response:**
+
+```json
+{
+  "block_ref": "0x...",
+  "channels": {
+    "0x_recipient_addr": {
+      "channel_key": "0x...",
+      "subchannels": {
+        "0x_token_address": 5
+      }
+    }
+  },
+  "cursor": { "..." }
+}
+```
+
+**Response fields:**
+
+- `block_ref`: Block hash pinning all reads.
+- `channels`: Discovered outgoing channels keyed by **recipient address**. Each channel contains:
+  - `channel_key`: The channel key for this outgoing channel.
+  - `subchannels`: Map of token address to `Option<u64>` — the last used note index (`null` if subchannel has no notes yet).
+- `cursor`: Updated pagination state (same structure as incoming cursor).
+
+**Completion detection:** Same as incoming — `cursor.channels` empty means all outgoing channels are fully discovered.
+
+## 6.7 Preflight Endpoint
+
+`POST /v1/discovery/preflight`
+
+Checks what setup is needed before a sender can transfer a specific token to a specific recipient. Returns three boolean flags indicating the current setup state. Always queries at the latest indexed head (no `block_ref`/cursor — constant scope of at most 4 storage reads).
+
+**Request:**
+
+```json
+{
+  "sender_address": "0x...",
+  "viewing_key": "0x...",
+  "recipient": "0x...",
+  "token": "0x..."
 }
 ```
 
@@ -179,24 +210,28 @@ Typically users should have this information cached locally but in case there's 
 
 ```json
 {
-  "head": { "block_number": 123456, "block_hash": "0x..." },
+  "block_ref": "0x...",
   "sender_registered": true,
-  "receiver_registered": true,
   "channel_exists": true,
-  "subchannel_exists": true,
-  "total_n_notes": 57,
-  "cursor": {
-    "start_note_index": 57
-  },
-  "stats": { "reads_used": 100 }
+  "subchannel_exists": true
 }
 ```
 
-**Completion detection:** Client computes done status: `cursor.start_note_index >= total_n_notes`.
+**Response fields:**
 
-**Current limitation:** This endpoint supports a single receiver/token pair per request. Future versions may support batch queries for multiple receivers to enable mass payout scenarios.
+- `block_ref`: Block hash pinning the reads.
+- `sender_registered`: Whether the sender has a public key registered on-chain. If `false`, the remaining flags are always `false` (can't derive channel key without sender registration).
+- `channel_exists`: Whether the channel from sender to recipient exists. Requires both sender and recipient to be registered. If the recipient is not registered, this is `false`.
+- `subchannel_exists`: Whether the token subchannel exists within the channel. Only `true` when both `sender_registered` and `channel_exists` are `true`.
 
-## 6.7 History Endpoint (Not Yet Specified)
+**Algorithm (4 direct storage lookups, no scanning):**
+
+1. `get_public_key(sender)` → if zero: `sender_registered=false`, done.
+2. `get_public_key(recipient)` → if zero: `channel_exists=false`, done.
+3. Derive `channel_key` + `channel_marker` → `channel_exists(marker)` → if false: `channel_exists=false`, done.
+4. Derive `subchannel_marker` → `subchannel_exists(marker)`.
+
+## 6.8 History Endpoint (Not Yet Specified)
 
 `POST /v1/discovery/history`
 

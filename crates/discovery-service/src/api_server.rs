@@ -17,6 +17,7 @@ use tracing::{info, warn};
 use crate::chain_state::{ChainHead, ChainState};
 use crate::incoming_sync::incoming_sync_handler;
 use crate::outgoing_sync::outgoing_sync_handler;
+use crate::preflight::preflight_handler;
 
 /// Configuration for the API server.
 #[derive(Debug, Clone)]
@@ -69,6 +70,7 @@ where
             .route("/health", get(health_handler::<B>))
             .route("/v1/sync/incoming_state", post(incoming_sync_handler::<B>))
             .route("/v1/sync/outgoing_state", post(outgoing_sync_handler::<B>))
+            .route("/v1/discovery/preflight", post(preflight_handler::<B>))
             // TODO: Implement POST /v1/discovery/history endpoint (spec 6.7)
             .with_state(app_state);
 

@@ -144,7 +144,7 @@ async fn process_channel<S: IViews>(
         }
     }
 
-    let fully_done = cursor.total_n_subchannels.is_some() && cursor.subchannels.is_empty();
+    let fully_done = cursor.skip_subchannel_discovery && cursor.subchannels.is_empty();
 
     Ok(ChannelResult {
         sender_addr,

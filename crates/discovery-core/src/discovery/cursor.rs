@@ -40,10 +40,10 @@ pub struct ChannelCursor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_key: Option<Felt>,
 
-    /// Total number of subchannels (cached when sentinel is found).
-    /// When set, subchannel discovery is skipped entirely — zero budget cost.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub total_n_subchannels: Option<u64>,
+    /// Skip subchannel discovery. When `true`, only processes subchannels
+    /// already in the cursor. Defaults to `false` (discover new subchannels).
+    #[serde(default)]
+    pub skip_subchannel_discovery: bool,
 
     /// Last fully processed subchannel index. `None` = start from index 0.
     #[serde(default, skip_serializing_if = "Option::is_none")]

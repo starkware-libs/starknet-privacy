@@ -11,5 +11,6 @@ pub mod chain_state;
 pub mod incoming_sync;
 pub mod indexer;
 pub mod outgoing_sync;
+pub mod preflight;
 pub mod rpc_backend;
 pub mod shutdown;

@@ -1,4 +1,4 @@
-//! API server tests: health endpoint, incoming sync, outgoing sync.
+//! API server tests: health endpoint, incoming sync, outgoing sync, preflight.
 //!
 //! Run with: `cargo test -p discovery-service --test api_tests`
 //!
@@ -15,6 +15,7 @@ use common::{
 use discovery_service::api_server::HealthResponse;
 use discovery_service::incoming_sync::{IncomingSyncRequest, MAX_READS_CAP};
 use discovery_service::outgoing_sync::OutgoingSyncRequest;
+use discovery_service::preflight::PreflightRequest;
 use starknet_core::types::Felt;
 
 #[tokio::test]
@@ -282,6 +283,60 @@ async fn test_outgoing_sync_pagination() {
         2,
         "Should discover all 2 channels across pages"
     );
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_preflight_basic() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    // Alice→Bob for STRK: all setup complete
+    let resp = indexer
+        .preflight(&PreflightRequest {
+            sender_address: metadata.alice_address,
+            viewing_key: metadata.alice_viewing_key,
+            recipient: metadata.bob_address,
+            token: metadata.strk_token,
+        })
+        .await
+        .unwrap();
+
+    assert!(resp.sender_registered);
+    assert!(resp.channel_exists);
+    assert!(resp.subchannel_exists);
+
+    // Alice→unknown: recipient not registered, so channel/subchannel can't exist
+    let resp2 = indexer
+        .preflight(&PreflightRequest {
+            sender_address: metadata.alice_address,
+            viewing_key: metadata.alice_viewing_key,
+            recipient: Felt::from_hex_unchecked("0xdead"),
+            token: metadata.strk_token,
+        })
+        .await
+        .unwrap();
+
+    assert!(resp2.sender_registered);
+    assert!(!resp2.channel_exists);
+    assert!(!resp2.subchannel_exists);
+
+    // Random unregistered sender → all three false
+    let resp3 = indexer
+        .preflight(&PreflightRequest {
+            sender_address: Felt::from_hex_unchecked("0xdead"),
+            viewing_key: Felt::from_hex_unchecked("0xbad"),
+            recipient: metadata.bob_address,
+            token: metadata.strk_token,
+        })
+        .await
+        .unwrap();
+
+    assert!(!resp3.sender_registered);
+    assert!(!resp3.channel_exists);
+    assert!(!resp3.subchannel_exists);
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();

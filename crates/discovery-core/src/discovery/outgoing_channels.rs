@@ -138,7 +138,7 @@ pub async fn discover_outgoing_channels_paginated<S: IViews>(
         let entry = cursor.channels.entry(ch.recipient_addr).or_insert_with(|| {
             super::cursor::ChannelCursor {
                 channel_key: None,
-                total_n_subchannels: None,
+                skip_subchannel_discovery: false,
                 last_subchannel_index: None,
                 subchannels: std::collections::HashMap::new(),
             }

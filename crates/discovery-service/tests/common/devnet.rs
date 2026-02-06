@@ -22,6 +22,9 @@ pub struct DumpMetadata {
     pub contract_address: Felt,
     pub alice_address: Felt,
     pub alice_viewing_key: Felt,
+    pub bob_address: Felt,
+    pub bob_viewing_key: Felt,
+    pub strk_token: Felt,
 }
 
 #[derive(Debug, Clone, Default)]

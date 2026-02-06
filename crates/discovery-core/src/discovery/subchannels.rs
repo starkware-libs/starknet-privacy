@@ -100,11 +100,11 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
 
 /// Discovers subchannels with cursor-based pagination.
 ///
-/// If `total_n_subchannels` is already set in the cursor (sentinel was found
+/// If `skip_subchannel_discovery` is set in the cursor (sentinel was found
 /// previously), returns an empty vec immediately — no budget consumed.
 ///
 /// Otherwise delegates to [`discover_subchannels`], adds new subchannels to the
-/// cursor, and sets `total_n_subchannels` once the sentinel is found.
+/// cursor, and sets `skip_subchannel_discovery` once the sentinel is found.
 pub async fn discover_subchannels_paginated<S: IViews>(
     pool: &S,
     channel_key: Felt,
@@ -112,7 +112,7 @@ pub async fn discover_subchannels_paginated<S: IViews>(
     budget: &IoBudget,
 ) -> Result<Vec<Subchannel>, DiscoveryError> {
     // Already fully enumerated — skip entirely.
-    if cursor.total_n_subchannels.is_some() {
+    if cursor.skip_subchannel_discovery {
         return Ok(Vec::new());
     }
 
@@ -128,7 +128,7 @@ pub async fn discover_subchannels_paginated<S: IViews>(
 
     // Sentinel found — cache the total count.
     if !result.has_more {
-        cursor.total_n_subchannels = Some(cursor.last_subchannel_index.map_or(0, |i| i + 1));
+        cursor.skip_subchannel_discovery = true;
     }
 
     Ok(result.subchannels)
@@ -295,7 +295,7 @@ mod tests {
 
         let mut cursor = ChannelCursor {
             channel_key: Some(channel_key),
-            total_n_subchannels: None,
+            skip_subchannel_discovery: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
         };
@@ -306,10 +306,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(subs.len(), 1, "should discover 1 subchannel (STRK)");
-        assert_eq!(
-            cursor.total_n_subchannels,
-            Some(1),
-            "total should be cached after sentinel"
+        assert!(
+            cursor.skip_subchannel_discovery,
+            "subchannel discovery should be marked complete after sentinel"
         );
         assert!(
             cursor
@@ -334,7 +333,7 @@ mod tests {
 
         let mut cursor = ChannelCursor {
             channel_key: Some(channel_key),
-            total_n_subchannels: None,
+            skip_subchannel_discovery: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
         };
@@ -344,7 +343,7 @@ mod tests {
         discover_subchannels_paginated(&backend, channel_key, &mut cursor, &budget)
             .await
             .unwrap();
-        assert!(cursor.total_n_subchannels.is_some());
+        assert!(cursor.skip_subchannel_discovery);
 
         // Second call: 0 budget — should return empty immediately
         let budget = IoBudget::new(0);
@@ -357,8 +356,8 @@ mod tests {
     }
 
     /// Both states have an empty subchannels map, but behavior differs:
-    /// - Fresh cursor (total_n_subchannels=None) → discovers subchannels
-    /// - Fully enumerated (total_n_subchannels=Some) → skips, zero budget cost
+    /// - Fresh cursor (skip_subchannel_discovery=false) → discovers subchannels
+    /// - Fully enumerated (skip_subchannel_discovery=true) → skips, zero budget cost
     #[tokio::test]
     async fn test_paginated_fresh_vs_fully_enumerated() {
         let fixture = load_devnet_fixture();
@@ -375,7 +374,7 @@ mod tests {
         // Fresh cursor: empty map + no total → should discover subchannels
         let mut fresh = ChannelCursor {
             channel_key: Some(channel_key),
-            total_n_subchannels: None,
+            skip_subchannel_discovery: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
         };
@@ -385,11 +384,11 @@ mod tests {
             .unwrap();
         assert_eq!(subs.len(), 1, "fresh cursor should discover subchannels");
 
-        // Fully enumerated cursor: empty map + total set → should skip entirely
+        // Fully enumerated cursor: empty map + skip=true → should skip entirely
         // (simulates state after all notes processed and entries pruned)
         let mut done = ChannelCursor {
             channel_key: Some(channel_key),
-            total_n_subchannels: Some(1),
+            skip_subchannel_discovery: true,
             last_subchannel_index: Some(0),
             subchannels: HashMap::new(),
         };

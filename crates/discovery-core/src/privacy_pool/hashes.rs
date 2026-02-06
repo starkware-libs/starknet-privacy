@@ -35,6 +35,14 @@ static NULLIFIER_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("NU
 static CHANNEL_KEY_TAG: LazyLock<Felt> =
     LazyLock::new(|| short_string_to_felt("CHANNEL_KEY_TAG:V1"));
 
+/// Domain separation tag for channel marker derivation.
+static CHANNEL_MARKER_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("CHANNEL_MARKER_TAG:V1"));
+
+/// Domain separation tag for subchannel marker derivation.
+static SUBCHANNEL_MARKER_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("SUBCHANNEL_MARKER_TAG:V1"));
+
 /// Domain separation tag for outgoing channel id derivation.
 static OUTGOING_CHANNEL_ID_TAG: LazyLock<Felt> =
     LazyLock::new(|| short_string_to_felt("OUTGOING_CHANNEL_ID_TAG:V1"));
@@ -157,6 +165,42 @@ pub fn compute_channel_key(
         **viewing_key,
         recipient_addr,
         recipient_public_key,
+    ])
+}
+
+/// Computes the channel marker for `channel_exists` storage lookup.
+///
+/// `channel_marker = hash(CHANNEL_MARKER_TAG, channel_key, sender_addr, recipient_addr, recipient_public_key)`
+pub fn compute_channel_marker(
+    channel_key: Felt,
+    sender_addr: Felt,
+    recipient_addr: Felt,
+    recipient_public_key: Felt,
+) -> Felt {
+    hash(&[
+        *CHANNEL_MARKER_TAG,
+        channel_key,
+        sender_addr,
+        recipient_addr,
+        recipient_public_key,
+    ])
+}
+
+/// Computes the subchannel marker for `subchannel_exists` storage lookup.
+///
+/// `subchannel_marker = hash(SUBCHANNEL_MARKER_TAG, channel_key, recipient_addr, recipient_public_key, token)`
+pub fn compute_subchannel_marker(
+    channel_key: Felt,
+    recipient_addr: Felt,
+    recipient_public_key: Felt,
+    token: Felt,
+) -> Felt {
+    hash(&[
+        *SUBCHANNEL_MARKER_TAG,
+        channel_key,
+        recipient_addr,
+        recipient_public_key,
+        token,
     ])
 }
 
@@ -308,6 +352,34 @@ mod tests {
         assert_eq!(
             compute_enc_recipient_addr_hash(f.inputs.sender, &key, f.inputs.index, f.inputs.salt),
             f.outputs.enc_recipient_addr_hash
+        );
+    }
+
+    #[test]
+    fn test_compute_channel_marker() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_channel_marker(
+                f.inputs.channel_key,
+                f.inputs.sender,
+                f.inputs.recipient,
+                f.inputs.recipient_public_key,
+            ),
+            f.outputs.channel_marker
+        );
+    }
+
+    #[test]
+    fn test_compute_subchannel_marker() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_subchannel_marker(
+                f.inputs.channel_key,
+                f.inputs.recipient,
+                f.inputs.recipient_public_key,
+                f.inputs.token,
+            ),
+            f.outputs.subchannel_marker
         );
     }
 }

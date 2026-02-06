@@ -189,7 +189,7 @@ pub async fn discover_incoming_channels_paginated<S: IViews>(
             .entry(channel.info.sender_addr)
             .or_insert(ChannelCursor {
                 channel_key: Some(channel.info.channel_key),
-                total_n_subchannels: None,
+                skip_subchannel_discovery: false,
                 last_subchannel_index: None,
                 subchannels: Default::default(),
             });

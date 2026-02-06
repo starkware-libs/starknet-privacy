@@ -32,6 +32,8 @@ pub struct OutgoingDiscoveryOutput {
 /// Discovered data for a single outgoing channel within a run.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutgoingChannelOutput {
+    /// The channel key for this outgoing channel.
+    pub channel_key: Felt,
     /// Last note index per subchannel, keyed by token address.
     pub subchannels: HashMap<Felt, Option<u64>>,
 }
@@ -129,11 +131,12 @@ async fn process_outgoing_channel<S: IViews>(
         }
     }
 
-    let fully_done = cursor.total_n_subchannels.is_some() && cursor.subchannels.is_empty();
+    let fully_done = cursor.skip_subchannel_discovery && cursor.subchannels.is_empty();
 
     Ok(OutgoingChannelResult {
         recipient_addr,
         output: OutgoingChannelOutput {
+            channel_key,
             subchannels: subchannel_results,
         },
         cursor: if fully_done { None } else { Some(cursor) },
