@@ -200,7 +200,7 @@ structure CreateNoteInfo (crypto: Crypto) (inp: CreateNoteInput) (m: Memory) whe
   memory_diff₁: m' .OpenNoteToken [inp.note_id crypto] = if inp.r = 1 then inp.token else 0
   events₀: inp.r ≠ 1 → (create_note crypto inp m |> process_action crypto m).events = [.None]
   events₁: inp.r = 1 → (create_note crypto inp m |> process_action crypto m).events = [
-    .CreateOpenNote (inp.note_id crypto) (crypto.enc crypto.council_pub_key [inp.addralice])]
+    .CreateOpenNote (inp.note_id crypto) (crypto.enc crypto.council_pub_key [inp.addrbob])]
 
 def create_note_info
   (crypto: Crypto) (inp: CreateNoteInput) (m: Memory)
