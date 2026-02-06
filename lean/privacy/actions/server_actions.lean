@@ -3,7 +3,10 @@ import privacy.utils
 inductive Event where
   | Register (addralice kalice: ℕ)
   | CreateOpenNote (note_id user_enc: ℕ)
+  | UseNote (nullifier: ℕ)
+  | Withdraw (user_enc amount token: ℕ)
   | None
+deriving DecidableEq
 
 inductive ServerAction where
   -- Writes `val` at `(t, key)`.

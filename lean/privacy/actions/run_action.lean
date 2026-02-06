@@ -9,6 +9,7 @@ abbrev run_action₀ (crypto: Crypto) (action: Action) (m: Memory) : List Server
     | .CreateNote inp => create_note crypto inp m
     | .UseNote inp => use_note crypto inp m
     | .OpenDeposit inp => open_deposit crypto inp m
+    | .Withdraw inp => withdraw crypto inp m
 
 def run_action (crypto: Crypto) (action: Action) (m: Memory) : RunResult :=
   run_action₀ crypto action m |> process_action crypto m

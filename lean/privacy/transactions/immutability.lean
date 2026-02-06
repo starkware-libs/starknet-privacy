@@ -82,6 +82,8 @@ theorem immutability₀ (crypto: Crypto) (m: Memory) (action: Action) (t: Memory
     rw [run_action, ←info.h_m',
       info.no_change _ _ (λ h' ↦ by rw [Prod.mk.injEq] at h'; simp [h'] at h_t)]
 
+  case Withdraw inp => trivial
+
 -- Once a value is non-zero in certain memory spaces, it cannot change.
 theorem immutability {crypto: Crypto} {rm rm': ReachableMemory crypto}
     (h_extends: rm'.extends rm)
@@ -318,6 +320,7 @@ theorem run_action₀_immutable
   case CreateNote inp => exact create_note_immutable inp imm.imm₂ imm.imm₅ success
   case UseNote inp => exact use_note_immutable inp imm.imm₂ imm.imm₆ success
   case OpenDeposit inp => trivial
+  case Withdraw inp => trivial
 
 theorem ImmutableCells.of_extends
     (crypto: Crypto) {rm rm': ReachableMemory crypto}

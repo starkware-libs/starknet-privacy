@@ -10,6 +10,7 @@ def Action.check_owner (action: Action) (owner: ℕ) : Prop :=
   | .CreateNote inp => inp.addralice = owner
   | .UseNote inp => inp.addrbob = owner
   | .OpenDeposit _ => true
+  | .Withdraw inp => inp.addralice = owner
 
 structure ActionFuncRes where
   (token amount owner: ℕ)
@@ -19,6 +20,9 @@ def ActionFuncRes.from_create (inp: CreateNoteInput) : ActionFuncRes :=
 
 def ActionFuncRes.from_use (inp: UseNoteInput) : ActionFuncRes :=
   { token := inp.token, amount := inp.amount, owner := inp.addrbob }
+
+def ActionFuncRes.from_withdraw (inp: WithdrawInput) : ActionFuncRes :=
+  { token := inp.token, amount := inp.amount, owner := inp.addralice }
 
 structure ActionFunc where
   f: Action → Option ActionFuncRes
@@ -68,6 +72,19 @@ def ActionFunc.use : ActionFunc := {
     all_goals contradiction
 }
 
+def ActionFunc.withdraw : ActionFunc := {
+  f := λ (a: Action) ↦ (filter_Withdraw a).map ActionFuncRes.from_withdraw,
+  h_owner := by
+    intro action res h_some owner'
+    simp only [filter_Withdraw, Option.map_eq_some_iff, Action.check_owner] at h_some ⊢
+    obtain ⟨action', h_some, h_some'⟩ := h_some
+    cases action
+    case Withdraw inp =>
+      simp only [Option.some.injEq] at h_some
+      rw [←h_some', ActionFuncRes.from_withdraw, h_some]
+    all_goals contradiction
+}
+
 def Transaction₀.sum_amounts (tx: Transaction₀) (f: ActionFunc) (token: ℕ) : ℕ :=
   tx.actions
   |>.filterMap f.f
@@ -81,10 +98,15 @@ abbrev Transaction₀.sum_create_note_amounts (tx: Transaction₀) (token: ℕ) 
 abbrev Transaction₀.sum_use_note_amounts (tx: Transaction₀) (token: ℕ) : ℕ :=
   tx.sum_amounts .use token
 
+abbrev Transaction₀.sum_withdraw_amounts (tx: Transaction₀) (token: ℕ) : ℕ :=
+  tx.sum_amounts .withdraw token
+
 structure Transaction extends TimedTransaction where
   owner: ℕ
   h_owner: ∀ action ∈ actions, action.check_owner owner
-  h_balance: ∀ token, toTransaction₀.sum_create_note_amounts token = toTransaction₀.sum_use_note_amounts token
+  h_balance: ∀ token, toTransaction₀.sum_create_note_amounts token =
+    toTransaction₀.sum_use_note_amounts token
+    -- TODO: Add toTransaction₀.sum_withdraw_amounts token.
 
 structure SuccessfulTransactions (crypto: Crypto) where
   txs: List Transaction
@@ -104,6 +126,27 @@ abbrev SuccessfulTransactions.rm {crypto: Crypto} (stxs: SuccessfulTransactions 
       rw [←h]
       exact rm.success
   }
+
+theorem SuccessfulTransactions.induction
+    (prop: SuccessfulTransactions crypto → Prop)
+    (empty: prop { txs := [], success := (by trivial) })
+    (succ:
+      ∀ (stxs₀ stxs₁: SuccessfulTransactions crypto) (tx: Transaction),
+      stxs₁.txs = tx :: stxs₀.txs → prop stxs₀ → prop stxs₁) :
+    ∀ stxs: SuccessfulTransactions crypto, prop stxs := by
+  intro stxs
+  induction h: stxs.txs generalizing stxs
+  case nil => convert empty
+  case cons tx txs ih =>
+    have ⟨success₀, past_m, h₀, h₁, h₂, h₃⟩ := run_transactions_add_tx crypto (txs.map Transaction.toTimedTransaction) tx.toTimedTransaction (by
+      have := stxs.success
+      rw [h, List.map_cons] at this
+      exact this
+    )
+
+    apply succ ⟨txs, success₀⟩ stxs tx (by rw [h])
+    apply ih
+    rfl
 
 theorem Transaction.sum_create_note_amounts_eq_nonopen
     {crypto: Crypto} (stxs: SuccessfulTransactions crypto)
