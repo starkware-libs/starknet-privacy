@@ -138,14 +138,14 @@ theorem ChannelImplies.from_action
 theorem ChannelImplies.from_channel_markers
     {crypto: Crypto} {rm: ReachableMemory crypto} {c addralice addrbob Kbob: ℕ}
     (h: rm.m .ChannelMarkers [crypto.hash [c, addralice, addrbob, Kbob]] ≠ 0) :
-    ∃ (kalice s r: ℕ) (res: ChannelImplies rm ⟨addralice, kalice, addrbob, Kbob, s, r⟩),
+    ∃ (kalice q r: ℕ) (res: ChannelImplies rm ⟨addralice, kalice, addrbob, Kbob, q, r⟩),
     res.c = c := by
-  suffices h' : ∃ kalice s r: ℕ,
-      (.OpenChannel ⟨addralice, kalice, addrbob, Kbob, s, r⟩) ∈ rm.actions ∧
+  suffices h' : ∃ kalice q r: ℕ,
+      (.OpenChannel ⟨addralice, kalice, addrbob, Kbob, q, r⟩) ∈ rm.actions ∧
       c = crypto.hash [addralice, kalice, addrbob, Kbob] from by
-    obtain ⟨kalice, s, r, h'⟩ := h'
+    obtain ⟨kalice, q, r, h'⟩ := h'
     have ⟨res⟩ := ChannelImplies.from_action h'.1
-    use kalice, s, r, res
+    use kalice, q, r, res
     simp [ChannelImplies.c, OpenChannelInput.c, h'.2]
 
   revert rm
@@ -162,7 +162,7 @@ theorem ChannelImplies.from_channel_markers
     by_cases h_is_same: c = inp.c crypto ∧ addralice = inp.addralice ∧ addrbob = inp.addrbob ∧ Kbob = inp.Kbob
     case pos =>
       simp only [h_is_same]
-      use inp.kalice, inp.s, inp.r, by simp
+      use inp.kalice, inp.q, inp.r, by simp
     case neg =>
       rw [info.no_change _ _  (by
         simp only [ne_eq, Prod.mk.injEq, reduceCtorEq, List.cons.injEq, and_true, false_and,
@@ -172,12 +172,12 @@ theorem ChannelImplies.from_channel_markers
         repeat injection h' with _ h'
         simp [*] at h_is_same
       )] at h
-      have ⟨kalice, s, r, ⟨h_actions, h_c⟩⟩ := ih h
-      use kalice, s, r, by simp [h_actions]
+      have ⟨kalice, q, r, ⟨h_actions, h_c⟩⟩ := ih h
+      use kalice, q, r, by simp [h_actions]
 
   all_goals
-    have ⟨kalice, s, r, ⟨h_actions, h_c⟩⟩ := ih h
-    use kalice, s, r, by simp [h_actions]
+    have ⟨kalice, q, r, ⟨h_actions, h_c⟩⟩ := ih h
+    use kalice, q, r, by simp [h_actions]
 
 theorem ChannelImplies.same_c
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenChannelInput}
@@ -206,5 +206,5 @@ theorem ChannelImplies.from_channel_exists
     ∃ (inp: OpenChannelInput) (channel_imp: ChannelImplies rm inp),
     channel_imp.c = c := by
   replace ⟨addralice, addrbob, Kbob, h⟩ := h
-  have ⟨kalice, s, r, ⟨channel_imp, h_c⟩⟩ := ChannelImplies.from_channel_markers h
-  use ⟨addralice, kalice, addrbob, Kbob, s, r⟩, channel_imp
+  have ⟨kalice, q, r, ⟨channel_imp, h_c⟩⟩ := ChannelImplies.from_channel_markers h
+  use ⟨addralice, kalice, addrbob, Kbob, q, r⟩, channel_imp

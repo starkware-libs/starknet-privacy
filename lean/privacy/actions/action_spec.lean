@@ -24,7 +24,7 @@ def register (crypto: Crypto) (inp: RegisterInput) (_: Memory) : List ServerActi
 structure OpenChannelInput where
   (addralice kalice addrbob Kbob: ℕ)
   -- Outgoing channel index and random blinding value.
-  (s r: ℕ)
+  (q r: ℕ)
 
 abbrev OpenChannelInput.c (crypto: Crypto) (inp: OpenChannelInput) : ℕ :=
   crypto.hash [inp.addralice, inp.kalice, inp.addrbob, inp.Kbob]
@@ -36,17 +36,17 @@ abbrev OpenChannelInput.channel_marker (crypto: Crypto) (inp: OpenChannelInput) 
   crypto.hash [inp.c crypto, inp.addralice, inp.addrbob, inp.Kbob]
 
 abbrev OpenChannelInput.prev_outgoing_channel_id (crypto: Crypto) (inp: OpenChannelInput) : ℕ :=
-  crypto.hash [inp.addralice, inp.kalice, inp.s - 1]
+  crypto.hash [inp.addralice, inp.kalice, inp.q - 1]
 
 abbrev OpenChannelInput.outgoing_channel_id (crypto: Crypto) (inp: OpenChannelInput) : ℕ :=
-  crypto.hash [inp.addralice, inp.kalice, inp.s]
+  crypto.hash [inp.addralice, inp.kalice, inp.q]
 
 abbrev OpenChannelInput.enc_addrbob (crypto: Crypto) (inp: OpenChannelInput) : ℕ :=
-  crypto.hash [inp.addralice, inp.kalice, inp.s, inp.r] + inp.addrbob
+  crypto.hash [inp.addralice, inp.kalice, inp.q, inp.r] + inp.addrbob
 
 def open_channel (crypto: Crypto) (inp: OpenChannelInput) (m: Memory) : List ServerAction × Bool :=
   let alice_registered := m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
-  let prev_outgoing_exists := inp.s = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
+  let prev_outgoing_exists := inp.q = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
   ([
     .ReadAssert .PublicKeys [inp.addrbob] inp.Kbob,
     .Append .ChannelsJ .Channels [inp.addrbob] (inp.enc crypto) (by simp),
