@@ -65,9 +65,11 @@ pub struct SubchannelCursor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_note_index: Option<u64>,
 
-    /// First index where no note exists (sentinel).
-    /// - Incoming: not used.
-    /// - Outgoing: upper bound (hi) for exponential search; `Some` = bisection phase.
+    /// - Incoming: last index confirmed to exist by exponential probe. Linear
+    ///   scan reads notes up to this index. Kept after scan — used to bound the
+    ///   next exponential probe range (`max_note_index * 2`). Re-probe triggers
+    ///   when `last_note_index == max_note_index`.
+    /// - Outgoing: first index confirmed empty (hi); `Some` = bisection phase.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_note_index: Option<u64>,
 }

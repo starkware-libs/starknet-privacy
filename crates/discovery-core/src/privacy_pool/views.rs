@@ -53,6 +53,31 @@ pub trait IViews: Send + Sync {
 
     /// Returns the compliance public key.
     async fn get_compliance_public_key(&self) -> Result<Felt, StorageError>;
+
+    /// Batch-reads channel info for `count` consecutive channels starting at `start_index`.
+    ///
+    /// Returns a `Vec<EncChannelInfo>` of length `count`, fetched in a single `read_slots` call.
+    async fn get_channel_info_batch(
+        &self,
+        recipient_addr: Felt,
+        start_index: u64,
+        count: usize,
+    ) -> Result<Vec<EncChannelInfo>, StorageError>;
+
+    /// Batch-reads packed note values for the given note IDs.
+    ///
+    /// Returns a `Vec<Felt>` matching the input length. Zero = note doesn't exist.
+    async fn get_notes_batch(&self, note_ids: &[Felt]) -> Result<Vec<Felt>, StorageError>;
+
+    /// Batch-reads packed note amounts and nullifier existence.
+    ///
+    /// Returns `(packed_amounts, nullifier_exists)`.
+    /// Both vectors match the lengths of their respective inputs.
+    async fn get_note_and_nullifier_batch(
+        &self,
+        note_ids: &[Felt],
+        nullifiers: &[Felt],
+    ) -> Result<(Vec<Felt>, Vec<bool>), StorageError>;
 }
 
 /// Checks that `values` has exactly `expected` elements, returning
@@ -181,5 +206,86 @@ impl<T: RawStorageAccess> IViews for T {
     async fn get_compliance_public_key(&self) -> Result<Felt, StorageError> {
         let slot = storage_slots::compliance_public_key();
         self.read_slot(slot).await
+    }
+
+    #[tracing::instrument(
+        name = "get_channel_info_batch",
+        level = "debug",
+        skip(self),
+        fields(count)
+    )]
+    async fn get_channel_info_batch(
+        &self,
+        recipient_addr: Felt,
+        start_index: u64,
+        count: usize,
+    ) -> Result<Vec<EncChannelInfo>, StorageError> {
+        let mut slots = Vec::with_capacity(count * 3);
+        for i in 0..count {
+            let idx = start_index + i as u64;
+            let s = storage_slots::recipient_channels_element(recipient_addr, idx);
+            slots.push(s.ephemeral_pubkey);
+            slots.push(s.enc_channel_key);
+            slots.push(s.enc_sender_addr);
+        }
+        let values = self.read_slots(slots).await?;
+        check_slots_len(&values, count * 3)?;
+        let mut result = Vec::with_capacity(count);
+        for chunk in values.chunks_exact(3) {
+            result.push(EncChannelInfo {
+                ephemeral_pubkey: chunk[0],
+                enc_channel_key: chunk[1],
+                enc_sender_addr: chunk[2],
+            });
+        }
+        Ok(result)
+    }
+
+    #[tracing::instrument(
+        name = "get_notes_batch",
+        level = "debug",
+        skip(self, note_ids),
+        fields(count = note_ids.len())
+    )]
+    async fn get_notes_batch(&self, note_ids: &[Felt]) -> Result<Vec<Felt>, StorageError> {
+        let slots: Vec<_> = note_ids
+            .iter()
+            .map(|&nid| storage_slots::notes(nid))
+            .collect();
+        let values = self.read_slots(slots).await?;
+        check_slots_len(&values, note_ids.len())?;
+        Ok(values)
+    }
+
+    #[tracing::instrument(
+        name = "get_note_and_nullifier_batch",
+        level = "debug",
+        skip(self, note_ids, nullifiers)
+    )]
+    async fn get_note_and_nullifier_batch(
+        &self,
+        note_ids: &[Felt],
+        nullifiers: &[Felt],
+    ) -> Result<(Vec<Felt>, Vec<bool>), StorageError> {
+        let n_notes = note_ids.len();
+        let n_nullifiers = nullifiers.len();
+        let total = n_notes + n_nullifiers;
+
+        let mut slots = Vec::with_capacity(total);
+        for &nid in note_ids {
+            slots.push(storage_slots::notes(nid));
+        }
+        for &nul in nullifiers {
+            slots.push(storage_slots::nullifiers(nul));
+        }
+
+        let values = self.read_slots(slots).await?;
+        check_slots_len(&values, total)?;
+
+        let packed_amounts = values[..n_notes].to_vec();
+        let nullifier_exists: Vec<bool> =
+            values[n_notes..].iter().map(|v| *v != Felt::ZERO).collect();
+
+        Ok((packed_amounts, nullifier_exists))
     }
 }

@@ -3,13 +3,13 @@
 //! Composes paginated channel, subchannel, and note discovery into a
 //! single [`sync_incoming_state`] call that advances a [`DiscoveryCursor`].
 //!
-//! Channel and subchannel processing is parallelised via [`tokio::task::JoinSet`].
+//! Channel and subchannel processing is concurrent via [`FuturesUnordered`].
 
 use std::collections::HashMap;
 
+use futures::stream::{FuturesUnordered, StreamExt};
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
-use tokio::task::JoinSet;
 
 use crate::discovery::cursor::{ChannelCursor, DiscoveryCursor, SubchannelCursor};
 use crate::discovery::incoming_channels::discover_incoming_channels_paginated;
@@ -62,20 +62,17 @@ struct SubchannelResult {
 /// Each level uses cursor-based pagination. Fully-discovered subchannels
 /// and channels are pruned from the cursor so subsequent calls skip them.
 ///
-/// Channel and subchannel processing is parallelised via [`JoinSet`].
+/// Channel and subchannel processing is concurrent via [`FuturesUnordered`].
 // TODO: Handle open notes — notes with salt==OPEN_NOTE_SALT(1) have plaintext
 //       amounts, non-zero token and depositor fields (see Cairo objects.cairo
 //       Note struct)
-pub async fn sync_incoming_state<S>(
+pub async fn sync_incoming_state<S: IViews>(
     pool: &S,
     recipient: Felt,
     decryption_key: &SecretFelt,
     mut cursor: DiscoveryCursor,
     budget: &IoBudget,
-) -> Result<DiscoveryOutput, DiscoveryError>
-where
-    S: IViews + Clone + Send + Sync + 'static,
-{
+) -> Result<DiscoveryOutput, DiscoveryError> {
     discover_incoming_channels_paginated(pool, recipient, decryption_key, &mut cursor, budget)
         .await?;
 
@@ -86,25 +83,21 @@ where
         });
     }
 
-    // TODO(security): Cap cursor.channels size before spawning tasks — the
-    //   HashMap is deserialized from an untrusted request with no size limit.
-    //   An attacker can send 50K+ entries within the 2MB body limit, each
-    //   spawning a tokio task → OOM / scheduler exhaustion.
+    // TODO(security): Cap cursor.channels size — the HashMap is deserialized
+    //   from an untrusted request with no size limit. An attacker can send 50K+
+    //   entries within the 2MB body limit → OOM.
     //   Fix: reject or truncate cursor.channels to a max size (e.g., 256).
     let channels = std::mem::take(&mut cursor.channels);
-    let mut join_set = JoinSet::new();
-    for (sender_addr, ch_cursor) in channels {
-        let pool = pool.clone();
-        let budget = budget.clone();
-        let key = decryption_key.clone();
-        join_set.spawn(async move {
-            process_channel(&pool, sender_addr, ch_cursor, &key, &budget).await
-        });
-    }
+    let mut futs: FuturesUnordered<_> = channels
+        .into_iter()
+        .map(|(sender_addr, ch_cursor)| {
+            process_channel(pool, sender_addr, ch_cursor, decryption_key, budget)
+        })
+        .collect();
 
     let mut channels_output: HashMap<Felt, ChannelOutput> = HashMap::new();
-    while let Some(join_result) = join_set.join_next().await {
-        let result = join_result.map_err(|e| DiscoveryError::TaskPanicked(e.to_string()))??;
+    while let Some(result) = futs.next().await {
+        let result = result?;
         channels_output.insert(result.sender_addr, result.output);
         if let Some(ch_cursor) = result.cursor {
             cursor.channels.insert(result.sender_addr, ch_cursor);
@@ -117,44 +110,34 @@ where
     })
 }
 
-/// Processes a single channel: discovers subchannels, then spawns note
-/// discovery for each subchannel concurrently via [`JoinSet`].
-async fn process_channel<S>(
+/// Processes a single channel: discovers subchannels, then runs note
+/// discovery for each subchannel concurrently via [`FuturesUnordered`].
+async fn process_channel<S: IViews>(
     pool: &S,
     sender_addr: Felt,
     mut cursor: ChannelCursor,
     decryption_key: &SecretFelt,
     budget: &IoBudget,
-) -> Result<ChannelResult, DiscoveryError>
-where
-    S: IViews + Clone + Send + Sync + 'static,
-{
+) -> Result<ChannelResult, DiscoveryError> {
     let channel_key = cursor.channel_key.ok_or_else(|| {
         DiscoveryError::InvalidCursor("channel_key is required for incoming channel".into())
     })?;
 
     discover_subchannels_paginated(pool, channel_key, &mut cursor, budget).await?;
 
-    let subchannels: Vec<(Felt, SubchannelCursor)> = std::mem::take(&mut cursor.subchannels)
+    // TODO(security): Cap cursor.subchannels size — same unbounded-HashMap
+    //   attack vector as cursor.channels, multiplied per channel.
+    let subchannels = std::mem::take(&mut cursor.subchannels);
+    let mut futs: FuturesUnordered<_> = subchannels
         .into_iter()
+        .map(|(token, sc_cursor)| {
+            process_subchannel(pool, channel_key, token, sc_cursor, decryption_key, budget)
+        })
         .collect();
 
-    // TODO(security): Cap cursor.subchannels size before spawning tasks —
-    //   same unbounded-HashMap attack vector as cursor.channels above,
-    //   multiplied per channel (N channels × M subchannels = N×M tasks).
-    let mut join_set = JoinSet::new();
-    for (token, sc_cursor) in subchannels {
-        let pool = pool.clone();
-        let budget = budget.clone();
-        let key = decryption_key.clone();
-        join_set.spawn(async move {
-            process_subchannel(&pool, channel_key, token, sc_cursor, &key, &budget).await
-        });
-    }
-
     let mut subchannel_notes: HashMap<Felt, Vec<DecryptedNote>> = HashMap::new();
-    while let Some(join_result) = join_set.join_next().await {
-        let result = join_result.map_err(|e| DiscoveryError::TaskPanicked(e.to_string()))??;
+    while let Some(result) = futs.next().await {
+        let result = result?;
         subchannel_notes.insert(result.token, result.notes);
         if let Some(sc_cursor) = result.cursor {
             cursor.subchannels.insert(result.token, sc_cursor);
@@ -202,7 +185,9 @@ async fn process_subchannel<S: IViews>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::discovery::{COST_CHANNEL_INFO, COST_NOTE, COST_NUM_CHANNELS, COST_SUBCHANNEL_INFO};
+    use crate::discovery::{
+        COST_CHANNEL_INFO, COST_NOTE_PROBING, COST_NUM_CHANNELS, COST_SUBCHANNEL_INFO,
+    };
     use crate::storage_backend::MockBackend;
     use crate::test_fixtures::load_devnet_fixture;
 
@@ -220,8 +205,7 @@ mod tests {
     /// | 2    | 3      | Channel 0 discovered                              |
     /// | 3    | 2      | Subchannel 0 (STRK) discovered                    |
     /// | 4    | 2      | Subchannel sentinel → total cached                |
-    /// | 5    | 1      | Subchannels skipped (cached) + note 0 discovered  |
-    /// | 6    | 1      | Subchannels skipped + note sentinel → all done    |
+    /// | 5    | 4      | Subchannels skipped + batched note scan → all done |
     #[tokio::test]
     async fn test_sync_incoming_state_step_by_step_pagination() {
         let f = load_devnet_fixture();
@@ -295,7 +279,7 @@ mod tests {
 
         // Step 4: budget = COST_SUBCHANNEL_INFO (2)
         // Reads subchannel index 1 → sentinel (salt=0).
-        // Budget=0, note discovery fails (needs COST_NOTE=1).
+        // Budget=0, note discovery fails (needs COST_NOTE_PROBING=1 for initial probe).
         let budget = IoBudget::new(COST_SUBCHANNEL_INFO);
         let out = sync_incoming_state(&backend, recipient, &decryption_key, out.cursor, &budget)
             .await
@@ -312,43 +296,26 @@ mod tests {
             "step 4: subchannel still in cursor (notes not started)"
         );
 
-        // Step 5: budget = COST_NOTE (2)
-        // Subchannels skipped (total cached). Discovers note 0 (1 get_note +
-        // 1 nullifier_exists). Note is spent → filtered out. Budget=0, can't
-        // check sentinel.
-        let budget = IoBudget::new(COST_NOTE);
-        let out = sync_incoming_state(&backend, recipient, &decryption_key, out.cursor, &budget)
-            .await
-            .unwrap();
-
-        assert!(
-            out.cursor.channels.contains_key(&sender_addr),
-            "step 5: channel still in cursor (note sentinel not checked)"
-        );
-        let notes = &out.channels[&sender_addr].subchannels[&subchannel_token];
-        assert_eq!(
-            notes.len(),
-            0,
-            "step 5: note discovered but spent (filtered out)"
-        );
-
-        // Step 6: budget = COST_NOTE (2)
-        // Subchannels skipped (total cached). Reads note index 1 → sentinel
-        // (packed_amount=0 → break, no nullifier check). 1 budget unit unused.
-        // All done: subchannel + channel pruned from cursor.
-        let budget = IoBudget::new(COST_NOTE);
+        // Step 5: budget = 2 * COST_NOTE_PROBING + COST_NOTE_PROBING (3)
+        // Subchannels skipped (total cached). Notes discovery:
+        // Exponential probe: 2 probes (offsets 0, 1) → hit at 0, miss at 1. Cost = 2.
+        // Single-note optimization: 1 nullifier check. Cost = 1.
+        // Bob's note is spent → filtered. Total = 3.
+        // batch_budget=2 limits the probe batch to 2 probes, leaving 1 for nullifier.
+        let budget = IoBudget::new(2 * COST_NOTE_PROBING + COST_NOTE_PROBING).with_batch_budget(2);
         let out = sync_incoming_state(&backend, recipient, &decryption_key, out.cursor, &budget)
             .await
             .unwrap();
 
         assert!(
             out.cursor.channels.is_empty(),
-            "step 6: cursor empty (all discovery complete)"
+            "step 5: cursor empty (all discovery complete)"
         );
+        let notes = &out.channels[&sender_addr].subchannels[&subchannel_token];
         assert_eq!(
-            out.channels[&sender_addr].subchannels[&subchannel_token].len(),
+            notes.len(),
             0,
-            "step 6: no new notes discovered"
+            "step 5: note discovered but spent (filtered out)"
         );
     }
 }

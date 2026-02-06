@@ -3,13 +3,13 @@
 //! Composes paginated outgoing channel, subchannel, and note-index discovery
 //! into a single [`sync_outgoing_state`] call that advances a [`DiscoveryCursor`].
 //!
-//! Channel and subchannel processing is parallelised via [`tokio::task::JoinSet`].
+//! Channel and subchannel processing is concurrent via [`FuturesUnordered`].
 
 use std::collections::HashMap;
 
+use futures::stream::{FuturesUnordered, StreamExt};
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
-use tokio::task::JoinSet;
 
 use crate::discovery::cursor::{ChannelCursor, DiscoveryCursor, SubchannelCursor};
 use crate::discovery::last_note_index::find_last_note_index_paginated;
@@ -57,17 +57,14 @@ struct OutgoingSubchannelResult {
 /// Each level uses cursor-based pagination. Fully-discovered subchannels
 /// and channels are pruned from the cursor so subsequent calls skip them.
 ///
-/// Channel and subchannel processing is parallelised via [`JoinSet`].
-pub async fn sync_outgoing_state<S>(
+/// Channel and subchannel processing is concurrent via [`FuturesUnordered`].
+pub async fn sync_outgoing_state<S: IViews>(
     pool: &S,
     sender_addr: Felt,
     viewing_key: &SecretFelt,
     mut cursor: DiscoveryCursor,
     budget: &IoBudget,
-) -> Result<OutgoingDiscoveryOutput, DiscoveryError>
-where
-    S: IViews + Clone + Send + Sync + 'static,
-{
+) -> Result<OutgoingDiscoveryOutput, DiscoveryError> {
     discover_outgoing_channels_paginated(pool, sender_addr, viewing_key, &mut cursor, budget)
         .await?;
 
@@ -79,18 +76,16 @@ where
     }
 
     let channels = std::mem::take(&mut cursor.channels);
-    let mut join_set = JoinSet::new();
-    for (recipient_addr, ch_cursor) in channels {
-        let pool = pool.clone();
-        let budget = budget.clone();
-        join_set.spawn(async move {
-            process_outgoing_channel(&pool, recipient_addr, ch_cursor, &budget).await
-        });
-    }
+    let mut futs: FuturesUnordered<_> = channels
+        .into_iter()
+        .map(|(recipient_addr, ch_cursor)| {
+            process_outgoing_channel(pool, recipient_addr, ch_cursor, budget)
+        })
+        .collect();
 
     let mut channels_output: HashMap<Felt, OutgoingChannelOutput> = HashMap::new();
-    while let Some(join_result) = join_set.join_next().await {
-        let result = join_result.map_err(|e| DiscoveryError::TaskPanicked(e.to_string()))??;
+    while let Some(result) = futs.next().await {
+        let result = result?;
         channels_output.insert(result.recipient_addr, result.output);
         if let Some(ch_cursor) = result.cursor {
             cursor.channels.insert(result.recipient_addr, ch_cursor);
@@ -103,39 +98,31 @@ where
     })
 }
 
-/// Processes a single outgoing channel: discovers subchannels, then spawns
-/// note-index probing for each subchannel concurrently via [`JoinSet`].
-async fn process_outgoing_channel<S>(
+/// Processes a single outgoing channel: discovers subchannels, then runs
+/// note-index probing for each subchannel concurrently via [`FuturesUnordered`].
+async fn process_outgoing_channel<S: IViews>(
     pool: &S,
     recipient_addr: Felt,
     mut cursor: ChannelCursor,
     budget: &IoBudget,
-) -> Result<OutgoingChannelResult, DiscoveryError>
-where
-    S: IViews + Clone + Send + Sync + 'static,
-{
+) -> Result<OutgoingChannelResult, DiscoveryError> {
     let channel_key = cursor.channel_key.ok_or_else(|| {
         DiscoveryError::InvalidCursor("channel_key is required for outgoing channel".into())
     })?;
 
     discover_subchannels_paginated(pool, channel_key, &mut cursor, budget).await?;
 
-    let subchannels: Vec<(Felt, SubchannelCursor)> = std::mem::take(&mut cursor.subchannels)
+    let subchannels = std::mem::take(&mut cursor.subchannels);
+    let mut futs: FuturesUnordered<_> = subchannels
         .into_iter()
+        .map(|(token, sc_cursor)| {
+            process_outgoing_subchannel(pool, channel_key, token, sc_cursor, budget)
+        })
         .collect();
 
-    let mut join_set = JoinSet::new();
-    for (token, sc_cursor) in subchannels {
-        let pool = pool.clone();
-        let budget = budget.clone();
-        join_set.spawn(async move {
-            process_outgoing_subchannel(&pool, channel_key, token, sc_cursor, &budget).await
-        });
-    }
-
     let mut subchannel_results: HashMap<Felt, Option<u64>> = HashMap::new();
-    while let Some(join_result) = join_set.join_next().await {
-        let result = join_result.map_err(|e| DiscoveryError::TaskPanicked(e.to_string()))??;
+    while let Some(result) = futs.next().await {
+        let result = result?;
         subchannel_results.insert(result.token, result.last_note_index);
         if let Some(sc_cursor) = result.cursor {
             cursor.subchannels.insert(result.token, sc_cursor);

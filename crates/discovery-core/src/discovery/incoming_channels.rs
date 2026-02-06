@@ -104,44 +104,40 @@ pub async fn discover_incoming_channels<PrivacyPool: IViews>(
         });
     }
 
-    // Discover and decrypt each channel.
-    // Cap pre-allocation: total_n_channels may come from an untrusted cursor,
-    // so a malicious value must not cause OOM via Vec::with_capacity.
-    const MAX_CAPACITY: usize = 1024;
-    let capacity = usize::try_from(total_n_channels.saturating_sub(start_index))
-        .unwrap_or(0)
-        .min(MAX_CAPACITY);
-    let mut channels = Vec::with_capacity(capacity);
-    let mut index = start_index;
-    let mut out_of_budget = false;
+    // Batch-read as many channels as budget allows in a single RPC call.
+    let remaining = usize::try_from(total_n_channels.saturating_sub(start_index)).unwrap_or(0);
+    let batch_size = budget.consume_up_to(remaining, COST_CHANNEL_INFO);
+    if batch_size == 0 {
+        return Ok(ChannelDiscoveryResult {
+            channels: vec![],
+            last_index: None,
+            has_more: true,
+        });
+    }
 
-    loop {
-        // Check if we've processed all channels
-        if index >= total_n_channels {
-            break;
-        }
+    let encrypted_batch = privacy_pool
+        .get_channel_info_batch(recipient_addr, start_index, batch_size)
+        .await?;
 
-        // Consume budget for get_channel_info
-        if !budget.consume(COST_CHANNEL_INFO) {
-            out_of_budget = true;
-            break;
-        }
-
-        let encrypted = privacy_pool.get_channel_info(recipient_addr, index).await?;
+    let mut channels = Vec::with_capacity(batch_size);
+    for (i, encrypted) in encrypted_batch.into_iter().enumerate() {
+        let index = start_index
+            + u64::try_from(i)
+                .map_err(|_| DiscoveryError::InvalidCursor("channel index overflow".into()))?;
 
         let info = decrypt_channel_info(&encrypted, private_key)
             .map_err(|source| DiscoveryError::Decryption { index, source })?;
 
         channels.push(IncomingChannel { index, info });
-        index += 1;
     }
 
     let last_index = channels.last().map(|c| c.index);
+    let has_more = batch_size < remaining;
 
     Ok(ChannelDiscoveryResult {
         channels,
         last_index,
-        has_more: out_of_budget,
+        has_more,
     })
 }
 
