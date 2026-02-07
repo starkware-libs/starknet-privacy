@@ -9,7 +9,7 @@ pub struct PreflightRequest {
     /// The sender's address.
     pub sender_address: Felt,
     /// The sender's private viewing key.
-    pub viewing_key: Felt,
+    pub decryption_key: Felt,
     /// The recipient's address.
     pub recipient: Felt,
     /// The token contract address.

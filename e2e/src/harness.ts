@@ -3,7 +3,7 @@ import {
   Devnet,
   type DevnetEnvironment,
   CallMockProofProvider,
-  ContractDiscoveryProvider,
+  IndexerDiscoveryProvider,
 } from "starknet-sdk/testing";
 import { createPrivateTransfers, type PrivateTransfersInterface } from "starknet-sdk";
 import { IndexerClient, type IndexerSpawnConfig } from "./indexer-client.js";
@@ -22,8 +22,6 @@ export interface E2eTestEnvConfig {
   indexer?: Partial<IndexerSpawnConfig>;
 }
 
-// TODO: Replace ContractDiscoveryProvider with IndexerDiscoveryProvider once implemented,
-// so e2e tests exercise the real wallet flow through the indexer.
 export async function createE2eTestEnv(
   devnet: Devnet,
   config?: E2eTestEnvConfig
@@ -44,14 +42,14 @@ export async function createE2eTestEnv(
       account: env.alice,
       viewingKeyProvider: { getViewingKey: () => BigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
-      discoveryProvider: new ContractDiscoveryProvider(env.privacy),
+      discoveryProvider: new IndexerDiscoveryProvider(indexer.apiUrl),
       poolContractAddress: env.privacy.address,
     }),
     bob: createPrivateTransfers({
       account: env.bob,
       viewingKeyProvider: { getViewingKey: () => BigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
-      discoveryProvider: new ContractDiscoveryProvider(env.privacy),
+      discoveryProvider: new IndexerDiscoveryProvider(indexer.apiUrl),
       poolContractAddress: env.privacy.address,
     }),
   };

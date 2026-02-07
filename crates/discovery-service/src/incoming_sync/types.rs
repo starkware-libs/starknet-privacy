@@ -1,17 +1,11 @@
 //! Request/response types for the incoming sync endpoint.
 
-use std::collections::HashMap;
-
-use discovery_core::discovery::cursor::DiscoveryCursor;
-use discovery_core::sync::incoming_state::ChannelOutput;
+use discovery_core::incoming_channels::IncomingChannel;
+use discovery_core::notes::DecryptedNote;
+use discovery_core::sync::incoming_state::IncomingSubchannel;
+use discovery_core::DiscoveryCursor;
 use serde::{Deserialize, Serialize};
 use starknet_core::types::Felt;
-
-/// Default max_reads if not specified.
-pub const DEFAULT_MAX_READS: usize = 50;
-
-/// Server-enforced maximum for max_reads.
-pub const MAX_READS_CAP: u32 = 100;
 
 /// Request body for POST /v1/sync/incoming_state.
 ///
@@ -56,9 +50,6 @@ pub struct IncomingSyncRequest {
     /// response to continue discovery.
     #[serde(default)]
     pub cursor: DiscoveryCursor,
-    /// Maximum number of storage reads to perform.
-    #[serde(default)]
-    pub max_reads: Option<u32>,
 }
 
 /// Response body for POST /v1/sync/incoming_state.
@@ -67,8 +58,12 @@ pub struct IncomingSyncResponse {
     /// Block hash pinning all reads in this response. Pass back as
     /// `block_ref` in subsequent requests for consistency.
     pub block_ref: Felt,
-    /// Discovered channel results, keyed by sender address.
-    pub channels: HashMap<Felt, ChannelOutput>,
+    /// Discovered incoming channels (one per sender).
+    pub channels: Vec<IncomingChannel>,
+    /// Discovered incoming subchannels (one per sender×token pair).
+    pub subchannels: Vec<IncomingSubchannel>,
+    /// Discovered notes with sender and token context.
+    pub notes: Vec<DecryptedNote>,
     /// Updated cursor for continuation. Pass back as `cursor` in next request.
     pub cursor: DiscoveryCursor,
 }

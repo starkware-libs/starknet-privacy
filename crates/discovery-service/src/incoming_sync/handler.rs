@@ -7,8 +7,9 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use discovery_core::io_budget::IoBudget;
+use discovery_core::privacy_pool::felt_hex;
 use discovery_core::storage_backend::StorageBackend;
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::api_server::{discovery_error_to_response, error_codes, ApiErrorResponse, AppState};
 use crate::chain_state::ChainState;
@@ -39,7 +40,8 @@ where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
     B::Snapshot: Clone + Send + Sync + 'static,
 {
-    let validated = ValidatedRequest::from_request(request, &state.backend).await?;
+    let validated =
+        ValidatedRequest::from_request(request, &state.backend, &state.validation_limits).await?;
 
     let snapshot = state
         .backend
@@ -56,7 +58,13 @@ where
             )
         })?;
 
-    let budget = IoBudget::new(validated.max_reads);
+    let budget = IoBudget::new(state.validation_limits.server_budget);
+
+    debug!(
+        recipient = felt_hex(&validated.recipient_address),
+        block = %validated.block_ref,
+        "incoming_sync request"
+    );
 
     let discovery_output = discovery_core::sync::incoming_state::sync_incoming_state(
         &snapshot,
@@ -68,9 +76,19 @@ where
     .await
     .map_err(discovery_error_to_response)?;
 
+    debug!(
+        channels = discovery_output.channels.len(),
+        subchannels = discovery_output.subchannels.len(),
+        notes = discovery_output.notes.len(),
+        cursor_complete = discovery_output.cursor.is_complete(),
+        "incoming_sync response"
+    );
+
     Ok(IncomingSyncResponse {
         block_ref: validated.block_ref,
         channels: discovery_output.channels,
+        subchannels: discovery_output.subchannels,
+        notes: discovery_output.notes,
         cursor: discovery_output.cursor,
     })
 }

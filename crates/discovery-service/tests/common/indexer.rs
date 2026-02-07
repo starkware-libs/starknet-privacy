@@ -49,8 +49,7 @@ impl IndexerClient {
 
         let mut cmd = Command::new(binary);
         cmd.env("WS_URL", &config.ws_url)
-            .arg("--api-host")
-            .arg(&api_host)
+            .env("API_HOST", &api_host)
             .stderr(std::process::Stdio::piped());
 
         if let Some(contract_addr) = config.contract_address {

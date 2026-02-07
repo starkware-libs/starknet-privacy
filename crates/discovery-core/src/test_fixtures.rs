@@ -24,9 +24,11 @@ pub struct DevnetFixture {
 pub struct DevnetConstants {
     pub contract_address: Felt,
     pub alice_address: Felt,
-    pub alice_viewing_key: Felt,
+    #[serde(rename = "alice_viewing_key")]
+    pub alice_decryption_key: Felt,
     pub bob_address: Felt,
-    pub bob_viewing_key: Felt,
+    #[serde(rename = "bob_viewing_key")]
+    pub bob_decryption_key: Felt,
     pub admin_address: Felt,
     pub eth_token: Felt,
     pub strk_token: Felt,
@@ -135,7 +137,7 @@ pub fn load_cairo_ref_fixture() -> CairoRefFixture {
 pub async fn get_channel_key(
     backend: &crate::storage_backend::MockBackend,
     recipient: starknet_types_core::felt::Felt,
-    viewing_key: &starknet_types_core::felt::Felt,
+    decryption_key: &starknet_types_core::felt::Felt,
 ) -> Option<starknet_types_core::felt::Felt> {
     use crate::discovery::incoming_channels::{
         discover_incoming_channels, get_incoming_channel_count,
@@ -148,12 +150,12 @@ pub async fn get_channel_key(
     let count = get_incoming_channel_count(backend, recipient, &budget)
         .await
         .ok()??;
-    let key = SecretFelt::new(*viewing_key);
+    let key = SecretFelt::new(*decryption_key);
     let result = discover_incoming_channels(backend, recipient, &key, 0, count, &budget)
         .await
         .ok()?;
 
-    result.channels.first().map(|c| c.info.channel_key)
+    result.channels.first().map(|c| c.channel_key)
 }
 
 /// Helper to discover subchannels and get the first token for a channel.

@@ -5,7 +5,10 @@
 
 use starknet_types_core::felt::Felt;
 
+use tracing::debug;
+
 use super::DiscoveryError;
+use crate::privacy_pool::felt_hex;
 use crate::privacy_pool::hashes::{
     compute_channel_key, compute_channel_marker, compute_subchannel_marker,
 };
@@ -31,7 +34,7 @@ pub struct PreflightOutput {
 pub async fn preflight<S: IViews>(
     pool: &S,
     sender_addr: Felt,
-    viewing_key: &SecretFelt,
+    decryption_key: &SecretFelt,
     recipient: Felt,
     token: Felt,
 ) -> Result<PreflightOutput, DiscoveryError> {
@@ -56,7 +59,7 @@ pub async fn preflight<S: IViews>(
     }
 
     // 3. Check channel existence
-    let channel_key = compute_channel_key(sender_addr, viewing_key, recipient, recipient_pk);
+    let channel_key = compute_channel_key(sender_addr, decryption_key, recipient, recipient_pk);
     let channel_marker = compute_channel_marker(channel_key, sender_addr, recipient, recipient_pk);
     let channel_exists = pool.channel_exists(channel_marker).await?;
     if !channel_exists {
@@ -70,6 +73,15 @@ pub async fn preflight<S: IViews>(
     // 4. Check subchannel existence
     let subchannel_marker = compute_subchannel_marker(channel_key, recipient, recipient_pk, token);
     let subchannel_exists = pool.subchannel_exists(subchannel_marker).await?;
+
+    debug!(
+        sender = felt_hex(&sender_addr),
+        recipient = felt_hex(&recipient),
+        token = felt_hex(&token),
+        channel_exists = true,
+        subchannel_exists,
+        "preflight done"
+    );
 
     Ok(PreflightOutput {
         sender_registered: true,
@@ -90,11 +102,11 @@ mod tests {
         let backend = MockBackend::new(fixture.slots);
         let c = &fixture.constants;
 
-        let viewing_key = SecretFelt::new(c.alice_viewing_key);
+        let decryption_key = SecretFelt::new(c.alice_decryption_key);
         let result = preflight(
             &backend,
             c.alice_address,
-            &viewing_key,
+            &decryption_key,
             c.bob_address,
             c.strk_token,
         )
@@ -112,12 +124,12 @@ mod tests {
         let backend = MockBackend::new(fixture.slots);
         let c = &fixture.constants;
 
-        let viewing_key = SecretFelt::new(c.alice_viewing_key);
+        let decryption_key = SecretFelt::new(c.alice_decryption_key);
         let unknown = Felt::from_hex_unchecked("0xdead");
         let result = preflight(
             &backend,
             c.alice_address,
-            &viewing_key,
+            &decryption_key,
             unknown,
             c.strk_token,
         )
@@ -135,12 +147,12 @@ mod tests {
         let backend = MockBackend::new(fixture.slots);
         let c = &fixture.constants;
 
-        let viewing_key = SecretFelt::new(Felt::from_hex_unchecked("0xbad"));
+        let decryption_key = SecretFelt::new(Felt::from_hex_unchecked("0xbad"));
         let unknown_sender = Felt::from_hex_unchecked("0xdead");
         let result = preflight(
             &backend,
             unknown_sender,
-            &viewing_key,
+            &decryption_key,
             c.bob_address,
             c.strk_token,
         )

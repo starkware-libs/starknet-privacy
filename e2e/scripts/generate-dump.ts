@@ -103,6 +103,9 @@ writeFileSync(
       contract_address: env.privacy.address,
       alice_address: env.alice.address,
       alice_viewing_key: "0x" + ALICE_VIEWING_KEY.toString(16),
+      bob_address: env.bob.address,
+      bob_viewing_key: "0x" + BOB_VIEWING_KEY.toString(16),
+      strk_token: env.strk,
     },
     null,
     2

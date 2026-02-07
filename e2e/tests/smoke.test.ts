@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Devnet } from "starknet-sdk/testing";
+import { constants } from "starknet";
+import { Devnet, CallMockProofProvider, IndexerDiscoveryProvider } from "starknet-sdk/testing";
+import { createPrivateTransfers, SetupRequirement } from "starknet-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../src/harness.js";
 
 describe("E2E Smoke", () => {
@@ -52,40 +54,29 @@ describe("E2E Smoke", () => {
     });
     await env.indexer.waitForNewLog("New block #", 15_000);
 
-    // TODO: Replace raw endpoint calls with SDK discovery provider flow.
-    // Next step: implement IndexerDiscoveryProvider (implements DiscoveryProviderInterface)
-    // and run discovery via transfers.alice.discoverNotes() / discoverChannels() instead.
-    // The harness should inject IndexerDiscoveryProvider into transfers so the e2e test
-    // exercises the real wallet flow end-to-end.
-
-    // Incoming sync: Alice should see at least 1 incoming channel (self-channel from deposit)
-    const incomingResp = await fetch(`${env.indexer.apiUrl}/v1/sync/incoming_state`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        recipient_address: de.alice.address,
-        decryption_key: "0xa11ce",
-      }),
+    // Verify discovery via IndexerDiscoveryProvider (exercises SDK → indexer end-to-end)
+    const indexerDiscovery = new IndexerDiscoveryProvider(env.indexer.apiUrl);
+    const aliceIndexer = createPrivateTransfers({
+      account: de.alice,
+      viewingKeyProvider: { getViewingKey: () => BigInt("0xA11CE") },
+      provingProvider: new CallMockProofProvider(de.provider, constants.StarknetChainId.SN_SEPOLIA),
+      discoveryProvider: indexerDiscovery,
+      poolContractAddress: de.privacy.address,
     });
-    expect(incomingResp.ok).toBe(true);
-    const incoming = await incomingResp.json() as Record<string, unknown>;
 
-    expect(incoming.block_ref).toBeDefined();
-    expect(Object.keys(incoming.channels as object).length).toBeGreaterThanOrEqual(1);
+    const { notes } = await aliceIndexer.discoverNotes();
+    expect(notes.size).toBeGreaterThanOrEqual(1); // at least STRK
+    const strkNotes = notes.get(BigInt(de.strk));
+    expect(strkNotes).toBeDefined();
+    expect(strkNotes!.length).toBeGreaterThanOrEqual(1);
+    expect(strkNotes![0].amount).toBe(50n); // Alice's change note
 
-    // Outgoing sync: Alice should see 2 outgoing channels (self-channel + transfer to Bob)
-    const outgoingResp = await fetch(`${env.indexer.apiUrl}/v1/sync/outgoing_state`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sender_address: de.alice.address,
-        viewing_key: "0xa11ce",
-      }),
-    });
-    expect(outgoingResp.ok).toBe(true);
-    const outgoing = await outgoingResp.json() as Record<string, unknown>;
+    const { channels } = await aliceIndexer.discoverChannels([de.alice.address, de.bob.address]);
+    expect(channels.size).toBeGreaterThanOrEqual(2); // self-channel + Bob
+    expect(channels.has(BigInt(de.alice.address))).toBe(true);
+    expect(channels.has(BigInt(de.bob.address))).toBe(true);
 
-    expect(outgoing.block_ref).toBeDefined();
-    expect(Object.keys(outgoing.channels as object).length).toBeGreaterThanOrEqual(2);
+    const req = await aliceIndexer.discoverRequirement(de.bob.address, de.strk);
+    expect(req).toBe(SetupRequirement.Ready);
   });
 });

@@ -6,6 +6,7 @@
 use std::fmt;
 use std::ops::Deref;
 
+use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 use zeroize::Zeroize;
 
@@ -87,7 +88,7 @@ pub struct EncSubchannelInfo {
 }
 
 /// Decrypted channel information.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelInfo {
     /// The channel key.
     pub channel_key: Felt,

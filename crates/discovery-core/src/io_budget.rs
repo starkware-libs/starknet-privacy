@@ -77,11 +77,11 @@ impl IoBudget {
         }
         self.remaining
             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
-                let n = (current / cost_per_item).min(cap);
-                if n == 0 {
+                let num_items = (current / cost_per_item).min(cap);
+                if num_items == 0 {
                     None
                 } else {
-                    Some(current - n * cost_per_item)
+                    Some(current - num_items * cost_per_item)
                 }
             })
             .map(|old| (old / cost_per_item).min(cap))

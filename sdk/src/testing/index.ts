@@ -33,6 +33,7 @@ export {
   ContractDiscoveryProvider,
   type PoolContractInterface,
 } from "../internal/contract-discovery.js";
+export { IndexerDiscoveryProvider } from "../internal/indexer-discovery.js";
 export {
   createConcurrencyProfiler,
   formatReport,
@@ -43,6 +44,8 @@ export {
 export {
   Devnet,
   createDevnetTestEnv,
+  type DevnetConfig,
   type DevnetEnvironment,
   type DevnetTestEnv,
+  type DevnetTestEnvConfig,
 } from "./devnet.js";

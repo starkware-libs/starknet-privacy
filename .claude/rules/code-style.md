@@ -6,13 +6,36 @@ Apply these guidelines when writing or reviewing code in this codebase.
 
 ## Naming
 
-### Consistent terminology
-- Use the same term for the same concept across parameters, fields, and documentation
-- *Example:* If a struct field is `private_key`, use `private_key` everywhere, not `decryption_key` in function parameters
+### Every name must answer "what is this?"
+- A variable name should be a noun or noun phrase that identifies what it holds — readable without surrounding context
+- The core test: if you see the name on its own line, can you tell what it represents?
+
+### No standalone adjectives
+- Adjectives describe a quality but not the thing itself; always pair with the noun
+- *Bad:* `pending`, `remaining`, `discovered`, `complete`, `invalid`
+- *Good:* `pending_futures`, `remaining_channels`, `discovered_channels`, `complete_entries`, `invalid_keys`
+
+### No single-letter variables
+- Single letters carry no meaning outside of trivial closures passed to stdlib combinators
+- *Bad:* `i`, `s`, `n`, `f` as local variables
+- *Good:* `channel_offset`, `channel_slots`, `num_items`, `felt_value`
+- *Exception:* Single-letter closure params where the type and context make the meaning obvious (e.g., `.map(|x| x + 1)`, `.filter(|c| c.is_complete())`)
+
+### No contractions or abbreviations
+- Spell out the full word; the saved keystrokes aren't worth the mental tax on readers
+- *Bad:* `ch`, `sc`, `futs`, `addr` (when the domain doesn't use it), `ctx`, `val`
+- *Good:* `channel`, `subchannel`, `pending_futures`, `address`, `context`, `value`
+- *Exception:* Abbreviations established by the domain (e.g., `addr` in Cairo/StarkNet, `pk` for public key) — follow the domain's convention
 
 ### Disambiguate counts from collections
-- When a name represents a count, make that explicit
-- *Example:* `n_channels` or `num_channels` instead of just `channels`
+- When a name represents a count, make that explicit with a prefix (`n_`, `num_`) or suffix (`_count`)
+- *Bad:* `channels` (is it a Vec or a count?), `total` (total of what?)
+- *Good:* `num_channels`, `total_channels`, `channel_count`
+
+### Consistent terminology
+- Use the same term for the same concept across parameters, fields, and documentation
+- If a term is renamed, rename it everywhere — partial migrations create confusion
+- *Example:* If a struct field is `decryption_key`, use `decryption_key` everywhere, not `viewing_key` in some function parameters
 
 ---
 
@@ -82,6 +105,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Add comments where the reasoning isn't obvious from context
 - Focus on decisions, constraints, and non-obvious requirements
 
+### No visual separator comments
+- Don't use decorative comment lines to delineate sections (e.g., `// -----------`, `// =========`, `// ***`)
+- If a file needs visual structure, that's a signal to split into separate modules or use doc comments on items
+- Rely on blank lines and module organization for readability, not ASCII art
+
 ### Document implicit structures
 - When code relies on conventions or layouts, make them explicit
 - *Example:* Storage layouts, protocol-specific ordering, cryptographic choices
@@ -126,11 +154,3 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Place public functions at the top of the module, before their private helpers
 - Readers should encounter the high-level orchestration first and drill into details top-down
 - *Example:* `pub async fn sync_incoming_state(...)` at the top, followed by `process_channel(...)`, then `process_subchannel(...)`
-
----
-
-## WIP: Guidelines to add
-
-- [ ] Error handling patterns
-- [ ] Async patterns
-- [ ] Trait design

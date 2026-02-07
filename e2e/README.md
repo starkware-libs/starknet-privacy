@@ -15,7 +15,31 @@ End-to-end tests and fixture generation for the privacy pool.
 npm test
 ```
 
-Smoke tests spin up a live devnet, deploy contracts, run the indexer, and verify the full flow.
+### Smoke (`tests/smoke.test.ts`)
+
+Minimal end-to-end flow: deploys the privacy pool contract, starts the indexer,
+and verifies that a single deposit + transfer is discoverable via the indexer.
+Uses the default 2-account devnet (Alice and Bob) with a single token (STRK).
+
+### Payment Service Discovery (`tests/payment-service-discovery.test.ts`)
+
+Stress test for paginated indexer discovery. Alice acts as a payment service
+interacting with 9 users across 2 tokens (STRK and ETH) over 7 rounds of
+transactions, producing ~94 notes (~38 spent). The volume forces multi-page
+pagination (SERVER_BUDGET=100, COST_NOTE=2).
+
+Verifies:
+- Alice discovers notes from multiple senders across both tokens
+- Alice discovers outgoing channels to all 9 users (plus self)
+- Every user discovers their own notes
+- Every user discovers their channel to Alice
+
+## Linting
+
+```bash
+npm run lint:check   # check only
+npm run lint         # check and auto-fix
+```
 
 ## Fixture generation
 

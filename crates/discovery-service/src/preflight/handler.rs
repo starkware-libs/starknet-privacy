@@ -63,12 +63,12 @@ where
             )
         })?;
 
-    let viewing_key = SecretFelt::new(request.viewing_key);
+    let decryption_key = SecretFelt::new(request.decryption_key);
 
-    let output = discovery_core::discovery::preflight::preflight(
+    let output = discovery_core::preflight::preflight(
         &snapshot,
         request.sender_address,
-        &viewing_key,
+        &decryption_key,
         request.recipient,
         request.token,
     )

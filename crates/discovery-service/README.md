@@ -45,8 +45,55 @@ Rust with Tokio runtime and Axum HTTP server. SQLite in WAL mode for storage. Pa
 ## Run
 From the repo root:
 ```bash
-cargo run -p discovery-service -- --log-level info
+# With env vars (minimal — only CONTRACT_ADDRESS is required)
+CONTRACT_ADDRESS=0x1234 cargo run -p discovery-service
+
+# With a config file
+cargo run -p discovery-service -- --config config.toml
 ```
+
+## Configuration
+
+Resolution priority: **env var > config file > code default**.
+
+### Env vars
+
+| Env var | Config path | Required |
+|---|---|---|
+| `CONTRACT_ADDRESS` | `privacy_pool.contract_address` | Yes |
+| `RPC_URL` | `rpc.url` | No |
+| `WS_URL` | `indexer.ws_url` | No |
+| `API_HOST` | `api.host` | No |
+| `RUST_LOG` | `logging.level` | No |
+| `SERVER_BUDGET` | `limits.server_budget` | No |
+| `BATCH_BUDGET` | `limits.batch_budget` | No |
+
+### Config file
+
+Optional TOML file loaded via `--config <path>`. Supports `${VAR}` and `${VAR:-default}` env var expansion.
+
+```toml
+[privacy_pool]
+contract_address = "${CONTRACT_ADDRESS}"
+
+[rpc]
+url = "${RPC_URL:-http://127.0.0.1:5050}"
+max_concurrent_requests = 10
+connect_timeout = 30    # seconds
+request_timeout = 60    # seconds
+
+[indexer]
+ws_url = "${WS_URL:-ws://127.0.0.1:5050/ws}"
+connect_timeout = 10    # seconds
+
+[api]
+host = "0.0.0.0:8080"
+
+[limits]
+server_budget = 100
+```
+
+All sections and fields are optional — defaults match the values shown above. See the spec at `.claude/specs/discovery-service/18-configuration.md` for all parameters.
 
 ## Test
 From the repo root:

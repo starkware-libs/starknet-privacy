@@ -394,7 +394,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
     _recipients: StarknetAddressBigint[] | "all",
-    params?: { cursor?: AddressMap<Channel> }
+    params?: { cursor?: AddressMap<Channel>; lastKnownBlock?: BlockIdentifier }
   ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }> {
     const discovery = new ChannelsDiscovery(
       address,

@@ -13,7 +13,7 @@ use common::{
     IndexerSpawnConfig,
 };
 use discovery_service::api_server::HealthResponse;
-use discovery_service::incoming_sync::{IncomingSyncRequest, MAX_READS_CAP};
+use discovery_service::incoming_sync::IncomingSyncRequest;
 use discovery_service::outgoing_sync::OutgoingSyncRequest;
 use discovery_service::preflight::PreflightRequest;
 use starknet_core::types::Felt;
@@ -48,11 +48,10 @@ async fn test_incoming_sync_basic() {
 
     let request = IncomingSyncRequest {
         recipient_address: metadata.alice_address,
-        decryption_key: metadata.alice_viewing_key,
+        decryption_key: metadata.alice_decryption_key,
         last_known_block: None,
         block_ref: None,
         cursor: Default::default(),
-        max_reads: Some(MAX_READS_CAP),
     };
 
     let response = indexer.incoming_sync(&request).await.unwrap();
@@ -60,10 +59,10 @@ async fn test_incoming_sync_basic() {
     // block_ref is always present
     assert!(response.block_ref != Felt::ZERO, "block_ref should be set");
 
-    // With a large budget, all discovery should complete: cursor.channels is empty
+    // With a large budget, all discovery should complete
     assert!(
-        response.cursor.channels.is_empty(),
-        "All channels should be fully discovered (pruned from cursor)"
+        response.cursor.is_complete(),
+        "All discovery should be complete"
     );
 
     // Alice has at least 1 incoming channel (self-channel from deposit)
@@ -73,11 +72,14 @@ async fn test_incoming_sync_basic() {
     );
 
     // Verify result structure
-    for (channel_key, channel) in &response.channels {
-        assert!(*channel_key != Felt::ZERO, "Channel key should not be zero");
-        for token in channel.subchannels.keys() {
-            assert!(*token != Felt::ZERO, "Token should not be zero");
-        }
+    for ch in &response.channels {
+        assert!(
+            ch.channel_key != Felt::ZERO,
+            "Channel key should not be zero"
+        );
+    }
+    for sc in &response.subchannels {
+        assert!(sc.token != Felt::ZERO, "Token should not be zero");
     }
 
     indexer.signal_shutdown().unwrap();
@@ -92,11 +94,10 @@ async fn test_incoming_sync_pagination() {
     // First sync with very small budget (1 read - should just get channel count)
     let request1 = IncomingSyncRequest {
         recipient_address: metadata.alice_address,
-        decryption_key: metadata.alice_viewing_key,
+        decryption_key: metadata.alice_decryption_key,
         last_known_block: None,
         block_ref: None,
         cursor: Default::default(),
-        max_reads: Some(1),
     };
 
     let response1 = indexer.incoming_sync(&request1).await.unwrap();
@@ -104,18 +105,17 @@ async fn test_incoming_sync_pagination() {
     // Second sync using block_ref and cursor from previous response
     let request2 = IncomingSyncRequest {
         recipient_address: metadata.alice_address,
-        decryption_key: metadata.alice_viewing_key,
+        decryption_key: metadata.alice_decryption_key,
         last_known_block: None,
         block_ref: Some(response1.block_ref),
         cursor: response1.cursor.clone(),
-        max_reads: Some(MAX_READS_CAP),
     };
 
     let response2 = indexer.incoming_sync(&request2).await.unwrap();
 
-    // Should eventually complete: cursor.channels empty means all done
+    // Should eventually complete
     assert!(
-        response2.cursor.channels.is_empty(),
+        response2.cursor.is_complete(),
         "Should complete with larger budget"
     );
 
@@ -133,11 +133,10 @@ async fn test_incoming_sync_block_reorged() {
 
     let request = IncomingSyncRequest {
         recipient_address: metadata.alice_address,
-        decryption_key: metadata.alice_viewing_key,
+        decryption_key: metadata.alice_decryption_key,
         last_known_block: Some(fake_block),
         block_ref: None,
         cursor: Default::default(),
-        max_reads: Some(MAX_READS_CAP),
     };
 
     let (status, error) = indexer.incoming_sync_error(&request).await.unwrap();
@@ -176,7 +175,6 @@ async fn test_incoming_sync_no_head() {
         last_known_block: None,
         block_ref: None,
         cursor: Default::default(),
-        max_reads: Some(MAX_READS_CAP),
     };
 
     let (status, error) = indexer.incoming_sync_error(&request).await.unwrap();
@@ -196,11 +194,11 @@ async fn test_outgoing_sync_basic() {
 
     let request = OutgoingSyncRequest {
         sender_address: metadata.alice_address,
-        viewing_key: metadata.alice_viewing_key,
+        decryption_key: metadata.alice_decryption_key,
         last_known_block: None,
         block_ref: None,
         cursor: Default::default(),
-        max_reads: Some(MAX_READS_CAP),
+        recipients: None,
     };
 
     let response = indexer.outgoing_sync(&request).await.unwrap();
@@ -216,72 +214,74 @@ async fn test_outgoing_sync_basic() {
 
     // With a large budget, all discovery should complete
     assert!(
-        response.cursor.channels.is_empty(),
-        "All channels should be fully discovered (pruned from cursor)"
+        response.cursor.is_complete(),
+        "All discovery should be complete"
     );
 
-    // Each channel should have at least one subchannel with last_note_index = Some(0)
-    for channel in response.channels.values() {
-        assert!(
-            !channel.subchannels.is_empty(),
-            "Each channel should have at least one subchannel"
+    // Each channel should have a matching subchannel with last_note_index = Some(0)
+    assert_eq!(
+        response.subchannels.len(),
+        2,
+        "Each channel should have one subchannel"
+    );
+    for sc in &response.subchannels {
+        assert_eq!(
+            sc.last_note_index,
+            Some(0),
+            "Each subchannel should have last_note_index=0"
         );
-        for last_index in channel.subchannels.values() {
-            assert_eq!(
-                *last_index,
-                Some(0),
-                "Each subchannel should have last_note_index=0"
-            );
-        }
     }
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();
 }
 
+/// Verifies that passing back a completed cursor is idempotent — the second
+/// call returns no new data and the cursor remains complete.
 #[tokio::test]
-async fn test_outgoing_sync_pagination() {
+async fn test_outgoing_sync_idempotent() {
     let (devnet, metadata) = setup_devnet_with_dump().await;
     let indexer = setup_indexer(&devnet, Some(&metadata)).await;
 
-    // First sync with small budget — enough to discover channels but not subchannels
+    // First sync discovers everything.
     let request1 = OutgoingSyncRequest {
         sender_address: metadata.alice_address,
-        viewing_key: metadata.alice_viewing_key,
+        decryption_key: metadata.alice_decryption_key,
         last_known_block: None,
         block_ref: None,
         cursor: Default::default(),
-        max_reads: Some(1),
+        recipients: None,
     };
 
     let response1 = indexer.outgoing_sync(&request1).await.unwrap();
-
-    // Should NOT be complete yet with budget=1
     assert!(
-        !response1.cursor.channels.is_empty() || !response1.cursor.skip_channel_discovery,
-        "Should have pending work with budget=1"
+        response1.cursor.is_complete(),
+        "First call should complete all discovery"
     );
+    assert_eq!(response1.channels.len(), 2, "Alice has 2 outgoing channels");
 
-    // Second sync with large budget to finish
+    // Second sync with completed cursor — should be a no-op.
     let request2 = OutgoingSyncRequest {
         sender_address: metadata.alice_address,
-        viewing_key: metadata.alice_viewing_key,
+        decryption_key: metadata.alice_decryption_key,
         last_known_block: None,
         block_ref: Some(response1.block_ref),
         cursor: response1.cursor.clone(),
-        max_reads: Some(MAX_READS_CAP),
+        recipients: None,
     };
 
     let response2 = indexer.outgoing_sync(&request2).await.unwrap();
-
     assert!(
-        response2.cursor.channels.is_empty(),
-        "Should complete with larger budget"
+        response2.cursor.is_complete(),
+        "Cursor should remain complete"
     );
-    assert_eq!(
-        response2.channels.len(),
-        2,
-        "Should discover all 2 channels across pages"
+    assert!(
+        response2.channels.is_empty(),
+        "No new channels on second call"
+    );
+    assert!(
+        response2.subchannels.is_empty(),
+        "No new subchannels on second call"
     );
 
     indexer.signal_shutdown().unwrap();
@@ -297,7 +297,7 @@ async fn test_preflight_basic() {
     let resp = indexer
         .preflight(&PreflightRequest {
             sender_address: metadata.alice_address,
-            viewing_key: metadata.alice_viewing_key,
+            decryption_key: metadata.alice_decryption_key,
             recipient: metadata.bob_address,
             token: metadata.strk_token,
         })
@@ -312,7 +312,7 @@ async fn test_preflight_basic() {
     let resp2 = indexer
         .preflight(&PreflightRequest {
             sender_address: metadata.alice_address,
-            viewing_key: metadata.alice_viewing_key,
+            decryption_key: metadata.alice_decryption_key,
             recipient: Felt::from_hex_unchecked("0xdead"),
             token: metadata.strk_token,
         })
@@ -327,7 +327,7 @@ async fn test_preflight_basic() {
     let resp3 = indexer
         .preflight(&PreflightRequest {
             sender_address: Felt::from_hex_unchecked("0xdead"),
-            viewing_key: Felt::from_hex_unchecked("0xbad"),
+            decryption_key: Felt::from_hex_unchecked("0xbad"),
             recipient: metadata.bob_address,
             token: metadata.strk_token,
         })

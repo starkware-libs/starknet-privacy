@@ -52,13 +52,13 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
   "last_known_block": "0x...",
   "block_ref": "0x...",
   "cursor": {
-    "skip_channel_discovery": false,
+    "channel_discovery_complete": false,
     "total_n_channels": 100,
     "last_channel_index": 5,
     "channels": {
       "0x_sender_addr": {
         "channel_key": "0x...",
-        "skip_subchannel_discovery": true,
+        "subchannel_discovery_complete": true,
         "last_subchannel_index": 2,
         "subchannels": {
           "0x_token_address": {
@@ -84,12 +84,12 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
 
 **Cursor fields:**
 
-- `skip_channel_discovery`: When `true`, only processes channels already in the cursor — use this after channel discovery is complete. Defaults to `false`.
+- `channel_discovery_complete`: Set by the service once all channels have been enumerated (sentinel reached). When `true`, no further channel discovery is attempted. Defaults to `false`.
 - `total_n_channels`: Cached total channel count. Populated by the server after the first channel-count fetch. Avoids re-fetching on subsequent pages.
 - `last_channel_index`: Last fully processed channel index. Omit to start from the beginning.
 - `channels`: Map of in-progress channels keyed by **sender address**. Each channel entry contains:
   - `channel_key`: The channel key for this channel.
-  - `skip_subchannel_discovery`: When `true`, only processes subchannels already in the cursor (skips discovery of new subchannels).
+  - `subchannel_discovery_complete`: Set by the service once all subchannels have been enumerated (sentinel reached). When `true`, no further subchannel discovery is attempted.
   - `last_subchannel_index`: Last fully processed subchannel index.
   - `subchannels`: Map of in-progress subchannels keyed by token address, each with:
     - `last_note_index`: Last scanned note index.
@@ -143,11 +143,11 @@ Discovers all outgoing channels for a sender, their subchannels, and the last no
 ```json
 {
   "sender_address": "0x...",
-  "viewing_key": "0x...",
+  "decryption_key": "0x...",
   "last_known_block": "0x...",
   "block_ref": "0x...",
   "cursor": {
-    "skip_channel_discovery": false,
+    "channel_discovery_complete": false,
     "total_n_channels": null,
     "last_channel_index": null,
     "channels": {}
@@ -159,7 +159,7 @@ Discovers all outgoing channels for a sender, their subchannels, and the last no
 **Top-level request fields:**
 
 - `sender_address`: The sender's Starknet address.
-- `viewing_key`: The sender's private viewing key (used to derive outgoing channel IDs and decrypt recipient addresses).
+- `decryption_key`: The sender's private viewing key (used to derive outgoing channel IDs and decrypt recipient addresses).
 - `last_known_block`, `block_ref`, `cursor`, `max_reads`: Same semantics as incoming (§6.5).
 
 **Response:**
@@ -200,7 +200,7 @@ Checks what setup is needed before a sender can transfer a specific token to a s
 ```json
 {
   "sender_address": "0x...",
-  "viewing_key": "0x...",
+  "decryption_key": "0x...",
   "recipient": "0x...",
   "token": "0x..."
 }

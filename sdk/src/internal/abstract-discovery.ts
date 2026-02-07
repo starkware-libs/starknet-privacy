@@ -30,7 +30,7 @@ export abstract class AbstractDiscoveryProvider implements DiscoveryProviderInte
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
     recipients: StarknetAddressBigint[] | "all",
-    params?: { cursor?: AddressMap<Channel> }
+    params?: { cursor?: AddressMap<Channel>; lastKnownBlock?: BlockIdentifier }
   ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }>;
 
   // Default implementation provided by the abstract class

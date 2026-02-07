@@ -15,27 +15,10 @@ use tokio::sync::broadcast;
 use tracing::{info, warn};
 
 use crate::chain_state::{ChainHead, ChainState};
+use crate::config::{ApiServerConfig, ValidationLimits};
 use crate::incoming_sync::incoming_sync_handler;
 use crate::outgoing_sync::outgoing_sync_handler;
 use crate::preflight::preflight_handler;
-
-/// Configuration for the API server.
-#[derive(Debug, Clone)]
-pub struct ApiServerConfig {
-    /// Host and port to bind to (e.g., "127.0.0.1:8080").
-    pub api_host: String,
-    /// Maximum lag in seconds before health check returns unhealthy.
-    pub health_max_lag_secs: u64,
-}
-
-impl Default for ApiServerConfig {
-    fn default() -> Self {
-        Self {
-            api_host: "127.0.0.1:8080".to_string(),
-            health_max_lag_secs: 5,
-        }
-    }
-}
 
 /// API server for the discovery service.
 pub struct ApiServer<B> {
@@ -63,6 +46,7 @@ where
         let app_state = Arc::new(AppState {
             backend: self.backend.clone(),
             health_max_lag_secs: self.config.health_max_lag_secs,
+            validation_limits: self.config.validation_limits.clone(),
         });
 
         // TODO: Add TLS termination (spec 5.1)
@@ -81,11 +65,11 @@ where
         //   timeout, slow RPC responses can block tokio worker threads indefinitely
         //   (100 reads × 60s RPC timeout = ~100min per request).
 
-        let listener = TcpListener::bind(&self.config.api_host)
+        let listener = TcpListener::bind(&self.config.host)
             .await
             .map_err(|e| ApiServerError::Bind(e.to_string()))?;
 
-        info!("API server listening on {}", self.config.api_host);
+        info!("API server listening on {}", self.config.host);
 
         let mut rx_shutdown = self.rx_shutdown.resubscribe();
         axum::serve(listener, app)
@@ -105,6 +89,7 @@ where
 pub struct AppState<B> {
     pub backend: B,
     pub health_max_lag_secs: u64,
+    pub validation_limits: ValidationLimits,
 }
 
 /// Response for the health endpoint.
@@ -201,9 +186,9 @@ impl ApiErrorResponse {
 
 /// Maps [`DiscoveryError`] to an HTTP status + API error response.
 pub(crate) fn discovery_error_to_response(
-    e: discovery_core::discovery::DiscoveryError,
+    e: discovery_core::DiscoveryError,
 ) -> (StatusCode, ApiErrorResponse) {
-    use discovery_core::discovery::DiscoveryError;
+    use discovery_core::DiscoveryError;
 
     match e {
         DiscoveryError::Storage(storage_err) => {
@@ -239,7 +224,6 @@ pub(crate) fn discovery_error_to_response(
 pub mod error_codes {
     pub const INVALID_REQUEST: &str = "INVALID_REQUEST";
     pub const DECRYPTION_FAILED: &str = "DECRYPTION_FAILED";
-    pub const MAX_READS_EXCEEDED: &str = "MAX_READS_EXCEEDED";
     pub const BLOCK_REORGED: &str = "BLOCK_REORGED";
     pub const SERVICE_UNAVAILABLE: &str = "SERVICE_UNAVAILABLE";
     pub const RPC_UNAVAILABLE: &str = "RPC_UNAVAILABLE";

@@ -1,9 +1,10 @@
 //! Request/response types for the outgoing sync endpoint.
 
-use std::collections::HashMap;
+use std::collections::HashSet;
 
-use discovery_core::discovery::cursor::DiscoveryCursor;
-use discovery_core::sync::outgoing_state::OutgoingChannelOutput;
+use discovery_core::outgoing_channels::OutgoingChannel;
+use discovery_core::sync::outgoing_state::OutgoingSubchannel;
+use discovery_core::DiscoveryCursor;
 use serde::{Deserialize, Serialize};
 use starknet_core::types::Felt;
 
@@ -15,7 +16,7 @@ use starknet_core::types::Felt;
 /// ```json
 /// {
 ///   "sender_address": "0x...",
-///   "viewing_key": "0x...",
+///   "decryption_key": "0x...",
 ///   "last_known_block": "0x..."  // Optional: for reorg detection
 /// }
 /// ```
@@ -24,7 +25,7 @@ use starknet_core::types::Felt;
 /// ```json
 /// {
 ///   "sender_address": "0x...",
-///   "viewing_key": "0x...",
+///   "decryption_key": "0x...",
 ///   "block_ref": "0x...",  // From previous response
 ///   "cursor": { ... }      // From previous response
 /// }
@@ -34,7 +35,7 @@ pub struct OutgoingSyncRequest {
     /// The sender's address.
     pub sender_address: Felt,
     /// The sender's private viewing key.
-    pub viewing_key: Felt,
+    pub decryption_key: Felt,
     /// Block hash for reorg detection. Set on first request of a new sync
     /// session to the `block_hash` from your last completed sync.
     /// Server returns 409 if this block was reorged out.
@@ -49,9 +50,11 @@ pub struct OutgoingSyncRequest {
     /// response to continue discovery.
     #[serde(default)]
     pub cursor: DiscoveryCursor,
-    /// Maximum number of storage reads to perform.
-    #[serde(default)]
-    pub max_reads: Option<u32>,
+    /// Optional filter: only return channels for these recipients.
+    /// Recipients without an existing on-chain channel are returned
+    /// with `precomputed: true`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipients: Option<HashSet<Felt>>,
 }
 
 /// Response body for POST /v1/sync/outgoing_state.
@@ -60,8 +63,12 @@ pub struct OutgoingSyncResponse {
     /// Block hash pinning all reads in this response. Pass back as
     /// `block_ref` in subsequent requests for consistency.
     pub block_ref: Felt,
-    /// Discovered outgoing channel results, keyed by recipient address.
-    pub channels: HashMap<Felt, OutgoingChannelOutput>,
+    /// Discovered outgoing channels (one per recipient). Includes both
+    /// on-chain channels (`precomputed: false`) and precomputed channels
+    /// for requested recipients (`precomputed: true`).
+    pub channels: Vec<OutgoingChannel>,
+    /// Discovered outgoing subchannels (one per recipient×token pair).
+    pub subchannels: Vec<OutgoingSubchannel>,
     /// Updated cursor for continuation. Pass back as `cursor` in next request.
     pub cursor: DiscoveryCursor,
 }

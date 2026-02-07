@@ -7,4 +7,4 @@ mod types;
 pub(crate) mod validation;
 
 pub use handler::incoming_sync_handler;
-pub use types::{IncomingSyncRequest, IncomingSyncResponse, DEFAULT_MAX_READS, MAX_READS_CAP};
+pub use types::{IncomingSyncRequest, IncomingSyncResponse};

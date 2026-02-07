@@ -11,11 +11,12 @@ use starknet_types_core::felt::Felt;
 /// Top-level cursor for channel discovery (shared by incoming and outgoing).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DiscoveryCursor {
-    /// Skip channel discovery. When `true`, only processes channels already
-    /// in the cursor — use this after channel discovery is complete.
-    /// Defaults to `false` (discover new channels).
+    /// All channels have been enumerated. Set by the discovery service once
+    /// the sentinel channel is reached. When `true`, no further channel
+    /// discovery is attempted — only channels already in the cursor are
+    /// processed.
     #[serde(default)]
-    pub skip_channel_discovery: bool,
+    pub channel_discovery_complete: bool,
 
     /// Total number of channels (cached from `get_num_of_channels` for incoming).
     /// Used as optimization to avoid redundant RPC calls.
@@ -33,17 +34,39 @@ pub struct DiscoveryCursor {
     pub channels: HashMap<Felt, ChannelCursor>,
 }
 
+impl DiscoveryCursor {
+    /// Returns `true` when all discovery levels are complete: channels,
+    /// subchannels within each channel, and notes within each subchannel.
+    pub fn is_complete(&self) -> bool {
+        self.channel_discovery_complete && self.all_channels_processed()
+    }
+
+    /// Returns `true` when every channel currently in the cursor has
+    /// completed subchannel and note discovery. Also returns `true` when
+    /// the cursor has no channels (vacuously).
+    ///
+    /// Used by sync orchestrators to decide whether to discover new
+    /// channels vs. process pending subchannel/note work.
+    pub fn all_channels_processed(&self) -> bool {
+        self.channels.values().all(ChannelCursor::is_complete)
+    }
+}
+
 /// Cursor state for a single channel (shared by incoming and outgoing).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelCursor {
-    /// Channel key (set for incoming, None for outgoing where it's derivable).
+    // TODO: Consider encrypting/masking channel_key in the serialized cursor
+    // to avoid exposing it in plaintext (sensitive value).
+    /// The channel key for this channel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channel_key: Option<Felt>,
 
-    /// Skip subchannel discovery. When `true`, only processes subchannels
-    /// already in the cursor. Defaults to `false` (discover new subchannels).
+    /// All subchannels have been enumerated. Set by the discovery service
+    /// once the sentinel subchannel is reached. When `true`, no further
+    /// subchannel discovery is attempted — only subchannels already in the
+    /// cursor are processed.
     #[serde(default)]
-    pub skip_subchannel_discovery: bool,
+    pub subchannel_discovery_complete: bool,
 
     /// Last fully processed subchannel index. `None` = start from index 0.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -54,12 +77,29 @@ pub struct ChannelCursor {
     pub subchannels: HashMap<Felt, SubchannelCursor>,
 }
 
+impl ChannelCursor {
+    /// Returns `true` when subchannel discovery is complete and all
+    /// subchannels have finished note discovery.
+    pub fn is_complete(&self) -> bool {
+        self.subchannel_discovery_complete
+            && self
+                .subchannels
+                .values()
+                .all(|sc| sc.note_discovery_complete)
+    }
+}
+
 /// Cursor state for a single subchannel (shared by incoming and outgoing).
 ///
 /// For incoming (linear scan): only `last_note_index` is used.
 /// For outgoing (exponential search): `last_note_index` = lo, `max_note_index` = hi.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SubchannelCursor {
+    /// All notes in this subchannel have been discovered. Set when the
+    /// note discovery scan completes without budget exhaustion.
+    #[serde(default)]
+    pub note_discovery_complete: bool,
+
     /// Last note index where a note exists.
     /// - Incoming: last scanned index.
     /// - Outgoing: lower bound (lo) for exponential search.

@@ -6,11 +6,12 @@
 
 use starknet_types_core::felt::Felt;
 
-use super::cursor::ChannelCursor;
-use super::DiscoveryError;
-use super::COST_SUBCHANNEL_INFO;
+use tracing::{debug, trace};
+
+use super::{ChannelCursor, DiscoveryError, COST_SUBCHANNEL_INFO};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::decrypt_subchannel_token;
+use crate::privacy_pool::felt_hex;
 use crate::privacy_pool::hashes::compute_subchannel_id;
 use crate::privacy_pool::views::IViews;
 
@@ -91,6 +92,20 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
 
     let last_index = subchannels.last().map(|s| s.index);
 
+    debug!(
+        start_index,
+        discovered = subchannels.len(),
+        has_more = out_of_budget,
+        "discover_subchannels done"
+    );
+    for sc in &subchannels {
+        trace!(
+            index = sc.index,
+            token = felt_hex(&sc.token),
+            "subchannel found"
+        );
+    }
+
     Ok(SubchannelDiscoveryResult {
         subchannels,
         last_index,
@@ -100,11 +115,12 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
 
 /// Discovers subchannels with cursor-based pagination.
 ///
-/// If `skip_subchannel_discovery` is set in the cursor (sentinel was found
-/// previously), returns an empty vec immediately — no budget consumed.
+/// If `subchannel_discovery_complete` is set in the cursor (set by the service
+/// once the sentinel subchannel is reached), returns an empty vec immediately —
+/// no budget consumed.
 ///
 /// Otherwise delegates to [`discover_subchannels`], adds new subchannels to the
-/// cursor, and sets `skip_subchannel_discovery` once the sentinel is found.
+/// cursor, and sets `subchannel_discovery_complete` once the sentinel is found.
 pub async fn discover_subchannels_paginated<S: IViews>(
     pool: &S,
     channel_key: Felt,
@@ -112,7 +128,7 @@ pub async fn discover_subchannels_paginated<S: IViews>(
     budget: &IoBudget,
 ) -> Result<Vec<Subchannel>, DiscoveryError> {
     // Already fully enumerated — skip entirely.
-    if cursor.skip_subchannel_discovery {
+    if cursor.subchannel_discovery_complete {
         return Ok(Vec::new());
     }
 
@@ -128,7 +144,7 @@ pub async fn discover_subchannels_paginated<S: IViews>(
 
     // Sentinel found — cache the total count.
     if !result.has_more {
-        cursor.skip_subchannel_discovery = true;
+        cursor.subchannel_discovery_complete = true;
     }
 
     Ok(result.subchannels)
@@ -167,7 +183,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &fixture.constants.alice_decryption_key,
         )
         .await
         .expect("Alice should have at least one channel");
@@ -199,7 +215,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &fixture.constants.bob_decryption_key,
         )
         .await
         .expect("Bob should have at least one channel");
@@ -231,7 +247,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &fixture.constants.alice_decryption_key,
         )
         .await
         .expect("Alice should have at least one channel");
@@ -264,7 +280,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &fixture.constants.alice_decryption_key,
         )
         .await
         .expect("Alice should have at least one channel");
@@ -288,14 +304,14 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &fixture.constants.bob_decryption_key,
         )
         .await
         .unwrap();
 
         let mut cursor = ChannelCursor {
             channel_key: Some(channel_key),
-            skip_subchannel_discovery: false,
+            subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
         };
@@ -307,7 +323,7 @@ mod tests {
 
         assert_eq!(subs.len(), 1, "should discover 1 subchannel (STRK)");
         assert!(
-            cursor.skip_subchannel_discovery,
+            cursor.subchannel_discovery_complete,
             "subchannel discovery should be marked complete after sentinel"
         );
         assert!(
@@ -326,14 +342,14 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &fixture.constants.bob_decryption_key,
         )
         .await
         .unwrap();
 
         let mut cursor = ChannelCursor {
             channel_key: Some(channel_key),
-            skip_subchannel_discovery: false,
+            subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
         };
@@ -343,7 +359,7 @@ mod tests {
         discover_subchannels_paginated(&backend, channel_key, &mut cursor, &budget)
             .await
             .unwrap();
-        assert!(cursor.skip_subchannel_discovery);
+        assert!(cursor.subchannel_discovery_complete);
 
         // Second call: 0 budget — should return empty immediately
         let budget = IoBudget::new(0);
@@ -356,8 +372,8 @@ mod tests {
     }
 
     /// Both states have an empty subchannels map, but behavior differs:
-    /// - Fresh cursor (skip_subchannel_discovery=false) → discovers subchannels
-    /// - Fully enumerated (skip_subchannel_discovery=true) → skips, zero budget cost
+    /// - Fresh cursor (subchannel_discovery_complete=false) → discovers subchannels
+    /// - Fully enumerated (subchannel_discovery_complete=true) → skips, zero budget cost
     #[tokio::test]
     async fn test_paginated_fresh_vs_fully_enumerated() {
         let fixture = load_devnet_fixture();
@@ -366,7 +382,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &fixture.constants.bob_decryption_key,
         )
         .await
         .unwrap();
@@ -374,7 +390,7 @@ mod tests {
         // Fresh cursor: empty map + no total → should discover subchannels
         let mut fresh = ChannelCursor {
             channel_key: Some(channel_key),
-            skip_subchannel_discovery: false,
+            subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
         };
@@ -388,7 +404,7 @@ mod tests {
         // (simulates state after all notes processed and entries pruned)
         let mut done = ChannelCursor {
             channel_key: Some(channel_key),
-            skip_subchannel_discovery: true,
+            subchannel_discovery_complete: true,
             last_subchannel_index: Some(0),
             subchannels: HashMap::new(),
         };

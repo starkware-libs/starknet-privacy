@@ -75,10 +75,17 @@ const DEVNET_RESOURCE_BOUNDS = {
   },
 };
 
+export interface DevnetConfig {
+  /** Number of predeployed user accounts (excludes admin). Default: 2 (alice, bob). */
+  userAccounts?: number;
+}
+
 export interface DevnetEnvironment {
   alice: Account;
   bob: Account;
   admin: Account;
+  /** Extra user accounts beyond alice and bob (index 0 = 3rd user, etc.) */
+  extraAccounts: Account[];
   strk: string;
   eth: string;
   privacy: PrivacyPoolContract;
@@ -133,6 +140,11 @@ export class Devnet {
   private provider?: RpcProvider;
   public setup?: DevnetEnvironment;
   private accountNonces = new AddressMap<number>(() => 0);
+  private config: Required<DevnetConfig>;
+
+  constructor(config?: DevnetConfig) {
+    this.config = { userAccounts: Math.max(config?.userAccounts ?? 2, 2) };
+  }
 
   /** HTTP RPC URL of the running devnet (e.g. `http://127.0.0.1:5050`). */
   get url(): string {
@@ -159,7 +171,7 @@ export class Devnet {
       "--state-archive-capacity",
       "none", // Disable state commitments for faster testing
       "--accounts",
-      "3", // 3 accounts (alice, bob, admin)
+      String(this.config.userAccounts + 1), // user accounts + admin
       "--l2-gas-price-fri",
       "1",
       "--data-gas-price-fri",
@@ -206,49 +218,35 @@ export class Devnet {
       public_key: string;
     }>;
 
-    // Setup Alice (first account)
-    const aliceAccount = accounts[0];
-    const alicePrivateKeyBytes = new Uint8Array(
-      aliceAccount.private_key
+    // Create user accounts (alice, bob, and any extra)
+    const userAccounts: Account[] = [];
+    for (let i = 0; i < this.config.userAccounts; i++) {
+      const raw = accounts[i];
+      const keyBytes = new Uint8Array(
+        raw.private_key
+          .replace("0x", "")
+          .match(/.{1,2}/g)!
+          .map((byte) => parseInt(byte, 16))
+      );
+      userAccounts.push(
+        new Account({ provider: this.provider, address: raw.address, signer: keyBytes })
+      );
+    }
+    const [alice, bob] = userAccounts;
+
+    // Admin is always the last predeployed account
+    const adminRaw = accounts[this.config.userAccounts];
+    const adminKeyBytes = new Uint8Array(
+      adminRaw.private_key
         .replace("0x", "")
         .match(/.{1,2}/g)!
         .map((byte) => parseInt(byte, 16))
     );
-    const alice = new Account({
-      provider: this.provider,
-      address: aliceAccount.address,
-      signer: alicePrivateKeyBytes,
-    });
-
-    // Setup Bob (second account)
-    const bobAccount = accounts[1];
-    const bobPrivateKeyBytes = new Uint8Array(
-      bobAccount.private_key
-        .replace("0x", "")
-        .match(/.{1,2}/g)!
-        .map((byte) => parseInt(byte, 16))
-    );
-    const bob = new Account({
-      provider: this.provider,
-      address: bobAccount.address,
-      signer: bobPrivateKeyBytes,
-    });
-
-    // Setup Admin (third account)
-    const adminAccount = accounts[2];
-    const adminPrivateKeyBytes = new Uint8Array(
-      adminAccount.private_key
-        .replace("0x", "")
-        .match(/.{1,2}/g)!
-        .map((byte) => parseInt(byte, 16))
-    );
-
-    // Wrap admin account with devnet behavior (automatic nonce management)
     const admin = this.wrapAccount(
       new Account({
         provider: this.provider,
-        address: adminAccount.address,
-        signer: adminPrivateKeyBytes,
+        address: adminRaw.address,
+        signer: adminKeyBytes,
         cairoVersion: "1",
       })
     );
@@ -264,10 +262,20 @@ export class Devnet {
     // Deploy the privacy pool contract
     const privacy = await this.deployPrivacyContract(admin, contractClass, compiledContract);
 
-    this.setup = { alice, bob, admin, strk, eth, privacy, provider: this.provider };
+    this.setup = {
+      alice,
+      bob,
+      admin,
+      extraAccounts: userAccounts.slice(2),
+      strk,
+      eth,
+      privacy,
+      provider: this.provider,
+    };
 
     debugLog("devnet", "initialize", () =>
       Object.entries(this.setup!)
+        .filter(([, value]) => value && typeof value === "object" && "address" in value)
         .map(([key, value]) => `${key}: ${value.address}`)
         .join("\n")
     );
@@ -429,6 +437,8 @@ export interface DevnetTestEnv {
  * Configuration for createDevnetTestEnv.
  */
 export interface DevnetTestEnvConfig {
+  /** Devnet configuration (account count, etc.) */
+  devnet?: DevnetConfig;
   /** Options for discovery (rate limiting, etc.) */
   discoveryOptions?: DiscoveryOptions;
 }

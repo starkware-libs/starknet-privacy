@@ -8,6 +8,7 @@
 
 pub mod api_server;
 pub mod chain_state;
+pub mod config;
 pub mod incoming_sync;
 pub mod indexer;
 pub mod outgoing_sync;

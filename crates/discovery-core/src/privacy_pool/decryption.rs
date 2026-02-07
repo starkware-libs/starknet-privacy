@@ -100,14 +100,14 @@ pub fn decrypt_note_amount(
 
 /// Decrypts an outgoing channel's encrypted recipient address.
 ///
-/// `recipient_addr = enc_recipient_addr - hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, viewing_key, index, 0, salt)`
+/// `recipient_addr = enc_recipient_addr - hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, decryption_key, index, 0, salt)`
 pub fn decrypt_outgoing_recipient_addr(
     enc: &EncOutgoingChannelInfo,
     sender_addr: Felt,
-    viewing_key: &SecretFelt,
+    decryption_key: &SecretFelt,
     index: u64,
 ) -> Felt {
-    let mask = compute_enc_recipient_addr_hash(sender_addr, viewing_key, index, enc.salt);
+    let mask = compute_enc_recipient_addr_hash(sender_addr, decryption_key, index, enc.salt);
     enc.enc_recipient_addr - mask
 }
 

@@ -4,26 +4,58 @@
 //! for a given sender. Outgoing channels store encrypted recipient addresses
 //! that only the sender can decrypt using their viewing key.
 
+use std::collections::{HashMap, HashSet};
+
+use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
-use super::cursor::DiscoveryCursor;
-use super::DiscoveryError;
-use super::COST_OUTGOING_CHANNEL_INFO;
+use tracing::{debug, trace};
+
+use super::{DiscoveryCursor, DiscoveryError, COST_OUTGOING_CHANNEL_INFO, COST_PUBLIC_KEY};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::decrypt_outgoing_recipient_addr;
+use crate::privacy_pool::felt_hex;
 use crate::privacy_pool::hashes::{compute_channel_key, compute_outgoing_channel_id};
 use crate::privacy_pool::types::SecretFelt;
 use crate::privacy_pool::views::IViews;
 
 /// A discovered and decrypted outgoing channel.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutgoingChannel {
-    /// The index of this outgoing channel.
-    pub index: u64,
     /// The decrypted recipient address.
     pub recipient_addr: Felt,
+    /// The recipient's public viewing key.
+    pub recipient_public_key: Felt,
     /// The channel key derived from sender + recipient identity.
     pub channel_key: Felt,
+    /// `true` when this channel does not yet exist on-chain and was computed
+    /// from a requested recipient's public key (a "future" channel).
+    #[serde(default)]
+    pub precomputed: bool,
+}
+
+impl OutgoingChannel {
+    /// Builds an `OutgoingChannel` by computing the channel key from identity parameters.
+    fn new(
+        sender_addr: Felt,
+        decryption_key: &SecretFelt,
+        recipient_addr: Felt,
+        recipient_public_key: Felt,
+        precomputed: bool,
+    ) -> Self {
+        let channel_key = compute_channel_key(
+            sender_addr,
+            decryption_key,
+            recipient_addr,
+            recipient_public_key,
+        );
+        Self {
+            recipient_addr,
+            recipient_public_key,
+            channel_key,
+            precomputed,
+        }
+    }
 }
 
 /// Result of outgoing channel discovery operation.
@@ -43,29 +75,30 @@ pub struct OutgoingChannelDiscoveryResult {
 /// # Algorithm
 ///
 /// For each outgoing channel index starting from `start_index`:
-/// 1. Compute `outgoing_channel_id = hash(OUTGOING_CHANNEL_ID_TAG, sender_addr, viewing_key, index, 0)`
+/// 1. Compute `outgoing_channel_id = hash(OUTGOING_CHANNEL_ID_TAG, sender_addr, decryption_key, index, 0)`
 /// 2. Fetch `EncOutgoingChannelInfo { salt, enc_recipient_addr }` from storage
 /// 3. If `salt == 0`, stop (sentinel - no more outgoing channels)
-/// 4. Decrypt: `recipient_addr = enc_recipient_addr - hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, viewing_key, index, 0, salt)`
+/// 4. Decrypt: `recipient_addr = enc_recipient_addr - hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, decryption_key, index, 0, salt)`
 ///
 /// # Arguments
 ///
 /// * `privacy_pool` - Storage backend implementing the IViews trait.
 /// * `sender_addr` - The sender's address.
-/// * `viewing_key` - The sender's private viewing key.
+/// * `decryption_key` - The sender's private viewing key.
 /// * `start_index` - Starting index (inclusive). For incremental discovery, pass
 ///   `last_index + 1` from previous result.
 /// * `budget` - I/O budget to limit storage operations.
 pub async fn discover_outgoing_channels<PrivacyPool: IViews>(
     privacy_pool: &PrivacyPool,
     sender_addr: Felt,
-    viewing_key: &SecretFelt,
+    decryption_key: &SecretFelt,
     start_index: u64,
     budget: &IoBudget,
 ) -> Result<OutgoingChannelDiscoveryResult, DiscoveryError> {
     let mut channels = Vec::new();
     let mut index = start_index;
     let mut out_of_budget = false;
+    let mut last_index: Option<u64> = None;
 
     loop {
         if !budget.consume(COST_OUTGOING_CHANNEL_INFO) {
@@ -73,7 +106,7 @@ pub async fn discover_outgoing_channels<PrivacyPool: IViews>(
             break;
         }
 
-        let outgoing_channel_id = compute_outgoing_channel_id(sender_addr, viewing_key, index);
+        let outgoing_channel_id = compute_outgoing_channel_id(sender_addr, decryption_key, index);
         let encrypted = privacy_pool
             .get_outgoing_channel_info(outgoing_channel_id)
             .await?;
@@ -84,24 +117,33 @@ pub async fn discover_outgoing_channels<PrivacyPool: IViews>(
         }
 
         let recipient_addr =
-            decrypt_outgoing_recipient_addr(&encrypted, sender_addr, viewing_key, index);
+            decrypt_outgoing_recipient_addr(&encrypted, sender_addr, decryption_key, index);
         let recipient_public_key = privacy_pool.get_public_key(recipient_addr).await?;
-        let channel_key = compute_channel_key(
+
+        trace!(
+            index,
+            recipient = felt_hex(&recipient_addr),
+            "outgoing channel found"
+        );
+        channels.push(OutgoingChannel::new(
             sender_addr,
-            viewing_key,
+            decryption_key,
             recipient_addr,
             recipient_public_key,
-        );
-
-        channels.push(OutgoingChannel {
-            index,
-            recipient_addr,
-            channel_key,
-        });
+            false,
+        ));
+        last_index = Some(index);
         index += 1;
     }
 
-    let last_index = channels.last().map(|c| c.index);
+    debug!(
+        sender = felt_hex(&sender_addr),
+        start_index,
+        channels = channels.len(),
+        last_index = ?last_index,
+        has_more = out_of_budget,
+        "discover_outgoing_channels done"
+    );
 
     Ok(OutgoingChannelDiscoveryResult {
         channels,
@@ -112,47 +154,83 @@ pub async fn discover_outgoing_channels<PrivacyPool: IViews>(
 
 /// Discovers outgoing channels with cursor-based pagination.
 ///
-/// Manages resume state across calls. If `cursor.skip_channel_discovery` is
-/// set, returns immediately without consuming budget — use this to skip
-/// channel discovery and only process specific recipients/tokens already in
-/// cursor.
+/// Manages resume state across calls. If `cursor.channel_discovery_complete` is
+/// set (by the service once the sentinel channel is reached), returns
+/// immediately without consuming budget.
 ///
-/// Returns discovered channels.
+/// When `recipients` is provided, only channels matching the filter are
+/// registered in the cursor and included in the returned vec.
 pub async fn discover_outgoing_channels_paginated<S: IViews>(
     pool: &S,
     sender_addr: Felt,
-    viewing_key: &SecretFelt,
+    decryption_key: &SecretFelt,
     cursor: &mut DiscoveryCursor,
     budget: &IoBudget,
+    recipients: Option<&HashSet<Felt>>,
 ) -> Result<Vec<OutgoingChannel>, DiscoveryError> {
-    if cursor.skip_channel_discovery {
+    if cursor.channel_discovery_complete {
         return Ok(Vec::new());
     }
 
     let start_index = cursor.last_channel_index.map_or(0, |i| i + 1);
-    let result =
-        discover_outgoing_channels(pool, sender_addr, viewing_key, start_index, budget).await?;
+    let mut result =
+        discover_outgoing_channels(pool, sender_addr, decryption_key, start_index, budget).await?;
 
-    // Register discovered channels in cursor with their channel_key.
-    for ch in &result.channels {
-        let entry = cursor.channels.entry(ch.recipient_addr).or_insert_with(|| {
-            super::cursor::ChannelCursor {
-                channel_key: None,
-                skip_subchannel_discovery: false,
+    // Filter channels by recipients if provided.
+    if let Some(filter) = recipients {
+        result
+            .channels
+            .retain(|channel| filter.contains(&channel.recipient_addr));
+    }
+
+    // Register discovered channels in cursor.
+    for channel in result.channels.iter() {
+        cursor
+            .channels
+            .entry(channel.recipient_addr)
+            .or_insert_with(|| super::cursor::ChannelCursor {
+                channel_key: Some(channel.channel_key),
+                subchannel_discovery_complete: false,
                 last_subchannel_index: None,
-                subchannels: std::collections::HashMap::new(),
-            }
-        });
-        entry.channel_key = Some(ch.channel_key);
+                subchannels: HashMap::new(),
+            });
     }
 
     cursor.last_channel_index = result.last_index.or(cursor.last_channel_index);
     // Stop discovering once sentinel is found.
     if !result.has_more {
-        cursor.skip_channel_discovery = true;
+        cursor.channel_discovery_complete = true;
     }
 
     Ok(result.channels)
+}
+
+/// Precomputes outgoing channels for recipients that have no on-chain channel.
+///
+/// Fetches public keys in batch for the given `recipient_addrs`, skips
+/// unregistered recipients (pk == 0), and returns `OutgoingChannel` entries
+/// with `precomputed: true`.
+pub async fn precompute_channels<S: IViews>(
+    pool: &S,
+    sender_addr: Felt,
+    decryption_key: &SecretFelt,
+    recipient_addrs: &[Felt],
+    budget: &IoBudget,
+) -> Result<Vec<OutgoingChannel>, DiscoveryError> {
+    if recipient_addrs.is_empty() {
+        return Ok(Vec::new());
+    }
+    // TODO: budget.consume proceeds even when over budget (capped by max
+    // recipients validation). Consider paginating if the recipient list grows.
+    budget.consume(recipient_addrs.len() * COST_PUBLIC_KEY);
+    let pks = pool.get_public_keys_batch(recipient_addrs).await?;
+    Ok(recipient_addrs
+        .iter()
+        .copied()
+        .zip(pks)
+        .filter(|(_, pk)| *pk != Felt::ZERO)
+        .map(|(addr, pk)| OutgoingChannel::new(sender_addr, decryption_key, addr, pk, true))
+        .collect())
 }
 
 #[cfg(test)]
@@ -165,10 +243,10 @@ mod tests {
     async fn test_discover_no_outgoing_channels() {
         let backend = MockBackend::empty();
         let sender_addr = Felt::from_hex_unchecked("0x12345");
-        let viewing_key = SecretFelt::new(Felt::from_hex_unchecked("0x67890"));
+        let decryption_key = SecretFelt::new(Felt::from_hex_unchecked("0x67890"));
         let budget = IoBudget::new(100);
 
-        let result = discover_outgoing_channels(&backend, sender_addr, &viewing_key, 0, &budget)
+        let result = discover_outgoing_channels(&backend, sender_addr, &decryption_key, 0, &budget)
             .await
             .unwrap();
 
@@ -182,13 +260,13 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let decryption_key = SecretFelt::new(fixture.constants.alice_decryption_key);
         let budget = IoBudget::new(100);
 
         let result = discover_outgoing_channels(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            &decryption_key,
             0,
             &budget,
         )
@@ -205,13 +283,11 @@ mod tests {
         assert_eq!(result.last_index, Some(1));
         assert!(!result.has_more);
 
-        assert_eq!(result.channels[0].index, 0);
         assert_eq!(
             result.channels[0].recipient_addr, fixture.constants.alice_address,
             "First outgoing channel should point to Alice (self-channel)"
         );
 
-        assert_eq!(result.channels[1].index, 1);
         assert_eq!(
             result.channels[1].recipient_addr, fixture.constants.bob_address,
             "Second outgoing channel should point to Bob"
@@ -223,31 +299,33 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let decryption_key = SecretFelt::new(fixture.constants.alice_decryption_key);
         let mut cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(100);
 
         let channels = discover_outgoing_channels_paginated(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            &decryption_key,
             &mut cursor,
             &budget,
+            None,
         )
         .await
         .unwrap();
 
         assert_eq!(channels.len(), 2);
         assert_eq!(cursor.last_channel_index, Some(1));
-        assert!(cursor.skip_channel_discovery, "discovery complete");
+        assert!(cursor.channel_discovery_complete, "discovery complete");
 
         // Second call should return empty (already complete)
         let channels2 = discover_outgoing_channels_paginated(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            &decryption_key,
             &mut cursor,
             &budget,
+            None,
         )
         .await
         .unwrap();
@@ -260,7 +338,7 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let decryption_key = SecretFelt::new(fixture.constants.alice_decryption_key);
         let mut cursor = DiscoveryCursor::default();
 
         // Budget for 1 channel (COST_OUTGOING_CHANNEL_INFO = 3)
@@ -268,31 +346,36 @@ mod tests {
         let channels = discover_outgoing_channels_paginated(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            &decryption_key,
             &mut cursor,
             &budget,
+            None,
         )
         .await
         .unwrap();
 
         assert_eq!(channels.len(), 1);
         assert_eq!(cursor.last_channel_index, Some(0));
-        assert!(!cursor.skip_channel_discovery, "discovery not complete yet");
+        assert!(
+            !cursor.channel_discovery_complete,
+            "discovery not complete yet"
+        );
 
         // Resume with more budget
         let budget = IoBudget::new(100);
         let channels2 = discover_outgoing_channels_paginated(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            &decryption_key,
             &mut cursor,
             &budget,
+            None,
         )
         .await
         .unwrap();
 
         assert_eq!(channels2.len(), 1, "second channel discovered");
         assert_eq!(cursor.last_channel_index, Some(1));
-        assert!(cursor.skip_channel_discovery, "discovery complete");
+        assert!(cursor.channel_discovery_complete, "discovery complete");
     }
 }

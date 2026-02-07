@@ -5,7 +5,6 @@
 // check can be issued as a single batched RPC call).
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use discovery_core::storage_backend::{
@@ -22,6 +21,7 @@ use tower::limit::concurrency::ConcurrencyLimitLayer;
 use url::Url;
 
 use crate::chain_state::{ChainHead, ChainState, ChainStateError};
+use crate::config::RpcConfig;
 
 /// Errors specific to the RPC backend.
 #[derive(Debug, Error)]
@@ -29,6 +29,9 @@ pub enum RpcBackendError {
     /// Failed to build the HTTP client.
     #[error("failed to build HTTP client: {0}")]
     HttpClientBuild(#[source] reqwest::Error),
+    /// Invalid RPC URL.
+    #[error("invalid RPC URL: {0}")]
+    InvalidUrl(#[source] url::ParseError),
     /// RPC request failed.
     #[error("RPC request failed: {0}")]
     Request(String),
@@ -40,64 +43,6 @@ pub enum RpcBackendError {
 impl From<RpcBackendError> for StorageError {
     fn from(err: RpcBackendError) -> Self {
         StorageError::Backend(Box::new(err))
-    }
-}
-
-/// Configuration for the connection pool.
-#[derive(Debug, Clone)]
-pub struct PoolConfig {
-    /// Maximum number of concurrent RPC requests.
-    pub max_concurrent_requests: usize,
-    /// Connection timeout in seconds.
-    pub connect_timeout_secs: u64,
-    /// Request timeout in seconds.
-    pub request_timeout_secs: u64,
-    /// Maximum idle connections per host.
-    pub pool_max_idle_per_host: usize,
-}
-
-impl Default for PoolConfig {
-    fn default() -> Self {
-        Self {
-            max_concurrent_requests: 10,
-            connect_timeout_secs: 30,
-            request_timeout_secs: 60,
-            pool_max_idle_per_host: 10,
-        }
-    }
-}
-
-const DEFAULT_RPC_URL: &str = "http://127.0.0.1:5050";
-
-/// Configuration for the RPC backend.
-#[derive(Debug, Clone)]
-pub struct RpcConfig {
-    /// URL of the StarkNet JSON-RPC endpoint.
-    pub rpc_url: Url,
-    /// Address of the privacy contract to read from.
-    pub contract_address: Felt,
-    /// Connection pool configuration.
-    pub pool_config: PoolConfig,
-}
-
-impl RpcConfig {
-    /// Creates a new RPC configuration with the given URL and contract address.
-    pub fn new(rpc_url: Url, contract_address: Felt) -> Self {
-        Self {
-            rpc_url,
-            contract_address,
-            pool_config: PoolConfig::default(),
-        }
-    }
-}
-
-impl Default for RpcConfig {
-    fn default() -> Self {
-        Self {
-            rpc_url: Url::parse(DEFAULT_RPC_URL).unwrap(),
-            contract_address: Felt::ZERO,
-            pool_config: PoolConfig::default(),
-        }
     }
 }
 
@@ -120,24 +65,24 @@ pub struct RpcBackend {
 
 impl RpcBackend {
     /// Creates a new RPC backend with the given configuration.
-    pub fn new(config: RpcConfig) -> Result<Self, RpcBackendError> {
+    pub fn new(config: RpcConfig, contract_address: Felt) -> Result<Self, RpcBackendError> {
+        let rpc_url = Url::parse(&config.url).map_err(RpcBackendError::InvalidUrl)?;
+
         let client = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(config.pool_config.connect_timeout_secs))
-            .timeout(Duration::from_secs(config.pool_config.request_timeout_secs))
-            .pool_max_idle_per_host(config.pool_config.pool_max_idle_per_host)
-            .connector_layer(ConcurrencyLimitLayer::new(
-                config.pool_config.max_concurrent_requests,
-            ))
+            .connect_timeout(config.connect_timeout)
+            .timeout(config.request_timeout)
+            .pool_max_idle_per_host(config.max_idle_per_host)
+            .connector_layer(ConcurrencyLimitLayer::new(config.max_concurrent_requests))
             .build()
             .map_err(RpcBackendError::HttpClientBuild)?;
 
-        let transport = HttpTransport::new_with_client(config.rpc_url, client);
+        let transport = HttpTransport::new_with_client(rpc_url, client);
         let provider = JsonRpcClient::new(transport);
 
         Ok(Self {
             inner: Arc::new(RpcBackendInner {
                 provider,
-                contract_address: config.contract_address,
+                contract_address,
                 head: RwLock::new(None),
             }),
         })

@@ -10,9 +10,7 @@ use std::future::Future;
 
 use starknet_types_core::felt::Felt;
 
-use super::cursor::SubchannelCursor;
-use super::DiscoveryError;
-use super::COST_NOTE_PROBING;
+use super::{DiscoveryError, SubchannelCursor, COST_NOTE_PROBING};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::hashes::compute_note_id;
 use crate::privacy_pool::views::IViews;
@@ -88,7 +86,7 @@ pub async fn find_last_note_index_paginated<S: IViews>(
 
 /// Probes note existence at exponentially increasing indices in a single batch.
 ///
-/// From `start`, probes at offsets `0, 2^0, 2^1, ..., 2^k` where
+/// From `start`, probes at offsets `0, 2, 4, 8, ..., 2^k` where
 /// `start + 2^k <= upper_limit`. Offset 0 checks `start` itself — needed
 /// when `start` is the only note.
 ///
@@ -110,10 +108,10 @@ pub async fn exponential_ascend<S: IViews>(
 ) -> Result<ExponentialProbeResult, DiscoveryError> {
     let range = upper_index_bound.saturating_sub(start_index);
 
-    // Offsets: [0, 1, 2, 4, 8, ..., 2^k] where 2^k <= range.
+    // Offsets: [0, 2, 4, 8, ..., 2^k] where 2^k <= range.
     let offsets: Vec<u64> = std::iter::once(0)
         .chain(
-            (0..64)
+            (1..64)
                 .map(|exp| 1u64 << exp)
                 .take_while(|&off| off <= range),
         )
@@ -147,7 +145,8 @@ pub async fn exponential_ascend<S: IViews>(
         }
     }
 
-    let budget_exhausted = first_empty_index.is_none() && batch_size < offsets.len();
+    let budget_exhausted =
+        first_empty_index.is_none() && (batch_size < offsets.len() || last_found_note.is_some());
 
     Ok(ExponentialProbeResult {
         last_found_note,
@@ -230,6 +229,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_exponential_ascend_one_element() {
+        // Elements at 0 only. Probes: offset 0→0 (hit), 2→2 (miss).
         let backend = mock_with_notes(Some(0));
         let budget = IoBudget::new(100);
         let result = exponential_ascend(&backend, CK, TK, 0, u64::MAX, &budget)
@@ -237,13 +237,13 @@ mod tests {
             .unwrap();
 
         assert_eq!(result.last_found_note, Some((0, Felt::ONE)));
-        assert_eq!(result.first_empty_index, Some(1));
+        assert_eq!(result.first_empty_index, Some(2));
         assert!(!result.budget_exhausted);
     }
 
     #[tokio::test]
     async fn test_exponential_ascend_multiple_elements() {
-        // Elements at 0..=4. Probes: offset 0→0 (hit), 1→1 (hit), 2→2 (hit),
+        // Elements at 0..=4. Probes: offset 0→0 (hit), 2→2 (hit),
         // 4→4 (hit), 8→8 (miss)
         let backend = mock_with_notes(Some(4));
         let budget = IoBudget::new(100);
@@ -259,13 +259,13 @@ mod tests {
     #[tokio::test]
     async fn test_exponential_ascend_budget_exhausted() {
         let backend = mock_with_notes(Some(100));
-        // Budget for only 2 probes: offsets 0, 1
+        // Budget for only 2 probes: offsets 0, 2
         let budget = IoBudget::new(2 * COST_NOTE_PROBING);
         let result = exponential_ascend(&backend, CK, TK, 0, u64::MAX, &budget)
             .await
             .unwrap();
 
-        assert_eq!(result.last_found_note, Some((1, Felt::ONE)));
+        assert_eq!(result.last_found_note, Some((2, Felt::ONE)));
         assert_eq!(result.first_empty_index, None);
         assert!(result.budget_exhausted);
     }
@@ -287,6 +287,7 @@ mod tests {
     #[tokio::test]
     async fn test_bisect_boundary_adjacent() {
         let mut cursor = SubchannelCursor {
+            note_discovery_complete: false,
             last_note_index: Some(0),
             max_note_index: Some(1),
         };
@@ -300,6 +301,7 @@ mod tests {
     #[tokio::test]
     async fn test_bisect_boundary_gap() {
         let mut cursor = SubchannelCursor {
+            note_discovery_complete: false,
             last_note_index: Some(3),
             max_note_index: Some(7),
         };
@@ -319,7 +321,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &fixture.constants.alice_decryption_key,
         )
         .await
         .expect("Alice should have at least one channel");
@@ -367,7 +369,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &fixture.constants.alice_decryption_key,
         )
         .await
         .expect("Alice should have at least one channel");
@@ -379,7 +381,7 @@ mod tests {
         let mut cursor = SubchannelCursor::default();
 
         // Budget for 1 probe: batch gets offset 0 only (note at 0 exists),
-        // but no first_empty found — budget_exhausted.
+        // but no first_empty found — budget_exhausted (all probes hit).
         let budget = IoBudget::new(COST_NOTE_PROBING);
         let (last_index, has_more) =
             find_last_note_index_paginated(&backend, channel_key, token, &mut cursor, &budget)

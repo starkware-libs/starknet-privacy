@@ -576,7 +576,7 @@ export interface DiscoveryProviderInterface {
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
     recipients: StarknetAddressBigint[] | "all",
-    params?: { cursor?: AddressMap<Channel> }
+    params?: { cursor?: AddressMap<Channel>; lastKnownBlock?: BlockIdentifier }
   ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }>;
 
   /**

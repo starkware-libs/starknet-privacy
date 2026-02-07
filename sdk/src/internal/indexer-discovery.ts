@@ -1,0 +1,542 @@
+import type { BlockIdentifier } from "starknet";
+import {
+  SetupRequirement,
+  type Channel as ChannelInterface,
+  type Note,
+  type StarknetAddressBigint,
+  type ViewingKey,
+} from "../interfaces.js";
+import { toBigInt } from "../utils/crypto.js";
+import { toHex } from "../utils/convert.js";
+import { AddressMap } from "../utils/maps.js";
+import { AbstractDiscoveryProvider } from "./abstract-discovery.js";
+import { Channel, Witness } from "./channel.js";
+import type { IncomingChannelCursor, NotesCursor } from "./channel.js";
+
+/** Thrown when the indexer reports a block reorg (HTTP 409, BLOCK_REORGED). */
+export class ReorgError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ReorgError";
+  }
+}
+
+// API JSON wire types
+
+type ApiSubchannelCursor = {
+  note_discovery_complete?: boolean;
+  last_note_index?: number;
+  max_note_index?: number;
+};
+
+type ApiChannelCursor = {
+  channel_key?: string;
+  subchannel_discovery_complete?: boolean;
+  last_subchannel_index?: number;
+  subchannels?: Record<string, ApiSubchannelCursor>;
+};
+
+type ApiDiscoveryCursor = {
+  channel_discovery_complete?: boolean;
+  total_n_channels?: number;
+  last_channel_index?: number;
+  channels?: Record<string, ApiChannelCursor>;
+};
+
+type ApiIncomingChannel = {
+  channel_key: string;
+  sender_addr: string;
+};
+
+type ApiIncomingSubchannelInfo = {
+  sender_addr: string;
+  token: string;
+};
+
+type ApiIncomingNoteInfo = {
+  sender_addr: string;
+  token: string;
+  index: number;
+  note_id: string;
+  amount: number;
+  salt: number;
+};
+
+type ApiOutgoingChannel = {
+  recipient_addr: string;
+  recipient_public_key: string;
+  channel_key: string;
+  precomputed?: boolean;
+};
+
+type ApiOutgoingSubchannelInfo = {
+  recipient_addr: string;
+  token: string;
+  last_note_index: number | null;
+};
+
+type ApiIncomingSyncResponse = {
+  block_ref: string;
+  channels: ApiIncomingChannel[];
+  subchannels: ApiIncomingSubchannelInfo[];
+  notes: ApiIncomingNoteInfo[];
+  cursor: ApiDiscoveryCursor;
+};
+
+type ApiOutgoingSyncResponse = {
+  block_ref: string;
+  channels: ApiOutgoingChannel[];
+  subchannels: ApiOutgoingSubchannelInfo[];
+  cursor: ApiDiscoveryCursor;
+};
+
+/** Mirrors Rust `DiscoveryCursor::is_complete()`. */
+function isApiCursorComplete(cursor: ApiDiscoveryCursor): boolean {
+  if (!cursor.channel_discovery_complete) return false;
+  if (!cursor.channels) return true;
+  return Object.values(cursor.channels).every(
+    (ch) =>
+      ch.subchannel_discovery_complete &&
+      (!ch.subchannels || Object.values(ch.subchannels).every((sc) => !!sc.note_discovery_complete))
+  );
+}
+
+/** Converts SDK `NotesCursor` → API cursor for an incoming sync request. */
+export function notesCursorToApiCursor(
+  cursor: NotesCursor,
+  tokenFilter: Set<bigint> | null
+): { apiCursor: ApiDiscoveryCursor } {
+  const apiCursor: ApiDiscoveryCursor = {
+    channel_discovery_complete: false,
+    last_channel_index:
+      cursor.incomingChannels.size > 0 ? cursor.incomingChannels.size - 1 : undefined,
+    channels: {},
+  };
+  for (const [sender, icc] of cursor.incomingChannels) {
+    const subchannels: Record<string, ApiSubchannelCursor> = {};
+    for (const [token, noteIndex] of icc.noteIndexes) {
+      if (tokenFilter && !tokenFilter.has(toBigInt(token))) continue;
+      subchannels[toHex(token)] = {
+        last_note_index: noteIndex > 0 ? noteIndex - 1 : undefined,
+      };
+    }
+    apiCursor.channels![toHex(sender)] = {
+      channel_key: toHex(icc.channelKey),
+      subchannel_discovery_complete: !!tokenFilter,
+      last_subchannel_index: icc.subchannelIdIndex > 0 ? icc.subchannelIdIndex - 1 : undefined,
+      subchannels,
+    };
+  }
+  return { apiCursor };
+}
+
+/** Converts API cursor from an incoming sync response → SDK `NotesCursor`. */
+export function apiCursorToNotesCursor(
+  apiCursor: ApiDiscoveryCursor,
+  blockRef: string
+): NotesCursor {
+  const incomingChannels = new AddressMap<IncomingChannelCursor>();
+  if (apiCursor.channels) {
+    for (const [senderHex, ch] of Object.entries(apiCursor.channels)) {
+      const channelKey = ch.channel_key ? BigInt(ch.channel_key) : 0n;
+      const noteIndexes = new AddressMap<number>();
+      if (ch.subchannels) {
+        for (const [tokenHex, sc] of Object.entries(ch.subchannels)) {
+          noteIndexes.set(BigInt(tokenHex), (sc.last_note_index ?? -1) + 1);
+        }
+      }
+      incomingChannels.set(BigInt(senderHex), {
+        channelKey,
+        subchannelIdIndex: (ch.last_subchannel_index ?? -1) + 1,
+        noteIndexes,
+      });
+    }
+  }
+  return { blockId: blockRef, incomingChannels };
+}
+
+/** Converts SDK `AddressMap<Channel>` → API cursor for an outgoing sync request. */
+export function channelMapToApiCursor(
+  channels: AddressMap<ChannelInterface> | undefined,
+  channelDiscoveryComplete: boolean
+): ApiDiscoveryCursor {
+  const apiCursor: ApiDiscoveryCursor = {
+    channel_discovery_complete: channelDiscoveryComplete,
+    channels: {},
+  };
+  if (channels) {
+    for (const [recipient, channel] of channels) {
+      if (!channel.key) continue;
+      const subchannels: Record<string, ApiSubchannelCursor> = {};
+      for (const [token, nonces] of channel.tokens) {
+        subchannels[toHex(token)] = {
+          last_note_index: nonces.noteNonce > 0 ? nonces.noteNonce - 1 : undefined,
+        };
+      }
+      apiCursor.channels![toHex(recipient)] = {
+        channel_key: toHex(channel.key),
+        subchannel_discovery_complete: false,
+        subchannels,
+      };
+    }
+  }
+  return apiCursor;
+}
+
+/** Accumulates outgoing sync response data into maps across multiple pages. */
+function accumulateOutgoingResponse(
+  resp: ApiOutgoingSyncResponse,
+  createdChannelMap: Map<string, { publicKey: bigint; channelKey: bigint }>,
+  subchannelsByRecipient: Map<string, Map<string, { token: bigint; lastIndex: number | null }>>,
+  nonCreatedChannelMap: Map<string, { publicKey: bigint; channelKey: bigint }>
+): void {
+  for (const ch of resp.channels) {
+    const info = { publicKey: BigInt(ch.recipient_public_key), channelKey: BigInt(ch.channel_key) };
+    if (ch.precomputed) {
+      // Precomputed channels may duplicate a real channel discovered in a
+      // later pagination step. The created map takes precedence.
+      if (!createdChannelMap.has(ch.recipient_addr)) {
+        nonCreatedChannelMap.set(ch.recipient_addr, info);
+      }
+    } else {
+      createdChannelMap.set(ch.recipient_addr, info);
+      // Promote: if we previously saw a precomputed entry, the real one wins.
+      nonCreatedChannelMap.delete(ch.recipient_addr);
+    }
+  }
+
+  for (const sc of resp.subchannels) {
+    let tokenMap = subchannelsByRecipient.get(sc.recipient_addr);
+    if (!tokenMap) {
+      tokenMap = new Map();
+      subchannelsByRecipient.set(sc.recipient_addr, tokenMap);
+    }
+    const existing = tokenMap.get(sc.token);
+    // Keep the most informative value: non-null overrides null
+    if (!existing || sc.last_note_index !== null) {
+      tokenMap.set(sc.token, { token: BigInt(sc.token), lastIndex: sc.last_note_index });
+    }
+  }
+}
+
+/** Builds the final SDK channel map from accumulated outgoing sync data. */
+function buildChannelMap(
+  createdChannelMap: Map<string, { publicKey: bigint; channelKey: bigint }>,
+  subchannelsByRecipient: Map<string, Map<string, { token: bigint; lastIndex: number | null }>>,
+  nonCreatedChannelMap: Map<string, { publicKey: bigint; channelKey: bigint }>
+): AddressMap<ChannelInterface> {
+  const channels = new AddressMap<ChannelInterface>();
+
+  for (const [recipientHex, info] of createdChannelMap) {
+    const tokens = new AddressMap<{ tokenIndex: number; noteNonce: number }>();
+    const subs = subchannelsByRecipient.get(recipientHex);
+    if (subs) {
+      let tokenIndex = 0;
+      for (const [, sub] of subs) {
+        tokens.set(sub.token, {
+          tokenIndex: tokenIndex++,
+          noteNonce: sub.lastIndex !== null ? sub.lastIndex + 1 : 0,
+        });
+      }
+    }
+    channels.set(
+      BigInt(recipientHex),
+      new Channel(info.publicKey, info.channelKey, tokens.entries())
+    );
+  }
+
+  for (const [recipientHex, info] of nonCreatedChannelMap) {
+    const addr = BigInt(recipientHex);
+    if (!channels.has(addr)) {
+      channels.set(addr, new Channel(info.publicKey));
+    }
+  }
+
+  return channels;
+}
+
+/** Prunes complete channels/subchannels from an API cursor to reduce payload size. */
+function pruneCompleteCursor(cursor: ApiDiscoveryCursor): void {
+  if (!cursor.channels) return;
+  for (const [addr, ch] of Object.entries(cursor.channels)) {
+    if (ch.subchannel_discovery_complete && ch.subchannels) {
+      // Prune complete subchannels
+      for (const [token, sc] of Object.entries(ch.subchannels)) {
+        if (sc.note_discovery_complete) {
+          delete ch.subchannels[token];
+        }
+      }
+      // If all subchannels pruned, prune the channel
+      if (Object.keys(ch.subchannels).length === 0) {
+        delete cursor.channels[addr];
+      }
+    }
+  }
+}
+
+/** Converts API incoming notes → SDK `Note` objects grouped by token. */
+export function convertIncomingNotes(
+  apiNotes: ApiIncomingNoteInfo[],
+  channelKeyMap: Map<string, bigint>,
+  existingChannels: AddressMap<IncomingChannelCursor>,
+  tokenFilter: Set<bigint> | null
+): AddressMap<Note[]> {
+  const result = new AddressMap<Note[]>(() => []);
+  for (const n of apiNotes) {
+    const token = BigInt(n.token);
+    if (tokenFilter && !tokenFilter.has(token)) continue;
+    const sender = BigInt(n.sender_addr);
+    const channelKey =
+      channelKeyMap.get(n.sender_addr) ?? existingChannels.get(sender)?.channelKey ?? 0n;
+    result.get(token)!.push({
+      id: n.note_id,
+      amount: BigInt(n.amount),
+      witness: new Witness(channelKey, n.index, BigInt(n.salt)),
+      sender,
+      open: n.salt === 1,
+    });
+  }
+  return result;
+}
+
+export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
+  constructor(private readonly apiUrl: string) {
+    super();
+  }
+
+  async discoverNotes(
+    address: StarknetAddressBigint,
+    viewingKey: ViewingKey,
+    params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }
+  ): Promise<{ timestamp: BlockIdentifier; notes: AddressMap<Note[]>; cursor: NotesCursor }> {
+    const tokenFilter = params?.tokens ? new Set(params.tokens.map((t) => toBigInt(t))) : null;
+    const cursor = params?.cursor;
+    let apiCursor: ApiDiscoveryCursor;
+
+    if (cursor) {
+      const converted = notesCursorToApiCursor(cursor, tokenFilter);
+      apiCursor = converted.apiCursor;
+    } else {
+      apiCursor = {};
+    }
+
+    // last_known_block is sent once on the first request for reorg detection.
+    // block_ref (from the first response) pins subsequent pagination requests.
+    const lastKnownBlock = cursor?.blockId as string | undefined;
+    let blockRef: string | undefined;
+
+    const allNotes = new AddressMap<Note[]>(() => []);
+    const incomingChannels = new AddressMap<IncomingChannelCursor>();
+    let lastBlockRef = "";
+
+    let complete = false;
+    do {
+      const body: Record<string, unknown> = {
+        recipient_address: toHex(address),
+        decryption_key: toHex(viewingKey),
+        cursor: apiCursor,
+      };
+      if (blockRef) {
+        body.block_ref = blockRef;
+      } else if (lastKnownBlock) {
+        body.last_known_block = lastKnownBlock;
+      }
+
+      const resp = await this.post<ApiIncomingSyncResponse>("/v1/sync/incoming_state", body);
+
+      blockRef = resp.block_ref;
+      lastBlockRef = resp.block_ref;
+
+      const channelKeyMap = new Map<string, bigint>();
+      for (const ch of resp.channels) {
+        channelKeyMap.set(ch.sender_addr, BigInt(ch.channel_key));
+      }
+
+      const notesByToken = convertIncomingNotes(
+        resp.notes,
+        channelKeyMap,
+        incomingChannels,
+        tokenFilter
+      );
+      for (const [token, tokenNotes] of notesByToken) {
+        allNotes.get(token)!.push(...tokenNotes);
+      }
+
+      const updatedCursor = apiCursorToNotesCursor(resp.cursor, resp.block_ref);
+      for (const [sender, icc] of updatedCursor.incomingChannels) {
+        incomingChannels.set(sender, icc);
+      }
+
+      apiCursor = resp.cursor;
+      complete = isApiCursorComplete(resp.cursor);
+    } while (!complete);
+
+    // FIXME: The incoming sync API filters out spent notes (nullifier exists).
+    // When a note is spent and removed from the response, we lose information
+    // about its index. The constructed noteIndexes[token] is
+    // max(surviving_note.index) + 1, which may be lower than the true last
+    // discovered index if the highest-index notes were spent. This causes
+    // suboptimal incremental updates — the next call re-scans already-discovered
+    // (but now spent) note indices.
+
+    return {
+      timestamp: lastBlockRef,
+      notes: allNotes,
+      cursor: { blockId: lastBlockRef, incomingChannels },
+    };
+  }
+
+  async discoverChannels(
+    address: StarknetAddressBigint,
+    viewingKey: ViewingKey,
+    recipients: StarknetAddressBigint[] | "all",
+    params?: { cursor?: AddressMap<ChannelInterface>; lastKnownBlock?: BlockIdentifier }
+  ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<ChannelInterface> }> {
+    const cursorMap = params?.cursor;
+    const lastKnownBlock = params?.lastKnownBlock as string | undefined;
+    let apiCursor: ApiDiscoveryCursor;
+
+    if (recipients === "all") {
+      apiCursor = channelMapToApiCursor(cursorMap, false);
+    } else {
+      let allResolved = true;
+      const resolved = new Map<bigint, { key: bigint; publicKey: bigint }>();
+      for (const r of recipients) {
+        const rb = toBigInt(r);
+        const existing = cursorMap?.get(rb);
+        if (existing?.key) {
+          resolved.set(rb, { key: existing.key, publicKey: toBigInt(existing.publicKey) });
+        } else {
+          allResolved = false;
+        }
+      }
+
+      if (allResolved) {
+        // Targeted scan: skip channel discovery, only refresh subchannels
+        apiCursor = { channel_discovery_complete: true, channels: {} };
+        for (const [rb, info] of resolved) {
+          const existing = cursorMap?.get(rb);
+          const subchannels: Record<string, ApiSubchannelCursor> = {};
+          if (existing) {
+            for (const [token, nonces] of existing.tokens) {
+              subchannels[toHex(token)] = {
+                last_note_index: nonces.noteNonce > 0 ? nonces.noteNonce - 1 : undefined,
+              };
+            }
+          }
+          apiCursor.channels![toHex(rb)] = {
+            channel_key: toHex(info.key),
+            subchannel_discovery_complete: false,
+            subchannels,
+          };
+        }
+      } else {
+        apiCursor = { channel_discovery_complete: false, channels: {} };
+      }
+    }
+
+    // Accumulate channel/subchannel data across all pagination pages.
+    // TODO: prune `recipients` in the request body across pagination steps.
+    // Once a recipient appears in `createdChannelMap`, it no longer needs to
+    // be in the recipients list. Without pruning, the server may return both
+    // a real channel and a precomputed channel for the same recipient across
+    // different pages. `accumulateOutgoingResponse` handles this correctly
+    // (real wins over precomputed), but pruning would avoid redundant work.
+    const createdChannelMap = new Map<string, { publicKey: bigint; channelKey: bigint }>();
+    const subchannelsByRecipient = new Map<
+      string,
+      Map<string, { token: bigint; lastIndex: number | null }>
+    >();
+    const nonCreatedChannelMap = new Map<string, { publicKey: bigint; channelKey: bigint }>();
+    let blockRef: string | undefined;
+    let lastBlockRef = "";
+
+    let complete = false;
+    do {
+      const body: Record<string, unknown> = {
+        sender_address: toHex(address),
+        decryption_key: toHex(viewingKey),
+        cursor: apiCursor,
+      };
+      if (blockRef) {
+        body.block_ref = blockRef;
+      } else if (lastKnownBlock) {
+        body.last_known_block = lastKnownBlock;
+      }
+      if (recipients !== "all") {
+        body.recipients = recipients.map((r) => toHex(r));
+      }
+
+      const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
+
+      blockRef = resp.block_ref;
+      lastBlockRef = resp.block_ref;
+
+      accumulateOutgoingResponse(
+        resp,
+        createdChannelMap,
+        subchannelsByRecipient,
+        nonCreatedChannelMap
+      );
+
+      apiCursor = resp.cursor;
+      complete = isApiCursorComplete(resp.cursor);
+      if (!complete) pruneCompleteCursor(apiCursor);
+    } while (!complete);
+
+    // Build the final channel map from all accumulated data
+    const channels = buildChannelMap(
+      createdChannelMap,
+      subchannelsByRecipient,
+      nonCreatedChannelMap
+    );
+
+    if (recipients !== "all") {
+      const requested = new Set(recipients.map((r) => toBigInt(r)));
+      for (const key of [...channels.keys()]) {
+        if (!requested.has(key)) channels.delete(key);
+      }
+    }
+
+    return { timestamp: lastBlockRef, channels };
+  }
+
+  async discoverRequirement(
+    address: StarknetAddressBigint,
+    viewingKey: ViewingKey,
+    recipient: StarknetAddressBigint,
+    token: StarknetAddressBigint
+  ): Promise<SetupRequirement> {
+    const resp = await this.post<{
+      block_ref: string;
+      sender_registered: boolean;
+      channel_exists: boolean;
+      subchannel_exists: boolean;
+    }>("/v1/discovery/preflight", {
+      sender_address: toHex(address),
+      decryption_key: toHex(viewingKey),
+      recipient: toHex(recipient),
+      token: toHex(token),
+    });
+    if (!resp.sender_registered) return SetupRequirement.Register;
+    if (!resp.channel_exists) return SetupRequirement.SetupChannel;
+    if (!resp.subchannel_exists) return SetupRequirement.SetupToken;
+    return SetupRequirement.Ready;
+  }
+
+  private async post<T>(path: string, body: unknown): Promise<T> {
+    const resp = await fetch(`${this.apiUrl}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!resp.ok) {
+      const text = await resp.text().catch(() => "");
+      if (resp.status === 409) {
+        throw new ReorgError(`Block reorged during ${path}: ${text}`);
+      }
+      throw new Error(`Indexer API ${path} failed (${resp.status}): ${text}`);
+    }
+    return resp.json() as Promise<T>;
+  }
+}

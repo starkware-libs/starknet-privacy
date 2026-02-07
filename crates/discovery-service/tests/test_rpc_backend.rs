@@ -9,20 +9,23 @@ mod common;
 use common::setup_devnet_with_dump;
 use discovery_core::privacy_pool::views::IViews;
 use discovery_core::storage_backend::StorageBackend;
-use discovery_service::rpc_backend::{RpcBackend, RpcConfig};
+use discovery_service::config::RpcConfig;
+use discovery_service::rpc_backend::RpcBackend;
 use expect_test::expect;
 use starknet_core::types::Felt;
-use url::Url;
 
 /// Test that RPC backend can query public keys from contract storage.
 #[tokio::test]
 async fn test_public_key_lookup() {
     let (devnet, metadata) = setup_devnet_with_dump().await;
 
-    let backend = RpcBackend::new(RpcConfig::new(
-        Url::parse(&devnet.rpc_url()).unwrap(),
+    let backend = RpcBackend::new(
+        RpcConfig {
+            url: devnet.rpc_url(),
+            ..RpcConfig::default()
+        },
         metadata.contract_address,
-    ))
+    )
     .unwrap();
 
     let snapshot = backend.snapshot(None).await.unwrap();

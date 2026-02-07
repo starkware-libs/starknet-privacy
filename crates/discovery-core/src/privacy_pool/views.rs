@@ -69,6 +69,11 @@ pub trait IViews: Send + Sync {
     /// Returns a `Vec<Felt>` matching the input length. Zero = note doesn't exist.
     async fn get_notes_batch(&self, note_ids: &[Felt]) -> Result<Vec<Felt>, StorageError>;
 
+    /// Batch-reads public keys for the given addresses.
+    ///
+    /// Returns a `Vec<Felt>` matching the input length. Zero = unregistered.
+    async fn get_public_keys_batch(&self, addrs: &[Felt]) -> Result<Vec<Felt>, StorageError>;
+
     /// Batch-reads packed note amounts and nullifier existence.
     ///
     /// Returns `(packed_amounts, nullifier_exists)`.
@@ -221,12 +226,13 @@ impl<T: RawStorageAccess> IViews for T {
         count: usize,
     ) -> Result<Vec<EncChannelInfo>, StorageError> {
         let mut slots = Vec::with_capacity(count * 3);
-        for i in 0..count {
-            let idx = start_index + i as u64;
-            let s = storage_slots::recipient_channels_element(recipient_addr, idx);
-            slots.push(s.ephemeral_pubkey);
-            slots.push(s.enc_channel_key);
-            slots.push(s.enc_sender_addr);
+        for channel_offset in 0..count {
+            let channel_index = start_index + channel_offset as u64;
+            let channel_slots =
+                storage_slots::recipient_channels_element(recipient_addr, channel_index);
+            slots.push(channel_slots.ephemeral_pubkey);
+            slots.push(channel_slots.enc_channel_key);
+            slots.push(channel_slots.enc_sender_addr);
         }
         let values = self.read_slots(slots).await?;
         check_slots_len(&values, count * 3)?;
@@ -254,6 +260,22 @@ impl<T: RawStorageAccess> IViews for T {
             .collect();
         let values = self.read_slots(slots).await?;
         check_slots_len(&values, note_ids.len())?;
+        Ok(values)
+    }
+
+    #[tracing::instrument(
+        name = "get_public_keys_batch",
+        level = "debug",
+        skip(self, addrs),
+        fields(count = addrs.len())
+    )]
+    async fn get_public_keys_batch(&self, addrs: &[Felt]) -> Result<Vec<Felt>, StorageError> {
+        let slots: Vec<_> = addrs
+            .iter()
+            .map(|&addr| storage_slots::public_key(addr))
+            .collect();
+        let values = self.read_slots(slots).await?;
+        check_slots_len(&values, addrs.len())?;
         Ok(values)
     }
 

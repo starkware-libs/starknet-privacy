@@ -62,8 +62,8 @@ fn short_string_to_felt(s: &str) -> Felt {
 }
 
 /// Cryptographic hash function.
-pub fn hash(data: &[Felt]) -> Felt {
-    let inner = poseidon_hash_many(data.iter());
+pub fn hash(elements: &[Felt]) -> Felt {
+    let inner = poseidon_hash_many(elements.iter());
     let mut hasher = PoseidonHasher::new();
     hasher.update(inner);
     hasher.finalize()
@@ -152,17 +152,17 @@ pub fn compute_nullifier(
 
 /// Computes the channel key from sender credentials and recipient identity.
 ///
-/// `channel_key = hash(CHANNEL_KEY_TAG, sender_addr, viewing_key, recipient_addr, recipient_public_key)`
+/// `channel_key = hash(CHANNEL_KEY_TAG, sender_addr, decryption_key, recipient_addr, recipient_public_key)`
 pub fn compute_channel_key(
     sender_addr: Felt,
-    viewing_key: &super::types::SecretFelt,
+    decryption_key: &super::types::SecretFelt,
     recipient_addr: Felt,
     recipient_public_key: Felt,
 ) -> Felt {
     hash(&[
         *CHANNEL_KEY_TAG,
         sender_addr,
-        **viewing_key,
+        **decryption_key,
         recipient_addr,
         recipient_public_key,
     ])
@@ -206,16 +206,16 @@ pub fn compute_subchannel_marker(
 
 /// Computes the outgoing channel id for storage lookup.
 ///
-/// `outgoing_channel_id = hash(OUTGOING_CHANNEL_ID_TAG, sender_addr, viewing_key, index, 0)`
+/// `outgoing_channel_id = hash(OUTGOING_CHANNEL_ID_TAG, sender_addr, decryption_key, index, 0)`
 pub fn compute_outgoing_channel_id(
     sender_addr: Felt,
-    viewing_key: &super::types::SecretFelt,
+    decryption_key: &super::types::SecretFelt,
     index: u64,
 ) -> Felt {
     hash(&[
         *OUTGOING_CHANNEL_ID_TAG,
         sender_addr,
-        **viewing_key,
+        **decryption_key,
         Felt::from(index),
         Felt::ZERO,
     ])
@@ -223,17 +223,17 @@ pub fn compute_outgoing_channel_id(
 
 /// Computes the encryption mask for the outgoing recipient address.
 ///
-/// `enc_recipient_addr_hash = hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, viewing_key, index, 0, salt)`
+/// `enc_recipient_addr_hash = hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, decryption_key, index, 0, salt)`
 pub fn compute_enc_recipient_addr_hash(
     sender_addr: Felt,
-    viewing_key: &super::types::SecretFelt,
+    decryption_key: &super::types::SecretFelt,
     index: u64,
     salt: Felt,
 ) -> Felt {
     hash(&[
         *ENC_RECIPIENT_ADDR_TAG,
         sender_addr,
-        **viewing_key,
+        **decryption_key,
         Felt::from(index),
         Felt::ZERO,
         salt,

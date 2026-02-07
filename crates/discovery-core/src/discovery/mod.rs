@@ -6,6 +6,7 @@ use crate::privacy_pool::decryption::DecryptionError;
 use crate::storage_backend::StorageError;
 
 pub mod cursor;
+pub use cursor::{ChannelCursor, DiscoveryCursor, SubchannelCursor};
 pub mod incoming_channels;
 pub mod last_note_index;
 pub mod notes;
@@ -30,6 +31,9 @@ pub const COST_OUTGOING_CHANNEL_INFO: usize = 3;
 
 /// Cost for a single note existence probe (1 `get_note` read, no nullifier check).
 pub const COST_NOTE_PROBING: usize = 1;
+
+/// Cost for a single `get_public_key` (1 storage slot read).
+pub const COST_PUBLIC_KEY: usize = 1;
 
 /// Errors that can occur during channel discovery.
 #[derive(Debug, Error)]

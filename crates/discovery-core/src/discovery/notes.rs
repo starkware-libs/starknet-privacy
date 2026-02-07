@@ -14,20 +14,32 @@
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
-use super::cursor::SubchannelCursor;
+use tracing::{debug, trace};
+
 use super::last_note_index::exponential_ascend;
-use super::DiscoveryError;
-use super::{COST_NOTE, COST_NOTE_PROBING};
+use super::{DiscoveryError, SubchannelCursor, COST_NOTE, COST_NOTE_PROBING};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::{decrypt_note_amount, unpack_note_amount};
+use crate::privacy_pool::felt_hex;
 use crate::privacy_pool::hashes::{compute_note_id, compute_nullifier};
 use crate::privacy_pool::types::SecretFelt;
 use crate::privacy_pool::views::IViews;
 
+/// Maximum offset for the initial exponential probe when no prior knowledge
+/// exists. Bounds the first probe to `start_index + 1024` to avoid unbounded
+/// growth on the initial discovery call.
+const MAX_PROBE_OFFSET: u64 = 1024;
+
 /// A discovered and decrypted note.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecryptedNote {
-    /// The index of this note within the subchannel.
+    /// The sender's address. Set by the sync orchestrator after discovery.
+    #[serde(default)]
+    pub sender_addr: Felt,
+    /// The token address. Set by the sync orchestrator after discovery.
+    #[serde(default)]
+    pub token: Felt,
+    /// The note's index within its subchannel.
     pub index: u64,
     /// The note ID (storage key).
     pub note_id: Felt,
@@ -71,13 +83,26 @@ pub async fn discover_notes_paginated<S: IViews>(
 ) -> Result<(Vec<DecryptedNote>, bool), DiscoveryError> {
     let start_index = cursor.last_note_index.map_or(0, |i| i + 1);
 
+    debug!(
+        token = felt_hex(&token),
+        start_index,
+        max_note_index = ?cursor.max_note_index,
+        budget = budget.remaining(),
+        "discover_notes_paginated start"
+    );
+
     let need_probe =
         cursor.max_note_index.is_none() || cursor.max_note_index.is_some_and(|m| start_index >= m);
+
+    // Tracks whether the probe found a sentinel (empty index). When `false`,
+    // the subchannel must not be pruned even if the scan reaches max_note_index
+    // — there may be notes beyond the capped probe range.
+    let mut probe_found_sentinel = !need_probe;
 
     // Phase 1: Exponential probe
     if need_probe {
         let upper_index_bound = match cursor.max_note_index {
-            None => u64::MAX,
+            None => start_index.saturating_add(MAX_PROBE_OFFSET),
             Some(m) => m.saturating_mul(2).max(start_index),
         };
         let result = exponential_ascend(
@@ -89,6 +114,8 @@ pub async fn discover_notes_paginated<S: IViews>(
             budget,
         )
         .await?;
+
+        probe_found_sentinel = result.first_empty_index.is_some();
 
         let Some((last_found_index, last_found_packed_amount)) = result.last_found_note else {
             // No notes found at start_index or beyond or out of budget.
@@ -114,8 +141,8 @@ pub async fn discover_notes_paginated<S: IViews>(
             )
             .await?;
             cursor.last_note_index = Some(start_index);
-            // If the note is unspent, return it.
-            return Ok((note.into_iter().collect(), false));
+            let has_more = !probe_found_sentinel;
+            return Ok((note.into_iter().collect(), has_more));
         }
     }
 
@@ -127,7 +154,7 @@ pub async fn discover_notes_paginated<S: IViews>(
     // Phase 2: Linear batch scan
     if start_index > max_note_index {
         // Scan already past max — nothing to do.
-        return Ok((Vec::new(), false));
+        return Ok((Vec::new(), !probe_found_sentinel));
     }
 
     let result = discover_notes(
@@ -144,7 +171,17 @@ pub async fn discover_notes_paginated<S: IViews>(
     if let Some(last_index) = result.last_index {
         cursor.last_note_index = Some(last_index);
     }
-    Ok((result.notes, result.has_more))
+    let has_more = result.has_more || !probe_found_sentinel;
+
+    debug!(
+        unspent = result.notes.len(),
+        last_scanned = ?result.last_index,
+        has_more,
+        budget = budget.remaining(),
+        "discover_notes_paginated done"
+    );
+
+    Ok((result.notes, has_more))
 }
 
 /// Linear scan of notes in `start_index..=end_index`.
@@ -174,8 +211,8 @@ async fn discover_notes<S: IViews>(
             });
         }
 
-        let remaining = usize::try_from(end_index - index + 1).unwrap_or(usize::MAX);
-        let batch_size = budget.consume_up_to(remaining, COST_NOTE);
+        let remaining_notes = usize::try_from(end_index - index + 1).unwrap_or(usize::MAX);
+        let batch_size = budget.consume_up_to(remaining_notes, COST_NOTE);
         if batch_size == 0 {
             return Ok(NotesDiscoveryResult {
                 notes,
@@ -204,10 +241,11 @@ async fn discover_notes<S: IViews>(
 
             if !nullifier_exists[j] {
                 let (salt, enc_amount) = unpack_note_amount(packed_amounts[j]);
-                // TODO: Open notes (salt == 1) store the amount in plaintext,
-                // so enc_amount is already the actual amount - no decryption needed.
                 let amount = decrypt_note_amount(enc_amount, salt, channel_key, token, idx);
+                trace!(index = idx, amount, "unspent note found");
                 notes.push(DecryptedNote {
+                    sender_addr: Felt::ZERO,
+                    token: Felt::ZERO,
                     index: idx,
                     note_id: note_ids[j],
                     amount,
@@ -240,6 +278,8 @@ async fn scan_single_note<S: IViews>(
     let amount = decrypt_note_amount(enc_amount, salt, channel_key, token, note_index);
     let note_id = compute_note_id(channel_key, token, note_index);
     Ok(Some(DecryptedNote {
+        sender_addr: Felt::ZERO,
+        token: Felt::ZERO,
         index: note_index,
         note_id,
         amount,
@@ -299,7 +339,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &fixture.constants.alice_decryption_key,
         )
         .await
         .expect("Alice should have at least one channel");
@@ -309,7 +349,7 @@ mod tests {
             .expect("Alice's channel should have at least one subchannel");
 
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = SecretFelt::new(fixture.constants.alice_decryption_key);
         let (notes, has_more, cursor) =
             discover_with_fresh_cursor(&backend, channel_key, token, &key, &budget).await;
 
@@ -317,7 +357,6 @@ mod tests {
         // The transfer consumed the deposit and wrote a change note (50 STRK)
         // at index 0. This note is unspent.
         assert_eq!(notes.len(), 1, "1 unspent change note");
-        assert_eq!(notes[0].index, 0);
         assert!(notes[0].amount > 0, "Note amount should be positive");
         assert_eq!(cursor.last_note_index, Some(0));
         assert!(!has_more);
@@ -331,7 +370,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &fixture.constants.bob_decryption_key,
         )
         .await
         .expect("Bob should have at least one channel");
@@ -341,7 +380,7 @@ mod tests {
             .expect("Bob's channel should have at least one subchannel");
 
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = SecretFelt::new(fixture.constants.bob_decryption_key);
         let (notes, has_more, cursor) =
             discover_with_fresh_cursor(&backend, channel_key, token, &key, &budget).await;
 
@@ -359,7 +398,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &fixture.constants.alice_decryption_key,
         )
         .await
         .expect("Alice should have at least one channel");
@@ -370,7 +409,7 @@ mod tests {
 
         // First discovery — Alice has 1 unspent change note (50 STRK at index 0)
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = SecretFelt::new(fixture.constants.alice_decryption_key);
         let mut cursor = SubchannelCursor::default();
         let (notes, has_more) =
             discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
@@ -396,7 +435,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &fixture.constants.alice_decryption_key,
         )
         .await
         .expect("Alice should have at least one channel");
@@ -407,7 +446,7 @@ mod tests {
 
         // Budget exhausted before starting
         let budget = IoBudget::new(0);
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = SecretFelt::new(fixture.constants.alice_decryption_key);
         let (notes, has_more, _cursor) =
             discover_with_fresh_cursor(&backend, channel_key, token, &key, &budget).await;
 
@@ -442,7 +481,7 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &fixture.constants.bob_decryption_key,
         )
         .await
         .unwrap();
@@ -450,7 +489,7 @@ mod tests {
 
         let mut cursor = SubchannelCursor::default();
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = SecretFelt::new(fixture.constants.bob_decryption_key);
         let (notes, has_more) =
             discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
                 .await
@@ -469,13 +508,13 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &fixture.constants.alice_decryption_key,
         )
         .await
         .unwrap();
         let token = get_subchannel_token(&backend, channel_key).await.unwrap();
 
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = SecretFelt::new(fixture.constants.alice_decryption_key);
         let mut cursor = SubchannelCursor::default();
 
         // First call with enough budget to discover notes.
@@ -507,16 +546,16 @@ mod tests {
         let channel_key = get_channel_key(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &fixture.constants.bob_decryption_key,
         )
         .await
         .unwrap();
         let token = get_subchannel_token(&backend, channel_key).await.unwrap();
 
         let mut cursor = SubchannelCursor::default();
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = SecretFelt::new(fixture.constants.bob_decryption_key);
         // Bob has 1 note at index 0. With batch_budget=2:
-        // Exponential probe: 2 probes (offsets 0, 1) → hit at 0, miss at 1.
+        // Exponential probe: 2 probes (offsets 0, 2) → hit at 0, miss at 2.
         //   Cost = 2 * COST_NOTE_PROBING = 2.
         // Single-note optimization: 1 nullifier check = COST_NOTE_PROBING = 1.
         // Total = 3.

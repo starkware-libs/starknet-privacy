@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "child_process";
 import { createInterface } from "readline";
 import { createServer } from "net";
+import { createWriteStream, type WriteStream } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -12,6 +13,7 @@ export interface IndexerSpawnConfig {
   rpcUrl?: string;
   contractAddress?: string;
   apiPort?: number;
+  logFile?: string;
 }
 
 async function findFreePort(): Promise<number> {
@@ -32,14 +34,19 @@ export class IndexerClient {
   private lines: string[] = [];
   private waiters: Array<{ pattern: string; resolve: (line: string) => void }> = [];
   private _apiPort: number;
+  private logStream?: WriteStream;
 
-  private constructor(child: ChildProcess, apiPort: number) {
+  private constructor(child: ChildProcess, apiPort: number, logFile?: string) {
     this.child = child;
     this._apiPort = apiPort;
+    if (logFile) {
+      this.logStream = createWriteStream(logFile, { flags: "w" });
+    }
 
     const rl = createInterface({ input: child.stderr! });
     rl.on("line", (line) => {
       this.lines.push(line);
+      this.logStream?.write(line + "\n");
       for (let i = this.waiters.length - 1; i >= 0; i--) {
         if (line.includes(this.waiters[i].pattern)) {
           this.waiters[i].resolve(line);
@@ -59,17 +66,18 @@ export class IndexerClient {
     const env: Record<string, string> = {
       ...process.env as Record<string, string>,
       WS_URL: config.wsUrl,
-      RUST_LOG: "debug",
+      API_HOST: `127.0.0.1:${port}`,
+      RUST_LOG: "debug,hyper_util=warn,hyper=warn",
     };
     if (config.rpcUrl) env.RPC_URL = config.rpcUrl;
     if (config.contractAddress) env.CONTRACT_ADDRESS = config.contractAddress;
 
-    const child = spawn(binary, ["--api-host", `127.0.0.1:${port}`], {
+    const child = spawn(binary, [], {
       env,
       stdio: ["ignore", "ignore", "pipe"],
     });
 
-    return new IndexerClient(child, port);
+    return new IndexerClient(child, port, config.logFile);
   }
 
   get apiUrl(): string {
@@ -94,7 +102,7 @@ export class IndexerClient {
         reject(new Error(`Timeout waiting for log: "${pattern}"`));
       }, timeoutMs);
       const origResolve = entry.resolve;
-      entry.resolve = (line: string) => {
+      entry.resolve = (line: string | PromiseLike<string>) => {
         clearTimeout(timer);
         origResolve(line);
       };
@@ -121,6 +129,7 @@ export class IndexerClient {
   }
 
   shutdown(): void {
+    this.logStream?.end();
     this.child.kill("SIGINT");
   }
 }
