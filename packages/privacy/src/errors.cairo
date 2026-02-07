@@ -46,6 +46,7 @@ pub const INVALID_OS_OUTPUT_VERSION: felt252 = 'INVALID_OS_OUTPUT_VERSION';
 pub const PROOF_EXPIRED: felt252 = 'PROOF_EXPIRED';
 pub const INVALID_PROOF_MSG: felt252 = 'INVALID_PROOF_MSG';
 pub const SWAP_TO_SAME_TOKEN: felt252 = 'SWAP_TO_SAME_TOKEN';
+pub const ZERO_SWAP_EXECUTOR: felt252 = 'ZERO_SWAP_EXECUTOR';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';
