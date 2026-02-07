@@ -363,15 +363,6 @@ pub(crate) fn panic_with_server_actions(server_actions: Span<ServerAction>) -> n
     panic(panic_data);
 }
 
-/// Validates common input parameters for note creation.
-pub(crate) fn assert_note_creation_params(
-    recipient_addr: ContractAddress, recipient_public_key: felt252, token: ContractAddress,
-) {
-    assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-    assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
-    assert(token.is_non_zero(), errors::ZERO_TOKEN);
-}
-
 /// IMPORTANT: This function only works for types whose serialization format
 /// exactly matches their in-storage representation.
 /// Use with care.
