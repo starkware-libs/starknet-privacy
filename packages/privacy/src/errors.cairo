@@ -38,6 +38,9 @@ pub const ZERO_SALT: felt252 = 'ZERO_SALT';
 pub const ZERO_SWAP_CONTRACT: felt252 = 'ZERO_SWAP_CONTRACT';
 pub const ZERO_SWAP_SELECTOR: felt252 = 'ZERO_SWAP_SELECTOR';
 pub const SWAP_TO_SAME_TOKEN: felt252 = 'SWAP_TO_SAME_TOKEN';
+pub const ZERO_IN_TOKEN: felt252 = 'ZERO_IN_TOKEN';
+pub const ZERO_OUT_TOKEN: felt252 = 'ZERO_OUT_TOKEN';
+pub const ZERO_SWAP_EXECUTOR: felt252 = 'ZERO_SWAP_EXECUTOR';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';
