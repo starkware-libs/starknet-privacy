@@ -102,7 +102,7 @@ theorem CancelImplies.from_action
   case head =>
     let info := cancel_note_info crypto inp rm success
     have ⟨inp_create, note_imp, h_note_id⟩ := NoteImplies.from_note_exists info.r_ne_zero
-    have ⟨addralice, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_hash_exists info.subchannel_exists
+    have ⟨addralice, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_marker_exists info.subchannel_exists
 
     let res : CancelImplies₀ (rm.add (.CancelNote inp) success) inp := {
       h_action := by simp
@@ -148,7 +148,7 @@ theorem CancelImplies.from_note_canceled
   cases action
   case CancelNote inp =>
     let info := cancel_note_info crypto inp rm success
-    have ⟨kalice, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_hash_exists info.subchannel_exists
+    have ⟨kalice, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_marker_exists info.subchannel_exists
     by_cases h_is_same : crypto.hash [c, token, i₀, i₁, kbob] = inp.nullifier crypto
     case pos =>
       use inp.addrbob, inp.amount

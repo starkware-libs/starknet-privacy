@@ -44,8 +44,8 @@ theorem spendable_note
     Bool.not_true, decide_eq_false_iff_not, decide_eq_true_eq]
 
   refine ⟨⟨?_, ?_, ?_, ?_, ?_⟩, ?_⟩
-  · have := note_imp.subchannel.subchannel_hash
-    simp only [OpenSubchannelInput.subchannel_hash] at this
+  · have := note_imp.subchannel.subchannel_marker
+    simp only [OpenSubchannelInput.subchannel_marker] at this
     rw [h_addrbob, h_Kbob] at this
     simp only [h_sn] at this
     exact this
