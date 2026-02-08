@@ -8,7 +8,7 @@ pub mod Privacy {
     use privacy::actions::{
         AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
         DepositInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
-        SetViewingKeyInput, SwapExecutorInput, SwapInput, TransferFromInput, TransferToInput,
+        SetViewingKeyInput, SwapInput, SwapWithExecutorInput, TransferFromInput, TransferToInput,
         UseNoteInput, WithdrawInput,
     };
     use privacy::errors::internal_errors;
@@ -578,8 +578,8 @@ pub mod Privacy {
             // Append the swap action.
             server_actions
                 .append(
-                    ServerAction::SwapExecutor(
-                        SwapExecutorInput {
+                    ServerAction::SwapWithExecutor(
+                        SwapWithExecutorInput {
                             swap_executor,
                             swap_contract,
                             swap_selector,
@@ -829,9 +829,9 @@ pub mod Privacy {
                                 storage_address: input.storage_address, value: input.value,
                             );
                     },
-                    ServerAction::SwapExecutor(input) => {
+                    ServerAction::SwapWithExecutor(input) => {
                         self
-                            ._execute_swap(
+                            ._execute_swap_with_executor(
                                 swap_executor: input.swap_executor,
                                 swap_contract: input.swap_contract,
                                 swap_selector: input.swap_selector,
@@ -950,7 +950,7 @@ pub mod Privacy {
             assert(current_value == value, errors::VALUE_MISMATCH);
         }
 
-        fn _execute_swap(
+        fn _execute_swap_with_executor(
             ref self: ContractState,
             swap_executor: ContractAddress,
             swap_contract: ContractAddress,

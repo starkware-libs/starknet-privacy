@@ -2,7 +2,8 @@ use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
     OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction, SetViewingKeyInput,
-    SwapExecutorInput, SwapInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+    SwapInput, SwapWithExecutorInput, TransferFromInput, TransferToInput, UseNoteInput,
+    WithdrawInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
 use privacy::objects::{EncSubchannelInfo, EncUserAddr};
@@ -4359,8 +4360,8 @@ fn test_internal_actions() {
             },
         ),
         ServerAction::EmitWithdrawal(expected_withdrawal_event),
-        ServerAction::SwapExecutor(
-            SwapExecutorInput {
+        ServerAction::SwapWithExecutor(
+            SwapWithExecutorInput {
                 swap_executor,
                 swap_contract,
                 swap_selector,
@@ -6378,8 +6379,8 @@ fn test_swap_doesnt_execute_during_client_execute() {
         // Swap: EmitWithdrawal.
         ServerAction::EmitWithdrawal(expected_withdrawal_event),
         // Swap: SwapExecutor.
-        ServerAction::SwapExecutor(
-            SwapExecutorInput {
+        ServerAction::SwapWithExecutor(
+            SwapWithExecutorInput {
                 swap_executor: swap_executor_address,
                 swap_contract: amm_address,
                 swap_selector: selector!("swap"),
