@@ -238,12 +238,12 @@ def create_note_info
   }
 
 -----------------
--- Cancel Note --
+-- Use Note --
 -----------------
 
-structure CancelNoteInfo (crypto: Crypto) (inp: CancelNoteInput) (m: Memory) where
+structure UseNoteInfo (crypto: Crypto) (inp: UseNoteInput) (m: Memory) where
   m': Memory
-  h_m': m' = (cancel_note crypto inp m |> process_action crypto m).m
+  h_m': m' = (use_note crypto inp m |> process_action crypto m).m
   subchannel_exists: m .SubchannelMarkers [crypto.hash [inp.c, inp.addrbob, inp.Kbob crypto, inp.token]] ≠ 0
   nullifier_didnt_exist: m .Nullifiers [inp.nullifier crypto] = 0
   r_ne_zero: m .Notes [inp.note_id crypto, 0] ≠ 0
@@ -255,18 +255,18 @@ structure CancelNoteInfo (crypto: Crypto) (inp: CancelNoteInput) (m: Memory) whe
     m' t x = m t x
   memory_diff₀: m' .Nullifiers [inp.nullifier crypto] = 1
 
-def cancel_note_info
-  (crypto: Crypto) (inp: CancelNoteInput) (m: Memory)
-  (success: (cancel_note crypto inp m |> process_action crypto m).success = true) : CancelNoteInfo crypto inp m := by
-  let m' := (cancel_note crypto inp m |> process_action crypto m).m
+def use_note_info
+  (crypto: Crypto) (inp: UseNoteInput) (m: Memory)
+  (success: (use_note crypto inp m |> process_action crypto m).success = true) : UseNoteInfo crypto inp m := by
+  let m' := (use_note crypto inp m |> process_action crypto m).m
 
   simp only [Bool.and_eq_true] at success
   have ⟨success₀, success₁⟩ := success
-  simp only [cancel_note, ne_eq, Bool.decide_and, decide_not, Bool.and_eq_true,
+  simp only [use_note, ne_eq, Bool.decide_and, decide_not, Bool.and_eq_true,
     Bool.not_eq_eq_eq_not, Bool.not_true, decide_eq_false_iff_not, decide_eq_true_eq] at success₀
   let ⟨subchannel_exists, r_ne_zero, h_amount, kbob_private_key, amount_ne_zero⟩ := success₀
 
-  simp [cancel_note, ServerAction.run_all, ServerAction.run] at success₁
+  simp [use_note, ServerAction.run_all, ServerAction.run] at success₁
   have nullifier_didnt_exist := success₁
 
   exact {
@@ -280,9 +280,9 @@ def cancel_note_info
     amount_ne_zero := amount_ne_zero,
     no_change := by
       intro t x h₀
-      simp [m', h₀, cancel_note, ServerAction.run_all, ServerAction.run]
+      simp [m', h₀, use_note, ServerAction.run_all, ServerAction.run]
     memory_diff₀ := by
-      simp [m', cancel_note, ServerAction.run_all, ServerAction.run]
+      simp [m', use_note, ServerAction.run_all, ServerAction.run]
   }
 
 -------------

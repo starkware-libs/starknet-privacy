@@ -8,7 +8,7 @@ def Action.check_owner (action: Action) (owner: ℕ) : Prop :=
   | .OpenChannel inp => inp.addralice = owner
   | .OpenSubchannel inp => inp.addralice = owner
   | .CreateNote inp => inp.addralice = owner
-  | .CancelNote inp => inp.addrbob = owner
+  | .UseNote inp => inp.addrbob = owner
   | .OpenDeposit _ => true
 
 structure ActionFuncRes where
@@ -17,7 +17,7 @@ structure ActionFuncRes where
 def ActionFuncRes.from_create (inp: CreateNoteInput) : ActionFuncRes :=
   { token := inp.token, amount := inp.amount, owner := inp.addralice }
 
-def ActionFuncRes.from_cancel (inp: CancelNoteInput) : ActionFuncRes :=
+def ActionFuncRes.from_use (inp: UseNoteInput) : ActionFuncRes :=
   { token := inp.token, amount := inp.amount, owner := inp.addrbob }
 
 structure ActionFunc where
@@ -55,16 +55,16 @@ def ActionFunc.create_nonopen : ActionFunc := {
     all_goals contradiction
 }
 
-def ActionFunc.cancel : ActionFunc := {
-  f := λ (a: Action) ↦ (filter_CancelNote a).map ActionFuncRes.from_cancel,
+def ActionFunc.use : ActionFunc := {
+  f := λ (a: Action) ↦ (filter_UseNote a).map ActionFuncRes.from_use,
   h_owner := by
     intro action res h_some owner'
-    simp only [filter_CancelNote, Option.map_eq_some_iff, Action.check_owner] at h_some ⊢
+    simp only [filter_UseNote, Option.map_eq_some_iff, Action.check_owner] at h_some ⊢
     obtain ⟨action', h_some, h_some'⟩ := h_some
     cases action
-    case CancelNote inp =>
+    case UseNote inp =>
       simp only [Option.some.injEq] at h_some
-      rw [←h_some', ActionFuncRes.from_cancel, h_some]
+      rw [←h_some', ActionFuncRes.from_use, h_some]
     all_goals contradiction
 }
 
@@ -78,13 +78,13 @@ def Transaction₀.sum_amounts (tx: Transaction₀) (f: ActionFunc) (token: ℕ)
 abbrev Transaction₀.sum_create_note_amounts (tx: Transaction₀) (token: ℕ) : ℕ :=
   tx.sum_amounts .create token
 
-abbrev Transaction₀.sum_cancel_note_amounts (tx: Transaction₀) (token: ℕ) : ℕ :=
-  tx.sum_amounts .cancel token
+abbrev Transaction₀.sum_use_note_amounts (tx: Transaction₀) (token: ℕ) : ℕ :=
+  tx.sum_amounts .use token
 
 structure Transaction extends TimedTransaction where
   owner: ℕ
   h_owner: ∀ action ∈ actions, action.check_owner owner
-  h_balance: ∀ token, toTransaction₀.sum_create_note_amounts token = toTransaction₀.sum_cancel_note_amounts token
+  h_balance: ∀ token, toTransaction₀.sum_create_note_amounts token = toTransaction₀.sum_use_note_amounts token
 
 structure SuccessfulTransactions (crypto: Crypto) where
   txs: List Transaction

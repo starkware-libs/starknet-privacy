@@ -1,4 +1,4 @@
-import privacy.notes.canceled_notes
+import privacy.notes.used_notes
 import privacy.notes.contiguous
 import privacy.notes.create_note_actions
 import privacy.notes.discoverable_outgoing

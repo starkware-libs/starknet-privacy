@@ -1,7 +1,7 @@
 import privacy.actions
 import privacy.amounts
 import privacy.compliance.all_notes
-import privacy.notes.canceled_notes
+import privacy.notes.used_notes
 import privacy.notes.discoverable_outgoing
 import privacy.registration.discoverable
 import privacy.tracing.utils

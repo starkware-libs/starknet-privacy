@@ -3,7 +3,7 @@ import privacy.registration
 import privacy.channels.channels
 import privacy.subchannels.subchannels
 import privacy.notes.note_implies
-import privacy.notes.canceled_notes
+import privacy.notes.used_notes
 import privacy.notes.open_deposits
 
 -- If an action was executed, it cannot be executed again.
@@ -31,10 +31,10 @@ theorem no_replay
     let info := create_note_info crypto inp rm success
     have ⟨note_imp⟩ := NoteImplies.from_action h
     exact note_imp.h_note_exists info.old_value_was_zero
-  case CancelNote inp =>
-    let info := cancel_note_info crypto inp rm success
-    have ⟨cancel_imp⟩ := CancelImplies.from_action h
-    have h_nc := cancel_imp.h_note_canceled
+  case UseNote inp =>
+    let info := use_note_info crypto inp rm success
+    have ⟨use_imp⟩ := UseImplies.from_action h
+    have h_nc := use_imp.h_note_used
     exact h_nc info.nullifier_didnt_exist
   case OpenDeposit inp =>
     let info := open_deposit_info crypto inp rm success
