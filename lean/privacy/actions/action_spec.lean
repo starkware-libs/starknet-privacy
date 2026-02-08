@@ -48,9 +48,9 @@ def open_channel (crypto: Crypto) (inp: OpenChannelInput) (m: Memory) : List Ser
   let alice_registered := m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
   let prev_outgoing_exists := inp.s = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
   ([
+    .ReadAssert .PublicKeys [inp.addrbob] inp.Kbob,
     .Append .ChannelsJ .Channels [inp.addrbob] (inp.enc crypto) (by simp),
     .WriteOnce .ChannelMarkers [inp.channel_marker crypto] 1,
-    .ReadAssert .PublicKeys [inp.addrbob] inp.Kbob,
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 0] inp.r,
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 1] (inp.enc_addrbob crypto),
   ], inp.Kbob ≠ 0 ∧ alice_registered ∧ inp.kalice ∈ crypto.PrivateKeys ∧ inp.r ≠ 0 ∧ prev_outgoing_exists)

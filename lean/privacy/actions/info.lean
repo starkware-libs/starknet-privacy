@@ -92,7 +92,7 @@ def open_channel_info
   let ⟨bob_registered, alice_registered, kalice_valid, r_ne_zero, prev_outgoing_exists⟩ := success₀
 
   simp [ServerAction.run_all, open_channel, ServerAction.run, List.foldl_cons, List.foldl_nil, write_ne] at success₁
-  have ⟨⟨⟨channel_didnt_exist, h_Kbob⟩, outgoing_channel_didnt_exist⟩, _⟩ := success₁
+  have ⟨⟨⟨h_Kbob, channel_didnt_exist⟩, outgoing_channel_didnt_exist⟩, _⟩ := success₁
 
   exact {
     m' := m'
