@@ -4,8 +4,8 @@ import privacy.actions.server_actions
 abbrev run_action₀ (crypto: Crypto) (action: Action) (m: Memory) : List ServerAction × Bool :=
   match action with
     | .Register inp => register crypto inp m
-    | .CreateChannel inp => create_channel crypto inp m
-    | .CreateSubchannel inp => create_subchannel crypto inp m
+    | .OpenChannel inp => open_channel crypto inp m
+    | .OpenSubchannel inp => open_subchannel crypto inp m
     | .CreateNote inp => create_note crypto inp m
     | .CancelNote inp => cancel_note crypto inp m
     | .OpenDeposit inp => open_deposit crypto inp m

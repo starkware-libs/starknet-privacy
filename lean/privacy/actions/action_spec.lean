@@ -18,33 +18,33 @@ def register (crypto: Crypto) (inp: RegisterInput) (_: Memory) : List ServerActi
   ], inp.kalice ∈ crypto.PrivateKeys)
 
 --------------------
--- Create Channel --
+-- Open Channel --
 --------------------
 
-structure CreateChannelInput where
+structure OpenChannelInput where
   (addralice kalice addrbob Kbob: ℕ)
   -- Outgoing channel index and random blinding value.
   (s r: ℕ)
 
-abbrev CreateChannelInput.c (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
+abbrev OpenChannelInput.c (crypto: Crypto) (inp: OpenChannelInput) : ℕ :=
   crypto.hash [inp.addralice, inp.kalice, inp.addrbob, inp.Kbob]
 
-abbrev CreateChannelInput.enc (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
+abbrev OpenChannelInput.enc (crypto: Crypto) (inp: OpenChannelInput) : ℕ :=
   crypto.enc inp.Kbob [inp.c crypto, inp.addralice]
 
-abbrev CreateChannelInput.channel_hash (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
+abbrev OpenChannelInput.channel_hash (crypto: Crypto) (inp: OpenChannelInput) : ℕ :=
   crypto.hash [inp.c crypto, inp.addralice, inp.addrbob, inp.Kbob]
 
-abbrev CreateChannelInput.prev_outgoing_channel_id (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
+abbrev OpenChannelInput.prev_outgoing_channel_id (crypto: Crypto) (inp: OpenChannelInput) : ℕ :=
   crypto.hash [inp.addralice, inp.kalice, inp.s - 1]
 
-abbrev CreateChannelInput.outgoing_channel_id (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
+abbrev OpenChannelInput.outgoing_channel_id (crypto: Crypto) (inp: OpenChannelInput) : ℕ :=
   crypto.hash [inp.addralice, inp.kalice, inp.s]
 
-abbrev CreateChannelInput.enc_addrbob (crypto: Crypto) (inp: CreateChannelInput) : ℕ :=
+abbrev OpenChannelInput.enc_addrbob (crypto: Crypto) (inp: OpenChannelInput) : ℕ :=
   crypto.hash [inp.addralice, inp.kalice, inp.s, inp.r] + inp.addrbob
 
-def create_channel (crypto: Crypto) (inp: CreateChannelInput) (m: Memory) : List ServerAction × Bool :=
+def open_channel (crypto: Crypto) (inp: OpenChannelInput) (m: Memory) : List ServerAction × Bool :=
   let alice_registered := m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
   let prev_outgoing_exists := inp.s = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
   ([
@@ -56,22 +56,22 @@ def create_channel (crypto: Crypto) (inp: CreateChannelInput) (m: Memory) : List
   ], inp.Kbob ≠ 0 ∧ alice_registered ∧ inp.kalice ∈ crypto.PrivateKeys ∧ inp.r ≠ 0 ∧ prev_outgoing_exists)
 
 -----------------------
--- Create Subchannel --
+-- Open Subchannel --
 -----------------------
 
-structure CreateSubchannelInput where
+structure OpenSubchannelInput where
   (c addralice addrbob Kbob token k₀ k₁ r: ℕ)
 
-abbrev CreateSubchannelInput.subchannel_id (crypto: Crypto) (inp: CreateSubchannelInput) : ℕ :=
+abbrev OpenSubchannelInput.subchannel_id (crypto: Crypto) (inp: OpenSubchannelInput) : ℕ :=
   crypto.hash [inp.c, inp.k₀, inp.k₁]
 
-abbrev CreateSubchannelInput.enc (crypto: Crypto) (inp: CreateSubchannelInput) : ℕ :=
+abbrev OpenSubchannelInput.enc (crypto: Crypto) (inp: OpenSubchannelInput) : ℕ :=
   crypto.hash [inp.c, inp.k₀, inp.k₁, inp.r] + inp.token
 
-abbrev CreateSubchannelInput.subchannel_hash (crypto: Crypto) (inp: CreateSubchannelInput) : ℕ :=
+abbrev OpenSubchannelInput.subchannel_hash (crypto: Crypto) (inp: OpenSubchannelInput) : ℕ :=
   crypto.hash [inp.c, inp.addrbob, inp.Kbob, inp.token]
 
-def create_subchannel (crypto: Crypto) (inp: CreateSubchannelInput) (m: Memory) : List ServerAction × Bool :=
+def open_subchannel (crypto: Crypto) (inp: OpenSubchannelInput) (m: Memory) : List ServerAction × Bool :=
   let channel_exists := m .ChannelHashes [crypto.hash [inp.c, inp.addralice, inp.addrbob, inp.Kbob]] ≠ 0
   let prev_subchannel_exists := inp.k₁ = 0 ∨ m .SubchannelTokens [crypto.hash [inp.c, inp.k₀, inp.k₁ - 1], 0] != 0
   ([
@@ -158,8 +158,8 @@ def open_deposit (_crypto: Crypto) (inp: OpenDepositInput) (_m: Memory) : List S
 
 inductive Action where
   | Register (inp: RegisterInput)
-  | CreateChannel (inp: CreateChannelInput)
-  | CreateSubchannel (inp: CreateSubchannelInput)
+  | OpenChannel (inp: OpenChannelInput)
+  | OpenSubchannel (inp: OpenSubchannelInput)
   | CreateNote (inp: CreateNoteInput)
   | CancelNote (inp: CancelNoteInput)
   | OpenDeposit (inp: OpenDepositInput)

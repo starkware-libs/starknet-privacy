@@ -142,7 +142,7 @@ theorem NoteImplies.scan_for_recipient
   rw [scan_notes_for_recipient']
   refine ⟨by rfl, ?_, note_imp.subchannel.scan, note_imp.scan_for_channel⟩
   · have := note_imp.subchannel.channel.scan
-    simp only [CreateChannelInput.c, CreateNoteInput.c, ←NoteImplies.h_kalice] at this
+    simp only [OpenChannelInput.c, CreateNoteInput.c, ←NoteImplies.h_kalice] at this
     exact this
 
 theorem NoteImplies.scan_for_recipient₀

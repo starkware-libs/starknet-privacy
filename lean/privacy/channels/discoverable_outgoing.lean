@@ -39,8 +39,8 @@ theorem scan_outgoing_channels_monotone
    (h: addrbob ∈ scan_outgoing_channels (.from rm) addralice kalice) :
    addrbob ∈ scan_outgoing_channels (.from (rm.add action success)) addralice kalice := by
   cases action
-  case CreateChannel inp =>
-    let info := create_channel_info crypto inp rm success
+  case OpenChannel inp =>
+    let info := open_channel_info crypto inp rm success
     simp only [scan_outgoing_channels, List.mem_map, List.mem_range,
       Nat.lt_find_iff, ReachableMemory.add_m, run_action, ←info.h_m'] at h ⊢
     obtain ⟨s_bound, h₀, h₁⟩ := h
@@ -94,7 +94,7 @@ theorem outgoing_channels_are_discoverable {crypto: Crypto} {rm: ReachableMemory
   have ⟨inp, channel_imp, h_c⟩ := ChannelImplies.from_channel_exists c_exists
   have ⟨rm₀, success, h_extends⟩ := channel_imp.success
   apply scan_outgoing_channels_extends h_extends
-  let info := create_channel_info crypto inp rm₀ success
+  let info := open_channel_info crypto inp rm₀ success
   simp only [scan_outgoing_channels, List.mem_map, List.mem_range,
     Nat.lt_find_iff, ReachableMemory.add_m, run_action, ←info.h_m']
   use inp.s

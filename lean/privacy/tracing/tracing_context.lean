@@ -163,13 +163,13 @@ theorem TracingContext.from {crypto: Crypto} (stxs: SuccessfulTransactions crypt
     have ⟨inp, note_imp, h_esn, h_addralice, h_kalice⟩ := NoteImplies.from_scan_outgoing_notes_for_sender h
     rw [←h_esn]
     refine ⟨by rw [←h_addralice], inp.Kbob, ?_⟩
-    simp only [note_imp.subchannel.h_c, ChannelImplies.c, CreateChannelInput.c, ←h_kalice]
+    simp only [note_imp.subchannel.h_c, ChannelImplies.c, OpenChannelInput.c, ←h_kalice]
   h_scan_notes_for_recipient := by
     intro bob esn h
     have ⟨inp, note_imp, h_esn, h_addrbob, _, _, _⟩ := NoteImplies.from_scan_notes_for_recipient bob.h_k h
     rw [←h_esn]
     refine ⟨by simp [*], inp.kalice, ?_⟩
-    simp only [note_imp.subchannel.h_c, ChannelImplies.c, CreateChannelInput.c, note_imp.h_kalice]
+    simp only [note_imp.subchannel.h_c, ChannelImplies.c, OpenChannelInput.c, note_imp.h_kalice]
     simp [*]
   h_fintype_coin := ⟨Coin.fintype⟩
   h_from_create_open_note_event := by

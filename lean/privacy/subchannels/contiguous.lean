@@ -11,10 +11,10 @@ theorem subchannels_contiguous
 
   intro action rm
   cases action
-  case CreateSubchannel inp =>
+  case OpenSubchannel inp =>
     intro h success
 
-    have info := create_subchannel_info crypto inp rm success
+    have info := open_subchannel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
     obtain ⟨k₁_bound, h⟩ := h

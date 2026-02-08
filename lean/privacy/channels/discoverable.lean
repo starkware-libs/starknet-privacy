@@ -18,9 +18,9 @@ theorem scan_channels_monotone
    (h: elm ∈ scan_channels crypto m addrbob kbob) :
    elm ∈ scan_channels crypto (run_action crypto action m).m addrbob kbob := by
   cases action
-  case CreateChannel inp =>
+  case OpenChannel inp =>
     simp only [scan_channels] at *
-    let info := create_channel_info crypto inp m success
+    let info := open_channel_info crypto inp m success
     rw [run_action, ←info.h_m']
     simp only [List.mem_map, List.mem_range] at *
     obtain ⟨j, h⟩ := h
@@ -59,8 +59,8 @@ theorem channels_j_zero
 
   intro action rm ih success h
   cases action
-  case CreateChannel inp =>
-    let info := create_channel_info crypto inp rm success
+  case OpenChannel inp =>
+    let info := open_channel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m'] at h ⊢
     rw [info.no_change _ _ (by simp)] at h
     by_cases h_bob: addrbob = inp.addrbob
@@ -91,7 +91,7 @@ theorem channels_j_zero
 -----------------------------------------
 
 -- Channel exists → it is discoverable by scanning.
-theorem ChannelImplies.scan {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateChannelInput}
+theorem ChannelImplies.scan {crypto: Crypto} {rm: ReachableMemory crypto} {inp: OpenChannelInput}
     (channel_imp: ChannelImplies rm inp) :
     (inp.c crypto, inp.addralice) ∈ scan_channels crypto rm inp.addrbob channel_imp.kbob := by
   simp only [scan_channels, List.mem_map]
@@ -100,7 +100,7 @@ theorem ChannelImplies.scan {crypto: Crypto} {rm: ReachableMemory crypto} {inp: 
   constructor
   · rw [List.mem_range]; exact channel_imp.h_j_lt
   · rw [channel_imp.channel_enc]
-    rw [CreateChannelInput.enc, channel_imp.h_Kbob, crypto.dec_enc]
+    rw [OpenChannelInput.enc, channel_imp.h_Kbob, crypto.dec_enc]
     simp
 
 -- Discoverable channel → channel exists.
@@ -108,7 +108,7 @@ theorem ChannelImplies.from_scan
     {crypto: Crypto} {rm: ReachableMemory crypto} {addralice addrbob: ℕ} {kbob: crypto.PrivateKeys} {c: ℕ}
     (k_kbob: rm.m .PublicKeys [addrbob] = crypto.priv_to_pub kbob)
     (h: (c, addralice) ∈ scan_channels crypto rm addrbob kbob) :
-    ∃ (inp: CreateChannelInput) (channel_imp: ChannelImplies rm inp),
+    ∃ (inp: OpenChannelInput) (channel_imp: ChannelImplies rm inp),
     inp.c crypto = c ∧ inp.addralice = addralice ∧ inp.addrbob = addrbob ∧ channel_imp.kbob = kbob := by
   suffices h' : channel_exists crypto rm c ∧ ∃ kalice, c = crypto.hash [addralice, kalice, addrbob, crypto.priv_to_pub kbob] from by
     have ⟨h₀, ⟨kalice, h₁⟩⟩ := h'
@@ -123,8 +123,8 @@ theorem ChannelImplies.from_scan
   intro action rm ih success
 
   cases action
-  case CreateChannel inp =>
-    let info := create_channel_info crypto inp rm success
+  case OpenChannel inp =>
+    let info := open_channel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m'] at *
     intro h_kbob h_channel_discoverable
     simp only [scan_channels, List.mem_map, List.mem_range] at *
@@ -139,7 +139,7 @@ theorem ChannelImplies.from_scan
         rw [←info.h_Kbob, h_kbob]
       by_cases same_j: j = info.j
       case pos =>
-        rw [same_j, info.memory_diff₁, CreateChannelInput.enc, h_Kbob, crypto.dec_enc] at channel_decryption
+        rw [same_j, info.memory_diff₁, OpenChannelInput.enc, h_Kbob, crypto.dec_enc] at channel_decryption
         have ⟨h_c, h_addralice⟩ : c = inp.c crypto ∧ addralice = inp.addralice := by
           simp at channel_decryption
           simp [channel_decryption]
@@ -153,7 +153,7 @@ theorem ChannelImplies.from_scan
         rw [info.no_change _ _ (by simp [same_j])] at channel_decryption
         have ⟨h₀, h₁⟩ := ih h_kbob ⟨j, (by omega), channel_decryption⟩
         rw [h_bob, info.h_m']
-        use channel_exists_monotone crypto rm (.CreateChannel inp) c success h₀
+        use channel_exists_monotone crypto rm (.OpenChannel inp) c success h₀
     case neg =>
       rw [info.no_change _ _ (by simp [h_bob])] at j_lt
       have : ¬(addrbob = inp.addrbob ∧ j = info.j) := λ h ↦ h_bob h.1
@@ -161,7 +161,7 @@ theorem ChannelImplies.from_scan
       rw [info.no_change _ _ (by simp)] at h_kbob
       have ⟨h₀, h₁⟩ := ih h_kbob ⟨j, j_lt, channel_decryption⟩
       rw [info.h_m']
-      use channel_exists_monotone crypto rm (.CreateChannel inp) c success h₀
+      use channel_exists_monotone crypto rm (.OpenChannel inp) c success h₀
 
   case Register inp =>
     intro h_kbob h_channel_discoverable
