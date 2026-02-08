@@ -5904,7 +5904,7 @@ fn test_deposit_to_open_note_twice() {
     // Second deposit - should fail with NOTE_ALREADY_DEPOSITED.
     depositor.increase_token_balance(:token, :amount);
     depositor.approve(:token, amount: amount.into());
-    let result = depositor.safe_deposit_to_open_note(:note_id, :amount);
+    let result = depositor.safe_deposit_to_open_note(:note_id, :token_addr, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
     // Use the deposited note: spend it.
@@ -5923,7 +5923,7 @@ fn test_deposit_to_open_note_twice() {
     // Try to deposit again after using the note - should still fail with NOTE_ALREADY_DEPOSITED.
     depositor.increase_token_balance(:token, :amount);
     depositor.approve(:token, amount: amount.into());
-    let result = depositor.safe_deposit_to_open_note(:note_id, :amount);
+    let result = depositor.safe_deposit_to_open_note(:note_id, :token_addr, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 }
 

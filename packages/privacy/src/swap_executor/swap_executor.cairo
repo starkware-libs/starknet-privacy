@@ -61,7 +61,7 @@ pub mod SwapExecutor {
 
             // Deposit to the open note on the privacy contract.
             IServerDispatcher { contract_address: privacy_addr }
-                .deposit_to_open_note(:note_id, amount: out_amount);
+                .deposit_to_open_note(:note_id, token: out_token, amount: out_amount);
         }
     }
 }

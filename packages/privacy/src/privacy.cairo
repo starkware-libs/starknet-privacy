@@ -762,17 +762,20 @@ pub mod Privacy {
             self._execute_actions(:actions);
         }
 
-        fn deposit_to_open_note(ref self: ContractState, note_id: felt252, amount: u128) {
+        fn deposit_to_open_note(
+            ref self: ContractState, note_id: felt252, token: ContractAddress, amount: u128,
+        ) {
             self.pausable.assert_not_paused();
             // Validate inputs.
             assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
 
             // Read the Note from storage and assert it exists.
             let note_entry = self.notes.entry(note_id);
             let note = note_entry.read();
             let packed_value = note.packed_value;
-            let token = note.token;
+            let note_token = note.token;
             let depositor = note.depositor;
             assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
@@ -784,6 +787,9 @@ pub mod Privacy {
 
             // Assert the note hasn't been deposited to yet (current_amount == 0).
             assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
+
+            // Assert the token matches the note's token.
+            assert(token == note_token, errors::TOKEN_MISMATCH);
 
             // Assert the caller is the depositor.
             let caller = get_caller_address();
