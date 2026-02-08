@@ -166,7 +166,7 @@ def WithdrawInput.user_enc (crypto: Crypto) (inp: WithdrawInput) : ℕ :=
 def withdraw (crypto: Crypto) (inp: WithdrawInput) (_m: Memory) : List ServerAction × Bool :=
   ([
     .Event (.Withdraw (inp.user_enc crypto) inp.amount inp.token)
-  ], true)
+  ], inp.amount ≠ 0)
 
 ------------
 -- Action --
