@@ -23,6 +23,7 @@ import type {
   ExecuteOptions,
   Note,
   PrivateRegistry,
+  StarknetAddressBigint,
   ViewingKey,
   Warning,
 } from "../interfaces.js";
@@ -81,7 +82,7 @@ export class ActionCompiler {
     const recipientsNeeded = this.getRecipientsNeeded(actions);
 
     // Phase 1: Resolve recipient channels
-    const channels = await this.resolveRecipientChannels(
+    const { channels, total } = await this.resolveRecipientChannels(
       actions,
       options,
       registry,
@@ -94,7 +95,7 @@ export class ActionCompiler {
     debugLog("compiler", "compile", "post resolveNotes", registry?.notes?.size, actions);
 
     // create a pool to simulate the execution of the actions
-    const pool = this.createPool(toBigInt(this.userViewingKey), registry, channels);
+    const pool = this.createPool(toBigInt(this.userViewingKey), registry, channels, total);
 
     // Phase 3: Transform Actions to ClientAction[]
     const clientActions = this.transformToClientActions(actions, pool, recipientsNeeded, options);
@@ -154,9 +155,10 @@ export class ActionCompiler {
   private createPool(
     privateKey: bigint,
     registry?: PrivateRegistry,
-    channels?: AddressMap<Channel>
+    channels?: AddressMap<Channel>,
+    totalChannels?: number
   ): PoolSimulator {
-    const pool = new PoolSimulator(this.userAddress, privateKey);
+    const pool = new PoolSimulator(this.userAddress, privateKey, totalChannels ?? 0);
 
     debugLog("compiler", "setup discovered channels", channels);
 
@@ -270,7 +272,7 @@ export class ActionCompiler {
           input: {
             recipient_addr: action.recipient,
             recipient_public_key: channel.publicKey as bigint,
-            index: seenRecipients.size - 1, // TODO: track outgoing channel index properly
+            index: pool.getNextChannelIndex(),
             random: generateRandom(),
             salt: generateRandom(),
           },
@@ -447,19 +449,19 @@ export class ActionCompiler {
     options: ExecuteOptions | undefined,
     registry: PrivateRegistry,
     recipientsNeeded: AddressMap<boolean>
-  ): Promise<AddressMap<Channel> | undefined> {
+  ): Promise<{ channels: AddressMap<Channel> | undefined; total?: number }> {
     const recipientDiscoveryLevel = options?.autoDiscover?.channels;
 
     if (!recipientDiscoveryLevel) {
       // Allow discovery for OpenChannel actions as they require fetching the recipient's public key
       const hasOpenChannels = actions.openChannels && actions.openChannels.length > 0;
-      if (!hasOpenChannels) {
-        return undefined;
+      if (!hasOpenChannels && !options?.autoSetup) {
+        return { channels: undefined, total: undefined };
       }
     }
 
     // Determine which recipients to discover based on discovery level
-    let recipientsToDiscover: bigint[];
+    let recipientsToDiscover: StarknetAddressBigint[];
 
     if (recipientDiscoveryLevel === "refresh") {
       // Refresh: discover ALL recipients to get latest nonces
@@ -470,7 +472,7 @@ export class ActionCompiler {
     }
 
     if (recipientsToDiscover.length === 0) {
-      return undefined;
+      return { channels: undefined, total: undefined };
     }
 
     // Discover channels for all recipients that need discovery in a single call
@@ -481,7 +483,18 @@ export class ActionCompiler {
       recipientsToDiscover
     );
 
-    return channels;
+    // see if all recipients were discoveredall
+    if (this.allOpen(channels, recipientsToDiscover)) {
+      return { channels, total: undefined };
+    }
+
+    const { total } = await this.discoveryProvider.discoverChannels(
+      this.userAddress,
+      this.userViewingKey,
+      "total-only"
+    );
+
+    return { channels, total };
   }
 
   /**
@@ -663,5 +676,12 @@ export class ActionCompiler {
     }
 
     return { channels: clonedChannels, notes: clonedNotes };
+  }
+
+  private allOpen(
+    channels: AddressMap<Channel> | undefined,
+    recipients: StarknetAddressBigint[]
+  ): boolean {
+    return recipients.every((recipient) => channels?.get(recipient)?.key !== undefined);
   }
 }

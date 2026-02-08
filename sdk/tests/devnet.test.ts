@@ -85,6 +85,6 @@ describe("Devnet Integration", () => {
     const { channels } = await transfers.alice.discoverChannels([env.bob.address]);
     debugLog("test", "should deposit", "channels", channels);
 
-    expect(channels.get(env.bob.address)?.tokens.get(env.strk)?.noteNonce).toBe(1);
+    expect(channels!.get(env.bob.address)?.tokens.get(env.strk)?.noteNonce).toBe(1);
   });
 });
