@@ -41,6 +41,7 @@ pub const ZERO_SWAP_SELECTOR: felt252 = 'ZERO_SWAP_SELECTOR';
 pub const ZERO_IN_TOKEN: felt252 = 'ZERO_IN_TOKEN';
 pub const ZERO_IN_AMOUNT: felt252 = 'ZERO_IN_AMOUNT';
 pub const ZERO_OUT_TOKEN: felt252 = 'ZERO_OUT_TOKEN';
+pub const TOKEN_MISMATCH: felt252 = 'TOKEN_MISMATCH';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';

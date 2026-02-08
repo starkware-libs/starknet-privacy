@@ -1133,29 +1133,31 @@ pub(crate) impl UserImpl of UserTrait {
 
     /// Execute deposit_to_open_note as this user (caller).
     /// Assumes the user already has sufficient token balance and approval.
-    fn deposit_to_open_note(self: @User, note_id: felt252, amount: u128) {
+    fn deposit_to_open_note(
+        self: @User, note_id: felt252, token_addr: ContractAddress, amount: u128,
+    ) {
         cheat_caller_address_once(
             contract_address: *self.privacy.address, caller_address: *self.address,
         );
-        self.privacy.deposit_to_open_note(:note_id, :amount);
+        self.privacy.deposit_to_open_note(:note_id, :token_addr, :amount);
     }
 
     /// Safe version of `deposit_to_open_note` that returns a Result.
     /// Assumes the user already has sufficient token balance and approval.
     fn safe_deposit_to_open_note(
-        self: @User, note_id: felt252, amount: u128,
+        self: @User, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) -> Result<(), Array<felt252>> {
         cheat_caller_address_once(
             contract_address: *self.privacy.address, caller_address: *self.address,
         );
-        self.privacy.safe_deposit_to_open_note(:note_id, :amount)
+        self.privacy.safe_deposit_to_open_note(:note_id, :token_addr, :amount)
     }
 
     /// Fund the user, approve, and deposit to an open note.
     fn fund_and_deposit_to_open_note(self: @User, token: Token, note_id: felt252, amount: u128) {
         self.increase_token_balance(:token, :amount);
         self.approve(:token, amount: amount.into());
-        self.deposit_to_open_note(:note_id, :amount);
+        self.deposit_to_open_note(:note_id, token_addr: token.contract_address(), :amount);
     }
 
     /// Cheat deposit in the server side (no client side).
@@ -1441,15 +1443,17 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_server.execute_actions(:actions)
     }
 
-    fn deposit_to_open_note(self: @PrivacyCfg, note_id: felt252, amount: u128) {
-        self.server.deposit_to_open_note(:note_id, :amount);
+    fn deposit_to_open_note(
+        self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
+    ) {
+        self.server.deposit_to_open_note(:note_id, token: token_addr, :amount);
     }
 
     #[feature("safe_dispatcher")]
     fn safe_deposit_to_open_note(
-        self: @PrivacyCfg, note_id: felt252, amount: u128,
+        self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) -> Result<(), Array<felt252>> {
-        self.safe_server.deposit_to_open_note(:note_id, :amount)
+        self.safe_server.deposit_to_open_note(:note_id, token: token_addr, :amount)
     }
 
     fn pause(self: @PrivacyCfg) {
