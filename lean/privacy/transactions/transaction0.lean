@@ -199,7 +199,8 @@ theorem run_transactions_add_tx
     ∃ past_m ∈ res₀.past_ms,
     res₁.m = (run_transaction_actions crypto ttx.actions res₀.m past_m).m_s ∧
     res₁.events = res₀.events ++ [(run_transaction_actions crypto ttx.actions res₀.m past_m).events] ∧
-    (run_transaction_actions crypto ttx.actions res₀.m past_m).success := by
+    (run_transaction_actions crypto ttx.actions res₀.m past_m).success ∧
+    past_m = res₀.past_ms[ttx.time]?.getD 0 := by
   dsimp only
   set res₀ := run_transactions crypto ttxs with h_res₀
   set res₁ := run_transactions crypto (ttx :: ttxs) with h_res₁
@@ -211,7 +212,7 @@ theorem run_transactions_add_tx
   have ⟨success₀, success₁⟩ := success
   use success₀
   use res₀.past_ms[ttx.time]?.getD 0
-  refine ⟨?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_⟩
   · by_cases h: ttx.time < res₀.past_ms.length
     case pos => simp [List.getElem?_eq_getElem h]
     case neg =>
@@ -223,6 +224,7 @@ theorem run_transactions_add_tx
   · unfold res₁
     rw [run_transactions, List.foldr_cons, ←run_transactions]
   · exact success₁
+  · rfl
 
 theorem run_transactions_is_reachable
     (crypto: Crypto) (ttxs: List TimedTransaction) :
@@ -254,7 +256,7 @@ theorem run_transactions_is_reachable
       · exact ⟨[], by simp⟩
   case cons ttx ttxs ih =>
     unfold res at success
-    have ⟨success₀, past_m, h₀, h₁, h₂, h₃⟩ := run_transactions_add_tx crypto ttxs ttx success
+    have ⟨success₀, past_m, h₀, h₁, h₂, h₃, _⟩ := run_transactions_add_tx crypto ttxs ttx success
     have ⟨rm_s, ih₀, ih₁, ih_events, ih_past_ms⟩ := ih success₀
     have ⟨past_rm, h_past_rm, h_extends⟩ := ih_past_ms past_m h₀
     have ⟨⟨rm, h_rm_actions, h_rm_m, h_rm_events⟩, _⟩ := add_transaction_is_reachable crypto ttx.actions rm_s past_rm h_extends (by rwa [h_past_rm, ih₁])

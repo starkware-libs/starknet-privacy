@@ -127,26 +127,102 @@ abbrev SuccessfulTransactions.rm {crypto: Crypto} (stxs: SuccessfulTransactions 
       exact rm.success
   }
 
+abbrev SuccessfulTransactions.events
+    {crypto: Crypto} (stxs: SuccessfulTransactions crypto) :
+    List (List Event) :=
+  (run_transactions crypto stxs.timed_txs).events
+
+theorem SuccessfulTransactions.events.flatten_eq
+    {crypto: Crypto} (stxs: SuccessfulTransactions crypto) :
+    stxs.events.flatten = stxs.rm.events := by
+  have ⟨rm', h_actions, _, h_events, _⟩ := run_transactions_is_reachable crypto stxs.timed_txs stxs.success
+  simp only [SuccessfulTransactions.events]
+  rw [←h_events]
+  rw [(show rm' = stxs.rm by apply ReachableMemory.ext; rw [h_actions])]
+
+structure SuccessfulTransactions.InductionH (crypto: Crypto) where
+  (stxs₀ stxs₁: SuccessfulTransactions crypto)
+  (tx: Transaction)
+  (h_txs: stxs₁.txs = tx :: stxs₀.txs)
+  (h_rm_extends: stxs₁.rm.extends stxs₀.rm)
+  (h_events: stxs₁.events = stxs₀.events ++ [(run_all crypto tx.actions stxs₀.m).events])
+
 theorem SuccessfulTransactions.induction
     (prop: SuccessfulTransactions crypto → Prop)
     (empty: prop { txs := [], success := (by trivial) })
-    (succ:
-      ∀ (stxs₀ stxs₁: SuccessfulTransactions crypto) (tx: Transaction),
-      stxs₁.txs = tx :: stxs₀.txs → prop stxs₀ → prop stxs₁) :
+    (succ: ∀ (h: SuccessfulTransactions.InductionH crypto),
+      prop h.stxs₀ → prop h.stxs₁) :
     ∀ stxs: SuccessfulTransactions crypto, prop stxs := by
   intro stxs
   induction h: stxs.txs generalizing stxs
   case nil => convert empty
   case cons tx txs ih =>
-    have ⟨success₀, past_m, h₀, h₁, h₂, h₃⟩ := run_transactions_add_tx crypto (txs.map Transaction.toTimedTransaction) tx.toTimedTransaction (by
+    let ttxs := txs.map Transaction.toTimedTransaction
+    let ttx  := tx.toTimedTransaction
+    have success₁ : (run_transactions crypto (ttx :: ttxs)).success := by
       have := stxs.success
       rw [h, List.map_cons] at this
       exact this
-    )
+    have ⟨success₀, past_m, h₀, h₁, h₂, h₃, h_past_m⟩ := run_transactions_add_tx crypto
+        (txs.map Transaction.toTimedTransaction) tx.toTimedTransaction success₁
 
-    apply succ ⟨txs, success₀⟩ stxs tx (by rw [h])
+    have ⟨rm₀, h'_actions₀, h'_rm₀, h'_events₀, _⟩ := run_transactions_is_reachable crypto ttxs success₀
+    have ⟨rm₁, h'_actions₁, _, h'_events₁, _⟩ := run_transactions_is_reachable crypto (ttx :: ttxs) success₁
+
+    apply succ {
+      stxs₀ := ⟨txs, success₀⟩
+      stxs₁ := stxs,
+      tx:=tx,
+      h_txs := (by rw [h]),
+      h_rm_extends := by
+        use tx.actions
+        simp only [SuccessfulTransactions.timed_txs, h, List.map_cons, List.bind_eq_flatMap, List.flatMap_cons]
+      h_events := by
+        have : rm₁.events = rm₀.events ++ (run_all crypto tx.actions rm₀.m).events := by
+          simp only [ReachableMemory.events, h'_actions₀, h'_actions₁, List.bind_eq_flatMap,
+            List.flatMap_cons, run_all_append_events]
+          apply congrArg
+          simp only [ReachableMemory.m, h'_actions₀, List.bind_eq_flatMap]
+          rfl
+
+        rw [this, h'_events₀] at h'_events₁
+        conv at h'_events₁ =>
+          rhs
+          rw [run_transactions, List.foldr_cons, ←run_transactions, List.flatten_append, List.flatten_singleton]
+        apply List.append_cancel_left at h'_events₁
+        rw [←h_past_m] at h'_events₁
+
+        simp only [SuccessfulTransactions.events, SuccessfulTransactions.timed_txs, h, List.map_cons]
+        rw [h₂]
+        apply congrArg
+        apply congrArg (λ x ↦ [x])
+
+        have : (⟨txs, success₀⟩: SuccessfulTransactions crypto).m = rm₀.m := by rw [h'_rm₀]
+
+        rw [this, h'_events₁]
+    }
     apply ih
     rfl
+
+theorem SuccessfulTransactions.in_rm_actions
+    {crypto: Crypto} {stxs: SuccessfulTransactions crypto} {action: Action}
+    (h_action: action ∈ tx.actions)
+    (h_tx: tx ∈ stxs.txs) :
+    action ∈ stxs.rm.actions := by
+  simp only [List.bind_eq_flatMap, List.mem_flatMap]
+  refine ⟨tx.toTimedTransaction, ?_, h_action⟩
+  simp only [SuccessfulTransactions.timed_txs, List.mem_map]
+  use tx
+
+theorem SuccessfulTransactions.events.length
+    {crypto: Crypto} (stxs: SuccessfulTransactions crypto) :
+    stxs.events.length = stxs.txs.length := by
+  revert stxs
+  apply SuccessfulTransactions.induction
+  case empty => rfl
+  case succ =>
+    intro h ih
+    simp only [h.h_events, List.length_append, ih, h.h_txs, List.length_cons, List.length_nil]
 
 theorem Transaction.sum_create_note_amounts_eq_nonopen
     {crypto: Crypto} (stxs: SuccessfulTransactions crypto)
