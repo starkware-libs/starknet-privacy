@@ -5641,7 +5641,7 @@ fn test_deposit_to_open_note_twice() {
     let mut user_3 = test.new_user();
     let mut depositor = test.new_user();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount = constants::DEFAULT_AMOUNT;
     let index = 0;
     user_1.set_viewing_key_e2e();
@@ -5649,17 +5649,23 @@ fn test_deposit_to_open_note_twice() {
     user_3.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2,
+            token_address: token_addr,
+            outgoing_channel_index: 0,
+            subchannel_index: 0,
         );
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_3, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_3,
+            token_address: token_addr,
+            outgoing_channel_index: 0,
+            subchannel_index: 0,
         );
 
     // Create an open note.
     let create_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, :index, depositor: depositor.address,
+            recipient: user_2, token: token_addr, :index, depositor: depositor.address,
         );
     user_1.cheat_create_open_note_e2e(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
@@ -5670,26 +5676,28 @@ fn test_deposit_to_open_note_twice() {
     // Second deposit - should fail with NOTE_ALREADY_DEPOSITED.
     depositor.increase_token_balance(:token, :amount);
     depositor.approve(:token, amount: amount.into());
-    let result = depositor.safe_deposit_to_open_note(:note_id, :amount);
+    let result = depositor.safe_deposit_to_open_note(:note_id, :token_addr, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
     // Use the deposited note: spend it.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note = UseNoteInput { channel_key, token: token_address, index };
+    let use_note = UseNoteInput { channel_key, token: token_addr, index };
     let new_note = user_2
-        .new_enc_note_with_generated_salt(recipient: user_3, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(
+            recipient: user_3, token_address: token_addr, :amount, index: 0,
+        );
     let actions = user_2
         .transfer(notes_to_use: [use_note].span(), notes_to_create: [new_note].span());
     test.privacy.execute_actions(:actions);
 
     // Verify nullifier was created.
-    let nullifier = user_2.compute_nullifier(sender: user_1, :token_address, :index);
+    let nullifier = user_2.compute_nullifier(sender: user_1, token_address: token_addr, :index);
     assert!(test.privacy.nullifier_exists(:nullifier));
 
     // Try to deposit again after using the note - should still fail with NOTE_ALREADY_DEPOSITED.
     depositor.increase_token_balance(:token, :amount);
     depositor.approve(:token, amount: amount.into());
-    let result = depositor.safe_deposit_to_open_note(:note_id, :amount);
+    let result = depositor.safe_deposit_to_open_note(:note_id, :token_addr, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 }
 
