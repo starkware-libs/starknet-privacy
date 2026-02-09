@@ -28,16 +28,11 @@ All error responses follow a consistent structure:
 | Code | HTTP Status | Retryable | Description |
 |------|-------------|-----------|-------------|
 | `INVALID_REQUEST` | 400 | No | Malformed request body or missing required fields |
-| `INVALID_ADDRESS` | 400 | No | Invalid Starknet address format |
-| `INVALID_KEY_FORMAT` | 400 | No | Decryption key has invalid format |
-| `INVALID_CURSOR` | 400 | No | Cursor structure is malformed |
-| `INVALID_BLOCK_RANGE` | 400 | No | `block_ref` block number not greater than `last_synced_block` |
 | `MAX_READS_EXCEEDED` | 400 | No | Requested `max_reads` exceeds allowed maximum |
-| `BLOCK_NOT_FOUND` | 404 | No | Referenced `block_ref` does not exist |
-| `BLOCK_REORGED` | 409 | Yes | Referenced `block_ref` was reorged out; client should re-sync |
-| `DECRYPTION_FAILED` | 400 | No | Provided key could not decrypt any channels/notes |
-| `RATE_LIMITED` | 429 | Yes | Too many requests; retry after `Retry-After` header |
-| `SERVICE_UNAVAILABLE` | 503 | Yes | Service is starting up or backfilling; retry after `Retry-After` header |
+| `DECRYPTION_FAILED` | 400 | No | Provided key could not decrypt channel/note data |
+| `BLOCK_REORGED` | 409 | Yes | `last_known_block` was reorged out; client should re-sync |
+| `RATE_LIMITED` | 429 | Yes | Too many requests. `Retry-After` header is set by the reverse proxy, not the service itself |
+| `SERVICE_UNAVAILABLE` | 503 | Yes | Service is starting up or no chain head available. `Retry-After` header, if present, is set by the reverse proxy |
 | `RPC_UNAVAILABLE` | 503 | Yes | Upstream RPC is unavailable |
 | `INTERNAL_ERROR` | 500 | Yes | Unexpected internal error |
 
