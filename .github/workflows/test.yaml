@@ -13,32 +13,10 @@ jobs:
         with:
           scarb-version: "2.15.1"
 
-      - name: Install snforge nightly
-        run: |
-          NIGHTLY=nightly-2026-02-03
-          ARCH=x86_64-unknown-linux-gnu
-          INSTALL_DIR="$HOME/snforge-nightly"
-          mkdir -p "$INSTALL_DIR"
-          curl -sL -o snforge.tar.gz \
-            "https://github.com/software-mansion-labs/starknet-foundry-nightlies/releases/download/${NIGHTLY}/starknet-foundry-${NIGHTLY}-${ARCH}.tar.gz"
-          tar -xzf snforge.tar.gz -C "$INSTALL_DIR"
-          SNFORGE_BIN="$INSTALL_DIR/$(tar -tzf snforge.tar.gz | head -1 | cut -f1 -d/)/bin"
-          echo "$SNFORGE_BIN" >> $GITHUB_PATH
-          echo "SNFORGE_BIN=$SNFORGE_BIN" >> $GITHUB_ENV
-          "$SNFORGE_BIN/snforge" --version
-
-      - name: Install universal-sierra-compiler
-        run: |
-          USC_VERSION=v2.7.0
-          ARCH=x86_64-unknown-linux-gnu
-          INSTALL_DIR="$HOME/universal-sierra-compiler"
-          mkdir -p "$INSTALL_DIR"
-          curl -sL -o usc.tar.gz \
-            "https://github.com/software-mansion/universal-sierra-compiler/releases/download/${USC_VERSION}/universal-sierra-compiler-${USC_VERSION}-${ARCH}.tar.gz"
-          tar -xzf usc.tar.gz -C "$INSTALL_DIR"
-          USC_BIN="$INSTALL_DIR/$(tar -tzf usc.tar.gz | head -1 | cut -f1 -d/)/bin"
-          echo "$USC_BIN" >> $GITHUB_PATH
-          "$USC_BIN/universal-sierra-compiler" --version
+      - name: Install starknet-foundry via asdf
+        uses: asdf-vm/actions/install@v3
+        with:
+          tool_versions: starknet-foundry nightly-2026-02-03
 
       - name: Run tests
         run: scarb test -w

@@ -32,8 +32,10 @@ jobs:
         with:
           scarb-version: "2.15.0"
 
-      - name: Install snforge
-        uses: foundry-rs/setup-snfoundry@v3
+      - name: Install starknet-foundry via asdf
+        uses: asdf-vm/actions/install@v3
+        with:
+          tool_versions: starknet-foundry nightly-2026-02-03
 
       - name: Build Cairo contracts
         working-directory: .
