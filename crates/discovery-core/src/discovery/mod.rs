@@ -8,6 +8,7 @@ use crate::storage_backend::StorageError;
 pub mod cursor;
 pub use cursor::{ChannelCursor, DiscoveryCursor, SubchannelCursor};
 pub mod incoming_channels;
+pub mod last_note_index;
 pub mod notes;
 pub mod subchannels;
 
