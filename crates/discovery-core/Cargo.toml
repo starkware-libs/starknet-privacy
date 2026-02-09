@@ -14,6 +14,7 @@ starknet-providers = "0.16"
 tracing = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 url = "2"
+futures = "0.3"
 zeroize = "1"
 
 [dev-dependencies]
