@@ -57,19 +57,42 @@ impl IndexerClient {
 
     /// Wait for a specific log message.
     pub async fn wait_for_log(&mut self, pattern: &str, timeout: Duration) -> Result<String> {
+        self.wait_for_logs(&[pattern], timeout)
+            .await
+            .map(|v| v.into_values().next().unwrap())
+    }
+
+    /// Wait for all given patterns to appear in logs (in any order).
+    pub async fn wait_for_logs(
+        &mut self,
+        patterns: &[&str],
+        timeout: Duration,
+    ) -> Result<std::collections::HashMap<String, String>> {
         let deadline = tokio::time::Instant::now() + timeout;
-        while tokio::time::Instant::now() < deadline {
+        let mut found: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        while found.len() < patterns.len() {
             match tokio::time::timeout_at(deadline, self.log_rx.recv()).await {
                 Ok(Some(line)) => {
                     eprintln!("LOG: {}", line);
-                    if line.contains(pattern) {
-                        return Ok(line);
+                    for &p in patterns {
+                        if !found.contains_key(p) && line.contains(p) {
+                            found.insert(p.to_string(), line.clone());
+                        }
                     }
                 }
                 _ => break,
             }
         }
-        Err(anyhow!("Timeout waiting for: {}", pattern))
+        if found.len() == patterns.len() {
+            Ok(found)
+        } else {
+            let missing: Vec<&str> = patterns
+                .iter()
+                .copied()
+                .filter(|p| !found.contains_key(*p))
+                .collect();
+            Err(anyhow!("Timeout waiting for: {}", missing.join(", ")))
+        }
     }
 
     /// Send SIGINT for graceful shutdown.
