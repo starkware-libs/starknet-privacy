@@ -37,7 +37,7 @@ awk -F'\t' '{print $1+$2, $3}' .claude/pr-numstat.tsv | sort -rn | head -20
 ```bash
 # Full diff for one file
 awk '/^diff --git a\/PATH b\/PATH$/,/^diff --git /' \
-    .claude/pr-full.diff | head -n -1
+    .claude/pr-full.diff | sed '$ d'
 
 # Hunk headers only (to see structure)
 awk '/^diff --git a\/PATH b\/PATH$/,/^diff --git /' \
@@ -45,7 +45,7 @@ awk '/^diff --git a\/PATH b\/PATH$/,/^diff --git /' \
 
 # Specific hunks by number (1-indexed, keeps diff header)
 awk '/^diff --git a\/PATH b\/PATH$/,/^diff --git /' \
-    .claude/pr-full.diff | head -n -1 | \
+    .claude/pr-full.diff | sed '$ d' | \
     awk '/^@@/{n++} n==0 || n==1 || n==3'
 ```
 
