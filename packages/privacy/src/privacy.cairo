@@ -542,31 +542,25 @@ pub mod Privacy {
             let out_token = input.out_token;
             let in_amount = input.in_amount;
             let channel_key = input.channel_key;
-            let note_index = input.note_index;
+            let index = input.index;
             let random = input.random;
 
-            // Validate all inputs.
+            // Validate inputs.
             assert(swap_executor.is_non_zero(), errors::ZERO_SWAP_EXECUTOR);
             assert(swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
             assert(swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
             assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
-            assert(in_amount.is_non_zero(), errors::ZERO_IN_AMOUNT);
             assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
+            assert(in_amount.is_non_zero(), errors::ZERO_IN_AMOUNT);
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(random.is_non_zero(), errors::ZERO_RANDOM);
 
             // Verify the user owns the output note's subchannel.
-            let user_public_key = derive_public_key(private_key: user_private_key);
-            let subchannel_marker = compute_subchannel_marker(
-                :channel_key,
-                recipient_addr: user_addr,
-                recipient_public_key: user_public_key,
-                token: out_token,
-            );
-            assert(self.subchannel_exists.read(subchannel_marker), errors::SUBCHANNEL_NOT_FOUND);
-
-            // Compute note_id from the verified components.
-            let note_id = compute_note_id(:channel_key, token: out_token, index: note_index);
+            let note_id = self
+                ._checked_note_id(
+                    :user_addr, :user_private_key, :channel_key, token: out_token, :index,
+                );
+            // TODO: Verify on note?
 
             // Use withdraw to transfer funds to the swap executor and emit a withdrawal event.
             let withdraw_input = WithdrawInput {
@@ -611,18 +605,15 @@ pub mod Privacy {
             assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
 
-            // Assert subchannel exists and is connected to owner's address and public key.
-            let owner_public_key = derive_public_key(private_key: owner_private_key);
-            let subchannel_marker = compute_subchannel_marker(
-                :channel_key,
-                recipient_addr: owner_addr,
-                recipient_public_key: owner_public_key,
-                :token,
-            );
-            assert(self.subchannel_exists.read(subchannel_marker), errors::SUBCHANNEL_NOT_FOUND);
-
             // Compute note id.
-            let note_id = compute_note_id(:channel_key, :token, :index);
+            let note_id = self
+                ._checked_note_id(
+                    user_addr: owner_addr,
+                    user_private_key: owner_private_key,
+                    :channel_key,
+                    :token,
+                    :index,
+                );
 
             // Read note from storage and assert it exists.
             let packed_value = self.notes.entry(note_id).packed_value.read();
@@ -643,6 +634,30 @@ pub mod Privacy {
                     storage_address: self.nullifiers.entry(nullifier).into(), value: true,
                 ),
             ]
+        }
+
+        /// Verify that the user owns the note and return the computed note id.
+        /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical.
+        fn _checked_note_id(
+            self: @ContractState,
+            user_addr: ContractAddress,
+            user_private_key: felt252,
+            channel_key: felt252,
+            token: ContractAddress,
+            index: usize,
+        ) -> felt252 {
+            // Verify the user owns the note's subchannel.
+            let user_public_key = derive_public_key(private_key: user_private_key);
+            let subchannel_marker = compute_subchannel_marker(
+                :channel_key,
+                recipient_addr: user_addr,
+                recipient_public_key: user_public_key,
+                :token,
+            );
+            assert(self.subchannel_exists.read(subchannel_marker), errors::SUBCHANNEL_NOT_FOUND);
+
+            // Compute note_id from the verified components.
+            compute_note_id(:channel_key, :token, :index)
         }
 
         /// Returns the server actions to create an encrypted note.
