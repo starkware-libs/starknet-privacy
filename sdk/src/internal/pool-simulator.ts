@@ -37,7 +37,8 @@ export class PoolSimulator {
 
   constructor(
     private readonly userAddress: StarknetAddressBigint,
-    private readonly userViewingKey: bigint
+    private readonly userViewingKey: bigint,
+    private nextChannelIndex: number
   ) {}
 
   /**
@@ -89,6 +90,10 @@ export class PoolSimulator {
    */
   getChannel(recipient: StarknetAddressBigint): Channel | undefined {
     return this.channels.get(recipient);
+  }
+
+  getNextChannelIndex(): number {
+    return this.nextChannelIndex;
   }
 
   /**
@@ -171,10 +176,8 @@ export class PoolSimulator {
 
     // Create/update channel
     const channel = this.channels.get(recipient_addr, () => new Channel(recipient_public_key))!;
-
-    if (channelKey) {
-      channel.key = channelKey;
-    }
+    channel.key = channelKey;
+    this.nextChannelIndex++;
 
     debugLog("pool-simulator", "OpenChannel", toHex(this.userAddress), "->", toHex(recipient_addr));
   }

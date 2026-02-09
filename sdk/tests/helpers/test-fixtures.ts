@@ -36,6 +36,7 @@ export interface MockTestEnv {
     alice: PrivateTransfersInterface;
     bob: PrivateTransfersInterface;
     carol: PrivateTransfersInterface;
+    david: PrivateTransfersInterface;
   };
 }
 
@@ -47,6 +48,7 @@ export function createTestEnv(): MockTestEnv {
     alice: mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey),
     bob: mocknet.createPrivateTransfers(env.bob.address, env.bob.privateKey),
     carol: mocknet.createPrivateTransfers(env.carol.address, env.carol.privateKey),
+    david: mocknet.createPrivateTransfers(env.david.address, env.david.privateKey),
   };
 
   return { mocknet, env, transfers };

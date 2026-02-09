@@ -69,14 +69,31 @@ export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
   };
 }
 
-export function cloneChannelCursor(cursor?: AddressMap<Channel>): AddressMap<Channel> {
+export type RecipientsFilter<T = StarknetAddressBigint> = T[] | "all" | "total-only";
+
+export type ChannelCursor = {
+  /** @internal */ channels?: AddressMap<Channel>;
+  /** @internal */ total?: number;
+};
+export function cloneChannelCursor(cursor?: ChannelCursor): ChannelCursor {
   if (!cursor) {
-    return new AddressMap<Channel>();
+    return {
+      channels: new AddressMap<Channel>(),
+      total: undefined,
+    };
   }
 
-  return new AddressMap<Channel>(
-    [...cursor.entries()].map(([k, v]): [StarknetAddressBigint, Channel] => [k, v.clone()])
-  );
+  return {
+    channels: cursor.channels
+      ? new AddressMap<Channel>(
+          [...cursor.channels.entries()].map(([k, v]): [StarknetAddressBigint, Channel] => [
+            k,
+            v.clone(),
+          ])
+        )
+      : undefined,
+    total: cursor.total,
+  };
 }
 
 type ChannelKey = bigint;

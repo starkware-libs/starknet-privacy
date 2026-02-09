@@ -28,6 +28,7 @@ export interface MocknetEnvironment {
   alice: MockAccount;
   bob: MockAccount;
   carol: MockAccount;
+  david: MockAccount;
   ace: string;
   bee: string;
   pool: MockPoolContract;
@@ -38,6 +39,7 @@ const ACCOUNTS = {
   alice: { address: 0xa11cen, privateKey: 12345n },
   bob: { address: 0xb0bn, privateKey: 67890n },
   carol: { address: 0xca201n, privateKey: 99999n },
+  david: { address: 0xda71dn, privateKey: 11111n },
 };
 
 const TOKENS = {

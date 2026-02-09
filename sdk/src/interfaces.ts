@@ -53,7 +53,7 @@ export type StarknetAddressBigint = bigint;
 
 // Import and re-export from internal channel
 import { Witness, Channel } from "./internal/channel.js";
-import type { NotesCursor } from "./internal/channel.js";
+import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./internal/channel.js";
 export { Witness, Channel };
 export type { NotesCursor as DiscoveryCursor };
 
@@ -356,12 +356,9 @@ export interface PrivateTransfersInterface {
    * Discover channels for one or more recipients
    */
   discoverChannels(
-    recipients: StarknetAddress[],
-    params?: { cursor?: AddressMap<Channel> }
-  ): Promise<{
-    timestamp: BlockIdentifier;
-    channels: AddressMap<Channel>;
-  }>;
+    recipients: RecipientsFilter<StarknetAddress>,
+    params?: { cursor?: ChannelCursor }
+  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
 
   /**
    * Execute raw actions. The implementation:
@@ -575,9 +572,9 @@ export interface DiscoveryProviderInterface {
   discoverChannels(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipients: StarknetAddressBigint[] | "all",
-    params?: { cursor?: AddressMap<Channel> }
-  ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }>;
+    recipients: RecipientsFilter,
+    params?: { cursor?: ChannelCursor }
+  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
 
   /**
    * Check the setup requirements for a recipient.

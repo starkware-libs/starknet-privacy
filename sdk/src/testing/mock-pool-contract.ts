@@ -64,7 +64,7 @@ type MockServerAction = {
 type EncryptedNote = { packed: bigint; token: StarknetAddressBigint; index: number };
 
 export type MockPoolContractSnapshot = {
-  publicKeys: Map<bigint, PublicKey>;
+  publicKeys: Map<StarknetAddressBigint, PublicKey>;
   channels: Map<string, EncChannelInfo[]>;
   channelMarkers: Set<Hash>;
   subchannels: Map<Hash, EncSubchannelInfo>;
@@ -72,7 +72,6 @@ export type MockPoolContractSnapshot = {
   notes: Map<Hash, EncryptedNote | OpenNote>;
   nullifiers: Set<Hash>;
   outgoingChannels: Map<bigint, EncOutgoingChannelInfo>;
-  outgoingChannelCounters: Map<bigint, number>;
 };
 
 class ChannelsMap extends AdvancedMap<
@@ -342,12 +341,21 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     userAddress: StarknetAddressBigint,
     viewingKey: ViewingKey,
     address: StarknetAddressBigint,
+    index: number,
     channel: Channel
   ): void {
     this.publicKeys.set(address, channel.publicKey);
 
     if (!channel.key) return;
-    this.setChannel(userAddress, viewingKey, address, channel.publicKey, generateRandom()).apply();
+
+    this.setChannel(
+      userAddress,
+      viewingKey,
+      address,
+      channel.publicKey,
+      index,
+      generateRandom()
+    ).apply();
 
     for (const [token, nonces] of channel.tokens.entries()) {
       this.setToken(
@@ -421,7 +429,6 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       notes: notesSnapshot,
       nullifiers: new Set(this.nullifiers),
       outgoingChannels: new Map(this.outgoingChannels),
-      outgoingChannelCounters: new Map(this.outgoingChannelCounters.entries()),
     };
   }
 
@@ -443,9 +450,6 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     this.notes = new Map(s.notes);
     this.nullifiers = new Set(s.nullifiers);
     this.outgoingChannels = new Map(s.outgoingChannels);
-
-    this.outgoingChannelCounters.clear();
-    for (const [k, v] of s.outgoingChannelCounters) this.outgoingChannelCounters.set(k, v);
   }
 
   // ============ Private Methods ============
@@ -472,6 +476,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
             privateKey,
             action.input.recipient_addr,
             action.input.recipient_public_key,
+            action.input.index,
             action.input.random
           ),
         ];
@@ -562,6 +567,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     fromPrivateKey: ViewingKey,
     to: StarknetAddressBigint,
     toPublicKey: PublicKey,
+    index: number,
     random: bigint
   ): MockServerAction {
     this.assertRegistered(from);
@@ -578,24 +584,24 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       from
     );
 
-    const s = this.outgoingChannelCounters.get(from)!;
-    if (s > 0) {
+    assert(index >= 0, () => `Outgoing channel index must be non-negative: ${index}`);
+    if (index > 0) {
       const prevOutgoingChannelId = compute_outgoing_channel_id(
         from,
         toBigInt(fromPrivateKey),
-        s - 1
+        index - 1
       );
       assert(
         this.outgoingChannels.has(prevOutgoingChannelId),
-        () => `Outgoing channel index ${s} is not sequential for sender ${toHex(from)}`
+        () => `Outgoing channel index ${index} is not sequential for sender ${toHex(from)}`
       );
     }
-    const outgoingChannelId = compute_outgoing_channel_id(from, toBigInt(fromPrivateKey), s);
+    const outgoingChannelId = compute_outgoing_channel_id(from, toBigInt(fromPrivateKey), index);
     const outgoingSalt = generateRandom();
     const encOutgoingChannelInfo = encryptions.encryptOutgoingChannelInfo(
       from,
       toBigInt(fromPrivateKey),
-      s,
+      index,
       to,
       outgoingSalt
     );
@@ -613,7 +619,6 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
         this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
         this.channelMarkers.add(channelMarker);
         this.outgoingChannels.set(outgoingChannelId, encOutgoingChannelInfo);
-        this.outgoingChannelCounters.set(from, s + 1);
       },
     };
   }
