@@ -33,7 +33,7 @@ jobs:
       - name: Install Scarb
         uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.15.0"
+          scarb-version: "2.15.1"
 
       - name: Install starknet-foundry via asdf
         uses: asdf-vm/actions/install@v3
@@ -68,7 +68,7 @@ jobs:
       - name: Install Scarb
         uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.15.0"
+          scarb-version: "2.15.1"
 
       - name: Install starknet-devnet via asdf
         uses: asdf-vm/actions/install@v3
@@ -80,7 +80,7 @@ jobs:
         run: npm ci
 
       - name: Build Cairo contracts
-        run: scarb build
+        run: npm run scarb:build
 
       - name: Run devnet tests
         run: npm run test:devnet
