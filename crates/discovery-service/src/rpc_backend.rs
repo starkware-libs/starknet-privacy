@@ -222,6 +222,7 @@ impl RawStorageAccess for RpcSnapshot {
         }
 
         let mut results = Vec::with_capacity(slots.len());
+        // TODO: consider provessing chunks concurrently
         for chunk in slots.chunks(self.backend.inner.max_batch_size) {
             let chunk_results = self.batch_read(chunk).await?;
             results.extend(chunk_results);
