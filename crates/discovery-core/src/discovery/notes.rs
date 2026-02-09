@@ -267,7 +267,7 @@ mod tests {
             .await
             .expect("Alice's channel should have at least one subchannel");
 
-        // Budget exhausted before starting (COST_NOTE = 1)
+        // Budget exhausted before starting (COST_NOTE = 2)
         let budget = IoBudget::new(0);
         let result = discover_notes(&backend, channel_key, token, 0, &budget)
             .await
