@@ -8,8 +8,6 @@
 
 mod common;
 
-use std::time::Duration;
-
 use common::{find_free_port, DevnetClient, DevnetConfig, IndexerClient};
 use discovery_service::api_server::HealthResponse;
 
@@ -25,22 +23,7 @@ async fn test_health_endpoint_returns_ok() {
         .await
         .expect("Failed to spawn indexer");
 
-    // Wait for API server to be ready and indexer to subscribe.
-    // These happen concurrently so we must wait for both in any order.
-    indexer
-        .wait_for_logs(
-            &["API server listening", "Subscribed to new heads"],
-            Duration::from_secs(10),
-        )
-        .await
-        .unwrap();
-
-    // Create a block so there's a chain head
-    devnet.create_block().await.unwrap();
-    indexer
-        .wait_for_log("New block #", Duration::from_secs(5))
-        .await
-        .unwrap();
+    indexer.wait_until_ready(&devnet).await.unwrap();
 
     // Call the health endpoint
     let client = reqwest::Client::new();
