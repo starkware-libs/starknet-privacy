@@ -8,7 +8,14 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 
+use super::devnet::DevnetClient;
 use super::process::{find_free_port, signal_process};
+
+/// Default timeout for startup-related waits (API + subscription + reconnection).
+pub const DEFAULT_STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Default timeout for block-related waits (new block notification, shutdown, retry).
+pub const DEFAULT_BLOCK_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Wrapper for the discovery-service binary.
 pub struct IndexerClient {
@@ -93,6 +100,20 @@ impl IndexerClient {
                 .collect();
             Err(anyhow!("Timeout waiting for: {}", missing.join(", ")))
         }
+    }
+
+    /// Wait for the indexer to be fully ready: API listening, subscribed, and
+    /// processing blocks.
+    pub async fn wait_until_ready(&mut self, devnet: &DevnetClient) -> Result<()> {
+        self.wait_for_logs(
+            &["API server listening", "Subscribed to new heads"],
+            DEFAULT_STARTUP_TIMEOUT,
+        )
+        .await?;
+        devnet.create_block().await?;
+        self.wait_for_log("New block #", DEFAULT_BLOCK_TIMEOUT)
+            .await?;
+        Ok(())
     }
 
     /// Send SIGINT for graceful shutdown.

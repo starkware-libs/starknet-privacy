@@ -8,9 +8,9 @@
 
 mod common;
 
-use std::time::Duration;
-
-use common::{DevnetClient, DevnetConfig, IndexerClient};
+use common::{
+    DevnetClient, DevnetConfig, IndexerClient, DEFAULT_BLOCK_TIMEOUT, DEFAULT_STARTUP_TIMEOUT,
+};
 
 const BINARY: &str = env!("CARGO_BIN_EXE_discovery-service");
 
@@ -24,13 +24,13 @@ async fn test_startup_and_shutdown() {
     indexer
         .wait_for_logs(
             &["Indexer started", "Subscribed to new heads"],
-            Duration::from_secs(10),
+            DEFAULT_STARTUP_TIMEOUT,
         )
         .await
         .unwrap();
 
     indexer.signal_shutdown().unwrap();
-    let status = tokio::time::timeout(Duration::from_secs(5), indexer.wait())
+    let status = tokio::time::timeout(DEFAULT_BLOCK_TIMEOUT, indexer.wait())
         .await
         .expect("Shutdown timed out")
         .unwrap();
@@ -47,14 +47,14 @@ async fn test_new_block_notification() {
         .expect("Failed to spawn indexer");
 
     indexer
-        .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
+        .wait_for_log("Subscribed to new heads", DEFAULT_STARTUP_TIMEOUT)
         .await
         .unwrap();
 
     // Create a block and verify we get notified
     devnet.create_block().await.unwrap();
     indexer
-        .wait_for_log("New block #", Duration::from_secs(5))
+        .wait_for_log("New block #", DEFAULT_BLOCK_TIMEOUT)
         .await
         .unwrap();
 
@@ -71,14 +71,14 @@ async fn test_reconnection_on_devnet_restart() {
         .expect("Failed to spawn indexer");
 
     indexer
-        .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
+        .wait_for_log("Subscribed to new heads", DEFAULT_STARTUP_TIMEOUT)
         .await
         .unwrap();
 
     // Kill devnet (simulates connection loss)
     drop(devnet);
     indexer
-        .wait_for_log("will retry", Duration::from_secs(10))
+        .wait_for_log("will retry", DEFAULT_BLOCK_TIMEOUT)
         .await
         .unwrap();
 
@@ -89,7 +89,7 @@ async fn test_reconnection_on_devnet_restart() {
     })
     .expect("Failed to respawn devnet");
     indexer
-        .wait_for_log("Subscribed to new heads", Duration::from_secs(30))
+        .wait_for_log("Subscribed to new heads", DEFAULT_STARTUP_TIMEOUT)
         .await
         .unwrap();
 
