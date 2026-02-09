@@ -33,18 +33,29 @@ Timing and side-channel attacks are out of scope for the initial implementation.
 
 **RPC fallback budget:** When the service falls back to RPC (during cold start or reorg), a stricter budget MUST apply to prevent amplification attacks. The fallback budget SHOULD be configurable and significantly lower than the cache-served budget.
 
-**Rate limiting:** Per-IP rate limiting is required. Implementation details are left to the deployment configuration.
+**Rate limiting:** Per-IP rate limiting and `Retry-After` headers are handled at the reverse proxy / infrastructure level, not by the service itself.
+
+### 5.3.1 Known Attack Vectors (audit 2026-02-04)
+
+The following vectors have been identified and require mitigation:
+
+| Vector | Severity | Status |
+|--------|----------|--------|
+| Unbounded task spawning from `cursor.channels` / `cursor.subchannels` HashMaps — each entry spawns a tokio task, attacker can pack ~50K entries in a 2MB body | CRITICAL | TODO |
+| No explicit request body size limit — Axum 2MB default is ~4000× larger than a legitimate request | CRITICAL | TODO |
+| No HTTP-level request timeout — slow RPC responses block worker threads up to 100min per request | HIGH | TODO |
+| HashMap deserialization memory spike from large cursors | MEDIUM | mitigated by body limit once set |
+| `max_reads: 0` accepted, wastes snapshot creation | LOW | TODO |
 
 ## 5.4 Input Validation
 
-All request fields MUST be validated:
+The following request fields are validated by the service:
 
-- **block_ref:** Must be a valid block hash. The referenced block must exist and have block number greater than `last_synced_block`. Invalid or unknown block hashes result in an error.
-- **last_synced_block:** Must be a valid block hash or empty string for initial sync.
-- **private_key:** Must be a valid key format. Invalid format results in an error; incorrect key (decryption failure) is handled per section 8.2.
-- **cursor:** Must conform to expected structure. Malformed cursors result in an error.
-- **max_reads:** Must be a positive integer within allowed bounds.
-- **Address fields:** Must be valid Starknet addresses.
+- **max_reads:** Must be within allowed bounds (default 50, max 100). Zero is currently accepted but wastes work.
+- **last_known_block:** If provided, checked for canonical status (reorg detection). Returns `BLOCK_REORGED` if no longer canonical.
+- **block_ref:** If provided, used as-is for querying. No separate existence check — an invalid hash surfaces as an RPC error.
+- **cursor:** Structural validation via serde deserialization. Malformed JSON results in `INVALID_REQUEST`. **Note:** cursor HashMap sizes (`channels`, `subchannels`) are NOT validated — an attacker can submit arbitrarily large maps that spawn unbounded concurrent tasks. Size caps MUST be enforced before task spawning.
+- **recipient_address, decryption_key:** Accepted as Felt values without format validation.
 
 ## 5.5 Privacy Model
 
