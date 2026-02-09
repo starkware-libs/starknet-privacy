@@ -33,9 +33,15 @@ structure TracingContext (crypto: Crypto) (m: Memory) (events: List Event)
     bob.addr = esn.addrbob ∧
     ∃ kalice, esn.c = crypto.hash [esn.addralice, kalice, esn.addrbob, crypto.priv_to_pub bob.k]
   h_fintype_coin: Nonempty (Fintype (Coin crypto m))
-  h_open_note_from_event: ∀ note_id user_enc: ℕ,
+  h_from_create_open_note_event: ∀ note_id user_enc: ℕ,
     .CreateOpenNote note_id user_enc ∈ events →
-    is_open_note crypto m note_id
+    is_open_note crypto m note_id ∧
+    (
+      let addr := (crypto.dec crypto.council_priv_key user_enc).headD 0
+      let privkey := get_priv_key crypto events addr
+      privkey ∈ crypto.PrivateKeys ∧
+      m MemoryType.PublicKeys [addr] = crypto.priv_to_pub privkey
+    )
 
 theorem incoming_eq_outgoing
     {crypto: Crypto} (stxs: SuccessfulTransactions crypto) (user: UserPrivKey crypto stxs.rm.m) (token: ℕ) :
@@ -157,18 +163,35 @@ theorem TracingContext.from {crypto: Crypto} (stxs: SuccessfulTransactions crypt
     have ⟨inp, note_imp, h_esn, h_addralice, h_kalice⟩ := NoteImplies.from_scan_outgoing_notes_for_sender h
     rw [←h_esn]
     refine ⟨by rw [←h_addralice], inp.Kbob, ?_⟩
-    simp only [note_imp.subchannel.h_c, ChannelImplies.c, CreateChannelInput.c, ←h_kalice]
+    simp only [note_imp.subchannel.h_c, ChannelImplies.c, OpenChannelInput.c, ←h_kalice]
   h_scan_notes_for_recipient := by
     intro bob esn h
     have ⟨inp, note_imp, h_esn, h_addrbob, _, _, _⟩ := NoteImplies.from_scan_notes_for_recipient bob.h_k h
     rw [←h_esn]
     refine ⟨by simp [*], inp.kalice, ?_⟩
-    simp only [note_imp.subchannel.h_c, ChannelImplies.c, CreateChannelInput.c, note_imp.h_kalice]
+    simp only [note_imp.subchannel.h_c, ChannelImplies.c, OpenChannelInput.c, note_imp.h_kalice]
     simp [*]
   h_fintype_coin := ⟨Coin.fintype⟩
-  h_open_note_from_event := by
+  h_from_create_open_note_event := by
     intro note_id user_enc h
-    have ⟨inp, note_imp, h_note_id, h_r, _⟩ := NoteImplies.from_open_note_event h
-    have := h_note_id ▸ h_r ▸ note_imp.h_r
-    rw [is_open_note, decide_eq_true_eq, this]
+    have ⟨inp, note_imp, h_note_id, h_r, h_user_enc⟩ := NoteImplies.from_open_note_event h
+    have h_addrbob : (crypto.dec (↑crypto.council_priv_key) user_enc).headD 0 = inp.addrbob:= by
+      rw [h_user_enc, crypto.h_council_priv_key, crypto.dec_enc, List.headD]
+
+    let register_imp₀ := note_imp.subchannel.channel.bob_registered
+    have register_imp₁ := RegisterImplies.for_get_priv_key stxs.rm inp.addrbob (by
+      simp [register_imp₀.public_key]
+      exact crypto.zero_not_public_key ⟨_, register_imp₀.h_kalice⟩
+    )
+    have := register_imp₁.public_key ▸ register_imp₀.public_key
+    apply crypto.priv_to_pub_inj register_imp₁.h_kalice register_imp₀.h_kalice at this
+    simp only at this
+
+    refine ⟨?_, ?_, ?_⟩
+    · have := h_note_id ▸ h_r ▸ note_imp.h_r
+      rw [is_open_note, decide_eq_true_eq, this]
+    · rw [h_addrbob, this]
+      simp
+    · rw [h_addrbob, this]
+      exact register_imp₀.public_key
 }

@@ -91,7 +91,7 @@ theorem NoteImplies.from_action
   cases h
   case head =>
     let info := create_note_info crypto inp rm success
-    have ⟨addralice, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_hash_exists info.subchannel_exists
+    have ⟨addralice, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_marker_exists info.subchannel_exists
     have h_addralice: inp.addralice = addralice := by
       simp [subchannel_imp.channel.same_c (Eq.symm subchannel_imp.h_c)]
 
@@ -162,7 +162,7 @@ theorem NoteImplies.from_open_note_event
     ∃ (inp: CreateNoteInput) (_: NoteImplies rm inp),
       inp.note_id crypto = note_id ∧
       inp.r = 1 ∧
-      user_enc = crypto.enc crypto.council_pub_key [inp.addralice] := by
+      user_enc = crypto.enc crypto.council_pub_key [inp.addrbob] := by
   revert rm
   apply ReachableMemory.induction
   case inv₀ => intro h; contradiction

@@ -1,8 +1,9 @@
 use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    DepositToOpenNoteInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
-    SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+    OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction, SetViewingKeyInput,
+    SwapInput, SwapWithExecutorInput, TransferFromInput, TransferToInput, UseNoteInput,
+    WithdrawInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
 use privacy::objects::{EncSubchannelInfo, EncUserAddr};
@@ -13,14 +14,15 @@ use privacy::tests::utils_for_tests::{
 };
 use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
-    decode_note_amount, encrypt_channel_info, is_canonical_key, to_write_once_action, unpacking,
+    decode_note_amount, encrypt_channel_info, encrypt_user_addr, is_canonical_key,
+    to_write_once_action, unpacking,
 };
 use privacy::{errors, events};
 use snforge_std::{
     CheatSpan, EventSpyTrait, EventsFilterTrait, TokenTrait, cheat_tip, cheat_transaction_version,
     map_entry_address, spy_events,
 };
-use starknet::VALIDATED;
+use starknet::{ContractAddress, VALIDATED};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
 use starkware_utils::span::SpanFeltsTrait;
@@ -2795,8 +2797,7 @@ fn test_use_deposited_open_note(open_note_self: bool) {
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // Deposit to the open note.
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
     // Verify the note now has the deposited amount (use unpacking to ensure it's an open note).
     let stored_note = test.privacy.get_note(:note_id);
     let (salt, stored_amount) = unpacking(packed_value: stored_note.packed_value);
@@ -2859,8 +2860,7 @@ fn test_use_deposited_open_note_withdraw() {
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // Depositor funds the open note.
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
 
     // Verify contract now has the tokens.
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
@@ -2925,14 +2925,8 @@ fn test_use_multiple_deposited_open_notes() {
     let (note_id_2, _) = user_1.compute_open_note(create_note_input: create_note_input_2);
 
     // Depositor funds both notes.
-    depositor
-        .fund_and_deposit_to_open_note(
-            :token, input: DepositToOpenNoteInput { note_id: note_id_1, amount: amount_1 },
-        );
-    depositor
-        .fund_and_deposit_to_open_note(
-            :token, input: DepositToOpenNoteInput { note_id: note_id_2, amount: amount_2 },
-        );
+    depositor.fund_and_deposit_to_open_note(:token, note_id: note_id_1, amount: amount_1);
+    depositor.fund_and_deposit_to_open_note(:token, note_id: note_id_2, amount: amount_2);
 
     // User_2 uses both notes in a single transfer to create one merged note for user_3.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -3005,10 +2999,7 @@ fn test_use_mixed_open_and_enc_notes() {
     let (open_note_id, _) = user_1.compute_open_note(create_note_input: open_note_input);
 
     // Depositor funds the open note.
-    depositor
-        .fund_and_deposit_to_open_note(
-            :token, input: DepositToOpenNoteInput { note_id: open_note_id, amount: open_amount },
-        );
+    depositor.fund_and_deposit_to_open_note(:token, note_id: open_note_id, amount: open_amount);
 
     // User_2 uses both notes (one encrypted, one open) in a transfer to user_3.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -3073,8 +3064,7 @@ fn test_use_deposited_open_note_double_spend() {
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // Depositor funds the open note.
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
 
     // First spend: user_2 uses the note successfully.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -4281,8 +4271,7 @@ fn test_internal_actions() {
     create_open_note_input.index = index;
     user_1.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
     let (note_id, _) = user_1.compute_open_note(create_note_input: create_open_note_input);
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
     let nullifier = user_2.compute_nullifier(sender: user_1, :token_address, :index);
     let use_open_note_input = UseNoteInput { channel_key, token: token_address, index };
     let actions = user_2.internal_use_note(note: use_open_note_input);
@@ -4311,6 +4300,78 @@ fn test_internal_actions() {
             },
         ),
         ServerAction::EmitWithdrawal(expected_event),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
+
+    // Swap action.
+    // Setup: create out_token, channel, and subchannel for it.
+    let out_token = test.new_token();
+    let out_token_address = out_token.contract_address();
+    let swap_amount: u128 = 50;
+    // user_1 opens channel to self with subchannel for out_token (for swap output).
+    user_1
+        .open_channel_with_token_e2e(
+            recipient: user_1,
+            token_address: out_token_address,
+            outgoing_channel_index: 1,
+            subchannel_index: 0,
+        );
+
+    let swap_executor = test.swap_executor.address;
+    let swap_contract = test.mock_amm;
+    let swap_selector = selector!("swap");
+    let swap_calldata = array![
+        token_address.into(), out_token_address.into(), swap_amount.into(), 0,
+    ];
+    let channel_key_swap = user_1.compute_channel_key(recipient: user_1);
+    let note_index: usize = 0;
+    let swap_random = user_1.get_random();
+
+    let swap_input = SwapInput {
+        swap_executor,
+        swap_contract,
+        swap_selector,
+        swap_calldata: swap_calldata.span(),
+        in_token: token_address,
+        out_token: out_token_address,
+        in_amount: swap_amount,
+        channel_key: channel_key_swap,
+        note_index,
+        random: swap_random,
+    };
+    let actions = user_1.internal_swap(input: swap_input);
+
+    // Expected: TransferTo (to swap_executor), EmitWithdrawal, SwapExecutor.
+    let enc_user_addr_swap = user_1.compute_enc_user_addr(random: swap_random);
+    let expected_withdrawal_event = events::Withdrawal {
+        enc_user_addr: enc_user_addr_swap,
+        withdrawal_target: swap_executor,
+        token: token_address,
+        amount: swap_amount,
+    };
+    let expected_note_id = compute_note_id(
+        channel_key: channel_key_swap, token: out_token_address, index: note_index,
+    );
+    let expected_actions = [
+        ServerAction::TransferTo(
+            TransferToInput {
+                recipient_addr: swap_executor, token: token_address, amount: swap_amount,
+            },
+        ),
+        ServerAction::EmitWithdrawal(expected_withdrawal_event),
+        ServerAction::SwapWithExecutor(
+            SwapWithExecutorInput {
+                swap_executor,
+                swap_contract,
+                swap_selector,
+                swap_calldata: swap_calldata.span(),
+                in_token: token_address,
+                out_token: out_token_address,
+                in_amount: swap_amount,
+                note_id: expected_note_id,
+            },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -5321,6 +5382,42 @@ fn test_no_privacy_actions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
     let result = user.safe_execute_view(client_actions: [deposit_action, withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+
+    // Deposit and Swap.
+    let out_token = test.new_token();
+    let out_token_address = out_token.contract_address();
+    user.open_subchannel_e2e(recipient: user, token_address: out_token_address, index: 1);
+    out_token.supply(address: test.mock_amm, amount: amount);
+    let create_open_note_input = user
+        .new_open_note_with_generated_random(
+            recipient: user,
+            token: out_token_address,
+            index: 0,
+            depositor: test.swap_executor.address,
+        );
+    user.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
+    let channel_key = user.compute_channel_key(recipient: user);
+    let swap_calldata = array![token_address.into(), out_token_address.into(), amount.into(), 0];
+    let swap_action = ClientAction::Swap(
+        SwapInput {
+            swap_executor: test.swap_executor.address,
+            swap_contract: test.mock_amm,
+            swap_selector: selector!("swap"),
+            swap_calldata: swap_calldata.span(),
+            in_token: token_address,
+            out_token: out_token_address,
+            in_amount: amount,
+            channel_key,
+            note_index: 0,
+            random: user.get_random(),
+        },
+    );
+    let result = user.safe_client_execute(client_actions: [deposit_action, swap_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    let result = user.safe_execute_and_panic(client_actions: [deposit_action, swap_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    let result = user.safe_execute_view(client_actions: [deposit_action, swap_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 }
 
 #[test]
@@ -5514,10 +5611,7 @@ fn test_create_note_at_existing_note_id(initial_is_open: bool, colliding_is_open
     // Use the initial note (deposit first if open, then spend).
     if initial_is_open {
         let (note_id, _) = user_1.compute_open_note(create_note_input: open_note_input);
-        depositor
-            .fund_and_deposit_to_open_note(
-                :token, input: DepositToOpenNoteInput { note_id, amount },
-            );
+        depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
     }
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     let use_note_input = UseNoteInput { channel_key, token: token_address, index: 0 };
@@ -5571,14 +5665,12 @@ fn test_deposit_to_open_note_twice() {
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // First deposit - should succeed.
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
 
     // Second deposit - should fail with NOTE_ALREADY_DEPOSITED.
     depositor.increase_token_balance(:token, :amount);
     depositor.approve(:token, amount: amount.into());
-    let result = depositor
-        .safe_deposit_to_open_note(input: DepositToOpenNoteInput { note_id, amount });
+    let result = depositor.safe_deposit_to_open_note(:note_id, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
     // Use the deposited note: spend it.
@@ -5597,8 +5689,7 @@ fn test_deposit_to_open_note_twice() {
     // Try to deposit again after using the note - should still fail with NOTE_ALREADY_DEPOSITED.
     depositor.increase_token_balance(:token, :amount);
     depositor.approve(:token, amount: amount.into());
-    let result = depositor
-        .safe_deposit_to_open_note(input: DepositToOpenNoteInput { note_id, amount });
+    let result = depositor.safe_deposit_to_open_note(:note_id, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 }
 
@@ -5629,8 +5720,7 @@ fn test_use_deposited_open_note_twice_single_tx() {
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // Deposit to the open note.
-    depositor
-        .fund_and_deposit_to_open_note(:token, input: DepositToOpenNoteInput { note_id, amount });
+    depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
 
     // Try to use the same open note twice in a single transaction - should fail.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
@@ -5639,4 +5729,709 @@ fn test_use_deposited_open_note_twice_single_tx() {
     let client_actions = [use_note_action, use_note_action].span();
     let result = user_2.safe_client_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+}
+
+#[test]
+fn test_swap_client_action() {
+    let mut test: Test = Default::default();
+    let in_token = test.new_token();
+    let out_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let in_token_address = in_token.contract_address();
+    let out_token_address = out_token.contract_address();
+    let amm_address = test.mock_amm;
+    let swap_executor_address = test.swap_executor.address;
+
+    // Setup user.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+
+    // Open channel and subchannel for input token (for deposit).
+    user
+        .open_channel_with_token_e2e(
+            recipient: user,
+            token_address: in_token_address,
+            outgoing_channel_index: 0,
+            subchannel_index: 0,
+        );
+
+    // Open subchannel for output token (for open note).
+    user.open_subchannel_e2e(recipient: user, token_address: out_token_address, index: 1);
+
+    // Fund AMM with output tokens.
+    out_token.supply(address: amm_address, amount: swap_amount);
+
+    // === Setup: Create encrypted note with deposited funds and open note for swap output ===
+
+    // Create enc note for the input tokens (fund user and cheat deposit it directly).
+    let create_enc_note_input = user
+        .new_enc_note_with_generated_salt(
+            recipient: user, token_address: in_token_address, amount: swap_amount, index: 0,
+        );
+    user.increase_token_balance(token: in_token, amount: swap_amount);
+    user
+        .cheat_deposit(
+            token: in_token, amount: swap_amount, create_note_input: create_enc_note_input,
+        );
+
+    // Create an open note for the swap output with swap_executor as depositor.
+    let create_open_note_input = user
+        .new_open_note_with_generated_random(
+            recipient: user, token: out_token_address, index: 0, depositor: swap_executor_address,
+        );
+    user.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
+    let (open_note_id, _) = user.compute_open_note(create_note_input: create_open_note_input);
+
+    // === Verify balances before swap ===
+    // Privacy contract: has in_token (deposited), no out_token.
+    assert_eq!(in_token.balance_of(address: test.privacy.address), swap_amount.into());
+    assert_eq!(out_token.balance_of(address: test.privacy.address), 0);
+    // Swap executor: no tokens.
+    assert_eq!(in_token.balance_of(address: swap_executor_address), 0);
+    assert_eq!(out_token.balance_of(address: swap_executor_address), 0);
+    // AMM: no in_token, has out_token.
+    assert_eq!(in_token.balance_of(address: amm_address), 0);
+    assert_eq!(out_token.balance_of(address: amm_address), swap_amount.into());
+
+    // === Execute: Use the deposited note and swap ===
+
+    // Create use note input for the deposited input tokens.
+    let channel_key = user.compute_channel_key(recipient: user);
+    let use_note_input = UseNoteInput { channel_key, token: in_token_address, index: 0 };
+
+    // Prepare swap calldata: [in_token, out_token].
+    let swap_calldata = array![
+        in_token_address.into(), out_token_address.into(), swap_amount.into(), 0,
+    ];
+
+    // Create swap input.
+    // Note: for swap output, the user is receiving to their own channel (self-send).
+    let out_channel_key = user.compute_channel_key(recipient: user);
+    let random = user.get_random();
+    let swap_input = SwapInput {
+        swap_executor: swap_executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: in_token_address,
+        out_token: out_token_address,
+        in_amount: swap_amount,
+        channel_key: out_channel_key,
+        note_index: 0,
+        random,
+    };
+
+    // Execute: UseNote -> Swap.
+    // UseNote: uses the encrypted note containing input tokens.
+    // Swap: transfers input tokens to swap executor, executes swap, deposits output to open note.
+    let client_actions = [ClientAction::UseNote(use_note_input), ClientAction::Swap(swap_input)]
+        .span();
+    let server_actions = user.client_execute(:client_actions);
+
+    // Spy on events before executing.
+    let mut spy = spy_events();
+    test.privacy.execute_actions(actions: server_actions);
+
+    // === Verify balances after swap ===
+    // Privacy contract: no in_token (swapped), has out_token (received).
+    assert_eq!(in_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(out_token.balance_of(address: test.privacy.address), swap_amount.into());
+    // Swap executor: no tokens (passed through).
+    assert_eq!(in_token.balance_of(address: swap_executor_address), 0);
+    assert_eq!(out_token.balance_of(address: swap_executor_address), 0);
+    // AMM: has in_token (received), no out_token (sent).
+    assert_eq!(in_token.balance_of(address: amm_address), swap_amount.into());
+    assert_eq!(out_token.balance_of(address: amm_address), 0);
+
+    // Verify the open note was filled with swap output.
+    let filled_note = test.privacy.get_note(note_id: open_note_id);
+    let (salt, filled_amount) = unpacking(packed_value: filled_note.packed_value);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, swap_amount);
+
+    // Verify events were properly emitted.
+    let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(emitted_events.len(), 2);
+
+    // Verify Withdrawal event (input tokens transferred to swap executor).
+    let expected_withdrawal_event = events::Withdrawal {
+        enc_user_addr: encrypt_user_addr(
+            ephemeral_secret: random,
+            compliance_public_key: test.privacy.get_compliance_public_key(),
+            user_addr: user.address,
+        ),
+        withdrawal_target: swap_executor_address,
+        token: in_token_address,
+        amount: swap_amount,
+    };
+    assert_expected_event_emitted(
+        spied_event: emitted_events[0],
+        expected_event: expected_withdrawal_event,
+        expected_event_selector: @selector!("Withdrawal"),
+        expected_event_name: "Withdrawal",
+    );
+
+    // Verify OpenNoteDeposited event (output tokens deposited to open note).
+    let expected_deposit_event = events::OpenNoteDeposited {
+        depositor: swap_executor_address,
+        token: out_token_address,
+        note_id: open_note_id,
+        amount: swap_amount,
+    };
+    assert_expected_event_emitted(
+        spied_event: emitted_events[1],
+        expected_event: expected_deposit_event,
+        expected_event_selector: @selector!("OpenNoteDeposited"),
+        expected_event_name: "OpenNoteDeposited",
+    );
+}
+
+#[test]
+fn test_swap_client_action_validation_errors() {
+    // Test swap-specific validation errors that happen before token balance operations.
+    // These errors occur in the swap() function's validation phase.
+    let mut test: Test = Default::default();
+    let in_token = test.new_token();
+    let out_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let in_token_address = in_token.contract_address();
+    let out_token_address = out_token.contract_address();
+    let amm_address = test.mock_amm;
+    let swap_executor_address = test.swap_executor.address;
+
+    // Setup user with viewing key and subchannel for out_token.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    user
+        .open_channel_with_token_e2e(
+            recipient: user,
+            token_address: out_token_address,
+            outgoing_channel_index: 0,
+            subchannel_index: 0,
+        );
+    let channel_key = user.compute_channel_key(recipient: user);
+
+    // Prepare swap calldata.
+    let swap_calldata = array![
+        in_token_address.into(), out_token_address.into(), swap_amount.into(), 0,
+    ];
+
+    // Create base valid swap input with real channel_key.
+    let random = user.get_random();
+    let valid_swap_input = SwapInput {
+        swap_executor: swap_executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: in_token_address,
+        out_token: out_token_address,
+        in_amount: swap_amount,
+        channel_key,
+        note_index: 0,
+        random,
+    };
+
+    // Catch ZERO_SWAP_CONTRACT.
+    // This error is thrown before any token balance operations.
+    let swap_input = SwapInput { swap_contract: Zero::zero(), ..valid_swap_input };
+    let client_actions = [ClientAction::Swap(swap_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_CONTRACT);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_CONTRACT);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_CONTRACT);
+
+    // Catch ZERO_SWAP_SELECTOR.
+    let swap_input = SwapInput { swap_selector: Zero::zero(), ..valid_swap_input };
+    let client_actions = [ClientAction::Swap(swap_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_SELECTOR);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_SELECTOR);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_SELECTOR);
+
+    // Catch ZERO_OUT_TOKEN.
+    let swap_input = SwapInput { out_token: Zero::zero(), ..valid_swap_input };
+    let client_actions = [ClientAction::Swap(swap_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
+
+    // Catch ZERO_CHANNEL_KEY.
+    let swap_input = SwapInput { channel_key: Zero::zero(), ..valid_swap_input };
+    let client_actions = [ClientAction::Swap(swap_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
+
+    // Catch SUBCHANNEL_NOT_FOUND (subchannel ownership verification).
+    // Use a dummy channel_key that doesn't have a corresponding subchannel.
+    let swap_input = SwapInput { channel_key: 'DUMMY_CHANNEL_KEY', ..valid_swap_input };
+    let client_actions = [ClientAction::Swap(swap_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
+
+    // Catch ZERO_SWAP_EXECUTOR.
+    let swap_input = SwapInput { swap_executor: Zero::zero(), ..valid_swap_input };
+    let client_actions = [ClientAction::Swap(swap_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
+
+    // Catch ZERO_IN_TOKEN.
+    let swap_input = SwapInput { in_token: Zero::zero(), ..valid_swap_input };
+    let client_actions = [ClientAction::Swap(swap_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
+
+    // Catch ZERO_IN_AMOUNT.
+    let swap_input = SwapInput { in_amount: Zero::zero(), ..valid_swap_input };
+    let client_actions = [ClientAction::Swap(swap_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_AMOUNT);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_AMOUNT);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_AMOUNT);
+
+    // Catch ZERO_RANDOM.
+    let swap_input = SwapInput { random: Zero::zero(), ..valid_swap_input };
+    let client_actions = [ClientAction::Swap(swap_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+}
+
+#[test]
+fn test_swap_client_action_deposit_errors() {
+    // Test swap errors that occur during server action execution (deposit-related).
+    // These tests use the server action execution to catch errors that happen when
+    // the swap tries to deposit into the output note.
+    let mut test: Test = Default::default();
+    let in_token = test.new_token();
+    let out_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let in_token_address = in_token.contract_address();
+    let out_token_address = out_token.contract_address();
+    let amm_address = test.mock_amm;
+    let swap_executor_address = test.swap_executor.address;
+
+    // Setup user.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+
+    // Open channel and subchannel for input token (for deposit).
+    user
+        .open_channel_with_token_e2e(
+            recipient: user,
+            token_address: in_token_address,
+            outgoing_channel_index: 0,
+            subchannel_index: 0,
+        );
+
+    // Open subchannel for output token (for open note).
+    user.open_subchannel_e2e(recipient: user, token_address: out_token_address, index: 1);
+
+    // Fund swap executor with input tokens (enough for multiple attempts).
+    in_token.supply(address: swap_executor_address, amount: swap_amount * 4);
+
+    // Fund AMM with output tokens (enough for multiple swaps).
+    out_token.supply(address: amm_address, amount: swap_amount * 4);
+
+    let channel_key = user.compute_channel_key(recipient: user);
+
+    // Prepare swap calldata.
+    let swap_calldata = array![
+        in_token_address.into(), out_token_address.into(), swap_amount.into(), 0,
+    ];
+
+    // === Test NOTE_NOT_FOUND ===
+    // Create enc note for input tokens at index 0.
+    let create_enc_note_input_0 = user
+        .new_enc_note_with_generated_salt(
+            recipient: user, token_address: in_token_address, amount: swap_amount, index: 0,
+        );
+    user.increase_token_balance(token: in_token, amount: swap_amount);
+    user
+        .cheat_deposit(
+            token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_0,
+        );
+    let use_note_input_0 = UseNoteInput { channel_key, token: in_token_address, index: 0 };
+
+    // Try to swap to a note that doesn't exist (subchannel exists at index 1, but no note created).
+    let random = user.get_random();
+    let swap_input = SwapInput {
+        swap_executor: swap_executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: in_token_address,
+        out_token: out_token_address,
+        in_amount: swap_amount,
+        channel_key,
+        note_index: 0, // No note has been created at this index yet.
+        random,
+    };
+    let client_actions = [ClientAction::UseNote(use_note_input_0), ClientAction::Swap(swap_input)]
+        .span();
+    let server_actions = user.client_execute(:client_actions);
+    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+
+    // === Test NOTE_NOT_OPEN ===
+    // Create a new enc note at index 1 for input tokens (note 0 was used in failed tx above).
+    let create_enc_note_input_1 = user
+        .new_enc_note_with_generated_salt(
+            recipient: user, token_address: in_token_address, amount: swap_amount, index: 1,
+        );
+    user.increase_token_balance(token: in_token, amount: swap_amount);
+    user
+        .cheat_deposit(
+            token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_1,
+        );
+    let use_note_input_1 = UseNoteInput { channel_key, token: in_token_address, index: 1 };
+
+    // Create an enc note (not open) for output token to try depositing into.
+    let create_enc_note_out = user
+        .new_enc_note_with_generated_salt(
+            recipient: user, token_address: out_token_address, amount: swap_amount, index: 0,
+        );
+    user.cheat_create_enc_note_e2e(create_note_input: create_enc_note_out);
+
+    let random = user.get_random();
+    let swap_input = SwapInput {
+        swap_executor: swap_executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: in_token_address,
+        out_token: out_token_address,
+        in_amount: swap_amount,
+        channel_key,
+        note_index: 0, // Points to the enc note (not open).
+        random,
+    };
+    let client_actions = [ClientAction::UseNote(use_note_input_1), ClientAction::Swap(swap_input)]
+        .span();
+    let server_actions = user.client_execute(:client_actions);
+    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
+
+    // === Test NOTE_ALREADY_DEPOSITED ===
+    // Create a new enc note at index 2 for input tokens.
+    let create_enc_note_input_2 = user
+        .new_enc_note_with_generated_salt(
+            recipient: user, token_address: in_token_address, amount: swap_amount, index: 2,
+        );
+    user.increase_token_balance(token: in_token, amount: swap_amount);
+    user
+        .cheat_deposit(
+            token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_2,
+        );
+    let use_note_input_2 = UseNoteInput { channel_key, token: in_token_address, index: 2 };
+
+    // Create an open note for the swap output.
+    let create_open_note_input = user
+        .new_open_note_with_generated_random(
+            recipient: user, token: out_token_address, index: 1, depositor: swap_executor_address,
+        );
+    user.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
+
+    let random = user.get_random();
+    let swap_input = SwapInput {
+        swap_executor: swap_executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: in_token_address,
+        out_token: out_token_address,
+        in_amount: swap_amount,
+        channel_key,
+        note_index: 1, // Points to the open note at index 1.
+        random,
+    };
+
+    // First swap succeeds.
+    let client_actions = [ClientAction::UseNote(use_note_input_2), ClientAction::Swap(swap_input)]
+        .span();
+    let server_actions = user.client_execute(:client_actions);
+    test.privacy.execute_actions(actions: server_actions);
+
+    // Create another enc note at index 3 for input tokens.
+    let create_enc_note_input_3 = user
+        .new_enc_note_with_generated_salt(
+            recipient: user, token_address: in_token_address, amount: swap_amount, index: 3,
+        );
+    user.increase_token_balance(token: in_token, amount: swap_amount);
+    user
+        .cheat_deposit(
+            token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_3,
+        );
+    let use_note_input_3 = UseNoteInput { channel_key, token: in_token_address, index: 3 };
+
+    // Second swap to same note should fail.
+    let random = user.get_random();
+    let swap_input = SwapInput {
+        swap_executor: swap_executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: in_token_address,
+        out_token: out_token_address,
+        in_amount: swap_amount,
+        channel_key,
+        note_index: 1, // Same note index as first swap.
+        random,
+    };
+    let client_actions = [ClientAction::UseNote(use_note_input_3), ClientAction::Swap(swap_input)]
+        .span();
+    let server_actions = user.client_execute(:client_actions);
+    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
+
+    // === Test CALLER_NOT_DEPOSITOR ===
+    // Create a new enc note at index 4 for input tokens.
+    let create_enc_note_input_4 = user
+        .new_enc_note_with_generated_salt(
+            recipient: user, token_address: in_token_address, amount: swap_amount, index: 4,
+        );
+    user.increase_token_balance(token: in_token, amount: swap_amount);
+    user
+        .cheat_deposit(
+            token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_4,
+        );
+    let use_note_input_4 = UseNoteInput { channel_key, token: in_token_address, index: 4 };
+
+    // Create an open note with a different depositor.
+    let wrong_depositor: ContractAddress = 'WRONG_DEPOSITOR'.try_into().unwrap();
+    let create_open_note_input_2 = user
+        .new_open_note_with_generated_random(
+            recipient: user, token: out_token_address, index: 2, depositor: wrong_depositor,
+        );
+    user.cheat_create_open_note_e2e(create_note_input: create_open_note_input_2);
+
+    let random = user.get_random();
+    let swap_input = SwapInput {
+        swap_executor: swap_executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: in_token_address,
+        out_token: out_token_address,
+        in_amount: swap_amount,
+        channel_key,
+        note_index: 2, // Points to open note with wrong depositor.
+        random,
+    };
+    let client_actions = [ClientAction::UseNote(use_note_input_4), ClientAction::Swap(swap_input)]
+        .span();
+    let server_actions = user.client_execute(:client_actions);
+    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
+}
+
+#[test]
+fn test_swap_doesnt_execute_during_client_execute() {
+    // Verify that the Swap action doesn't execute transfers or the swap during client_execute().
+    // Transfers and swap execution should only happen when server actions are executed.
+    let mut test: Test = Default::default();
+    let in_token = test.new_token();
+    let out_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let in_token_address = in_token.contract_address();
+    let out_token_address = out_token.contract_address();
+    let amm_address = test.mock_amm;
+    let swap_executor_address = test.swap_executor.address;
+
+    // Setup user with viewing key, channels, and subchannels.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    user
+        .open_channel_with_token_e2e(
+            recipient: user,
+            token_address: in_token_address,
+            outgoing_channel_index: 0,
+            subchannel_index: 0,
+        );
+    user.open_subchannel_e2e(recipient: user, token_address: out_token_address, index: 1);
+
+    // Fund AMM with output tokens.
+    out_token.supply(address: amm_address, amount: swap_amount);
+
+    // Create enc note with input tokens (via cheat_deposit).
+    let create_enc_note_input = user
+        .new_enc_note_with_generated_salt(
+            recipient: user, token_address: in_token_address, amount: swap_amount, index: 0,
+        );
+    user.increase_token_balance(token: in_token, amount: swap_amount);
+    user
+        .cheat_deposit(
+            token: in_token, amount: swap_amount, create_note_input: create_enc_note_input,
+        );
+
+    // Create open note for swap output.
+    let create_open_note_input = user
+        .new_open_note_with_generated_random(
+            recipient: user, token: out_token_address, index: 0, depositor: swap_executor_address,
+        );
+    user.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
+    let (open_note_id, _) = user.compute_open_note(create_note_input: create_open_note_input);
+
+    // === Verify balances BEFORE everything ===
+    // Privacy contract: has in_token (deposited), no out_token.
+    assert_eq!(in_token.balance_of(address: test.privacy.address), swap_amount.into());
+    assert_eq!(out_token.balance_of(address: test.privacy.address), 0);
+    // Swap executor: no tokens.
+    assert_eq!(in_token.balance_of(address: swap_executor_address), 0);
+    assert_eq!(out_token.balance_of(address: swap_executor_address), 0);
+    // AMM: no in_token, has out_token.
+    assert_eq!(in_token.balance_of(address: amm_address), 0);
+    assert_eq!(out_token.balance_of(address: amm_address), swap_amount.into());
+
+    // Prepare swap input.
+    let channel_key = user.compute_channel_key(recipient: user);
+    let use_note_input = UseNoteInput { channel_key, token: in_token_address, index: 0 };
+    let swap_calldata = array![
+        in_token_address.into(), out_token_address.into(), swap_amount.into(), 0,
+    ];
+    let random = user.get_random();
+    let swap_input = SwapInput {
+        swap_executor: swap_executor_address,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: swap_calldata.span(),
+        in_token: in_token_address,
+        out_token: out_token_address,
+        in_amount: swap_amount,
+        channel_key,
+        note_index: 0,
+        random,
+    };
+
+    // Execute client_execute (should NOT transfer or swap).
+    let mut spy = spy_events();
+    let client_actions = [ClientAction::UseNote(use_note_input), ClientAction::Swap(swap_input)]
+        .span();
+    let server_actions = user.client_execute(:client_actions);
+
+    // === Verify balances BETWEEN client_execute and execute_actions ===
+    // All balances should be unchanged - no transfers or swap executed during client_execute.
+    // Privacy contract: still has in_token, no out_token.
+    assert_eq!(in_token.balance_of(address: test.privacy.address), swap_amount.into());
+    assert_eq!(out_token.balance_of(address: test.privacy.address), 0);
+    // Swap executor: still no tokens.
+    assert_eq!(in_token.balance_of(address: swap_executor_address), 0);
+    assert_eq!(out_token.balance_of(address: swap_executor_address), 0);
+    // AMM: still no in_token, still has out_token.
+    assert_eq!(in_token.balance_of(address: amm_address), 0);
+    assert_eq!(out_token.balance_of(address: amm_address), swap_amount.into());
+
+    // Assert no events emitted during client_execute.
+    let events_during_client_execute = spy
+        .get_events()
+        .emitted_by(contract_address: test.privacy.address)
+        .events;
+    assert_eq!(events_during_client_execute.len(), 0);
+
+    // Assert expected server actions were generated.
+    let nullifier = user.compute_nullifier(sender: user, token_address: in_token_address, index: 0);
+    let nullifier_path = map_entry_address(
+        map_selector: selector!("nullifiers"), keys: [nullifier].span(),
+    );
+    let enc_user_addr = user.compute_enc_user_addr(:random);
+    let expected_withdrawal_event = events::Withdrawal {
+        enc_user_addr,
+        withdrawal_target: swap_executor_address,
+        token: in_token_address,
+        amount: swap_amount,
+    };
+    let expected_server_actions = [
+        // UseNote: write nullifier.
+        to_write_once_action(storage_address: nullifier_path, value: true),
+        // Swap: TransferTo (input tokens to swap executor).
+        ServerAction::TransferTo(
+            TransferToInput {
+                recipient_addr: swap_executor_address, token: in_token_address, amount: swap_amount,
+            },
+        ),
+        // Swap: EmitWithdrawal.
+        ServerAction::EmitWithdrawal(expected_withdrawal_event),
+        // Swap: SwapExecutor.
+        ServerAction::SwapWithExecutor(
+            SwapWithExecutorInput {
+                swap_executor: swap_executor_address,
+                swap_contract: amm_address,
+                swap_selector: selector!("swap"),
+                swap_calldata: swap_calldata.span(),
+                in_token: in_token_address,
+                out_token: out_token_address,
+                in_amount: swap_amount,
+                note_id: open_note_id,
+            },
+        ),
+    ]
+        .span();
+    assert_eq!(server_actions, expected_server_actions);
+
+    // Now execute server actions.
+    let mut spy_after = spy_events();
+    test.privacy.execute_actions(actions: server_actions);
+
+    // === Verify balances AFTER execute_actions ===
+    // Privacy contract: no in_token (swapped), has out_token (received).
+    assert_eq!(in_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(out_token.balance_of(address: test.privacy.address), swap_amount.into());
+    // Swap executor: no tokens (passed through).
+    assert_eq!(in_token.balance_of(address: swap_executor_address), 0);
+    assert_eq!(out_token.balance_of(address: swap_executor_address), 0);
+    // AMM: has in_token (received), no out_token (sent).
+    assert_eq!(in_token.balance_of(address: amm_address), swap_amount.into());
+    assert_eq!(out_token.balance_of(address: amm_address), 0);
+
+    // Assert events emitted after execute_actions.
+    let events_after = spy_after
+        .get_events()
+        .emitted_by(contract_address: test.privacy.address)
+        .events;
+    assert_eq!(events_after.len(), 2);
+    assert_expected_event_emitted(
+        spied_event: events_after[0],
+        expected_event: expected_withdrawal_event,
+        expected_event_selector: @selector!("Withdrawal"),
+        expected_event_name: "Withdrawal",
+    );
+    let expected_deposit_event = events::OpenNoteDeposited {
+        depositor: swap_executor_address,
+        token: out_token_address,
+        note_id: open_note_id,
+        amount: swap_amount,
+    };
+    assert_expected_event_emitted(
+        spied_event: events_after[1],
+        expected_event: expected_deposit_event,
+        expected_event_selector: @selector!("OpenNoteDeposited"),
+        expected_event_name: "OpenNoteDeposited",
+    );
 }

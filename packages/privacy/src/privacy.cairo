@@ -8,7 +8,8 @@ pub mod Privacy {
     use privacy::actions::{
         AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
         DepositInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
-        SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+        SetViewingKeyInput, SwapInput, SwapWithExecutorInput, TransferFromInput, TransferToInput,
+        UseNoteInput, WithdrawInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -21,6 +22,7 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
         TokenBalancesTrait,
     };
+    use privacy::swap_executor::interface::{ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait};
     use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
     use privacy::utils::{
         StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
@@ -261,6 +263,10 @@ pub mod Privacy {
                     ClientAction::Withdraw(input) => (
                         self.withdraw(:user_addr, :input, ref :token_balances), false,
                     ),
+                    ClientAction::Swap(input) => (
+                        self.swap(:user_addr, :user_private_key, :input, ref :token_balances),
+                        false,
+                    ),
                 };
                 if should_execute {
                     has_privacy_action = true;
@@ -268,6 +274,7 @@ pub mod Privacy {
                 }
                 server_actions.extend(actions);
             }
+            // TODO: Consider allowing Deposit + Swap.
             assert(has_privacy_action, errors::NO_PRIVACY_ACTIONS);
             token_balances.squash().assert_valid();
 
@@ -516,6 +523,78 @@ pub mod Privacy {
             ]
         }
 
+        /// Triggers a swap: transfers input tokens to swap executor and executes swap.
+        /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical
+        /// (checked in `main`).
+        fn swap(
+            self: @ContractState,
+            user_addr: ContractAddress,
+            user_private_key: felt252,
+            input: SwapInput,
+            ref token_balances: TokenBalances,
+        ) -> Array<ServerAction> {
+            // Extract input members.
+            let swap_executor = input.swap_executor;
+            let swap_contract = input.swap_contract;
+            let swap_selector = input.swap_selector;
+            let swap_calldata = input.swap_calldata;
+            let in_token = input.in_token;
+            let out_token = input.out_token;
+            let in_amount = input.in_amount;
+            let channel_key = input.channel_key;
+            let note_index = input.note_index;
+            let random = input.random;
+
+            // Validate all inputs.
+            assert(swap_executor.is_non_zero(), errors::ZERO_SWAP_EXECUTOR);
+            assert(swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
+            assert(swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
+            assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
+            assert(in_amount.is_non_zero(), errors::ZERO_IN_AMOUNT);
+            assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
+            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
+            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+
+            // Verify the user owns the output note's subchannel.
+            let user_public_key = derive_public_key(private_key: user_private_key);
+            let subchannel_marker = compute_subchannel_marker(
+                :channel_key,
+                recipient_addr: user_addr,
+                recipient_public_key: user_public_key,
+                token: out_token,
+            );
+            assert(self.subchannel_exists.read(subchannel_marker), errors::SUBCHANNEL_NOT_FOUND);
+
+            // Compute note_id from the verified components.
+            let note_id = compute_note_id(:channel_key, token: out_token, index: note_index);
+
+            // Use withdraw to transfer funds to the swap executor and emit a withdrawal event.
+            let withdraw_input = WithdrawInput {
+                withdrawal_target: swap_executor, token: in_token, amount: in_amount, random,
+            };
+            let mut server_actions = self
+                .withdraw(:user_addr, input: withdraw_input, ref :token_balances);
+
+            // Append the swap action.
+            server_actions
+                .append(
+                    ServerAction::SwapWithExecutor(
+                        SwapWithExecutorInput {
+                            swap_executor,
+                            swap_contract,
+                            swap_selector,
+                            swap_calldata,
+                            in_token,
+                            out_token,
+                            in_amount,
+                            note_id,
+                        },
+                    ),
+                );
+
+            server_actions
+        }
+
         /// Returns the server actions to use a note.
         /// Assumes `owner_addr` is non-zero and `owner_private_key` is non-zero and canonical
         /// (checked in `main`).
@@ -750,18 +829,63 @@ pub mod Privacy {
                                 storage_address: input.storage_address, value: input.value,
                             );
                     },
+                    ServerAction::SwapWithExecutor(input) => {
+                        self
+                            ._execute_swap_with_executor(
+                                swap_executor: input.swap_executor,
+                                swap_contract: input.swap_contract,
+                                swap_selector: input.swap_selector,
+                                swap_calldata: input.swap_calldata,
+                                in_token: input.in_token,
+                                out_token: input.out_token,
+                                in_amount: input.in_amount,
+                                note_id: input.note_id,
+                            );
+                    },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
                     ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
-                    ServerAction::DepositToOpenNote(input) => {
-                        self
-                            ._execute_deposit_to_open_note(
-                                note_id: input.note_id, amount: input.amount,
-                            );
-                    },
                 };
             };
+        }
+
+        fn deposit_to_open_note(ref self: ContractState, note_id: felt252, amount: u128) {
+            self.pausable.assert_not_paused();
+            // Validate inputs.
+            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+
+            // Read the Note from storage and assert it exists.
+            let note_entry = self.notes.entry(note_id);
+            let note = note_entry.read();
+            let packed_value = note.packed_value;
+            let token = note.token;
+            let depositor = note.depositor;
+            assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
+
+            // Unpack the packed_value to get (salt, current_amount).
+            let (salt, current_amount) = unpacking(packed_value: note.packed_value);
+
+            // Assert it's an open note (salt == OPEN_NOTE_SALT).
+            assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
+
+            // Assert the note hasn't been deposited to yet (current_amount == 0).
+            assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
+
+            // Assert the caller is the depositor.
+            let caller = get_caller_address();
+            assert(caller == depositor, errors::CALLER_NOT_DEPOSITOR);
+
+            // Transfer funds from the depositor (caller).
+            self._execute_transfer_from(sender_addr: depositor, :token, :amount);
+
+            // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
+            let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
+            note_entry.packed_value.write(new_packed_value);
+
+            // Emit the OpenNoteDeposited event.
+            self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
         }
     }
 
@@ -826,41 +950,27 @@ pub mod Privacy {
             assert(current_value == value, errors::VALUE_MISMATCH);
         }
 
-        fn _execute_deposit_to_open_note(ref self: ContractState, note_id: felt252, amount: u128) {
-            // Validate inputs.
-            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-
-            // Read the Note from storage and assert it exists.
-            let note_entry = self.notes.entry(note_id);
-            let note = note_entry.read();
-            let packed_value = note.packed_value;
-            let token = note.token;
-            let depositor = note.depositor;
-            assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
-
-            // Unpack the packed_value to get (salt, current_amount).
-            let (salt, current_amount) = unpacking(packed_value: note.packed_value);
-
-            // Assert it's an open note (salt == OPEN_NOTE_SALT).
-            assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
-
-            // Assert the note hasn't been deposited to yet (current_amount == 0).
-            assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
-
-            // Assert the caller is the depositor.
-            let caller = get_caller_address();
-            assert(caller == depositor, errors::CALLER_NOT_DEPOSITOR);
-
-            // Transfer funds from the depositor (caller).
-            self._execute_transfer_from(sender_addr: depositor, :token, :amount);
-
-            // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
-            let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
-            note_entry.packed_value.write(new_packed_value);
-
-            // Emit the OpenNoteDeposited event.
-            self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
+        fn _execute_swap_with_executor(
+            ref self: ContractState,
+            swap_executor: ContractAddress,
+            swap_contract: ContractAddress,
+            swap_selector: felt252,
+            swap_calldata: Span<felt252>,
+            in_token: ContractAddress,
+            out_token: ContractAddress,
+            in_amount: u128,
+            note_id: felt252,
+        ) {
+            ISwapExecutorDispatcher { contract_address: swap_executor }
+                .swap(
+                    :swap_contract,
+                    :swap_selector,
+                    :swap_calldata,
+                    :in_token,
+                    :out_token,
+                    :in_amount,
+                    :note_id,
+                );
         }
     }
 

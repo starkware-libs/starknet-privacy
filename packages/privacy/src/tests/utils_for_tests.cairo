@@ -4,7 +4,7 @@ use core::traits::Neg;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    DepositToOpenNoteInput, OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput,
+    OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, SwapInput,
     TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
 };
 use privacy::events;
@@ -142,6 +142,7 @@ impl DefaultRolesImpl of Default<Roles> {
 #[derive(Copy, Drop)]
 pub(crate) struct SwapExecutorCfg {
     pub address: ContractAddress,
+    pub privacy_address: ContractAddress,
 }
 
 
@@ -329,6 +330,26 @@ pub(crate) impl UserImpl of UserTrait {
         let random = self.get_random();
         let output = self.internal_withdraw(:withdrawal_target, :token_address, :amount, :random);
         (random, output)
+    }
+
+    fn internal_swap(self: @User, input: SwapInput) -> Span<ServerAction> {
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                let mut token_balances: TokenBalances = Default::default();
+                // Swap internally calls withdraw which subtracts from balance.
+                token_balances.add_balance(token: input.in_token, amount: input.in_amount);
+                state
+                    .swap(
+                        user_addr: *self.address,
+                        user_private_key: *self.private_key,
+                        :input,
+                        ref :token_balances,
+                    )
+            },
+        )
+            .span()
     }
 
     fn safe_withdraw(
@@ -1110,34 +1131,31 @@ pub(crate) impl UserImpl of UserTrait {
             .approve(spender: *self.privacy.address, :amount);
     }
 
-    /// Execute the DepositToOpenNote action as this user (caller).
+    /// Execute deposit_to_open_note as this user (caller).
     /// Assumes the user already has sufficient token balance and approval.
-    fn deposit_to_open_note(self: @User, input: DepositToOpenNoteInput) {
-        let deposit_action = ServerAction::DepositToOpenNote(input);
+    fn deposit_to_open_note(self: @User, note_id: felt252, amount: u128) {
         cheat_caller_address_once(
             contract_address: *self.privacy.address, caller_address: *self.address,
         );
-        self.privacy.execute_actions([deposit_action].span());
+        self.privacy.deposit_to_open_note(:note_id, :amount);
     }
 
     /// Safe version of `deposit_to_open_note` that returns a Result.
     /// Assumes the user already has sufficient token balance and approval.
     fn safe_deposit_to_open_note(
-        self: @User, input: DepositToOpenNoteInput,
+        self: @User, note_id: felt252, amount: u128,
     ) -> Result<(), Array<felt252>> {
-        let deposit_action = ServerAction::DepositToOpenNote(input);
         cheat_caller_address_once(
             contract_address: *self.privacy.address, caller_address: *self.address,
         );
-        self.privacy.safe_execute_actions([deposit_action].span())
+        self.privacy.safe_deposit_to_open_note(:note_id, :amount)
     }
 
     /// Fund the user, approve, and deposit to an open note.
-    /// This sets up the token balance, approval, then executes the DepositToOpenNote action.
-    fn fund_and_deposit_to_open_note(self: @User, token: Token, input: DepositToOpenNoteInput) {
-        self.increase_token_balance(:token, amount: input.amount);
-        self.approve(:token, amount: input.amount.into());
-        self.deposit_to_open_note(:input);
+    fn fund_and_deposit_to_open_note(self: @User, token: Token, note_id: felt252, amount: u128) {
+        self.increase_token_balance(:token, :amount);
+        self.approve(:token, amount: amount.into());
+        self.deposit_to_open_note(:note_id, :amount);
     }
 
     /// Cheat deposit in the server side (no client side).
@@ -1423,6 +1441,17 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_server.execute_actions(:actions)
     }
 
+    fn deposit_to_open_note(self: @PrivacyCfg, note_id: felt252, amount: u128) {
+        self.server.deposit_to_open_note(:note_id, :amount);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_deposit_to_open_note(
+        self: @PrivacyCfg, note_id: felt252, amount: u128,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_server.deposit_to_open_note(:note_id, :amount)
+    }
+
     fn pause(self: @PrivacyCfg) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.security_agent,
@@ -1588,7 +1617,7 @@ impl DefaultTestImpl of Default<Test> {
         let compliance: Compliance = Default::default();
         let roles: Roles = Default::default();
         let privacy = deploy_privacy(:roles, compliance_public_key: compliance.public_key);
-        let swap_executor = deploy_swap_executor();
+        let swap_executor = deploy_swap_executor(privacy_address: privacy.address);
         let mock_amm = deploy_mock_amm();
 
         Test { privacy, nonce: Zero::zero(), compliance, swap_executor, mock_amm }
@@ -1660,14 +1689,14 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
 }
 
 /// Deploy a new swap executor contract.
-fn deploy_swap_executor() -> SwapExecutorCfg {
+fn deploy_swap_executor(privacy_address: ContractAddress) -> SwapExecutorCfg {
     let class_hash = declare(contract: "SwapExecutor").unwrap_syscall().contract_class().class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
     let (contract_address, _) = deploy_swap_executor_for_test(
         class_hash: *class_hash, :deployment_params,
     )
         .expect('SwapExecutor deployment failed');
-    SwapExecutorCfg { address: contract_address }
+    SwapExecutorCfg { address: contract_address, privacy_address }
 }
 
 /// Deploy a new mock AMM contract.
@@ -1689,19 +1718,24 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         in_token: ContractAddress,
         out_token: ContractAddress,
         in_amount: u128,
-    ) -> u128 {
+        note_id: felt252,
+    ) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.privacy_address,
+        );
         let dispatcher = ISwapExecutorDispatcher { contract_address: *self.address };
         let swap_selector = selector!("swap");
         let swap_calldata = [in_token.into(), out_token.into(), in_amount.into(), 0].span();
-        ISwapExecutorDispatcherTrait::swap(
-            dispatcher,
-            :swap_contract,
-            :swap_selector,
-            :swap_calldata,
-            :in_token,
-            :out_token,
-            :in_amount,
-        )
+        dispatcher
+            .swap(
+                :swap_contract,
+                :swap_selector,
+                :swap_calldata,
+                :in_token,
+                :out_token,
+                :in_amount,
+                :note_id,
+            );
     }
 
     #[feature("safe_dispatcher")]
@@ -1713,9 +1747,18 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         in_token: ContractAddress,
         out_token: ContractAddress,
         in_amount: u128,
-    ) -> Result<u128, Array<felt252>> {
+        note_id: felt252,
+    ) -> Result<(), Array<felt252>> {
         ISwapExecutorSafeDispatcher { contract_address: *self.address }
-            .swap(:swap_contract, :swap_selector, :swap_calldata, :in_token, :out_token, :in_amount)
+            .swap(
+                :swap_contract,
+                :swap_selector,
+                :swap_calldata,
+                :in_token,
+                :out_token,
+                :in_amount,
+                :note_id,
+            )
     }
 }
 

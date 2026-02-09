@@ -45,7 +45,7 @@ theorem CreateNoteInput.to_scanned_note_eq {crypto: Crypto} {inp: CreateNoteInpu
     inp.to_scanned_note crypto = sn :=
    ScannedNote.note_id_eq (crypto:=crypto) h
 
-abbrev CancelNoteInput.to_scanned_note (inp: CancelNoteInput) : ScannedNote :=
+abbrev UseNoteInput.to_scanned_note (inp: UseNoteInput) : ScannedNote :=
   ⟨inp.c, inp.token, inp.i₀, inp.i₁⟩
 
 structure ExScannedNote extends ScannedNote where

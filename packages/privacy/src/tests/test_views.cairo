@@ -1,5 +1,4 @@
 use core::num::traits::Zero;
-use privacy::actions::DepositToOpenNoteInput;
 use privacy::objects::{EncOutgoingChannelInfo, EncSubchannelInfo};
 use privacy::privacy::Privacy;
 use privacy::tests::utils_for_tests::constants::DEFAULT_AMOUNT;
@@ -217,10 +216,7 @@ fn test_get_note() {
     assert_eq!(test.privacy.get_note(note_id: open_note_id), expected_open_note);
 
     // Deposit to the existing open note and verify.
-    depositor
-        .fund_and_deposit_to_open_note(
-            :token, input: DepositToOpenNoteInput { note_id: open_note_id, amount },
-        );
+    depositor.fund_and_deposit_to_open_note(:token, note_id: open_note_id, :amount);
     let filled_note = test.privacy.get_note(note_id: open_note_id);
     let (salt, stored_amount) = unpacking(packed_value: filled_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);

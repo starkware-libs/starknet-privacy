@@ -45,7 +45,7 @@ theorem scan_tokens_for_channel_k₀_monotone
 := by
   unfold scan_tokens_for_channel_k₀
   cases action
-  case CreateSubchannel inp =>
+  case OpenSubchannel inp =>
     simp only [List.pure_def, List.bind_eq_flatMap, List.mem_flatMap, List.mem_range,
       Nat.lt_find_iff, List.mem_cons, List.not_mem_nil, or_false]
     simp only [scan_tokens_for_channel_k₀, List.pure_def, List.bind_eq_flatMap, List.mem_flatMap,
@@ -53,7 +53,7 @@ theorem scan_tokens_for_channel_k₀_monotone
     obtain ⟨k₁, h⟩ := h
     use k₁
 
-    let info := create_subchannel_info crypto inp rm success
+    let info := open_subchannel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
     constructor

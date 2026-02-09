@@ -44,8 +44,8 @@ theorem immutability₀ (crypto: Crypto) (m: Memory) (action: Action) (t: Memory
       exact h_nonzero info.alice_was_not_registered
     )]
 
-  case CreateChannel inp =>
-    let info := create_channel_info crypto inp m success
+  case OpenChannel inp =>
+    let info := open_channel_info crypto inp m success
     rw [run_action, ←info.h_m', info.no_change _ _ (by
       simp only [ne_eq, Prod.mk.injEq, h_t, false_and, not_false_eq_true, not_and, true_and]
       refine ⟨?_, ?_, ?_⟩
@@ -59,8 +59,8 @@ theorem immutability₀ (crypto: Crypto) (m: Memory) (action: Action) (t: Memory
       · intro h₀ h₁; simp [h₀, h₁] at h_t
     )]
 
-  case CreateSubchannel inp =>
-    let info := create_subchannel_info crypto inp m success
+  case OpenSubchannel inp =>
+    let info := open_subchannel_info crypto inp m success
     rw [run_action, ←info.h_m', info.no_change _ _
       (λ h' ↦ h_nonzero (by rw [Prod.mk.injEq] at h'; simp [h'.1, h'.2, info.old_hash_was_zero]))
       (λ h' ↦ h_nonzero (by rw [Prod.mk.injEq] at h'; simp [h'.1, h'.2, info.old_token_was_zero]))
@@ -72,8 +72,8 @@ theorem immutability₀ (crypto: Crypto) (m: Memory) (action: Action) (t: Memory
       (λ h' ↦ h_nonzero (by rw [Prod.mk.injEq] at h'; simp [h'.1, h'.2, info.old_value_was_zero]))
       (by simp [h_t])]
 
-  case CancelNote inp =>
-    let info := cancel_note_info crypto inp m success
+  case UseNote inp =>
+    let info := use_note_info crypto inp m success
     rw [run_action, ←info.h_m', info.no_change _ _
       (λ h' ↦ h_nonzero (by rw [Prod.mk.injEq] at h'; simp [h'.1, h'.2, info.nullifier_didnt_exist]))]
 
@@ -190,13 +190,13 @@ theorem immutable_fn_prop {m₀ m₁: Memory} {f: Functional Bool} (imm: immutab
   intro h
   rw [imm (by simp [h])]
 
-theorem create_channel_immutable
-    {crypto: Crypto} {m₀ m₁: Memory} (inp: CreateChannelInput)
+theorem open_channel_immutable
+    {crypto: Crypto} {m₀ m₁: Memory} (inp: OpenChannelInput)
     (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .PublicKeys x))
     (imm₁: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .OutgoingChannels [x, 0]))
-    (success: (run_action₀ crypto (.CreateChannel inp) m₀).2) :
-    run_action₀ crypto (.CreateChannel inp) m₁ = run_action₀ crypto (.CreateChannel inp) m₀ := by
-  dsimp only [run_action₀, create_channel] at *
+    (success: (run_action₀ crypto (.OpenChannel inp) m₀).2) :
+    run_action₀ crypto (.OpenChannel inp) m₁ = run_action₀ crypto (.OpenChannel inp) m₀ := by
+  dsimp only [run_action₀, open_channel] at *
   rw [decide_eq_true_iff] at success
 
   have ⟨h₀, h₁, h₂, h₃, h₄⟩ := success
@@ -213,13 +213,13 @@ theorem create_channel_immutable
     case inl h₄ => simp [h₄]
     case inr h₄ => rw [imm₁ _ h₄]
 
-theorem create_subchannel_immutable
-    {crypto: Crypto} {m₀ m₁: Memory} (inp: CreateSubchannelInput)
-    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .ChannelHashes x))
+theorem open_subchannel_immutable
+    {crypto: Crypto} {m₀ m₁: Memory} (inp: OpenSubchannelInput)
+    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .ChannelMarkers x))
     (imm₁: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelTokens [x, 0]))
-    (success: (run_action₀ crypto (.CreateSubchannel inp) m₀).2) :
-    run_action₀ crypto (.CreateSubchannel inp) m₁ = run_action₀ crypto (.CreateSubchannel inp) m₀ := by
-  dsimp only [run_action₀, create_subchannel] at *
+    (success: (run_action₀ crypto (.OpenSubchannel inp) m₀).2) :
+    run_action₀ crypto (.OpenSubchannel inp) m₁ = run_action₀ crypto (.OpenSubchannel inp) m₀ := by
+  dsimp only [run_action₀, open_subchannel] at *
   rw [decide_eq_true_iff] at success
   have ⟨h₀, h₁, h₂, h₃⟩ := success
 
@@ -238,7 +238,7 @@ theorem create_subchannel_immutable
 
 theorem create_note_immutable
     {crypto: Crypto} {m₀ m₁: Memory} (inp: CreateNoteInput)
-    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelHashes x))
+    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelMarkers x))
     (imm₁: ∀ x, immutable_fn m₀ m₁ (note_exists_fn x))
     (success: (run_action₀ crypto (.CreateNote inp) m₀).2) :
     run_action₀ crypto (.CreateNote inp) m₁ = run_action₀ crypto (.CreateNote inp) m₀ := by
@@ -263,13 +263,13 @@ theorem create_note_immutable
       simp only [Function.comp_apply, decide_eq_true_eq, mem_cell_fn] at this
       conv => lhs; arg 1; rw [this]
 
-theorem cancel_note_immutable
-    {crypto: Crypto} {m₀ m₁: Memory} (inp: CancelNoteInput)
-    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelHashes x))
+theorem use_note_immutable
+    {crypto: Crypto} {m₀ m₁: Memory} (inp: UseNoteInput)
+    (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelMarkers x))
     (imm₂: ∀ x, immutable_fn m₀ m₁ (note_modified_value_fn crypto x))
-    (success: (run_action₀ crypto (.CancelNote inp) m₀).2) :
-    run_action₀ crypto (.CancelNote inp) m₁ = run_action₀ crypto (.CancelNote inp) m₀ := by
-  dsimp only [run_action₀, cancel_note] at *
+    (success: (run_action₀ crypto (.UseNote inp) m₀).2) :
+    run_action₀ crypto (.UseNote inp) m₁ = run_action₀ crypto (.UseNote inp) m₀ := by
+  dsimp only [run_action₀, use_note] at *
   rw [decide_eq_true_iff] at success
   have ⟨h₀, h₁, h₂, h₃, h₅⟩ := success
 
@@ -298,9 +298,9 @@ theorem cancel_note_immutable
     rw [this.2]
 
 structure ImmutableCells (crypto: Crypto) (m₀ m₁: Memory) where
-  (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .ChannelHashes x))
+  (imm₀: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .ChannelMarkers x))
   (imm₁: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelTokens [x, 0]))
-  (imm₂: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelHashes x))
+  (imm₂: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .SubchannelMarkers x))
   (imm₃: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .PublicKeys x))
   (imm₄: ∀ x, immutable_fn m₀ m₁ (mem_cell_fn .OutgoingChannels [x, 0]))
   (imm₅: ∀ x, immutable_fn m₀ m₁ (note_exists_fn x))
@@ -313,10 +313,10 @@ theorem run_action₀_immutable
     run_action₀ crypto actions m₁ = run_action₀ crypto actions m₀ := by
   cases actions
   case Register inp => trivial
-  case CreateChannel inp => exact create_channel_immutable inp imm.imm₃ imm.imm₄ success
-  case CreateSubchannel inp => exact create_subchannel_immutable inp imm.imm₀ imm.imm₁ success
+  case OpenChannel inp => exact open_channel_immutable inp imm.imm₃ imm.imm₄ success
+  case OpenSubchannel inp => exact open_subchannel_immutable inp imm.imm₀ imm.imm₁ success
   case CreateNote inp => exact create_note_immutable inp imm.imm₂ imm.imm₅ success
-  case CancelNote inp => exact cancel_note_immutable inp imm.imm₂ imm.imm₆ success
+  case UseNote inp => exact use_note_immutable inp imm.imm₂ imm.imm₆ success
   case OpenDeposit inp => trivial
 
 theorem ImmutableCells.of_extends
@@ -468,7 +468,7 @@ theorem ImmutableCells.reflected_immutability'
   constructor
   case imm₀ =>
     intro x
-    apply reflected_immutability e _ (reflection₀ _ .ChannelHashes x id (by simp))
+    apply reflected_immutability e _ (reflection₀ _ .ChannelMarkers x id (by simp))
     exact imm₀ x
   case imm₁ =>
     intro x
@@ -476,7 +476,7 @@ theorem ImmutableCells.reflected_immutability'
     exact imm₁ x
   case imm₂ =>
     intro x
-    apply reflected_immutability e _ (reflection₀ _ .SubchannelHashes x id (by simp))
+    apply reflected_immutability e _ (reflection₀ _ .SubchannelMarkers x id (by simp))
     exact imm₂ x
   case imm₃ =>
     intro x

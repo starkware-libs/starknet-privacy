@@ -4,9 +4,9 @@ inductive MemoryType where
   | PublicKeys
   | ChannelsJ
   | Channels
-  | ChannelHashes
+  | ChannelMarkers
   | OutgoingChannels
-  | SubchannelHashes
+  | SubchannelMarkers
   | SubchannelTokens
   | Notes
   | Nullifiers
