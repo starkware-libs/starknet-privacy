@@ -36,13 +36,14 @@ use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_ac
 use privacy::tests::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::utils::constants::{OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
-    derive_public_key, enc_note_packed_value, encrypt_outgoing_channel_info, encrypt_private_key,
-    encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, packing, to_write_once_action,
+    ProofFacts, derive_public_key, enc_note_packed_value, encrypt_outgoing_channel_info,
+    encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, packing,
+    to_write_once_action,
 };
 use snforge_std::{
     CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
-    Token, TokenTrait, cheat_resource_bounds, declare, interact_with_state, map_entry_address,
-    spy_messages_to_l1, store,
+    Token, TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare, interact_with_state,
+    map_entry_address, spy_messages_to_l1, store,
 };
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
@@ -455,7 +456,7 @@ pub(crate) impl UserImpl of UserTrait {
         let random = self.get_random();
         let salt = self.get_salt().into();
         let actions = self.open_channel(:recipient, :index, :random, :salt);
-        self.privacy.server.execute_actions(:actions);
+        self.privacy.execute_actions(:actions);
         (random, salt)
     }
 
@@ -615,7 +616,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> felt252 {
         let salt = self.get_salt().into();
         let actions = self.open_subchannel(:recipient, :token_address, :index, :salt);
-        self.privacy.server.execute_actions(:actions);
+        self.privacy.execute_actions(:actions);
         salt
     }
 
@@ -701,10 +702,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn cheat_create_enc_note_e2e(self: @User, create_note_input: CreateEncNoteInput) {
-        self
-            .privacy
-            .server
-            .execute_actions(actions: self.internal_create_enc_note(create_note_input));
+        self.privacy.execute_actions(actions: self.internal_create_enc_note(create_note_input));
     }
 
     fn create_open_note(self: @User, create_note_input: CreateOpenNoteInput) -> Span<ServerAction> {
@@ -748,10 +746,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn cheat_create_open_note_e2e(self: @User, create_note_input: CreateOpenNoteInput) {
-        self
-            .privacy
-            .server
-            .execute_actions(actions: self.internal_create_open_note(create_note_input));
+        self.privacy.execute_actions(actions: self.internal_create_open_note(create_note_input));
     }
 
     fn compute_channel_key(self: @User, recipient: User) -> felt252 {
@@ -1072,7 +1067,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn set_viewing_key_e2e_with_random(ref self: User, random: felt252) {
         let actions = self.set_viewing_key(:random);
-        self.privacy.server.execute_actions(:actions);
+        self.privacy.execute_actions(:actions);
     }
 
     fn safe_set_viewing_key(self: @User, random: felt252) -> Result<(), Array<felt252>> {
@@ -1172,7 +1167,7 @@ pub(crate) impl UserImpl of UserTrait {
             ),
         ]
             .span();
-        self.privacy.server.execute_actions(:actions);
+        self.privacy.execute_actions(:actions);
     }
 
     /// Cheat withdraw in the server side (no client side).
@@ -1195,7 +1190,7 @@ pub(crate) impl UserImpl of UserTrait {
             ),
         ]
             .span();
-        self.privacy.server.execute_actions(:actions);
+        self.privacy.execute_actions(:actions);
     }
 
     fn increase_token_balance(self: @User, token: Token, amount: u128) {
@@ -1401,9 +1396,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let storage_address = map_entry_address(
             map_selector: selector!("notes"), keys: [note_id].span(),
         );
-        self
-            .server
-            .execute_actions(actions: [to_write_once_action(:storage_address, value: note)].span())
+        self.execute_actions(actions: [to_write_once_action(:storage_address, value: note)].span())
     }
 
     fn get_note(self: @PrivacyCfg, note_id: felt252) -> Note {
@@ -1416,7 +1409,6 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             map_selector: selector!("nullifiers"), keys: [nullifier].span(),
         );
         self
-            .server
             .execute_actions(
                 actions: array![to_write_once_action(:storage_address, value: true)].span(),
             )
@@ -1431,6 +1423,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     fn execute_actions(self: @PrivacyCfg, actions: Span<ServerAction>) {
+        self.cheat_proof_facts(:actions);
         self.server.execute_actions(:actions);
     }
 
@@ -1438,6 +1431,22 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn safe_execute_actions(
         self: @PrivacyCfg, actions: Span<ServerAction>,
     ) -> Result<(), Array<felt252>> {
+        self.cheat_proof_facts(:actions);
+        self.safe_server.execute_actions(:actions)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_execute_actions_without_cheat(
+        self: @PrivacyCfg, actions: Span<ServerAction>,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_server.execute_actions(:actions)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_execute_actions_with_proof_facts(
+        self: @PrivacyCfg, actions: Span<ServerAction>, proof_facts: ProofFacts,
+    ) -> Result<(), Array<felt252>> {
+        self._cheat_proof_facts(:proof_facts);
         self.safe_server.execute_actions(:actions)
     }
 
@@ -1549,6 +1558,25 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         cheat_resource_bounds(
             contract_address: *self.address,
             resource_bounds: array![resource_bounds].span(),
+            span: CheatSpan::TargetCalls(1),
+        );
+    }
+
+    fn cheat_proof_facts(self: @PrivacyCfg, actions: Span<ServerAction>) {
+        let mut serialized_actions = array![(*self.address).into(), Zero::zero()];
+        actions.serialize(ref serialized_actions);
+        let message_hash = hash(serialized_actions.span());
+        let mut proof_facts: ProofFacts = Default::default();
+        proof_facts.message_to_l1_hashes = [message_hash].span();
+        self._cheat_proof_facts(:proof_facts);
+    }
+
+    fn _cheat_proof_facts(self: @PrivacyCfg, proof_facts: ProofFacts) {
+        let mut serialized_proof_facts = array![];
+        proof_facts.serialize(ref serialized_proof_facts);
+        cheat_proof_facts(
+            contract_address: *self.address,
+            proof_facts: serialized_proof_facts.span(),
             span: CheatSpan::TargetCalls(1),
         );
     }
