@@ -25,14 +25,13 @@ async fn test_health_endpoint_returns_ok() {
         .await
         .expect("Failed to spawn indexer");
 
-    // Wait for API server to be ready and indexer to subscribe
-    // (order depends on timing; wait for both)
+    // Wait for API server to be ready and indexer to subscribe.
+    // These happen concurrently so we must wait for both in any order.
     indexer
-        .wait_for_log("API server listening", Duration::from_secs(10))
-        .await
-        .unwrap();
-    indexer
-        .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
+        .wait_for_logs(
+            &["API server listening", "Subscribed to new heads"],
+            Duration::from_secs(10),
+        )
         .await
         .unwrap();
 

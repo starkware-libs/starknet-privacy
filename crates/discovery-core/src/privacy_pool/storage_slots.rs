@@ -25,6 +25,13 @@ pub struct EncSubchannelInfoSlots {
     pub enc_token: Felt,
 }
 
+/// Storage slots for encrypted outgoing channel info (2 consecutive slots).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EncOutgoingChannelInfoSlots {
+    pub salt: Felt,
+    pub enc_recipient_addr: Felt,
+}
+
 /// Computes a storage variable address.
 ///
 /// Wraps `get_storage_var_address`, which only fails if the variable name
@@ -96,6 +103,17 @@ pub fn subchannel_tokens(subchannel_id: Felt) -> EncSubchannelInfoSlots {
     EncSubchannelInfoSlots {
         salt: base,
         enc_token: base + Felt::ONE,
+    }
+}
+
+/// Storage slots for encrypted outgoing channel info.
+/// Cairo: `outgoing_channels: Map<felt252, EncOutgoingChannelInfo>`
+/// EncOutgoingChannelInfo has 2 fields: salt and enc_recipient_addr.
+pub fn outgoing_channels(outgoing_channel_id: Felt) -> EncOutgoingChannelInfoSlots {
+    let base = slot("outgoing_channels", &[outgoing_channel_id]);
+    EncOutgoingChannelInfoSlots {
+        salt: base,
+        enc_recipient_addr: base + Felt::ONE,
     }
 }
 
