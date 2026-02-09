@@ -81,6 +81,7 @@ jobs:
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         run: |
           cd sdk
+          npm run scarb:build
           npm run generate:cairo-refs
           cp tests/fixtures/cairo-reference-data.json ../crates/discovery-core/tests/fixtures/cairo-reference-data.json
 
