@@ -64,6 +64,17 @@ git diff HEAD -- path/to/file
 # Every changed line here must also appear in /tmp/file.patch
 ```
 
+## Copy-and-Fixup for Small Surgical Differences
+
+When a file's final state has only a few small differences from what this slice
+needs (e.g., a type, import, or signature introduced in a later slice), copy the
+final file from the worktree and apply surgical fixups rather than reverting and
+re-patching from scratch. This is faster and less error-prone than hunk filtering
+when the delta is small and spread across many locations.
+
+Record each fixup in the plan's Issues section so the later slice knows what to
+undo.
+
 ## When to Avoid Splitting
 
 If more than 3 hunks need surgical extraction from one file, consider putting
