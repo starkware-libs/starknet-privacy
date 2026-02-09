@@ -5,7 +5,7 @@ use num_traits::ToPrimitive;
 use starknet_types_core::felt::Felt;
 
 use super::storage_slots;
-use super::types::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
+use super::types::{EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use crate::storage_backend::{RawStorageAccess, StorageError};
 
 /// Privacy contract view methods.
@@ -22,7 +22,16 @@ pub trait IViews: Send + Sync {
         &self,
         recipient_addr: Felt,
         channel_index: u64,
-    ) -> Result<EncChannelInfo, StorageError>;
+    ) -> Result<EncChannelInfo, StorageError> {
+        self.get_channel_info_batch(recipient_addr, channel_index, 1)
+            .await
+            .map(|channels| {
+                channels
+                    .first()
+                    .copied()
+                    .ok_or(StorageError::SlotCountMismatch)
+            })?
+    }
 
     /// Checks if a subchannel with the given marker exists.
     async fn subchannel_exists(&self, subchannel_marker: Felt) -> Result<bool, StorageError>;
@@ -33,20 +42,71 @@ pub trait IViews: Send + Sync {
         subchannel_id: Felt,
     ) -> Result<EncSubchannelInfo, StorageError>;
 
+    /// Returns encrypted outgoing channel info for the given outgoing channel id.
+    async fn get_outgoing_channel_info(
+        &self,
+        outgoing_channel_id: Felt,
+    ) -> Result<EncOutgoingChannelInfo, StorageError>;
+
     /// Returns the note value for the given note ID.
-    async fn get_note(&self, note_id: Felt) -> Result<Felt, StorageError>;
+    async fn get_note(&self, note_id: Felt) -> Result<Felt, StorageError> {
+        self.get_notes_batch(&[note_id]).await.map(|notes| {
+            notes
+                .first()
+                .copied()
+                .ok_or(StorageError::SlotCountMismatch)
+        })?
+    }
 
     /// Checks if a nullifier exists.
-    async fn nullifier_exists(&self, nullifier: Felt) -> Result<bool, StorageError>;
+    async fn nullifier_exists(&self, nullifier: Felt) -> Result<bool, StorageError> {
+        self.nullifier_exists_batch(&[nullifier])
+            .await
+            .map(|exists| {
+                exists
+                    .first()
+                    .copied()
+                    .ok_or(StorageError::SlotCountMismatch)
+            })?
+    }
 
     /// Returns a user's public viewing key.
-    async fn get_public_key(&self, user_addr: Felt) -> Result<Felt, StorageError>;
+    async fn get_public_key(&self, user_addr: Felt) -> Result<Felt, StorageError> {
+        self.get_public_keys_batch(&[user_addr])
+            .await
+            .map(|keys| keys.first().copied().ok_or(StorageError::SlotCountMismatch))?
+    }
 
     /// Returns a user's encrypted private key.
     async fn get_enc_private_key(&self, user_addr: Felt) -> Result<EncPrivateKey, StorageError>;
 
     /// Returns the compliance public key.
     async fn get_compliance_public_key(&self) -> Result<Felt, StorageError>;
+
+    /// Batch-reads channel info for `count` consecutive channels starting at `start_index`.
+    ///
+    /// Returns a `Vec<EncChannelInfo>` of length `count`, fetched in a single `read_slots` call.
+    async fn get_channel_info_batch(
+        &self,
+        recipient_addr: Felt,
+        start_index: u64,
+        count: usize,
+    ) -> Result<Vec<EncChannelInfo>, StorageError>;
+
+    /// Batch-reads packed note values for the given note IDs.
+    ///
+    /// Returns a `Vec<Felt>` matching the input length. Zero = note doesn't exist.
+    async fn get_notes_batch(&self, note_ids: &[Felt]) -> Result<Vec<Felt>, StorageError>;
+
+    /// Batch-reads public keys for the given addresses.
+    ///
+    /// Returns a `Vec<Felt>` matching the input length. Zero = unregistered.
+    async fn get_public_keys_batch(&self, addrs: &[Felt]) -> Result<Vec<Felt>, StorageError>;
+
+    /// Batch-checks nullifier existence for the given nullifiers.
+    ///
+    /// Returns a `Vec<bool>` matching the input length. `true` = spent.
+    async fn nullifier_exists_batch(&self, nullifiers: &[Felt]) -> Result<Vec<bool>, StorageError>;
 }
 
 /// Blanket implementation of `IViews` for any type implementing `RawStorageAccess`.
@@ -68,27 +128,6 @@ impl<T: RawStorageAccess> IViews for T {
         value.to_u64().ok_or(StorageError::CastToU64Error(value))
     }
 
-    #[tracing::instrument(name = "get_channel_info", level = "debug", skip(self))]
-    async fn get_channel_info(
-        &self,
-        recipient_addr: Felt,
-        channel_index: u64,
-    ) -> Result<EncChannelInfo, StorageError> {
-        let slots = storage_slots::recipient_channels_element(recipient_addr, channel_index);
-        let values = self
-            .read_slots(vec![
-                slots.ephemeral_pubkey,
-                slots.enc_channel_key,
-                slots.enc_sender_addr,
-            ])
-            .await?;
-        Ok(EncChannelInfo {
-            ephemeral_pubkey: values[0],
-            enc_channel_key: values[1],
-            enc_sender_addr: values[2],
-        })
-    }
-
     #[tracing::instrument(name = "subchannel_exists", level = "debug", skip(self))]
     async fn subchannel_exists(&self, subchannel_marker: Felt) -> Result<bool, StorageError> {
         let slot = storage_slots::subchannel_exists(subchannel_marker);
@@ -102,38 +141,30 @@ impl<T: RawStorageAccess> IViews for T {
         subchannel_id: Felt,
     ) -> Result<EncSubchannelInfo, StorageError> {
         let slots = storage_slots::subchannel_tokens(subchannel_id);
-        let values = self.read_slots(vec![slots.salt, slots.enc_token]).await?;
+        let values = self.read_slots(slots.to_vec()).await?;
         Ok(EncSubchannelInfo {
             salt: values[0],
             enc_token: values[1],
         })
     }
 
-    #[tracing::instrument(name = "get_note", level = "debug", skip(self))]
-    async fn get_note(&self, note_id: Felt) -> Result<Felt, StorageError> {
-        let slot = storage_slots::notes(note_id);
-        self.read_slot(slot).await
-    }
-
-    #[tracing::instrument(name = "nullifier_exists", level = "debug", skip(self))]
-    async fn nullifier_exists(&self, nullifier: Felt) -> Result<bool, StorageError> {
-        let slot = storage_slots::nullifiers(nullifier);
-        let value = self.read_slot(slot).await?;
-        Ok(value != Felt::ZERO)
-    }
-
-    #[tracing::instrument(name = "get_public_key", level = "debug", skip(self))]
-    async fn get_public_key(&self, user_addr: Felt) -> Result<Felt, StorageError> {
-        let slot = storage_slots::public_key(user_addr);
-        self.read_slot(slot).await
+    #[tracing::instrument(name = "get_outgoing_channel_info", level = "debug", skip(self))]
+    async fn get_outgoing_channel_info(
+        &self,
+        outgoing_channel_id: Felt,
+    ) -> Result<EncOutgoingChannelInfo, StorageError> {
+        let slots = storage_slots::outgoing_channels(outgoing_channel_id);
+        let values = self.read_slots(slots.to_vec()).await?;
+        Ok(EncOutgoingChannelInfo {
+            salt: values[0],
+            enc_recipient_addr: values[1],
+        })
     }
 
     #[tracing::instrument(name = "get_enc_private_key", level = "debug", skip(self))]
     async fn get_enc_private_key(&self, user_addr: Felt) -> Result<EncPrivateKey, StorageError> {
         let slots = storage_slots::enc_private_key(user_addr);
-        let values = self
-            .read_slots(vec![slots.ephemeral_pubkey, slots.enc_private_key])
-            .await?;
+        let values = self.read_slots(slots.to_vec()).await?;
         Ok(EncPrivateKey {
             ephemeral_pubkey: values[0],
             enc_private_key: values[1],
@@ -144,5 +175,81 @@ impl<T: RawStorageAccess> IViews for T {
     async fn get_compliance_public_key(&self) -> Result<Felt, StorageError> {
         let slot = storage_slots::compliance_public_key();
         self.read_slot(slot).await
+    }
+
+    #[tracing::instrument(
+        name = "get_channel_info_batch",
+        level = "debug",
+        skip(self),
+        fields(count)
+    )]
+    async fn get_channel_info_batch(
+        &self,
+        recipient_addr: Felt,
+        start_index: u64,
+        count: usize,
+    ) -> Result<Vec<EncChannelInfo>, StorageError> {
+        let mut slots = Vec::with_capacity(count * 3);
+        for channel_offset in 0..count {
+            let channel_index = start_index + channel_offset as u64;
+            let channel_slots =
+                storage_slots::recipient_channels_element(recipient_addr, channel_index);
+            slots.extend(channel_slots.to_vec());
+        }
+        let values = self.read_slots(slots).await?;
+        let mut result = Vec::with_capacity(count);
+        for chunk in values.chunks_exact(3) {
+            result.push(EncChannelInfo {
+                ephemeral_pubkey: chunk[0],
+                enc_channel_key: chunk[1],
+                enc_sender_addr: chunk[2],
+            });
+        }
+        Ok(result)
+    }
+
+    #[tracing::instrument(
+        name = "get_notes_batch",
+        level = "debug",
+        skip(self, note_ids),
+        fields(count = note_ids.len())
+    )]
+    async fn get_notes_batch(&self, note_ids: &[Felt]) -> Result<Vec<Felt>, StorageError> {
+        let slots: Vec<_> = note_ids
+            .iter()
+            .map(|&nid| storage_slots::notes(nid))
+            .collect();
+        let values = self.read_slots(slots).await?;
+        Ok(values)
+    }
+
+    #[tracing::instrument(
+        name = "get_public_keys_batch",
+        level = "debug",
+        skip(self, addrs),
+        fields(count = addrs.len())
+    )]
+    async fn get_public_keys_batch(&self, addrs: &[Felt]) -> Result<Vec<Felt>, StorageError> {
+        let slots: Vec<_> = addrs
+            .iter()
+            .map(|&addr| storage_slots::public_key(addr))
+            .collect();
+        let values = self.read_slots(slots).await?;
+        Ok(values)
+    }
+
+    #[tracing::instrument(
+        name = "nullifier_exists_batch",
+        level = "debug",
+        skip(self, nullifiers),
+        fields(count = nullifiers.len())
+    )]
+    async fn nullifier_exists_batch(&self, nullifiers: &[Felt]) -> Result<Vec<bool>, StorageError> {
+        let slots: Vec<_> = nullifiers
+            .iter()
+            .map(|&nul| storage_slots::nullifiers(nul))
+            .collect();
+        let values = self.read_slots(slots).await?;
+        Ok(values.iter().map(|v| *v != Felt::ZERO).collect())
     }
 }
