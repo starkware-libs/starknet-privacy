@@ -40,8 +40,8 @@ theorem amounts_to_coins.nodup
     omega
 
 def amounts_to_coins.equiv
-    {α: Type} [DecidableEq α] (ℓ₀ ℓ₁: List α) (h_nodup₀: ℓ₀.Nodup) (h_nodup₁: ℓ₁.Nodup)
-    (f: α → ℕ) (g: α → ℕ)
+    {α β: Type} [DecidableEq α] [DecidableEq β] (ℓ₀: List α) (ℓ₁: List β) (h_nodup₀: ℓ₀.Nodup) (h_nodup₁: ℓ₁.Nodup)
+    (f: α → ℕ) (g: β → ℕ)
     (h_sum: (ℓ₀.map f).sum = (ℓ₁.map g).sum) :
     (amounts_to_coins ℓ₀ f).toFinset ≃ (amounts_to_coins ℓ₁ g).toFinset := by
   apply two_lists_equiv
@@ -146,57 +146,3 @@ noncomputable def Coin.fintype {crypto: Crypto} {rm: ReachableMemory crypto} : F
     simp only [note_start, mk.injEq, and_true] at this
     exact this
   · exact Fin.ext_iff.1 h.2
-
-def coins_to_notes
-    {crypto: Crypto} {m: Memory} (coins: List (Coin crypto m)) :
-    Finset ExScannedNote :=
-  coins.map (λ coin ↦ coin.esn) |>.dedup |>.toFinset
-
-theorem coins_to_notes.sum_amounts
-    {crypto: Crypto} {rm: ReachableMemory crypto} (coins: List (Coin crypto rm)) :
-    (∑ esn ∈ coins_to_notes coins, esn.amount crypto rm) ≥ coins.dedup.length := by
-  set ℓ := coins.map (λ coin ↦ coin.esn) |>.dedup with h_ℓ
-
-  have := Finset.sum_list_map_count ℓ (λ esn ↦ esn.amount crypto rm)
-  rw [Finset.sum_congr rfl (by
-    intro esn h_esn
-    show _ = esn.toScannedNote.amount crypto rm
-    rw [List.nodup_iff_count_eq_one.1 (List.nodup_dedup _), smul_eq_mul, one_mul]
-    rw [List.mem_toFinset] at h_esn
-    exact h_esn
-  )] at this
-
-  simp only [coins_to_notes, ←h_ℓ, ←this]
-  clear this
-
-  rw [←amounts_to_coins.length]
-  set all_coins_in_notes := amounts_to_coins ℓ (λ esn ↦ esn.amount crypto rm)
-
-  have : coins.dedup.map (λ coin ↦ (coin.esn, coin.coin_idx)) =
-      (coins.map (λ coin ↦ (coin.esn, coin.coin_idx)) |>.dedup) := by
-    rw [List.dedup_map_of_injective (by
-      intro coin₀ coin₁ h_eq
-      simp only [Prod.mk.injEq] at h_eq
-      apply Coin.ext <;> simp [*]
-    )]
-
-  have : coins.dedup.length = (coins.map (λ coin ↦ (coin.esn, coin.coin_idx)) |>.dedup |>.length) := by
-    rw [←this, List.length_map]
-  rw [this]
-
-  have : all_coins_in_notes.Nodup := by
-    apply amounts_to_coins.nodup
-    exact List.nodup_dedup _
-
-  rw [←List.Nodup.dedup this]
-  rw [←List.card_toFinset, ←List.card_toFinset]
-  apply Finset.card_le_card
-  intro ⟨esn, i⟩ h_coin
-  rw [List.mem_toFinset, amounts_to_coins.mem]
-  rw [List.mem_toFinset, List.mem_map] at h_coin
-  replace ⟨coin, h_coin, h⟩ := h_coin
-  rw [Prod.mk.injEq] at h
-  rw [List.mem_dedup, List.mem_map]
-  constructor
-  · exact ⟨coin, h_coin, by simp [h]⟩
-  · rw [←h.2, ←h.1]; exact coin.h_coin_idx
