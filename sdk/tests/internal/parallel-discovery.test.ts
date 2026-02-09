@@ -34,7 +34,7 @@ describe("Parallel Discovery", () => {
     const tokens = Array.from({ length: NUM_TOKENS }, (_, i) => BigInt(0xace000 + i));
 
     // Register Alice (recipient)
-    pool.setupChannel(aliceAddress, aliceKey, aliceAddress, new Channel(alicePublicKey));
+    pool.setupChannel(aliceAddress, aliceKey, aliceAddress, 0, new Channel(alicePublicKey));
 
     // Create senders
     const senders = Array.from({ length: NUM_SENDERS }, (_, i) => ({
@@ -46,7 +46,13 @@ describe("Parallel Discovery", () => {
       const senderPublicKey = derivePublicKey(sender.key);
 
       // Register sender
-      pool.setupChannel(sender.address, sender.key, sender.address, new Channel(senderPublicKey));
+      pool.setupChannel(
+        sender.address,
+        sender.key,
+        sender.address,
+        0,
+        new Channel(senderPublicKey)
+      );
 
       // Create channel from sender to Alice
       const channelKey = compute_channel_key(
@@ -62,7 +68,7 @@ describe("Parallel Discovery", () => {
       for (let t = 0; t < NUM_TOKENS; t++) {
         channel.tokens.set(tokens[t], { tokenIndex: t, noteNonce: NUM_NOTES });
       }
-      pool.setupChannel(sender.address, sender.key, aliceAddress, channel);
+      pool.setupChannel(sender.address, sender.key, aliceAddress, 0, channel);
 
       // Create notes for each token
       for (let t = 0; t < NUM_TOKENS; t++) {
@@ -129,7 +135,7 @@ describe("Parallel Discovery", () => {
     const tokens = Array.from({ length: NUM_TOKENS }, (_, i) => BigInt(0xbee000 + i));
 
     // Register Alice (sender)
-    pool.setupChannel(aliceAddress, aliceKey, aliceAddress, new Channel(alicePublicKey));
+    pool.setupChannel(aliceAddress, aliceKey, aliceAddress, 0, new Channel(alicePublicKey));
 
     // Create recipients
     const recipients = Array.from({ length: NUM_RECIPIENTS }, (_, i) => ({
@@ -137,6 +143,7 @@ describe("Parallel Discovery", () => {
       key: BigInt(400000 + i),
     }));
 
+    let index = 0;
     for (const recipient of recipients) {
       const recipientPublicKey = derivePublicKey(recipient.key);
 
@@ -145,6 +152,7 @@ describe("Parallel Discovery", () => {
         recipient.address,
         recipient.key,
         recipient.address,
+        0,
         new Channel(recipientPublicKey)
       );
 
@@ -162,7 +170,7 @@ describe("Parallel Discovery", () => {
       for (let t = 0; t < NUM_TOKENS; t++) {
         channel.tokens.set(tokens[t], { tokenIndex: t, noteNonce: NUM_NOTES });
       }
-      pool.setupChannel(aliceAddress, aliceKey, recipient.address, channel);
+      pool.setupChannel(aliceAddress, aliceKey, recipient.address, index++, channel);
 
       // Create notes for each token
       for (let t = 0; t < NUM_TOKENS; t++) {
