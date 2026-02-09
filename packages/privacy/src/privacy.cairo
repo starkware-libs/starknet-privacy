@@ -30,7 +30,7 @@ pub mod Privacy {
         encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
         encrypt_subchannel_info, encrypt_user_addr, extract_server_actions_from_execute_and_panic,
         is_canonical_key, open_note, packing, panic_with_server_actions, send_message_to_server,
-        to_write_once_action, unpacking,
+        to_write_once_action, unpacking, validate_proof,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -270,7 +270,7 @@ pub mod Privacy {
                 };
                 if should_execute {
                     has_privacy_action = true;
-                    self.execute_actions(actions.span());
+                    self._execute_actions(actions.span());
                 }
                 server_actions.extend(actions);
             }
@@ -788,9 +788,55 @@ pub mod Privacy {
 
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
+        // TODO: Rename to apply_actions.
         fn execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
             self.pausable.assert_not_paused();
-            // TODO: Verify client proof.
+            validate_proof(:actions);
+            self._execute_actions(:actions);
+        }
+
+        fn deposit_to_open_note(ref self: ContractState, note_id: felt252, amount: u128) {
+            self.pausable.assert_not_paused();
+            // Validate inputs.
+            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+
+            // Read the Note from storage and assert it exists.
+            let note_entry = self.notes.entry(note_id);
+            let note = note_entry.read();
+            let packed_value = note.packed_value;
+            let token = note.token;
+            let depositor = note.depositor;
+            assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
+
+            // Unpack the packed_value to get (salt, current_amount).
+            let (salt, current_amount) = unpacking(packed_value: note.packed_value);
+
+            // Assert it's an open note (salt == OPEN_NOTE_SALT).
+            assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
+
+            // Assert the note hasn't been deposited to yet (current_amount == 0).
+            assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
+
+            // Assert the caller is the depositor.
+            let caller = get_caller_address();
+            assert(caller == depositor, errors::CALLER_NOT_DEPOSITOR);
+
+            // Transfer funds from the depositor (caller).
+            self._execute_transfer_from(sender_addr: depositor, :token, :amount);
+
+            // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
+            let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
+            note_entry.packed_value.write(new_packed_value);
+
+            // Emit the OpenNoteDeposited event.
+            self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
+        }
+    }
+
+    #[generate_trait]
+    pub impl ServerInternalImpl of ServerInternalTrait {
+        fn _execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => {
@@ -850,47 +896,6 @@ pub mod Privacy {
             };
         }
 
-        fn deposit_to_open_note(ref self: ContractState, note_id: felt252, amount: u128) {
-            self.pausable.assert_not_paused();
-            // Validate inputs.
-            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-
-            // Read the Note from storage and assert it exists.
-            let note_entry = self.notes.entry(note_id);
-            let note = note_entry.read();
-            let packed_value = note.packed_value;
-            let token = note.token;
-            let depositor = note.depositor;
-            assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
-
-            // Unpack the packed_value to get (salt, current_amount).
-            let (salt, current_amount) = unpacking(packed_value: note.packed_value);
-
-            // Assert it's an open note (salt == OPEN_NOTE_SALT).
-            assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
-
-            // Assert the note hasn't been deposited to yet (current_amount == 0).
-            assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
-
-            // Assert the caller is the depositor.
-            let caller = get_caller_address();
-            assert(caller == depositor, errors::CALLER_NOT_DEPOSITOR);
-
-            // Transfer funds from the depositor (caller).
-            self._execute_transfer_from(sender_addr: depositor, :token, :amount);
-
-            // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
-            let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
-            note_entry.packed_value.write(new_packed_value);
-
-            // Emit the OpenNoteDeposited event.
-            self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
-        }
-    }
-
-    #[generate_trait]
-    pub impl ServerInternalImpl of ServerInternalTrait {
         fn _execute_write(
             ref self: ContractState,
             storage_address: felt252,
