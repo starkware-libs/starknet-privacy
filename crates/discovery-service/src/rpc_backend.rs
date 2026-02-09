@@ -39,6 +39,9 @@ impl From<RpcBackendError> for StorageError {
     }
 }
 
+/// Default maximum number of storage slots per JSON-RPC batch request.
+const DEFAULT_MAX_BATCH_SIZE: usize = 50;
+
 /// Configuration for the connection pool.
 #[derive(Debug, Clone)]
 pub struct PoolConfig {
@@ -50,6 +53,9 @@ pub struct PoolConfig {
     pub request_timeout_secs: u64,
     /// Maximum idle connections per host.
     pub pool_max_idle_per_host: usize,
+    /// Maximum number of storage slots per JSON-RPC batch request.
+    /// Larger `read_slots` calls are automatically chunked.
+    pub max_batch_size: usize,
 }
 
 impl Default for PoolConfig {
@@ -59,6 +65,7 @@ impl Default for PoolConfig {
             connect_timeout_secs: 30,
             request_timeout_secs: 60,
             pool_max_idle_per_host: 10,
+            max_batch_size: DEFAULT_MAX_BATCH_SIZE,
         }
     }
 }
@@ -102,6 +109,7 @@ struct RpcBackendInner {
     provider: JsonRpcClient<HttpTransport>,
     contract_address: Felt,
     head: RwLock<Option<ChainHead>>,
+    max_batch_size: usize,
 }
 
 /// RPC-based storage backend that reads from a StarkNet node via JSON-RPC.
@@ -135,6 +143,7 @@ impl RpcBackend {
                 provider,
                 contract_address: config.contract_address,
                 head: RwLock::new(None),
+                max_batch_size: config.pool_config.max_batch_size,
             }),
         })
     }
@@ -159,6 +168,40 @@ pub struct RpcSnapshot {
     block_id: BlockId,
 }
 
+impl RpcSnapshot {
+    /// Executes a single JSON-RPC batch request for the given slots.
+    async fn batch_read(&self, slots: &[Felt]) -> Result<Vec<Felt>, StorageError> {
+        let contract_address = self.backend.inner.contract_address;
+
+        let requests: Vec<ProviderRequestData> = slots
+            .iter()
+            .map(|&slot| {
+                ProviderRequestData::GetStorageAt(GetStorageAtRequest {
+                    contract_address,
+                    key: slot,
+                    block_id: self.block_id,
+                })
+            })
+            .collect();
+
+        let responses = self
+            .backend
+            .inner
+            .provider
+            .batch_requests(&requests)
+            .await
+            .map_err(|e| RpcBackendError::Request(e.to_string()))?;
+
+        responses
+            .into_iter()
+            .map(|resp| match resp {
+                ProviderResponseData::GetStorageAt(value) => Ok(value),
+                _ => Err(RpcBackendError::UnexpectedResponseType.into()),
+            })
+            .collect()
+    }
+}
+
 #[async_trait]
 impl RawStorageAccess for RpcSnapshot {
     async fn read_slot(&self, slot: Felt) -> Result<Felt, StorageError> {
@@ -178,37 +221,12 @@ impl RawStorageAccess for RpcSnapshot {
             return Ok(vec![self.read_slot(slots[0]).await?]);
         }
 
-        let contract_address = self.backend.inner.contract_address;
-
-        // Build batch request
-        let requests: Vec<ProviderRequestData> = slots
-            .iter()
-            .map(|&slot| {
-                ProviderRequestData::GetStorageAt(GetStorageAtRequest {
-                    contract_address,
-                    key: slot,
-                    block_id: self.block_id,
-                })
-            })
-            .collect();
-
-        // Execute batch
-        let responses = self
-            .backend
-            .inner
-            .provider
-            .batch_requests(&requests)
-            .await
-            .map_err(|e| RpcBackendError::Request(e.to_string()))?;
-
-        // Extract results
-        responses
-            .into_iter()
-            .map(|resp| match resp {
-                ProviderResponseData::GetStorageAt(value) => Ok(value),
-                _ => Err(RpcBackendError::UnexpectedResponseType.into()),
-            })
-            .collect()
+        let mut results = Vec::with_capacity(slots.len());
+        for chunk in slots.chunks(self.backend.inner.max_batch_size) {
+            let chunk_results = self.batch_read(chunk).await?;
+            results.extend(chunk_results);
+        }
+        Ok(results)
     }
 }
 
