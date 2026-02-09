@@ -149,11 +149,11 @@ pub async fn get_channel_key(
         .await
         .ok()??;
     let key = SecretFelt::new(*private_key);
-    let result = discover_incoming_channels(backend, recipient, &key, 0, count, &budget)
+    let result = discover_incoming_channels(backend, recipient, &key, 0, count as usize, &budget)
         .await
         .ok()?;
 
-    result.channels.first().map(|c| c.info.channel_key)
+    result.channels.first().map(|c| c.channel_key)
 }
 
 /// Helper to discover subchannels and get the first token for a channel.
