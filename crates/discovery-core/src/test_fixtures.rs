@@ -164,7 +164,7 @@ pub async fn get_subchannel_token(
     use crate::discovery::subchannels::discover_subchannels;
 
     let budget = IoBudget::new(100);
-    let result = discover_subchannels(backend, channel_key, 0, &budget)
+    let result = discover_subchannels(backend, channel_key, 0, usize::MAX, &budget)
         .await
         .ok()?;
 
