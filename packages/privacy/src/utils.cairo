@@ -438,6 +438,7 @@ pub(crate) fn validate_proof(actions: Span<ServerAction>) {
     // Assert base block number is recent.
     let current_block_number = execution_info.block_info.block_number;
     let proof_block_number = proof_facts_struct.base_block_number;
+    assert(proof_block_number <= current_block_number, errors::INVALID_BASE_BLOCK_NUMBER);
     assert(
         proof_block_number + PROOF_VALIDITY_BLOCK_INTERVAL >= current_block_number,
         errors::PROOF_EXPIRED,
