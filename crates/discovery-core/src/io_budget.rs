@@ -61,6 +61,16 @@ impl IoBudget {
             .is_ok()
     }
 
+    /// Atomically returns `count` units back to the budget.
+    ///
+    /// Used when a pre-consumed unit turns out unnecessary (e.g., a spent note
+    /// doesn't need an amount fetch, or a cached note already has its amount).
+    pub fn reclaim(&self, count: usize) {
+        if count > 0 {
+            self.remaining.fetch_add(count, Ordering::SeqCst);
+        }
+    }
+
     /// Atomically consumes as many whole items as the budget allows.
     ///
     /// Returns `(consumed, budget_exhausted)`:
@@ -208,6 +218,20 @@ mod tests {
         // 100 / 2 = 50 items total possible
         assert_eq!(total, 50);
         assert_eq!(budget.remaining(), 0);
+    }
+
+    #[test]
+    fn test_reclaim_after_consume() {
+        let budget = IoBudget::new(10);
+        assert!(budget.consume(6));
+        assert_eq!(budget.remaining(), 4);
+
+        budget.reclaim(3);
+        assert_eq!(budget.remaining(), 7);
+
+        // Reclaim zero does nothing
+        budget.reclaim(0);
+        assert_eq!(budget.remaining(), 7);
     }
 
     #[test]
