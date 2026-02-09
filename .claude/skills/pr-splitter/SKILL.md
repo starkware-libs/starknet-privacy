@@ -346,7 +346,7 @@ If anything fails, fix before reporting to user.
 
 #### 7f. Report to user
 
-Brief: files applied, verification result, any warnings. Changes are staged.
+Brief: files applied, verification result, any warnings. Suggest a commit message.
 
 #### 7g. Update plan and track progress
 

@@ -12,6 +12,9 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use starknet_types_core::felt::Felt;
 
+use crate::io_budget::IoBudget;
+use crate::privacy_pool::types::SecretFelt;
+
 /// Devnet fixture loaded from devnet-state.json.
 #[derive(Deserialize)]
 pub struct DevnetFixture {
@@ -135,18 +138,18 @@ pub fn load_cairo_ref_fixture() -> CairoRefFixture {
 pub async fn get_channel_key(
     backend: &crate::storage_backend::MockBackend,
     recipient: starknet_types_core::felt::Felt,
-    viewing_key: &starknet_types_core::felt::Felt,
+    private_key: &starknet_types_core::felt::Felt,
 ) -> Option<starknet_types_core::felt::Felt> {
     use crate::discovery::incoming_channels::{
         discover_incoming_channels, get_incoming_channel_count,
     };
-    use crate::io_budget::IoBudget;
 
     let budget = IoBudget::new(100);
     let count = get_incoming_channel_count(backend, recipient, &budget)
         .await
         .ok()??;
-    let result = discover_incoming_channels(backend, recipient, viewing_key, 0, count, &budget)
+    let key = SecretFelt::new(*private_key);
+    let result = discover_incoming_channels(backend, recipient, &key, 0, count, &budget)
         .await
         .ok()?;
 
@@ -159,7 +162,6 @@ pub async fn get_subchannel_token(
     channel_key: starknet_types_core::felt::Felt,
 ) -> Option<starknet_types_core::felt::Felt> {
     use crate::discovery::subchannels::discover_subchannels;
-    use crate::io_budget::IoBudget;
 
     let budget = IoBudget::new(100);
     let result = discover_subchannels(backend, channel_key, 0, &budget)

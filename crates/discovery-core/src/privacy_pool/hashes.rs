@@ -5,6 +5,8 @@ use std::sync::LazyLock;
 use starknet_crypto::{poseidon_hash_many, PoseidonHasher};
 use starknet_types_core::felt::Felt;
 
+use super::types::SecretFelt;
+
 /// Domain separation tag for encrypted channel key.
 static ENC_CHANNEL_KEY_TAG: LazyLock<Felt> =
     LazyLock::new(|| short_string_to_felt("ENC_CHANNEL_KEY_TAG:V1"));
@@ -126,7 +128,7 @@ pub fn compute_nullifier(
     channel_key: Felt,
     token: Felt,
     index: u64,
-    decryption_key: &Felt,
+    private_key: &SecretFelt,
 ) -> Felt {
     hash(&[
         *NULLIFIER_TAG,
@@ -134,21 +136,21 @@ pub fn compute_nullifier(
         token,
         Felt::from(index),
         Felt::ZERO,
-        *decryption_key,
+        **private_key,
     ])
 }
 
 /// Computes the channel key from sender credentials and recipient identity.
 pub fn compute_channel_key(
     sender_addr: Felt,
-    decryption_key: &Felt,
+    private_key: &SecretFelt,
     recipient_addr: Felt,
     recipient_public_key: Felt,
 ) -> Felt {
     hash(&[
         *CHANNEL_KEY_TAG,
         sender_addr,
-        *decryption_key,
+        **private_key,
         recipient_addr,
         recipient_public_key,
     ])
@@ -187,11 +189,15 @@ pub fn compute_subchannel_marker(
 }
 
 /// Computes the outgoing channel id for storage lookup.
-pub fn compute_outgoing_channel_id(sender_addr: Felt, decryption_key: &Felt, index: u64) -> Felt {
+pub fn compute_outgoing_channel_id(
+    sender_addr: Felt,
+    private_key: &SecretFelt,
+    index: u64,
+) -> Felt {
     hash(&[
         *OUTGOING_CHANNEL_ID_TAG,
         sender_addr,
-        *decryption_key,
+        **private_key,
         Felt::from(index),
         Felt::ZERO,
     ])
@@ -200,14 +206,14 @@ pub fn compute_outgoing_channel_id(sender_addr: Felt, decryption_key: &Felt, ind
 /// Computes the encryption mask for the outgoing recipient address.
 pub fn compute_enc_recipient_addr_hash(
     sender_addr: Felt,
-    decryption_key: &Felt,
+    private_key: &SecretFelt,
     index: u64,
     salt: Felt,
 ) -> Felt {
     hash(&[
         *ENC_RECIPIENT_ADDR_TAG,
         sender_addr,
-        *decryption_key,
+        **private_key,
         Felt::from(index),
         Felt::ZERO,
         salt,
@@ -217,6 +223,7 @@ pub fn compute_enc_recipient_addr_hash(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::privacy_pool::types::SecretFelt;
     use crate::test_fixtures::load_cairo_ref_fixture;
 
     #[test]
@@ -275,7 +282,7 @@ mod tests {
                 f.inputs.channel_key,
                 f.inputs.token,
                 f.inputs.index,
-                &f.inputs.sender_private_key,
+                &SecretFelt::new(f.inputs.sender_private_key),
             ),
             f.outputs.nullifier
         );
@@ -296,7 +303,7 @@ mod tests {
     #[test]
     fn test_compute_channel_key() {
         let f = load_cairo_ref_fixture();
-        let key = f.inputs.sender_private_key;
+        let key = SecretFelt::new(f.inputs.sender_private_key);
         assert_eq!(
             compute_channel_key(
                 f.inputs.sender,
@@ -311,7 +318,7 @@ mod tests {
     #[test]
     fn test_compute_outgoing_channel_id() {
         let f = load_cairo_ref_fixture();
-        let key = f.inputs.sender_private_key;
+        let key = SecretFelt::new(f.inputs.sender_private_key);
         assert_eq!(
             compute_outgoing_channel_id(f.inputs.sender, &key, f.inputs.index),
             f.outputs.outgoing_channel_id
@@ -321,7 +328,7 @@ mod tests {
     #[test]
     fn test_compute_enc_recipient_addr_hash() {
         let f = load_cairo_ref_fixture();
-        let key = f.inputs.sender_private_key;
+        let key = SecretFelt::new(f.inputs.sender_private_key);
         assert_eq!(
             compute_enc_recipient_addr_hash(f.inputs.sender, &key, f.inputs.index, f.inputs.salt),
             f.outputs.enc_recipient_addr_hash
