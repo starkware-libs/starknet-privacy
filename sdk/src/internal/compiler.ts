@@ -66,6 +66,17 @@ type StrictClientAction<T extends ClientAction> = T extends {
     : never
   : never;
 
+function addOpenChannel(actions: Actions, recipient: StarknetAddressBigint) {
+  actions.openChannels ??= [];
+  // Check if recipient is already in openChannels to avoid duplicates
+  const alreadyQueued = actions.openChannels.some((a) => a.recipient === recipient);
+  if (!alreadyQueued) {
+    actions.openChannels.push({
+      recipient,
+    });
+  }
+}
+
 export class ActionCompiler {
   constructor(
     private userAddress: bigint,
@@ -218,23 +229,13 @@ export class ActionCompiler {
 
     if (actions.setViewingKey && options?.autoSetup) {
       // If registering, also open self-channel (it can't exist yet)
-      actions.openChannels ??= [];
-      actions.openChannels.push({
-        recipient: this.userAddress,
-      });
+      addOpenChannel(actions, this.userAddress);
     }
 
     for (const recipient of recipientsNeeded.keys()) {
       const channel = pool.getChannel(recipient);
       if (!channel?.key && options?.autoSetup) {
-        actions.openChannels ??= [];
-        // Check if recipient is already in openChannels to avoid duplicates
-        const alreadyQueued = actions.openChannels.some((a) => a.recipient === recipient);
-        if (!alreadyQueued) {
-          actions.openChannels.push({
-            recipient,
-          });
-        }
+        addOpenChannel(actions, recipient);
       } else {
         debugLog("compiler", "channel found", recipient, channel);
       }
