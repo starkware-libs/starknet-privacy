@@ -40,8 +40,12 @@ yarn-error.log*
 
 .history
 
+# TypeScript
+*.tsbuildinfo
+
 # Vite
 **/vite.config.ts.timestamp-*
+.vite/
 
 # run-rs
 data
@@ -86,3 +90,6 @@ __pycache__
 
 # e2e predeployed accounts (legacy, replaced by .env ACCOUNTS var)
 accounts.json
+
+# demo app local env (contains private keys)
+demo/.env
