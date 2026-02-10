@@ -34,9 +34,6 @@ theorem NoteImplies.from_scan_outgoing_notes_for_sender
   let Kbob := rm.m MemoryType.PublicKeys [addrbob]
 
   unfold scan_notes_for_channel at h_sn
-  simp only [List.mem_flatMap, List.mem_range] at h_sn
-  obtain ⟨i₀, i₀_lt, h_sn⟩ := h_sn
-  unfold scan_notes_for_channel_i₀ at h_sn
   simp only [List.mem_map, List.mem_range, Nat.lt_find_iff] at h_sn
   obtain ⟨i₁, h_sn, h_note_id⟩ := h_sn
 
