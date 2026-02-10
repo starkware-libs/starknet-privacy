@@ -434,14 +434,14 @@ fn test_execute_transfer_to() {
 
     // Supply tokens to the server (via deposit).
     let mut user = test.new_user();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     user.set_viewing_key_e2e();
     user
         .open_channel_with_token_e2e(
-            recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let note = user
-        .new_enc_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user, :token_addr, :amount, index: 0);
     user.increase_token_balance(:token, :amount);
     user.cheat_deposit(:token, :amount, create_note_input: note);
 
@@ -693,18 +693,16 @@ fn test_execute_write_once_open_note() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let depositor = test.mock_new_depositor();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     let create_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 0, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 0, :depositor);
     let (note_id, expected_note) = user_1.compute_open_note(:create_note_input);
 
     // Compute the server actions to write the note to storage.
@@ -730,19 +728,17 @@ fn test_execute_write_once_open_note_assertions() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let depositor = test.mock_new_depositor();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Create open note first.
     let create_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 0, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 0, :depositor);
     user_1.cheat_create_open_note_e2e(:create_note_input);
 
     // Try to write again - should fail.
@@ -757,12 +753,12 @@ fn test_deposit_to_open_note() {
     let token = test.new_token();
     let mut depositor = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
 
     // Create an open note.
     let create_note_input = depositor
         .new_open_note_with_generated_random(
-            recipient: depositor, token: token_address, index: 0, depositor: depositor.address,
+            recipient: depositor, :token_addr, index: 0, depositor: depositor.address,
         );
     let (note_id, open_note) = depositor.compute_open_note(:create_note_input);
 
@@ -792,7 +788,7 @@ fn test_deposit_to_open_note() {
     let (salt, stored_amount) = unpacking(packed_value: filled_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount);
-    assert_eq!(filled_note.token, token_address);
+    assert_eq!(filled_note.token, token_addr);
     assert_eq!(filled_note.depositor, depositor.address);
 
     // Verify tokens transferred.
@@ -801,7 +797,7 @@ fn test_deposit_to_open_note() {
 
     // Verify OpenNoteDeposited event emitted.
     let expected_event = events::OpenNoteDeposited {
-        depositor: depositor.address, token: token_address, note_id, amount,
+        depositor: depositor.address, token: token_addr, note_id, amount,
     };
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(emitted_events.len(), 1);
@@ -821,7 +817,7 @@ fn test_deposit_to_open_note_assertions() {
     let depositor = test.new_user();
     let other_depositor = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
 
     // Setup: depositor has balance and approval.
     depositor.increase_token_balance(:token, :amount);
@@ -844,7 +840,7 @@ fn test_deposit_to_open_note_assertions() {
 
     // Catch NOTE_NOT_OPEN - Write an encrypted note (salt >= 2), try to deposit to it.
     let create_note_input = user
-        .new_enc_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user, :token_addr, :amount, index: 0);
     let (note_id_enc, enc_note) = user.compute_enc_note(:create_note_input);
     // Write just the packed_value (encrypted note has zero token and depositor).
     test.privacy.cheat_create_note(note_id: note_id_enc, note: enc_note);
@@ -854,7 +850,7 @@ fn test_deposit_to_open_note_assertions() {
 
     // Catch NOTE_ALREADY_DEPOSITED - Deposit to an open note, then try to deposit again.
     let (note_id_filled, _) = test.mock_new_note(:amount);
-    let note = open_note(token: token_address, depositor: depositor.address);
+    let note = open_note(token: token_addr, depositor: depositor.address);
     test.privacy.cheat_create_note(note_id: note_id_filled, :note);
 
     // Deposit to the open note first time.
@@ -870,7 +866,7 @@ fn test_deposit_to_open_note_assertions() {
 
     // Catch CALLER_NOT_DEPOSITOR - Create open note with depositor A, caller is depositor B.
     let (note_id_mismatch, _) = test.mock_new_note(:amount);
-    let open_note_a = open_note(token: token_address, depositor: depositor.address);
+    let open_note_a = open_note(token: token_addr, depositor: depositor.address);
     test.privacy.cheat_create_note(note_id: note_id_mismatch, note: open_note_a);
 
     // Try to deposit with other_depositor as caller instead of depositor.
@@ -888,12 +884,12 @@ fn test_deposit_to_open_note_transfer_assertions() {
     let mut user = test.new_user();
     let depositor = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
 
     // Create an open note.
     let create_note_input = user
         .new_open_note_with_generated_random(
-            recipient: user, token: token_address, index: 0, depositor: depositor.address,
+            recipient: user, :token_addr, index: 0, depositor: depositor.address,
         );
     let (note_id, open_note) = user.compute_open_note(:create_note_input);
     test.privacy.cheat_create_note(:note_id, note: open_note);
@@ -917,7 +913,7 @@ fn test_execute_swap_with_executor() {
     let input_token = test.new_token();
     let output_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
-    let executor_address = test.swap_executor.address;
+    let executor_addr = test.swap_executor.address;
     let amm_address = test.mock_amm;
 
     // Create an open note with swap_executor as depositor.
@@ -925,13 +921,13 @@ fn test_execute_swap_with_executor() {
     user.set_viewing_key_e2e();
     let recipient = user;
     user.open_channel_e2e(:recipient, index: 0);
-    user.open_subchannel_e2e(:recipient, token_address: output_token.contract_address(), index: 0);
+    user.open_subchannel_e2e(:recipient, token_addr: output_token.contract_address(), index: 0);
     let create_note_input = user
         .new_open_note_with_generated_random(
             :recipient,
-            token: output_token.contract_address(),
+            token_addr: output_token.contract_address(),
             index: 0,
-            depositor: executor_address,
+            depositor: executor_addr,
         );
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id, _) = user.compute_open_note(:create_note_input);
@@ -943,17 +939,17 @@ fn test_execute_swap_with_executor() {
     assert_eq!(initial_amount, 0);
 
     // Fund swap executor with input tokens.
-    input_token.supply(address: executor_address, amount: swap_amount);
+    input_token.supply(address: executor_addr, amount: swap_amount);
 
     // Fund AMM with output tokens.
     output_token.supply(address: amm_address, amount: swap_amount);
 
     // Verify balances before swap.
     assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
-    assert_eq!(input_token.balance_of(address: executor_address), swap_amount.into());
+    assert_eq!(input_token.balance_of(address: executor_addr), swap_amount.into());
     assert_eq!(input_token.balance_of(address: amm_address), 0);
     assert_eq!(output_token.balance_of(address: test.privacy.address), 0);
-    assert_eq!(output_token.balance_of(address: executor_address), 0);
+    assert_eq!(output_token.balance_of(address: executor_addr), 0);
     assert_eq!(output_token.balance_of(address: amm_address), swap_amount.into());
 
     // Prepare swap calldata: [input_token, output_token, amount (u256 = low, high)].
@@ -965,7 +961,7 @@ fn test_execute_swap_with_executor() {
 
     // Create Swap input.
     let swap_input = SwapWithExecutorInput {
-        swap_executor: executor_address,
+        swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata,
@@ -987,21 +983,21 @@ fn test_execute_swap_with_executor() {
     assert_eq!(filled_salt, OPEN_NOTE_SALT);
     assert_eq!(filled_amount, swap_amount);
     assert_eq!(filled_note.token, output_token.contract_address());
-    assert_eq!(filled_note.depositor, executor_address);
+    assert_eq!(filled_note.depositor, executor_addr);
 
     // Verify balances after swap.
     // Input tokens: swap_executor -> AMM (via swap).
     assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
-    assert_eq!(input_token.balance_of(address: executor_address), 0);
+    assert_eq!(input_token.balance_of(address: executor_addr), 0);
     assert_eq!(input_token.balance_of(address: amm_address), swap_amount.into());
     // Output tokens: AMM -> swap_executor -> privacy (via deposit).
     assert_eq!(output_token.balance_of(address: test.privacy.address), swap_amount.into());
-    assert_eq!(output_token.balance_of(address: executor_address), 0);
+    assert_eq!(output_token.balance_of(address: executor_addr), 0);
     assert_eq!(output_token.balance_of(address: amm_address), 0);
 
     // Verify OpenNoteDeposited event emitted.
     let expected_event = events::OpenNoteDeposited {
-        depositor: executor_address,
+        depositor: executor_addr,
         token: output_token.contract_address(),
         note_id,
         amount: swap_amount,
@@ -1022,7 +1018,7 @@ fn test_execute_swap_with_executor_assertions() {
     let input_token = test.new_token();
     let output_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
-    let executor_address = test.swap_executor.address;
+    let executor_addr = test.swap_executor.address;
     let amm_address = test.mock_amm;
 
     // Create an open note with swap_executor as depositor.
@@ -1030,13 +1026,13 @@ fn test_execute_swap_with_executor_assertions() {
     user.set_viewing_key_e2e();
     let recipient = user;
     user.open_channel_e2e(:recipient, index: 0);
-    user.open_subchannel_e2e(:recipient, token_address: output_token.contract_address(), index: 0);
+    user.open_subchannel_e2e(:recipient, token_addr: output_token.contract_address(), index: 0);
     let create_note_input = user
         .new_open_note_with_generated_random(
             :recipient,
-            token: output_token.contract_address(),
+            token_addr: output_token.contract_address(),
             index: 0,
-            depositor: executor_address,
+            depositor: executor_addr,
         );
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id, _) = user.compute_open_note(:create_note_input);
@@ -1050,7 +1046,7 @@ fn test_execute_swap_with_executor_assertions() {
 
     // Base valid swap input (will be modified for each error case).
     let valid_swap_input = SwapWithExecutorInput {
-        swap_executor: executor_address,
+        swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata,
@@ -1116,7 +1112,7 @@ fn test_execute_swap_with_executor_assertions() {
     output_token.supply(address: amm_address, amount: MAX_U128);
     output_token.supply(address: amm_address, amount: 1);
     // Fund swap executor with input tokens.
-    input_token.supply(address: executor_address, amount: swap_amount);
+    input_token.supply(address: executor_addr, amount: swap_amount);
     let swap_input = SwapWithExecutorInput {
         swap_selector: selector!("overflow_swap"),
         swap_calldata: [output_token.contract_address().into()].span(),
@@ -1137,19 +1133,19 @@ fn test_execute_swap_with_executor_deposit_assertions() {
     let input_token = test.new_token();
     let output_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
-    let executor_address = test.swap_executor.address;
+    let executor_addr = test.swap_executor.address;
     let amm_address = test.mock_amm;
-    let token_address = output_token.contract_address();
+    let token_addr = output_token.contract_address();
 
     // Setup user with viewing key and subchannel.
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
     let recipient = user;
     user.open_channel_e2e(:recipient, index: 0);
-    user.open_subchannel_e2e(:recipient, token_address: output_token.contract_address(), index: 0);
+    user.open_subchannel_e2e(:recipient, token_addr: output_token.contract_address(), index: 0);
 
     // Fund swap executor with input tokens (enough for multiple attempts).
-    input_token.supply(address: executor_address, amount: swap_amount * 4);
+    input_token.supply(address: executor_addr, amount: swap_amount * 4);
 
     // Fund AMM with output tokens (enough for multiple swaps).
     output_token.supply(address: amm_address, amount: swap_amount * 4);
@@ -1164,7 +1160,7 @@ fn test_execute_swap_with_executor_deposit_assertions() {
     // Catch NOTE_NOT_FOUND
     let nonexistent_note_id = 'NONEXISTENT_NOTE';
     let swap_input = SwapWithExecutorInput {
-        swap_executor: executor_address,
+        swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata,
@@ -1181,13 +1177,13 @@ fn test_execute_swap_with_executor_deposit_assertions() {
     // Catch NOTE_NOT_OPEN
     let create_note_input = user
         .new_enc_note_with_generated_salt(
-            recipient: user, :token_address, amount: swap_amount, index: 0,
+            recipient: user, :token_addr, amount: swap_amount, index: 0,
         );
     user.cheat_create_enc_note_e2e(:create_note_input);
     let (note_id_enc, _) = user.compute_enc_note(:create_note_input);
 
     let swap_input = SwapWithExecutorInput {
-        swap_executor: executor_address,
+        swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata,
@@ -1204,13 +1200,13 @@ fn test_execute_swap_with_executor_deposit_assertions() {
     // Catch NOTE_ALREADY_DEPOSITED
     let create_note_input = user
         .new_open_note_with_generated_random(
-            :recipient, token: token_address, index: 1, depositor: executor_address,
+            :recipient, :token_addr, index: 1, depositor: executor_addr,
         );
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id_filled, _) = user.compute_open_note(:create_note_input);
 
     let swap_input = SwapWithExecutorInput {
-        swap_executor: executor_address,
+        swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata,
@@ -1233,13 +1229,13 @@ fn test_execute_swap_with_executor_deposit_assertions() {
     let wrong_depositor: ContractAddress = 'WRONG_DEPOSITOR'.try_into().unwrap();
     let create_note_input = user
         .new_open_note_with_generated_random(
-            :recipient, token: token_address, index: 2, depositor: wrong_depositor,
+            :recipient, :token_addr, index: 2, depositor: wrong_depositor,
         );
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id_mismatch, _) = user.compute_open_note(:create_note_input);
 
     let swap_input = SwapWithExecutorInput {
-        swap_executor: executor_address,
+        swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata,

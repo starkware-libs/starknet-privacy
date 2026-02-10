@@ -153,31 +153,31 @@ fn test_transfer() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_1, :token_address, outgoing_channel_index: 1, subchannel_index: 0,
+            recipient: user_1, :token_addr, outgoing_channel_index: 1, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_1, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_addr, :amount, :index);
     user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_1);
 
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, :index);
     let actions = user_1
         .transfer(
             notes_to_use: [use_note_input].span(), notes_to_create: [create_note_input].span(),
         );
 
-    let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token_address, :index);
+    let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token_addr, :index);
     let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
@@ -203,31 +203,31 @@ fn test_transfer_to_self() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_1, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_1, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user_2
-        .new_enc_note_with_generated_salt(recipient: user_1, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_addr, :amount, :index);
     user_2.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_2.compute_channel_key(recipient: user_1);
 
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_1, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_addr, :amount, :index);
 
     let actions = user_1
         .transfer(
             notes_to_use: [use_note_input].span(), notes_to_create: [create_note_input].span(),
         );
-    let expected_nullifier = user_1.compute_nullifier(sender: user_2, :token_address, :index);
+    let expected_nullifier = user_1.compute_nullifier(sender: user_2, :token_addr, :index);
     let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
@@ -255,45 +255,41 @@ fn test_transfer_one_to_many() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_3, :token_address, outgoing_channel_index: 1, subchannel_index: 0,
+            recipient: user_3, :token_addr, outgoing_channel_index: 1, subchannel_index: 0,
         );
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_1, :token_address, outgoing_channel_index: 2, subchannel_index: 0,
+            recipient: user_1, :token_addr, outgoing_channel_index: 2, subchannel_index: 0,
         );
     let index = 0;
     let amount_1 = 1;
     let amount_2 = 8;
     let create_note_input = user_1
         .new_enc_note_with_generated_salt(
-            recipient: user_1, :token_address, amount: amount_1 + amount_2, :index,
+            recipient: user_1, :token_addr, amount: amount_1 + amount_2, :index,
         );
     user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_1);
 
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let create_note_input_1 = user_1
-        .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, amount: amount_1, :index,
-        );
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: amount_1, :index);
     let create_note_input_2 = user_1
-        .new_enc_note_with_generated_salt(
-            recipient: user_3, :token_address, amount: amount_2, :index,
-        );
+        .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, amount: amount_2, :index);
 
     let actions = user_1
         .transfer(
             notes_to_use: [use_note_input].span(),
             notes_to_create: [create_note_input_1, create_note_input_2].span(),
         );
-    let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token_address, :index);
+    let expected_nullifier = user_1.compute_nullifier(sender: user_1, :token_addr, :index);
     let (note_id_1, expected_note_1) = user_1
         .compute_enc_note(create_note_input: create_note_input_1);
     let (note_id_2, expected_note_2) = user_1
@@ -324,42 +320,38 @@ fn test_transfer_many_to_one() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_1, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_3
         .open_channel_with_token_e2e(
-            recipient: user_1, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user_2
-        .new_enc_note_with_generated_salt(recipient: user_1, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_addr, :amount, :index);
     user_2.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key_1 = user_2.compute_channel_key(recipient: user_1);
     let create_note_input = user_3
-        .new_enc_note_with_generated_salt(recipient: user_1, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_addr, :amount, :index);
     user_3.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key_2 = user_3.compute_channel_key(recipient: user_1);
 
-    let use_note_input_1 = UseNoteInput {
-        channel_key: channel_key_1, token: token_address, index: 0,
-    };
-    let use_note_input_2 = UseNoteInput {
-        channel_key: channel_key_2, token: token_address, index: 0,
-    };
+    let use_note_input_1 = UseNoteInput { channel_key: channel_key_1, token: token_addr, index: 0 };
+    let use_note_input_2 = UseNoteInput { channel_key: channel_key_2, token: token_addr, index: 0 };
     let amount = 2 * amount;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, :index);
 
     let actions = user_1
         .transfer(
@@ -368,8 +360,8 @@ fn test_transfer_many_to_one() {
         );
 
     // Test use_note output.
-    let expected_nullifier_1 = user_1.compute_nullifier(sender: user_2, :token_address, :index);
-    let expected_nullifier_2 = user_1.compute_nullifier(sender: user_3, :token_address, :index);
+    let expected_nullifier_1 = user_1.compute_nullifier(sender: user_2, :token_addr, :index);
+    let expected_nullifier_2 = user_1.compute_nullifier(sender: user_3, :token_addr, :index);
     assert_ne!(expected_nullifier_1, expected_nullifier_2);
     let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     let storage_path_felt_nullifier_1 = map_entry_address(
@@ -401,47 +393,43 @@ fn test_transfer_many_to_many() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_3, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_3, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_3
         .open_channel_with_token_e2e(
-            recipient: user_1, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_3
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 1, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 1, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_3, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, :amount, :index);
     user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key_1 = user_1.compute_channel_key(recipient: user_3);
     let create_note_input = user_2
-        .new_enc_note_with_generated_salt(recipient: user_3, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, :amount, :index);
     user_2.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key_2 = user_2.compute_channel_key(recipient: user_3);
 
-    let use_note_input_1 = UseNoteInput {
-        channel_key: channel_key_1, token: token_address, index: 0,
-    };
-    let use_note_input_2 = UseNoteInput {
-        channel_key: channel_key_2, token: token_address, index: 0,
-    };
+    let use_note_input_1 = UseNoteInput { channel_key: channel_key_1, token: token_addr, index: 0 };
+    let use_note_input_2 = UseNoteInput { channel_key: channel_key_2, token: token_addr, index: 0 };
     let create_note_input_1 = user_3
-        .new_enc_note_with_generated_salt(recipient: user_1, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_addr, :amount, :index);
     let create_note_input_2 = user_3
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, :index);
 
     let actions = user_3
         .transfer(
@@ -449,8 +437,8 @@ fn test_transfer_many_to_many() {
             notes_to_create: [create_note_input_1, create_note_input_2].span(),
         );
 
-    let expected_nullifier_1 = user_3.compute_nullifier(sender: user_1, :token_address, :index);
-    let expected_nullifier_2 = user_3.compute_nullifier(sender: user_2, :token_address, :index);
+    let expected_nullifier_1 = user_3.compute_nullifier(sender: user_1, :token_addr, :index);
+    let expected_nullifier_2 = user_3.compute_nullifier(sender: user_2, :token_addr, :index);
     assert_ne!(expected_nullifier_1, expected_nullifier_2);
     let (note_id_1, expected_note_1) = user_3
         .compute_enc_note(create_note_input: create_note_input_1);
@@ -490,14 +478,14 @@ fn test_transfer_assertions() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let mut user_3 = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let channel_key = user_1.compute_channel_key(recipient: user_1);
 
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index: 0 };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index: 0 };
     let create_note_input = CreateEncNoteInput {
         recipient_addr: user_3.address,
         recipient_public_key: user_3.public_key,
-        token: token_address,
+        token: token_addr,
         amount: 1,
         index: 0,
         salt: user_1.get_salt(),
@@ -565,7 +553,7 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    user_1.open_subchannel_e2e(recipient: user_1, :token_address, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_1, :token_addr, index: 0);
 
     // Catch SUBCHANNEL_NOT_FOUND - wrong address.
     user_2.set_viewing_key_e2e();
@@ -588,10 +576,10 @@ fn test_transfer_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Catch SUBCHANNEL_NOT_FOUND - wrong token.
-    let wrong_token_address = test.mock_new_token();
+    let wrong_token_addr = test.mock_new_token();
     let result = user_1
         .safe_transfer(
-            notes_to_use: [UseNoteInput { token: wrong_token_address, ..use_note_input }].span(),
+            notes_to_use: [UseNoteInput { token: wrong_token_addr, ..use_note_input }].span(),
             notes_to_create: [create_note_input].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -614,7 +602,7 @@ fn test_transfer_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_1, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_addr, amount: 1, index: 0);
     user_1.cheat_create_enc_note_e2e(:create_note_input);
 
     // Catch NON_ZERO_VALUE.
@@ -634,7 +622,7 @@ fn test_transfer_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_3, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, amount: 1, index: 0);
 
     // Catch ZERO_RECIPIENT.
     let result = user_1
@@ -713,7 +701,7 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    user_1.open_subchannel_e2e(recipient: user_3, :token_address, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_3, :token_addr, index: 0);
 
     // Catch SUBCHANNEL_NOT_FOUND - wrong public key.
     let result = user_1
@@ -745,13 +733,11 @@ fn test_transfer_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Catch SUBCHANNEL_NOT_FOUND - wrong token.
-    let wrong_token_address = test.mock_new_token();
+    let wrong_token_addr = test.mock_new_token();
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(),
-            notes_to_create: [
-                CreateEncNoteInput { token: wrong_token_address, ..create_note_input }
-            ]
+            notes_to_create: [CreateEncNoteInput { token: wrong_token_addr, ..create_note_input }]
                 .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -1340,16 +1326,16 @@ fn test_open_subchannel() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
 
     let (salt, channel_output) = user_1
-        .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_address, index: 0);
+        .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_addr, index: 0);
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :salt);
+        .compute_enc_subchannel_info(recipient: user_2, :token_addr, index: 0, :salt);
     let expected_subchannel_marker = user_1
-        .compute_subchannel_marker(recipient: user_2, :token_address);
+        .compute_subchannel_marker(recipient: user_2, :token_addr);
 
     let subchannel_exists_storage_path_felt = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker].span(),
@@ -1373,16 +1359,15 @@ fn test_open_subchannel_self_channel() {
     let mut test = Default::default();
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user.open_channel_e2e(recipient: user, index: 0);
 
     let (salt, channel_output) = user
-        .internal_open_subchannel_with_generated_salt(recipient: user, :token_address, index: 0);
+        .internal_open_subchannel_with_generated_salt(recipient: user, :token_addr, index: 0);
     let expected_subchannel_id = user.compute_subchannel_id(recipient: user, index: 0);
     let expected_enc_subchannel_info = user
-        .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, :salt);
-    let expected_subchannel_marker = user
-        .compute_subchannel_marker(recipient: user, :token_address);
+        .compute_enc_subchannel_info(recipient: user, :token_addr, index: 0, :salt);
+    let expected_subchannel_marker = user.compute_subchannel_marker(recipient: user, :token_addr);
 
     let subchannel_exists_storage_path_felt = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker].span(),
@@ -1406,110 +1391,106 @@ fn test_open_subchannel_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let salt = user_1.get_salt().into();
     let index = 0;
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user_1;
     user_zero_addr.address = Zero::zero();
-    let result = user_zero_addr
-        .safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
+    let result = user_zero_addr.safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
     let result = user_zero_addr
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
     let result = user_zero_addr
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_PRIVATE_KEY.
     let mut user_zero_private_key = user_1;
     user_zero_private_key.private_key = Zero::zero();
     let result = user_zero_private_key
-        .safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
     let result = user_zero_private_key
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
     let result = user_zero_private_key
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
     let mut user_private_key_not_canonical = user_1;
     user_private_key_not_canonical.private_key = Neg::neg(user_1.private_key);
     let result = user_private_key_not_canonical
-        .safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch ZERO_RECIPIENT_ADDR.
     let mut user_zero_addr = user_2;
     user_zero_addr.address = Zero::zero();
-    let result = user_1
-        .safe_open_subchannel(recipient: user_zero_addr, :token_address, :index, :salt);
+    let result = user_1.safe_open_subchannel(recipient: user_zero_addr, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user_1
         .safe_open_subchannel_execute_and_panic(
-            recipient: user_zero_addr, :token_address, :index, :salt,
+            recipient: user_zero_addr, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user_1
-        .safe_open_subchannel_execute_view(
-            recipient: user_zero_addr, :token_address, :index, :salt,
-        );
+        .safe_open_subchannel_execute_view(recipient: user_zero_addr, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_CHANNEL_KEY.
     let result = user_1
         .safe_open_subchannel_with_channel_key(
-            recipient: user_2, :token_address, :index, :salt, channel_key: Zero::zero(),
+            recipient: user_2, :token_addr, :index, :salt, channel_key: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
     let result = user_1
         .safe_open_subchannel_with_channel_key_execute_and_panic(
-            recipient: user_2, :token_address, :index, :salt, channel_key: Zero::zero(),
+            recipient: user_2, :token_addr, :index, :salt, channel_key: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
     let result = user_1
         .safe_open_subchannel_with_channel_key_execute_view(
-            recipient: user_2, :token_address, :index, :salt, channel_key: Zero::zero(),
+            recipient: user_2, :token_addr, :index, :salt, channel_key: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
 
     // Catch ZERO_TOKEN.
     let result = user_1
-        .safe_open_subchannel(recipient: user_2, token_address: Zero::zero(), :index, :salt);
+        .safe_open_subchannel(recipient: user_2, token_addr: Zero::zero(), :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user_1
         .safe_open_subchannel_execute_and_panic(
-            recipient: user_2, token_address: Zero::zero(), :index, :salt,
+            recipient: user_2, token_addr: Zero::zero(), :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user_1
         .safe_open_subchannel_execute_view(
-            recipient: user_2, token_address: Zero::zero(), :index, :salt,
+            recipient: user_2, token_addr: Zero::zero(), :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_SALT.
     let result = user_1
-        .safe_open_subchannel(recipient: user_2, :token_address, :index, salt: Zero::zero());
+        .safe_open_subchannel(recipient: user_2, :token_addr, :index, salt: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
     let result = user_1
         .safe_open_subchannel_execute_and_panic(
-            recipient: user_2, :token_address, :index, salt: Zero::zero(),
+            recipient: user_2, :token_addr, :index, salt: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
     let result = user_1
         .safe_open_subchannel_execute_view(
-            recipient: user_2, :token_address, :index, salt: Zero::zero(),
+            recipient: user_2, :token_addr, :index, salt: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
 
@@ -1517,41 +1498,41 @@ fn test_open_subchannel_assertions() {
     let mut user_zero_public_key = user_2;
     user_zero_public_key.public_key = Zero::zero();
     let result = user_1
-        .safe_open_subchannel(recipient: user_zero_public_key, :token_address, :index, :salt);
+        .safe_open_subchannel(recipient: user_zero_public_key, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
     let result = user_1
         .safe_open_subchannel_execute_and_panic(
-            recipient: user_zero_public_key, :token_address, :index, :salt,
+            recipient: user_zero_public_key, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
     let result = user_1
         .safe_open_subchannel_execute_view(
-            recipient: user_zero_public_key, :token_address, :index, :salt,
+            recipient: user_zero_public_key, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
     user_2.set_viewing_key_e2e();
 
     // Catch INVALID_CHANNEL - sender is not registered.
-    let result = user_1.safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
+    let result = user_1.safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     user_1.set_viewing_key_e2e();
 
     // Catch INVALID_CHANNEL - no channel exists for the given sender and recipient.
-    let result = user_1.safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
+    let result = user_1.safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     user_1.open_channel_e2e(recipient: user_2, index: 0);
@@ -1561,29 +1542,29 @@ fn test_open_subchannel_assertions() {
     let mut user_1_wrong_addr = user_1;
     user_1_wrong_addr.address = user_2.address;
     let result = user_1_wrong_addr
-        .safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1_wrong_addr
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1_wrong_addr
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INVALID_CHANNEL - wrong recipient_addr.
     let mut user_2_wrong_addr = user_2;
     user_2_wrong_addr.address = user_1.address;
     let result = user_1
-        .safe_open_subchannel(recipient: user_2_wrong_addr, :token_address, :index, :salt);
+        .safe_open_subchannel(recipient: user_2_wrong_addr, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
         .safe_open_subchannel_execute_and_panic(
-            recipient: user_2_wrong_addr, :token_address, :index, :salt,
+            recipient: user_2_wrong_addr, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
         .safe_open_subchannel_execute_view(
-            recipient: user_2_wrong_addr, :token_address, :index, :salt,
+            recipient: user_2_wrong_addr, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
@@ -1591,62 +1572,60 @@ fn test_open_subchannel_assertions() {
     let mut user_2_wrong_public_key = user_2;
     user_2_wrong_public_key.public_key = user_1.public_key;
     let result = user_1
-        .safe_open_subchannel(recipient: user_2_wrong_public_key, :token_address, :index, :salt);
+        .safe_open_subchannel(recipient: user_2_wrong_public_key, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
         .safe_open_subchannel_execute_and_panic(
-            recipient: user_2_wrong_public_key, :token_address, :index, :salt,
+            recipient: user_2_wrong_public_key, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
         .safe_open_subchannel_execute_view(
-            recipient: user_2_wrong_public_key, :token_address, :index, :salt,
+            recipient: user_2_wrong_public_key, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INVALID_CHANNEL - wrong channel key.
     let result = user_1
         .safe_open_subchannel_with_channel_key(
-            recipient: user_2, :token_address, :index, :salt, channel_key: channel_key + 1,
+            recipient: user_2, :token_addr, :index, :salt, channel_key: channel_key + 1,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
         .safe_open_subchannel_with_channel_key_execute_and_panic(
-            recipient: user_2, :token_address, :index, :salt, channel_key: channel_key + 1,
+            recipient: user_2, :token_addr, :index, :salt, channel_key: channel_key + 1,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
         .safe_open_subchannel_with_channel_key_execute_view(
-            recipient: user_2, :token_address, :index, :salt, channel_key: channel_key + 1,
+            recipient: user_2, :token_addr, :index, :salt, channel_key: channel_key + 1,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INDEX_NOT_SEQUENTIAL.
     let result = user_1
-        .safe_open_subchannel(recipient: user_2, :token_address, index: index + 1, :salt);
+        .safe_open_subchannel(recipient: user_2, :token_addr, index: index + 1, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user_1
         .safe_open_subchannel_execute_and_panic(
-            recipient: user_2, :token_address, index: index + 1, :salt,
+            recipient: user_2, :token_addr, index: index + 1, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user_1
-        .safe_open_subchannel_execute_view(
-            recipient: user_2, :token_address, index: index + 1, :salt,
-        );
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, index: index + 1, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
 
     // Should succeed.
-    user_1.open_subchannel_e2e(recipient: user_2, :token_address, :index);
+    user_1.open_subchannel_e2e(recipient: user_2, :token_addr, :index);
 
     // Catch NON_ZERO_VALUE (subchannel already exists).
-    let result = user_1.safe_open_subchannel(recipient: user_2, :token_address, :index, :salt);
+    let result = user_1.safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user_1
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_address, :index, :salt);
+        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -1658,33 +1637,33 @@ fn test_open_subchannel_multiple() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
-    let token_address_1 = test.mock_new_token();
-    let token_address_2 = test.mock_new_token();
+    let token_addr_1 = test.mock_new_token();
+    let token_addr_2 = test.mock_new_token();
 
     // Multiple subchannels with different tokens.
     let (salt_1, c1_output) = user_1
         .internal_open_subchannel_with_generated_salt(
-            recipient: user_2, token_address: token_address_1, index: 0,
+            recipient: user_2, token_addr: token_addr_1, index: 0,
         );
     test.privacy.execute_actions(actions: c1_output);
     let (salt_2, c2_output) = user_1
         .internal_open_subchannel_with_generated_salt(
-            recipient: user_2, token_address: token_address_2, index: 1,
+            recipient: user_2, token_addr: token_addr_2, index: 1,
         );
     let expected_subchannel_id_1 = user_1.compute_subchannel_id(recipient: user_2, index: 0);
     let expected_subchannel_id_2 = user_1.compute_subchannel_id(recipient: user_2, index: 1);
     let expected_enc_subchannel_info_1 = user_1
         .compute_enc_subchannel_info(
-            recipient: user_2, token_address: token_address_1, index: 0, salt: salt_1,
+            recipient: user_2, token_addr: token_addr_1, index: 0, salt: salt_1,
         );
     let expected_enc_subchannel_info_2 = user_1
         .compute_enc_subchannel_info(
-            recipient: user_2, token_address: token_address_2, index: 1, salt: salt_2,
+            recipient: user_2, token_addr: token_addr_2, index: 1, salt: salt_2,
         );
     let expected_subchannel_marker_1 = user_1
-        .compute_subchannel_marker(recipient: user_2, token_address: token_address_1);
+        .compute_subchannel_marker(recipient: user_2, token_addr: token_addr_1);
     let expected_subchannel_marker_2 = user_1
-        .compute_subchannel_marker(recipient: user_2, token_address: token_address_2);
+        .compute_subchannel_marker(recipient: user_2, token_addr: token_addr_2);
     assert_ne!(expected_subchannel_id_1, expected_subchannel_id_2);
     assert_ne!(expected_enc_subchannel_info_1.salt, expected_enc_subchannel_info_2.salt);
     assert_ne!(expected_enc_subchannel_info_1.enc_token, expected_enc_subchannel_info_2.enc_token);
@@ -1726,21 +1705,21 @@ fn test_open_subchannel_multiple() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let (salt_1, c1_output) = user_1
-        .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_address, index: 0);
+        .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_addr, index: 0);
     test.privacy.execute_actions(actions: c1_output);
     let (salt_2, c2_output) = user_1
-        .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_address, index: 1);
+        .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_addr, index: 1);
     let expected_subchannel_id_1 = user_1.compute_subchannel_id(recipient: user_2, index: 0);
     let expected_subchannel_id_2 = user_1.compute_subchannel_id(recipient: user_2, index: 1);
     let expected_enc_subchannel_info_1 = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, salt: salt_1);
+        .compute_enc_subchannel_info(recipient: user_2, :token_addr, index: 0, salt: salt_1);
     let expected_enc_subchannel_info_2 = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 1, salt: salt_2);
+        .compute_enc_subchannel_info(recipient: user_2, :token_addr, index: 1, salt: salt_2);
     // Id will be the same since the token is the same.
     let expected_subchannel_marker = user_1
-        .compute_subchannel_marker(recipient: user_2, :token_address);
+        .compute_subchannel_marker(recipient: user_2, :token_addr);
     assert_ne!(expected_subchannel_id_1, expected_subchannel_id_2);
     assert_ne!(expected_enc_subchannel_info_1.salt, expected_enc_subchannel_info_2.salt);
     assert_ne!(expected_enc_subchannel_info_1.enc_token, expected_enc_subchannel_info_2.enc_token);
@@ -1780,27 +1759,27 @@ fn test_open_subchannel_multiple() {
     user_1.open_channel_e2e(recipient: user_2, index: 0);
     let (salt_1, c1_output) = user_1
         .internal_open_subchannel_with_generated_salt(
-            recipient: user_2, token_address: token_address_1, index: 0,
+            recipient: user_2, token_addr: token_addr_1, index: 0,
         );
     test.privacy.execute_actions(actions: c1_output);
     let (salt_2, c2_output) = user_1
         .internal_open_subchannel_with_generated_salt(
-            recipient: user_2, token_address: token_address_2, index: 0,
+            recipient: user_2, token_addr: token_addr_2, index: 0,
         );
     // Id will be the same since the index is the same.
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, index: 0);
     let expected_enc_subchannel_info_1 = user_1
         .compute_enc_subchannel_info(
-            recipient: user_2, token_address: token_address_1, index: 0, salt: salt_1,
+            recipient: user_2, token_addr: token_addr_1, index: 0, salt: salt_1,
         );
     let expected_enc_subchannel_info_2 = user_1
         .compute_enc_subchannel_info(
-            recipient: user_2, token_address: token_address_2, index: 0, salt: salt_2,
+            recipient: user_2, token_addr: token_addr_2, index: 0, salt: salt_2,
         );
     let expected_subchannel_marker_1 = user_1
-        .compute_subchannel_marker(recipient: user_2, token_address: token_address_1);
+        .compute_subchannel_marker(recipient: user_2, token_addr: token_addr_1);
     let expected_subchannel_marker_2 = user_1
-        .compute_subchannel_marker(recipient: user_2, token_address: token_address_2);
+        .compute_subchannel_marker(recipient: user_2, token_addr: token_addr_2);
     assert_ne!(expected_enc_subchannel_info_1.salt, expected_enc_subchannel_info_2.salt);
     assert_ne!(expected_enc_subchannel_info_1.enc_token, expected_enc_subchannel_info_2.enc_token);
     assert_ne!(expected_subchannel_marker_1, expected_subchannel_marker_2);
@@ -1838,34 +1817,34 @@ fn test_open_subchannel_multiple_self_channel() {
     let mut test = Default::default();
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
-    let token_address_1 = test.mock_new_token();
-    let token_address_2 = test.mock_new_token();
+    let token_addr_1 = test.mock_new_token();
+    let token_addr_2 = test.mock_new_token();
     user.open_channel_e2e(recipient: user, index: 0);
 
     // Multiple subchannels with different tokens.
     let (salt_1, c1_output) = user
         .internal_open_subchannel_with_generated_salt(
-            recipient: user, token_address: token_address_1, index: 0,
+            recipient: user, token_addr: token_addr_1, index: 0,
         );
     test.privacy.execute_actions(actions: c1_output);
     let (salt_2, c2_output) = user
         .internal_open_subchannel_with_generated_salt(
-            recipient: user, token_address: token_address_2, index: 1,
+            recipient: user, token_addr: token_addr_2, index: 1,
         );
     let expected_subchannel_id_1 = user.compute_subchannel_id(recipient: user, index: 0);
     let expected_subchannel_id_2 = user.compute_subchannel_id(recipient: user, index: 1);
     let expected_enc_subchannel_info_1 = user
         .compute_enc_subchannel_info(
-            recipient: user, token_address: token_address_1, index: 0, salt: salt_1,
+            recipient: user, token_addr: token_addr_1, index: 0, salt: salt_1,
         );
     let expected_enc_subchannel_info_2 = user
         .compute_enc_subchannel_info(
-            recipient: user, token_address: token_address_2, index: 1, salt: salt_2,
+            recipient: user, token_addr: token_addr_2, index: 1, salt: salt_2,
         );
     let expected_subchannel_marker_1 = user
-        .compute_subchannel_marker(recipient: user, token_address: token_address_1);
+        .compute_subchannel_marker(recipient: user, token_addr: token_addr_1);
     let expected_subchannel_marker_2 = user
-        .compute_subchannel_marker(recipient: user, token_address: token_address_2);
+        .compute_subchannel_marker(recipient: user, token_addr: token_addr_2);
     assert_ne!(expected_subchannel_id_1, expected_subchannel_id_2);
     assert_ne!(expected_enc_subchannel_info_1.salt, expected_enc_subchannel_info_2.salt);
     assert_ne!(expected_enc_subchannel_info_1.enc_token, expected_enc_subchannel_info_2.enc_token);
@@ -1909,9 +1888,9 @@ fn test_open_subchannel_decrypt_subchannel_info() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
-    user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_2, :token_addr, index: 0);
 
     // User 2 should be able to decrypt the subchannel info (the token).
     // User 2 decrypts the channel_key.
@@ -1925,7 +1904,7 @@ fn test_open_subchannel_decrypt_subchannel_info() {
     let decrypted_token = decrypt_subchannel_token(
         :enc_subchannel_info, channel_key: decrypted_channel_key, index: 0,
     );
-    assert_eq!(decrypted_token, token_address);
+    assert_eq!(decrypted_token, token_addr);
 }
 
 #[test]
@@ -1933,24 +1912,22 @@ fn test_create_note_self_note() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user
         .open_channel_with_token_e2e(
-            recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user
-        .new_enc_note_with_generated_salt(recipient: user, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user, :token_addr, :amount, :index);
     let actions = user.internal_create_enc_note(:create_note_input);
     assert_eq!(actions, create_note_input.into_server_actions(:user));
 
     // Create open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user
-        .new_open_note_with_generated_random(
-            recipient: user, token: token_address, :index, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user, :token_addr, :index, :depositor);
     let actions = user.internal_create_open_note(:create_note_input);
     assert_eq!(actions, create_note_input.into_server_actions(:user));
 }
@@ -1963,10 +1940,10 @@ fn test_create_note_twice() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount_1 = 1;
     let depositor = test.mock_new_depositor();
@@ -1974,7 +1951,7 @@ fn test_create_note_twice() {
     // Note 1: encrypted note at index 0.
     let create_note_input_1 = user_1
         .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, amount: amount_1, index: 0,
+            recipient: user_2, :token_addr, amount: amount_1, index: 0,
         );
     let create_note_1_actions = user_1
         .internal_create_enc_note(create_note_input: create_note_input_1);
@@ -1985,7 +1962,7 @@ fn test_create_note_twice() {
     let amount_2 = amount_1 + 1;
     let create_note_input_2 = user_1
         .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, amount: amount_2, index: 1,
+            recipient: user_2, :token_addr, amount: amount_2, index: 1,
         );
     let create_note_2_actions = user_1
         .internal_create_enc_note(create_note_input: create_note_input_2);
@@ -1994,18 +1971,14 @@ fn test_create_note_twice() {
 
     // Note 3: open note at index 2 (enc → open).
     let note_3 = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 2, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 2, :depositor);
     let create_note_3_actions = user_1.internal_create_open_note(create_note_input: note_3);
     assert_eq!(create_note_3_actions, note_3.into_server_actions(user: user_1));
     user_1.privacy.execute_actions(actions: create_note_3_actions);
 
     // Note 4: open note at index 3 (open → open).
     let note_4 = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 3, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 3, :depositor);
     let create_note_4_actions = user_1.internal_create_open_note(create_note_input: note_4);
     assert_eq!(create_note_4_actions, note_4.into_server_actions(user: user_1));
     user_1.privacy.execute_actions(actions: create_note_4_actions);
@@ -2014,7 +1987,7 @@ fn test_create_note_twice() {
     let amount_5 = amount_2 + 1;
     let note_5 = user_1
         .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, amount: amount_5, index: 4,
+            recipient: user_2, :token_addr, amount: amount_5, index: 4,
         );
     let create_note_5_actions = user_1.internal_create_enc_note(create_note_input: note_5);
     assert_eq!(create_note_5_actions, note_5.into_server_actions(user: user_1));
@@ -2050,25 +2023,21 @@ fn test_create_note_twice_same_amount() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let index_1 = 0;
     let create_note_input_1 = user_1
-        .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, :amount, index: index_1,
-        );
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: index_1);
     let create_note_1_actions = user_1
         .internal_create_enc_note(create_note_input: create_note_input_1);
     let index_2 = index_1 + 1;
     test.privacy.execute_actions(actions: create_note_1_actions);
     let create_note_input_2 = user_1
-        .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, :amount, index: index_2,
-        );
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: index_2);
     let create_note_2_actions = user_1
         .internal_create_enc_note(create_note_input: create_note_input_2);
     let (note_id_1, expected_note_1) = user_1
@@ -2085,10 +2054,10 @@ fn test_create_note_twice_same_amount() {
 fn test_create_enc_note_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user.set_viewing_key_e2e();
     let create_note_input = user
-        .new_enc_note_with_generated_salt(recipient: user, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user, :token_addr, amount: 1, index: 0);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero = user;
@@ -2262,7 +2231,7 @@ fn test_create_enc_note_assertions() {
     let result = user.safe_create_enc_note_execute_view(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
+    user.open_subchannel_e2e(recipient: user, :token_addr, index: 0);
 
     // Catch INDEX_NOT_SEQUENTIAL.
     let result = user
@@ -2313,13 +2282,11 @@ fn test_create_enc_note_assertions() {
 fn test_create_open_note_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user.set_viewing_key_e2e();
     let depositor = test.mock_new_depositor();
     let create_note_input = user
-        .new_open_note_with_generated_random(
-            recipient: user, token: token_address, index: 0, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0, :depositor);
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero = user;
@@ -2451,7 +2418,7 @@ fn test_create_open_note_assertions() {
     let result = user.safe_create_open_note_execute_view(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
+    user.open_subchannel_e2e(recipient: user, :token_addr, index: 0);
 
     // Catch INDEX_NOT_SEQUENTIAL.
     let result = user
@@ -2488,16 +2455,16 @@ fn test_create_and_use_encrypted_note_zero_amount() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     // Create note with zero amount - this should succeed.
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 0, index: 0);
     let server_actions = user_1.create_enc_note(:create_note_input);
     let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     assert_ne!(note_id, Zero::zero());
@@ -2508,7 +2475,7 @@ fn test_create_and_use_encrypted_note_zero_amount() {
     assert_eq!(user_1.privacy.get_note(:note_id), expected_note);
     // Attempt to use note with zero amount - should fail with ZERO_NOTE_AMOUNT_USAGE.
     let use_note_input = UseNoteInput {
-        channel_key: user_1.compute_channel_key(recipient: user_2), token: token_address, index: 0,
+        channel_key: user_1.compute_channel_key(recipient: user_2), token: token_addr, index: 0,
     };
     let result = user_2.safe_use_note(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NOTE_AMOUNT_USAGE);
@@ -2521,15 +2488,15 @@ fn test_create_note_subchannel_not_found_wrong_addr() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Encrypted note.
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 1, index: 0);
     user_1.address = user_2.address;
     let result = user_1.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -2537,9 +2504,7 @@ fn test_create_note_subchannel_not_found_wrong_addr() {
     // Open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 0, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 0, :depositor);
     let result = user_1.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 }
@@ -2551,25 +2516,23 @@ fn test_create_note_subchannel_not_found_wrong_private_key() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_1.new_key();
 
     // Encrypted note.
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 1, index: 0);
     let result = user_1.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 0, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 0, :depositor);
     let result = user_1.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 }
@@ -2581,25 +2544,23 @@ fn test_create_note_subchannel_not_found_wrong_public_key() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_2.public_key = user_1.public_key;
 
     // Encrypted note.
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 1, index: 0);
     let result = user_1.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 0, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 0, :depositor);
     let result = user_1.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 }
@@ -2611,17 +2572,17 @@ fn test_create_note_subchannel_not_found_wrong_token() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
-    let wrong_token = test.mock_new_token();
+    let wrong_token_addr = test.mock_new_token();
 
     // Encrypted note.
     let mut create_note_input = user_1
         .new_enc_note_with_generated_salt(
-            recipient: user_2, token_address: wrong_token, amount: 1, index: 0,
+            recipient: user_2, token_addr: wrong_token_addr, amount: 1, index: 0,
         );
     let result = user_1.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -2630,7 +2591,7 @@ fn test_create_note_subchannel_not_found_wrong_token() {
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: wrong_token, index: 0, :depositor,
+            recipient: user_2, token_addr: wrong_token_addr, index: 0, :depositor,
         );
     let result = user_1.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -2643,15 +2604,15 @@ fn test_create_note_decrypt_amount() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, :index);
     let create_note_actions = user_1.internal_create_enc_note(:create_note_input);
     user_1.privacy.execute_actions(actions: create_note_actions);
 
@@ -2661,10 +2622,10 @@ fn test_create_note_decrypt_amount() {
     let (channel_key, _) = decrypt_channel_info(
         :enc_channel_info, recipient_private_key: user_2.private_key,
     );
-    let note_id = compute_note_id(:channel_key, token: token_address, index: index);
+    let note_id = compute_note_id(:channel_key, token: token_addr, index: index);
     let note = user_2.privacy.get_note(:note_id);
     let dec_note_amount = decode_note_amount(
-        packed_value: note.packed_value, :channel_key, token: token_address, :index,
+        packed_value: note.packed_value, :channel_key, token: token_addr, :index,
     );
     assert_eq!(dec_note_amount, amount);
 }
@@ -2676,17 +2637,15 @@ fn test_create_open_note_stores_correctly() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let index = 0;
     let depositor = test.mock_new_depositor();
     let note = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, :index, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, :index, :depositor);
     let create_note_actions = user_1.internal_create_open_note(create_note_input: note);
     user_1.privacy.execute_actions(actions: create_note_actions);
 
@@ -2703,14 +2662,14 @@ fn test_create_enc_note_stores_one_felt() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let index = 0;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 100, :index);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 100, :index);
     let create_note_actions = user_1.internal_create_enc_note(:create_note_input);
     user_1.privacy.execute_actions(actions: create_note_actions);
 
@@ -2728,20 +2687,18 @@ fn test_use_open_note_empty_note() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let index = 0;
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, :index, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, :index, :depositor);
     user_1.cheat_create_open_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     user_2.use_note(note: use_note_input);
 }
 
@@ -2767,13 +2724,13 @@ fn test_use_deposited_open_note(open_note_self: bool) {
     user_3.set_viewing_key_e2e();
 
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount = constants::DEFAULT_AMOUNT;
 
     // Setup channels: user_1 -> user_2, user_2 -> user_3.
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let outgoing_channel_index = if open_note_self {
         1
@@ -2782,14 +2739,14 @@ fn test_use_deposited_open_note(open_note_self: bool) {
     };
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_3, :token_address, :outgoing_channel_index, subchannel_index: 0,
+            recipient: user_3, :token_addr, :outgoing_channel_index, subchannel_index: 0,
         );
 
     // Create an open note for user_2 from user_1.
     let index = 0;
     let create_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, :index, depositor: depositor.address,
+            recipient: user_2, :token_addr, :index, depositor: depositor.address,
         );
     user_1.cheat_create_open_note_e2e(:create_note_input);
 
@@ -2806,16 +2763,14 @@ fn test_use_deposited_open_note(open_note_self: bool) {
 
     // Now user_2 uses the deposited open note to transfer to user_3.
     let channel_key_1_to_2 = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput {
-        channel_key: channel_key_1_to_2, token: token_address, index,
-    };
+    let use_note_input = UseNoteInput { channel_key: channel_key_1_to_2, token: token_addr, index };
     let create_enc_note = user_2
-        .new_enc_note_with_generated_salt(recipient: user_3, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, :amount, index: 0);
     let actions = user_2
         .transfer(notes_to_use: [use_note_input].span(), notes_to_create: [create_enc_note].span());
 
     // Verify the note and nullifier do not exist yet.
-    let expected_nullifier = user_2.compute_nullifier(sender: user_1, :token_address, :index);
+    let expected_nullifier = user_2.compute_nullifier(sender: user_1, :token_addr, :index);
     let (new_note_id, expected_note) = user_2.compute_enc_note(create_note_input: create_enc_note);
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(note_id: new_note_id), Zero::zero());
@@ -2841,20 +2796,20 @@ fn test_use_deposited_open_note_withdraw() {
     user_2.set_viewing_key_e2e();
 
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount = 100_u128;
 
     // Setup channel: user_1 -> user_2.
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Create an open note for user_2.
     let index = 0;
     let create_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, :index, depositor: depositor.address,
+            recipient: user_2, :token_addr, :index, depositor: depositor.address,
         );
     user_1.cheat_create_open_note_e2e(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
@@ -2877,7 +2832,7 @@ fn test_use_deposited_open_note_withdraw() {
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 
     // Verify nullifier was created.
-    let nullifier = user_2.compute_nullifier(sender: user_1, :token_address, :index);
+    let nullifier = user_2.compute_nullifier(sender: user_1, :token_addr, :index);
     assert!(test.privacy.nullifier_exists(:nullifier));
 }
 
@@ -2894,7 +2849,7 @@ fn test_use_multiple_deposited_open_notes() {
     user_3.set_viewing_key_e2e();
 
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount_1 = 100_u128;
     let amount_2 = 200_u128;
     let total_amount = amount_1 + amount_2;
@@ -2902,21 +2857,21 @@ fn test_use_multiple_deposited_open_notes() {
     // Setup channels: user_1 -> user_2, user_2 -> user_3.
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_3, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Create two open notes for user_2 at different indices.
     let create_note_input_1 = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 0, depositor: depositor.address,
+            recipient: user_2, :token_addr, index: 0, depositor: depositor.address,
         );
     let create_note_input_2 = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 1, depositor: depositor.address,
+            recipient: user_2, :token_addr, index: 1, depositor: depositor.address,
         );
     user_1.cheat_create_open_note_e2e(create_note_input: create_note_input_1);
     user_1.cheat_create_open_note_e2e(create_note_input: create_note_input_2);
@@ -2930,11 +2885,11 @@ fn test_use_multiple_deposited_open_notes() {
 
     // User_2 uses both notes in a single transfer to create one merged note for user_3.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_1 = UseNoteInput { channel_key, token: token_address, index: 0 };
-    let use_note_2 = UseNoteInput { channel_key, token: token_address, index: 1 };
+    let use_note_1 = UseNoteInput { channel_key, token: token_addr, index: 0 };
+    let use_note_2 = UseNoteInput { channel_key, token: token_addr, index: 1 };
     let create_enc_note = user_2
         .new_enc_note_with_generated_salt(
-            recipient: user_3, :token_address, amount: total_amount, index: 0,
+            recipient: user_3, :token_addr, amount: total_amount, index: 0,
         );
 
     let actions = user_2
@@ -2945,8 +2900,8 @@ fn test_use_multiple_deposited_open_notes() {
     test.privacy.execute_actions(:actions);
 
     // Verify both nullifiers were created.
-    let nullifier_1 = user_2.compute_nullifier(sender: user_1, :token_address, index: 0);
-    let nullifier_2 = user_2.compute_nullifier(sender: user_1, :token_address, index: 1);
+    let nullifier_1 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 0);
+    let nullifier_2 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 1);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_2));
 
@@ -2968,7 +2923,7 @@ fn test_use_mixed_open_and_enc_notes() {
     user_3.set_viewing_key_e2e();
 
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let enc_amount = 50_u128;
     let open_amount = 75_u128;
     let total_amount = enc_amount + open_amount;
@@ -2976,24 +2931,24 @@ fn test_use_mixed_open_and_enc_notes() {
     // Setup channels.
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_3, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Create an encrypted note at index 0 for user_2.
     let enc_note_input = user_1
         .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, amount: enc_amount, index: 0,
+            recipient: user_2, :token_addr, amount: enc_amount, index: 0,
         );
     user_1.cheat_create_enc_note_e2e(create_note_input: enc_note_input);
 
     // Create an open note at index 1 for user_2.
     let open_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 1, depositor: depositor.address,
+            recipient: user_2, :token_addr, index: 1, depositor: depositor.address,
         );
     user_1.cheat_create_open_note_e2e(create_note_input: open_note_input);
     let (open_note_id, _) = user_1.compute_open_note(create_note_input: open_note_input);
@@ -3003,11 +2958,11 @@ fn test_use_mixed_open_and_enc_notes() {
 
     // User_2 uses both notes (one encrypted, one open) in a transfer to user_3.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_enc_note = UseNoteInput { channel_key, token: token_address, index: 0 };
-    let use_open_note = UseNoteInput { channel_key, token: token_address, index: 1 };
+    let use_enc_note = UseNoteInput { channel_key, token: token_addr, index: 0 };
+    let use_open_note = UseNoteInput { channel_key, token: token_addr, index: 1 };
     let create_output_note = user_2
         .new_enc_note_with_generated_salt(
-            recipient: user_3, :token_address, amount: total_amount, index: 0,
+            recipient: user_3, :token_addr, amount: total_amount, index: 0,
         );
 
     let actions = user_2
@@ -3018,8 +2973,8 @@ fn test_use_mixed_open_and_enc_notes() {
     test.privacy.execute_actions(:actions);
 
     // Verify both nullifiers created.
-    let nullifier_enc = user_2.compute_nullifier(sender: user_1, :token_address, index: 0);
-    let nullifier_open = user_2.compute_nullifier(sender: user_1, :token_address, index: 1);
+    let nullifier_enc = user_2.compute_nullifier(sender: user_1, :token_addr, index: 0);
+    let nullifier_open = user_2.compute_nullifier(sender: user_1, :token_addr, index: 1);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_enc));
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_open));
 
@@ -3042,23 +2997,23 @@ fn test_use_deposited_open_note_double_spend() {
     user_3.set_viewing_key_e2e();
 
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount = 100_u128;
 
     // Setup channels.
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_3, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Create and fund an open note.
     let create_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 0, depositor: depositor.address,
+            recipient: user_2, :token_addr, index: 0, depositor: depositor.address,
         );
     user_1.cheat_create_open_note_e2e(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
@@ -3068,20 +3023,20 @@ fn test_use_deposited_open_note_double_spend() {
 
     // First spend: user_2 uses the note successfully.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index: 0 };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index: 0 };
     let create_note_1 = user_2
-        .new_enc_note_with_generated_salt(recipient: user_3, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, :amount, index: 0);
     let actions = user_2
         .transfer(notes_to_use: [use_note_input].span(), notes_to_create: [create_note_1].span());
     test.privacy.execute_actions(:actions);
 
     // Verify nullifier was created.
-    let nullifier = user_2.compute_nullifier(sender: user_1, :token_address, index: 0);
+    let nullifier = user_2.compute_nullifier(sender: user_1, :token_addr, index: 0);
     assert!(test.privacy.nullifier_exists(:nullifier));
 
     // Second spend attempt: should fail with NON_ZERO_VALUE (nullifier already exists).
     let create_note_2 = user_2
-        .new_enc_note_with_generated_salt(recipient: user_3, :token_address, :amount, index: 1);
+        .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, :amount, index: 1);
     let result = user_2
         .safe_transfer(
             notes_to_use: [use_note_input].span(), notes_to_create: [create_note_2].span(),
@@ -3094,15 +3049,15 @@ fn test_use_deposited_open_note_double_spend() {
 fn test_deposit_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let amount = 100;
 
     // Catch ZERO_TOKEN.
-    let result = user.safe_deposit(token_address: Zero::zero(), :amount);
+    let result = user.safe_deposit(token_addr: Zero::zero(), :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT.
-    let result = user.safe_deposit(:token_address, amount: Zero::zero());
+    let result = user.safe_deposit(:token_addr, amount: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 }
 
@@ -3113,20 +3068,20 @@ fn test_use_note() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, :index);
     user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let actions = user_2.internal_use_note(note: use_note_input);
-    let nullifier = user_2.compute_nullifier(sender: user_1, :token_address, :index);
+    let nullifier = user_2.compute_nullifier(sender: user_1, :token_addr, :index);
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
@@ -3142,20 +3097,20 @@ fn test_use_note_self_note() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user
         .open_channel_with_token_e2e(
-            recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user
-        .new_enc_note_with_generated_salt(recipient: user, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user, :token_addr, :amount, :index);
     user.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user.compute_channel_key(recipient: user);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let actions = user.internal_use_note(note: use_note_input);
-    let nullifier = user.compute_nullifier(sender: user, :token_address, :index);
+    let nullifier = user.compute_nullifier(sender: user, :token_addr, :index);
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
@@ -3173,43 +3128,43 @@ fn test_use_note_multiple_notes() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount_1 = 1;
     let amount_2 = 2;
     let create_note_input_1 = user_1
         .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, amount: amount_1, index: 0,
+            recipient: user_2, :token_addr, amount: amount_1, index: 0,
         );
     let create_note_input_2 = user_1
         .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, amount: amount_2, index: 1,
+            recipient: user_2, :token_addr, amount: amount_2, index: 1,
         );
     let create_note_input_3 = user_2
         .new_enc_note_with_generated_salt(
-            recipient: user_2, :token_address, amount: amount_1, index: 0,
+            recipient: user_2, :token_addr, amount: amount_1, index: 0,
         );
     user_1.cheat_create_enc_note_e2e(create_note_input: create_note_input_1);
     user_1.cheat_create_enc_note_e2e(create_note_input: create_note_input_2);
     user_2.cheat_create_enc_note_e2e(create_note_input: create_note_input_3);
     let channel_key_1 = user_1.compute_channel_key(recipient: user_2);
     let channel_key_2 = user_2.compute_channel_key(recipient: user_2);
-    let note_1_path = UseNoteInput { channel_key: channel_key_1, token: token_address, index: 0 };
-    let note_2_path = UseNoteInput { channel_key: channel_key_1, token: token_address, index: 1 };
-    let note_3_path = UseNoteInput { channel_key: channel_key_2, token: token_address, index: 0 };
+    let note_1_path = UseNoteInput { channel_key: channel_key_1, token: token_addr, index: 0 };
+    let note_2_path = UseNoteInput { channel_key: channel_key_1, token: token_addr, index: 1 };
+    let note_3_path = UseNoteInput { channel_key: channel_key_2, token: token_addr, index: 0 };
     let actions_1 = user_2.internal_use_note(note: note_1_path);
     let actions_2 = user_2.internal_use_note(note: note_2_path);
     let actions_3 = user_2.internal_use_note(note: note_3_path);
-    let expected_nullifier_1 = user_2.compute_nullifier(sender: user_1, :token_address, index: 0);
-    let expected_nullifier_2 = user_2.compute_nullifier(sender: user_1, :token_address, index: 1);
-    let expected_nullifier_3 = user_2.compute_nullifier(sender: user_2, :token_address, index: 0);
+    let expected_nullifier_1 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 0);
+    let expected_nullifier_2 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 1);
+    let expected_nullifier_3 = user_2.compute_nullifier(sender: user_2, :token_addr, index: 0);
     let nullifier_storage_path_1 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
     );
@@ -3244,18 +3199,18 @@ fn test_use_same_note_twice() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, :index);
     user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let use_note_action = ClientAction::UseNote(use_note_input);
     let client_actions = [use_note_action, use_note_action].span();
     // Should panic on the second use.
@@ -3269,25 +3224,25 @@ fn test_use_note_same_amount() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let create_note_input_1 = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: 0);
     let create_note_input_2 = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 1);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: 1);
     user_1.cheat_create_enc_note_e2e(create_note_input: create_note_input_1);
     user_1.cheat_create_enc_note_e2e(create_note_input: create_note_input_2);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input_1 = UseNoteInput { channel_key, token: token_address, index: 0 };
-    let use_note_input_2 = UseNoteInput { channel_key, token: token_address, index: 1 };
+    let use_note_input_1 = UseNoteInput { channel_key, token: token_addr, index: 0 };
+    let use_note_input_2 = UseNoteInput { channel_key, token: token_addr, index: 1 };
     let actions_1 = user_2.internal_use_note(note: use_note_input_1);
     let actions_2 = user_2.internal_use_note(note: use_note_input_2);
-    let expected_nullifier_1 = user_2.compute_nullifier(sender: user_1, :token_address, index: 0);
-    let expected_nullifier_2 = user_2.compute_nullifier(sender: user_1, :token_address, index: 1);
+    let expected_nullifier_1 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 0);
+    let expected_nullifier_2 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 1);
     let nullifier_storage_path_1 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_1].span(),
     );
@@ -3311,18 +3266,18 @@ fn test_use_note_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     user.set_viewing_key_e2e();
     user
         .open_channel_with_token_e2e(
-            recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let create_note_input = user
-        .new_enc_note_with_generated_salt(recipient: user, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user, :token_addr, amount: 1, index: 0);
     user.cheat_create_enc_note_e2e(:create_note_input);
 
     let channel_key = user.compute_channel_key(recipient: user);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index: 0 };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index: 0 };
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero = user;
@@ -3399,18 +3354,18 @@ fn test_use_note_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     // Catch SUBCHANNEL_NOT_FOUND (wrong token).
-    let wrong_token_address = test.mock_new_token();
+    let wrong_token_addr = test.mock_new_token();
     let result = user
-        .safe_use_note(note: UseNoteInput { token: wrong_token_address, ..use_note_input });
+        .safe_use_note(note: UseNoteInput { token: wrong_token_addr, ..use_note_input });
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
     let result = user
         .safe_use_note_execute_and_panic(
-            note: UseNoteInput { token: wrong_token_address, ..use_note_input },
+            note: UseNoteInput { token: wrong_token_addr, ..use_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
     let result = user
         .safe_use_note_execute_view(
-            note: UseNoteInput { token: wrong_token_address, ..use_note_input },
+            note: UseNoteInput { token: wrong_token_addr, ..use_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
@@ -3430,7 +3385,7 @@ fn test_use_note_assertions() {
             CreateEncNoteInput {
                 recipient_addr: user.address,
                 recipient_public_key: user.public_key,
-                token: token_address,
+                token: token_addr,
                 amount: create_note_input.amount,
                 index: create_note_input.index + 1,
                 salt: create_note_input.salt + 1,
@@ -3456,17 +3411,17 @@ fn test_use_note_wrong_owner_addr() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_2.open_channel_e2e(recipient: user_1, index: 0);
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 1, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 1, index: 0);
     user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index: 0 };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index: 0 };
     user_2.address = user_1.address;
     user_2.use_note(note: use_note_input);
 }
@@ -3479,19 +3434,19 @@ fn test_use_note_wrong_owner_private_key() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, :index);
     user_1.cheat_create_enc_note_e2e(:create_note_input);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     user_2.new_key();
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     user_2.use_note(note: use_note_input);
 }
 
@@ -3502,15 +3457,15 @@ fn test_use_note_find_nullifier() {
     let mut user_2 = test.new_user();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, :index);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, :index);
     user_1.cheat_create_enc_note_e2e(:create_note_input);
 
     // User 2 should be able to find the nullifier.
@@ -3519,12 +3474,12 @@ fn test_use_note_find_nullifier() {
         :enc_channel_info, recipient_private_key: user_2.private_key,
     );
     let expected_nullifier = compute_nullifier(
-        :channel_key, token: token_address, :index, owner_private_key: user_2.private_key,
+        :channel_key, token: token_addr, :index, owner_private_key: user_2.private_key,
     );
     assert!(!user_2.privacy.nullifier_exists(nullifier: expected_nullifier));
 
     // User 2 uses the note.
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let actions = user_2.internal_use_note(note: use_note_input);
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
@@ -3542,7 +3497,7 @@ fn test_use_note_find_nullifier() {
 #[test]
 fn test_withdraw_different_targets() {
     let mut test = Default::default();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let amount = 100;
 
     // Setup users.
@@ -3553,22 +3508,22 @@ fn test_withdraw_different_targets() {
     user_2.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_1, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Withdraw note to self.
     let (random, actions) = user_1
         .internal_withdraw_with_generated_random(
-            withdrawal_target: user_1.address, :token_address, :amount,
+            withdrawal_target: user_1.address, :token_addr, :amount,
         );
     let enc_user_addr = user_1.compute_enc_user_addr(:random);
     let expected_actions = [
         ServerAction::TransferTo(
-            TransferToInput { recipient_addr: user_1.address, token: token_address, amount },
+            TransferToInput { recipient_addr: user_1.address, token: token_addr, amount },
         ),
         ServerAction::EmitWithdrawal(
             events::Withdrawal {
-                enc_user_addr, withdrawal_target: user_1.address, token: token_address, amount,
+                enc_user_addr, withdrawal_target: user_1.address, token: token_addr, amount,
             },
         ),
     ]
@@ -3578,16 +3533,16 @@ fn test_withdraw_different_targets() {
     // Withdraw note to other registered user.
     let (random, actions) = user_1
         .internal_withdraw_with_generated_random(
-            withdrawal_target: user_2.address, :token_address, :amount,
+            withdrawal_target: user_2.address, :token_addr, :amount,
         );
     let enc_user_addr = user_1.compute_enc_user_addr(:random);
     let expected_actions = [
         ServerAction::TransferTo(
-            TransferToInput { recipient_addr: user_2.address, token: token_address, amount },
+            TransferToInput { recipient_addr: user_2.address, token: token_addr, amount },
         ),
         ServerAction::EmitWithdrawal(
             events::Withdrawal {
-                enc_user_addr, withdrawal_target: user_2.address, token: token_address, amount,
+                enc_user_addr, withdrawal_target: user_2.address, token: token_addr, amount,
             },
         ),
     ]
@@ -3597,16 +3552,16 @@ fn test_withdraw_different_targets() {
     // Withdraw note to not registered user.
     let (random, actions) = user_1
         .internal_withdraw_with_generated_random(
-            withdrawal_target: user_3.address, :token_address, :amount,
+            withdrawal_target: user_3.address, :token_addr, :amount,
         );
     let enc_user_addr = user_1.compute_enc_user_addr(:random);
     let expected_actions = [
         ServerAction::TransferTo(
-            TransferToInput { recipient_addr: user_3.address, token: token_address, amount },
+            TransferToInput { recipient_addr: user_3.address, token: token_addr, amount },
         ),
         ServerAction::EmitWithdrawal(
             events::Withdrawal {
-                enc_user_addr, withdrawal_target: user_3.address, token: token_address, amount,
+                enc_user_addr, withdrawal_target: user_3.address, token: token_addr, amount,
             },
         ),
     ]
@@ -3619,39 +3574,39 @@ fn test_withdraw_assertions() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let amount = 100;
     let random = user_1.get_random().into();
 
     // Catch ZERO_WITHDRAWAL_TARGET.
     let result = user_1
-        .safe_withdraw(withdrawal_target: Zero::zero(), :token_address, :amount, :random);
+        .safe_withdraw(withdrawal_target: Zero::zero(), :token_addr, :amount, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_WITHDRAWAL_TARGET);
 
     // Catch ZERO_TOKEN.
     let result = user_1
         .safe_withdraw(
-            withdrawal_target: user_2.address, token_address: Zero::zero(), :amount, :random,
+            withdrawal_target: user_2.address, token_addr: Zero::zero(), :amount, :random,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT.
     let result = user_1
         .safe_withdraw(
-            withdrawal_target: user_2.address, :token_address, amount: Zero::zero(), :random,
+            withdrawal_target: user_2.address, :token_addr, amount: Zero::zero(), :random,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch ZERO_RANDOM.
     let result = user_1
         .safe_withdraw(
-            withdrawal_target: user_2.address, :token_address, :amount, random: Zero::zero(),
+            withdrawal_target: user_2.address, :token_addr, :amount, random: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE.
     let result = user_1
-        .safe_withdraw(withdrawal_target: user_2.address, :token_address, :amount, :random);
+        .safe_withdraw(withdrawal_target: user_2.address, :token_addr, :amount, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 }
 
@@ -3662,10 +3617,10 @@ fn test_withdraw_decrypt_user_addr() {
     // Setup.
     user_1.set_viewing_key_e2e();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_1, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     // Initialize: deposit + create note.
     let amount = 100;
@@ -3699,17 +3654,15 @@ fn test_create_open_note_decrypt_recipient_addr() {
     // Setup.
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     // Create an open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 0, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 0, :depositor);
     let mut spy_events = spy_events();
     user_1.cheat_create_open_note_e2e(:create_note_input);
 
@@ -3892,7 +3845,7 @@ fn test_client_execute_open_subchannel() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
@@ -3906,7 +3859,7 @@ fn test_client_execute_open_subchannel() {
                 recipient_public_key: user_2.public_key,
                 channel_key,
                 index: 0,
-                token: token_address,
+                token: token_addr,
                 salt,
             },
         ),
@@ -3914,10 +3867,10 @@ fn test_client_execute_open_subchannel() {
         .span();
     let actions = user_1.client_execute(:client_actions);
     let expected_subchannel_marker = user_1
-        .compute_subchannel_marker(recipient: user_2, :token_address);
+        .compute_subchannel_marker(recipient: user_2, :token_addr);
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :salt);
+        .compute_enc_subchannel_info(recipient: user_2, :token_addr, index: 0, :salt);
     let subchannel_exists_storage_path_felt = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [expected_subchannel_marker].span(),
     );
@@ -3957,31 +3910,29 @@ fn test_client_execute_deposit_create_note() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
 
     let amount = 100;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
-    user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_2, :token_addr, index: 0);
     user_1.increase_token_balance(:token, :amount);
     user_1.approve(:token, amount: amount.into());
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
     let actions = user_1.client_execute(:client_actions);
     let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
-    let expected_event = events::Deposit {
-        user_addr: user_1.address, token: token_address, amount,
-    };
+    let expected_event = events::Deposit { user_addr: user_1.address, token: token_addr, amount };
     let expected_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput {
-                sender_addr: user_1.address, token: token_address, amount: amount.into(),
+                sender_addr: user_1.address, token: token_addr, amount: amount.into(),
             },
         ),
         ServerAction::EmitDeposit(expected_event),
@@ -4008,25 +3959,25 @@ fn test_client_execute_use_note_create_note() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
-    user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_2, :token_addr, index: 0);
 
     let amount = 100;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: 0);
     user_1.cheat_create_enc_note_e2e(:create_note_input);
     let use_note_input = UseNoteInput {
         channel_key: user_1.compute_channel_key(recipient: user_2),
-        token: token_address,
+        token: token_addr,
         index: create_note_input.index,
     };
     let create_note_input_2 = user_2
-        .new_enc_note_with_generated_salt(recipient: user_1, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_addr, :amount, index: 0);
     user_2.open_channel_e2e(recipient: user_1, index: 0);
-    user_2.open_subchannel_e2e(recipient: user_1, :token_address, index: 0);
+    user_2.open_subchannel_e2e(recipient: user_1, :token_addr, index: 0);
     let client_actions = [
         ClientAction::UseNote(use_note_input), ClientAction::CreateEncNote(create_note_input_2),
     ]
@@ -4034,7 +3985,7 @@ fn test_client_execute_use_note_create_note() {
     let actions = user_2.client_execute(:client_actions);
     let (note_id, expected_note) = user_2.compute_enc_note(create_note_input: create_note_input_2);
     let nullifier = user_2
-        .compute_nullifier(sender: user_1, :token_address, index: create_note_input.index);
+        .compute_nullifier(sender: user_1, :token_addr, index: create_note_input.index);
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
@@ -4062,46 +4013,44 @@ fn test_client_execute_use_note_withdraw() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
-    user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_2, :token_addr, index: 0);
     let amount = 100;
     let create_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: 0);
     user_1.cheat_create_enc_note_e2e(:create_note_input);
     test.privacy.increase_token_balance(:token, :amount);
 
     let use_note_input = UseNoteInput {
         channel_key: user_1.compute_channel_key(recipient: user_2),
-        token: token_address,
+        token: token_addr,
         index: create_note_input.index,
     };
     let random = user_2.get_random().into();
     let client_actions = [
         ClientAction::UseNote(use_note_input),
         ClientAction::Withdraw(
-            WithdrawInput {
-                withdrawal_target: user_1.address, token: token_address, amount, random,
-            },
+            WithdrawInput { withdrawal_target: user_1.address, token: token_addr, amount, random },
         ),
     ]
         .span();
     let actions = user_2.client_execute(:client_actions);
     let nullifier = user_2
-        .compute_nullifier(sender: user_1, :token_address, index: create_note_input.index);
+        .compute_nullifier(sender: user_1, :token_addr, index: create_note_input.index);
     let nullifier_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     let enc_user_addr = user_2.compute_enc_user_addr(:random);
     let expected_event = events::Withdrawal {
-        enc_user_addr, withdrawal_target: user_1.address, token: token_address, amount,
+        enc_user_addr, withdrawal_target: user_1.address, token: token_addr, amount,
     };
     let expected_actions = array![
         to_write_once_action(storage_address: nullifier_path, value: true),
         ServerAction::TransferTo(
-            TransferToInput { recipient_addr: user_1.address, token: token_address, amount },
+            TransferToInput { recipient_addr: user_1.address, token: token_addr, amount },
         ),
         ServerAction::EmitWithdrawal(expected_event),
     ]
@@ -4128,7 +4077,7 @@ fn test_internal_actions() {
     let mut user_2 = test.new_user();
     let depositor = test.new_user();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     user_2.set_viewing_key_e2e();
 
     // Set viewing key action.
@@ -4197,8 +4146,8 @@ fn test_internal_actions() {
 
     // Open subchannel action.
     let (salt_subchannel, actions) = user_1
-        .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_address, index: 0);
-    let subchannel_marker = user_1.compute_subchannel_marker(recipient: user_2, :token_address);
+        .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_addr, index: 0);
+    let subchannel_marker = user_1.compute_subchannel_marker(recipient: user_2, :token_addr);
     let subchannel_exists_storage_path = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [subchannel_marker].span(),
     );
@@ -4208,7 +4157,7 @@ fn test_internal_actions() {
     );
     let expected_enc_subchannel_info = user_1
         .compute_enc_subchannel_info(
-            recipient: user_2, :token_address, index: 0, salt: salt_subchannel,
+            recipient: user_2, :token_addr, index: 0, salt: salt_subchannel,
         );
     let expected_actions = [
         to_write_once_action(
@@ -4224,27 +4173,25 @@ fn test_internal_actions() {
     let index = 0;
     let subchannel_index = 0;
     let create_enc_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, :index);
-    user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: subchannel_index);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, :index);
+    user_1.open_subchannel_e2e(recipient: user_2, :token_addr, index: subchannel_index);
     let actions = user_1.internal_create_enc_note(create_note_input: create_enc_note_input);
     assert_eq!(actions, create_enc_note_input.into_server_actions(user: user_1));
 
     // Create open note action.
     let mut create_open_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, :index, depositor: depositor.address,
+            recipient: user_2, :token_addr, :index, depositor: depositor.address,
         );
     let actions = user_1.internal_create_open_note(create_note_input: create_open_note_input);
     assert_eq!(actions, create_open_note_input.into_server_actions(user: user_1));
 
     // Deposit action.
-    let actions = user_1.internal_deposit(:token_address, :amount);
-    let expected_event = events::Deposit {
-        user_addr: user_1.address, token: token_address, amount,
-    };
+    let actions = user_1.internal_deposit(:token_addr, :amount);
+    let expected_event = events::Deposit { user_addr: user_1.address, token: token_addr, amount };
     let expected_actions = [
         ServerAction::TransferFrom(
-            TransferFromInput { sender_addr: user_1.address, token: token_address, amount: amount },
+            TransferFromInput { sender_addr: user_1.address, token: token_addr, amount: amount },
         ),
         ServerAction::EmitDeposit(expected_event),
     ]
@@ -4253,9 +4200,9 @@ fn test_internal_actions() {
 
     // Use (enc) note action.
     user_1.cheat_create_enc_note_e2e(create_note_input: create_enc_note_input);
-    let nullifier = user_2.compute_nullifier(sender: user_1, :token_address, :index);
+    let nullifier = user_2.compute_nullifier(sender: user_1, :token_addr, :index);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let actions = user_2.internal_use_note(note: use_note_input);
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
@@ -4272,8 +4219,8 @@ fn test_internal_actions() {
     user_1.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
     let (note_id, _) = user_1.compute_open_note(create_note_input: create_open_note_input);
     depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
-    let nullifier = user_2.compute_nullifier(sender: user_1, :token_address, :index);
-    let use_open_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let nullifier = user_2.compute_nullifier(sender: user_1, :token_addr, :index);
+    let use_open_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let actions = user_2.internal_use_note(note: use_open_note_input);
     let storage_path_felt_open_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
@@ -4287,17 +4234,15 @@ fn test_internal_actions() {
     // Withdraw action.
     let (random, actions) = user_2
         .internal_withdraw_with_generated_random(
-            withdrawal_target: user_1.address, :token_address, :amount,
+            withdrawal_target: user_1.address, :token_addr, :amount,
         );
     let enc_user_addr = user_2.compute_enc_user_addr(:random);
     let expected_event = events::Withdrawal {
-        enc_user_addr, withdrawal_target: user_1.address, token: token_address, amount,
+        enc_user_addr, withdrawal_target: user_1.address, token: token_addr, amount,
     };
     let expected_actions = [
         ServerAction::TransferTo(
-            TransferToInput {
-                recipient_addr: user_1.address, token: token_address, amount: amount,
-            },
+            TransferToInput { recipient_addr: user_1.address, token: token_addr, amount: amount },
         ),
         ServerAction::EmitWithdrawal(expected_event),
     ]
@@ -4307,13 +4252,13 @@ fn test_internal_actions() {
     // Swap action.
     // Setup: create out_token, channel, and subchannel for it.
     let out_token = test.new_token();
-    let out_token_address = out_token.contract_address();
+    let out_token_addr = out_token.contract_address();
     let swap_amount: u128 = 50;
     // user_1 opens channel to self with subchannel for out_token (for swap output).
     user_1
         .open_channel_with_token_e2e(
             recipient: user_1,
-            token_address: out_token_address,
+            token_addr: out_token_addr,
             outgoing_channel_index: 1,
             subchannel_index: 0,
         );
@@ -4321,9 +4266,7 @@ fn test_internal_actions() {
     let swap_executor = test.swap_executor.address;
     let swap_contract = test.mock_amm;
     let swap_selector = selector!("swap");
-    let swap_calldata = array![
-        token_address.into(), out_token_address.into(), swap_amount.into(), 0,
-    ];
+    let swap_calldata = array![token_addr.into(), out_token_addr.into(), swap_amount.into(), 0];
     let channel_key_swap = user_1.compute_channel_key(recipient: user_1);
     let index: usize = 0;
     let swap_random = user_1.get_random();
@@ -4333,8 +4276,8 @@ fn test_internal_actions() {
         swap_contract,
         swap_selector,
         swap_calldata: swap_calldata.span(),
-        in_token: token_address,
-        out_token: out_token_address,
+        in_token: token_addr,
+        out_token: out_token_addr,
         in_amount: swap_amount,
         channel_key: channel_key_swap,
         index,
@@ -4347,16 +4290,16 @@ fn test_internal_actions() {
     let expected_withdrawal_event = events::Withdrawal {
         enc_user_addr: enc_user_addr_swap,
         withdrawal_target: swap_executor,
-        token: token_address,
+        token: token_addr,
         amount: swap_amount,
     };
     let expected_note_id = compute_note_id(
-        channel_key: channel_key_swap, token: out_token_address, :index,
+        channel_key: channel_key_swap, token: out_token_addr, :index,
     );
     let expected_actions = [
         ServerAction::TransferTo(
             TransferToInput {
-                recipient_addr: swap_executor, token: token_address, amount: swap_amount,
+                recipient_addr: swap_executor, token: token_addr, amount: swap_amount,
             },
         ),
         ServerAction::EmitWithdrawal(expected_withdrawal_event),
@@ -4366,8 +4309,8 @@ fn test_internal_actions() {
                 swap_contract,
                 swap_selector,
                 swap_calldata: swap_calldata.span(),
-                in_token: token_address,
-                out_token: out_token_address,
+                in_token: token_addr,
+                out_token: out_token_addr,
                 in_amount: swap_amount,
                 note_id: expected_note_id,
             },
@@ -4466,11 +4409,11 @@ fn test_client_execute_and_panic_assertions() {
 
     // Catch ACTIONS_OUT_OF_ORDER. (just one sanity example, the other cases are tested in
     // test_actions_out_of_order).
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let amount = 100;
     let random = user.get_random();
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
@@ -4488,13 +4431,13 @@ fn test_actions_out_of_order() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let amount = 100;
     user.set_viewing_key_e2e();
     let create_note_input_1 = user
-        .new_enc_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user, :token_addr, :amount, index: 0);
     let note_1_path = UseNoteInput {
-        channel_key: user.compute_channel_key(recipient: user), token: token_address, index: 0,
+        channel_key: user.compute_channel_key(recipient: user), token: token_addr, index: 0,
     };
     let create_note_input_2 = CreateEncNoteInput { index: 1, ..create_note_input_1 };
 
@@ -4541,7 +4484,7 @@ fn test_actions_out_of_order() {
                 recipient_public_key: user.public_key,
                 channel_key,
                 index: 0,
-                token: token_address,
+                token: token_addr,
                 salt,
             },
         ),
@@ -4561,7 +4504,7 @@ fn test_actions_out_of_order() {
                 recipient_public_key: user.public_key,
                 channel_key,
                 index: 0,
-                token: token_address,
+                token: token_addr,
                 salt,
             },
         ),
@@ -4583,7 +4526,7 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> set viewing key).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
@@ -4594,7 +4537,7 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> open channel).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::OpenChannel(
             OpenChannelInput {
                 recipient_addr: user.address,
@@ -4613,14 +4556,14 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> open subchannel).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::OpenSubchannel(
             OpenSubchannelInput {
                 recipient_addr: user.address,
                 recipient_public_key: user.public_key,
                 channel_key,
                 index: 0,
-                token: token_address,
+                token: token_addr,
                 salt,
             },
         ),
@@ -4632,7 +4575,7 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> set viewing key).
-    user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
+    user.open_subchannel_e2e(recipient: user, :token_addr, index: 0);
     user.cheat_create_enc_note_e2e(create_note_input: create_note_input_1);
     let client_actions = [
         ClientAction::UseNote(note_1_path),
@@ -4672,7 +4615,7 @@ fn test_actions_out_of_order() {
                 recipient_public_key: user.public_key,
                 channel_key,
                 index: 0,
-                token: token_address,
+                token: token_addr,
                 salt,
             },
         ),
@@ -4686,7 +4629,7 @@ fn test_actions_out_of_order() {
     // Catch ACTIONS_OUT_OF_ORDER (use note -> deposit).
     let client_actions = [
         ClientAction::UseNote(note_1_path),
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
     ]
         .span();
     let result = user.safe_client_execute(:client_actions);
@@ -4696,7 +4639,7 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> set viewing key).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::CreateEncNote(create_note_input_2),
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
@@ -4708,7 +4651,7 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> open channel).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::CreateEncNote(create_note_input_2),
         ClientAction::OpenChannel(
             OpenChannelInput {
@@ -4728,7 +4671,7 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> open subchannel).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::CreateEncNote(create_note_input_2),
         ClientAction::OpenSubchannel(
             OpenSubchannelInput {
@@ -4736,7 +4679,7 @@ fn test_actions_out_of_order() {
                 recipient_public_key: user.public_key,
                 channel_key,
                 index: 0,
-                token: token_address,
+                token: token_addr,
                 salt,
             },
         ),
@@ -4749,9 +4692,9 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> deposit).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::CreateEncNote(create_note_input_2),
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
     ]
         .span();
     let result = user.safe_client_execute(:client_actions);
@@ -4761,7 +4704,7 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> use note).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::CreateEncNote(create_note_input_2), ClientAction::UseNote(note_1_path),
     ]
         .span();
@@ -4773,7 +4716,7 @@ fn test_actions_out_of_order() {
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> set viewing key).
     let open_note = user
         .new_open_note_with_generated_random(
-            recipient: user, token: token_address, index: 1, depositor: test.mock_new_depositor(),
+            recipient: user, :token_addr, index: 1, depositor: test.mock_new_depositor(),
         );
     let client_actions = [
         ClientAction::CreateOpenNote(open_note),
@@ -4813,7 +4756,7 @@ fn test_actions_out_of_order() {
                 recipient_public_key: user.public_key,
                 channel_key,
                 index: 0,
-                token: token_address,
+                token: token_addr,
                 salt,
             },
         ),
@@ -4827,7 +4770,7 @@ fn test_actions_out_of_order() {
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> deposit).
     let client_actions = [
         ClientAction::CreateOpenNote(open_note),
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
     ]
         .span();
     let result = user.safe_client_execute(:client_actions);
@@ -4847,9 +4790,9 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> set viewing key).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
         ),
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
@@ -4861,9 +4804,9 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open channel).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
         ),
         ClientAction::OpenChannel(
             OpenChannelInput {
@@ -4883,9 +4826,9 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open subchannel).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
         ),
         ClientAction::OpenSubchannel(
             OpenSubchannelInput {
@@ -4893,7 +4836,7 @@ fn test_actions_out_of_order() {
                 recipient_public_key: user.public_key,
                 channel_key,
                 index: 0,
-                token: token_address,
+                token: token_addr,
                 salt,
             },
         ),
@@ -4906,11 +4849,11 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> deposit).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
         ),
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
     ]
         .span();
     let result = user.safe_client_execute(:client_actions);
@@ -4920,9 +4863,9 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> use note).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
         ),
         ClientAction::UseNote(note_1_path),
     ]
@@ -4934,9 +4877,9 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create enc note).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
         ),
         ClientAction::CreateEncNote(create_note_input_2),
     ]
@@ -4948,9 +4891,9 @@ fn test_actions_out_of_order() {
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create open note).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
         ),
         ClientAction::CreateOpenNote(open_note),
     ]
@@ -4966,24 +4909,24 @@ fn test_execute_and_panic_balance_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let amount = 100;
     user.set_viewing_key_e2e();
     user
         .open_channel_with_token_e2e(
-            recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let create_note_input = user
-        .new_enc_note_with_generated_salt(recipient: user, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user, :token_addr, :amount, index: 0);
     user.cheat_create_enc_note_e2e(:create_note_input);
     let use_note_input = UseNoteInput {
-        channel_key: user.compute_channel_key(recipient: user), token: token_address, index: 0,
+        channel_key: user.compute_channel_key(recipient: user), token: token_addr, index: 0,
     };
     let create_note_input = CreateEncNoteInput { index: 1, ..create_note_input };
 
     // Catch FINAL_BALANCE_MUST_BE_ZERO (deposit).
     let client_actions = [
-        ClientAction::Deposit(DepositInput { token: token_address, amount: 2 * amount }),
+        ClientAction::Deposit(DepositInput { token: token_addr, amount: 2 * amount }),
         ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
@@ -5007,7 +4950,7 @@ fn test_execute_and_panic_balance_assertions() {
     let random = user.get_random();
     let client_actions = [
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_address, amount, random },
+            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
         )
     ]
         .span();
@@ -5034,7 +4977,7 @@ fn test_client_execute_writes() {
     let mut user = test.new_user();
     let depositor = test.mock_new_depositor();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount = 100;
     let random = user.get_random();
     let salt = user.get_salt();
@@ -5056,13 +4999,13 @@ fn test_client_execute_writes() {
             recipient_public_key,
             channel_key,
             index,
-            token: token_address,
+            token: token_addr,
             salt: salt.into(),
         },
     );
-    let deposit = ClientAction::Deposit(DepositInput { token: token_address, amount });
+    let deposit = ClientAction::Deposit(DepositInput { token: token_addr, amount });
     let create_enc_note_input = CreateEncNoteInput {
-        recipient_addr, recipient_public_key, token: token_address, amount, index, salt,
+        recipient_addr, recipient_public_key, token: token_addr, amount, index, salt,
     };
     let create_enc_note = ClientAction::CreateEncNote(create_enc_note_input);
     let client_actions = [set_viewing_key, open_channel, open_subchannel, deposit, create_enc_note]
@@ -5093,7 +5036,7 @@ fn test_client_execute_writes() {
     );
     let enc_outgoing_channel_info = user
         .compute_enc_outgoing_channel_info(recipient: user, :index, salt: salt.into());
-    let subchannel_marker = user.compute_subchannel_marker(recipient: user, :token_address);
+    let subchannel_marker = user.compute_subchannel_marker(recipient: user, :token_addr);
     let subchannel_exists_storage_path = map_entry_address(
         map_selector: selector!("subchannel_exists"), keys: [subchannel_marker].span(),
     );
@@ -5102,13 +5045,11 @@ fn test_client_execute_writes() {
         map_selector: selector!("subchannel_tokens"), keys: [subchannel_id].span(),
     );
     let enc_subchannel_info = user
-        .compute_enc_subchannel_info(recipient: user, :token_address, index: 0, salt: salt.into());
+        .compute_enc_subchannel_info(recipient: user, :token_addr, index: 0, salt: salt.into());
     let expected_event_viewing_key_set = events::ViewingKeySet {
         user_addr: address, public_key, enc_private_key,
     };
-    let expected_event_deposit = events::Deposit {
-        user_addr: address, token: token_address, amount,
-    };
+    let expected_event_deposit = events::Deposit { user_addr: address, token: token_addr, amount };
     let expected_server_actions = [
         // Set viewing key.
         to_write_once_action(storage_address: public_key_storage_path, value: public_key),
@@ -5130,7 +5071,7 @@ fn test_client_execute_writes() {
         to_write_once_action(storage_address: subchannel_exists_storage_path, value: true),
         // Deposit.
         ServerAction::TransferFrom(
-            TransferFromInput { sender_addr: address, token: token_address, amount },
+            TransferFromInput { sender_addr: address, token: token_addr, amount },
         ),
         ServerAction::EmitDeposit(expected_event_deposit), // Create note.
         create_enc_note_input.into_server_action(:user),
@@ -5164,7 +5105,7 @@ fn test_client_execute_writes() {
         CreateEncNoteInput {
             recipient_addr,
             recipient_public_key,
-            token: token_address,
+            token: token_addr,
             amount: amount / 2,
             index: index + 1,
             salt,
@@ -5177,7 +5118,7 @@ fn test_client_execute_writes() {
     // Test CreateOpenNote writes.
     let create_open_note_input = user
         .new_open_note_with_generated_random(
-            recipient: user, token: token_address, index: index + 1, :depositor,
+            recipient: user, :token_addr, index: index + 1, :depositor,
         );
     let create_open_note = ClientAction::CreateOpenNote(create_open_note_input);
     let client_actions = [create_open_note, create_open_note].span();
@@ -5186,7 +5127,7 @@ fn test_client_execute_writes() {
 
     // Test UseNote writes.
     let use_note = ClientAction::UseNote(
-        UseNoteInput { channel_key, token: token_address, index: index },
+        UseNoteInput { channel_key, token: token_addr, index: index },
     );
     let result = user.safe_client_execute(client_actions: [use_note, use_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
@@ -5197,12 +5138,12 @@ fn test_client_transfers_dont_execute() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount = 100;
 
     user.set_viewing_key_e2e();
     user.open_channel_e2e(recipient: user, index: 0);
-    user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
+    user.open_subchannel_e2e(recipient: user, :token_addr, index: 0);
 
     // Deposit.
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
@@ -5213,12 +5154,12 @@ fn test_client_transfers_dont_execute() {
     let server_actions = user
         .client_execute(
             client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_address, amount }),
+                ClientAction::Deposit(DepositInput { token: token_addr, amount }),
                 ClientAction::CreateEncNote(
                     CreateEncNoteInput {
                         recipient_addr: user.address,
                         recipient_public_key: user.public_key,
-                        token: token_address,
+                        token: token_addr,
                         amount,
                         index: 0,
                         salt,
@@ -5243,16 +5184,16 @@ fn test_client_transfers_dont_execute() {
     let create_note_input = CreateEncNoteInput {
         recipient_addr: user.address,
         recipient_public_key: user.public_key,
-        token: token_address,
+        token: token_addr,
         amount,
         index: 0,
         salt,
     };
-    let expected_event = events::Deposit { user_addr: user.address, token: token_address, amount };
+    let expected_event = events::Deposit { user_addr: user.address, token: token_addr, amount };
     let expected_server_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput {
-                sender_addr: user.address, token: token_address, amount: amount.into(),
+                sender_addr: user.address, token: token_addr, amount: amount.into(),
             },
         ),
         ServerAction::EmitDeposit(expected_event), create_note_input.into_server_action(:user),
@@ -5283,13 +5224,13 @@ fn test_client_transfers_dont_execute() {
                 ClientAction::UseNote(
                     UseNoteInput {
                         channel_key: user.compute_channel_key(recipient: user),
-                        token: token_address,
+                        token: token_addr,
                         index: 0,
                     },
                 ),
                 ClientAction::Withdraw(
                     WithdrawInput {
-                        withdrawal_target: user.address, token: token_address, amount, random,
+                        withdrawal_target: user.address, token: token_addr, amount, random,
                     },
                 ),
             ]
@@ -5308,19 +5249,19 @@ fn test_client_transfers_dont_execute() {
         0,
     );
 
-    let nullifier = user.compute_nullifier(sender: user, :token_address, index: 0);
+    let nullifier = user.compute_nullifier(sender: user, :token_addr, index: 0);
     let nullifier_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     let enc_user_addr = user.compute_enc_user_addr(random: random.into());
     let expected_event = events::Withdrawal {
-        enc_user_addr, withdrawal_target: user.address, token: token_address, amount,
+        enc_user_addr, withdrawal_target: user.address, token: token_addr, amount,
     };
     let expected_server_actions = array![
         to_write_once_action(storage_address: nullifier_path, value: true),
         ServerAction::TransferTo(
             TransferToInput {
-                recipient_addr: user.address, token: token_address, amount: amount.into(),
+                recipient_addr: user.address, token: token_addr, amount: amount.into(),
             },
         ),
         ServerAction::EmitWithdrawal(expected_event),
@@ -5338,19 +5279,19 @@ fn test_no_privacy_actions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount = 100;
 
     user.set_viewing_key_e2e();
     user.open_channel_e2e(recipient: user, index: 0);
-    user.open_subchannel_e2e(recipient: user, :token_address, index: 0);
+    user.open_subchannel_e2e(recipient: user, :token_addr, index: 0);
 
     // Empty client actions.
     let result = user.safe_client_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 
     // Deposit only.
-    let deposit_action = ClientAction::Deposit(DepositInput { token: token_address, amount });
+    let deposit_action = ClientAction::Deposit(DepositInput { token: token_addr, amount });
     let result = user.safe_client_execute(client_actions: [deposit_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
     let result = user.safe_execute_and_panic(client_actions: [deposit_action].span());
@@ -5361,10 +5302,7 @@ fn test_no_privacy_actions() {
     // Withdraw only.
     let withdraw_action = ClientAction::Withdraw(
         WithdrawInput {
-            withdrawal_target: user.address,
-            token: token_address,
-            amount,
-            random: user.get_random(),
+            withdrawal_target: user.address, token: token_addr, amount, random: user.get_random(),
         },
     );
     let result = user.safe_client_execute(client_actions: [withdraw_action].span());
@@ -5385,27 +5323,27 @@ fn test_no_privacy_actions() {
 
     // Deposit and Swap.
     let out_token = test.new_token();
-    let out_token_address = out_token.contract_address();
-    user.open_subchannel_e2e(recipient: user, token_address: out_token_address, index: 1);
+    let out_token_addr = out_token.contract_address();
+    user.open_subchannel_e2e(recipient: user, token_addr: out_token_addr, index: 1);
     out_token.supply(address: test.mock_amm, amount: amount);
     let create_open_note_input = user
         .new_open_note_with_generated_random(
             recipient: user,
-            token: out_token_address,
+            token_addr: out_token_addr,
             index: 0,
             depositor: test.swap_executor.address,
         );
     user.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
     let channel_key = user.compute_channel_key(recipient: user);
-    let swap_calldata = array![token_address.into(), out_token_address.into(), amount.into(), 0];
+    let swap_calldata = array![token_addr.into(), out_token_addr.into(), amount.into(), 0];
     let swap_action = ClientAction::Swap(
         SwapInput {
             swap_executor: test.swap_executor.address,
             swap_contract: test.mock_amm,
             swap_selector: selector!("swap"),
             swap_calldata: swap_calldata.span(),
-            in_token: token_address,
-            out_token: out_token_address,
+            in_token: token_addr,
+            out_token: out_token_addr,
             in_amount: amount,
             channel_key,
             index: 0,
@@ -5426,18 +5364,16 @@ fn test_client_execute_create_open_note() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let depositor = test.mock_new_depositor();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let index = 0;
     let create_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, :index, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, :index, :depositor);
 
     // Execute client actions.
     let client_actions = [ClientAction::CreateOpenNote(create_note_input)].span();
@@ -5447,7 +5383,7 @@ fn test_client_execute_create_open_note() {
     let (note_id, expected_note) = user_1.compute_open_note(:create_note_input);
     assert_ne!(note_id, Zero::zero());
     assert_ne!(expected_note.packed_value, Zero::zero());
-    assert_eq!(expected_note.token, token_address);
+    assert_eq!(expected_note.token, token_addr);
 
     // Check expected server actions.
     assert_eq!(actions, create_note_input.into_server_actions(user: user_1));
@@ -5475,16 +5411,14 @@ fn test_create_open_note_as_single_action() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let depositor = test.mock_new_depositor();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user.set_viewing_key_e2e();
     user
         .open_channel_with_token_e2e(
-            recipient: user, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let create_note_input = user
-        .new_open_note_with_generated_random(
-            recipient: user, token: token_address, index: 0, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0, :depositor);
 
     // Create open note as the single action - should succeed (it's a privacy action).
     let client_actions = [ClientAction::CreateOpenNote(create_note_input)].span();
@@ -5506,27 +5440,23 @@ fn test_create_open_and_enc_notes_same_tx() {
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
     let depositor = test.mock_new_depositor();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Create 4 notes in order: open -> enc -> open -> enc.
     let open_0 = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 0, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 0, :depositor);
     let enc_1 = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 1);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 0, index: 1);
     let open_2 = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 2, :depositor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 2, :depositor);
     let enc_3 = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, amount: 0, index: 3);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 0, index: 3);
 
     let actions = user_1
         .client_execute(
@@ -5570,27 +5500,27 @@ fn test_create_note_at_existing_note_id(initial_is_open: bool, colliding_is_open
     let mut user_3 = test.new_user();
     let mut depositor = test.new_user();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount = constants::DEFAULT_AMOUNT;
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_3, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Create the possible create note inputs upfront.
     let open_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 0, depositor: depositor.address,
+            recipient: user_2, :token_addr, index: 0, depositor: depositor.address,
         );
     let enc_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: 0);
     let zero_enc_note_input = CreateEncNoteInput { amount: Zero::zero(), ..enc_note_input };
 
     // Create the initial note at index 0.
@@ -5614,9 +5544,9 @@ fn test_create_note_at_existing_note_id(initial_is_open: bool, colliding_is_open
         depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
     }
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index: 0 };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index: 0 };
     let transfer_note_input = user_2
-        .new_enc_note_with_generated_salt(recipient: user_3, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, :amount, index: 0);
     let actions = user_2
         .transfer(
             notes_to_use: [use_note_input].span(), notes_to_create: [transfer_note_input].span(),
@@ -5641,7 +5571,7 @@ fn test_deposit_to_open_note_twice() {
     let mut user_3 = test.new_user();
     let mut depositor = test.new_user();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount = constants::DEFAULT_AMOUNT;
     let index = 0;
     user_1.set_viewing_key_e2e();
@@ -5649,17 +5579,17 @@ fn test_deposit_to_open_note_twice() {
     user_3.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     user_2
         .open_channel_with_token_e2e(
-            recipient: user_3, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Create an open note.
     let create_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, :index, depositor: depositor.address,
+            recipient: user_2, :token_addr, :index, depositor: depositor.address,
         );
     user_1.cheat_create_open_note_e2e(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
@@ -5675,15 +5605,15 @@ fn test_deposit_to_open_note_twice() {
 
     // Use the deposited note: spend it.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note = UseNoteInput { channel_key, token: token_address, index };
+    let use_note = UseNoteInput { channel_key, token: token_addr, index };
     let new_note = user_2
-        .new_enc_note_with_generated_salt(recipient: user_3, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, :amount, index: 0);
     let actions = user_2
         .transfer(notes_to_use: [use_note].span(), notes_to_create: [new_note].span());
     test.privacy.execute_actions(:actions);
 
     // Verify nullifier was created.
-    let nullifier = user_2.compute_nullifier(sender: user_1, :token_address, :index);
+    let nullifier = user_2.compute_nullifier(sender: user_1, :token_addr, :index);
     assert!(test.privacy.nullifier_exists(:nullifier));
 
     // Try to deposit again after using the note - should still fail with NOTE_ALREADY_DEPOSITED.
@@ -5701,20 +5631,20 @@ fn test_use_deposited_open_note_twice_single_tx() {
     let mut user_2 = test.new_user();
     let mut depositor = test.new_user();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let amount = constants::DEFAULT_AMOUNT;
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Create an open note.
     let index = 0;
     let create_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, :index, depositor: depositor.address,
+            recipient: user_2, :token_addr, :index, depositor: depositor.address,
         );
     user_1.cheat_create_open_note_e2e(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
@@ -5724,7 +5654,7 @@ fn test_use_deposited_open_note_twice_single_tx() {
 
     // Try to use the same open note twice in a single transaction - should fail.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let use_note_input = UseNoteInput { channel_key, token: token_address, index };
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let use_note_action = ClientAction::UseNote(use_note_input);
     let client_actions = [use_note_action, use_note_action].span();
     let result = user_2.safe_client_execute(:client_actions);
@@ -5737,10 +5667,10 @@ fn test_swap_client_action() {
     let in_token = test.new_token();
     let out_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
-    let in_token_address = in_token.contract_address();
-    let out_token_address = out_token.contract_address();
+    let in_token_addr = in_token.contract_address();
+    let out_token_addr = out_token.contract_address();
     let amm_address = test.mock_amm;
-    let swap_executor_address = test.swap_executor.address;
+    let swap_executor_addr = test.swap_executor.address;
 
     // Setup user.
     let mut user = test.new_user();
@@ -5750,13 +5680,13 @@ fn test_swap_client_action() {
     user
         .open_channel_with_token_e2e(
             recipient: user,
-            token_address: in_token_address,
+            token_addr: in_token_addr,
             outgoing_channel_index: 0,
             subchannel_index: 0,
         );
 
     // Open subchannel for output token (for open note).
-    user.open_subchannel_e2e(recipient: user, token_address: out_token_address, index: 1);
+    user.open_subchannel_e2e(recipient: user, token_addr: out_token_addr, index: 1);
 
     // Fund AMM with output tokens.
     out_token.supply(address: amm_address, amount: swap_amount);
@@ -5766,7 +5696,7 @@ fn test_swap_client_action() {
     // Create enc note for the input tokens (fund user and cheat deposit it directly).
     let create_enc_note_input = user
         .new_enc_note_with_generated_salt(
-            recipient: user, token_address: in_token_address, amount: swap_amount, index: 0,
+            recipient: user, token_addr: in_token_addr, amount: swap_amount, index: 0,
         );
     user.increase_token_balance(token: in_token, amount: swap_amount);
     user
@@ -5777,7 +5707,7 @@ fn test_swap_client_action() {
     // Create an open note for the swap output with swap_executor as depositor.
     let create_open_note_input = user
         .new_open_note_with_generated_random(
-            recipient: user, token: out_token_address, index: 0, depositor: swap_executor_address,
+            recipient: user, token_addr: out_token_addr, index: 0, depositor: swap_executor_addr,
         );
     user.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
     let (open_note_id, _) = user.compute_open_note(create_note_input: create_open_note_input);
@@ -5787,8 +5717,8 @@ fn test_swap_client_action() {
     assert_eq!(in_token.balance_of(address: test.privacy.address), swap_amount.into());
     assert_eq!(out_token.balance_of(address: test.privacy.address), 0);
     // Swap executor: no tokens.
-    assert_eq!(in_token.balance_of(address: swap_executor_address), 0);
-    assert_eq!(out_token.balance_of(address: swap_executor_address), 0);
+    assert_eq!(in_token.balance_of(address: swap_executor_addr), 0);
+    assert_eq!(out_token.balance_of(address: swap_executor_addr), 0);
     // AMM: no in_token, has out_token.
     assert_eq!(in_token.balance_of(address: amm_address), 0);
     assert_eq!(out_token.balance_of(address: amm_address), swap_amount.into());
@@ -5797,24 +5727,22 @@ fn test_swap_client_action() {
 
     // Create use note input for the deposited input tokens.
     let channel_key = user.compute_channel_key(recipient: user);
-    let use_note_input = UseNoteInput { channel_key, token: in_token_address, index: 0 };
+    let use_note_input = UseNoteInput { channel_key, token: in_token_addr, index: 0 };
 
     // Prepare swap calldata: [in_token, out_token].
-    let swap_calldata = array![
-        in_token_address.into(), out_token_address.into(), swap_amount.into(), 0,
-    ];
+    let swap_calldata = array![in_token_addr.into(), out_token_addr.into(), swap_amount.into(), 0];
 
     // Create swap input.
     // Note: for swap output, the user is receiving to their own channel (self-send).
     let out_channel_key = user.compute_channel_key(recipient: user);
     let random = user.get_random();
     let swap_input = SwapInput {
-        swap_executor: swap_executor_address,
+        swap_executor: swap_executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata: swap_calldata.span(),
-        in_token: in_token_address,
-        out_token: out_token_address,
+        in_token: in_token_addr,
+        out_token: out_token_addr,
         in_amount: swap_amount,
         channel_key: out_channel_key,
         index: 0,
@@ -5837,8 +5765,8 @@ fn test_swap_client_action() {
     assert_eq!(in_token.balance_of(address: test.privacy.address), 0);
     assert_eq!(out_token.balance_of(address: test.privacy.address), swap_amount.into());
     // Swap executor: no tokens (passed through).
-    assert_eq!(in_token.balance_of(address: swap_executor_address), 0);
-    assert_eq!(out_token.balance_of(address: swap_executor_address), 0);
+    assert_eq!(in_token.balance_of(address: swap_executor_addr), 0);
+    assert_eq!(out_token.balance_of(address: swap_executor_addr), 0);
     // AMM: has in_token (received), no out_token (sent).
     assert_eq!(in_token.balance_of(address: amm_address), swap_amount.into());
     assert_eq!(out_token.balance_of(address: amm_address), 0);
@@ -5860,8 +5788,8 @@ fn test_swap_client_action() {
             compliance_public_key: test.privacy.get_compliance_public_key(),
             user_addr: user.address,
         ),
-        withdrawal_target: swap_executor_address,
-        token: in_token_address,
+        withdrawal_target: swap_executor_addr,
+        token: in_token_addr,
         amount: swap_amount,
     };
     assert_expected_event_emitted(
@@ -5873,8 +5801,8 @@ fn test_swap_client_action() {
 
     // Verify OpenNoteDeposited event (output tokens deposited to open note).
     let expected_deposit_event = events::OpenNoteDeposited {
-        depositor: swap_executor_address,
-        token: out_token_address,
+        depositor: swap_executor_addr,
+        token: out_token_addr,
         note_id: open_note_id,
         amount: swap_amount,
     };
@@ -5894,10 +5822,10 @@ fn test_swap_client_action_validation_errors() {
     let in_token = test.new_token();
     let out_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
-    let in_token_address = in_token.contract_address();
-    let out_token_address = out_token.contract_address();
+    let in_token_addr = in_token.contract_address();
+    let out_token_addr = out_token.contract_address();
     let amm_address = test.mock_amm;
-    let swap_executor_address = test.swap_executor.address;
+    let swap_executor_addr = test.swap_executor.address;
 
     // Setup user with viewing key and subchannel for out_token.
     let mut user = test.new_user();
@@ -5905,26 +5833,24 @@ fn test_swap_client_action_validation_errors() {
     user
         .open_channel_with_token_e2e(
             recipient: user,
-            token_address: out_token_address,
+            token_addr: out_token_addr,
             outgoing_channel_index: 0,
             subchannel_index: 0,
         );
     let channel_key = user.compute_channel_key(recipient: user);
 
     // Prepare swap calldata.
-    let swap_calldata = array![
-        in_token_address.into(), out_token_address.into(), swap_amount.into(), 0,
-    ];
+    let swap_calldata = array![in_token_addr.into(), out_token_addr.into(), swap_amount.into(), 0];
 
     // Create base valid swap input with real channel_key.
     let random = user.get_random();
     let valid_swap_input = SwapInput {
-        swap_executor: swap_executor_address,
+        swap_executor: swap_executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata: swap_calldata.span(),
-        in_token: in_token_address,
-        out_token: out_token_address,
+        in_token: in_token_addr,
+        out_token: out_token_addr,
         in_amount: swap_amount,
         channel_key,
         index: 0,
@@ -6033,10 +5959,10 @@ fn test_swap_client_action_deposit_errors() {
     let in_token = test.new_token();
     let out_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
-    let in_token_address = in_token.contract_address();
-    let out_token_address = out_token.contract_address();
+    let in_token_addr = in_token.contract_address();
+    let out_token_addr = out_token.contract_address();
     let amm_address = test.mock_amm;
-    let swap_executor_address = test.swap_executor.address;
+    let swap_executor_addr = test.swap_executor.address;
 
     // Setup user.
     let mut user = test.new_user();
@@ -6046,16 +5972,16 @@ fn test_swap_client_action_deposit_errors() {
     user
         .open_channel_with_token_e2e(
             recipient: user,
-            token_address: in_token_address,
+            token_addr: in_token_addr,
             outgoing_channel_index: 0,
             subchannel_index: 0,
         );
 
     // Open subchannel for output token (for open note).
-    user.open_subchannel_e2e(recipient: user, token_address: out_token_address, index: 1);
+    user.open_subchannel_e2e(recipient: user, token_addr: out_token_addr, index: 1);
 
     // Fund swap executor with input tokens (enough for multiple attempts).
-    in_token.supply(address: swap_executor_address, amount: swap_amount * 4);
+    in_token.supply(address: swap_executor_addr, amount: swap_amount * 4);
 
     // Fund AMM with output tokens (enough for multiple swaps).
     out_token.supply(address: amm_address, amount: swap_amount * 4);
@@ -6063,32 +5989,30 @@ fn test_swap_client_action_deposit_errors() {
     let channel_key = user.compute_channel_key(recipient: user);
 
     // Prepare swap calldata.
-    let swap_calldata = array![
-        in_token_address.into(), out_token_address.into(), swap_amount.into(), 0,
-    ];
+    let swap_calldata = array![in_token_addr.into(), out_token_addr.into(), swap_amount.into(), 0];
 
     // === Test NOTE_NOT_FOUND ===
     // Create enc note for input tokens at index 0.
     let create_enc_note_input_0 = user
         .new_enc_note_with_generated_salt(
-            recipient: user, token_address: in_token_address, amount: swap_amount, index: 0,
+            recipient: user, token_addr: in_token_addr, amount: swap_amount, index: 0,
         );
     user.increase_token_balance(token: in_token, amount: swap_amount);
     user
         .cheat_deposit(
             token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_0,
         );
-    let use_note_input_0 = UseNoteInput { channel_key, token: in_token_address, index: 0 };
+    let use_note_input_0 = UseNoteInput { channel_key, token: in_token_addr, index: 0 };
 
     // Try to swap to a note that doesn't exist (subchannel exists at index 1, but no note created).
     let random = user.get_random();
     let swap_input = SwapInput {
-        swap_executor: swap_executor_address,
+        swap_executor: swap_executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata: swap_calldata.span(),
-        in_token: in_token_address,
-        out_token: out_token_address,
+        in_token: in_token_addr,
+        out_token: out_token_addr,
         in_amount: swap_amount,
         channel_key,
         index: 0, // No note has been created at this index yet.
@@ -6104,30 +6028,30 @@ fn test_swap_client_action_deposit_errors() {
     // Create a new enc note at index 1 for input tokens (note 0 was used in failed tx above).
     let create_enc_note_input_1 = user
         .new_enc_note_with_generated_salt(
-            recipient: user, token_address: in_token_address, amount: swap_amount, index: 1,
+            recipient: user, token_addr: in_token_addr, amount: swap_amount, index: 1,
         );
     user.increase_token_balance(token: in_token, amount: swap_amount);
     user
         .cheat_deposit(
             token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_1,
         );
-    let use_note_input_1 = UseNoteInput { channel_key, token: in_token_address, index: 1 };
+    let use_note_input_1 = UseNoteInput { channel_key, token: in_token_addr, index: 1 };
 
     // Create an enc note (not open) for output token to try depositing into.
     let create_enc_note_out = user
         .new_enc_note_with_generated_salt(
-            recipient: user, token_address: out_token_address, amount: swap_amount, index: 0,
+            recipient: user, token_addr: out_token_addr, amount: swap_amount, index: 0,
         );
     user.cheat_create_enc_note_e2e(create_note_input: create_enc_note_out);
 
     let random = user.get_random();
     let swap_input = SwapInput {
-        swap_executor: swap_executor_address,
+        swap_executor: swap_executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata: swap_calldata.span(),
-        in_token: in_token_address,
-        out_token: out_token_address,
+        in_token: in_token_addr,
+        out_token: out_token_addr,
         in_amount: swap_amount,
         channel_key,
         index: 0, // Points to the enc note (not open).
@@ -6143,30 +6067,30 @@ fn test_swap_client_action_deposit_errors() {
     // Create a new enc note at index 2 for input tokens.
     let create_enc_note_input_2 = user
         .new_enc_note_with_generated_salt(
-            recipient: user, token_address: in_token_address, amount: swap_amount, index: 2,
+            recipient: user, token_addr: in_token_addr, amount: swap_amount, index: 2,
         );
     user.increase_token_balance(token: in_token, amount: swap_amount);
     user
         .cheat_deposit(
             token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_2,
         );
-    let use_note_input_2 = UseNoteInput { channel_key, token: in_token_address, index: 2 };
+    let use_note_input_2 = UseNoteInput { channel_key, token: in_token_addr, index: 2 };
 
     // Create an open note for the swap output.
     let create_open_note_input = user
         .new_open_note_with_generated_random(
-            recipient: user, token: out_token_address, index: 1, depositor: swap_executor_address,
+            recipient: user, token_addr: out_token_addr, index: 1, depositor: swap_executor_addr,
         );
     user.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
 
     let random = user.get_random();
     let swap_input = SwapInput {
-        swap_executor: swap_executor_address,
+        swap_executor: swap_executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata: swap_calldata.span(),
-        in_token: in_token_address,
-        out_token: out_token_address,
+        in_token: in_token_addr,
+        out_token: out_token_addr,
         in_amount: swap_amount,
         channel_key,
         index: 1, // Points to the open note at index 1.
@@ -6182,24 +6106,24 @@ fn test_swap_client_action_deposit_errors() {
     // Create another enc note at index 3 for input tokens.
     let create_enc_note_input_3 = user
         .new_enc_note_with_generated_salt(
-            recipient: user, token_address: in_token_address, amount: swap_amount, index: 3,
+            recipient: user, token_addr: in_token_addr, amount: swap_amount, index: 3,
         );
     user.increase_token_balance(token: in_token, amount: swap_amount);
     user
         .cheat_deposit(
             token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_3,
         );
-    let use_note_input_3 = UseNoteInput { channel_key, token: in_token_address, index: 3 };
+    let use_note_input_3 = UseNoteInput { channel_key, token: in_token_addr, index: 3 };
 
     // Second swap to same note should fail.
     let random = user.get_random();
     let swap_input = SwapInput {
-        swap_executor: swap_executor_address,
+        swap_executor: swap_executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata: swap_calldata.span(),
-        in_token: in_token_address,
-        out_token: out_token_address,
+        in_token: in_token_addr,
+        out_token: out_token_addr,
         in_amount: swap_amount,
         channel_key,
         index: 1, // Same note index as first swap.
@@ -6215,31 +6139,31 @@ fn test_swap_client_action_deposit_errors() {
     // Create a new enc note at index 4 for input tokens.
     let create_enc_note_input_4 = user
         .new_enc_note_with_generated_salt(
-            recipient: user, token_address: in_token_address, amount: swap_amount, index: 4,
+            recipient: user, token_addr: in_token_addr, amount: swap_amount, index: 4,
         );
     user.increase_token_balance(token: in_token, amount: swap_amount);
     user
         .cheat_deposit(
             token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_4,
         );
-    let use_note_input_4 = UseNoteInput { channel_key, token: in_token_address, index: 4 };
+    let use_note_input_4 = UseNoteInput { channel_key, token: in_token_addr, index: 4 };
 
     // Create an open note with a different depositor.
     let wrong_depositor: ContractAddress = 'WRONG_DEPOSITOR'.try_into().unwrap();
     let create_open_note_input_2 = user
         .new_open_note_with_generated_random(
-            recipient: user, token: out_token_address, index: 2, depositor: wrong_depositor,
+            recipient: user, token_addr: out_token_addr, index: 2, depositor: wrong_depositor,
         );
     user.cheat_create_open_note_e2e(create_note_input: create_open_note_input_2);
 
     let random = user.get_random();
     let swap_input = SwapInput {
-        swap_executor: swap_executor_address,
+        swap_executor: swap_executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata: swap_calldata.span(),
-        in_token: in_token_address,
-        out_token: out_token_address,
+        in_token: in_token_addr,
+        out_token: out_token_addr,
         in_amount: swap_amount,
         channel_key,
         index: 2, // Points to open note with wrong depositor.
@@ -6260,10 +6184,10 @@ fn test_swap_doesnt_execute_during_client_execute() {
     let in_token = test.new_token();
     let out_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
-    let in_token_address = in_token.contract_address();
-    let out_token_address = out_token.contract_address();
+    let in_token_addr = in_token.contract_address();
+    let out_token_addr = out_token.contract_address();
     let amm_address = test.mock_amm;
-    let swap_executor_address = test.swap_executor.address;
+    let swap_executor_addr = test.swap_executor.address;
 
     // Setup user with viewing key, channels, and subchannels.
     let mut user = test.new_user();
@@ -6271,11 +6195,11 @@ fn test_swap_doesnt_execute_during_client_execute() {
     user
         .open_channel_with_token_e2e(
             recipient: user,
-            token_address: in_token_address,
+            token_addr: in_token_addr,
             outgoing_channel_index: 0,
             subchannel_index: 0,
         );
-    user.open_subchannel_e2e(recipient: user, token_address: out_token_address, index: 1);
+    user.open_subchannel_e2e(recipient: user, token_addr: out_token_addr, index: 1);
 
     // Fund AMM with output tokens.
     out_token.supply(address: amm_address, amount: swap_amount);
@@ -6283,7 +6207,7 @@ fn test_swap_doesnt_execute_during_client_execute() {
     // Create enc note with input tokens (via cheat_deposit).
     let create_enc_note_input = user
         .new_enc_note_with_generated_salt(
-            recipient: user, token_address: in_token_address, amount: swap_amount, index: 0,
+            recipient: user, token_addr: in_token_addr, amount: swap_amount, index: 0,
         );
     user.increase_token_balance(token: in_token, amount: swap_amount);
     user
@@ -6294,7 +6218,7 @@ fn test_swap_doesnt_execute_during_client_execute() {
     // Create open note for swap output.
     let create_open_note_input = user
         .new_open_note_with_generated_random(
-            recipient: user, token: out_token_address, index: 0, depositor: swap_executor_address,
+            recipient: user, token_addr: out_token_addr, index: 0, depositor: swap_executor_addr,
         );
     user.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
     let (open_note_id, _) = user.compute_open_note(create_note_input: create_open_note_input);
@@ -6304,26 +6228,24 @@ fn test_swap_doesnt_execute_during_client_execute() {
     assert_eq!(in_token.balance_of(address: test.privacy.address), swap_amount.into());
     assert_eq!(out_token.balance_of(address: test.privacy.address), 0);
     // Swap executor: no tokens.
-    assert_eq!(in_token.balance_of(address: swap_executor_address), 0);
-    assert_eq!(out_token.balance_of(address: swap_executor_address), 0);
+    assert_eq!(in_token.balance_of(address: swap_executor_addr), 0);
+    assert_eq!(out_token.balance_of(address: swap_executor_addr), 0);
     // AMM: no in_token, has out_token.
     assert_eq!(in_token.balance_of(address: amm_address), 0);
     assert_eq!(out_token.balance_of(address: amm_address), swap_amount.into());
 
     // Prepare swap input.
     let channel_key = user.compute_channel_key(recipient: user);
-    let use_note_input = UseNoteInput { channel_key, token: in_token_address, index: 0 };
-    let swap_calldata = array![
-        in_token_address.into(), out_token_address.into(), swap_amount.into(), 0,
-    ];
+    let use_note_input = UseNoteInput { channel_key, token: in_token_addr, index: 0 };
+    let swap_calldata = array![in_token_addr.into(), out_token_addr.into(), swap_amount.into(), 0];
     let random = user.get_random();
     let swap_input = SwapInput {
-        swap_executor: swap_executor_address,
+        swap_executor: swap_executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
         swap_calldata: swap_calldata.span(),
-        in_token: in_token_address,
-        out_token: out_token_address,
+        in_token: in_token_addr,
+        out_token: out_token_addr,
         in_amount: swap_amount,
         channel_key,
         index: 0,
@@ -6342,8 +6264,8 @@ fn test_swap_doesnt_execute_during_client_execute() {
     assert_eq!(in_token.balance_of(address: test.privacy.address), swap_amount.into());
     assert_eq!(out_token.balance_of(address: test.privacy.address), 0);
     // Swap executor: still no tokens.
-    assert_eq!(in_token.balance_of(address: swap_executor_address), 0);
-    assert_eq!(out_token.balance_of(address: swap_executor_address), 0);
+    assert_eq!(in_token.balance_of(address: swap_executor_addr), 0);
+    assert_eq!(out_token.balance_of(address: swap_executor_addr), 0);
     // AMM: still no in_token, still has out_token.
     assert_eq!(in_token.balance_of(address: amm_address), 0);
     assert_eq!(out_token.balance_of(address: amm_address), swap_amount.into());
@@ -6356,15 +6278,15 @@ fn test_swap_doesnt_execute_during_client_execute() {
     assert_eq!(events_during_client_execute.len(), 0);
 
     // Assert expected server actions were generated.
-    let nullifier = user.compute_nullifier(sender: user, token_address: in_token_address, index: 0);
+    let nullifier = user.compute_nullifier(sender: user, token_addr: in_token_addr, index: 0);
     let nullifier_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
     let enc_user_addr = user.compute_enc_user_addr(:random);
     let expected_withdrawal_event = events::Withdrawal {
         enc_user_addr,
-        withdrawal_target: swap_executor_address,
-        token: in_token_address,
+        withdrawal_target: swap_executor_addr,
+        token: in_token_addr,
         amount: swap_amount,
     };
     let expected_server_actions = [
@@ -6373,7 +6295,7 @@ fn test_swap_doesnt_execute_during_client_execute() {
         // Swap: TransferTo (input tokens to swap executor).
         ServerAction::TransferTo(
             TransferToInput {
-                recipient_addr: swap_executor_address, token: in_token_address, amount: swap_amount,
+                recipient_addr: swap_executor_addr, token: in_token_addr, amount: swap_amount,
             },
         ),
         // Swap: EmitWithdrawal.
@@ -6381,12 +6303,12 @@ fn test_swap_doesnt_execute_during_client_execute() {
         // Swap: SwapExecutor.
         ServerAction::SwapWithExecutor(
             SwapWithExecutorInput {
-                swap_executor: swap_executor_address,
+                swap_executor: swap_executor_addr,
                 swap_contract: amm_address,
                 swap_selector: selector!("swap"),
                 swap_calldata: swap_calldata.span(),
-                in_token: in_token_address,
-                out_token: out_token_address,
+                in_token: in_token_addr,
+                out_token: out_token_addr,
                 in_amount: swap_amount,
                 note_id: open_note_id,
             },
@@ -6404,8 +6326,8 @@ fn test_swap_doesnt_execute_during_client_execute() {
     assert_eq!(in_token.balance_of(address: test.privacy.address), 0);
     assert_eq!(out_token.balance_of(address: test.privacy.address), swap_amount.into());
     // Swap executor: no tokens (passed through).
-    assert_eq!(in_token.balance_of(address: swap_executor_address), 0);
-    assert_eq!(out_token.balance_of(address: swap_executor_address), 0);
+    assert_eq!(in_token.balance_of(address: swap_executor_addr), 0);
+    assert_eq!(out_token.balance_of(address: swap_executor_addr), 0);
     // AMM: has in_token (received), no out_token (sent).
     assert_eq!(in_token.balance_of(address: amm_address), swap_amount.into());
     assert_eq!(out_token.balance_of(address: amm_address), 0);
@@ -6423,8 +6345,8 @@ fn test_swap_doesnt_execute_during_client_execute() {
         expected_event_name: "Withdrawal",
     );
     let expected_deposit_event = events::OpenNoteDeposited {
-        depositor: swap_executor_address,
-        token: out_token_address,
+        depositor: swap_executor_addr,
+        token: out_token_addr,
         note_id: open_note_id,
         amount: swap_amount,
     };

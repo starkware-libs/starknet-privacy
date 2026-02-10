@@ -189,17 +189,17 @@ fn test_get_note() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token = test.new_token();
-    let token_address = token.contract_address();
+    let token_addr = token.contract_address();
     let mut depositor = test.new_user();
     let amount = DEFAULT_AMOUNT;
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
+            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
 
     // Create and verify encrypted note.
     let enc_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: 0);
     user_1.cheat_create_enc_note_e2e(create_note_input: enc_note_input);
     let (enc_note_id, expected_enc_note) = user_1
         .compute_enc_note(create_note_input: enc_note_input);
@@ -208,7 +208,7 @@ fn test_get_note() {
     // Create and verify empty open note.
     let open_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 1, depositor: depositor.address,
+            recipient: user_2, :token_addr, index: 1, depositor: depositor.address,
         );
     user_1.cheat_create_open_note_e2e(create_note_input: open_note_input);
     let (open_note_id, expected_open_note) = user_1
@@ -221,7 +221,7 @@ fn test_get_note() {
     let (salt, stored_amount) = unpacking(packed_value: filled_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount);
-    assert_eq!(filled_note.token, token_address);
+    assert_eq!(filled_note.token, token_addr);
     assert_eq!(filled_note.depositor, depositor.address);
 }
 
@@ -250,13 +250,13 @@ fn test_subchannel_exists() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    let subchannel_marker = user_1.compute_subchannel_marker(recipient: user_2, :token_address);
+    let token_addr = test.mock_new_token();
+    let subchannel_marker = user_1.compute_subchannel_marker(recipient: user_2, :token_addr);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_marker), false);
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
-    user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_2, :token_addr, index: 0);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_marker), true);
 }
 
@@ -265,7 +265,7 @@ fn test_get_subchannel_info() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, index: 0);
     assert_eq!(
         test.privacy.get_subchannel_info(:subchannel_id),
@@ -274,9 +274,9 @@ fn test_get_subchannel_info() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
-    let salt = user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+    let salt = user_1.open_subchannel_e2e(recipient: user_2, :token_addr, index: 0);
     let expected_subchannel_info = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :salt);
+        .compute_enc_subchannel_info(recipient: user_2, :token_addr, index: 0, :salt);
     assert!(expected_subchannel_info.enc_token.is_non_zero());
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_id), expected_subchannel_info);
 }
