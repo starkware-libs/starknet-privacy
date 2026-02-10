@@ -180,8 +180,33 @@ async fn test_incoming_sync_no_head() {
     let (status, error) = indexer.incoming_sync_error(&request).await.unwrap();
 
     // Should return 503 SERVICE_UNAVAILABLE since no head is indexed yet
+    // (fresh devnet genesis block is pre-confirmed, so the RPC fallback
+    // returns None and the validator rejects with SERVICE_UNAVAILABLE)
     assert_eq!(status, 503);
     assert_eq!(error.error.code, "SERVICE_UNAVAILABLE");
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_incoming_sync_contract_not_found() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    let request = IncomingSyncRequest {
+        contract_address: Felt::from_hex("0xdeadbeef").unwrap(),
+        recipient_address: Felt::from_hex("0x1234").unwrap(),
+        viewing_key: Felt::from_hex("0x5678").unwrap(),
+        last_known_block: None,
+        block_ref: None,
+        cursor: Default::default(),
+    };
+
+    let (status, error) = indexer.incoming_sync_error(&request).await.unwrap();
+
+    assert_eq!(status, 404);
+    assert_eq!(error.error.code, "CONTRACT_NOT_FOUND");
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();
