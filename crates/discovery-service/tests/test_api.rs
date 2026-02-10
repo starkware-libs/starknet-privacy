@@ -206,12 +206,14 @@ async fn test_incoming_sync_contract_not_found() {
     let indexer = setup_indexer(&devnet, Some(&metadata)).await;
 
     let request = IncomingSyncRequest {
-        contract_address: Felt::from_hex("0xdeadbeef").unwrap(),
         recipient_address: Felt::from_hex("0x1234").unwrap(),
-        viewing_key: Felt::from_hex("0x5678").unwrap(),
-        last_known_block: None,
-        block_ref: None,
-        cursor: Default::default(),
+        base: SyncRequestBase {
+            contract_address: Felt::from_hex("0xdeadbeef").unwrap(),
+            viewing_key: Felt::from_hex("0x5678").unwrap(),
+            last_known_block: None,
+            block_ref: None,
+            cursor: Default::default(),
+        },
     };
 
     let (status, error) = indexer.incoming_sync_error(&request).await.unwrap();

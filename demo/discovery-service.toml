@@ -1,0 +1,14 @@
+[privacy_pool]
+contract_address = "0x29a9cf26f2de1dbe16923fd6da791a2158497baeb9cc2fb8f99ed464938d731"
+
+[rpc]
+url = "http://34.170.239.64:9545/rpc/v0_10"
+
+[indexer]
+ws_url = "ws://34.170.239.64:9545/ws/rpc/v0_8"
+
+[api]
+host = "127.0.0.1:8080"
+
+[logging]
+level = "info"
