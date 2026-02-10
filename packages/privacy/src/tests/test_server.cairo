@@ -3,6 +3,7 @@ use privacy::actions::{
     AppendToVecInput, ReadAssertInput, ServerAction, SwapWithExecutorInput, TransferFromInput,
     TransferToInput,
 };
+use privacy::hashes::hash;
 use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note};
 use privacy::swap_executor::errors as swap_executor_errors;
 use privacy::tests::utils_for_tests::{
@@ -642,6 +643,25 @@ fn test_execute_actions_assertions() {
 
     // Catch INVALID_PROOF_MSG.
     let result = test.privacy.safe_execute_actions_with_proof_facts(:actions, :proof_facts);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_PROOF_MSG);
+    let mut proof_facts_invalid_proof_msg = proof_facts;
+    proof_facts_invalid_proof_msg.message_to_l1_hashes = [0x1].span();
+    let result = test
+        .privacy
+        .safe_execute_actions_with_proof_facts(
+            :actions, proof_facts: proof_facts_invalid_proof_msg,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_PROOF_MSG);
+    let mut proof_facts_invalid_proof_msg = proof_facts;
+    let mut serialized_actions = array![test.privacy.address.into(), Zero::zero()];
+    actions.serialize(ref serialized_actions);
+    let message_hash = hash(serialized_actions.span());
+    proof_facts_invalid_proof_msg.message_to_l1_hashes = [message_hash, message_hash].span();
+    let result = test
+        .privacy
+        .safe_execute_actions_with_proof_facts(
+            :actions, proof_facts: proof_facts_invalid_proof_msg,
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_PROOF_MSG);
 
     // Catch PROOF_EXPIRED.
