@@ -100,8 +100,7 @@ where
             )
         })?;
 
-    let budget = IoBudget::new(state.validation_limits.server_budget)
-        .with_batch_budget(state.validation_limits.batch_budget);
+    let budget = IoBudget::new(state.validation_limits.server_budget);
 
     debug!(
         recipient = %format!("{:#x}", request.recipient_address),
@@ -183,8 +182,7 @@ where
             )
         })?;
 
-    let budget = IoBudget::new(state.validation_limits.server_budget)
-        .with_batch_budget(state.validation_limits.batch_budget);
+    let budget = IoBudget::new(state.validation_limits.server_budget);
 
     debug!(
         sender = felt_hex(&request.sender_address),
