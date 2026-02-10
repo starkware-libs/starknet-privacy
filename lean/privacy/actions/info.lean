@@ -59,7 +59,7 @@ structure OpenChannelInfo (crypto: Crypto) (inp: OpenChannelInput) (m: Memory) w
   alice_registered: m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
   kalice_valid: inp.kalice ∈ crypto.PrivateKeys
   r_ne_zero: inp.r ≠ 0
-  prev_outgoing_exists: inp.s = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
+  prev_outgoing_exists: inp.q = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
   channel_didnt_exist: m .ChannelMarkers [inp.channel_marker crypto] = 0
   outgoing_channel_didnt_exist: m .OutgoingChannels [inp.outgoing_channel_id crypto, 0] = 0
   no_change: ∀ t, ∀ x, (
@@ -192,8 +192,7 @@ structure CreateNoteInfo (crypto: Crypto) (inp: CreateNoteInput) (m: Memory) whe
     m' t x = m t x
   r_ne_zero: inp.r ≠ 0
   old_value_was_zero: m .Notes [inp.note_id crypto, 0] = 0
-  prev_note_exists: inp.i₁ = 0 ∨ m .Notes [crypto.hash [inp.c crypto, inp.token, inp.i₀, inp.i₁ - 1], 0] ≠ 0
-  i₀_lt_MAX_I₀: inp.i₀ < crypto.MAX_I₀
+  prev_note_exists: inp.i = 0 ∨ m .Notes [crypto.hash [inp.c crypto, inp.token, inp.i - 1], 0] ≠ 0
   subchannel_exists : m .SubchannelMarkers [crypto.hash [inp.c crypto, inp.addrbob, inp.Kbob, inp.token]] ≠ 0
   h_open_note_amount_zero: inp.r = 1 → inp.amount = 0
   memory_diff₀: m' .Notes [inp.note_id crypto, 0] = crypto.pack inp.r (inp.enc crypto)
@@ -210,7 +209,7 @@ def create_note_info
   simp only [Bool.and_eq_true] at success
   have ⟨success₀, success₁⟩ := success
   simp only [create_note, decide_eq_true_eq] at success₀
-  let ⟨r_ne_zero, prev_note_exists, i₀_lt_MAX_I₀, subchannel_exists, h_open_note_amount_zero⟩ := success₀
+  let ⟨r_ne_zero, prev_note_exists, subchannel_exists, h_open_note_amount_zero⟩ := success₀
 
   simp only [ServerAction.run_all, ServerAction.run, create_note] at success₁
 
@@ -225,7 +224,6 @@ def create_note_info
     r_ne_zero := r_ne_zero
     old_value_was_zero := old_value_was_zero
     prev_note_exists := prev_note_exists
-    i₀_lt_MAX_I₀ := i₀_lt_MAX_I₀
     subchannel_exists := subchannel_exists
     h_open_note_amount_zero := h_open_note_amount_zero
     no_change := by
@@ -247,7 +245,7 @@ structure UseNoteInfo (crypto: Crypto) (inp: UseNoteInput) (m: Memory) where
   subchannel_exists: m .SubchannelMarkers [crypto.hash [inp.c, inp.addrbob, inp.Kbob crypto, inp.token]] ≠ 0
   nullifier_didnt_exist: m .Nullifiers [inp.nullifier crypto] = 0
   r_ne_zero: m .Notes [inp.note_id crypto, 0] ≠ 0
-  h_amount: note_amount crypto m (inp.note_id crypto) inp.c inp.token inp.i₀ inp.i₁= inp.amount
+  h_amount: note_amount crypto m (inp.note_id crypto) inp.c inp.token inp.i = inp.amount
   kbob_private_key: inp.kbob ∈ crypto.PrivateKeys
   amount_ne_zero: inp.amount ≠ 0
   no_change: ∀ t, ∀ x,

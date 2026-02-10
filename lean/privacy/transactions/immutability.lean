@@ -244,7 +244,7 @@ theorem create_note_immutable
     run_action₀ crypto (.CreateNote inp) m₁ = run_action₀ crypto (.CreateNote inp) m₀ := by
   dsimp only [run_action₀, create_note] at *
   rw [decide_eq_true_iff] at success
-  have ⟨h₀, h₁, h₂, h₃, h₄⟩ := success
+  have ⟨h₀, h₁, h₂, h₃⟩ := success
 
   dsimp only [immutable_fn, mem_cell_fn] at imm₀
   dsimp only [note_exists_fn] at imm₁
@@ -252,13 +252,13 @@ theorem create_note_immutable
   apply Prod.ext
   · trivial
   · simp only
-    rw [imm₀ _ h₃]
+    rw [imm₀ _ h₂]
     cases h₁
     case inl h₁ =>
       simp [h₁]
     case inr h₁ =>
       have := immutable_fn_prop
-        (imm₁ (crypto.hash [CreateNoteInput.c crypto inp, inp.token, inp.i₀, inp.i₁ - 1]))
+        (imm₁ (crypto.hash [CreateNoteInput.c crypto inp, inp.token, inp.i - 1]))
         (by simp; exact h₁)
       simp only [Function.comp_apply, decide_eq_true_eq, mem_cell_fn] at this
       conv => lhs; arg 1; rw [this]

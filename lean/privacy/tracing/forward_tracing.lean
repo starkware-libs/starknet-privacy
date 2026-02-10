@@ -74,7 +74,7 @@ theorem ForwardTracing₁.final_coins.nodup (self: ForwardTracing₁) :
     · exact ForwardTracing₁.no_prev coin₁.prop
   · apply List.Nodup.attach
     apply (List.nodup_map_iff (by
-      intro i₀ i₁ h_eq
+      intro i i' h_eq
       simp only [Coin.mk.injEq, true_and] at h_eq
       exact Fin.ext h_eq
     )).2
@@ -178,7 +178,7 @@ theorem forward_tracing_props
     let output_notes := forward_tracing context note_id user_enc h_event
     (∀ esn' ∈ output_notes,
       rm.m .Notes [esn'.note_id crypto, 0] ≠ 0 ∧
-      rm.m .Nullifiers [crypto.hash [esn'.c, esn'.token, esn'.i₀, esn'.i₁, get_priv_key crypto rm.events esn'.addrbob]] = 0
+      rm.m .Nullifiers [crypto.hash [esn'.c, esn'.token, esn'.i, get_priv_key crypto rm.events esn'.addrbob]] = 0
     ) := by
   have ⟨esn, h_esn_opt, h_forward_tracing⟩ := forward_tracing' context note_id user_enc h_event
   rw [h_forward_tracing]

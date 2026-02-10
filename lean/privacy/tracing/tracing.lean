@@ -36,7 +36,7 @@ def incoming_equiv_outgoing
 
 theorem TracingContext.next_coin_spent_notes_ex {crypto: Crypto} {m: Memory} {events: List Event}
     (context: TracingContext crypto m events) (coin: Coin crypto m)
-    (h_spent: m MemoryType.Nullifiers [crypto.hash [coin.esn.c, coin.esn.token, coin.esn.i₀, coin.esn.i₁, (context.bob coin).k]] ≠ 0) :
+    (h_spent: m MemoryType.Nullifiers [crypto.hash [coin.esn.c, coin.esn.token, coin.esn.i, (context.bob coin).k]] ≠ 0) :
     let bob := context.bob coin
     (coin.esn, coin.coin_idx) ∈ (amounts_to_coins
        (spent_notes_ex context.toScanNoteContext bob.addr bob.k coin.esn.token)
@@ -62,7 +62,7 @@ def TracingContext.prev_coin_helper {crypto: Crypto} {m: Memory} {events: List E
 
 def TracingContext.next_coin₀ {crypto: Crypto} {m: Memory} {events: List Event}
     (context: TracingContext crypto m events) (coin: Coin crypto m)
-    (h_spent: m MemoryType.Nullifiers [crypto.hash [coin.esn.c, coin.esn.token, coin.esn.i₀, coin.esn.i₁, (context.bob coin).k]] ≠ 0) :
+    (h_spent: m MemoryType.Nullifiers [crypto.hash [coin.esn.c, coin.esn.token, coin.esn.i, (context.bob coin).k]] ≠ 0) :
     let bob := context.bob coin
     { v : ExScannedNote × ℕ // v ∈ (
       amounts_to_coins
@@ -93,7 +93,7 @@ theorem TracingContext.next_prev₀
     (context: TracingContext crypto m events) (coin₀ coin₁: Coin crypto m)
     (token: ℕ) (h_token₀: token = coin₀.esn.token)
     (user: UserPrivKey crypto m) (h_user₀: user = context.bob coin₀)
-    (h_spent: m MemoryType.Nullifiers [crypto.hash [coin₀.esn.c, coin₀.esn.token, coin₀.esn.i₀, coin₀.esn.i₁, (context.bob coin₀).k]] ≠ 0)
+    (h_spent: m MemoryType.Nullifiers [crypto.hash [coin₀.esn.c, coin₀.esn.token, coin₀.esn.i, (context.bob coin₀).k]] ≠ 0)
     (h_nonopen: is_open_note crypto m (coin₁.esn.note_id crypto) = false) :
     context.next_coin₀ coin₀ h_spent = (coin₁.esn, coin₁.coin_idx) ↔
     context.prev_coin₀ coin₁ h_nonopen = (coin₀.esn, coin₀.coin_idx) := by
@@ -162,7 +162,7 @@ theorem TracingContext.next_prev₀
 
 def TracingContext.next_coin₁ {crypto: Crypto} {m: Memory} {events: List Event}
     (context: TracingContext crypto m events) (coin: Coin crypto m)
-    (h_spent: m MemoryType.Nullifiers [crypto.hash [coin.esn.c, coin.esn.token, coin.esn.i₀, coin.esn.i₁, (context.bob coin).k]] ≠ 0) :
+    (h_spent: m MemoryType.Nullifiers [crypto.hash [coin.esn.c, coin.esn.token, coin.esn.i, (context.bob coin).k]] ≠ 0) :
     Coin crypto m := by
   let ⟨⟨esn, coin_idx⟩, h_next⟩ := context.next_coin₀ coin h_spent
 
@@ -185,7 +185,7 @@ def TracingContext.prev_coin₁ {crypto: Crypto} {m: Memory} {events: List Event
 theorem TracingContext.next_prev₁
     {crypto: Crypto} {m: Memory} {events: List Event}
     (context: TracingContext crypto m events) (coin₀ coin₁: Coin crypto m)
-    (h_spent: m MemoryType.Nullifiers [crypto.hash [coin₀.esn.c, coin₀.esn.token, coin₀.esn.i₀, coin₀.esn.i₁, (context.bob coin₀).k]] ≠ 0)
+    (h_spent: m MemoryType.Nullifiers [crypto.hash [coin₀.esn.c, coin₀.esn.token, coin₀.esn.i, (context.bob coin₀).k]] ≠ 0)
     (h_nonopen: is_open_note crypto m (coin₁.esn.note_id crypto) = false) :
     context.next_coin₁ coin₀ h_spent = coin₁ ↔
     context.prev_coin₁ coin₁ h_nonopen = coin₀ := by
@@ -201,7 +201,7 @@ def TracingContext.next_coin {crypto: Crypto} {m: Memory} {events: List Event}
   let bob := context.bob coin
 
   -- Check if the note was spent.
-  by_cases h_is_spent: m MemoryType.Nullifiers [crypto.hash [coin.esn.c, coin.esn.token, coin.esn.i₀, coin.esn.i₁, bob.k]] ≠ 0
+  by_cases h_is_spent: m MemoryType.Nullifiers [crypto.hash [coin.esn.c, coin.esn.token, coin.esn.i, bob.k]] ≠ 0
   case neg => exact none
 
   exact some (context.next_coin₁ coin h_is_spent)
@@ -224,7 +224,7 @@ theorem TracingContext.next_coin_none
     (context: TracingContext crypto m events)
     (coin: Coin crypto m) :
     context.next_coin coin = none ↔
-    m MemoryType.Nullifiers [crypto.hash [coin.esn.c, coin.esn.token, coin.esn.i₀, coin.esn.i₁, (context.bob coin).k]] = 0 := by
+    m MemoryType.Nullifiers [crypto.hash [coin.esn.c, coin.esn.token, coin.esn.i, (context.bob coin).k]] = 0 := by
   simp only [TracingContext.next_coin]
   split_ifs <;> simp [*]; omega
 
@@ -258,7 +258,7 @@ theorem TracingContext.next_prev
     have := context.next_prev₁ coin₀ coin₁ h_spent h_nonopen
     use h_nonopen, this.1 h
   · intro ⟨h_nonopen, h⟩
-    have h_nullifier : m MemoryType.Nullifiers [crypto.hash [coin₀.esn.c, coin₀.esn.token, coin₀.esn.i₀, coin₀.esn.i₁, ↑(context.bob coin₀).k]] ≠ 0 := by
+    have h_nullifier : m MemoryType.Nullifiers [crypto.hash [coin₀.esn.c, coin₀.esn.token, coin₀.esn.i, ↑(context.bob coin₀).k]] ≠ 0 := by
       rw [←h]
       simp only [TracingContext.prev_coin₁]
       set res := context.prev_coin₀ coin₁ h_nonopen
