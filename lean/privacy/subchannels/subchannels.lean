@@ -4,11 +4,11 @@ import privacy.utils
 
 structure SubchannelImplies₀
     {crypto: Crypto} (rm: ReachableMemory crypto) (c addralice addrbob Kbob token: ℕ) where
-  (k₀ k₁ r kalice channel_s channel_r: ℕ)
+  (k₀ k₁ r kalice channel_q channel_r: ℕ)
   h_k₀: k₀ < crypto.MAX_K₀
   r_ne_zero: r ≠ 0
   h_action: .OpenSubchannel ⟨c, addralice, addrbob, Kbob, token, k₀, k₁, r⟩ ∈ rm.actions
-  channel: ChannelImplies rm ⟨addralice, kalice, addrbob, Kbob, channel_s, channel_r⟩
+  channel: ChannelImplies rm ⟨addralice, kalice, addrbob, Kbob, channel_q, channel_r⟩
   h_c: c = channel.c
 
 abbrev SubchannelImplies₀.subchannel_input
@@ -40,7 +40,7 @@ theorem SubchannelImplies.next
     k₁ := subchannel_imp.k₁,
     r := subchannel_imp.r,
     kalice := subchannel_imp.kalice,
-    channel_s := subchannel_imp.channel_s,
+    channel_q := subchannel_imp.channel_q,
     channel_r := subchannel_imp.channel_r,
     h_k₀ := subchannel_imp.h_k₀,
     r_ne_zero := subchannel_imp.r_ne_zero,
@@ -110,14 +110,14 @@ theorem SubchannelImplies.from_action
   cases h
   case head =>
     let info := open_subchannel_info crypto inp rm success
-    obtain ⟨kalice, channel_s, channel_r, ⟨channel_imp, h_c⟩⟩ := ChannelImplies.from_channel_markers info.channel_exists
+    obtain ⟨kalice, channel_q, channel_r, ⟨channel_imp, h_c⟩⟩ := ChannelImplies.from_channel_markers info.channel_exists
 
     refine ⟨{
       k₀ := inp.k₀,
       k₁ := inp.k₁,
       r := inp.r,
       kalice := kalice,
-      channel_s := channel_s,
+      channel_q := channel_q,
       channel_r := channel_r,
       h_action := by simp,
       h_k₀ := info.k₀_lt_MAX_K₀,

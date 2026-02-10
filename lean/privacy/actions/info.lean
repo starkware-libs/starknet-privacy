@@ -59,7 +59,7 @@ structure OpenChannelInfo (crypto: Crypto) (inp: OpenChannelInput) (m: Memory) w
   alice_registered: m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
   kalice_valid: inp.kalice ∈ crypto.PrivateKeys
   r_ne_zero: inp.r ≠ 0
-  prev_outgoing_exists: inp.s = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
+  prev_outgoing_exists: inp.q = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
   channel_didnt_exist: m .ChannelMarkers [inp.channel_marker crypto] = 0
   outgoing_channel_didnt_exist: m .OutgoingChannels [inp.outgoing_channel_id crypto, 0] = 0
   no_change: ∀ t, ∀ x, (
