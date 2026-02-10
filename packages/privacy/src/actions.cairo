@@ -109,8 +109,8 @@ pub struct UseNoteInput {
 /// Input for the `Withdraw` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct WithdrawInput {
-    /// The target of the withdrawal.
-    pub withdrawal_target: ContractAddress,
+    /// The address to withdraw to.
+    pub to_addr: ContractAddress,
     /// The token's address.
     pub token: ContractAddress,
     /// The amount to withdraw.
@@ -222,8 +222,8 @@ pub struct AppendToVecInput {
 /// Input for the `TransferFrom` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct TransferFromInput {
-    /// The sender's address.
-    pub sender_addr: ContractAddress,
+    /// The address to transfer from.
+    pub from_addr: ContractAddress,
     /// The token's address.
     pub token: ContractAddress,
     /// The amount to transfer.
@@ -233,8 +233,8 @@ pub struct TransferFromInput {
 /// Input for the `TransferTo` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct TransferToInput {
-    /// The recipient's address.
-    pub recipient_addr: ContractAddress,
+    /// The address to transfer to.
+    pub to_addr: ContractAddress,
     /// The token's address.
     pub token: ContractAddress,
     /// The amount to transfer.
