@@ -6,7 +6,10 @@ use async_trait::async_trait;
 use discovery_core::storage_backend::{
     RawStorageAccess, StorageBackend, StorageError, StorageSnapshot,
 };
-use starknet_core::types::{requests::GetStorageAtRequest, BlockId, BlockTag, Felt, StarknetError};
+use starknet_core::types::{
+    requests::GetStorageAtRequest, BlockId, BlockTag, Felt, MaybePreConfirmedBlockWithTxHashes,
+    StarknetError,
+};
 use starknet_providers::{
     jsonrpc::{HttpTransport, JsonRpcClient},
     Provider, ProviderError, ProviderRequestData, ProviderResponseData,
@@ -117,7 +120,12 @@ impl RawStorageAccess for RpcSnapshot {
             .provider
             .get_storage_at(self.contract_address, slot, self.block_id)
             .await
-            .map_err(|e| RpcBackendError::Request(e.to_string()).into())
+            .map_err(|e| match &e {
+                ProviderError::StarknetError(StarknetError::ContractNotFound) => {
+                    StorageError::ContractNotFound
+                }
+                _ => RpcBackendError::Request(e.to_string()).into(),
+            })
     }
 
     async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError> {
@@ -149,7 +157,12 @@ impl RawStorageAccess for RpcSnapshot {
             .provider
             .batch_requests(&requests)
             .await
-            .map_err(|e| RpcBackendError::Request(e.to_string()))?;
+            .map_err(|e| match &e {
+                ProviderError::StarknetError(StarknetError::ContractNotFound) => {
+                    StorageError::ContractNotFound
+                }
+                _ => StorageError::from(RpcBackendError::Request(e.to_string())),
+            })?;
 
         // Extract results
         responses
@@ -165,7 +178,27 @@ impl RawStorageAccess for RpcSnapshot {
 #[async_trait]
 impl ChainState for RpcBackend {
     async fn get_head(&self) -> Option<ChainHead> {
-        *self.inner.head.read().await
+        if let Some(head) = *self.inner.head.read().await {
+            return Some(head);
+        }
+
+        // Fallback: fetch latest block via RPC when WS subscription hasn't
+        // provided a head yet (e.g. WS not available on the node).
+        let block = self
+            .inner
+            .provider
+            .get_block_with_tx_hashes(BlockId::Tag(BlockTag::Latest))
+            .await
+            .ok()?;
+
+        match block {
+            MaybePreConfirmedBlockWithTxHashes::Block(head) => Some(ChainHead {
+                block_number: head.block_number,
+                block_hash: head.block_hash,
+                timestamp: head.timestamp,
+            }),
+            MaybePreConfirmedBlockWithTxHashes::PreConfirmedBlock(_) => None,
+        }
     }
 
     async fn set_head(&self, head: ChainHead) {

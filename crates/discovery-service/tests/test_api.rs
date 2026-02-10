@@ -181,9 +181,9 @@ async fn test_incoming_sync_no_head() {
 
     let (status, error) = indexer.incoming_sync_error(&request).await.unwrap();
 
-    // Should return 503 SERVICE_UNAVAILABLE since no head is indexed yet
-    assert_eq!(status, 503);
-    assert_eq!(error.error.code, "SERVICE_UNAVAILABLE");
+    // Should return 404 CONTRACT_NOT_FOUND since contract 0x123 doesn't exist
+    assert_eq!(status, 404);
+    assert_eq!(error.error.code, "CONTRACT_NOT_FOUND");
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();

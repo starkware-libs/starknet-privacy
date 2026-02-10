@@ -66,7 +66,7 @@ export class IndexerClient {
       ...(process.env as Record<string, string>),
       WS_URL: config.wsUrl,
       API_HOST: `127.0.0.1:${port}`,
-      RUST_LOG: "debug,hyper_util=warn,hyper=warn",
+      RUST_LOG: process.env.RUST_LOG ?? "debug,hyper_util=warn,hyper=warn",
     };
     if (config.rpcUrl) env.RPC_URL = config.rpcUrl;
 
