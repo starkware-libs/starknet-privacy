@@ -114,7 +114,6 @@ pub struct EncOutgoingChannelInfo {
 }
 
 /// A note containing encrypted value and token information.
-// TODO: Ask if we should add getters for specific fields.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
 pub struct Note {
     /// The packed value of the note `(salt, amount)`:

@@ -19,7 +19,7 @@ pub struct Withdrawal {
     pub enc_user_addr: EncUserAddr,
     /// The address the funds are withdrawn to.
     #[key]
-    pub withdrawal_target: ContractAddress,
+    pub to_addr: ContractAddress,
     /// The token address.
     #[key]
     pub token: ContractAddress,

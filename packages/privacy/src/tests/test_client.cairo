@@ -2823,9 +2823,7 @@ fn test_use_deposited_open_note_withdraw() {
     // User 2 withdraws using the deposited open note.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     user_2
-        .withdraw_and_use_note_e2e(
-            withdrawal_target: user_2.address, :token, :amount, :channel_key, :index,
-        );
+        .withdraw_and_use_note_e2e(to_addr: user_2.address, :token, :amount, :channel_key, :index);
 
     // Verify tokens were transferred to user_2.
     assert_eq!(token.balance_of(address: user_2.address), amount.into());
@@ -3513,17 +3511,15 @@ fn test_withdraw_different_targets() {
 
     // Withdraw note to self.
     let (random, actions) = user_1
-        .internal_withdraw_with_generated_random(
-            withdrawal_target: user_1.address, :token_addr, :amount,
-        );
+        .internal_withdraw_with_generated_random(to_addr: user_1.address, :token_addr, :amount);
     let enc_user_addr = user_1.compute_enc_user_addr(:random);
     let expected_actions = [
         ServerAction::TransferTo(
-            TransferToInput { recipient_addr: user_1.address, token: token_addr, amount },
+            TransferToInput { to_addr: user_1.address, token: token_addr, amount },
         ),
         ServerAction::EmitWithdrawal(
             events::Withdrawal {
-                enc_user_addr, withdrawal_target: user_1.address, token: token_addr, amount,
+                enc_user_addr, to_addr: user_1.address, token: token_addr, amount,
             },
         ),
     ]
@@ -3532,17 +3528,15 @@ fn test_withdraw_different_targets() {
 
     // Withdraw note to other registered user.
     let (random, actions) = user_1
-        .internal_withdraw_with_generated_random(
-            withdrawal_target: user_2.address, :token_addr, :amount,
-        );
+        .internal_withdraw_with_generated_random(to_addr: user_2.address, :token_addr, :amount);
     let enc_user_addr = user_1.compute_enc_user_addr(:random);
     let expected_actions = [
         ServerAction::TransferTo(
-            TransferToInput { recipient_addr: user_2.address, token: token_addr, amount },
+            TransferToInput { to_addr: user_2.address, token: token_addr, amount },
         ),
         ServerAction::EmitWithdrawal(
             events::Withdrawal {
-                enc_user_addr, withdrawal_target: user_2.address, token: token_addr, amount,
+                enc_user_addr, to_addr: user_2.address, token: token_addr, amount,
             },
         ),
     ]
@@ -3551,17 +3545,15 @@ fn test_withdraw_different_targets() {
 
     // Withdraw note to not registered user.
     let (random, actions) = user_1
-        .internal_withdraw_with_generated_random(
-            withdrawal_target: user_3.address, :token_addr, :amount,
-        );
+        .internal_withdraw_with_generated_random(to_addr: user_3.address, :token_addr, :amount);
     let enc_user_addr = user_1.compute_enc_user_addr(:random);
     let expected_actions = [
         ServerAction::TransferTo(
-            TransferToInput { recipient_addr: user_3.address, token: token_addr, amount },
+            TransferToInput { to_addr: user_3.address, token: token_addr, amount },
         ),
         ServerAction::EmitWithdrawal(
             events::Withdrawal {
-                enc_user_addr, withdrawal_target: user_3.address, token: token_addr, amount,
+                enc_user_addr, to_addr: user_3.address, token: token_addr, amount,
             },
         ),
     ]
@@ -3578,35 +3570,27 @@ fn test_withdraw_assertions() {
     let amount = 100;
     let random = user_1.get_random().into();
 
-    // Catch ZERO_WITHDRAWAL_TARGET.
-    let result = user_1
-        .safe_withdraw(withdrawal_target: Zero::zero(), :token_addr, :amount, :random);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_WITHDRAWAL_TARGET);
+    // Catch ZERO_TO_ADDR.
+    let result = user_1.safe_withdraw(to_addr: Zero::zero(), :token_addr, :amount, :random);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TO_ADDR);
 
     // Catch ZERO_TOKEN.
     let result = user_1
-        .safe_withdraw(
-            withdrawal_target: user_2.address, token_addr: Zero::zero(), :amount, :random,
-        );
+        .safe_withdraw(to_addr: user_2.address, token_addr: Zero::zero(), :amount, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT.
     let result = user_1
-        .safe_withdraw(
-            withdrawal_target: user_2.address, :token_addr, amount: Zero::zero(), :random,
-        );
+        .safe_withdraw(to_addr: user_2.address, :token_addr, amount: Zero::zero(), :random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch ZERO_RANDOM.
     let result = user_1
-        .safe_withdraw(
-            withdrawal_target: user_2.address, :token_addr, :amount, random: Zero::zero(),
-        );
+        .safe_withdraw(to_addr: user_2.address, :token_addr, :amount, random: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE.
-    let result = user_1
-        .safe_withdraw(withdrawal_target: user_2.address, :token_addr, :amount, :random);
+    let result = user_1.safe_withdraw(to_addr: user_2.address, :token_addr, :amount, :random);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 }
 
@@ -3630,7 +3614,7 @@ fn test_withdraw_decrypt_user_addr() {
     let mut spy_events = spy_events();
     user_1
         .withdraw_and_use_note_e2e(
-            withdrawal_target: user_1.address, :token, :amount, :channel_key, index: 0,
+            to_addr: user_1.address, :token, :amount, :channel_key, index: 0,
         );
 
     // Compliance should be able to decrypt the user address.
@@ -3932,7 +3916,7 @@ fn test_client_execute_deposit_create_note() {
     let expected_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput {
-                sender_addr: user_1.address, token: token_addr, amount: amount.into(),
+                from_addr: user_1.address, token: token_addr, amount: amount.into(),
             },
         ),
         ServerAction::EmitDeposit(expected_event),
@@ -4033,7 +4017,7 @@ fn test_client_execute_use_note_withdraw() {
     let client_actions = [
         ClientAction::UseNote(use_note_input),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user_1.address, token: token_addr, amount, random },
+            WithdrawInput { to_addr: user_1.address, token: token_addr, amount, random },
         ),
     ]
         .span();
@@ -4045,12 +4029,12 @@ fn test_client_execute_use_note_withdraw() {
     );
     let enc_user_addr = user_2.compute_enc_user_addr(:random);
     let expected_event = events::Withdrawal {
-        enc_user_addr, withdrawal_target: user_1.address, token: token_addr, amount,
+        enc_user_addr, to_addr: user_1.address, token: token_addr, amount,
     };
     let expected_actions = array![
         to_write_once_action(storage_address: nullifier_path, value: true),
         ServerAction::TransferTo(
-            TransferToInput { recipient_addr: user_1.address, token: token_addr, amount },
+            TransferToInput { to_addr: user_1.address, token: token_addr, amount },
         ),
         ServerAction::EmitWithdrawal(expected_event),
     ]
@@ -4126,13 +4110,13 @@ fn test_client_execute_use_note_swap() {
         to_write_once_action(storage_address: nullifier_path, value: true),
         ServerAction::TransferTo(
             TransferToInput {
-                recipient_addr: test.privacy.swap_executor.address, token: token_addr, amount,
+                to_addr: test.privacy.swap_executor.address, token: token_addr, amount,
             },
         ),
         ServerAction::EmitWithdrawal(
             events::Withdrawal {
                 enc_user_addr,
-                withdrawal_target: test.privacy.swap_executor.address,
+                to_addr: test.privacy.swap_executor.address,
                 token: token_addr,
                 amount,
             },
@@ -4193,10 +4177,7 @@ fn test_client_execute_use_note_swap() {
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 2);
     let expected_event_withdrawal = events::Withdrawal {
-        enc_user_addr,
-        withdrawal_target: test.privacy.swap_executor.address,
-        token: token_addr,
-        amount,
+        enc_user_addr, to_addr: test.privacy.swap_executor.address, token: token_addr, amount,
     };
     let expected_event_deposit_to_open_note = events::OpenNoteDeposited {
         depositor: test.privacy.swap_executor.address, token: out_token_addr, note_id, amount,
@@ -4226,9 +4207,15 @@ fn test_client_execute_deposit_swap() {
         .open_channel_with_token_e2e(
             recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
+    let token_out = test.new_token();
+    let token_out_addr = token_out.contract_address();
+    user.open_subchannel_e2e(recipient: user, token_addr: token_out_addr, index: 1);
     let create_open_note_input = user
         .new_open_note_with_generated_random(
-            recipient: user, :token_addr, index: 0, depositor: test.privacy.swap_executor.address,
+            recipient: user,
+            token_addr: token_out_addr,
+            index: 0,
+            depositor: test.privacy.swap_executor.address,
         );
     user.cheat_create_open_note_e2e(create_note_input: create_open_note_input);
     let deposit_input = DepositInput { token: token_addr, amount: 100 };
@@ -4236,7 +4223,7 @@ fn test_client_execute_deposit_swap() {
     let (_, swap_input) = user
         .swap_input_with_generated_random(
             in_token: token_addr,
-            out_token: token_addr,
+            out_token: token_out_addr,
             amount: 100,
             :channel_key,
             index: create_open_note_input.index,
@@ -4368,7 +4355,7 @@ fn test_internal_actions() {
     let expected_event = events::Deposit { user_addr: user_1.address, token: token_addr, amount };
     let expected_actions = [
         ServerAction::TransferFrom(
-            TransferFromInput { sender_addr: user_1.address, token: token_addr, amount: amount },
+            TransferFromInput { from_addr: user_1.address, token: token_addr, amount: amount },
         ),
         ServerAction::EmitDeposit(expected_event),
     ]
@@ -4410,16 +4397,14 @@ fn test_internal_actions() {
 
     // Withdraw action.
     let (random, actions) = user_2
-        .internal_withdraw_with_generated_random(
-            withdrawal_target: user_1.address, :token_addr, :amount,
-        );
+        .internal_withdraw_with_generated_random(to_addr: user_1.address, :token_addr, :amount);
     let enc_user_addr = user_2.compute_enc_user_addr(:random);
     let expected_event = events::Withdrawal {
-        enc_user_addr, withdrawal_target: user_1.address, token: token_addr, amount,
+        enc_user_addr, to_addr: user_1.address, token: token_addr, amount,
     };
     let expected_actions = [
         ServerAction::TransferTo(
-            TransferToInput { recipient_addr: user_1.address, token: token_addr, amount: amount },
+            TransferToInput { to_addr: user_1.address, token: token_addr, amount: amount },
         ),
         ServerAction::EmitWithdrawal(expected_event),
     ]
@@ -4466,7 +4451,7 @@ fn test_internal_actions() {
     let enc_user_addr_swap = user_1.compute_enc_user_addr(random: swap_random);
     let expected_withdrawal_event = events::Withdrawal {
         enc_user_addr: enc_user_addr_swap,
-        withdrawal_target: swap_executor,
+        to_addr: swap_executor,
         token: token_addr,
         amount: swap_amount,
     };
@@ -4475,9 +4460,7 @@ fn test_internal_actions() {
     );
     let expected_actions = [
         ServerAction::TransferTo(
-            TransferToInput {
-                recipient_addr: swap_executor, token: token_addr, amount: swap_amount,
-            },
+            TransferToInput { to_addr: swap_executor, token: token_addr, amount: swap_amount },
         ),
         ServerAction::EmitWithdrawal(expected_withdrawal_event),
         ServerAction::SwapWithExecutor(
@@ -4969,7 +4952,7 @@ fn test_actions_out_of_order() {
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
+            WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
         ),
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
@@ -4983,7 +4966,7 @@ fn test_actions_out_of_order() {
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
+            WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
         ),
         ClientAction::OpenChannel(
             OpenChannelInput {
@@ -5005,7 +4988,7 @@ fn test_actions_out_of_order() {
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
+            WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
         ),
         ClientAction::OpenSubchannel(
             OpenSubchannelInput {
@@ -5028,7 +5011,7 @@ fn test_actions_out_of_order() {
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
+            WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
         ),
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
     ]
@@ -5042,7 +5025,7 @@ fn test_actions_out_of_order() {
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
+            WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
         ),
         ClientAction::UseNote(note_1_path),
     ]
@@ -5056,7 +5039,7 @@ fn test_actions_out_of_order() {
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
+            WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
         ),
         ClientAction::CreateEncNote(create_note_input_2),
     ]
@@ -5070,7 +5053,7 @@ fn test_actions_out_of_order() {
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
+            WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
         ),
         ClientAction::CreateOpenNote(open_note),
     ]
@@ -5081,13 +5064,16 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (swap -> set viewing key).
+    let out_token = test.new_token();
+    let out_token_addr = out_token.contract_address();
+    user.open_subchannel_e2e(recipient: user, token_addr: out_token_addr, index: 1);
     let swap_input = SwapInput {
         swap_executor: test.privacy.swap_executor.address,
         swap_contract: test.privacy.mock_amm,
         swap_selector: selector!("swap"),
         swap_calldata: [token_addr.into(), token_addr.into(), amount.into(), 0].span(),
         in_token: token_addr,
-        out_token: token_addr,
+        out_token: out_token_addr,
         in_amount: amount,
         channel_key,
         index: open_note.index,
@@ -5194,7 +5180,7 @@ fn test_actions_out_of_order() {
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::Swap(swap_input),
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
+            WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
         ),
     ]
         .span();
@@ -5250,7 +5236,7 @@ fn test_execute_and_panic_balance_assertions() {
     let random = user.get_random();
     let client_actions = [
         ClientAction::Withdraw(
-            WithdrawInput { withdrawal_target: user.address, token: token_addr, amount, random },
+            WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
         )
     ]
         .span();
@@ -5371,7 +5357,7 @@ fn test_client_execute_writes() {
         to_write_once_action(storage_address: subchannel_exists_storage_path, value: true),
         // Deposit.
         ServerAction::TransferFrom(
-            TransferFromInput { sender_addr: address, token: token_addr, amount },
+            TransferFromInput { from_addr: address, token: token_addr, amount },
         ),
         ServerAction::EmitDeposit(expected_event_deposit), // Create note.
         create_enc_note_input.into_server_action(:user),
@@ -5492,9 +5478,7 @@ fn test_client_transfers_dont_execute() {
     let expected_event = events::Deposit { user_addr: user.address, token: token_addr, amount };
     let expected_server_actions = array![
         ServerAction::TransferFrom(
-            TransferFromInput {
-                sender_addr: user.address, token: token_addr, amount: amount.into(),
-            },
+            TransferFromInput { from_addr: user.address, token: token_addr, amount: amount.into() },
         ),
         ServerAction::EmitDeposit(expected_event), create_note_input.into_server_action(:user),
     ]
@@ -5529,9 +5513,7 @@ fn test_client_transfers_dont_execute() {
                     },
                 ),
                 ClientAction::Withdraw(
-                    WithdrawInput {
-                        withdrawal_target: user.address, token: token_addr, amount, random,
-                    },
+                    WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
                 ),
             ]
                 .span(),
@@ -5555,14 +5537,12 @@ fn test_client_transfers_dont_execute() {
     );
     let enc_user_addr = user.compute_enc_user_addr(random: random.into());
     let expected_event = events::Withdrawal {
-        enc_user_addr, withdrawal_target: user.address, token: token_addr, amount,
+        enc_user_addr, to_addr: user.address, token: token_addr, amount,
     };
     let expected_server_actions = array![
         to_write_once_action(storage_address: nullifier_path, value: true),
         ServerAction::TransferTo(
-            TransferToInput {
-                recipient_addr: user.address, token: token_addr, amount: amount.into(),
-            },
+            TransferToInput { to_addr: user.address, token: token_addr, amount: amount.into() },
         ),
         ServerAction::EmitWithdrawal(expected_event),
     ]
@@ -5602,7 +5582,7 @@ fn test_no_privacy_actions() {
     // Withdraw only.
     let withdraw_action = ClientAction::Withdraw(
         WithdrawInput {
-            withdrawal_target: user.address, token: token_addr, amount, random: user.get_random(),
+            to_addr: user.address, token: token_addr, amount, random: user.get_random(),
         },
     );
     let result = user.safe_client_execute(client_actions: [withdraw_action].span());
@@ -6112,7 +6092,7 @@ fn test_swap_client_action() {
             compliance_public_key: test.privacy.get_compliance_public_key(),
             user_addr: user.address,
         ),
-        withdrawal_target: swap_executor_addr,
+        to_addr: swap_executor_addr,
         token: in_token_addr,
         amount: swap_amount,
     };
@@ -6202,15 +6182,15 @@ fn test_swap_client_action_assertions() {
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_SELECTOR);
 
-    // Catch ZERO_OUT_TOKEN.
+    // Catch ZERO_TOKEN (out_token).
     let swap_input = SwapInput { out_token: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
     let result = user.safe_client_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user.safe_execute_and_panic(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user.safe_execute_view(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_CHANNEL_KEY.
     let swap_input = SwapInput { channel_key: Zero::zero(), ..valid_swap_input };
@@ -6233,35 +6213,35 @@ fn test_swap_client_action_assertions() {
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    // Catch ZERO_SWAP_EXECUTOR.
+    // Catch ZERO_TO_ADDR (swap_executor).
     let swap_input = SwapInput { swap_executor: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
     let result = user.safe_client_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TO_ADDR);
     let result = user.safe_execute_and_panic(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TO_ADDR);
     let result = user.safe_execute_view(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TO_ADDR);
 
-    // Catch ZERO_IN_TOKEN.
+    // Catch ZERO_TOKEN (in_token).
     let swap_input = SwapInput { in_token: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
     let result = user.safe_client_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user.safe_execute_and_panic(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user.safe_execute_view(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
-    // Catch ZERO_IN_AMOUNT.
+    // Catch ZERO_AMOUNT (in_amount).
     let swap_input = SwapInput { in_amount: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
     let result = user.safe_client_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_AMOUNT);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
     let result = user.safe_execute_and_panic(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_AMOUNT);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
     let result = user.safe_execute_view(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_AMOUNT);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch ZERO_RANDOM.
     let swap_input = SwapInput { random: Zero::zero(), ..valid_swap_input };
@@ -6272,6 +6252,16 @@ fn test_swap_client_action_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
+
+    // Catch SWAP_TO_SAME_TOKEN.
+    let swap_input = SwapInput { in_token: out_token_addr, ..valid_swap_input };
+    let client_actions = [ClientAction::Swap(swap_input)].span();
+    let result = user.safe_client_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::SWAP_TO_SAME_TOKEN);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::SWAP_TO_SAME_TOKEN);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::SWAP_TO_SAME_TOKEN);
 
     // Catch NEGETIVE_INTERMEDIATE_BALANCE.
     let client_actions = [ClientAction::Swap(valid_swap_input)].span();
@@ -6618,10 +6608,7 @@ fn test_swap_doesnt_execute_during_client_execute() {
     );
     let enc_user_addr = user.compute_enc_user_addr(:random);
     let expected_withdrawal_event = events::Withdrawal {
-        enc_user_addr,
-        withdrawal_target: swap_executor_addr,
-        token: in_token_addr,
-        amount: swap_amount,
+        enc_user_addr, to_addr: swap_executor_addr, token: in_token_addr, amount: swap_amount,
     };
     let expected_server_actions = [
         // UseNote: write nullifier.
@@ -6629,7 +6616,7 @@ fn test_swap_doesnt_execute_during_client_execute() {
         // Swap: TransferTo (input tokens to swap executor).
         ServerAction::TransferTo(
             TransferToInput {
-                recipient_addr: swap_executor_addr, token: in_token_addr, amount: swap_amount,
+                to_addr: swap_executor_addr, token: in_token_addr, amount: swap_amount,
             },
         ),
         // Swap: EmitWithdrawal.
@@ -6690,4 +6677,52 @@ fn test_swap_doesnt_execute_during_client_execute() {
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
     );
+}
+
+#[test]
+fn test_swap_decrypt_user_addr() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    user
+        .open_channel_with_token_e2e(
+            recipient: user, token_addr: token_addr, outgoing_channel_index: 0, subchannel_index: 0,
+        );
+    let amount = 100;
+    user.deposit_and_create_note_e2e(:token, :amount);
+    let out_token = test.new_token();
+    let out_token_addr = out_token.contract_address();
+    user.open_subchannel_e2e(recipient: user, token_addr: out_token_addr, index: 1);
+    let channel_key = user.compute_channel_key(recipient: user);
+    let open_note_input = user
+        .new_open_note_with_generated_random(
+            recipient: user,
+            token_addr: out_token_addr,
+            index: 0,
+            depositor: test.privacy.swap_executor.address,
+        );
+    user.cheat_create_open_note_e2e(create_note_input: open_note_input);
+    let use_note_input = UseNoteInput { channel_key, token: token_addr, index: 0 };
+    let (_, swap_input) = user
+        .swap_input_with_generated_random(
+            in_token: token_addr, out_token: out_token_addr, :amount, :channel_key, index: 0,
+        );
+    let client_actions = [ClientAction::UseNote(use_note_input), ClientAction::Swap(swap_input)]
+        .span();
+    let server_actions = user.client_execute(:client_actions);
+    out_token.supply(address: test.privacy.mock_amm, :amount);
+    let mut spy = spy_events();
+    test.privacy.execute_actions(actions: server_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 2);
+    let (_, withdrawal_event) = events[0];
+    let enc_user_addr = EncUserAddr {
+        compliance_public_key: *withdrawal_event.data[0],
+        ephemeral_pubkey: *withdrawal_event.data[1],
+        enc_user_addr: *withdrawal_event.data[2],
+    };
+    let decrypted_user_addr = test.compliance.decrypt_user_addr(:enc_user_addr);
+    assert_eq!(decrypted_user_addr, user.address);
 }
