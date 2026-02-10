@@ -85,3 +85,6 @@ __pycache__
 
 # e2e account credentials (contain private keys)
 accounts.json
+
+# demo app local env (contains private keys)
+demo/.env
