@@ -122,7 +122,7 @@ theorem NoteImplies.scan_for_recipient
     ⟨inp.to_scanned_note crypto, inp.addralice, inp.addrbob⟩ ∈
       scan_notes_for_recipient (.from rm) inp.addrbob note_imp.subchannel.channel.kbob := by
   rw [scan_notes_for_recipient']
-  refine ⟨by rfl, ?_, note_imp.subchannel.scan, note_imp.scan_for_channel⟩
+  refine ⟨by rfl, ?_, note_imp.subchannel.scan_for_channel, note_imp.scan_for_channel⟩
   · have := note_imp.subchannel.channel.scan
     simp only [OpenChannelInput.c, CreateNoteInput.c, ←NoteImplies.h_kalice] at this
     exact this

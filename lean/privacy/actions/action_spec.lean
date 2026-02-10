@@ -60,25 +60,25 @@ def open_channel (crypto: Crypto) (inp: OpenChannelInput) (m: Memory) : List Ser
 -----------------------
 
 structure OpenSubchannelInput where
-  (c addralice addrbob Kbob token k₀ k₁ r: ℕ)
+  (c addralice addrbob Kbob token k r: ℕ)
 
 abbrev OpenSubchannelInput.subchannel_id (crypto: Crypto) (inp: OpenSubchannelInput) : ℕ :=
-  crypto.hash [inp.c, inp.k₀, inp.k₁]
+  crypto.hash [inp.c, inp.k]
 
 abbrev OpenSubchannelInput.enc (crypto: Crypto) (inp: OpenSubchannelInput) : ℕ :=
-  crypto.hash [inp.c, inp.k₀, inp.k₁, inp.r] + inp.token
+  crypto.hash [inp.c, inp.k, inp.r] + inp.token
 
 abbrev OpenSubchannelInput.subchannel_marker (crypto: Crypto) (inp: OpenSubchannelInput) : ℕ :=
   crypto.hash [inp.c, inp.addrbob, inp.Kbob, inp.token]
 
 def open_subchannel (crypto: Crypto) (inp: OpenSubchannelInput) (m: Memory) : List ServerAction × Bool :=
   let channel_exists := m .ChannelMarkers [crypto.hash [inp.c, inp.addralice, inp.addrbob, inp.Kbob]] ≠ 0
-  let prev_subchannel_exists := inp.k₁ = 0 ∨ m .SubchannelTokens [crypto.hash [inp.c, inp.k₀, inp.k₁ - 1], 0] != 0
+  let prev_subchannel_exists := inp.k = 0 ∨ m .SubchannelTokens [crypto.hash [inp.c, inp.k - 1], 0] != 0
   ([
     .WriteOnce .SubchannelTokens [inp.subchannel_id crypto, 0] inp.r,
     .WriteOnce .SubchannelTokens [inp.subchannel_id crypto, 1] (inp.enc crypto),
     .WriteOnce .SubchannelMarkers [inp.subchannel_marker crypto] 1,
-  ], inp.r ≠ 0 ∧ channel_exists ∧ prev_subchannel_exists ∧ inp.k₀ < crypto.MAX_K₀)
+  ], inp.r ≠ 0 ∧ channel_exists ∧ prev_subchannel_exists)
 
 -----------------
 -- Create Note --
