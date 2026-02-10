@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "starknet": "^9.2.1",
+    "starknet": "github:m-kus/starknet.js#19c1b5fcb227df60dc4d7e965cf1aea0699f543f",
     "starknet-sdk": "file:../sdk"
   },
   "devDependencies": {
