@@ -62,3 +62,31 @@ This writes fixtures directly to:
 - `crates/discovery-service/tests/fixtures/devnet-dump.metadata.json` -- timestamp + addresses
 
 After regenerating, run `cargo test` from the repo root to confirm Rust tests still pass.
+
+## Privacy StarkNet integration (`tests/privacy-starknet-integration.test.ts`)
+
+Tests against a real (non-devnet) StarkNet deployment on integration sepolia.
+Spawns the discovery service indexer, runs preflight and deposit flows via the SDK.
+
+Requires network access and a `.env` file with account credentials and contract addresses.
+
+### Setting up `.env`
+
+1. Copy the example file: `cp .env.example .env`
+2. Fill in real values from the shared team document (search for "PrivacyDummyAccount")
+
+The `ACCOUNTS` env var is a JSON array of account entries:
+
+```json
+[
+  {"name": "admin", "address": "0x...", "privateKey": "0x...", "viewingKey": "0x..."},
+  {"name": "alice", "address": "0x...", "privateKey": "0x...", "viewingKey": "0x..."}
+]
+```
+
+The test uses `admin` as the minter (OZ account) and `alice` as the privacy account.
+`alice` uses the `PrivacyDummyAccount` class (trivial signer, no signature required).
+
+```bash
+npx vitest run tests/privacy-starknet-integration.test.ts
+```
