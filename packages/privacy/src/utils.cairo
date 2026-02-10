@@ -19,9 +19,7 @@ use privacy::utils::constants::{
 };
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{get_execution_info_v3_syscall, send_message_to_l1_syscall};
-use starknet::{
-    ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED, get_block_number,
-};
+use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
 use starkware_utils::span::Contains;
 
 #[starknet::interface]
@@ -415,7 +413,7 @@ pub(crate) impl ProofFactsDefaultImpl of Default<ProofFacts> {
             program_variant: VIRTUAL_SNOS,
             virtual_program_hash: 0,
             starknet_os_output_version: VIRTUAL_SNOS0,
-            base_block_number: get_block_number(),
+            base_block_number: starknet::get_block_number(),
             base_block_hash: 0,
             starknet_os_config_hash: 0,
             message_to_l1_hashes: [].span(),
