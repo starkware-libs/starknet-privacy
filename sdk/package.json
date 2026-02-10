@@ -69,7 +69,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "starknet": "github:m-kus/starknet.js#e982110d3a3c8e7a8fb3977e6564ee58be154f82",
+    "starknet": "github:m-kus/starknet.js#19c1b5fcb227df60dc4d7e965cf1aea0699f543f",
     "starknet-devnet": "^0.7.2"
   },
   "devDependencies": {
