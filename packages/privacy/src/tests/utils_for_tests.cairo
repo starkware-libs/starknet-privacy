@@ -1235,8 +1235,12 @@ pub(crate) impl ComplianceImpl of ComplianceTrait {
 
 impl DefaultComplianceImpl of Default<Compliance> {
     fn default() -> Compliance {
-        let private_key = 'COMPLIANCE_PRIVATE_KEY';
+        let private_key = 0x028723be0292b9ac81b0a9eb5c187185d4e5cb96b3ea7a4a47afd8016676c1c4;
         let public_key = derive_public_key(:private_key);
+        assert(
+            public_key == 0x02fbf66c1dd8c556f8f9ee8852669513a9559385194da39ff0e33ed38586fe47,
+            'INVALID_COMPLIANCE_PUBLIC_KEY',
+        );
         Compliance { private_key, public_key }
     }
 }

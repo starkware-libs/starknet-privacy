@@ -294,3 +294,260 @@ fn test_get_enc_private_key() {
     let expected_enc_private_key_1 = user.compute_enc_private_key(:random);
     assert_eq!(user.get_enc_private_key(), expected_enc_private_key_1);
 }
+use privacy::actions::{
+    ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput, OpenChannelInput,
+    OpenSubchannelInput, SetViewingKeyInput, WithdrawInput,
+};
+use privacy::hashes::{compute_channel_key, hash};
+use privacy::utils::constants::TWO_POW_120;
+use privacy::utils::derive_public_key;
+use starknet::ContractAddress;
+
+#[test]
+fn test_prepare_tx() {
+    let mut test: Test = Default::default();
+    let STRK: u128 = 1000000000000000000; // 10^18
+
+    // Account 1.
+    println!("--------------------------------");
+    println!("Account 1");
+    let acc_1_addr: ContractAddress =
+        0x041c9dbe8ab9b414fa0ec4d22b7a41d80a3911b77a2c9c819ce949faa5edb9f9
+        .try_into()
+        .unwrap();
+    let acc_1_private_key = 0x254055e37555fd981daf35700e046e42980f4e041d7aaec4886c0c1a46a07;
+    let acc_1_viewing_private_key = acc_1_private_key - 1;
+    let acc_1_public_key = derive_public_key(acc_1_private_key);
+    let acc_1_viewing_public_key = derive_public_key(acc_1_viewing_private_key);
+    assert_eq!(
+        acc_1_public_key,
+        0x1b9bdc063c1972b8a251c2ba0d25851185e64d2ffc318a675cd450844415df2,
+        "INVALID_ACC_1_PUBLIC_KEY",
+    );
+    println!("acc_1_addr: {:?}", acc_1_addr);
+    println!("acc_1_private_key: {}", acc_1_private_key);
+    println!("acc_1_public_key: {}", acc_1_public_key);
+    println!("acc_1_viewing_private_key: {}", acc_1_viewing_private_key);
+    println!("acc_1_viewing_public_key: {}", acc_1_viewing_public_key);
+
+    // Account 2.
+    println!("--------------------------------");
+    println!("Account 2");
+    let acc_2_addr: ContractAddress =
+        0x05499b2112812a5437837750d27131f2de280531fb066a290269f77922fc3f97
+        .try_into()
+        .unwrap();
+    let acc_2_private_key = 0x13034027ffd68fc59cac2f7854d53eebcb7287f2dcd44231f2585967ad08f62;
+    let acc_2_viewing_private_key = acc_2_private_key - 1;
+    let acc_2_public_key = derive_public_key(acc_2_private_key);
+    let acc_2_viewing_public_key = derive_public_key(acc_2_viewing_private_key);
+    assert_eq!(
+        acc_2_public_key,
+        0x3a277bfbb20949cb08aba3d9ddd889d9dcc7a445c48770c2f86eb7b3fd3a05d,
+        "INVALID_ACC_2_PUBLIC_KEY",
+    );
+    println!("acc_2_addr: {:?}", acc_2_addr);
+    println!("acc_2_private_key: {}", acc_2_private_key);
+    println!("acc_2_public_key: {}", acc_2_public_key);
+    println!("acc_2_viewing_private_key: {}", acc_2_viewing_private_key);
+    println!("acc_2_viewing_public_key: {}", acc_2_viewing_public_key);
+
+    // Tokens.
+    // strk is TestToken2.
+    let strk: ContractAddress = 0x207e3746cf01e4aa10419992a84ae4e2d43ff58bd730b17a7fc164520e2c6cc
+        .try_into()
+        .unwrap();
+    let test_token_1: ContractAddress =
+        0x7b19e89252b1ee5d7ff07a0e0e278b16b058f322053f799469b969e31b82969
+        .try_into()
+        .unwrap();
+    println!("--------------------------------");
+    println!("Tokens");
+    println!("STRK: {:?}", strk);
+    println!("TestToken1: {:?}", test_token_1);
+
+    // Account 1 register tx.
+    println!("--------------------------------");
+    println!("Account 1 register tx");
+    let acc_1_register_random = 0x5076e60998cf053bdb3cfe0f3fc97b02ead281d08fc30ccd51258522eebf908;
+    println!("acc_1_register_random: {}", acc_1_register_random);
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random: acc_1_register_random })
+    ]
+        .span();
+    println!("client_actions: {:?}", client_actions);
+    let user_addr = acc_1_addr;
+    let user_private_key = acc_1_viewing_private_key;
+    println!("================================================");
+    println!(
+        "Arguments: {:?}, {:?}, array!{:?}.span()", user_addr, user_private_key, client_actions,
+    );
+    println!("================================================");
+    let server_actions = test.privacy.execute_view(:user_addr, :user_private_key, :client_actions);
+    println!("server_actions: {:?}", server_actions);
+    test.privacy.apply_actions(actions: server_actions);
+
+    // Account 2 big tx.
+    println!("--------------------------------");
+    println!("Account 2 big tx");
+    let acc_2_random = hash([acc_2_addr.into(), acc_2_viewing_private_key].span());
+    let acc_2_salt = hash([acc_2_addr.into(), acc_2_viewing_public_key].span());
+    println!("acc_2_random: {:?}", acc_2_random);
+    println!("acc_2_salt: {:?}", acc_2_salt);
+    // Register.
+    let register = ClientAction::SetViewingKey(SetViewingKeyInput { random: acc_2_random });
+    // Open channel.
+    let open_self_channel = ClientAction::OpenChannel(
+        OpenChannelInput {
+            recipient_addr: acc_2_addr,
+            recipient_public_key: acc_2_viewing_public_key,
+            index: 0,
+            random: acc_2_random,
+            salt: acc_2_salt,
+        },
+    );
+    let open_acc_1_channel = ClientAction::OpenChannel(
+        OpenChannelInput {
+            recipient_addr: acc_1_addr,
+            recipient_public_key: acc_1_viewing_public_key,
+            index: 1,
+            random: acc_2_random,
+            salt: acc_2_salt,
+        },
+    );
+    // Open subchannel.
+    let self_channel_key = compute_channel_key(
+        sender_addr: acc_2_addr,
+        sender_private_key: acc_2_viewing_private_key,
+        recipient_addr: acc_2_addr,
+        recipient_public_key: acc_2_viewing_public_key,
+    );
+    println!("self_channel_key: {:?}", self_channel_key);
+    let open_self_strk_subchannel = ClientAction::OpenSubchannel(
+        OpenSubchannelInput {
+            recipient_addr: acc_2_addr,
+            recipient_public_key: acc_2_viewing_public_key,
+            channel_key: self_channel_key,
+            index: 0,
+            token: strk,
+            salt: acc_2_salt,
+        },
+    );
+    let open_self_test_token_1_subchannel = ClientAction::OpenSubchannel(
+        OpenSubchannelInput {
+            recipient_addr: acc_2_addr,
+            recipient_public_key: acc_2_viewing_public_key,
+            channel_key: self_channel_key,
+            index: 1,
+            token: test_token_1,
+            salt: acc_2_salt,
+        },
+    );
+    let acc_1_channel_key = compute_channel_key(
+        sender_addr: acc_2_addr,
+        sender_private_key: acc_2_viewing_private_key,
+        recipient_addr: acc_1_addr,
+        recipient_public_key: acc_1_viewing_public_key,
+    );
+    println!("acc_1_channel_key: {:?}", acc_1_channel_key);
+    let open_acc_1_strk_subchannel = ClientAction::OpenSubchannel(
+        OpenSubchannelInput {
+            recipient_addr: acc_1_addr,
+            recipient_public_key: acc_1_viewing_public_key,
+            channel_key: acc_1_channel_key,
+            index: 0,
+            token: strk,
+            salt: acc_2_salt,
+        },
+    );
+    // Deposit.
+    let deposit_1_strk = ClientAction::Deposit(DepositInput { token: strk, amount: 9 * STRK });
+    let deposit_2_strk = ClientAction::Deposit(DepositInput { token: strk, amount: STRK });
+    let deposit_test_token_1 = ClientAction::Deposit(
+        DepositInput { token: test_token_1, amount: STRK / 2 },
+    );
+    // Create notes.
+    let two_pow_120: u256 = TWO_POW_120.into();
+    let create_note_salt: u128 = (acc_2_salt.try_into().unwrap() % two_pow_120).try_into().unwrap();
+    println!("create_note_salt: {}", create_note_salt);
+    let create_self_enc_note_strk_1 = ClientAction::CreateEncNote(
+        CreateEncNoteInput {
+            recipient_addr: acc_2_addr,
+            recipient_public_key: acc_2_viewing_public_key,
+            token: strk,
+            amount: 2 * STRK,
+            index: 0,
+            salt: create_note_salt,
+        },
+    );
+    let create_self_open_note_strk = ClientAction::CreateOpenNote(
+        CreateOpenNoteInput {
+            recipient_addr: acc_2_addr,
+            recipient_public_key: acc_2_viewing_public_key,
+            token: strk,
+            index: 1,
+            depositor: acc_2_addr,
+            random: acc_2_random,
+        },
+    );
+    let create_self_enc_note_strk_2 = ClientAction::CreateEncNote(
+        CreateEncNoteInput {
+            recipient_addr: acc_2_addr,
+            recipient_public_key: acc_2_viewing_public_key,
+            token: strk,
+            amount: 5 * STRK,
+            index: 2,
+            salt: create_note_salt,
+        },
+    );
+    let create_acc_1_enc_note_strk = ClientAction::CreateEncNote(
+        CreateEncNoteInput {
+            recipient_addr: acc_1_addr,
+            recipient_public_key: acc_1_viewing_public_key,
+            token: strk,
+            amount: 3 * STRK,
+            index: 0,
+            salt: create_note_salt,
+        },
+    );
+    let create_self_open_note_test_token_1 = ClientAction::CreateOpenNote(
+        CreateOpenNoteInput {
+            recipient_addr: acc_2_addr,
+            recipient_public_key: acc_2_viewing_public_key,
+            token: test_token_1,
+            index: 0,
+            depositor: acc_2_addr,
+            random: acc_2_random,
+        },
+    );
+    // Withdraw.
+    let withdraw_test_token_1_1 = ClientAction::Withdraw(
+        WithdrawInput {
+            to_addr: acc_1_addr, token: test_token_1, amount: STRK / 4, random: acc_2_random,
+        },
+    );
+    let withdraw_test_token_1_2 = ClientAction::Withdraw(
+        WithdrawInput {
+            to_addr: acc_2_addr, token: test_token_1, amount: STRK / 4, random: acc_2_random,
+        },
+    );
+    let client_actions = [
+        register, open_self_channel, open_acc_1_channel, open_self_strk_subchannel,
+        open_acc_1_strk_subchannel, open_self_test_token_1_subchannel, deposit_1_strk,
+        deposit_test_token_1, deposit_2_strk, create_self_enc_note_strk_1,
+        create_self_open_note_strk, create_self_open_note_test_token_1, create_acc_1_enc_note_strk,
+        create_self_enc_note_strk_2, withdraw_test_token_1_1, withdraw_test_token_1_2,
+    ]
+        .span();
+    println!("client_actions: {:?}", client_actions);
+    let user_addr = acc_2_addr;
+    let user_private_key = acc_2_viewing_private_key;
+    println!("================================================");
+
+    println!(
+        "Arguments: {:?}, {:?}, array!{:?}.span()", user_addr, user_private_key, client_actions,
+    );
+    println!("================================================");
+    let server_actions = test.privacy.execute_view(:user_addr, :user_private_key, :client_actions);
+    println!("server_actions: {:?}", server_actions);
+}
