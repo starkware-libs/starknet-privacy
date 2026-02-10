@@ -41,6 +41,7 @@ yarn-error.log*
 
 # Vite
 **/vite.config.ts.timestamp-*
+.vite/
 
 # run-rs
 data
@@ -85,3 +86,6 @@ __pycache__
 
 # e2e account credentials (contain private keys)
 accounts.json
+
+# demo app local env (contains private keys)
+demo/.env
