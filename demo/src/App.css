@@ -1,0 +1,212 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, monospace;
+  font-size: 13px;
+  background: #0d1117;
+  color: #c9d1d9;
+}
+
+h1 {
+  font-size: 18px;
+  margin: 0 0 12px;
+  color: #58a6ff;
+}
+
+h2 {
+  font-size: 15px;
+  margin: 0 0 8px;
+  color: #58a6ff;
+}
+
+h3 {
+  font-size: 13px;
+  margin: 8px 0 4px;
+  color: #8b949e;
+}
+
+.app {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.account-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+}
+
+select {
+  background: #0d1117;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+.add-account-form {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.main-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 12px;
+}
+
+.info-panel,
+.action-panel {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 4px 0;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 4px 8px;
+  border-bottom: 1px solid #21262d;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+
+th {
+  color: #8b949e;
+  font-weight: 600;
+}
+
+button {
+  background: #238636;
+  color: #fff;
+  border: 1px solid #2ea043;
+  border-radius: 4px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+}
+
+button:hover:not(:disabled) {
+  background: #2ea043;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+input {
+  background: #0d1117;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  width: 100%;
+}
+
+input[type="number"] {
+  width: 100px;
+}
+
+.action-form {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #21262d;
+}
+
+.action-form:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+.action-form button {
+  margin-top: 4px;
+}
+
+.status-bar {
+  padding: 8px;
+  margin-bottom: 12px;
+  border-radius: 4px;
+  border: 1px solid #30363d;
+  background: #161b22;
+}
+
+.status-bar .pending {
+  color: #d29922;
+}
+
+.status-bar .success {
+  color: #3fb950;
+}
+
+.status-bar .success code {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.error {
+  color: #f85149;
+  margin-bottom: 8px;
+}
+
+.empty {
+  color: #484f58;
+  font-style: italic;
+}
+
+.subtitle {
+  color: #8b949e;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.subtitle code {
+  color: #c9d1d9;
+  font-size: 11px;
+}
+
+.chip {
+  display: inline-block;
+  background: #30363d;
+  color: #8b949e;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.chip-ok {
+  background: #1b3a2a;
+  color: #3fb950;
+}
+
+.chip-no {
+  background: #3d1a1a;
+  color: #f85149;
+}
