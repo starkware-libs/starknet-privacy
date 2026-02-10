@@ -62,3 +62,48 @@ This writes fixtures directly to:
 - `crates/discovery-service/tests/fixtures/devnet-dump.metadata.json` -- timestamp + addresses
 
 After regenerating, run `cargo test` from the repo root to confirm Rust tests still pass.
+
+## Privacy StarkNet integration (`tests/privacy-starknet-integration.test.ts`)
+
+Tests against a real (non-devnet) StarkNet deployment on integration sepolia.
+Spawns the discovery service indexer, runs preflight and deposit flows via the SDK.
+
+Requires network access and `accounts.json` (gitignored) with account credentials.
+
+### Creating `accounts.json`
+
+Account keys are stored in the shared team document (search for "PrivacyDummyAccount").
+Create `e2e/accounts.json` with the following structure, filling in keys from the document:
+
+```json
+{
+  "admin": {
+    "label": "OZ account, minter",
+    "address": "0x...",
+    "class_hash": "0x...",
+    "private_key": "0x...",
+    "public_key": "0x..."
+  },
+  "alice": {
+    "label": "trivial signer, privacy account",
+    "address": "0x...",
+    "class_hash": "0x...",
+    "private_key": "0x...",
+    "public_key": "0x..."
+  },
+  "bob": {
+    "label": "trivial signer, privacy account",
+    "address": "0x...",
+    "class_hash": "0x...",
+    "private_key": "0x...",
+    "public_key": "0x..."
+  }
+}
+```
+
+The test uses `admin` as the minter (OZ account) and `alice` as the privacy account.
+`alice` and `bob` use the `PrivacyDummyAccount` class (trivial signer, no signature required).
+
+```bash
+npx vitest run tests/privacy-starknet-integration.test.ts
+```
