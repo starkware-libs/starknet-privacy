@@ -55,3 +55,14 @@ This writes fixtures directly to:
 - `crates/discovery-service/tests/fixtures/devnet-dump.metadata.json` -- timestamp + addresses
 
 After regenerating, run `cargo test` from the repo root to confirm Rust tests still pass.
+
+## Privacy StarkNet integration (`tests/privacy-starknet-integration.test.ts`)
+
+Tests against a real (non-devnet) StarkNet deployment on integration sepolia.
+Spawns the discovery service indexer, runs preflight and deposit flows via the SDK.
+
+Requires network access and `accounts.json` (gitignored) with minter and Alice credentials.
+
+```bash
+npx vitest run tests/privacy-starknet-integration.test.ts
+```

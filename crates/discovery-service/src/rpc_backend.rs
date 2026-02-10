@@ -10,7 +10,10 @@ use async_trait::async_trait;
 use discovery_core::storage_backend::{
     RawStorageAccess, StorageBackend, StorageError, StorageSnapshot,
 };
-use starknet_core::types::{requests::GetStorageAtRequest, BlockId, BlockTag, Felt, StarknetError};
+use starknet_core::types::{
+    requests::GetStorageAtRequest, BlockId, BlockTag, Felt, MaybePreConfirmedBlockWithTxHashes,
+    StarknetError,
+};
 use starknet_providers::{
     jsonrpc::{HttpTransport, JsonRpcClient},
     Provider, ProviderError, ProviderRequestData, ProviderResponseData,
@@ -165,7 +168,29 @@ impl RawStorageAccess for RpcSnapshot {
 #[async_trait]
 impl ChainState for RpcBackend {
     async fn get_head(&self) -> Option<ChainHead> {
-        *self.inner.head.read().await
+        if let Some(head) = *self.inner.head.read().await {
+            return Some(head);
+        }
+
+        // Fallback: fetch latest block via RPC when WS subscription hasn't
+        // provided a head yet (e.g. WS not available on the node).
+        let block = self
+            .inner
+            .provider
+            .get_block_with_tx_hashes(BlockId::Tag(BlockTag::Latest))
+            .await
+            .ok()?;
+
+        match block {
+            MaybePreConfirmedBlockWithTxHashes::Block(head) => {
+                Some(ChainHead {
+                    block_number: head.block_number,
+                    block_hash: head.block_hash,
+                    timestamp: head.timestamp,
+                })
+            }
+            MaybePreConfirmedBlockWithTxHashes::PreConfirmedBlock(_) => None,
+        }
     }
 
     async fn set_head(&self, head: ChainHead) {

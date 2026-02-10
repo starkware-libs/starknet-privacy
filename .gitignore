@@ -82,3 +82,6 @@ __pycache__
 
 # test logs
 *.log
+
+# e2e account credentials (contain private keys)
+accounts.json
