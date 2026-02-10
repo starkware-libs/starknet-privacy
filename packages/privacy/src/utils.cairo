@@ -20,7 +20,6 @@ use privacy::utils::constants::{
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{get_execution_info_v3_syscall, send_message_to_l1_syscall};
 use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
-use starkware_utils::span::Contains;
 
 #[starknet::interface]
 pub(crate) trait IAccount<TState> {
@@ -445,6 +444,6 @@ pub(crate) fn validate_proof(actions: Span<ServerAction>) {
     actions.serialize(ref l1_message_data);
     let message_hash = hash(l1_message_data.span());
     assert(
-        proof_facts_struct.message_to_l1_hashes.contains(message_hash), errors::INVALID_PROOF_MSG,
+        proof_facts_struct.message_to_l1_hashes == [message_hash].span(), errors::INVALID_PROOF_MSG,
     );
 }
