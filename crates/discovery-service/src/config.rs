@@ -92,6 +92,9 @@ pub struct ApiServerConfig {
     /// Populated from the `[limits]` section by `build_configs()`, not deserialized directly.
     #[serde(skip_deserializing)]
     pub validation_limits: ValidationLimits,
+    /// Populated from `[rpc].url` by `build_configs()`, not deserialized directly.
+    #[serde(skip_deserializing)]
+    pub rpc_url: String,
 }
 
 impl Default for ApiServerConfig {
@@ -100,6 +103,7 @@ impl Default for ApiServerConfig {
             host: "127.0.0.1:8080".to_string(),
             health_max_lag_secs: 5,
             validation_limits: ValidationLimits::default(),
+            rpc_url: String::new(),
         }
     }
 }
@@ -232,6 +236,7 @@ impl ServiceConfig {
     ) -> Result<(RpcConfig, Felt, IndexerConfig, ApiServerConfig), ConfigError> {
         let contract_address = self.contract_address()?;
         self.api.validation_limits = self.limits;
+        self.api.rpc_url = self.rpc.url.clone();
         Ok((self.rpc, contract_address, self.indexer, self.api))
     }
 }

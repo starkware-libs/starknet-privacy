@@ -12,6 +12,7 @@ use discovery_core::storage_backend::StorageBackend;
 use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+use tower_http::cors::CorsLayer;
 use tracing::{info, warn};
 
 use crate::chain_state::{ChainHead, ChainState};
@@ -47,6 +48,8 @@ where
             backend: self.backend.clone(),
             health_max_lag_secs: self.config.health_max_lag_secs,
             validation_limits: self.config.validation_limits.clone(),
+            rpc_url: self.config.rpc_url.clone(),
+            http_client: reqwest::Client::new(),
         });
 
         // TODO: Add TLS termination (spec 5.1)
@@ -56,6 +59,8 @@ where
             .route("/v1/sync/outgoing_state", post(outgoing_sync_handler::<B>))
             .route("/v1/discovery/preflight", post(preflight_handler::<B>))
             // TODO: Implement POST /v1/discovery/history endpoint (spec 6.7)
+            .route("/v1/debug/rpc_proxy", post(rpc_proxy_handler::<B>))
+            .layer(CorsLayer::permissive())
             .with_state(app_state);
 
         // TODO(security): Add DefaultBodyLimit layer — current Axum 2MB default is
@@ -90,6 +95,8 @@ pub struct AppState<B> {
     pub backend: B,
     pub health_max_lag_secs: u64,
     pub validation_limits: ValidationLimits,
+    pub rpc_url: String,
+    pub http_client: reqwest::Client,
 }
 
 /// Response for the health endpoint.
@@ -132,6 +139,43 @@ where
     };
 
     (status_code, Json(response))
+}
+
+/// Handler for POST /v1/debug/rpc_proxy — forwards JSON-RPC requests to the upstream RPC node.
+async fn rpc_proxy_handler<B>(
+    State(state): State<Arc<AppState<B>>>,
+    body: String,
+) -> impl IntoResponse
+where
+    B: Send + Sync + 'static,
+{
+    let response = state
+        .http_client
+        .post(&state.rpc_url)
+        .header("content-type", "application/json")
+        .body(body)
+        .send()
+        .await;
+
+    match response {
+        Ok(resp) => match resp.text().await {
+            Ok(text) => (
+                StatusCode::OK,
+                [("content-type", "application/json")],
+                text,
+            ),
+            Err(err) => (
+                StatusCode::BAD_GATEWAY,
+                [("content-type", "application/json")],
+                format!(r#"{{"error":"failed to read RPC response: {err}"}}"#),
+            ),
+        },
+        Err(err) => (
+            StatusCode::BAD_GATEWAY,
+            [("content-type", "application/json")],
+            format!(r#"{{"error":"failed to reach RPC node: {err}"}}"#),
+        ),
+    }
 }
 
 /// Errors that can occur in the API server.
