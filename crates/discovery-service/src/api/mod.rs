@@ -11,6 +11,7 @@ use axum::Router;
 use discovery_core::storage_backend::StorageBackend;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+use tower_http::cors::CorsLayer;
 use tracing::info;
 
 use crate::chain_state::ChainState;
@@ -78,6 +79,7 @@ where
                 "/v1/sync/preflight_check",
                 post(preflight_check_handler::<B>),
             )
+            .layer(CorsLayer::permissive())
             .with_state(app_state);
 
         let listener = TcpListener::bind(&self.config.host)
