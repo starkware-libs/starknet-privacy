@@ -7,9 +7,9 @@ pub mod Privacy {
     use openzeppelin::introspection::src5::SRC5Component;
     use privacy::actions::{
         AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
-        DepositInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
-        SetViewingKeyInput, SwapInput, SwapWithExecutorInput, TransferFromInput, TransferToInput,
-        UseNoteInput, WithdrawInput,
+        DepositInput, InputValidation, OpenChannelInput, OpenSubchannelInput, ReadAssertInput,
+        ServerAction, SetViewingKeyInput, SwapInput, SwapWithExecutorInput, TransferFromInput,
+        TransferToInput, UseNoteInput, WithdrawInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -23,14 +23,14 @@ pub mod Privacy {
         TokenBalancesTrait,
     };
     use privacy::swap_executor::interface::{ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait};
-    use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
+    use privacy::utils::constants::OPEN_NOTE_SALT;
     use privacy::utils::{
-        StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
-        assert_valid_signature, decode_note_amount, derive_public_key, enc_note_packed_value,
-        encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
-        encrypt_subchannel_info, encrypt_user_addr, extract_server_actions_from_execute_and_panic,
-        is_canonical_key, open_note, packing, panic_with_server_actions, send_message_to_server,
-        to_write_once_action, unpacking, validate_proof,
+        StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
+        decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
+        encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
+        encrypt_user_addr, extract_server_actions_from_execute_and_panic, is_canonical_key,
+        open_note, packing, panic_with_server_actions, send_message_to_server, to_write_once_action,
+        unpacking, validate_proof,
     };
     use privacy::{errors, events};
     use starknet::storage::{
@@ -290,8 +290,8 @@ pub mod Privacy {
             user_private_key: felt252,
             input: SetViewingKeyInput,
         ) -> Array<ServerAction> {
-            let random = input.random;
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            input.assert_valid();
+            let SetViewingKeyInput { random } = input;
 
             // Derive the public key from the private key.
             let user_public_key = derive_public_key(private_key: user_private_key);
@@ -331,15 +331,10 @@ pub mod Privacy {
             sender_private_key: felt252,
             input: OpenChannelInput,
         ) -> Array<ServerAction> {
-            let recipient_addr = input.recipient_addr;
-            let recipient_public_key = input.recipient_public_key;
-            let index = input.index;
-            let random = input.random;
-            let salt = input.salt;
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
-            assert(salt.is_non_zero(), errors::ZERO_SALT);
+            input.assert_valid();
+            let OpenChannelInput {
+                recipient_addr, recipient_public_key, index, random, salt,
+            } = input;
 
             // Assert sender is registered with the given private key.
             let sender_public_key = self.public_key.read(sender_addr);
@@ -410,17 +405,10 @@ pub mod Privacy {
         fn open_subchannel(
             self: @ContractState, sender_addr: ContractAddress, input: OpenSubchannelInput,
         ) -> Array<ServerAction> {
-            let recipient_addr = input.recipient_addr;
-            let recipient_public_key = input.recipient_public_key;
-            let channel_key = input.channel_key;
-            let index = input.index;
-            let token = input.token;
-            let salt = input.salt;
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
-            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(salt.is_non_zero(), errors::ZERO_SALT);
+            input.assert_valid();
+            let OpenSubchannelInput {
+                recipient_addr, recipient_public_key, channel_key, index, token, salt,
+            } = input;
 
             // Assert channel key is valid for the given sender and recipient.
             let channel_marker = compute_channel_marker(
@@ -469,11 +457,8 @@ pub mod Privacy {
             input: DepositInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            // Assert input is valid.
-            let token = input.token;
-            let amount = input.amount;
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+            input.assert_valid();
+            let DepositInput { token, amount } = input;
 
             token_balances.add_balance(:token, :amount);
 
@@ -493,15 +478,8 @@ pub mod Privacy {
             input: WithdrawInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            let to_addr = input.to_addr;
-            let token = input.token;
-            let amount = input.amount;
-            let random = input.random;
-            // Assert valid input.
-            assert(to_addr.is_non_zero(), errors::ZERO_TO_ADDR);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            input.assert_valid();
+            let WithdrawInput { to_addr, token, amount, random } = input;
 
             token_balances.subtract_balance(:token, :amount);
 
@@ -531,25 +509,19 @@ pub mod Privacy {
             input: SwapInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            // Extract input members.
-            let swap_executor = input.swap_executor;
-            let swap_contract = input.swap_contract;
-            let swap_selector = input.swap_selector;
-            let swap_calldata = input.swap_calldata;
-            let in_token = input.in_token;
-            let out_token = input.out_token;
-            let in_amount = input.in_amount;
-            let channel_key = input.channel_key;
-            let index = input.index;
-            let random = input.random;
-
-            // Validate inputs.
-            assert(swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
-            assert(swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
-            // `swap_executor`, `in_token` and `in_amount` are asserted in `withdraw `.
-            // `out_token` and `channel_key` are asserted in `_checked_note_id`.
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
-            assert(in_token != out_token, errors::SWAP_TO_SAME_TOKEN);
+            input.assert_valid();
+            let SwapInput {
+                swap_executor,
+                swap_contract,
+                swap_selector,
+                swap_calldata,
+                in_token,
+                out_token,
+                in_amount,
+                channel_key,
+                index,
+                random,
+            } = input;
 
             // Verify the user owns the output note's subchannel.
             let note_id = self
@@ -595,9 +567,8 @@ pub mod Privacy {
             input: UseNoteInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            let channel_key = input.channel_key;
-            let token = input.token;
-            let index = input.index;
+            input.assert_valid();
+            let UseNoteInput { channel_key, token, index } = input;
 
             // Compute note id.
             let note_id = self
@@ -631,7 +602,8 @@ pub mod Privacy {
         }
 
         /// Verify that the user owns the note and return the computed note id.
-        /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical.
+        /// Assumes `user_addr`, `channel_key` and `token` are non zero.
+        /// Assumes `user_private_key` is non-zero and canonical.
         fn _checked_note_id(
             self: @ContractState,
             user_addr: ContractAddress,
@@ -640,10 +612,6 @@ pub mod Privacy {
             token: ContractAddress,
             index: usize,
         ) -> felt252 {
-            // Assert inputs are valid.
-            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-
             // Verify the user owns the note's subchannel.
             let user_public_key = derive_public_key(private_key: user_private_key);
             let subchannel_marker = compute_subchannel_marker(
@@ -670,20 +638,10 @@ pub mod Privacy {
             input: CreateEncNoteInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            let recipient_addr = input.recipient_addr;
-            let recipient_public_key = input.recipient_public_key;
-            let token = input.token;
-            let amount = input.amount;
-            let index = input.index;
-            let salt = input.salt;
-
-            // Validate inputs.
-            assert_note_creation_params(:recipient_addr, :recipient_public_key, :token);
-            assert(salt.is_non_zero(), errors::ZERO_SALT);
-            assert(salt > OPEN_NOTE_SALT, errors::SALT_TOO_SMALL);
-            assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
-            // Zero `amount` is allowed to enable note creation on reverted transaction indexes,
-            // preventing data leakage from index reuse after a revert.
+            input.assert_valid();
+            let CreateEncNoteInput {
+                recipient_addr, recipient_public_key, token, amount, index, salt,
+            } = input;
 
             // Validate and compute note values.
             let (channel_key, storage_address, _) = self
@@ -716,17 +674,10 @@ pub mod Privacy {
             sender_private_key: felt252,
             input: CreateOpenNoteInput,
         ) -> Array<ServerAction> {
-            let recipient_addr = input.recipient_addr;
-            let recipient_public_key = input.recipient_public_key;
-            let token = input.token;
-            let index = input.index;
-            let depositor = input.depositor;
-            let random = input.random;
-
-            // Validate inputs.
-            assert_note_creation_params(:recipient_addr, :recipient_public_key, :token);
-            assert(depositor.is_non_zero(), errors::ZERO_DEPOSITOR);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            input.assert_valid();
+            let CreateOpenNoteInput {
+                recipient_addr, recipient_public_key, token, index, depositor, random,
+            } = input;
 
             // Validate and compute note values.
             let (_, storage_address, note_id) = self
@@ -760,6 +711,7 @@ pub mod Privacy {
 
         /// Validates preconditions and computes values needed for creating a note.
         /// Returns `(channel_key, storage_address, note_id)`.
+        /// Assumes all input is valid (non-zero, canonical private_key).
         fn _prepare_note_creation(
             self: @ContractState,
             sender_addr: ContractAddress,

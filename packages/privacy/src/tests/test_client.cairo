@@ -6182,15 +6182,15 @@ fn test_swap_client_action_assertions() {
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_SELECTOR);
 
-    // Catch ZERO_TOKEN (out_token).
+    // Catch ZERO_OUT_TOKEN.
     let swap_input = SwapInput { out_token: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
     let result = user.safe_client_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
     let result = user.safe_execute_and_panic(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
     let result = user.safe_execute_view(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
 
     // Catch ZERO_CHANNEL_KEY.
     let swap_input = SwapInput { channel_key: Zero::zero(), ..valid_swap_input };
@@ -6213,25 +6213,25 @@ fn test_swap_client_action_assertions() {
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
-    // Catch ZERO_TO_ADDR (swap_executor).
+    // Catch ZERO_SWAP_EXECUTOR.
     let swap_input = SwapInput { swap_executor: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
     let result = user.safe_client_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TO_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
     let result = user.safe_execute_and_panic(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TO_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
     let result = user.safe_execute_view(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TO_ADDR);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
 
-    // Catch ZERO_TOKEN (in_token).
+    // Catch ZERO_IN_TOKEN.
     let swap_input = SwapInput { in_token: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
     let result = user.safe_client_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
     let result = user.safe_execute_and_panic(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
     let result = user.safe_execute_view(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
 
     // Catch ZERO_AMOUNT (in_amount).
     let swap_input = SwapInput { in_amount: Zero::zero(), ..valid_swap_input };
