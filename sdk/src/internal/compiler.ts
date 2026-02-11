@@ -413,7 +413,7 @@ export class ActionCompiler {
         const input = {
           type: "Withdraw",
           input: {
-            withdrawal_target: action.recipient,
+            to_addr: action.recipient,
             token: action.token,
             amount: action.amount,
             random: generateRandom(),

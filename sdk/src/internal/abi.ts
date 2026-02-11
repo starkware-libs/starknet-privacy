@@ -178,7 +178,7 @@ export const PrivacyPoolABI = [
     "name": "privacy::actions::WithdrawInput",
     "members": [
       {
-        "name": "withdrawal_target",
+        "name": "to_addr",
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
@@ -188,6 +188,62 @@ export const PrivacyPoolABI = [
       {
         "name": "amount",
         "type": "core::integer::u128"
+      },
+      {
+        "name": "random",
+        "type": "core::felt252"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "core::array::Span::<core::felt252>",
+    "members": [
+      {
+        "name": "snapshot",
+        "type": "@core::array::Array::<core::felt252>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "privacy::actions::SwapInput",
+    "members": [
+      {
+        "name": "swap_executor",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "swap_contract",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "swap_selector",
+        "type": "core::felt252"
+      },
+      {
+        "name": "swap_calldata",
+        "type": "core::array::Span::<core::felt252>"
+      },
+      {
+        "name": "in_token",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "out_token",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "in_amount",
+        "type": "core::integer::u128"
+      },
+      {
+        "name": "channel_key",
+        "type": "core::felt252"
+      },
+      {
+        "name": "index",
+        "type": "core::integer::u32"
       },
       {
         "name": "random",
@@ -230,6 +286,10 @@ export const PrivacyPoolABI = [
       {
         "name": "Withdraw",
         "type": "privacy::actions::WithdrawInput"
+      },
+      {
+        "name": "Swap",
+        "type": "privacy::actions::SwapInput"
       }
     ]
   },
@@ -240,16 +300,6 @@ export const PrivacyPoolABI = [
       {
         "name": "snapshot",
         "type": "@core::array::Array::<privacy::actions::ClientAction>"
-      }
-    ]
-  },
-  {
-    "type": "struct",
-    "name": "core::array::Span::<core::felt252>",
-    "members": [
-      {
-        "name": "snapshot",
-        "type": "@core::array::Array::<core::felt252>"
       }
     ]
   },
@@ -304,7 +354,7 @@ export const PrivacyPoolABI = [
     "name": "privacy::actions::TransferFromInput",
     "members": [
       {
-        "name": "sender_addr",
+        "name": "from_addr",
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
@@ -322,7 +372,7 @@ export const PrivacyPoolABI = [
     "name": "privacy::actions::TransferToInput",
     "members": [
       {
-        "name": "recipient_addr",
+        "name": "to_addr",
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
@@ -412,7 +462,7 @@ export const PrivacyPoolABI = [
         "type": "privacy::objects::EncUserAddr"
       },
       {
-        "name": "withdrawal_target",
+        "name": "to_addr",
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
@@ -467,15 +517,39 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "privacy::actions::DepositToOpenNoteInput",
+    "name": "privacy::actions::SwapWithExecutorInput",
     "members": [
       {
-        "name": "note_id",
+        "name": "swap_executor",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "swap_contract",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "swap_selector",
         "type": "core::felt252"
       },
       {
-        "name": "amount",
+        "name": "swap_calldata",
+        "type": "core::array::Span::<core::felt252>"
+      },
+      {
+        "name": "in_token",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "out_token",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "in_amount",
         "type": "core::integer::u128"
+      },
+      {
+        "name": "note_id",
+        "type": "core::felt252"
       }
     ]
   },
@@ -520,8 +594,8 @@ export const PrivacyPoolABI = [
         "type": "privacy::events::OpenNoteCreated"
       },
       {
-        "name": "DepositToOpenNote",
-        "type": "privacy::actions::DepositToOpenNoteInput"
+        "name": "SwapWithExecutor",
+        "type": "privacy::actions::SwapWithExecutorInput"
       }
     ]
   },
@@ -645,6 +719,22 @@ export const PrivacyPoolABI = [
           {
             "name": "actions",
             "type": "core::array::Span::<privacy::actions::ServerAction>"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "deposit_to_open_note",
+        "inputs": [
+          {
+            "name": "note_id",
+            "type": "core::felt252"
+          },
+          {
+            "name": "amount",
+            "type": "core::integer::u128"
           }
         ],
         "outputs": [],
@@ -1083,6 +1173,16 @@ export const PrivacyPoolABI = [
     "interface_name": "starkware_utils::components::roles::interface::IRoles"
   },
   {
+    "type": "struct",
+    "name": "core::array::Span::<core::starknet::contract_address::ContractAddress>",
+    "members": [
+      {
+        "name": "snapshot",
+        "type": "@core::array::Array::<core::starknet::contract_address::ContractAddress>"
+      }
+    ]
+  },
+  {
     "type": "interface",
     "name": "starkware_utils::components::roles::interface::IRoles",
     "items": [
@@ -1500,27 +1600,26 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
-        "name": "has_legacy_role",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          },
-          {
-            "name": "role",
-            "type": "core::felt252"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
+        "name": "reclaim_legacy_roles",
+        "inputs": [],
+        "outputs": [],
+        "state_mutability": "external"
       },
       {
         "type": "function",
-        "name": "reclaim_legacy_roles",
+        "name": "reclaim_legacy_roles_for_accounts",
+        "inputs": [
+          {
+            "name": "accounts",
+            "type": "core::array::Span::<core::starknet::contract_address::ContractAddress>"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "disable_legacy_role_reclaim",
         "inputs": [],
         "outputs": [],
         "state_mutability": "external"
@@ -2263,7 +2362,7 @@ export const PrivacyPoolABI = [
         "kind": "data"
       },
       {
-        "name": "withdrawal_target",
+        "name": "to_addr",
         "type": "core::starknet::contract_address::ContractAddress",
         "kind": "key"
       },

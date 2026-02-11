@@ -12,14 +12,28 @@ import { debugLog } from "../src/utils/logging.js";
 describe("Devnet Integration", () => {
   let devnet: Devnet;
   let testEnv: DevnetTestEnv;
+  let setupError: Error | undefined;
 
   beforeAll(async () => {
-    devnet = new Devnet();
-    testEnv = await createDevnetTestEnv(devnet);
+    try {
+      devnet = new Devnet();
+      testEnv = await createDevnetTestEnv(devnet);
+    } catch (e) {
+      setupError = e instanceof Error ? e : new Error(String(e));
+    }
   }, 120000); // 120 second timeout for devnet startup and deployment
 
+  // Workaround: vitest silently skips tests when beforeAll throws instead of
+  // failing them (https://github.com/vitest-dev/vitest/issues/4820).
+  // Re-throw in beforeEach so each test reports an explicit failure.
+  beforeEach(() => {
+    if (setupError) {
+      throw new Error(`beforeAll failed: ${setupError.message}`);
+    }
+  });
+
   afterAll(async () => {
-    await devnet.cleanup();
+    await devnet?.cleanup();
   });
 
   it("should setup devnet with alice, bob, tokens, and privacy contract", async () => {
