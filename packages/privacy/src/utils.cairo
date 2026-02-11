@@ -439,7 +439,7 @@ pub(crate) fn validate_proof(actions: Span<ServerAction>) {
     // - `from_address`: the contract address.
     // - `to_address`: zero.
     // - `payload`: `Span<ServerAction>` passed as input to the server
-    //   function (`execute_actions`).
+    //   function (`apply_actions`).
     let mut l1_message_data: Array<felt252> = array![contract_address.into(), Zero::zero()];
     actions.serialize(ref l1_message_data);
     let message_hash = hash(l1_message_data.span());

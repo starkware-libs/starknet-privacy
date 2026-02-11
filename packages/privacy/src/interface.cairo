@@ -369,16 +369,16 @@ pub trait IClient<T> {
 
 #[starknet::interface]
 pub trait IServer<T> {
-    /// Executes a list of server actions atomically.
+    /// Applies a list of server actions atomically.
     ///
-    /// This function executes a span of [`ServerAction`](privacy::actions::ServerAction)s in
+    /// This function applies a span of [`ServerAction`](privacy::actions::ServerAction)s in
     /// sequence, performing storage operations, token transfers, and event emissions. All actions
-    /// are executed atomically - if any action fails, the entire transaction reverts. The contract
+    /// are applied atomically - if any action fails, the entire transaction reverts. The contract
     /// must not be paused for this function to execute.
     ///
     /// #### Parameters
     /// - `actions` (`Span<`[`ServerAction`](privacy::actions::ServerAction)`>`): The list of server
-    /// actions to execute.
+    /// actions to apply.
     ///   Each [`ServerAction`](privacy::actions::ServerAction) variant has the following purpose:
     ///   - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Verify that a storage value is
     ///   zero/empty and then write to it.
@@ -438,9 +438,9 @@ pub trait IServer<T> {
     /// - Any address can call this function.
     ///
     /// #### Notes
-    /// - All actions are executed sequentially in the order they appear in the span.
+    /// - All actions are applied sequentially in the order they appear in the span.
     /// - If any action fails, the entire transaction reverts and no state changes are applied.
-    fn execute_actions(ref self: T, actions: Span<ServerAction>);
+    fn apply_actions(ref self: T, actions: Span<ServerAction>);
 
     /// Deposits funds to an existing open note.
     ///

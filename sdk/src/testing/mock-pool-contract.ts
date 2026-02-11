@@ -4,7 +4,7 @@
  * This class provides:
  * 1. View methods with bigint params (matching Cairo contract felts)
  * 2. execute_view() returns MockServerAction[] for state mutations
- * 3. execute_actions() applies the mutations
+ * 3. apply_actions() applies the mutations
  * 4. snapshot()/restore() for validation pattern
  */
 
@@ -295,7 +295,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
   /**
    * Apply server actions to mutate state.
    */
-  execute_actions(actions: string[]): void {
+  apply_actions(actions: string[]): void {
     for (let i = 0; i < actions.length; i++) {
       assert(
         this.serverActions[i].type == actions[i],

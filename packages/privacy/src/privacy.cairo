@@ -270,7 +270,7 @@ pub mod Privacy {
                 };
                 if should_execute {
                     has_privacy_action = true;
-                    self._execute_actions(actions.span());
+                    self._apply_actions(actions.span());
                 }
                 server_actions.extend(actions);
             }
@@ -755,11 +755,10 @@ pub mod Privacy {
 
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
-        // TODO: Rename to apply_actions.
-        fn execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
+        fn apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             self.pausable.assert_not_paused();
             validate_proof(:actions);
-            self._execute_actions(:actions);
+            self._apply_actions(:actions);
         }
 
         fn deposit_to_open_note(
@@ -796,7 +795,7 @@ pub mod Privacy {
             assert(caller == depositor, errors::CALLER_NOT_DEPOSITOR);
 
             // Transfer funds from the depositor (caller).
-            self._execute_transfer_from(from_addr: depositor, :token, :amount);
+            self._apply_transfer_from(from_addr: depositor, :token, :amount);
 
             // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
             let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
@@ -809,12 +808,12 @@ pub mod Privacy {
 
     #[generate_trait]
     pub impl ServerInternalImpl of ServerInternalTrait {
-        fn _execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
+        fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => {
                         self
-                            ._execute_write(
+                            ._apply_write(
                                 storage_address: input.storage_address,
                                 new_value: input.value,
                                 require_zero: true,
@@ -822,13 +821,13 @@ pub mod Privacy {
                     },
                     ServerAction::AppendToVec(input) => {
                         self
-                            ._execute_append_to_vector(
+                            ._apply_append_to_vector(
                                 key: input.recipient_addr, value: input.enc_channel_info,
                             );
                     },
                     ServerAction::TransferFrom(input) => {
                         self
-                            ._execute_transfer_from(
+                            ._apply_transfer_from(
                                 from_addr: input.from_addr,
                                 token: input.token,
                                 amount: input.amount,
@@ -836,19 +835,19 @@ pub mod Privacy {
                     },
                     ServerAction::TransferTo(input) => {
                         self
-                            ._execute_transfer_to(
+                            ._apply_transfer_to(
                                 to_addr: input.to_addr, token: input.token, amount: input.amount,
                             );
                     },
                     ServerAction::ReadAssert(input) => {
                         self
-                            ._execute_read_assert(
+                            ._apply_read_assert(
                                 storage_address: input.storage_address, value: input.value,
                             );
                     },
                     ServerAction::SwapWithExecutor(input) => {
                         self
-                            ._execute_swap_with_executor(
+                            ._apply_swap_with_executor(
                                 swap_executor: input.swap_executor,
                                 swap_contract: input.swap_contract,
                                 swap_selector: input.swap_selector,
@@ -867,7 +866,7 @@ pub mod Privacy {
             };
         }
 
-        fn _execute_write(
+        fn _apply_write(
             ref self: ContractState,
             storage_address: felt252,
             new_value: Span<felt252>,
@@ -891,13 +890,13 @@ pub mod Privacy {
             }
         }
 
-        fn _execute_append_to_vector(
+        fn _apply_append_to_vector(
             ref self: ContractState, key: ContractAddress, value: EncChannelInfo,
         ) {
             self.recipient_channels.entry(key).push(value);
         }
 
-        fn _execute_transfer_from(
+        fn _apply_transfer_from(
             ref self: ContractState,
             from_addr: ContractAddress,
             token: ContractAddress,
@@ -909,7 +908,7 @@ pub mod Privacy {
                 );
         }
 
-        fn _execute_transfer_to(
+        fn _apply_transfer_to(
             ref self: ContractState, to_addr: ContractAddress, token: ContractAddress, amount: u128,
         ) {
             // Note: This function should NOT panic as the contract should have the balance.
@@ -917,13 +916,13 @@ pub mod Privacy {
                 .checked_transfer(recipient: to_addr, amount: amount.into());
         }
 
-        fn _execute_read_assert(ref self: ContractState, storage_address: felt252, value: felt252) {
+        fn _apply_read_assert(ref self: ContractState, storage_address: felt252, value: felt252) {
             let target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
             let current_value = target.read();
             assert(current_value == value, errors::VALUE_MISMATCH);
         }
 
-        fn _execute_swap_with_executor(
+        fn _apply_swap_with_executor(
             ref self: ContractState,
             swap_executor: ContractAddress,
             swap_contract: ContractAddress,
