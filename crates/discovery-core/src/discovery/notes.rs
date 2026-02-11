@@ -18,7 +18,7 @@ use starknet_types_core::felt::Felt;
 
 use tracing::{debug, trace};
 
-use super::last_note_index::exponential_ascend;
+use super::last_note_index::{exponential_probe, DEFAULT_MAX_PROBE_OFFSET};
 use super::{DiscoveryError, SubchannelCursor, COST_NOTE};
 use crate::discovery::COST_NOTE_PROBING;
 use crate::io_budget::IoBudget;
@@ -103,12 +103,13 @@ pub async fn discover_notes_paginated<S: IViews>(
 
     // Phase 1: Exponential probe
     if need_probe {
-        let result = exponential_ascend(
+        let result = exponential_probe(
             pool,
             channel_key,
             token,
             start_index,
             cursor.max_note_index,
+            Some(DEFAULT_MAX_PROBE_OFFSET),
             budget,
         )
         .await?;
