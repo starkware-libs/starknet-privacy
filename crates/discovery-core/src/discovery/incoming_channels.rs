@@ -8,7 +8,7 @@ use starknet_types_core::felt::Felt;
 use super::{DiscoveryError, COST_CHANNEL_INFO, COST_NUM_CHANNELS};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::decrypt_channel_info;
-use crate::privacy_pool::types::ChannelInfo;
+use crate::privacy_pool::types::{ChannelInfo, SecretFelt};
 use crate::privacy_pool::views::IViews;
 
 /// A discovered and decrypted incoming channel.
@@ -74,7 +74,7 @@ pub async fn get_incoming_channel_count<PrivacyPool: IViews>(
 pub async fn discover_incoming_channels<PrivacyPool: IViews>(
     privacy_pool: &PrivacyPool,
     recipient_addr: Felt,
-    private_key: &Felt,
+    private_key: &SecretFelt,
     start_index: u64,
     total_n_channels: u64,
     budget: &IoBudget,
@@ -135,7 +135,7 @@ mod tests {
     async fn test_discover_no_channels() {
         let backend = MockBackend::empty();
         let recipient = Felt::from_hex_unchecked("0x123");
-        let key = Felt::from(1u64);
+        let key = SecretFelt::new(Felt::from(1u64));
         let budget = IoBudget::new(100);
 
         // Test with 0 (start from beginning)
@@ -171,7 +171,7 @@ mod tests {
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &SecretFelt::new(fixture.constants.alice_viewing_key),
             0,
             count,
             &budget,
@@ -205,7 +205,7 @@ mod tests {
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.bob_address,
-            &fixture.constants.bob_viewing_key,
+            &SecretFelt::new(fixture.constants.bob_viewing_key),
             0,
             count,
             &budget,
@@ -240,7 +240,7 @@ mod tests {
         let result1 = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &SecretFelt::new(fixture.constants.alice_viewing_key),
             0,
             count,
             &budget,
@@ -257,7 +257,7 @@ mod tests {
         let result2 = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &SecretFelt::new(fixture.constants.alice_viewing_key),
             result1.last_index.unwrap() + 1,
             count,
             &budget,
@@ -302,7 +302,7 @@ mod tests {
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &fixture.constants.alice_viewing_key,
+            &SecretFelt::new(fixture.constants.alice_viewing_key),
             0,
             count,
             &budget,

@@ -154,3 +154,10 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Place public functions at the top of the module, before their private helpers
 - Readers should encounter the high-level orchestration first and drill into details top-down
 - *Example:* `pub async fn sync_incoming_state(...)` at the top, followed by `process_channel(...)`, then `process_subchannel(...)`
+
+### Imports at scope top, not inline
+- Place `use` statements at the top of the scope they serve — module-level for module-wide usage, `#[cfg(test)] mod tests` top for test-only usage
+- Never put `use` inside function bodies; hoist to the enclosing module
+- Use short imported names in signatures and bodies, not inline qualified paths like `super::types::Foo` or `crate::module::Bar`
+- *Bad:* `fn f(key: &super::types::SecretFelt)` with no import; `use crate::Foo;` inside a function body
+- *Good:* `use super::types::SecretFelt;` at module top, then `fn f(key: &SecretFelt)`
