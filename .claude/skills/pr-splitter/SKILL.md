@@ -153,7 +153,7 @@ cat .claude/pr-head-worktree/src/some_file.rs
 
 # See a specific file's diff
 awk '/^diff --git a\/src\/some_file.rs b\/src\/some_file.rs$/,/^diff --git /' \
-    .claude/pr-full.diff | head -n -1
+    .claude/pr-full.diff | sed '$ d'
 ```
 
 LLM reasoning is appropriate here: what each change does, which changes are
@@ -300,7 +300,7 @@ Quick version:
 ```bash
 # Extract one file's diff from the saved full diff
 awk '/^diff --git a\/src\/handler.rs b\/src\/handler.rs$/,/^diff --git /' \
-    .claude/pr-full.diff | head -n -1 > /tmp/handler.patch
+    .claude/pr-full.diff | sed '$ d' > /tmp/handler.patch
 
 # See the hunks
 grep '^@@' /tmp/handler.patch

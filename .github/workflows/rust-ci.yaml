@@ -69,7 +69,7 @@ jobs:
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.15.0"
+          scarb-version: "2.15.1"
       - name: Install starknet-foundry and starknet-devnet via asdf
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         uses: asdf-vm/actions/install@v3
@@ -81,6 +81,7 @@ jobs:
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         run: |
           cd sdk
+          npm run scarb:build
           npm run generate:cairo-refs
           cp tests/fixtures/cairo-reference-data.json ../crates/discovery-core/tests/fixtures/cairo-reference-data.json
 

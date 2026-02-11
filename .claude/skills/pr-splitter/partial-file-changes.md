@@ -15,7 +15,7 @@ slices still need it, use partial application for all slices except the last one
 
 ```bash
 awk '/^diff --git a\/path\/to\/file b\/path\/to\/file$/,/^diff --git /' \
-    .claude/pr-full.diff | head -n -1 > /tmp/file.patch
+    .claude/pr-full.diff | sed '$ d' > /tmp/file.patch
 ```
 
 Inspect hunks:
