@@ -1,45 +1,12 @@
-//! Storage interface for the privacy contract.
+//! Privacy contract view methods and blanket implementation.
 
 use async_trait::async_trait;
 use num_traits::ToPrimitive;
-use starknet_core::types::BlockId;
 use starknet_types_core::felt::Felt;
-use thiserror::Error;
 
-use crate::storage_slots;
-use crate::types::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
-
-/// Errors that can occur during storage operations.
-#[derive(Debug, Error)]
-pub enum StorageError {
-    /// Failed to compute storage slot address.
-    #[error("slot computation failed: {0}")]
-    SlotComputation(#[from] anyhow::Error),
-    /// Failed to convert value to u64.
-    #[error("value is too large to convert to u64: {0}")]
-    CastToU64Error(Felt),
-    /// Backend-specific error.
-    #[error("{0}")]
-    Backend(#[source] Box<dyn std::error::Error + Send + Sync>),
-}
-
-/// Factory for creating storage snapshots bound to a specific block.
-#[async_trait]
-pub trait StorageBackend: Send + Sync {
-    /// The snapshot type produced by this backend.
-    type Snapshot: StorageSnapshot;
-
-    /// Creates a snapshot at the specified block.
-    /// If `block_id` is `None`, uses the latest block.
-    async fn snapshot(&self, block_id: Option<BlockId>) -> Result<Self::Snapshot, StorageError>;
-}
-
-/// Consistent view of storage at a specific block.
-#[async_trait]
-pub trait StorageSnapshot: IViews {
-    /// Returns the block ID this snapshot is bound to.
-    fn block_id(&self) -> BlockId;
-}
+use super::storage_slots;
+use super::types::{EncChannelInfo, EncPrivateKey, EncSubchannelInfo};
+use crate::storage_backend::{RawStorageAccess, StorageError};
 
 /// Privacy contract view methods.
 #[async_trait]
@@ -82,22 +49,12 @@ pub trait IViews: Send + Sync {
     async fn get_compliance_public_key(&self) -> Result<Felt, StorageError>;
 }
 
-/// Low-level storage access for reading raw storage slots.
-#[async_trait]
-pub trait RawStorageAccess: Send + Sync {
-    /// Reads a single storage slot.
-    async fn read_slot(&self, slot: Felt) -> Result<Felt, StorageError>;
-
-    /// Reads multiple storage slots.
-    async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError>;
-}
-
 /// Blanket implementation of `IViews` for any type implementing `RawStorageAccess`.
 #[async_trait]
 impl<T: RawStorageAccess> IViews for T {
     #[tracing::instrument(name = "channel_exists", level = "debug", skip(self))]
     async fn channel_exists(&self, channel_marker: Felt) -> Result<bool, StorageError> {
-        let slot = storage_slots::channel_exists(channel_marker)?;
+        let slot = storage_slots::channel_exists(channel_marker);
         let value = self.read_slot(slot).await?;
         Ok(value != Felt::ZERO)
     }
@@ -106,9 +63,9 @@ impl<T: RawStorageAccess> IViews for T {
     async fn get_num_of_channels(&self, recipient_addr: Felt) -> Result<u64, StorageError> {
         // Channels are stored as a vector in contract storage.
         // The base slot contains the vector length (number of channels).
-        let slot = storage_slots::recipient_channels_base(recipient_addr)?;
+        let slot = storage_slots::recipient_channels_base(recipient_addr);
         let value = self.read_slot(slot).await?;
-        Ok(value.to_u64().ok_or(StorageError::CastToU64Error(value))?)
+        value.to_u64().ok_or(StorageError::CastToU64Error(value))
     }
 
     #[tracing::instrument(name = "get_channel_info", level = "debug", skip(self))]
@@ -117,7 +74,7 @@ impl<T: RawStorageAccess> IViews for T {
         recipient_addr: Felt,
         channel_index: u64,
     ) -> Result<EncChannelInfo, StorageError> {
-        let slots = storage_slots::recipient_channels_element(recipient_addr, channel_index)?;
+        let slots = storage_slots::recipient_channels_element(recipient_addr, channel_index);
         let values = self
             .read_slots(vec![
                 slots.ephemeral_pubkey,
@@ -134,7 +91,7 @@ impl<T: RawStorageAccess> IViews for T {
 
     #[tracing::instrument(name = "subchannel_exists", level = "debug", skip(self))]
     async fn subchannel_exists(&self, subchannel_marker: Felt) -> Result<bool, StorageError> {
-        let slot = storage_slots::subchannel_exists(subchannel_marker)?;
+        let slot = storage_slots::subchannel_exists(subchannel_marker);
         let value = self.read_slot(slot).await?;
         Ok(value != Felt::ZERO)
     }
@@ -144,7 +101,7 @@ impl<T: RawStorageAccess> IViews for T {
         &self,
         subchannel_id: Felt,
     ) -> Result<EncSubchannelInfo, StorageError> {
-        let slots = storage_slots::subchannel_tokens(subchannel_id)?;
+        let slots = storage_slots::subchannel_tokens(subchannel_id);
         let values = self.read_slots(vec![slots.salt, slots.enc_token]).await?;
         Ok(EncSubchannelInfo {
             salt: values[0],
@@ -154,26 +111,26 @@ impl<T: RawStorageAccess> IViews for T {
 
     #[tracing::instrument(name = "get_note", level = "debug", skip(self))]
     async fn get_note(&self, note_id: Felt) -> Result<Felt, StorageError> {
-        let slot = storage_slots::notes(note_id)?;
+        let slot = storage_slots::notes(note_id);
         self.read_slot(slot).await
     }
 
     #[tracing::instrument(name = "nullifier_exists", level = "debug", skip(self))]
     async fn nullifier_exists(&self, nullifier: Felt) -> Result<bool, StorageError> {
-        let slot = storage_slots::nullifiers(nullifier)?;
+        let slot = storage_slots::nullifiers(nullifier);
         let value = self.read_slot(slot).await?;
         Ok(value != Felt::ZERO)
     }
 
     #[tracing::instrument(name = "get_public_key", level = "debug", skip(self))]
     async fn get_public_key(&self, user_addr: Felt) -> Result<Felt, StorageError> {
-        let slot = storage_slots::public_key(user_addr)?;
+        let slot = storage_slots::public_key(user_addr);
         self.read_slot(slot).await
     }
 
     #[tracing::instrument(name = "get_enc_private_key", level = "debug", skip(self))]
     async fn get_enc_private_key(&self, user_addr: Felt) -> Result<EncPrivateKey, StorageError> {
-        let slots = storage_slots::enc_private_key(user_addr)?;
+        let slots = storage_slots::enc_private_key(user_addr);
         let values = self
             .read_slots(vec![slots.ephemeral_pubkey, slots.enc_private_key])
             .await?;
@@ -185,7 +142,7 @@ impl<T: RawStorageAccess> IViews for T {
 
     #[tracing::instrument(name = "get_compliance_public_key", level = "debug", skip(self))]
     async fn get_compliance_public_key(&self) -> Result<Felt, StorageError> {
-        let slot = storage_slots::compliance_public_key()?;
+        let slot = storage_slots::compliance_public_key();
         self.read_slot(slot).await
     }
 }
