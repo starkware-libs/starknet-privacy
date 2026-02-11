@@ -12,6 +12,8 @@ use std::collections::HashMap;
 use serde::Deserialize;
 use starknet_types_core::felt::Felt;
 
+use crate::discovery::cursor::ChannelCursor;
+use crate::discovery::DiscoveryCursor;
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::types::SecretFelt;
 
@@ -132,6 +134,19 @@ pub fn load_devnet_fixture() -> DevnetFixture {
 pub fn load_cairo_ref_fixture() -> CairoRefFixture {
     const JSON: &str = include_str!("../tests/fixtures/cairo-reference-data.json");
     serde_json::from_str(JSON).expect("failed to parse Cairo reference fixture")
+}
+
+/// Inserts a dummy channel entry into the cursor for capacity-gating tests.
+pub fn insert_dummy_channel_cursor(cursor: &mut DiscoveryCursor) {
+    cursor.channels.insert(
+        Felt::from(0xdead_u64),
+        ChannelCursor {
+            channel_key: None,
+            subchannel_discovery_complete: false,
+            last_subchannel_index: None,
+            subchannels: Default::default(),
+        },
+    );
 }
 
 /// Helper to discover channels and get the first channel key for a recipient.
