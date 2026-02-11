@@ -224,7 +224,7 @@ pub async fn discover_incoming_channels_paginated<S: IViews>(
             .channels
             .entry(channel.sender_addr)
             .or_insert(ChannelCursor {
-                channel_key: Some(channel.channel_key),
+                channel_key: channel.channel_key,
                 subchannel_discovery_complete: false,
                 last_subchannel_index: None,
                 subchannels: Default::default(),
@@ -467,8 +467,9 @@ mod tests {
 
         let sender_addr = channels[0].sender_addr;
         assert!(cursor.channels.contains_key(&sender_addr));
-        assert!(
-            cursor.channels[&sender_addr].channel_key.is_some(),
+        assert_ne!(
+            cursor.channels[&sender_addr].channel_key,
+            Felt::ZERO,
             "channel_key should be set for incoming channels"
         );
     }

@@ -328,7 +328,7 @@ mod tests {
         .unwrap();
 
         let mut cursor = ChannelCursor {
-            channel_key: Some(channel_key),
+            channel_key,
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
@@ -367,7 +367,7 @@ mod tests {
         .unwrap();
 
         let mut cursor = ChannelCursor {
-            channel_key: Some(channel_key),
+            channel_key,
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
@@ -409,7 +409,7 @@ mod tests {
 
         // Fresh cursor: empty map + no total → should discover subchannels
         let mut fresh = ChannelCursor {
-            channel_key: Some(channel_key),
+            channel_key,
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
@@ -424,7 +424,7 @@ mod tests {
         // Fully enumerated cursor: empty map + skip=true → should skip entirely
         // (simulates state after all notes processed and entries pruned)
         let mut done = ChannelCursor {
-            channel_key: Some(channel_key),
+            channel_key,
             subchannel_discovery_complete: true,
             last_subchannel_index: Some(0),
             subchannels: HashMap::new(),
@@ -484,7 +484,7 @@ mod tests {
 
         // Pre-fill cursor to capacity (1 entry, max = 1).
         let mut cursor = ChannelCursor {
-            channel_key: Some(channel_key),
+            channel_key,
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::from([(Felt::from(0xabc), Default::default())]),
@@ -519,7 +519,7 @@ mod tests {
 
         // 1 existing entry + max_cursor_subchannels=2 → 1 slot available.
         let mut cursor = ChannelCursor {
-            channel_key: Some(channel_key),
+            channel_key,
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::from([(Felt::from(0xabc), Default::default())]),

@@ -71,8 +71,7 @@ pub struct ChannelCursor {
     // TODO: Consider encrypting/masking channel_key in the serialized cursor
     // to avoid exposing it in plaintext (sensitive value).
     /// The channel key for this channel.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub channel_key: Option<Felt>,
+    pub channel_key: Felt,
 
     /// All subchannels have been enumerated. Set by the discovery service
     /// once the sentinel subchannel is reached. When `true`, no further
