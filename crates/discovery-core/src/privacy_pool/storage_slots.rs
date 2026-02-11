@@ -32,6 +32,34 @@ pub struct EncOutgoingChannelInfoSlots {
     pub enc_recipient_addr: Felt,
 }
 
+impl EncPrivateKeySlots {
+    pub fn to_vec(self) -> Vec<Felt> {
+        vec![self.ephemeral_pubkey, self.enc_private_key]
+    }
+}
+
+impl EncChannelInfoSlots {
+    pub fn to_vec(self) -> Vec<Felt> {
+        vec![
+            self.ephemeral_pubkey,
+            self.enc_channel_key,
+            self.enc_sender_addr,
+        ]
+    }
+}
+
+impl EncSubchannelInfoSlots {
+    pub fn to_vec(self) -> Vec<Felt> {
+        vec![self.salt, self.enc_token]
+    }
+}
+
+impl EncOutgoingChannelInfoSlots {
+    pub fn to_vec(self) -> Vec<Felt> {
+        vec![self.salt, self.enc_recipient_addr]
+    }
+}
+
 /// Computes a storage variable address.
 ///
 /// Wraps `get_storage_var_address`, which only fails if the variable name

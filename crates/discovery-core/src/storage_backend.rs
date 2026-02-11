@@ -21,6 +21,9 @@ pub enum StorageError {
     /// Backend-specific error.
     #[error("{0}")]
     Backend(#[source] Box<dyn std::error::Error + Send + Sync>),
+    /// `read_slots` returned a different number of values than requested.
+    #[error("slot count mismatch")]
+    SlotCountMismatch,
 }
 
 /// Low-level storage access for reading raw storage slots.
@@ -30,6 +33,8 @@ pub trait RawStorageAccess: Send + Sync {
     async fn read_slot(&self, slot: Felt) -> Result<Felt, StorageError>;
 
     /// Reads multiple storage slots.
+    ///
+    /// The returned `Vec` must have the same length as `slots`.
     async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError>;
 }
 
@@ -54,6 +59,7 @@ pub trait StorageSnapshot: IViews {
 /// Mock storage backend backed by an in-memory HashMap.
 ///
 /// Returns `Felt::ZERO` for any slot not in the map, mirroring the behavior of Cairo map.
+#[derive(Clone)]
 pub struct MockBackend {
     slots: HashMap<Felt, Felt>,
 }
