@@ -537,12 +537,12 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
         ];
 
       case "Withdraw":
-        return [
-          this.withdraw(action.input.token, action.input.withdrawal_target, action.input.amount),
-        ];
+        return [this.withdraw(action.input.token, action.input.to_addr, action.input.amount)];
 
       case "FollowupCall":
         return [this.followupCall(action.input.call)];
+      default:
+        throw new Error(`Unsupported action type in mock: ${(action as ClientAction).type}`);
     }
   }
 

@@ -34,7 +34,7 @@ export {
   compute_enc_amount_hash,
   compute_enc_token_hash,
   compute_enc_private_key_hash,
-  compute_enc_address_hash,
+  compute_enc_user_addr_hash,
   compute_enc_channel_key_hash,
   compute_enc_sender_addr_hash,
 } from "./hashes.js";
