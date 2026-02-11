@@ -65,7 +65,7 @@ export async function setupSelfChannel(
   pool: MockPoolContract
 ): Promise<PrivateRegistry> {
   const executeOutside = (result: ExecuteResult) => {
-    pool.execute_actions(result.callAndProof.call.calldata as string[]);
+    pool.apply_actions(result.callAndProof.call.calldata as string[]);
     return result.registry;
   };
 
@@ -95,7 +95,7 @@ export async function setupRecipientChannel(
   pool: MockPoolContract
 ): Promise<PrivateRegistry> {
   const executeOutside = (result: ExecuteResult) => {
-    pool.execute_actions(result.callAndProof.call.calldata as string[]);
+    pool.apply_actions(result.callAndProof.call.calldata as string[]);
     return result.registry;
   };
 

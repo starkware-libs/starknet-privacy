@@ -105,8 +105,8 @@
 17. Migrate (transfer) all notes belonging to the user from their old viewing key to the new viewing key after SetViewingKey.
 
 # General Notes
-- After each `execute_actions` call, verify external (token) balances.
-- After each `execute_actions` call, verify internal (privacy) balances.
+- After each `apply_actions` call, verify external (token) balances.
+- After each `apply_actions` call, verify internal (privacy) balances.
 - Try to modularize flows, so we can share modules across different flows (i.e. merging notes, depositing to a single note).
 - Use test parameters to create multiple similar tests at once.
 

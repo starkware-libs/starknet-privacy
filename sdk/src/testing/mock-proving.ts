@@ -61,7 +61,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     });
 
     // execute_view returns Span<ServerAction> which is serialized with its length prefix.
-    // execute_actions also expects Span<ServerAction> with the length prefix, so we pass it through as-is.
+    // apply_actions also expects Span<ServerAction> with the length prefix, so we pass it through as-is.
     return { output: result, outputHash: undefined!, data: undefined! };
   }
 

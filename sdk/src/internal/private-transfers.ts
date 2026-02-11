@@ -69,7 +69,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       callAndProof: {
         call: {
           contractAddress: toHex(this.params.poolContractAddress),
-          entrypoint: "execute_actions",
+          entrypoint: "apply_actions",
           calldata: proof.output,
         },
         proof,

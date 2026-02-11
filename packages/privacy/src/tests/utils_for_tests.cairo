@@ -174,15 +174,13 @@ struct User {
 
 #[generate_trait]
 pub(crate) impl UserImpl of UserTrait {
-    fn client_execute(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
+    fn execute(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
         self
             .privacy
             .execute(user_addr: *self.address, user_private_key: *self.private_key, :client_actions)
     }
 
-    fn safe_client_execute(
-        self: @User, client_actions: Span<ClientAction>,
-    ) -> Result<(), Array<felt252>> {
+    fn safe_execute(self: @User, client_actions: Span<ClientAction>) -> Result<(), Array<felt252>> {
         self
             .privacy
             .safe_execute(
@@ -213,7 +211,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_client_execute_without_cheat(
+    fn safe_execute_without_cheat(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
         self
@@ -262,7 +260,7 @@ pub(crate) impl UserImpl of UserTrait {
         for note in notes_to_create {
             client_actions.append(ClientAction::CreateEncNote(*note));
         }
-        self.client_execute(client_actions: client_actions.span())
+        self.execute(client_actions: client_actions.span())
     }
 
     fn safe_transfer(
@@ -275,7 +273,7 @@ pub(crate) impl UserImpl of UserTrait {
         for note in notes_to_create {
             client_actions.append(ClientAction::CreateEncNote(*note));
         }
-        self.safe_client_execute(client_actions: client_actions.span())
+        self.safe_execute(client_actions: client_actions.span())
     }
 
     fn withdraw_and_use_note_e2e(
@@ -292,13 +290,13 @@ pub(crate) impl UserImpl of UserTrait {
             to_addr, token: token.contract_address(), amount, random,
         };
         let server_actions = self
-            .client_execute(
+            .execute(
                 client_actions: [
                     ClientAction::UseNote(use_note_input), ClientAction::Withdraw(withdraw_input),
                 ]
                     .span(),
             );
-        self.privacy.execute_actions(actions: server_actions);
+        self.privacy.apply_actions(actions: server_actions);
     }
 
     fn internal_withdraw(
@@ -358,7 +356,7 @@ pub(crate) impl UserImpl of UserTrait {
         random: felt252,
     ) -> Result<(), Array<felt252>> {
         let input = WithdrawInput { to_addr, token: token_addr, amount, random };
-        self.safe_client_execute(client_actions: [ClientAction::Withdraw(input)].span())
+        self.safe_execute(client_actions: [ClientAction::Withdraw(input)].span())
     }
 
     fn open_channel(
@@ -371,7 +369,7 @@ pub(crate) impl UserImpl of UserTrait {
             random,
             salt,
         };
-        self.client_execute(client_actions: [ClientAction::OpenChannel(input)].span())
+        self.execute(client_actions: [ClientAction::OpenChannel(input)].span())
     }
 
     fn internal_open_channel(
@@ -407,7 +405,7 @@ pub(crate) impl UserImpl of UserTrait {
             random,
             salt,
         };
-        self.safe_client_execute(client_actions: [ClientAction::OpenChannel(input)].span())
+        self.safe_execute(client_actions: [ClientAction::OpenChannel(input)].span())
     }
 
     #[feature("safe_dispatcher")]
@@ -453,7 +451,7 @@ pub(crate) impl UserImpl of UserTrait {
         let random = self.get_random();
         let salt = self.get_salt().into();
         let actions = self.open_channel(:recipient, :index, :random, :salt);
-        self.privacy.execute_actions(:actions);
+        self.privacy.apply_actions(:actions);
         (random, salt)
     }
 
@@ -469,7 +467,7 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_addr,
             salt,
         };
-        self.client_execute(client_actions: [ClientAction::OpenSubchannel(input),].span())
+        self.execute(client_actions: [ClientAction::OpenSubchannel(input),].span())
     }
 
     fn internal_open_subchannel(
@@ -506,7 +504,7 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_addr,
             salt,
         };
-        self.safe_client_execute(client_actions: [ClientAction::OpenSubchannel(input),].span())
+        self.safe_execute(client_actions: [ClientAction::OpenSubchannel(input),].span())
     }
 
     fn safe_open_subchannel_execute_and_panic(
@@ -555,7 +553,7 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_addr,
             salt,
         };
-        self.safe_client_execute(client_actions: [ClientAction::OpenSubchannel(input),].span())
+        self.safe_execute(client_actions: [ClientAction::OpenSubchannel(input),].span())
     }
 
     #[feature("safe_dispatcher")]
@@ -613,7 +611,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> felt252 {
         let salt = self.get_salt().into();
         let actions = self.open_subchannel(:recipient, :token_addr, :index, :salt);
-        self.privacy.execute_actions(:actions);
+        self.privacy.apply_actions(:actions);
         salt
     }
 
@@ -652,14 +650,14 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn create_enc_note(self: @User, create_note_input: CreateEncNoteInput) -> Span<ServerAction> {
-        self.client_execute([ClientAction::CreateEncNote(create_note_input)].span())
+        self.execute([ClientAction::CreateEncNote(create_note_input)].span())
     }
 
     #[feature("safe_dispatcher")]
     fn safe_create_enc_note(
         self: @User, create_note_input: CreateEncNoteInput,
     ) -> Result<(), Array<felt252>> {
-        self.safe_client_execute([ClientAction::CreateEncNote(create_note_input)].span())
+        self.safe_execute([ClientAction::CreateEncNote(create_note_input)].span())
     }
 
     #[feature("safe_dispatcher")]
@@ -699,17 +697,17 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn cheat_create_enc_note_e2e(self: @User, create_note_input: CreateEncNoteInput) {
-        self.privacy.execute_actions(actions: self.internal_create_enc_note(create_note_input));
+        self.privacy.apply_actions(actions: self.internal_create_enc_note(create_note_input));
     }
 
     fn create_open_note(self: @User, create_note_input: CreateOpenNoteInput) -> Span<ServerAction> {
-        self.client_execute([ClientAction::CreateOpenNote(create_note_input)].span())
+        self.execute([ClientAction::CreateOpenNote(create_note_input)].span())
     }
 
     fn safe_create_open_note(
         self: @User, create_note_input: CreateOpenNoteInput,
     ) -> Result<(), Array<felt252>> {
-        self.safe_client_execute([ClientAction::CreateOpenNote(create_note_input)].span())
+        self.safe_execute([ClientAction::CreateOpenNote(create_note_input)].span())
     }
 
     fn safe_create_open_note_execute_and_panic(
@@ -743,7 +741,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn cheat_create_open_note_e2e(self: @User, create_note_input: CreateOpenNoteInput) {
-        self.privacy.execute_actions(actions: self.internal_create_open_note(create_note_input));
+        self.privacy.apply_actions(actions: self.internal_create_open_note(create_note_input));
     }
 
     fn compute_channel_key(self: @User, recipient: User) -> felt252 {
@@ -860,12 +858,12 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn use_note(self: @User, note: UseNoteInput) -> Span<ServerAction> {
-        self.client_execute(client_actions: [ClientAction::UseNote(note)].span())
+        self.execute(client_actions: [ClientAction::UseNote(note)].span())
     }
 
     #[feature("safe_dispatcher")]
     fn safe_use_note(self: @User, note: UseNoteInput) -> Result<(), Array<felt252>> {
-        self.safe_client_execute(client_actions: [ClientAction::UseNote(note)].span())
+        self.safe_execute(client_actions: [ClientAction::UseNote(note)].span())
     }
 
     #[feature("safe_dispatcher")]
@@ -979,14 +977,14 @@ pub(crate) impl UserImpl of UserTrait {
         self.increase_token_balance(:token, :amount);
         self.approve(:token, amount: amount.into());
         let server_actions = self
-            .client_execute(
+            .execute(
                 [
                     ClientAction::Deposit(deposit_input),
                     ClientAction::CreateEncNote(create_note_input),
                 ]
                     .span(),
             );
-        self.privacy.execute_actions(actions: server_actions);
+        self.privacy.apply_actions(actions: server_actions);
     }
 
     fn internal_deposit(
@@ -1008,7 +1006,7 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, token_addr: ContractAddress, amount: u128,
     ) -> Result<(), Array<felt252>> {
         let input = DepositInput { token: token_addr, amount };
-        self.safe_client_execute(client_actions: [ClientAction::Deposit(input),].span())
+        self.safe_execute(client_actions: [ClientAction::Deposit(input),].span())
     }
 
     fn get_num_of_channels(self: @User) -> u64 {
@@ -1028,7 +1026,7 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
         let input = SetViewingKeyInput { random };
-        self.client_execute(client_actions: [ClientAction::SetViewingKey(input)].span())
+        self.execute(client_actions: [ClientAction::SetViewingKey(input)].span())
     }
 
     fn internal_set_viewing_key(self: @User, random: felt252) -> Span<ServerAction> {
@@ -1064,12 +1062,12 @@ pub(crate) impl UserImpl of UserTrait {
 
     fn set_viewing_key_e2e_with_random(ref self: User, random: felt252) {
         let actions = self.set_viewing_key(:random);
-        self.privacy.execute_actions(:actions);
+        self.privacy.apply_actions(:actions);
     }
 
     fn safe_set_viewing_key(self: @User, random: felt252) -> Result<(), Array<felt252>> {
         let input = SetViewingKeyInput { random };
-        self.safe_client_execute(client_actions: [ClientAction::SetViewingKey(input)].span())
+        self.safe_execute(client_actions: [ClientAction::SetViewingKey(input)].span())
     }
 
     #[feature("safe_dispatcher")]
@@ -1164,7 +1162,7 @@ pub(crate) impl UserImpl of UserTrait {
             ),
         ]
             .span();
-        self.privacy.execute_actions(:actions);
+        self.privacy.apply_actions(:actions);
     }
 
     /// Cheat withdraw in the server side (no client side).
@@ -1183,7 +1181,7 @@ pub(crate) impl UserImpl of UserTrait {
             ),
         ]
             .span();
-        self.privacy.execute_actions(:actions);
+        self.privacy.apply_actions(:actions);
     }
 
     fn increase_token_balance(self: @User, token: Token, amount: u128) {
@@ -1386,7 +1384,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
         ]
             .span();
-        self.execute_actions(:actions);
+        self.apply_actions(:actions);
     }
 
     fn channel_exists(self: @PrivacyCfg, channel_marker: felt252) -> bool {
@@ -1412,7 +1410,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let storage_address = map_entry_address(
             map_selector: selector!("notes"), keys: [note_id].span(),
         );
-        self.execute_actions(actions: [to_write_once_action(:storage_address, value: note)].span())
+        self.apply_actions(actions: [to_write_once_action(:storage_address, value: note)].span())
     }
 
     fn get_note(self: @PrivacyCfg, note_id: felt252) -> Note {
@@ -1425,7 +1423,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             map_selector: selector!("nullifiers"), keys: [nullifier].span(),
         );
         self
-            .execute_actions(
+            .apply_actions(
                 actions: array![to_write_once_action(:storage_address, value: true)].span(),
             )
     }
@@ -1438,32 +1436,32 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.views.get_compliance_public_key()
     }
 
-    fn execute_actions(self: @PrivacyCfg, actions: Span<ServerAction>) {
+    fn apply_actions(self: @PrivacyCfg, actions: Span<ServerAction>) {
         self.cheat_proof_facts(:actions);
-        self.server.execute_actions(:actions);
+        self.server.apply_actions(:actions);
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_execute_actions(
+    fn safe_apply_actions(
         self: @PrivacyCfg, actions: Span<ServerAction>,
     ) -> Result<(), Array<felt252>> {
         self.cheat_proof_facts(:actions);
-        self.safe_server.execute_actions(:actions)
+        self.safe_server.apply_actions(:actions)
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_execute_actions_without_cheat(
+    fn safe_apply_actions_without_cheat(
         self: @PrivacyCfg, actions: Span<ServerAction>,
     ) -> Result<(), Array<felt252>> {
-        self.safe_server.execute_actions(:actions)
+        self.safe_server.apply_actions(:actions)
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_execute_actions_with_proof_facts(
+    fn safe_apply_actions_with_proof_facts(
         self: @PrivacyCfg, actions: Span<ServerAction>, proof_facts: ProofFacts,
     ) -> Result<(), Array<felt252>> {
         self._cheat_proof_facts(:proof_facts);
-        self.safe_server.execute_actions(:actions)
+        self.safe_server.apply_actions(:actions)
     }
 
     fn deposit_to_open_note(self: @PrivacyCfg, note_id: felt252, amount: u128) {
