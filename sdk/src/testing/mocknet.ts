@@ -156,7 +156,7 @@ export class Mocknet {
    * @returns The updated registry
    */
   executeOutside(result: ExecuteResult): PrivateRegistry {
-    this.pool.execute_actions(result.callAndProof.call.calldata as string[]);
+    this.pool.apply_actions(result.callAndProof.call.calldata as string[]);
     return result.registry;
   }
 }

@@ -640,7 +640,7 @@ export const PrivacyPoolABI = [
     "items": [
       {
         "type": "function",
-        "name": "execute_actions",
+        "name": "apply_actions",
         "inputs": [
           {
             "name": "actions",

@@ -191,7 +191,7 @@ fn test_transfer() {
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
@@ -241,7 +241,7 @@ fn test_transfer_to_self() {
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
@@ -308,7 +308,7 @@ fn test_transfer_one_to_many() {
     assert_eq!(test.privacy.get_note(note_id: note_id_1), Zero::zero());
     assert_eq!(test.privacy.get_note(note_id: note_id_2), Zero::zero());
 
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1);
     assert_eq!(test.privacy.get_note(note_id: note_id_2), expected_note_2);
@@ -381,7 +381,7 @@ fn test_transfer_many_to_one() {
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
@@ -465,7 +465,7 @@ fn test_transfer_many_to_many() {
     assert_eq!(test.privacy.get_note(note_id: note_id_1), Zero::zero());
     assert_eq!(test.privacy.get_note(note_id: note_id_2), Zero::zero());
 
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
     assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1);
@@ -773,8 +773,8 @@ fn test_transfer_assertions() {
         ClientAction::UseNote(use_note_input), ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
-    let server_actions = user_1.client_execute(:client_actions);
-    user_1.privacy.execute_actions(actions: server_actions);
+    let server_actions = user_1.execute(:client_actions);
+    user_1.privacy.apply_actions(actions: server_actions);
     let result = user_1
         .safe_transfer(
             notes_to_use: [use_note_input].span(), notes_to_create: [create_note_input].span(),
@@ -1059,7 +1059,7 @@ fn test_open_channel_multiple_channels_same_sender() {
 
     let (random_1, salt_1, c1_output) = user_1
         .internal_open_channel_with_generated_random_and_salt(recipient: user_2, index: 0);
-    test.privacy.execute_actions(actions: c1_output);
+    test.privacy.apply_actions(actions: c1_output);
     let (random_2, salt_2, c2_output) = user_1
         .internal_open_channel_with_generated_random_and_salt(recipient: user_3, index: 1);
     let channel_key_1 = user_1.compute_channel_key(recipient: user_2);
@@ -1645,7 +1645,7 @@ fn test_open_subchannel_multiple() {
         .internal_open_subchannel_with_generated_salt(
             recipient: user_2, token_addr: token_addr_1, index: 0,
         );
-    test.privacy.execute_actions(actions: c1_output);
+    test.privacy.apply_actions(actions: c1_output);
     let (salt_2, c2_output) = user_1
         .internal_open_subchannel_with_generated_salt(
             recipient: user_2, token_addr: token_addr_2, index: 1,
@@ -1708,7 +1708,7 @@ fn test_open_subchannel_multiple() {
     let token_addr = test.mock_new_token();
     let (salt_1, c1_output) = user_1
         .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_addr, index: 0);
-    test.privacy.execute_actions(actions: c1_output);
+    test.privacy.apply_actions(actions: c1_output);
     let (salt_2, c2_output) = user_1
         .internal_open_subchannel_with_generated_salt(recipient: user_2, :token_addr, index: 1);
     let expected_subchannel_id_1 = user_1.compute_subchannel_id(recipient: user_2, index: 0);
@@ -1761,7 +1761,7 @@ fn test_open_subchannel_multiple() {
         .internal_open_subchannel_with_generated_salt(
             recipient: user_2, token_addr: token_addr_1, index: 0,
         );
-    test.privacy.execute_actions(actions: c1_output);
+    test.privacy.apply_actions(actions: c1_output);
     let (salt_2, c2_output) = user_1
         .internal_open_subchannel_with_generated_salt(
             recipient: user_2, token_addr: token_addr_2, index: 0,
@@ -1826,7 +1826,7 @@ fn test_open_subchannel_multiple_self_channel() {
         .internal_open_subchannel_with_generated_salt(
             recipient: user, token_addr: token_addr_1, index: 0,
         );
-    test.privacy.execute_actions(actions: c1_output);
+    test.privacy.apply_actions(actions: c1_output);
     let (salt_2, c2_output) = user
         .internal_open_subchannel_with_generated_salt(
             recipient: user, token_addr: token_addr_2, index: 1,
@@ -1956,7 +1956,7 @@ fn test_create_note_twice() {
     let create_note_1_actions = user_1
         .internal_create_enc_note(create_note_input: create_note_input_1);
     assert_eq!(create_note_1_actions, create_note_input_1.into_server_actions(user: user_1));
-    user_1.privacy.execute_actions(actions: create_note_1_actions);
+    user_1.privacy.apply_actions(actions: create_note_1_actions);
 
     // Note 2: encrypted note at index 1 (enc → enc).
     let amount_2 = amount_1 + 1;
@@ -1967,21 +1967,21 @@ fn test_create_note_twice() {
     let create_note_2_actions = user_1
         .internal_create_enc_note(create_note_input: create_note_input_2);
     assert_eq!(create_note_2_actions, create_note_input_2.into_server_actions(user: user_1));
-    user_1.privacy.execute_actions(actions: create_note_2_actions);
+    user_1.privacy.apply_actions(actions: create_note_2_actions);
 
     // Note 3: open note at index 2 (enc → open).
     let note_3 = user_1
         .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 2, :depositor);
     let create_note_3_actions = user_1.internal_create_open_note(create_note_input: note_3);
     assert_eq!(create_note_3_actions, note_3.into_server_actions(user: user_1));
-    user_1.privacy.execute_actions(actions: create_note_3_actions);
+    user_1.privacy.apply_actions(actions: create_note_3_actions);
 
     // Note 4: open note at index 3 (open → open).
     let note_4 = user_1
         .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 3, :depositor);
     let create_note_4_actions = user_1.internal_create_open_note(create_note_input: note_4);
     assert_eq!(create_note_4_actions, note_4.into_server_actions(user: user_1));
-    user_1.privacy.execute_actions(actions: create_note_4_actions);
+    user_1.privacy.apply_actions(actions: create_note_4_actions);
 
     // Note 5: encrypted note at index 4 (open → enc).
     let amount_5 = amount_2 + 1;
@@ -1991,7 +1991,7 @@ fn test_create_note_twice() {
         );
     let create_note_5_actions = user_1.internal_create_enc_note(create_note_input: note_5);
     assert_eq!(create_note_5_actions, note_5.into_server_actions(user: user_1));
-    user_1.privacy.execute_actions(actions: create_note_5_actions);
+    user_1.privacy.apply_actions(actions: create_note_5_actions);
 
     // Verify all note IDs are unique.
     let (note_id_1, expected_note_1) = user_1
@@ -2035,7 +2035,7 @@ fn test_create_note_twice_same_amount() {
     let create_note_1_actions = user_1
         .internal_create_enc_note(create_note_input: create_note_input_1);
     let index_2 = index_1 + 1;
-    test.privacy.execute_actions(actions: create_note_1_actions);
+    test.privacy.apply_actions(actions: create_note_1_actions);
     let create_note_input_2 = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: index_2);
     let create_note_2_actions = user_1
@@ -2270,7 +2270,7 @@ fn test_create_enc_note_assertions() {
         ClientAction::UseNote(use_note_input), ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
@@ -2441,7 +2441,7 @@ fn test_create_open_note_assertions() {
 
     // Catch NON_ZERO_VALUE (note id already exists).
     let client_actions = [ClientAction::CreateOpenNote(create_note_input),].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
@@ -2471,7 +2471,7 @@ fn test_create_and_use_encrypted_note_zero_amount() {
     assert_ne!(expected_note.packed_value, Zero::zero());
     assert_eq!(server_actions, create_note_input.into_server_actions(user: user_1));
     assert_eq!(user_1.privacy.get_note(:note_id), Zero::zero());
-    user_1.privacy.execute_actions(actions: server_actions);
+    user_1.privacy.apply_actions(actions: server_actions);
     assert_eq!(user_1.privacy.get_note(:note_id), expected_note);
     // Attempt to use note with zero amount - should fail with ZERO_NOTE_AMOUNT_USAGE.
     let use_note_input = UseNoteInput {
@@ -2614,7 +2614,7 @@ fn test_create_note_decrypt_amount() {
     let create_note_input = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, :index);
     let create_note_actions = user_1.internal_create_enc_note(:create_note_input);
-    user_1.privacy.execute_actions(actions: create_note_actions);
+    user_1.privacy.apply_actions(actions: create_note_actions);
 
     // User 2 should be able to decrypt the amount.
     // Decrypt channel key.
@@ -2647,7 +2647,7 @@ fn test_create_open_note_stores_correctly() {
     let note = user_1
         .new_open_note_with_generated_random(recipient: user_2, :token_addr, :index, :depositor);
     let create_note_actions = user_1.internal_create_open_note(create_note_input: note);
-    user_1.privacy.execute_actions(actions: create_note_actions);
+    user_1.privacy.apply_actions(actions: create_note_actions);
 
     // Verify the note struct was stored correctly (including token and depositor fields).
     let (note_id, expected_note) = user_1.compute_open_note(create_note_input: note);
@@ -2671,7 +2671,7 @@ fn test_create_enc_note_stores_one_felt() {
     let create_note_input = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 100, :index);
     let create_note_actions = user_1.internal_create_enc_note(:create_note_input);
-    user_1.privacy.execute_actions(actions: create_note_actions);
+    user_1.privacy.apply_actions(actions: create_note_actions);
 
     // Verify the token and depositor fields were stored correctly.
     let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
@@ -2776,7 +2776,7 @@ fn test_use_deposited_open_note(open_note_self: bool) {
     assert_eq!(test.privacy.get_note(note_id: new_note_id), Zero::zero());
 
     // Execute the transfer.
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
 
     // Verify nullifier was created (note is spent).
     assert!(test.privacy.nullifier_exists(nullifier: expected_nullifier));
@@ -2895,7 +2895,7 @@ fn test_use_multiple_deposited_open_notes() {
             notes_to_use: [use_note_1, use_note_2].span(),
             notes_to_create: [create_enc_note].span(),
         );
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
 
     // Verify both nullifiers were created.
     let nullifier_1 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 0);
@@ -2968,7 +2968,7 @@ fn test_use_mixed_open_and_enc_notes() {
             notes_to_use: [use_enc_note, use_open_note].span(),
             notes_to_create: [create_output_note].span(),
         );
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
 
     // Verify both nullifiers created.
     let nullifier_enc = user_2.compute_nullifier(sender: user_1, :token_addr, index: 0);
@@ -3026,7 +3026,7 @@ fn test_use_deposited_open_note_double_spend() {
         .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, :amount, index: 0);
     let actions = user_2
         .transfer(notes_to_use: [use_note_input].span(), notes_to_create: [create_note_1].span());
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
 
     // Verify nullifier was created.
     let nullifier = user_2.compute_nullifier(sender: user_1, :token_addr, index: 0);
@@ -3212,7 +3212,7 @@ fn test_use_same_note_twice() {
     let use_note_action = ClientAction::UseNote(use_note_input);
     let client_actions = [use_note_action, use_note_action].span();
     // Should panic on the second use.
-    user_2.client_execute(:client_actions);
+    user_2.execute(:client_actions);
 }
 
 #[test]
@@ -3391,8 +3391,8 @@ fn test_use_note_assertions() {
         ),
     ]
         .span();
-    let server_actions = user.client_execute(:client_actions);
-    user.privacy.execute_actions(actions: server_actions);
+    let server_actions = user.execute(:client_actions);
+    user.privacy.apply_actions(actions: server_actions);
     let result = user.safe_use_note(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user.safe_use_note_execute_and_panic(note: use_note_input);
@@ -3689,13 +3689,13 @@ fn test_set_viewing_key_to_other_user_key() {
 }
 
 #[test]
-fn test_client_execute_set_viewing_key() {
+fn test_execute_set_viewing_key() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
 
     let random = user_1.get_random();
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random })].span();
-    let actions = user_1.client_execute(:client_actions);
+    let actions = user_1.execute(:client_actions);
     let enc_private_key = user_1.compute_enc_private_key(:random);
     let public_key_storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
@@ -3727,7 +3727,7 @@ fn test_client_execute_set_viewing_key() {
     // TODO: Verify no events emitted (currently not tested because of snforge revert issue).
 
     let mut spy_events = spy_events();
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert_eq!(user_1.get_public_key(), user_1.public_key);
     assert_eq!(user_1.get_enc_private_key(), enc_private_key);
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
@@ -3741,7 +3741,7 @@ fn test_client_execute_set_viewing_key() {
 }
 
 #[test]
-fn test_client_execute_open_channel() {
+fn test_execute_open_channel() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -3763,7 +3763,7 @@ fn test_client_execute_open_channel() {
         )
     ]
         .span();
-    let actions = user_1.client_execute(:client_actions);
+    let actions = user_1.execute(:client_actions);
     let expected_channel_marker = user_1.compute_channel_marker(recipient: user_2);
     let expected_channel_key = user_1.compute_channel_key(recipient: user_2);
     let expected_enc_channel_info = encrypt_channel_info(
@@ -3813,7 +3813,7 @@ fn test_client_execute_open_channel() {
     assert_panic_with_error(:result, expected_error: "Index out of bounds");
     assert_eq!(user_1.get_num_of_channels(), 0);
 
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert!(test.privacy.channel_exists(channel_marker: expected_channel_marker));
     assert_eq!(user_2.get_num_of_channels(), 1);
     assert_eq!(user_2.get_channel_info(channel_index: 0), expected_enc_channel_info);
@@ -3825,7 +3825,7 @@ fn test_client_execute_open_channel() {
 }
 
 #[test]
-fn test_client_execute_open_subchannel() {
+fn test_execute_open_subchannel() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -3849,7 +3849,7 @@ fn test_client_execute_open_subchannel() {
         ),
     ]
         .span();
-    let actions = user_1.client_execute(:client_actions);
+    let actions = user_1.execute(:client_actions);
     let expected_subchannel_marker = user_1
         .compute_subchannel_marker(recipient: user_2, :token_addr);
     let expected_subchannel_id = user_1.compute_subchannel_id(recipient: user_2, index: 0);
@@ -3880,7 +3880,7 @@ fn test_client_execute_open_subchannel() {
         EncSubchannelInfo { salt: Zero::zero(), enc_token: Zero::zero() },
     );
 
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert!(test.privacy.subchannel_exists(subchannel_marker: expected_subchannel_marker));
     assert_eq!(
         test.privacy.get_subchannel_info(subchannel_id: expected_subchannel_id),
@@ -3889,7 +3889,7 @@ fn test_client_execute_open_subchannel() {
 }
 
 #[test]
-fn test_client_execute_deposit_create_note() {
+fn test_execute_deposit_create_note() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -3910,7 +3910,7 @@ fn test_client_execute_deposit_create_note() {
         ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
-    let actions = user_1.client_execute(:client_actions);
+    let actions = user_1.execute(:client_actions);
     let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     let expected_event = events::Deposit { user_addr: user_1.address, token: token_addr, amount };
     let expected_actions = array![
@@ -3932,14 +3932,14 @@ fn test_client_execute_deposit_create_note() {
     assert_eq!(token.balance_of(address: user_1.address), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
 
 #[test]
-fn test_client_execute_use_note_create_note() {
+fn test_execute_use_note_create_note() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -3966,7 +3966,7 @@ fn test_client_execute_use_note_create_note() {
         ClientAction::UseNote(use_note_input), ClientAction::CreateEncNote(create_note_input_2),
     ]
         .span();
-    let actions = user_2.client_execute(:client_actions);
+    let actions = user_2.execute(:client_actions);
     let (note_id, expected_note) = user_2.compute_enc_note(create_note_input: create_note_input_2);
     let nullifier = user_2
         .compute_nullifier(sender: user_1, :token_addr, index: create_note_input.index);
@@ -3986,13 +3986,13 @@ fn test_client_execute_use_note_create_note() {
     assert!(!test.privacy.nullifier_exists(:nullifier));
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
 
 #[test]
-fn test_client_execute_use_note_withdraw() {
+fn test_execute_use_note_withdraw() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -4021,7 +4021,7 @@ fn test_client_execute_use_note_withdraw() {
         ),
     ]
         .span();
-    let actions = user_2.client_execute(:client_actions);
+    let actions = user_2.execute(:client_actions);
     let nullifier = user_2
         .compute_nullifier(sender: user_1, :token_addr, index: create_note_input.index);
     let nullifier_path = map_entry_address(
@@ -4048,14 +4048,14 @@ fn test_client_execute_use_note_withdraw() {
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
     assert_eq!(token.balance_of(address: user_1.address), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 }
 
 #[test]
-fn test_client_execute_use_note_swap() {
+fn test_execute_use_note_swap() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token = test.new_token();
@@ -4096,7 +4096,7 @@ fn test_client_execute_use_note_swap() {
     let client_actions = [ClientAction::UseNote(use_note_input), ClientAction::Swap(swap_input)]
         .span();
     let mut spy = spy_events();
-    let actions = user.client_execute(:client_actions);
+    let actions = user.execute(:client_actions);
     let nullifier = user
         .compute_nullifier(sender: user, :token_addr, index: create_note_input.index);
     let nullifier_path = map_entry_address(
@@ -4158,7 +4158,7 @@ fn test_client_execute_use_note_swap() {
     assert_eq!(note.depositor, test.privacy.swap_executor.address);
 
     let mut spy = spy_events();
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
     let note = test.privacy.get_note(:note_id);
     let (salt, note_amount) = unpacking(packed_value: note.packed_value);
@@ -4197,7 +4197,7 @@ fn test_client_execute_use_note_swap() {
 }
 
 #[test]
-fn test_client_execute_deposit_swap() {
+fn test_execute_deposit_swap() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token = test.new_token();
@@ -4230,7 +4230,7 @@ fn test_client_execute_deposit_swap() {
         );
     let client_actions = [ClientAction::Deposit(deposit_input), ClientAction::Swap(swap_input)]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 }
 
@@ -4481,12 +4481,12 @@ fn test_internal_actions() {
 }
 
 #[test]
-fn test_client_execute_assertions() {
+fn test_execute_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
     // Catch NON_ZERO_CALLER.
-    let result = user.safe_client_execute_without_cheat(client_actions: [].span());
+    let result = user.safe_execute_without_cheat(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_CALLER);
 
     // Catch INVALID_TX_VERSION.
@@ -4496,24 +4496,24 @@ fn test_client_execute_assertions() {
         version: Zero::zero(),
         span: CheatSpan::TargetCalls(1),
     );
-    let result = user.safe_client_execute_without_cheat(client_actions: [].span());
+    let result = user.safe_execute_without_cheat(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_TX_VERSION);
 
     // Catch NOV_ZERO_TIP.
     user.privacy.cheat_zero_caller_address();
     cheat_tip(contract_address: user.privacy.address, tip: 1, span: CheatSpan::TargetCalls(1));
-    let result = user.safe_client_execute_without_cheat(client_actions: [].span());
+    let result = user.safe_execute_without_cheat(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_TIP);
 
     // Catch NON_ZERO_RESOURCE_PRICE.
     user.privacy.cheat_zero_caller_address();
-    let result = user.safe_client_execute_without_cheat(client_actions: [].span());
+    let result = user.safe_execute_without_cheat(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_RESOURCE_PRICE);
 
     // Catch INVALID_SIGNATURE.
     let mut user_invalid = test.new_user_with_is_valid(is_valid: false);
     let result = user_invalid
-        .safe_client_execute(
+        .safe_execute(
             client_actions: [
                 ClientAction::SetViewingKey(
                     SetViewingKeyInput { random: user_invalid.get_random() },
@@ -4525,14 +4525,14 @@ fn test_client_execute_assertions() {
 }
 
 #[test]
-fn test_client_execute_and_panic_assertions() {
+fn test_execute_and_panic_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
     // Catch ZERO_USER_ADDR.
     let mut user_zero_addr = user;
     user_zero_addr.address = Zero::zero();
-    let result = user_zero_addr.safe_client_execute(client_actions: [].span());
+    let result = user_zero_addr.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
     let result = user_zero_addr.safe_execute_and_panic(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
@@ -4542,7 +4542,7 @@ fn test_client_execute_and_panic_assertions() {
     // Catch ZERO_PRIVATE_KEY.
     let mut user_zero_private_key = user;
     user_zero_private_key.private_key = Zero::zero();
-    let result = user_zero_private_key.safe_client_execute(client_actions: [].span());
+    let result = user_zero_private_key.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
     let result = user_zero_private_key.safe_execute_and_panic(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
@@ -4552,7 +4552,7 @@ fn test_client_execute_and_panic_assertions() {
     // Catch PRIVATE_KEY_NOT_CANONICAL.
     let mut user_private_key_not_canonical = user;
     user_private_key_not_canonical.private_key = Neg::neg(user.private_key);
-    let result = user_private_key_not_canonical.safe_client_execute(client_actions: [].span());
+    let result = user_private_key_not_canonical.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical.safe_execute_and_panic(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
@@ -4560,7 +4560,7 @@ fn test_client_execute_and_panic_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch NO_PRIVACY_ACTIONS.
-    let result = user.safe_client_execute(client_actions: [].span());
+    let result = user.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
     let result = user.safe_execute_and_panic(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
@@ -4577,7 +4577,7 @@ fn test_client_execute_and_panic_assertions() {
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4608,7 +4608,7 @@ fn test_actions_out_of_order() {
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
@@ -4628,7 +4628,7 @@ fn test_actions_out_of_order() {
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4651,7 +4651,7 @@ fn test_actions_out_of_order() {
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4679,7 +4679,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4690,7 +4690,7 @@ fn test_actions_out_of_order() {
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4709,7 +4709,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4729,7 +4729,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4742,7 +4742,7 @@ fn test_actions_out_of_order() {
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4761,7 +4761,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4781,7 +4781,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4792,7 +4792,7 @@ fn test_actions_out_of_order() {
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4804,7 +4804,7 @@ fn test_actions_out_of_order() {
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4824,7 +4824,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4845,7 +4845,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4857,7 +4857,7 @@ fn test_actions_out_of_order() {
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4868,7 +4868,7 @@ fn test_actions_out_of_order() {
         ClientAction::CreateEncNote(create_note_input_2), ClientAction::UseNote(note_1_path),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4883,7 +4883,7 @@ fn test_actions_out_of_order() {
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4902,7 +4902,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4922,7 +4922,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4933,7 +4933,7 @@ fn test_actions_out_of_order() {
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4943,7 +4943,7 @@ fn test_actions_out_of_order() {
         ClientAction::CreateOpenNote(open_note), ClientAction::UseNote(note_1_path),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4957,7 +4957,7 @@ fn test_actions_out_of_order() {
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -4979,7 +4979,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5002,7 +5002,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5016,7 +5016,7 @@ fn test_actions_out_of_order() {
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5030,7 +5030,7 @@ fn test_actions_out_of_order() {
         ClientAction::UseNote(note_1_path),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5044,7 +5044,7 @@ fn test_actions_out_of_order() {
         ClientAction::CreateEncNote(create_note_input_2),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5058,7 +5058,7 @@ fn test_actions_out_of_order() {
         ClientAction::CreateOpenNote(open_note),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5084,7 +5084,7 @@ fn test_actions_out_of_order() {
         ClientAction::Swap(swap_input), ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5104,7 +5104,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5125,7 +5125,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5137,7 +5137,7 @@ fn test_actions_out_of_order() {
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5148,7 +5148,7 @@ fn test_actions_out_of_order() {
         ClientAction::Swap(swap_input), ClientAction::UseNote(note_1_path),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5159,7 +5159,7 @@ fn test_actions_out_of_order() {
         ClientAction::Swap(swap_input), ClientAction::CreateEncNote(create_note_input_2),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5170,7 +5170,7 @@ fn test_actions_out_of_order() {
         ClientAction::Swap(swap_input), ClientAction::CreateOpenNote(open_note),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5184,7 +5184,7 @@ fn test_actions_out_of_order() {
         ),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
@@ -5216,7 +5216,7 @@ fn test_execute_and_panic_balance_assertions() {
         ClientAction::CreateEncNote(create_note_input),
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
@@ -5225,7 +5225,7 @@ fn test_execute_and_panic_balance_assertions() {
 
     // Catch FINAL_BALANCE_MUST_BE_ZERO (use note).
     let client_actions = [ClientAction::UseNote(use_note_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
@@ -5240,7 +5240,7 @@ fn test_execute_and_panic_balance_assertions() {
         )
     ]
         .span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
@@ -5249,7 +5249,7 @@ fn test_execute_and_panic_balance_assertions() {
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE (create note).
     let client_actions = [ClientAction::CreateEncNote(create_note_input),].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
@@ -5258,7 +5258,7 @@ fn test_execute_and_panic_balance_assertions() {
 }
 
 #[test]
-fn test_client_execute_writes() {
+fn test_client_apply_writes() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let depositor = test.mock_new_depositor();
@@ -5298,7 +5298,7 @@ fn test_client_execute_writes() {
         .span();
     // Compile client actions.
     let mut spy_events = spy_events();
-    let server_actions = user.client_execute(:client_actions);
+    let server_actions = user.execute(:client_actions);
     // Expected server actions.
     let address = user.address;
     let public_key_storage_path = map_entry_address(
@@ -5385,7 +5385,7 @@ fn test_client_execute_writes() {
     // Test CreateEncNote writes.
     user.increase_token_balance(:token, :amount);
     user.approve(:token, amount: amount.into());
-    test.privacy.execute_actions(actions: server_actions);
+    test.privacy.apply_actions(actions: server_actions);
 
     let create_note = ClientAction::CreateEncNote(
         CreateEncNoteInput {
@@ -5398,7 +5398,7 @@ fn test_client_execute_writes() {
         },
     );
     let client_actions = [deposit, create_note, create_note].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Test CreateOpenNote writes.
@@ -5408,14 +5408,14 @@ fn test_client_execute_writes() {
         );
     let create_open_note = ClientAction::CreateOpenNote(create_open_note_input);
     let client_actions = [create_open_note, create_open_note].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Test UseNote writes.
     let use_note = ClientAction::UseNote(
         UseNoteInput { channel_key, token: token_addr, index: index },
     );
-    let result = user.safe_client_execute(client_actions: [use_note, use_note].span());
+    let result = user.safe_execute(client_actions: [use_note, use_note].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -5438,7 +5438,7 @@ fn test_client_transfers_dont_execute() {
     let salt = user.get_salt();
     let mut spy_events_deposit = spy_events();
     let server_actions = user
-        .client_execute(
+        .execute(
             client_actions: [
                 ClientAction::Deposit(DepositInput { token: token_addr, amount }),
                 ClientAction::CreateEncNote(
@@ -5484,7 +5484,7 @@ fn test_client_transfers_dont_execute() {
     ]
         .span();
     assert_eq!(server_actions, expected_server_actions);
-    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    let result = test.privacy.safe_apply_actions(actions: server_actions);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 
     // Execute deposit.
@@ -5494,7 +5494,7 @@ fn test_client_transfers_dont_execute() {
     assert_eq!(token.balance_of(address: user.address), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 
-    test.privacy.execute_actions(actions: server_actions);
+    test.privacy.apply_actions(actions: server_actions);
 
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
@@ -5503,7 +5503,7 @@ fn test_client_transfers_dont_execute() {
     let random = user.get_random().into();
     let mut spy_events_withdraw = spy_events();
     let server_actions = user
-        .client_execute(
+        .execute(
             client_actions: [
                 ClientAction::UseNote(
                     UseNoteInput {
@@ -5549,7 +5549,7 @@ fn test_client_transfers_dont_execute() {
         .span();
     assert_eq!(server_actions, expected_server_actions);
 
-    test.privacy.execute_actions(actions: server_actions);
+    test.privacy.apply_actions(actions: server_actions);
     assert_eq!(token.balance_of(address: user.address), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 }
@@ -5567,12 +5567,12 @@ fn test_no_privacy_actions() {
     user.open_subchannel_e2e(recipient: user, :token_addr, index: 0);
 
     // Empty client actions.
-    let result = user.safe_client_execute(client_actions: [].span());
+    let result = user.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 
     // Deposit only.
     let deposit_action = ClientAction::Deposit(DepositInput { token: token_addr, amount });
-    let result = user.safe_client_execute(client_actions: [deposit_action].span());
+    let result = user.safe_execute(client_actions: [deposit_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
     let result = user.safe_execute_and_panic(client_actions: [deposit_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
@@ -5585,7 +5585,7 @@ fn test_no_privacy_actions() {
             to_addr: user.address, token: token_addr, amount, random: user.get_random(),
         },
     );
-    let result = user.safe_client_execute(client_actions: [withdraw_action].span());
+    let result = user.safe_execute(client_actions: [withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
     let result = user.safe_execute_and_panic(client_actions: [withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
@@ -5621,7 +5621,7 @@ fn test_no_privacy_actions() {
             random: user.get_random(),
         },
     );
-    let result = user.safe_client_execute(client_actions: [swap_action].span());
+    let result = user.safe_execute(client_actions: [swap_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
     let result = user.safe_execute_and_panic(client_actions: [swap_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
@@ -5629,7 +5629,7 @@ fn test_no_privacy_actions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
     // Deposit and Withdraw.
-    let result = user.safe_client_execute(client_actions: [deposit_action, withdraw_action].span());
+    let result = user.safe_execute(client_actions: [deposit_action, withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
     let result = user
         .safe_execute_and_panic(client_actions: [deposit_action, withdraw_action].span());
@@ -5638,7 +5638,7 @@ fn test_no_privacy_actions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 
     // Deposit and Swap.
-    let result = user.safe_client_execute(client_actions: [deposit_action, swap_action].span());
+    let result = user.safe_execute(client_actions: [deposit_action, swap_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
     let result = user.safe_execute_and_panic(client_actions: [deposit_action, swap_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
@@ -5650,7 +5650,7 @@ fn test_no_privacy_actions() {
         DepositInput { token: token_addr, amount: 2 * amount },
     );
     let result = user
-        .safe_client_execute(client_actions: [deposit_action, withdraw_action, swap_action].span());
+        .safe_execute(client_actions: [deposit_action, withdraw_action, swap_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
     let result = user
         .safe_execute_and_panic(
@@ -5663,7 +5663,7 @@ fn test_no_privacy_actions() {
 }
 
 #[test]
-fn test_client_execute_create_open_note() {
+fn test_execute_create_open_note() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
@@ -5681,7 +5681,7 @@ fn test_client_execute_create_open_note() {
 
     // Execute client actions.
     let client_actions = [ClientAction::CreateOpenNote(create_note_input)].span();
-    let actions = user_1.client_execute(:client_actions);
+    let actions = user_1.execute(:client_actions);
 
     // Compute expected values.
     let (note_id, expected_note) = user_1.compute_open_note(:create_note_input);
@@ -5704,7 +5704,7 @@ fn test_client_execute_create_open_note() {
     // TODO: Verify no events emitted (currently not tested because of snforge revert issue).
 
     // Execute actions and verify storage after.
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
 
@@ -5726,13 +5726,13 @@ fn test_create_open_note_as_single_action() {
 
     // Create open note as the single action - should succeed (it's a privacy action).
     let client_actions = [ClientAction::CreateOpenNote(create_note_input)].span();
-    let actions = user.client_execute(:client_actions);
+    let actions = user.execute(:client_actions);
 
     // Verify server actions are generated.
     assert_eq!(actions, create_note_input.into_server_actions(:user));
 
     // Execute and verify storage.
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
     let (note_id, expected_note) = user.compute_open_note(:create_note_input);
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
 }
@@ -5763,14 +5763,14 @@ fn test_create_open_and_enc_notes_same_tx() {
         .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 0, index: 3);
 
     let actions = user_1
-        .client_execute(
+        .execute(
             [
                 ClientAction::CreateOpenNote(open_0), ClientAction::CreateEncNote(enc_1),
                 ClientAction::CreateOpenNote(open_2), ClientAction::CreateEncNote(enc_3),
             ]
                 .span(),
         );
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
 
     // Verify enc notes via getter.
     let (enc_id_1, expected_enc_1) = user_1.compute_enc_note(create_note_input: enc_1);
@@ -5855,7 +5855,7 @@ fn test_create_note_at_existing_note_id(initial_is_open: bool, colliding_is_open
         .transfer(
             notes_to_use: [use_note_input].span(), notes_to_create: [transfer_note_input].span(),
         );
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
 
     // Try again after using the note - should still fail.
     let result = if colliding_is_open {
@@ -5914,7 +5914,7 @@ fn test_deposit_to_open_note_twice() {
         .new_enc_note_with_generated_salt(recipient: user_3, :token_addr, :amount, index: 0);
     let actions = user_2
         .transfer(notes_to_use: [use_note].span(), notes_to_create: [new_note].span());
-    test.privacy.execute_actions(:actions);
+    test.privacy.apply_actions(:actions);
 
     // Verify nullifier was created.
     let nullifier = user_2.compute_nullifier(sender: user_1, :token_addr, :index);
@@ -5961,7 +5961,7 @@ fn test_use_deposited_open_note_twice_single_tx() {
     let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
     let use_note_action = ClientAction::UseNote(use_note_input);
     let client_actions = [use_note_action, use_note_action].span();
-    let result = user_2.safe_client_execute(:client_actions);
+    let result = user_2.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -6058,11 +6058,11 @@ fn test_swap_client_action() {
     // Swap: transfers input tokens to swap executor, executes swap, deposits output to open note.
     let client_actions = [ClientAction::UseNote(use_note_input), ClientAction::Swap(swap_input)]
         .span();
-    let server_actions = user.client_execute(:client_actions);
+    let server_actions = user.execute(:client_actions);
 
     // Spy on events before executing.
     let mut spy = spy_events();
-    test.privacy.execute_actions(actions: server_actions);
+    test.privacy.apply_actions(actions: server_actions);
 
     // === Verify balances after swap ===
     // Privacy contract: no in_token (swapped), has out_token (received).
@@ -6165,7 +6165,7 @@ fn test_swap_client_action_assertions() {
     // This error is thrown before any token balance operations.
     let swap_input = SwapInput { swap_contract: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_CONTRACT);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_CONTRACT);
@@ -6175,7 +6175,7 @@ fn test_swap_client_action_assertions() {
     // Catch ZERO_SWAP_SELECTOR.
     let swap_input = SwapInput { swap_selector: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_SELECTOR);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_SELECTOR);
@@ -6185,7 +6185,7 @@ fn test_swap_client_action_assertions() {
     // Catch ZERO_OUT_TOKEN.
     let swap_input = SwapInput { out_token: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
@@ -6195,7 +6195,7 @@ fn test_swap_client_action_assertions() {
     // Catch ZERO_CHANNEL_KEY.
     let swap_input = SwapInput { channel_key: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
@@ -6206,7 +6206,7 @@ fn test_swap_client_action_assertions() {
     // Use a dummy channel_key that doesn't have a corresponding subchannel.
     let swap_input = SwapInput { channel_key: 'DUMMY_CHANNEL_KEY', ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -6216,7 +6216,7 @@ fn test_swap_client_action_assertions() {
     // Catch ZERO_SWAP_EXECUTOR.
     let swap_input = SwapInput { swap_executor: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SWAP_EXECUTOR);
@@ -6226,7 +6226,7 @@ fn test_swap_client_action_assertions() {
     // Catch ZERO_IN_TOKEN.
     let swap_input = SwapInput { in_token: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
@@ -6236,7 +6236,7 @@ fn test_swap_client_action_assertions() {
     // Catch ZERO_AMOUNT (in_amount).
     let swap_input = SwapInput { in_amount: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
@@ -6246,7 +6246,7 @@ fn test_swap_client_action_assertions() {
     // Catch ZERO_RANDOM.
     let swap_input = SwapInput { random: Zero::zero(), ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
@@ -6256,7 +6256,7 @@ fn test_swap_client_action_assertions() {
     // Catch SWAP_TO_SAME_TOKEN.
     let swap_input = SwapInput { in_token: out_token_addr, ..valid_swap_input };
     let client_actions = [ClientAction::Swap(swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::SWAP_TO_SAME_TOKEN);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::SWAP_TO_SAME_TOKEN);
@@ -6265,7 +6265,7 @@ fn test_swap_client_action_assertions() {
 
     // Catch NEGETIVE_INTERMEDIATE_BALANCE.
     let client_actions = [ClientAction::Swap(valid_swap_input)].span();
-    let result = user.safe_client_execute(:client_actions);
+    let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
     let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
@@ -6344,8 +6344,8 @@ fn test_swap_client_action_deposit_errors() {
     };
     let client_actions = [ClientAction::UseNote(use_note_input_0), ClientAction::Swap(swap_input)]
         .span();
-    let server_actions = user.client_execute(:client_actions);
-    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    let server_actions = user.execute(:client_actions);
+    let result = test.privacy.safe_apply_actions(actions: server_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     // === Test NOTE_NOT_OPEN ===
@@ -6383,8 +6383,8 @@ fn test_swap_client_action_deposit_errors() {
     };
     let client_actions = [ClientAction::UseNote(use_note_input_1), ClientAction::Swap(swap_input)]
         .span();
-    let server_actions = user.client_execute(:client_actions);
-    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    let server_actions = user.execute(:client_actions);
+    let result = test.privacy.safe_apply_actions(actions: server_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
 
     // === Test NOTE_ALREADY_DEPOSITED ===
@@ -6424,8 +6424,8 @@ fn test_swap_client_action_deposit_errors() {
     // First swap succeeds.
     let client_actions = [ClientAction::UseNote(use_note_input_2), ClientAction::Swap(swap_input)]
         .span();
-    let server_actions = user.client_execute(:client_actions);
-    test.privacy.execute_actions(actions: server_actions);
+    let server_actions = user.execute(:client_actions);
+    test.privacy.apply_actions(actions: server_actions);
 
     // Create another enc note at index 3 for input tokens.
     let create_enc_note_input_3 = user
@@ -6455,8 +6455,8 @@ fn test_swap_client_action_deposit_errors() {
     };
     let client_actions = [ClientAction::UseNote(use_note_input_3), ClientAction::Swap(swap_input)]
         .span();
-    let server_actions = user.client_execute(:client_actions);
-    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    let server_actions = user.execute(:client_actions);
+    let result = test.privacy.safe_apply_actions(actions: server_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
     // === Test CALLER_NOT_DEPOSITOR ===
@@ -6495,14 +6495,14 @@ fn test_swap_client_action_deposit_errors() {
     };
     let client_actions = [ClientAction::UseNote(use_note_input_4), ClientAction::Swap(swap_input)]
         .span();
-    let server_actions = user.client_execute(:client_actions);
-    let result = test.privacy.safe_execute_actions(actions: server_actions);
+    let server_actions = user.execute(:client_actions);
+    let result = test.privacy.safe_apply_actions(actions: server_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
 }
 
 #[test]
-fn test_swap_doesnt_execute_during_client_execute() {
-    // Verify that the Swap action doesn't execute transfers or the swap during client_execute().
+fn test_swap_doesnt_execute_during_execute() {
+    // Verify that the Swap action doesn't execute transfers or the swap during execute().
     // Transfers and swap execution should only happen when server actions are executed.
     let mut test: Test = Default::default();
     let in_token = test.new_token();
@@ -6576,14 +6576,14 @@ fn test_swap_doesnt_execute_during_client_execute() {
         random,
     };
 
-    // Execute client_execute (should NOT transfer or swap).
+    // Execute execute (should NOT transfer or swap).
     let mut spy = spy_events();
     let client_actions = [ClientAction::UseNote(use_note_input), ClientAction::Swap(swap_input)]
         .span();
-    let server_actions = user.client_execute(:client_actions);
+    let server_actions = user.execute(:client_actions);
 
-    // === Verify balances BETWEEN client_execute and execute_actions ===
-    // All balances should be unchanged - no transfers or swap executed during client_execute.
+    // === Verify balances BETWEEN execute and apply_actions ===
+    // All balances should be unchanged - no transfers or swap executed during execute.
     // Privacy contract: still has in_token, no out_token.
     assert_eq!(in_token.balance_of(address: test.privacy.address), swap_amount.into());
     assert_eq!(out_token.balance_of(address: test.privacy.address), 0);
@@ -6594,12 +6594,12 @@ fn test_swap_doesnt_execute_during_client_execute() {
     assert_eq!(in_token.balance_of(address: amm_address), 0);
     assert_eq!(out_token.balance_of(address: amm_address), swap_amount.into());
 
-    // Assert no events emitted during client_execute.
-    let events_during_client_execute = spy
+    // Assert no events emitted during execute.
+    let events_during_execute = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(events_during_client_execute.len(), 0);
+    assert_eq!(events_during_execute.len(), 0);
 
     // Assert expected server actions were generated.
     let nullifier = user.compute_nullifier(sender: user, token_addr: in_token_addr, index: 0);
@@ -6640,9 +6640,9 @@ fn test_swap_doesnt_execute_during_client_execute() {
 
     // Now execute server actions.
     let mut spy_after = spy_events();
-    test.privacy.execute_actions(actions: server_actions);
+    test.privacy.apply_actions(actions: server_actions);
 
-    // === Verify balances AFTER execute_actions ===
+    // === Verify balances AFTER apply_actions ===
     // Privacy contract: no in_token (swapped), has out_token (received).
     assert_eq!(in_token.balance_of(address: test.privacy.address), 0);
     assert_eq!(out_token.balance_of(address: test.privacy.address), swap_amount.into());
@@ -6653,7 +6653,7 @@ fn test_swap_doesnt_execute_during_client_execute() {
     assert_eq!(in_token.balance_of(address: amm_address), swap_amount.into());
     assert_eq!(out_token.balance_of(address: amm_address), 0);
 
-    // Assert events emitted after execute_actions.
+    // Assert events emitted after apply_actions.
     let events_after = spy_after
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
@@ -6711,10 +6711,10 @@ fn test_swap_decrypt_user_addr() {
         );
     let client_actions = [ClientAction::UseNote(use_note_input), ClientAction::Swap(swap_input)]
         .span();
-    let server_actions = user.client_execute(:client_actions);
+    let server_actions = user.execute(:client_actions);
     out_token.supply(address: test.privacy.mock_amm, :amount);
     let mut spy = spy_events();
-    test.privacy.execute_actions(actions: server_actions);
+    test.privacy.apply_actions(actions: server_actions);
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 2);
     let (_, withdrawal_event) = events[0];
