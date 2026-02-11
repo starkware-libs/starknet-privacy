@@ -22,11 +22,10 @@ async fn test_startup_and_shutdown() {
         .expect("Failed to spawn indexer");
 
     indexer
-        .wait_for_log("Indexer started", Duration::from_secs(10))
-        .await
-        .unwrap();
-    indexer
-        .wait_for_log("Subscribed to new heads", Duration::from_secs(10))
+        .wait_for_logs(
+            &["Indexer started", "Subscribed to new heads"],
+            Duration::from_secs(10),
+        )
         .await
         .unwrap();
 
