@@ -527,7 +527,6 @@ dependencies = [
 name = "discovery-core"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "async-trait",
  "num-traits",
  "serde",
