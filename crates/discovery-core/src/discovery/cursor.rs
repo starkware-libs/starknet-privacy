@@ -8,6 +8,19 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
+/// Capacity limits for cursor growth during paginated discovery.
+///
+/// These caps prevent unbounded cursor expansion when processing accounts
+/// with many channels or subchannels. Discovery stops adding new entries
+/// once the cursor reaches the limit; existing entries are still processed.
+#[derive(Debug, Clone, Copy)]
+pub struct CursorLimits {
+    /// Maximum number of channels in the cursor at once.
+    pub max_channels: usize,
+    /// Maximum number of subchannels per channel in the cursor at once.
+    pub max_subchannels: usize,
+}
+
 /// Top-level cursor for channel discovery (shared by incoming and outgoing).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DiscoveryCursor {
