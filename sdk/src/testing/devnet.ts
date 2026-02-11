@@ -30,6 +30,7 @@ import { TracingRpcProvider } from "./tracing-provider.js";
 import type { CallAndProof, PrivateTransfersInterface } from "../interfaces.js";
 import { createPrivateTransfers } from "../factory.js";
 import { CallMockProofProvider } from "./mock-proving.js";
+import { ProvingServiceProofProvider } from "../internal/proving-service/index.js";
 import {
   ContractDiscoveryProvider,
   type DiscoveryOptions,
@@ -523,6 +524,14 @@ export interface DevnetTestEnv {
 export interface DevnetTestEnvConfig {
   /** Options for discovery (rate limiting, etc.) */
   discoveryOptions?: DiscoveryOptions;
+  /**
+   * When set, use the remote Proving Service instead of the call-based mock.
+   * Falls back to process.env.PROVING_SERVICE_URL if unset.
+   * E.g. "http://136.115.124.93:3000". If unset and env is empty, uses CallMockProofProvider.
+   */
+  provingServiceUrl?: string;
+  /** Request timeout for the proving service in ms (default 120_000). Used only when using remote prover. */
+  provingServiceTimeoutMs?: number;
 }
 
 /**
@@ -540,18 +549,28 @@ export async function createDevnetTestEnv(
   const env = await devnet.initialize();
   const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
+  const provingServiceUrl = config?.provingServiceUrl ?? process.env.PROVING_SERVICE_URL;
+  const provingProvider = provingServiceUrl
+    ? new ProvingServiceProofProvider({
+        baseUrl: provingServiceUrl,
+        chainId,
+        blockId: "latest",
+        timeoutMs: config?.provingServiceTimeoutMs,
+      })
+    : new CallMockProofProvider(env.provider, chainId);
+
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
       viewingKeyProvider: { getViewingKey: () => toBigInt("0xA11CE") },
-      provingProvider: new CallMockProofProvider(env.provider, chainId),
+      provingProvider,
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),
     bob: createPrivateTransfers({
       account: env.bob,
       viewingKeyProvider: { getViewingKey: () => toBigInt("0xB0B") },
-      provingProvider: new CallMockProofProvider(env.provider, chainId),
+      provingProvider,
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),
