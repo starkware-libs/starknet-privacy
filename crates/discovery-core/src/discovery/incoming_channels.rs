@@ -245,7 +245,7 @@ pub async fn discover_incoming_channels_paginated<S: IViews>(
 mod tests {
     use super::*;
     use crate::storage_backend::MockBackend;
-    use crate::test_fixtures::load_devnet_fixture;
+    use crate::test_fixtures::{insert_dummy_channel_cursor, load_devnet_fixture};
 
     #[tokio::test]
     async fn test_discover_no_channels() {
@@ -535,15 +535,7 @@ mod tests {
         let key = SecretFelt::new(fixture.constants.bob_viewing_key);
 
         // Pre-fill cursor to capacity (1 entry, max_cursor_channels = 1).
-        cursor.channels.insert(
-            Felt::from(0xdead_u64),
-            ChannelCursor {
-                channel_key: None,
-                subchannel_discovery_complete: false,
-                last_subchannel_index: None,
-                subchannels: Default::default(),
-            },
-        );
+        insert_dummy_channel_cursor(&mut cursor);
 
         let channels = discover_incoming_channels_paginated(
             &backend,
@@ -573,15 +565,7 @@ mod tests {
         let key = SecretFelt::new(fixture.constants.bob_viewing_key);
 
         // 1 existing entry + max_cursor_channels = 2 → 1 slot available.
-        cursor.channels.insert(
-            Felt::from(0xdead_u64),
-            ChannelCursor {
-                channel_key: None,
-                subchannel_discovery_complete: false,
-                last_subchannel_index: None,
-                subchannels: Default::default(),
-            },
-        );
+        insert_dummy_channel_cursor(&mut cursor);
 
         let channels = discover_incoming_channels_paginated(
             &backend,
