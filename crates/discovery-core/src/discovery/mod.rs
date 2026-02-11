@@ -10,6 +10,7 @@ pub use cursor::{ChannelCursor, DiscoveryCursor, SubchannelCursor};
 pub mod incoming_channels;
 pub mod last_note_index;
 pub mod notes;
+pub mod outgoing_channels;
 pub mod subchannels;
 
 /// Cost for `get_num_of_channels` (1 storage slot read).
