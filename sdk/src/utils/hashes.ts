@@ -28,7 +28,7 @@ export function compute_enc_private_key_hash(shared_x: bigint): bigint {
 }
 
 /** See packages/privacy/src/hashes.cairo for documentation. */
-export function compute_enc_address_hash(shared_x: bigint): bigint {
+export function compute_enc_user_addr_hash(shared_x: bigint): bigint {
   return hash(ENC_USER_ADDR_TAG, shared_x);
 }
 

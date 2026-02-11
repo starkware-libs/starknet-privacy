@@ -14,7 +14,7 @@ import {
   compute_enc_amount_hash,
   compute_enc_recipient_addr_hash,
   compute_enc_private_key_hash,
-  compute_enc_address_hash,
+  compute_enc_user_addr_hash,
 } from "./hashes.js";
 import { toBigInt } from "./convert.js";
 import type {
@@ -438,7 +438,7 @@ export const encryptions = {
     const sharedX = getXCoordinateFromBytes(sharedPoint);
 
     // Encrypt using field addition (matching Cairo)
-    const encUserAddr = (compute_enc_address_hash(sharedX) + userAddr) % FIELD_PRIME;
+    const encUserAddr = (compute_enc_user_addr_hash(sharedX) + userAddr) % FIELD_PRIME;
 
     return { ephemeralPubkey, encUserAddr };
   },
@@ -462,7 +462,8 @@ export const encryptions = {
 
     // Decrypt using field subtraction (matching Cairo)
     const userAddr =
-      (((encrypted.encUserAddr - compute_enc_address_hash(sharedX)) % FIELD_PRIME) + FIELD_PRIME) %
+      (((encrypted.encUserAddr - compute_enc_user_addr_hash(sharedX)) % FIELD_PRIME) +
+        FIELD_PRIME) %
       FIELD_PRIME;
 
     return userAddr;
