@@ -25,19 +25,27 @@ if (!inputFile) {
 const fixtures = JSON.parse(readFileSync(fixturesPath, "utf-8"));
 
 /**
- * Set a value at a JSON path (e.g., "input.sender" -> { input: { sender: value } })
+ * Set a value at a JSON path (e.g., "input.sender" -> { input: { sender: value } }).
+ * When a path segment is a numeric index, creates an array for the parent.
  */
 function setPath(obj: Record<string, unknown>, path: string, value: unknown): void {
   const parts = path.split(".");
-  let current = obj;
+  let current: any = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
+    const nextPart = parts[i + 1];
+    const nextIsIndex = /^\d+$/.test(nextPart);
     if (!(part in current) || typeof current[part] !== "object") {
-      current[part] = {};
+      current[part] = nextIsIndex ? [] : {};
     }
-    current = current[part] as Record<string, unknown>;
+    current = current[part];
   }
-  current[parts[parts.length - 1]] = value;
+  const lastPart = parts[parts.length - 1];
+  if (/^\d+$/.test(lastPart)) {
+    current[parseInt(lastPart, 10)] = value;
+  } else {
+    current[lastPart] = value;
+  }
 }
 
 /**

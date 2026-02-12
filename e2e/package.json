@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "starknet": "^9.2.1",
+    "starknet": "github:m-kus/starknet.js#APOLLO-PRE-PROOF-DEMO-11",
     "starknet-sdk": "file:../sdk"
   },
   "devDependencies": {

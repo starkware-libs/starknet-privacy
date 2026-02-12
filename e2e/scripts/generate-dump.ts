@@ -8,6 +8,7 @@
  *
  * Usage: npm run generate-dump   (from e2e/)
  */
+
 import { writeFileSync, readFileSync, unlinkSync } from "fs";
 import { gzipSync } from "zlib";
 import { join, dirname } from "path";
@@ -53,17 +54,20 @@ const transfers = {
 };
 
 // Approve STRK spending for alice
+console.log("[1/6] Approving STRK spending...");
 await env.alice.execute({
   contractAddress: env.strk,
   entrypoint: "approve",
   calldata: [env.privacy.address, 100n, 0n],
 });
 
-// Register bob
+// Register bob via outside execution (admin submits on behalf of bob)
+console.log("[2/6] Registering Bob...");
 const { callAndProof: bobReg } = await transfers.bob.build().register().execute();
 await devnet.executeOutside(bobReg);
 
 // Alice: deposit 100 STRK + transfer 50 to bob (representative scenario)
+console.log("[3/6] Building Alice deposit+transfer...");
 const { callAndProof } = await transfers.alice
   .build({
     autoRegister: true,
@@ -75,10 +79,15 @@ const { callAndProof } = await transfers.alice
   .transfer({ recipient: env.bob.address, amount: 50n })
   .execute();
 
+console.log("[4/6] Executing Alice outside tx...");
 await devnet.executeOutside(callAndProof);
 
 // Bob: discover incoming notes and withdraw 50 STRK
+console.log("[5/6] Discovering Bob's notes...");
 const bobNotes = (await transfers.bob.discoverNotes()).notes;
+console.log("  Bob STRK notes:", bobNotes.get(env.strk)?.length ?? 0);
+
+console.log("[6/6] Bob withdraw...");
 const { callAndProof: bobWithdraw } = await transfers.bob
   .build({ autoDiscover: { channels: "refresh" } })
   .with(env.strk)
@@ -114,10 +123,6 @@ writeFileSync(
 
 await devnet.cleanup();
 console.log("Fixtures written.");
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
 
 /**
  * Dump contract storage state to a JSON file for Rust discovery-core tests.
@@ -167,7 +172,7 @@ async function dumpContractState(
  */
 async function dumpDevnet(rpcUrl: string, fixturesDir: string): Promise<void> {
   const tempPath = join(tmpdir(), `devnet-dump-${Date.now()}.json`);
-  await fetch(rpcUrl, {
+  const response = await fetch(rpcUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -177,6 +182,10 @@ async function dumpDevnet(rpcUrl: string, fixturesDir: string): Promise<void> {
       params: { path: tempPath },
     }),
   });
+  const result = await response.json();
+  if (result.error) {
+    throw new Error(`devnet_dump failed: ${JSON.stringify(result.error)}`);
+  }
   const dumpPath = join(fixturesDir, "devnet-dump.json.gz");
   writeFileSync(dumpPath, gzipSync(readFileSync(tempPath)));
   unlinkSync(tempPath);
