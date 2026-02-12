@@ -1,6 +1,7 @@
 use constants::{PROOF_VALIDITY_BLOCK_INTERVAL, VIRTUAL_SNOS, VIRTUAL_SNOS0};
 use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
 use core::ec::{EcPoint, EcPointTrait};
+use core::iter::Extend;
 use core::never;
 use core::num::traits::{WrappingAdd, WrappingSub, Zero};
 use privacy::actions::{ServerAction, WriteOnceInput};
@@ -438,12 +439,22 @@ pub(crate) fn validate_proof(actions: Span<ServerAction>) {
     // The message hash is computed from the L1 message, which includes:
     // - `from_address`: the contract address.
     // - `to_address`: zero.
+    // - `payload_len`: length of the payload.
     // - `payload`: `Span<ServerAction>` passed as input to the server
     //   function (`apply_actions`).
-    let mut l1_message_data: Array<felt252> = array![contract_address.into(), Zero::zero()];
-    actions.serialize(ref l1_message_data);
-    let message_hash = hash(l1_message_data.span());
+    let message_hash = _compute_message_hash(:actions, :contract_address);
     assert(
         proof_facts_struct.message_to_l1_hashes == [message_hash].span(), errors::INVALID_PROOF_MSG,
     );
+}
+
+pub(crate) fn _compute_message_hash(
+    actions: Span<ServerAction>, contract_address: ContractAddress,
+) -> felt252 {
+    let mut l1_message_data: Array<felt252> = array![contract_address.into(), Zero::zero()];
+    let mut calldata = array![];
+    actions.serialize(ref calldata);
+    calldata.len().serialize(ref l1_message_data);
+    l1_message_data.extend(calldata);
+    hash(l1_message_data.span())
 }
