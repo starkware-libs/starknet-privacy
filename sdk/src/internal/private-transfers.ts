@@ -18,6 +18,7 @@ import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toHex } from "../utils/convert.js";
+import { buildProofFacts } from "../utils/proof-facts.js";
 
 // Export the specific typed contract type for the Privacy Pool
 export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
@@ -65,6 +66,25 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     const parsedOutput = () => this.params.proofInvocationFactory.parseOutput(proof.output);
     debugLog("private-transfers", "execute", "parsed server actions", parsedOutput);
 
+    // Build proof facts for on-chain validation (requires a real provider)
+    let proofFacts: string[] | undefined;
+    if (typeof this.params.account.getBlock === "function") {
+      const latestBlock = await this.params.account.getBlock("latest");
+      const currentBlockNumber = BigInt(latestBlock.block_number);
+      // Blockifier requires base_block_number to be at least STORED_BLOCK_HASH_BUFFER (10)
+      // blocks behind the current block, and the block must have a non-zero stored hash.
+      const baseBlockNumber = currentBlockNumber > 10n ? currentBlockNumber - 10n : 1n;
+      const baseBlock = await this.params.account.getBlock(Number(baseBlockNumber));
+      const chainId = await this.params.account.getChainId();
+      proofFacts = buildProofFacts(
+        this.params.poolContractAddress,
+        proof.output,
+        baseBlockNumber,
+        baseBlock.block_hash ?? "0x0",
+        chainId
+      );
+    }
+
     return {
       callAndProof: {
         call: {
@@ -73,6 +93,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
           calldata: proof.output,
         },
         proof,
+        proofFacts,
       },
       registry,
       warnings,

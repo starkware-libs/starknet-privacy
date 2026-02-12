@@ -133,6 +133,13 @@ export class Devnet {
   private provider?: RpcProvider;
   public setup?: DevnetEnvironment;
   private accountNonces = new AddressMap<number>(() => 0);
+
+  /** The RPC URL of the running devnet instance. */
+  get url(): string {
+    if (!this.devnet) throw new Error("Devnet not initialized");
+    return this.devnet.provider.url;
+  }
+
   /**
    * Initialize the devnet environment and deploy all contracts
    */
@@ -145,7 +152,7 @@ export class Devnet {
       "--block-generation-on",
       "transaction", // Generate blocks immediately on transaction
       "--state-archive-capacity",
-      "none", // Disable state commitments for faster testing
+      "full", // Required for block hash computation (proof_facts validation)
       "--accounts",
       "3", // 3 accounts (alice, bob, admin)
       "--l2-gas-price-fri",
@@ -154,11 +161,12 @@ export class Devnet {
       "1",
       "--gas-price-fri",
       "1",
+      "--dump-on",
+      "request", // Enable devnet_dump RPC method
     ];
 
-    // Spawn a devnet instance on a random free port
-    // Using latest version for Cairo 1.7.0 (Sierra 1.7.0) support
-    this.devnet = await StarknetDevnet.spawnVersion("v0.7.2", {
+    // Spawn a devnet instance on a random free port using the system-installed binary
+    this.devnet = await StarknetDevnet.spawnInstalled({
       args: devnetArgs,
     });
 
@@ -249,6 +257,16 @@ export class Devnet {
 
     // Deploy the privacy pool contract
     const privacy = await this.deployPrivacyContract(admin, contractClass, compiledContract);
+
+    // Pad devnet with empty blocks so block numbers exceed the blockifier's
+    // STORED_BLOCK_HASH_BUFFER (10), required for proof_facts validation.
+    for (let blockIndex = 0; blockIndex < 10; blockIndex++) {
+      await fetch(this.devnet.provider.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
+      });
+    }
 
     this.setup = { alice, bob, admin, strk, eth, privacy, provider: this.provider };
 
@@ -385,7 +403,9 @@ export class Devnet {
       OutsideExecutionVersion.V2
     );
 
-    const response = await this.setup.admin.executeFromOutside(outsideTransaction);
+    const response = await this.setup.admin.executeFromOutside(outsideTransaction, {
+      proofFacts: callAndProof.proofFacts,
+    });
     return this.provider!.waitForTransaction(response.transaction_hash);
   }
 

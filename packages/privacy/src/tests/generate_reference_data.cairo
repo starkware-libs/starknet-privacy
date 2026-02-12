@@ -4,16 +4,19 @@
 ///   snforge test generate_reference --include-ignored
 ///
 /// The output should be used to update: sdk/tests/fixtures/cairo-reference-data.json
+use privacy::actions::{ServerAction, WriteOnceInput};
+use privacy::hashes::domain_separation::*;
 use privacy::hashes::{
     compute_channel_key, compute_channel_marker, compute_enc_amount_hash,
     compute_enc_channel_key_hash, compute_enc_private_key_hash, compute_enc_recipient_addr_hash,
     compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
     compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker,
-    domain_separation::*,
 };
+use privacy::utils::constants::{VIRTUAL_SNOS, VIRTUAL_SNOS0};
 use privacy::utils::{
-    decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
-    encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
+    ProofFacts, _compute_message_hash, decode_note_amount, derive_public_key, enc_note_packed_value,
+    encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
+    encrypt_subchannel_info, encrypt_user_addr,
 };
 use snforge_std::map_entry_address;
 use starknet::ContractAddress;
@@ -278,6 +281,87 @@ fn generate_reference_storage_slots() {
     println!("inputs.subchannelMarker: 0x{:x}", subchannel_marker);
     println!("inputs.noteId: 0x{:x}", note_id);
     println!("inputs.nullifier: 0x{:x}", nullifier);
+
+    println!("==============================");
+}
+
+/// ProofFacts test vector generator for TypeScript SDK compatibility testing.
+///
+/// This test produces the serialized ProofFacts and message hash that the
+/// contract's `validate_proof` expects, using known inputs. The TypeScript
+/// `buildProofFacts` function must produce identical output.
+///
+/// Run explicitly with:
+///   snforge test generate_reference_proof_facts --include-ignored
+#[test]
+#[ignore]
+fn generate_reference_proof_facts() {
+    // Known inputs
+    let pool_address: felt252 = 0xABCDE;
+    let base_block_number: u64 = 100;
+
+    // Build a minimal set of server actions with known serialization.
+    // WriteOnce is variant index 0 in the ServerAction enum.
+    let actions: Span<ServerAction> = [
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: 0x111, value: [0x222, 0x333].span() },
+        ),
+    ]
+        .span();
+
+    // Serialize actions the same way validate_proof does
+    let mut serialized_actions = array![];
+    actions.serialize(ref serialized_actions);
+
+    // Compute message hash using _compute_message_hash (includes payload_len)
+    let message_hash = _compute_message_hash(
+        :actions, contract_address: pool_address.try_into().unwrap(),
+    );
+
+    // Build the full ProofFacts struct
+    let proof_facts = ProofFacts {
+        proof_version: 0,
+        program_variant: VIRTUAL_SNOS,
+        virtual_program_hash: 0,
+        starknet_os_output_version: VIRTUAL_SNOS0,
+        base_block_number,
+        base_block_hash: 0,
+        starknet_os_config_hash: 0,
+        message_to_l1_hashes: [message_hash].span(),
+    };
+
+    // Serialize the full ProofFacts struct
+    let mut serialized_proof_facts = array![];
+    proof_facts.serialize(ref serialized_proof_facts);
+
+    println!("=== PROOF FACTS ===");
+
+    // Inputs
+    println!("proofFacts.poolAddress: 0x{:x}", pool_address);
+    println!("proofFacts.baseBlockNumber: {}", base_block_number);
+
+    // The serialized server actions (this is what proof.output contains in TS)
+    println!("proofFacts.serializedActionsLength: {}", serialized_actions.len());
+    let mut action_index = 0;
+    for felt in serialized_actions {
+        println!("proofFacts.serializedActions.{}: 0x{:x}", action_index, felt);
+        action_index += 1;
+    }
+
+    // The message hash
+    println!("proofFacts.messageHash: 0x{:x}", message_hash);
+
+    // The full serialized proof facts
+    println!("proofFacts.serializedLength: {}", serialized_proof_facts.len());
+    let mut proof_index = 0;
+    for felt in serialized_proof_facts {
+        println!("proofFacts.serialized.{}: 0x{:x}", proof_index, felt);
+        proof_index += 1;
+    }
+
+    // Also print the constants for verification
+    println!("proofFacts.virtualSnos: 0x{:x}", VIRTUAL_SNOS);
+    println!("proofFacts.virtualSnos0: 0x{:x}", VIRTUAL_SNOS0);
 
     println!("==============================");
 }
