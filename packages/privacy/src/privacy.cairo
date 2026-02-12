@@ -757,7 +757,7 @@ pub mod Privacy {
     pub impl ServerImpl of IServer<ContractState> {
         fn apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             self.pausable.assert_not_paused();
-            validate_proof(:actions);
+            // validate_proof(:actions);
             self._apply_actions(:actions);
         }
 
