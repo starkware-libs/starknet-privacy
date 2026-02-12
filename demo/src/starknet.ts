@@ -1,5 +1,9 @@
 import { Account, RpcProvider, type constants } from "starknet";
-import { createPrivateTransfers, type PrivateTransfersInterface } from "starknet-sdk";
+import {
+  createPrivateTransfers,
+  ProvingServiceProofProvider,
+  type PrivateTransfersInterface,
+} from "starknet-sdk";
 // Direct import avoids pulling in Node-only modules from the testing barrel
 // @ts-expect-error — deep import into dist, not part of the declared exports
 import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
@@ -25,10 +29,18 @@ export function createTransfers(
   config: AppConfig,
 ): PrivateTransfersInterface {
   const discovery = new IndexerDiscoveryProvider(config.indexerUrl);
+  const provingProvider = config.provingServiceUrl
+    ? new ProvingServiceProofProvider(
+        config.provingServiceUrl,
+        provider,
+        config.chainId,
+        account,
+      )
+    : new NoValidateProofProvider(provider, config.chainId);
   return createPrivateTransfers({
     account,
     viewingKeyProvider: { getViewingKey: () => BigInt(accountConfig.viewingKey) },
-    provingProvider: new NoValidateProofProvider(provider, config.chainId),
+    provingProvider,
     discoveryProvider: discovery,
     poolContractAddress: config.poolAddress,
   });

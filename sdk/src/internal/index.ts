@@ -8,3 +8,22 @@ export { TokenOperationsBuilderImpl, PrivateTransfersBuilderImpl } from "./build
 export { ActionCompiler } from "./compiler.js";
 export { AbstractDiscoveryProvider } from "./abstract-discovery.js";
 export { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
+export { AbstractProofProvider } from "./abstract-proof-provider.js";
+export { SignerRaw } from "./signer-raw.js";
+export type { AccountSignerRaw, SignerRawInterface } from "../interfaces.js";
+export { ProvingService } from "./proving-service.js";
+export type {
+  BlockId,
+  MessageToL1,
+  ProvingServiceConfig,
+  ProveTransactionResult,
+} from "./proving-service.js";
+export {
+  BlockNotFoundError,
+  InvalidTransactionHashError,
+  mapProvingServiceError,
+  ProvingServiceError,
+  ProvingServiceInternalError,
+  UnsupportedTransactionVersionError,
+  ValidationFailedError,
+} from "./proving-service-errors.js";

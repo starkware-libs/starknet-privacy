@@ -11,11 +11,12 @@ import type {
   ViewingKeyProvider,
   StarknetAddress,
 } from "../interfaces.js";
-import type { Account, TypedContractV2 } from "starknet";
+import type { TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
 import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
 import { debugLog } from "../utils/logging.js";
+import type { AccountSignerRaw } from "../interfaces.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toHex } from "../utils/convert.js";
 import { buildProofFacts } from "../utils/proof-facts.js";
@@ -26,7 +27,7 @@ export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
 export class PrivateTransfers extends AbstractPrivateTransfers {
   constructor(
     private readonly params: {
-      account: Account; // the user account (for signing)
+      account: AccountSignerRaw;
       viewingKeyProvider: ViewingKeyProvider;
       provingProvider: ProofProviderInterface;
       discoveryProvider: DiscoveryProviderInterface;
@@ -50,8 +51,10 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     // Compile actions
     const { clientActions, registry, warnings } = await compiler.compile(actions, options);
 
-    // Create invocation for proving
-    const details = this.params.provingProvider.getDefaultDetails();
+    // Create invocation for proving (getDefaultDetails may be async e.g. for proving service)
+    const details = await Promise.resolve(
+      this.params.provingProvider.getDefaultDetails()
+    );
     const invocation = await this.params.proofInvocationFactory.create(
       { address: this.params.account.address, signer: this.params.account.signer, viewingKey },
       this.params.poolContractAddress,

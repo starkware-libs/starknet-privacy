@@ -6,13 +6,9 @@
  */
 
 import type { constants, ETransactionVersion3, ProviderInterface } from "starknet";
-import { EDAMode, encode, ETransactionVersion, hash, num, stark, transaction } from "starknet";
-import type {
-  Proof,
-  ProofProviderInterface,
-  ProofInvocation,
-  ProofInvocationFactoryDetails,
-} from "../interfaces.js";
+import { EDAMode, encode, hash, num, stark, transaction } from "starknet";
+import type { Proof, ProofInvocation } from "../interfaces.js";
+import { AbstractProofProvider } from "../internal/abstract-proof-provider.js";
 import { toBigInt } from "../utils/convert.js";
 
 /** VALIDATED constant - 'VALID' encoded as short string felt252 */
@@ -23,30 +19,16 @@ const VALIDATED = encode.utf8ToBigInt("VALID");
  * This is useful for testing where we want to execute the contract logic
  * without actually generating zero-knowledge proofs.
  */
-export class CallMockProofProvider implements ProofProviderInterface {
+export class CallMockProofProvider extends AbstractProofProvider {
   constructor(
     private readonly provider: ProviderInterface,
     private readonly chainId: constants.StarknetChainId
-  ) {}
+  ) {
+    super();
+  }
 
-  getDefaultDetails(): ProofInvocationFactoryDetails {
-    return {
-      versions: [ETransactionVersion.V3],
-      nonce: 0n,
-      skipValidate: true,
-      resourceBounds: {
-        l1_gas: { max_amount: 0n, max_price_per_unit: 0n },
-        l2_gas: { max_amount: 0n, max_price_per_unit: 0n },
-        l1_data_gas: { max_amount: 0n, max_price_per_unit: 0n },
-      },
-      tip: 0n,
-      paymasterData: [],
-      accountDeploymentData: [],
-      nonceDataAvailabilityMode: "L1",
-      feeDataAvailabilityMode: "L1",
-      version: ETransactionVersion.V3,
-      chainId: this.chainId,
-    };
+  protected getChainId(): constants.StarknetChainId {
+    return this.chainId;
   }
 
   async prove(invocation: ProofInvocation): Promise<Proof> {
@@ -62,7 +44,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
 
     // execute_view returns Span<ServerAction> which is serialized with its length prefix.
     // apply_actions also expects Span<ServerAction> with the length prefix, so we pass it through as-is.
-    return { output: result, outputHash: undefined!, data: undefined! };
+    return { output: result, data: undefined!, proof_facts: [] };
   }
 
   /**
@@ -82,7 +64,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
 
     // Compute transaction hash using the same parameters as the signer
     // The signer wraps the call in getExecuteCalldata format
-    const details = this.getDefaultDetails();
+    const details = await this.getDefaultDetails();
     const executeCalldata = transaction.getExecuteCalldata(
       [
         {
