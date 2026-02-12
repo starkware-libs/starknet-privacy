@@ -80,6 +80,9 @@ jobs:
       - name: Generate Cairo reference data
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         run: |
+          # Remove Scarb's dev build dir so we don't load stale incremental cache
+          # (rust-cache restores target/ which can contain Scarb's target/dev/ from a previous run)
+          rm -rf target/dev
           cd sdk
           npm run scarb:build
           npm run generate:cairo-refs
