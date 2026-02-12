@@ -36,9 +36,9 @@ use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_ac
 use privacy::tests::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::utils::constants::{OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
-    ProofFacts, derive_public_key, enc_note_packed_value, encrypt_outgoing_channel_info,
-    encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, is_canonical_key, packing,
-    to_write_once_action,
+    ProofFacts, _compute_message_hash, derive_public_key, enc_note_packed_value,
+    encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
+    is_canonical_key, packing, to_write_once_action,
 };
 use snforge_std::{
     CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
@@ -1581,9 +1581,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     fn cheat_proof_facts(self: @PrivacyCfg, actions: Span<ServerAction>) {
-        let mut serialized_actions = array![(*self.address).into(), Zero::zero()];
-        actions.serialize(ref serialized_actions);
-        let message_hash = hash(serialized_actions.span());
+        let message_hash = _compute_message_hash(:actions, contract_address: *self.address);
         let mut proof_facts: ProofFacts = Default::default();
         proof_facts.message_to_l1_hashes = [message_hash].span();
         self._cheat_proof_facts(:proof_facts);
