@@ -63,7 +63,7 @@ class NoValidateProofProvider implements ProofProviderInterface {
       entrypoint: "execute_view",
       calldata: invocation.calldata!,
     });
-    return { output: result, outputHash: undefined!, data: undefined! };
+    return { output: result, data: undefined!, proof_facts: [] };
   }
 }
 

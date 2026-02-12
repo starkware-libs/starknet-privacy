@@ -11,12 +11,13 @@ import type {
   ProofUser,
 } from "../internal/proof-invocation-factory.js";
 import type {
-  ProofInvocation,
+  ProofInvocationWithPayload,
   ProofInvocationFactoryDetails,
   StarknetAddress,
 } from "../interfaces.js";
 import type { CallResult } from "starknet";
 import { Open } from "../interfaces.js";
+import { stark } from "starknet";
 import { toHex } from "../utils/convert.js";
 
 /**
@@ -56,8 +57,8 @@ export class MockProofInvocationFactory implements ProofInvocationFactoryInterfa
     user: ProofUser,
     poolAddress: StarknetAddress,
     clientActions: ClientAction[],
-    _details: ProofInvocationFactoryDetails
-  ): Promise<ProofInvocation> {
+    details: ProofInvocationFactoryDetails
+  ): Promise<ProofInvocationWithPayload> {
     // For mock, we store the client actions in a way the mock pool can use
     // The mock proof provider will extract and process these
     const poolAddressHex = toHex(poolAddress);
@@ -69,6 +70,13 @@ export class MockProofInvocationFactory implements ProofInvocationFactoryInterfa
         JSON.stringify(clientActions, jsonReplacer),
       ],
       signature: [],
+      nonce: typeof details.nonce === "bigint" ? details.nonce : BigInt(details.nonce ?? 0),
+      resourceBounds: details.resourceBounds ?? stark.zeroResourceBounds(),
+      tip: typeof details.tip === "bigint" ? details.tip : BigInt(details.tip ?? 0),
+      paymasterData: details.paymasterData ?? [],
+      accountDeploymentData: details.accountDeploymentData ?? [],
+      nonceDataAvailabilityMode: details.nonceDataAvailabilityMode ?? "L1",
+      feeDataAvailabilityMode: details.feeDataAvailabilityMode ?? "L1",
     };
   }
 

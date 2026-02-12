@@ -9,15 +9,14 @@
 import type {
   BigNumberish,
   CallResult,
-  SignerInterface,
-  V3InvocationsSignerDetails,
 } from "starknet";
-import { CallData } from "starknet";
+import { CallData, ETransactionVersion3, hash, stark } from "starknet";
 
+import type { SignerRawInterface } from "../interfaces.js";
 import { serializeClientActions } from "./serialization.js";
 import { PrivacyPoolABI } from "./abi.js";
 import type {
-  ProofInvocation,
+  ProofInvocationWithPayload,
   ProofInvocationFactoryDetails,
   StarknetAddress,
 } from "../interfaces.js";
@@ -27,10 +26,11 @@ import { toHex } from "../utils/convert.js";
 
 /**
  * Minimal user info needed for creating a proof invocation.
+ * The signer must implement SignerRawInterface (e.g. use SignerRaw).
  */
 export interface ProofUser {
   address: BigNumberish;
-  signer: SignerInterface;
+  signer: SignerRawInterface;
   viewingKey: BigNumberish;
 }
 
@@ -43,7 +43,7 @@ export interface ProofInvocationFactoryInterface {
     poolAddress: StarknetAddress,
     clientActions: ClientAction[],
     details: ProofInvocationFactoryDetails
-  ): Promise<ProofInvocation>;
+  ): Promise<ProofInvocationWithPayload>;
 
   /**
    * Parse proof output for logging/debugging.
@@ -61,7 +61,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     poolAddress: StarknetAddress,
     clientActions: ClientAction[],
     details: ProofInvocationFactoryDetails
-  ): Promise<ProofInvocation> {
+  ): Promise<ProofInvocationWithPayload> {
     const cairoActions = serializeClientActions(clientActions);
     const callDataCompiler = new CallData(PrivacyPoolABI);
     const userAddress = toBigInt(user.address);
@@ -72,26 +72,42 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     ]);
     const poolAddressHex = toHex(poolAddress);
 
-    // Sign the transaction using details from the proof provider
-    const signature = await user.signer.signTransaction(
-      [
-        {
-          contractAddress: poolAddressHex,
-          entrypoint: "__execute__",
-          calldata: compiledCalldata,
-        },
-      ],
-      {
-        walletAddress: toHex(user.address),
-        cairoVersion: "1",
-        ...details,
-      } as V3InvocationsSignerDetails
-    );
+    // Resolve payload once (same values for hash and for proving-service payload)
+    const nonce = toBigInt(details.nonce ?? 0n);
+    const resourceBounds = details.resourceBounds ?? stark.zeroResourceBounds();
+    const tip = toBigInt(details.tip ?? 0n);
+    const paymasterData = details.paymasterData ?? [];
+    const accountDeploymentData = details.accountDeploymentData ?? [];
+    const nonceDAM = details.nonceDataAvailabilityMode ?? "L1";
+    const feeDAM = details.feeDataAvailabilityMode ?? "L1";
+
+    const txHash = hash.calculateInvokeTransactionHash({
+      chainId: details.chainId,
+      senderAddress: poolAddressHex,
+      compiledCalldata,
+      version: (details.version ?? ETransactionVersion3.V3) as `${typeof ETransactionVersion3.V3}`,
+      nonce,
+      accountDeploymentData,
+      paymasterData,
+      resourceBounds,
+      tip,
+      nonceDataAvailabilityMode: stark.intDAM(nonceDAM),
+      feeDataAvailabilityMode: stark.intDAM(feeDAM),
+    });
+
+    const signature = await user.signer.signRaw(txHash);
 
     return {
       contractAddress: poolAddressHex,
       calldata: compiledCalldata,
       signature: signature as string[],
+      nonce,
+      resourceBounds,
+      tip,
+      paymasterData,
+      accountDeploymentData,
+      nonceDataAvailabilityMode: nonceDAM,
+      feeDataAvailabilityMode: feeDAM,
     };
   }
 
