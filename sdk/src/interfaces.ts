@@ -1,4 +1,5 @@
 import type {
+  Account,
   AccountInvocationsFactoryDetails,
   AllowArray,
   BigNumberish,
@@ -7,6 +8,8 @@ import type {
   Call,
   constants,
   Invocation,
+  Signature,
+  SignerInterface,
 } from "starknet";
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
@@ -73,8 +76,9 @@ export type NoteId = BigNumberish;
 
 export type Proof = {
   readonly data: Uint8Array;
-  readonly outputHash: string;
   readonly output: string[]; // array of felts
+  /** Proof facts from the proving service; must be included in the tx when submitting to the chain. */
+  readonly proof_facts: string[];
 };
 
 /**
@@ -534,6 +538,26 @@ export interface PrivateTransfersBuilder {
 export type ProofInvocation = Invocation;
 
 /**
+ * Tx payload details attached by the factory to the invocation for the proving service.
+ * Optional on ProofInvocation so mocks can ignore; proving provider reads from invocation.
+ */
+export interface ProofInvocationPayloadDetails {
+  nonce: bigint;
+  resourceBounds: {
+    l1_gas: { max_amount: bigint; max_price_per_unit: bigint };
+    l2_gas: { max_amount: bigint; max_price_per_unit: bigint };
+    l1_data_gas: { max_amount: bigint; max_price_per_unit: bigint };
+  };
+  tip: bigint;
+  paymasterData: BigNumberish[];
+  accountDeploymentData: BigNumberish[];
+  nonceDataAvailabilityMode: string;
+  feeDataAvailabilityMode: string;
+}
+
+export type ProofInvocationWithPayload = ProofInvocation & ProofInvocationPayloadDetails;
+
+/**
  * Factory details for creating proof invocations.
  * Extends AccountInvocationsFactoryDetails with chainId for signing.
  */
@@ -541,14 +565,28 @@ export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
   chainId: constants.StarknetChainId;
 };
 
+/**
+ * Signer that can sign a raw message hash (e.g. a precomputed tx hash).
+ * Implemented by SignerRaw; use this type when you need signRaw without casting.
+ */
+export interface SignerRawInterface extends SignerInterface {
+  signRaw(msgHash: string): Promise<Signature>;
+}
+
+/**
+ * Account whose signer implements SignerRawInterface (required for proof invocations).
+ * Use an account whose signer is SignerRaw when calling createPrivateTransfers.
+ */
+export type AccountSignerRaw = Account & { signer: SignerRawInterface };
+
 ////// The following are more likely to change /////////
 
 /**
  * Operator API contract — the proving service must implement this surface.
  */
 export interface ProofProviderInterface {
-  /** Get the default factory details for creating proof invocations */
-  getDefaultDetails(): ProofInvocationFactoryDetails;
+  /** Get the default factory details for creating proof invocations (may be async e.g. to fetch nonce) */
+  getDefaultDetails(): ProofInvocationFactoryDetails | Promise<ProofInvocationFactoryDetails>;
   prove(invocation: ProofInvocation): Promise<Proof>;
 }
 
