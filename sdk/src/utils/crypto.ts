@@ -47,10 +47,8 @@ export function hash(...values: (BigNumberish | string)[]): Hash {
     return toBigInt(v);
   });
 
-  // Match Cairo's hash function: h(h(data))
-  // First hash the array, then hash the result
-  const firstHash = ec.starkCurve.poseidonHashMany(feltValues);
-  return ec.starkCurve.poseidonHashMany([firstHash]);
+  // Match Cairo's hash function: h(data)
+  return ec.starkCurve.poseidonHashMany(feltValues);
 }
 
 // ============ ECDH Utilities ============

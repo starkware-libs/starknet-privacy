@@ -2,7 +2,7 @@
 
 use std::sync::LazyLock;
 
-use starknet_crypto::{poseidon_hash_many, PoseidonHasher};
+use starknet_crypto::poseidon_hash_many;
 use starknet_types_core::felt::Felt;
 
 use super::types::SecretFelt;
@@ -63,10 +63,7 @@ fn short_string_to_felt(s: &str) -> Felt {
 
 /// Cryptographic hash function.
 pub fn hash(elements: &[Felt]) -> Felt {
-    let inner = poseidon_hash_many(elements.iter());
-    let mut hasher = PoseidonHasher::new();
-    hasher.update(inner);
-    hasher.finalize()
+    poseidon_hash_many(elements.iter())
 }
 
 /// Computes the encryption mask for channel key.
