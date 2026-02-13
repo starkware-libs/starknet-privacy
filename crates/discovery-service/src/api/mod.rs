@@ -1,0 +1,89 @@
+//! Axum API server for the discovery service.
+
+mod handlers;
+pub mod types;
+
+use std::sync::Arc;
+
+use axum::routing::get;
+use axum::Router;
+use discovery_core::storage_backend::StorageBackend;
+use tokio::net::TcpListener;
+use tokio::sync::broadcast;
+use tracing::info;
+
+use crate::chain_state::ChainState;
+use crate::config::{ApiServerConfig, ValidationLimits};
+
+pub use handlers::health_handler;
+pub use types::{ApiErrorBody, ApiErrorResponse, HealthResponse};
+
+/// API server for the discovery service.
+pub struct ApiServer<B> {
+    rx_shutdown: broadcast::Receiver<()>,
+    config: ApiServerConfig,
+    backend: B,
+}
+
+/// Errors that can occur in the API server.
+#[derive(Debug, thiserror::Error)]
+pub enum ApiServerError {
+    #[error("failed to bind to address: {0}")]
+    Bind(String),
+    #[error("server error: {0}")]
+    Serve(String),
+}
+
+/// Shared state for the API handlers.
+pub struct AppState<B> {
+    pub backend: B,
+    pub health_max_lag_secs: u64,
+    pub validation_limits: ValidationLimits,
+}
+
+impl<B> ApiServer<B>
+where
+    B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
+    B::Snapshot: Clone + Send + Sync + 'static,
+{
+    /// Creates a new API server.
+    pub fn new(config: ApiServerConfig, rx_shutdown: broadcast::Receiver<()>, backend: B) -> Self {
+        Self {
+            rx_shutdown,
+            config,
+            backend,
+        }
+    }
+
+    /// Runs the API server until shutdown is signaled.
+    pub async fn run(&mut self) -> Result<(), ApiServerError> {
+        let app_state = Arc::new(AppState {
+            backend: self.backend.clone(),
+            health_max_lag_secs: self.config.health_max_lag_secs,
+            validation_limits: self.config.validation_limits.clone(),
+        });
+
+        // TODO: Add TLS termination (spec 5.1)
+        let app = Router::new()
+            .route("/health", get(health_handler::<B>))
+            .with_state(app_state);
+
+        let listener = TcpListener::bind(&self.config.host)
+            .await
+            .map_err(|e| ApiServerError::Bind(e.to_string()))?;
+
+        info!("API server listening on {}", self.config.host);
+
+        let mut rx_shutdown = self.rx_shutdown.resubscribe();
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                let _ = rx_shutdown.recv().await;
+                info!("API server shutting down");
+            })
+            .await
+            .map_err(|e| ApiServerError::Serve(e.to_string()))?;
+
+        info!("API server has shut down");
+        Ok(())
+    }
+}

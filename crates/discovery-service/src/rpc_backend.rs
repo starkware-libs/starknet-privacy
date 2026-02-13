@@ -1,7 +1,6 @@
 //! RPC-based implementation of the storage interface and chain state.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use discovery_core::storage_backend::{
@@ -18,6 +17,7 @@ use tower::limit::concurrency::ConcurrencyLimitLayer;
 use url::Url;
 
 use crate::chain_state::{ChainHead, ChainState, ChainStateError};
+use crate::config::RpcConfig;
 
 /// Errors specific to the RPC backend.
 #[derive(Debug, Error)]
@@ -25,6 +25,9 @@ pub enum RpcBackendError {
     /// Failed to build the HTTP client.
     #[error("failed to build HTTP client: {0}")]
     HttpClientBuild(#[source] reqwest::Error),
+    /// Invalid RPC URL.
+    #[error("invalid RPC URL: {0}")]
+    InvalidUrl(#[source] url::ParseError),
     /// RPC request failed.
     #[error("RPC request failed: {0}")]
     Request(String),
@@ -39,75 +42,9 @@ impl From<RpcBackendError> for StorageError {
     }
 }
 
-/// Default maximum number of storage slots per JSON-RPC batch request.
-const DEFAULT_MAX_BATCH_SIZE: usize = 50;
-
-/// Configuration for the connection pool.
-#[derive(Debug, Clone)]
-pub struct PoolConfig {
-    /// Maximum number of concurrent RPC requests.
-    pub max_concurrent_requests: usize,
-    /// Connection timeout in seconds.
-    pub connect_timeout_secs: u64,
-    /// Request timeout in seconds.
-    pub request_timeout_secs: u64,
-    /// Maximum idle connections per host.
-    pub pool_max_idle_per_host: usize,
-    /// Maximum number of storage slots per JSON-RPC batch request.
-    /// Larger `read_slots` calls are automatically chunked.
-    pub max_batch_size: usize,
-}
-
-impl Default for PoolConfig {
-    fn default() -> Self {
-        Self {
-            max_concurrent_requests: 10,
-            connect_timeout_secs: 30,
-            request_timeout_secs: 60,
-            pool_max_idle_per_host: 10,
-            max_batch_size: DEFAULT_MAX_BATCH_SIZE,
-        }
-    }
-}
-
-const DEFAULT_RPC_URL: &str = "http://127.0.0.1:5050";
-
-/// Configuration for the RPC backend.
-#[derive(Debug, Clone)]
-pub struct RpcConfig {
-    /// URL of the StarkNet JSON-RPC endpoint.
-    pub rpc_url: Url,
-    /// Address of the privacy contract to read from.
-    pub contract_address: Felt,
-    /// Connection pool configuration.
-    pub pool_config: PoolConfig,
-}
-
-impl RpcConfig {
-    /// Creates a new RPC configuration with the given URL and contract address.
-    pub fn new(rpc_url: Url, contract_address: Felt) -> Self {
-        Self {
-            rpc_url,
-            contract_address,
-            pool_config: PoolConfig::default(),
-        }
-    }
-}
-
-impl Default for RpcConfig {
-    fn default() -> Self {
-        Self {
-            rpc_url: Url::parse(DEFAULT_RPC_URL).unwrap(),
-            contract_address: Felt::ZERO,
-            pool_config: PoolConfig::default(),
-        }
-    }
-}
-
 /// Inner state shared across clones of RpcBackend.
 struct RpcBackendInner {
     provider: JsonRpcClient<HttpTransport>,
-    contract_address: Felt,
     head: RwLock<Option<ChainHead>>,
     max_batch_size: usize,
 }
@@ -125,25 +62,24 @@ pub struct RpcBackend {
 impl RpcBackend {
     /// Creates a new RPC backend with the given configuration.
     pub fn new(config: RpcConfig) -> Result<Self, RpcBackendError> {
+        let rpc_url = Url::parse(&config.url).map_err(RpcBackendError::InvalidUrl)?;
+
         let client = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(config.pool_config.connect_timeout_secs))
-            .timeout(Duration::from_secs(config.pool_config.request_timeout_secs))
-            .pool_max_idle_per_host(config.pool_config.pool_max_idle_per_host)
-            .connector_layer(ConcurrencyLimitLayer::new(
-                config.pool_config.max_concurrent_requests,
-            ))
+            .connect_timeout(config.connect_timeout)
+            .timeout(config.request_timeout)
+            .pool_max_idle_per_host(config.max_idle_per_host)
+            .connector_layer(ConcurrencyLimitLayer::new(config.max_concurrent_requests))
             .build()
             .map_err(RpcBackendError::HttpClientBuild)?;
 
-        let transport = HttpTransport::new_with_client(config.rpc_url, client);
+        let transport = HttpTransport::new_with_client(rpc_url, client);
         let provider = JsonRpcClient::new(transport);
 
         Ok(Self {
             inner: Arc::new(RpcBackendInner {
                 provider,
-                contract_address: config.contract_address,
                 head: RwLock::new(None),
-                max_batch_size: config.pool_config.max_batch_size,
+                max_batch_size: config.max_batch_size,
             }),
         })
     }
@@ -153,25 +89,32 @@ impl RpcBackend {
 impl StorageBackend for RpcBackend {
     type Snapshot = RpcSnapshot;
 
-    async fn snapshot(&self, block_id: Option<BlockId>) -> Result<Self::Snapshot, StorageError> {
+    async fn snapshot(
+        &self,
+        contract_address: Felt,
+        block_id: Option<BlockId>,
+    ) -> Result<Self::Snapshot, StorageError> {
         let block_id = block_id.unwrap_or(BlockId::Tag(BlockTag::Latest));
         Ok(RpcSnapshot {
             backend: self.clone(),
+            contract_address,
             block_id,
         })
     }
 }
 
 /// Snapshot of storage at a specific block, accessed via RPC.
+#[derive(Clone)]
 pub struct RpcSnapshot {
     backend: RpcBackend,
+    contract_address: Felt,
     block_id: BlockId,
 }
 
 impl RpcSnapshot {
     /// Executes a single JSON-RPC batch request for the given slots.
     async fn batch_read(&self, slots: &[Felt]) -> Result<Vec<Felt>, StorageError> {
-        let contract_address = self.backend.inner.contract_address;
+        let contract_address = self.contract_address;
 
         let requests: Vec<ProviderRequestData> = slots
             .iter()
@@ -208,7 +151,7 @@ impl RawStorageAccess for RpcSnapshot {
         self.backend
             .inner
             .provider
-            .get_storage_at(self.backend.inner.contract_address, slot, self.block_id)
+            .get_storage_at(self.contract_address, slot, self.block_id)
             .await
             .map_err(|e| RpcBackendError::Request(e.to_string()).into())
     }
