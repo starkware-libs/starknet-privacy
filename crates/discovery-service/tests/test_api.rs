@@ -11,7 +11,7 @@ mod common;
 use std::time::Duration;
 
 use common::{find_free_port, DevnetClient, DevnetConfig, IndexerClient};
-use discovery_service::api_server::HealthResponse;
+use discovery_service::api::HealthResponse;
 
 const BINARY: &str = env!("CARGO_BIN_EXE_discovery-service");
 
