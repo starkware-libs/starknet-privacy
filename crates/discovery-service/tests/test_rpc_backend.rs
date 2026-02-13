@@ -15,9 +15,7 @@
 
 mod common;
 
-use std::path::Path;
-
-use common::{DevnetClient, DevnetConfig, DumpMetadata};
+use common::setup_devnet_with_dump;
 use discovery_core::privacy_pool::views::IViews;
 use discovery_core::storage_backend::StorageBackend;
 use discovery_service::config::RpcConfig;
@@ -25,27 +23,9 @@ use discovery_service::rpc_backend::RpcBackend;
 use expect_test::expect;
 use starknet_core::types::Felt;
 
-const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
-
-async fn setup_devnet() -> (DevnetClient, DumpMetadata) {
-    let mut devnet = DevnetClient::spawn(DevnetConfig {
-        seed: 42,
-        accounts: 3,
-        ..Default::default()
-    })
-    .expect("failed to spawn devnet");
-
-    let metadata = devnet
-        .load_dump(Path::new(FIXTURES_DIR))
-        .await
-        .expect("failed to load dump");
-
-    (devnet, metadata)
-}
-
 #[tokio::test]
 async fn test_public_key_lookup() {
-    let (devnet, metadata) = setup_devnet().await;
+    let (devnet, metadata) = setup_devnet_with_dump().await;
 
     let rpc_config = RpcConfig {
         url: devnet.rpc_url(),
