@@ -227,6 +227,37 @@ pub struct OutgoingSyncResponse {
     pub cursor: DiscoveryCursor,
 }
 
+/// Request body for POST /v1/sync/preflight_check.
+///
+/// A non-paginated readiness check for a `(sender, recipient, token)` tuple.
+/// Returns boolean flags indicating what on-chain setup exists.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreflightCheckRequest {
+    /// The privacy pool contract address.
+    pub contract_address: Felt,
+    /// The sender's address.
+    pub sender_address: Felt,
+    /// The sender's private viewing key.
+    pub viewing_key: Felt,
+    /// The recipient's address.
+    pub recipient: Felt,
+    /// The token address.
+    pub token: Felt,
+}
+
+/// Response body for POST /v1/sync/preflight_check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreflightCheckResponse {
+    /// Block hash pinning the reads in this response.
+    pub block_ref: Felt,
+    /// Whether the sender has a public key registered on-chain.
+    pub sender_registered: bool,
+    /// Whether the channel from sender to recipient exists.
+    pub channel_exists: bool,
+    /// Whether the token subchannel exists within the channel.
+    pub subchannel_exists: bool,
+}
+
 /// Well-known error codes.
 pub mod error_codes {
     pub const INVALID_REQUEST: &str = "INVALID_REQUEST";
