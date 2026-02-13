@@ -8,7 +8,7 @@ use common::{
     setup_devnet_with_dump, setup_indexer, DevnetClient, DevnetConfig, IndexerClient,
     IndexerSpawnConfig, DEFAULT_STARTUP_TIMEOUT,
 };
-use discovery_service::api::{HealthResponse, IncomingSyncRequest};
+use discovery_service::api::{HealthResponse, IncomingSyncRequest, OutgoingSyncRequest};
 use starknet_core::types::Felt;
 
 #[tokio::test]
@@ -180,6 +180,110 @@ async fn test_incoming_sync_no_head() {
     // Should return 503 SERVICE_UNAVAILABLE since no head is indexed yet
     assert_eq!(status, 503);
     assert_eq!(error.error.code, "SERVICE_UNAVAILABLE");
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_outgoing_sync_basic() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    let request = OutgoingSyncRequest {
+        contract_address: metadata.contract_address,
+        sender_address: metadata.alice_address,
+        viewing_key: metadata.alice_viewing_key,
+        last_known_block: None,
+        block_ref: None,
+        cursor: Default::default(),
+        recipients: None,
+    };
+
+    let response = indexer.outgoing_sync(&request).await.unwrap();
+
+    assert!(response.block_ref != Felt::ZERO, "block_ref should be set");
+
+    // Alice has 2 outgoing channels: self-channel (deposit) + Bob (transfer)
+    assert_eq!(
+        response.channels.len(),
+        2,
+        "Alice should have 2 outgoing channels (self + Bob)"
+    );
+
+    // With a large budget, all discovery should complete
+    assert!(
+        response.cursor.is_complete(),
+        "All discovery should be complete"
+    );
+
+    // Each channel should have a matching subchannel with last_note_index = Some(0)
+    assert_eq!(
+        response.subchannels.len(),
+        2,
+        "Each channel should have one subchannel"
+    );
+    for subchannel in &response.subchannels {
+        assert_eq!(
+            subchannel.last_note_index,
+            Some(0),
+            "Each subchannel should have last_note_index=0"
+        );
+    }
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+/// Verifies that passing back a completed cursor is idempotent — the second
+/// call returns no new data and the cursor remains complete.
+#[tokio::test]
+async fn test_outgoing_sync_idempotent() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    // First sync discovers everything.
+    let request1 = OutgoingSyncRequest {
+        contract_address: metadata.contract_address,
+        sender_address: metadata.alice_address,
+        viewing_key: metadata.alice_viewing_key,
+        last_known_block: None,
+        block_ref: None,
+        cursor: Default::default(),
+        recipients: None,
+    };
+
+    let response1 = indexer.outgoing_sync(&request1).await.unwrap();
+    assert!(
+        response1.cursor.is_complete(),
+        "First call should complete all discovery"
+    );
+    assert_eq!(response1.channels.len(), 2, "Alice has 2 outgoing channels");
+
+    // Second sync with completed cursor — should be a no-op.
+    let request2 = OutgoingSyncRequest {
+        contract_address: metadata.contract_address,
+        sender_address: metadata.alice_address,
+        viewing_key: metadata.alice_viewing_key,
+        last_known_block: None,
+        block_ref: Some(response1.block_ref),
+        cursor: response1.cursor.clone(),
+        recipients: None,
+    };
+
+    let response2 = indexer.outgoing_sync(&request2).await.unwrap();
+    assert!(
+        response2.cursor.is_complete(),
+        "Cursor should remain complete"
+    );
+    assert!(
+        response2.channels.is_empty(),
+        "No new channels on second call"
+    );
+    assert!(
+        response2.subchannels.is_empty(),
+        "No new subchannels on second call"
+    );
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();
