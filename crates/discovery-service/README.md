@@ -64,17 +64,16 @@ Integration tests use a local devnet loaded with fixture state. The fixtures are
 Note: Integration tests spawn starknet-devnet instances on dynamically allocated ports.
 
 ### Prerequisites
-1. Install starknet-devnet: `cargo install starknet-devnet`
+1. Install the patched starknet-devnet (see [top-level README](../../README.md#starknet-devnet) for instructions)
 2. Build the privacy contract: `scarb build`
 
 ### Generate fixtures (only when contract changes)
 Fixtures are checked into the repo. Regenerate if contract storage layout changes:
 ```bash
-cd sdk && \
-DUMP_DEVNET_PATH=../crates/discovery-service/tests/fixtures/ \
-npm test -- --run devnet.test.ts
+cd e2e && npm run generate-dump
 ```
-This generates `devnet-dump.json.gz` and `devnet-dump.metadata.json` in the fixtures directory.
+This writes `devnet-dump.json.gz` and `devnet-dump.metadata.json` into `tests/fixtures/`
+(and also updates discovery-core fixtures).
 
 ### Time-sensitive transactions in fixtures
 
