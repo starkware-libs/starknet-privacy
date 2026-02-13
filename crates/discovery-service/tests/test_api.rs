@@ -8,7 +8,9 @@ use common::{
     setup_devnet_with_dump, setup_indexer, DevnetClient, DevnetConfig, IndexerClient,
     IndexerSpawnConfig, DEFAULT_STARTUP_TIMEOUT,
 };
-use discovery_service::api::{HealthResponse, IncomingSyncRequest};
+use discovery_service::api::{
+    HealthResponse, IncomingSyncRequest, OutgoingSyncRequest, SyncRequestBase,
+};
 use starknet_core::types::Felt;
 
 #[tokio::test]
@@ -40,12 +42,14 @@ async fn test_incoming_sync_basic() {
     let indexer = setup_indexer(&devnet, Some(&metadata)).await;
 
     let request = IncomingSyncRequest {
-        contract_address: metadata.contract_address,
         recipient_address: metadata.alice_address,
-        viewing_key: metadata.alice_viewing_key,
-        last_known_block: None,
-        block_ref: None,
-        cursor: Default::default(),
+        base: SyncRequestBase {
+            contract_address: metadata.contract_address,
+            viewing_key: metadata.alice_viewing_key,
+            last_known_block: None,
+            block_ref: None,
+            cursor: Default::default(),
+        },
     };
 
     let response = indexer.incoming_sync(&request).await.unwrap();
@@ -87,24 +91,28 @@ async fn test_incoming_sync_pagination() {
 
     // First sync with default budget
     let request1 = IncomingSyncRequest {
-        contract_address: metadata.contract_address,
         recipient_address: metadata.alice_address,
-        viewing_key: metadata.alice_viewing_key,
-        last_known_block: None,
-        block_ref: None,
-        cursor: Default::default(),
+        base: SyncRequestBase {
+            contract_address: metadata.contract_address,
+            viewing_key: metadata.alice_viewing_key,
+            last_known_block: None,
+            block_ref: None,
+            cursor: Default::default(),
+        },
     };
 
     let response1 = indexer.incoming_sync(&request1).await.unwrap();
 
     // Second sync using block_ref and cursor from previous response
     let request2 = IncomingSyncRequest {
-        contract_address: metadata.contract_address,
         recipient_address: metadata.alice_address,
-        viewing_key: metadata.alice_viewing_key,
-        last_known_block: None,
-        block_ref: Some(response1.block_ref),
-        cursor: response1.cursor.clone(),
+        base: SyncRequestBase {
+            contract_address: metadata.contract_address,
+            viewing_key: metadata.alice_viewing_key,
+            last_known_block: None,
+            block_ref: Some(response1.block_ref),
+            cursor: response1.cursor.clone(),
+        },
     };
 
     let response2 = indexer.incoming_sync(&request2).await.unwrap();
@@ -128,12 +136,14 @@ async fn test_incoming_sync_block_reorged() {
     let fake_block = Felt::from_hex("0xdeadbeefdeadbeefdeadbeefdeadbeef").unwrap();
 
     let request = IncomingSyncRequest {
-        contract_address: metadata.contract_address,
         recipient_address: metadata.alice_address,
-        viewing_key: metadata.alice_viewing_key,
-        last_known_block: Some(fake_block),
-        block_ref: None,
-        cursor: Default::default(),
+        base: SyncRequestBase {
+            contract_address: metadata.contract_address,
+            viewing_key: metadata.alice_viewing_key,
+            last_known_block: Some(fake_block),
+            block_ref: None,
+            cursor: Default::default(),
+        },
     };
 
     let (status, error) = indexer.incoming_sync_error(&request).await.unwrap();
@@ -167,12 +177,14 @@ async fn test_incoming_sync_no_head() {
 
     // Use any address/key - it doesn't matter since indexer has no head yet
     let request = IncomingSyncRequest {
-        contract_address: Felt::from_hex("0x123").unwrap(),
         recipient_address: Felt::from_hex("0x1234").unwrap(),
-        viewing_key: Felt::from_hex("0x5678").unwrap(),
-        last_known_block: None,
-        block_ref: None,
-        cursor: Default::default(),
+        base: SyncRequestBase {
+            contract_address: Felt::from_hex("0x123").unwrap(),
+            viewing_key: Felt::from_hex("0x5678").unwrap(),
+            last_known_block: None,
+            block_ref: None,
+            cursor: Default::default(),
+        },
     };
 
     let (status, error) = indexer.incoming_sync_error(&request).await.unwrap();
@@ -180,6 +192,116 @@ async fn test_incoming_sync_no_head() {
     // Should return 503 SERVICE_UNAVAILABLE since no head is indexed yet
     assert_eq!(status, 503);
     assert_eq!(error.error.code, "SERVICE_UNAVAILABLE");
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_outgoing_sync_basic() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    let request = OutgoingSyncRequest {
+        sender_address: metadata.alice_address,
+        recipients: None,
+        base: SyncRequestBase {
+            contract_address: metadata.contract_address,
+            viewing_key: metadata.alice_viewing_key,
+            last_known_block: None,
+            block_ref: None,
+            cursor: Default::default(),
+        },
+    };
+
+    let response = indexer.outgoing_sync(&request).await.unwrap();
+
+    assert!(response.block_ref != Felt::ZERO, "block_ref should be set");
+
+    // Alice has 2 outgoing channels: self-channel (deposit) + Bob (transfer)
+    assert_eq!(
+        response.channels.len(),
+        2,
+        "Alice should have 2 outgoing channels (self + Bob)"
+    );
+
+    // With a large budget, all discovery should complete
+    assert!(
+        response.cursor.is_complete(),
+        "All discovery should be complete"
+    );
+
+    // Each channel should have a matching subchannel with last_note_index = Some(0)
+    assert_eq!(
+        response.subchannels.len(),
+        2,
+        "Each channel should have one subchannel"
+    );
+    for subchannel in &response.subchannels {
+        assert_eq!(
+            subchannel.last_note_index,
+            Some(0),
+            "Each subchannel should have last_note_index=0"
+        );
+    }
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+/// Verifies that passing back a completed cursor is idempotent — the second
+/// call returns no new data and the cursor remains complete.
+#[tokio::test]
+async fn test_outgoing_sync_idempotent() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    // First sync discovers everything.
+    let request1 = OutgoingSyncRequest {
+        sender_address: metadata.alice_address,
+        recipients: None,
+        base: SyncRequestBase {
+            contract_address: metadata.contract_address,
+            viewing_key: metadata.alice_viewing_key,
+            last_known_block: None,
+            block_ref: None,
+            cursor: Default::default(),
+        },
+    };
+
+    let response1 = indexer.outgoing_sync(&request1).await.unwrap();
+    assert!(
+        response1.cursor.is_complete(),
+        "First call should complete all discovery"
+    );
+    assert_eq!(response1.channels.len(), 2, "Alice has 2 outgoing channels");
+
+    // Second sync with completed cursor — should be a no-op.
+    let request2 = OutgoingSyncRequest {
+        sender_address: metadata.alice_address,
+        recipients: None,
+        base: SyncRequestBase {
+            contract_address: metadata.contract_address,
+            viewing_key: metadata.alice_viewing_key,
+            last_known_block: None,
+            block_ref: Some(response1.block_ref),
+            cursor: response1.cursor.clone(),
+        },
+    };
+
+    let response2 = indexer.outgoing_sync(&request2).await.unwrap();
+    assert!(
+        response2.cursor.is_complete(),
+        "Cursor should remain complete"
+    );
+    assert!(
+        response2.channels.is_empty(),
+        "No new channels on second call"
+    );
+    assert!(
+        response2.subchannels.is_empty(),
+        "No new subchannels on second call"
+    );
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();

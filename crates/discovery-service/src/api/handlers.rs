@@ -9,17 +9,20 @@ use axum::response::IntoResponse;
 use axum::Json;
 use discovery_core::io_budget::IoBudget;
 use discovery_core::storage_backend::StorageBackend;
-use starknet_core::types::BlockId;
+use starknet_core::types::{BlockId, Felt};
 use tracing::debug;
 
+use discovery_core::privacy_pool::felt_hex;
 use discovery_core::privacy_pool::types::SecretFelt;
 
 use crate::api::types::{
     ApiErrorResponse, HealthResponse, IncomingSyncRequest, IncomingSyncResponse,
+    OutgoingSyncRequest, OutgoingSyncResponse, SyncRequestBase,
 };
-use crate::api::validators::{validate_block_ref, validate_cursor};
+use crate::api::validators::{validate_block_ref, validate_cursor, validate_recipients};
 use crate::api::AppState;
 use crate::chain_state::ChainState;
+use discovery_core::discovery::CursorLimits;
 
 /// Handler for GET /health.
 pub async fn health_handler<B>(State(state): State<Arc<AppState<B>>>) -> impl IntoResponse
@@ -54,6 +57,47 @@ where
     (status_code, Json(response))
 }
 
+/// Validated and resolved shared context for sync handlers.
+struct SyncContext<S> {
+    block_ref: Felt,
+    viewing_key: SecretFelt,
+    snapshot: S,
+    budget: IoBudget,
+    cursor_limits: CursorLimits,
+}
+
+/// Validates the shared request fields and builds the context needed by
+/// both incoming and outgoing sync handlers.
+async fn prepare_sync_context<B>(
+    base: &SyncRequestBase,
+    state: &AppState<B>,
+) -> Result<SyncContext<B::Snapshot>, (StatusCode, ApiErrorResponse)>
+where
+    B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
+    B::Snapshot: Clone + Send + Sync + 'static,
+{
+    validate_cursor(&base.cursor, &state.validation_limits)?;
+    let block_ref =
+        validate_block_ref(base.last_known_block, base.block_ref, &state.backend).await?;
+    let viewing_key = SecretFelt::new(base.viewing_key);
+
+    let snapshot = state
+        .backend
+        .snapshot(base.contract_address, Some(BlockId::Hash(block_ref)))
+        .await;
+
+    let budget = IoBudget::new(state.validation_limits.server_budget);
+    let cursor_limits = state.validation_limits.cursor_limits;
+
+    Ok(SyncContext {
+        block_ref,
+        viewing_key,
+        snapshot,
+        budget,
+        cursor_limits,
+    })
+}
+
 /// Handler for POST /v1/sync/incoming_state.
 pub async fn incoming_sync_handler<B>(
     State(state): State<Arc<AppState<B>>>,
@@ -77,32 +121,21 @@ where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
     B::Snapshot: Clone + Send + Sync + 'static,
 {
-    validate_cursor(&request.cursor, &state.validation_limits)?;
-    let block_ref =
-        validate_block_ref(request.last_known_block, request.block_ref, &state.backend).await?;
-    let viewing_key = SecretFelt::new(request.viewing_key);
-
-    let snapshot = state
-        .backend
-        .snapshot(request.contract_address, Some(BlockId::Hash(block_ref)))
-        .await;
-
-    let budget = IoBudget::new(state.validation_limits.server_budget);
-    let cursor_limits = state.validation_limits.cursor_limits;
+    let context = prepare_sync_context(&request.base, state).await?;
 
     debug!(
         recipient = %format!("{:#x}", request.recipient_address),
-        block = %block_ref,
+        block = %context.block_ref,
         "incoming_sync request"
     );
 
     let discovery_output = discovery_core::sync::incoming_state::sync_incoming_state(
-        &snapshot,
+        &context.snapshot,
         request.recipient_address,
-        &viewing_key,
-        request.cursor,
-        cursor_limits,
-        &budget,
+        &context.viewing_key,
+        request.base.cursor,
+        context.cursor_limits,
+        &context.budget,
     )
     .await
     .map_err(crate::api::types::discovery_error_to_response)?;
@@ -116,10 +149,72 @@ where
     );
 
     Ok(IncomingSyncResponse {
-        block_ref,
+        block_ref: context.block_ref,
         channels: discovery_output.channels,
         subchannels: discovery_output.subchannels,
         notes: discovery_output.notes,
+        cursor: discovery_output.cursor,
+    })
+}
+
+/// Handler for POST /v1/sync/outgoing_state.
+pub async fn outgoing_sync_handler<B>(
+    State(state): State<Arc<AppState<B>>>,
+    Json(request): Json<OutgoingSyncRequest>,
+) -> impl IntoResponse
+where
+    B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
+    B::Snapshot: Clone + Send + Sync + 'static,
+{
+    match outgoing_sync_impl(&state, request).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err((status, error)) => (status, Json(error)).into_response(),
+    }
+}
+
+async fn outgoing_sync_impl<B>(
+    state: &AppState<B>,
+    request: OutgoingSyncRequest,
+) -> Result<OutgoingSyncResponse, (StatusCode, ApiErrorResponse)>
+where
+    B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
+    B::Snapshot: Clone + Send + Sync + 'static,
+{
+    if let Some(ref recipients) = request.recipients {
+        validate_recipients(recipients, &state.validation_limits)?;
+    }
+    let context = prepare_sync_context(&request.base, state).await?;
+
+    debug!(
+        sender = felt_hex(&request.sender_address),
+        recipients = ?request.recipients.as_ref().map(|r| r.len()),
+        block = %context.block_ref,
+        "outgoing_sync request"
+    );
+
+    let discovery_output = discovery_core::sync::outgoing_state::sync_outgoing_state(
+        &context.snapshot,
+        request.sender_address,
+        &context.viewing_key,
+        request.base.cursor,
+        context.cursor_limits,
+        &context.budget,
+        request.recipients.as_ref(),
+    )
+    .await
+    .map_err(crate::api::types::discovery_error_to_response)?;
+
+    debug!(
+        channels = discovery_output.channels.len(),
+        subchannels = discovery_output.subchannels.len(),
+        cursor_complete = discovery_output.cursor.is_complete(),
+        "outgoing_sync response"
+    );
+
+    Ok(OutgoingSyncResponse {
+        block_ref: context.block_ref,
+        channels: discovery_output.channels,
+        subchannels: discovery_output.subchannels,
         cursor: discovery_output.cursor,
     })
 }
