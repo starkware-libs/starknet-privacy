@@ -34,10 +34,15 @@ tower = { version = "0.5", features = ["limit"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 
 # Error handling
 thiserror = "2"
 backoff = { version = "0.4", features = ["tokio"] }
+
+# Configuration
+toml = "0.8"
+regex = "1"
 
 # CLI and logging
 clap = { version = "4", features = ["derive"] }

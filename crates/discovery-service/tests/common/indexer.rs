@@ -36,8 +36,7 @@ impl IndexerClient {
 
         let mut process = Command::new(binary)
             .env("WS_URL", ws_url)
-            .arg("--api-host")
-            .arg(api_host)
+            .env("API_HOST", api_host)
             .stderr(std::process::Stdio::piped())
             .spawn()?;
 
