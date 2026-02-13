@@ -488,8 +488,8 @@ mod tests {
     #[tokio::test]
     async fn test_exponential_probe_empty_subchannel() {
         // Empty subchannel: exponential probe finds sentinel at offset 0.
-        // All 11 offsets are probed in one batch. First probe (offset 0) misses,
-        // so sentinel is found immediately. Cost = 11 * COST_NOTE_PROBING = 11.
+        // Offsets: [0, 1, 3, 7, ..., 1023] = 11 probes at COST_NOTE_PROBING=1 each.
+        // All return empty (Felt::ZERO), so sentinel is found at offset 0.
         let backend = MockBackend::empty();
         let channel_key = Felt::from_hex_unchecked("0x12345");
         let token = Felt::from_hex_unchecked("0x67890");
@@ -501,6 +501,7 @@ mod tests {
 
         assert_eq!(notes.len(), 0);
         assert!(!has_more, "sentinel found, not budget exhaustion");
+        // 11 exponential offsets probed: [0, 1, 3, 7, 15, 31, 63, 127, 255, 511, 1023]
         assert_eq!(budget.remaining(), 89);
     }
 
@@ -585,8 +586,8 @@ mod tests {
         let mut cursor = SubchannelCursor::default();
         let key = SecretFelt::new(fixture.constants.bob_viewing_key);
         // Bob has 1 note at index 0.
-        // Exponential probe: 11 offsets consumed upfront. Hit at 0, miss at 1.
-        //   Cost = 11 * COST_NOTE_PROBING = 11.
+        // Exponential probe: 11 offsets [0..1023], all probed at COST_NOTE_PROBING=1.
+        //   Offset 0 hits, offset 1 is empty sentinel. Cost = 11.
         // Scan: budget exhausted (0 remaining) → has_more = true.
         let budget = IoBudget::new(11);
         let (notes, has_more) =
