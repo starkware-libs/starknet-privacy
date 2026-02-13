@@ -2,8 +2,8 @@
 
 **Rust verification checklist:**
 - `cargo fmt --check` - code formatting
-- `cargo clippy` - lints (0 warnings required), including integration tests (all targets)
-- `cargo test` - all tests pass
+- `cargo clippy` - lints (0 warnings required), including integration tests, for all targets
+- `cargo test` - all tests pass, for all targets
 
 **TypeScript verification checklist:**
 - `cd sdk && npm run format:check` - prettier formatting

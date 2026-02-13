@@ -3,10 +3,13 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
-use discovery_service::api::{ApiErrorResponse, IncomingSyncRequest, IncomingSyncResponse};
+use discovery_service::api::{
+    ApiErrorResponse, IncomingSyncRequest, IncomingSyncResponse, OutgoingSyncRequest,
+    OutgoingSyncResponse,
+};
 use nix::sys::signal::Signal;
 use reqwest::StatusCode;
-use serde::Serialize;
+use serde::{de::DeserializeOwned, Serialize};
 use starknet_types_core::felt::Felt;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::{Child, Command};
@@ -145,13 +148,32 @@ impl IndexerClient {
         Ok((status, body_text))
     }
 
-    /// POST `/v1/sync/incoming_state` and return the parsed success response.
-    pub async fn incoming_sync(&self, req: &IncomingSyncRequest) -> Result<IncomingSyncResponse> {
-        let (status, body) = self.post_json("v1/sync/incoming_state", req).await?;
+    /// POST a sync endpoint and return the parsed success response.
+    async fn sync_ok<Req: Serialize, Resp: DeserializeOwned>(
+        &self,
+        endpoint: &str,
+        request: &Req,
+    ) -> Result<Resp> {
+        let (status, body) = self.post_json(endpoint, request).await?;
         if status != StatusCode::OK {
             return Err(anyhow!("Expected 200, got {}: {}", status, body));
         }
         Ok(serde_json::from_str(&body)?)
+    }
+
+    /// POST a sync endpoint and return status + parsed error body.
+    async fn sync_err<Req: Serialize>(
+        &self,
+        endpoint: &str,
+        request: &Req,
+    ) -> Result<(StatusCode, ApiErrorResponse)> {
+        let (status, body) = self.post_json(endpoint, request).await?;
+        Ok((status, serde_json::from_str(&body)?))
+    }
+
+    /// POST `/v1/sync/incoming_state` and return the parsed success response.
+    pub async fn incoming_sync(&self, req: &IncomingSyncRequest) -> Result<IncomingSyncResponse> {
+        self.sync_ok("v1/sync/incoming_state", req).await
     }
 
     /// POST `/v1/sync/incoming_state` and return status + parsed error body.
@@ -159,8 +181,20 @@ impl IndexerClient {
         &self,
         req: &IncomingSyncRequest,
     ) -> Result<(StatusCode, ApiErrorResponse)> {
-        let (status, body) = self.post_json("v1/sync/incoming_state", req).await?;
-        Ok((status, serde_json::from_str(&body)?))
+        self.sync_err("v1/sync/incoming_state", req).await
+    }
+
+    /// POST `/v1/sync/outgoing_state` and return the parsed success response.
+    pub async fn outgoing_sync(&self, req: &OutgoingSyncRequest) -> Result<OutgoingSyncResponse> {
+        self.sync_ok("v1/sync/outgoing_state", req).await
+    }
+
+    /// POST `/v1/sync/outgoing_state` and return status + parsed error body.
+    pub async fn outgoing_sync_error(
+        &self,
+        req: &OutgoingSyncRequest,
+    ) -> Result<(StatusCode, ApiErrorResponse)> {
+        self.sync_err("v1/sync/outgoing_state", req).await
     }
 
     /// Send SIGINT for graceful shutdown.
