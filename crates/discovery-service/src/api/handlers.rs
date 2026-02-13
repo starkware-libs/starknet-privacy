@@ -114,6 +114,7 @@ where
     }
 }
 
+// TODO: support filtering by tokens (see sdk)
 async fn incoming_sync_impl<B>(
     state: &AppState<B>,
     request: IncomingSyncRequest,
@@ -173,6 +174,7 @@ where
     }
 }
 
+// TODO: support "total-only" mode (see sdk)
 async fn outgoing_sync_impl<B>(
     state: &AppState<B>,
     request: OutgoingSyncRequest,
