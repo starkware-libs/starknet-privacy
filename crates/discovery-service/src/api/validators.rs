@@ -21,6 +21,17 @@ pub async fn validate_block_ref<B: ChainState>(
     block_ref: Option<Felt>,
     backend: &B,
 ) -> Result<Felt, (StatusCode, ApiErrorResponse)> {
+    // last_known_block is for first requests, block_ref is for pagination — never both.
+    if last_known_block.is_some() && block_ref.is_some() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::new(
+                error_codes::INVALID_REQUEST,
+                "last_known_block and block_ref are mutually exclusive",
+            ),
+        ));
+    }
+
     // 1. If last_known_block provided, check is_canonical
     if let Some(last_known) = last_known_block {
         match backend.is_canonical(last_known).await {
@@ -244,6 +255,24 @@ mod tests {
 
         let (status, _) = result.unwrap_err();
         assert_eq!(status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_both_block_ref_and_last_known_block_rejected() {
+        let backend = MockChainState::new();
+
+        let result = validate_block_ref(
+            Some(Felt::from_hex_unchecked("0x111")),
+            Some(Felt::from_hex_unchecked("0x222")),
+            &backend,
+        )
+        .await;
+        assert!(result.is_err());
+
+        let (status, error) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.error.code, error_codes::INVALID_REQUEST);
+        assert!(error.error.message.contains("mutually exclusive"));
     }
 
     // RPC error handling is tested via integration tests with real devnet
