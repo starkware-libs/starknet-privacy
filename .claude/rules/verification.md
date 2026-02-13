@@ -5,11 +5,10 @@
 - `cargo clippy` - lints (0 warnings required), including integration tests, for all targets
 - `cargo test` - all tests pass, for all targets
 
-**TypeScript verification checklist:**
-- `cd sdk && npm run format:check` - prettier formatting
-- `cd sdk && npm run lint:check` - eslint lints
-- `cd sdk && npm run build` - compiles
-- `cd sdk && npm run test:fast` - tests pass (excludes devnet/parallel-discovery)
+**SDK verification checklist (from `sdk/`):**
+- `npx prettier --check src/` - code formatting
+- `npx eslint src/` - lints (0 warnings required)
+- `npx tsc --noEmit` - type-check passes
 
 ## Cross-layer consistency
 
