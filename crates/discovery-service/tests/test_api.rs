@@ -10,7 +10,9 @@ use common::{
     setup_devnet_with_dump, setup_indexer, DevnetClient, DevnetConfig, IndexerClient,
     IndexerSpawnConfig,
 };
-use discovery_service::api::{HealthResponse, IncomingSyncRequest, OutgoingSyncRequest};
+use discovery_service::api::{
+    HealthResponse, IncomingSyncRequest, OutgoingSyncRequest, PreflightCheckRequest,
+};
 use starknet_core::types::Felt;
 
 #[tokio::test]
@@ -285,6 +287,81 @@ async fn test_outgoing_sync_idempotent() {
     assert!(
         response2.subchannels.is_empty(),
         "No new subchannels on second call"
+    );
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_preflight_check_basic() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    // Scenario 1: Alice → Bob STRK — all flags true
+    let request = PreflightCheckRequest {
+        contract_address: metadata.contract_address,
+        sender_address: metadata.alice_address,
+        viewing_key: metadata.alice_viewing_key,
+        recipient: metadata.bob_address,
+        token: metadata.strk_token,
+    };
+
+    let response = indexer.preflight_check(&request).await.unwrap();
+    assert!(response.block_ref != Felt::ZERO, "block_ref should be set");
+    assert!(response.sender_registered, "Alice should be registered");
+    assert!(response.channel_exists, "Alice→Bob channel should exist");
+    assert!(
+        response.subchannel_exists,
+        "Alice→Bob STRK subchannel should exist"
+    );
+
+    // Scenario 2: Alice → unknown recipient — sender registered, no channel/subchannel
+    let unknown_recipient = Felt::from_hex("0xdeadbeef").unwrap();
+    let request_unknown_recipient = PreflightCheckRequest {
+        contract_address: metadata.contract_address,
+        sender_address: metadata.alice_address,
+        viewing_key: metadata.alice_viewing_key,
+        recipient: unknown_recipient,
+        token: metadata.strk_token,
+    };
+
+    let response = indexer
+        .preflight_check(&request_unknown_recipient)
+        .await
+        .unwrap();
+    assert!(response.sender_registered, "Alice should be registered");
+    assert!(
+        !response.channel_exists,
+        "Channel to unknown recipient should not exist"
+    );
+    assert!(
+        !response.subchannel_exists,
+        "Subchannel to unknown recipient should not exist"
+    );
+
+    // Scenario 3: Unknown sender → Bob — all flags false
+    let unknown_sender = Felt::from_hex("0xbaddecaf").unwrap();
+    let request_unknown_sender = PreflightCheckRequest {
+        contract_address: metadata.contract_address,
+        sender_address: unknown_sender,
+        viewing_key: Felt::from_hex("0x1234").unwrap(),
+        recipient: metadata.bob_address,
+        token: metadata.strk_token,
+    };
+
+    let response = indexer
+        .preflight_check(&request_unknown_sender)
+        .await
+        .unwrap();
+    assert!(
+        !response.sender_registered,
+        "Unknown sender should not be registered"
+    );
+    assert!(!response.channel_exists, "No channel from unknown sender");
+    assert!(
+        !response.subchannel_exists,
+        "No subchannel from unknown sender"
     );
 
     indexer.signal_shutdown().unwrap();
