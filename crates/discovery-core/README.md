@@ -14,12 +14,12 @@ cp tests/fixtures/cairo-reference-data.json ../crates/discovery-core/tests/fixtu
 
 ## Devnet State Fixture
 
-The devnet state fixture contains real storage slots from SDK integration tests.
+The devnet state fixture contains real storage slots produced by the e2e dump script.
 To regenerate:
 
-1. Start devnet: `starknet-devnet --seed 42`
-2. Run SDK tests with dump enabled:
-   ```bash
-   cd sdk
-   DUMP_STATE_PATH=../crates/discovery-core/tests/fixtures/devnet-state.json npm test
-   ```
+```bash
+cd e2e && npm run generate-dump
+```
+
+This writes `tests/fixtures/devnet-state.json` (among other crate fixtures).
+Run `cargo test -p discovery-core` afterwards to verify.
