@@ -5,6 +5,11 @@
 - `cargo clippy` - lints (0 warnings required), including integration tests, for all targets
 - `cargo test` - all tests pass, for all targets
 
+**SDK verification checklist (from `sdk/`):**
+- `npx prettier --check src/` - code formatting
+- `npx eslint src/` - lints (0 warnings required)
+- `npx tsc --noEmit` - type-check passes
+
 ## Cross-layer consistency
 
 When changing Rust code, always check whether the change must be reflected in other layers:
