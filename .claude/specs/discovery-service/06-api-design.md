@@ -42,7 +42,7 @@ For use cases requiring stronger finality, clients should wait for L1 confirmati
 
 ## 6.5 Incoming Notes Discovery Endpoint
 
-`POST /v1/discovery/incoming/sync`
+`POST /v1/sync/incoming_state`
 
 A unified endpoint that discovers channels, subchannels, and notes in one call with a composite cursor. This is the primary endpoint for incoming notes discovery.
 
@@ -53,12 +53,13 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
   "contract_address": "0x...",
   "recipient_address": "0x...",
   "viewing_key": "0x...",
+  "last_known_block": "0x...",
+  "block_ref": "0x...",
   "cursor": {
-    "last_known_block": "0x...",
-    "block_ref": null,
     "last_channel_index": null,
     "channels": {
-      "0x_channel_key": {
+      "0x_sender_addr": {
+        "channel_key": "0x...",
         "last_subchannel_index": null,
         "subchannels": {
           "0x_token_address": {
@@ -67,15 +68,16 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
         }
       }
     }
-  },
-  "max_reads": 2000
+  }
 }
 ```
 
-**Block fields in cursor:**
-
-- `last_known_block`: Block hash from last completed sync session. Used for reorg detection on first request. Server returns `409 BLOCK_REORGED` if this block is no longer canonical. Leave empty on fresh syncs or pagination requests.
-- `block_ref`: Block hash to query state at. Ensures consistent reads across paginated requests. Leave empty on first request (server uses current head and sets it in response cursor).
+- `contract_address`: The privacy pool contract address.
+- `recipient_address`: The recipient's on-chain address.
+- `viewing_key`: The recipient's private viewing key (used for server-side decryption).
+- `last_known_block`: Optional. Block hash from last completed sync session. Used for reorg detection on first request. Server returns `409 BLOCK_REORGED` if this block is no longer canonical. Leave empty on fresh syncs or pagination requests.
+- `block_ref`: Optional. Block hash to query state at. Ensures consistent reads across paginated requests. Leave empty on first request (server uses current head and sets it in response).
+- `cursor`: Composite `DiscoveryCursor` for pagination. Default (empty) on first request.
 
 **Progress fields in cursor:**
 
@@ -87,52 +89,51 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
 
 ```json
 {
-  "head": { "block_number": 123456, "block_hash": "0x...", "timestamp": 1234567890 },
-  "channels_done": false,
-  "channels": {
-    "0x_channel_key_1": {
-      "sender_addr": "0x...",
-      "subchannels_done": true,
-      "subchannels": {
-        "0x_token_address_1": {
-          "notes_done": true,
-          "notes": [
-            { "index": 1, "note_id": "0x...", "amount": 1000 }
-          ]
-        }
-      }
-    }
-  },
+  "block_ref": "0x...",
+  "channels": [
+    { "channel_key": "0x...", "sender_addr": "0x..." }
+  ],
+  "subchannels": [
+    { "sender_addr": "0x...", "token": "0x..." }
+  ],
+  "notes": [
+    { "sender_addr": "0x...", "token": "0x...", "index": 1, "note_id": "0x...", "amount": 1000, "salt": 12345 }
+  ],
   "cursor": {
-    "block_ref": "0x...",
+    "channel_discovery_complete": false,
     "last_channel_index": 5,
     "channels": {
-      "0x_channel_key_1": {
+      "0x_sender_addr": {
+        "channel_key": "0x...",
+        "subchannel_discovery_complete": true,
         "last_subchannel_index": 3,
         "subchannels": {
-          "0x_token_address_1": {
+          "0x_token_address": {
+            "note_discovery_complete": true,
             "last_note_index": 10
           }
         }
       }
     }
-  },
-  "stats": { "reads": 2000, "channels_discovered": 1, "subchannels_discovered": 2, "notes_discovered": 5 }
+  }
 }
 ```
 
 **Response fields:**
 
-- `head`: Current chain head. Only present on first request (when `block_ref` not specified). Use `head.block_hash` as `last_known_block` for next sync session.
-- `channels_done`, `subchannels_done`, `notes_done`: Server-computed completion status. When all are `true`, sync is complete.
-- `cursor.block_ref`: Block hash used for queries. Automatically set by server. Pass back as-is on pagination requests.
-- `cursor.last_known_block`: Always cleared in response cursor.
+- `block_ref`: Block hash pinning all reads. Pass back as `block_ref` in subsequent requests.
+- `channels`: Discovered incoming channels (one per sender).
+- `subchannels`: Discovered incoming subchannels (one per sender×token pair).
+- `notes`: Discovered notes with sender and token context.
+- `cursor`: Updated `DiscoveryCursor` for continuation.
+
+**Completion:** Check `cursor.is_complete()` — when `channel_discovery_complete` is true and all channels/subchannels have their discovery complete flags set.
 
 **User flow:**
 
-1. **First request**: Send with `last_known_block` set to previous session's `head.block_hash` (or empty if fresh sync).
-2. **Pagination**: Use response cursor as-is until `channels_done` is `true`.
-3. **Store for next session**: Save final `head.block_hash` as your `last_known_block`.
+1. **First request**: Send with `last_known_block` set to previous session's block hash (or empty if fresh sync).
+2. **Pagination**: Pass back `block_ref` and `cursor` from response until complete.
+3. **Store for next session**: Save final `block_ref` as your `last_known_block`.
 
 **Note filtering:** For each decrypted note, the service derives the nullifier and checks if it exists in contract state. Only unspent notes (those whose nullifier does not exist) are included in the response.
 
