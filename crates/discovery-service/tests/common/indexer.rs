@@ -5,7 +5,7 @@ use std::time::Duration;
 use anyhow::{anyhow, Result};
 use discovery_service::api::{
     ApiErrorResponse, IncomingSyncRequest, IncomingSyncResponse, OutgoingSyncRequest,
-    OutgoingSyncResponse,
+    OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse,
 };
 use nix::sys::signal::Signal;
 use reqwest::StatusCode;
@@ -201,6 +201,22 @@ impl IndexerClient {
         let status = resp.status();
         let error: ApiErrorResponse = resp.json().await?;
         Ok((status, error))
+    }
+
+    /// POST `/v1/sync/preflight_check` and return the parsed success response.
+    pub async fn preflight_check(
+        &self,
+        req: &PreflightCheckRequest,
+    ) -> Result<PreflightCheckResponse> {
+        let url = format!("http://{}/v1/sync/preflight_check", self.api_host);
+        let resp = reqwest::Client::new().post(&url).json(req).send().await?;
+
+        let status = resp.status();
+        let body = resp.text().await?;
+        if status != StatusCode::OK {
+            return Err(anyhow!("Expected 200, got {}: {}", status, body));
+        }
+        Ok(serde_json::from_str(&body)?)
     }
 
     /// Send SIGINT for graceful shutdown.
