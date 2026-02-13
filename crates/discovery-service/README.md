@@ -70,11 +70,10 @@ Note: Integration tests spawn starknet-devnet instances on dynamically allocated
 ### Generate fixtures (only when contract changes)
 Fixtures are checked into the repo. Regenerate if contract storage layout changes:
 ```bash
-cd sdk && \
-DUMP_DEVNET_PATH=../crates/discovery-service/tests/fixtures/ \
-npm test -- --run devnet.test.ts
+cd e2e && npm run generate-dump
 ```
-This generates `devnet-dump.json.gz` and `devnet-dump.metadata.json` in the fixtures directory.
+This writes `devnet-dump.json.gz` and `devnet-dump.metadata.json` into `tests/fixtures/`
+(and also updates discovery-core fixtures).
 
 ### Time-sensitive transactions in fixtures
 
