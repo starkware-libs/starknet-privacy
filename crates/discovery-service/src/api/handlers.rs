@@ -17,7 +17,7 @@ use discovery_core::privacy_pool::types::SecretFelt;
 
 use crate::api::types::{
     error_codes, ApiErrorResponse, HealthResponse, IncomingSyncRequest, IncomingSyncResponse,
-    OutgoingSyncRequest, OutgoingSyncResponse,
+    OutgoingSyncRequest, OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse,
 };
 use crate::api::validators::{validate_block_ref, validate_cursor, validate_recipients};
 use crate::api::AppState;
@@ -214,5 +214,81 @@ where
         channels: discovery_output.channels,
         subchannels: discovery_output.subchannels,
         cursor: discovery_output.cursor,
+    })
+}
+
+/// Handler for POST /v1/sync/preflight_check.
+pub async fn preflight_check_handler<B>(
+    State(state): State<Arc<AppState<B>>>,
+    Json(request): Json<PreflightCheckRequest>,
+) -> impl IntoResponse
+where
+    B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
+    B::Snapshot: Clone + Send + Sync + 'static,
+{
+    match preflight_check_impl(&state, request).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err((status, error)) => (status, Json(error)).into_response(),
+    }
+}
+
+async fn preflight_check_impl<B>(
+    state: &AppState<B>,
+    request: PreflightCheckRequest,
+) -> Result<PreflightCheckResponse, (StatusCode, ApiErrorResponse)>
+where
+    B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
+    B::Snapshot: Clone + Send + Sync + 'static,
+{
+    let head = state.backend.get_head().await.ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorResponse::new(error_codes::SERVICE_UNAVAILABLE, "No block indexed yet"),
+        )
+    })?;
+
+    let snapshot = state
+        .backend
+        .snapshot(
+            request.contract_address,
+            Some(BlockId::Hash(head.block_hash)),
+        )
+        .await
+        .map_err(|e| {
+            warn!("Failed to create snapshot: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ApiErrorResponse::new(
+                    error_codes::INTERNAL_ERROR,
+                    format!("Failed to create snapshot: {}", e),
+                ),
+            )
+        })?;
+
+    let viewing_key = SecretFelt::new(request.viewing_key);
+
+    debug!(
+        sender = felt_hex(&request.sender_address),
+        recipient = felt_hex(&request.recipient),
+        token = felt_hex(&request.token),
+        block = %head.block_hash,
+        "preflight_check request"
+    );
+
+    let result = discovery_core::sync::preflight_check::preflight_check(
+        &snapshot,
+        request.sender_address,
+        &viewing_key,
+        request.recipient,
+        request.token,
+    )
+    .await
+    .map_err(crate::api::types::discovery_error_to_response)?;
+
+    Ok(PreflightCheckResponse {
+        block_ref: head.block_hash,
+        sender_registered: result.sender_registered,
+        channel_exists: result.channel_exists,
+        subchannel_exists: result.subchannel_exists,
     })
 }
