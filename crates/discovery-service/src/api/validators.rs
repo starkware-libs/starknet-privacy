@@ -110,7 +110,6 @@ pub fn validate_cursor(
 }
 
 /// Rejects recipient sets that exceed size limits.
-#[allow(dead_code)] // Used by outgoing_sync endpoint (next slice)
 pub fn validate_recipients(
     recipients: &HashSet<Felt>,
     limits: &ValidationLimits,
