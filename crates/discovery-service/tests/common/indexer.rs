@@ -3,7 +3,10 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, Result};
-use discovery_service::api::{ApiErrorResponse, IncomingSyncRequest, IncomingSyncResponse};
+use discovery_service::api::{
+    ApiErrorResponse, IncomingSyncRequest, IncomingSyncResponse, OutgoingSyncRequest,
+    OutgoingSyncResponse,
+};
 use nix::sys::signal::Signal;
 use reqwest::StatusCode;
 use starknet_types_core::felt::Felt;
@@ -159,6 +162,32 @@ impl IndexerClient {
         req: &IncomingSyncRequest,
     ) -> Result<(StatusCode, ApiErrorResponse)> {
         let url = format!("http://{}/v1/sync/incoming_state", self.api_host);
+        let resp = reqwest::Client::new().post(&url).json(req).send().await?;
+
+        let status = resp.status();
+        let error: ApiErrorResponse = resp.json().await?;
+        Ok((status, error))
+    }
+
+    /// POST `/v1/sync/outgoing_state` and return the parsed success response.
+    pub async fn outgoing_sync(&self, req: &OutgoingSyncRequest) -> Result<OutgoingSyncResponse> {
+        let url = format!("http://{}/v1/sync/outgoing_state", self.api_host);
+        let resp = reqwest::Client::new().post(&url).json(req).send().await?;
+
+        let status = resp.status();
+        let body = resp.text().await?;
+        if status != StatusCode::OK {
+            return Err(anyhow!("Expected 200, got {}: {}", status, body));
+        }
+        Ok(serde_json::from_str(&body)?)
+    }
+
+    /// POST `/v1/sync/outgoing_state` and return status + parsed error body.
+    pub async fn outgoing_sync_error(
+        &self,
+        req: &OutgoingSyncRequest,
+    ) -> Result<(StatusCode, ApiErrorResponse)> {
+        let url = format!("http://{}/v1/sync/outgoing_state", self.api_host);
         let resp = reqwest::Client::new().post(&url).json(req).send().await?;
 
         let status = resp.status();
