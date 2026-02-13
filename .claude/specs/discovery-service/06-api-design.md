@@ -197,7 +197,53 @@ Uses the same `block_ref`/`last_known_block` reorg-detection pattern and composi
 
 **Completion:** Check `cursor.is_complete()` — when all channel and subchannel discovery is done.
 
-## 6.7 History Endpoint (Not Yet Specified)
+## 6.7 Preflight Check Endpoint
+
+A non-paginated readiness check that reports what on-chain setup exists for a `(sender, recipient, token)` tuple. Performs at most 4 direct storage lookups — no scanning, no budget, no cursor.
+
+`POST /v1/sync/preflight_check`
+
+**Request:**
+
+```json
+{
+  "contract_address": "0x...",
+  "sender_address": "0x...",
+  "viewing_key": "0x...",
+  "recipient": "0x...",
+  "token": "0x..."
+}
+```
+
+- `contract_address`: The privacy pool contract address.
+- `sender_address`: The sender's on-chain address.
+- `viewing_key`: The sender's private viewing key (used to derive channel key).
+- `recipient`: The recipient's on-chain address.
+- `token`: The token address to check subchannel for.
+
+**Response:**
+
+```json
+{
+  "block_ref": "0x...",
+  "sender_registered": true,
+  "channel_exists": true,
+  "subchannel_exists": true
+}
+```
+
+- `block_ref`: Block hash pinning the reads. Clients can use this for consistency.
+- `sender_registered`: Whether the sender has a public key registered on-chain.
+- `channel_exists`: Whether the channel from sender to recipient exists. Always `false` if `sender_registered` is `false`.
+- `subchannel_exists`: Whether the token subchannel exists within the channel. Always `false` if `channel_exists` is `false`.
+
+**Error responses:**
+
+- `503 SERVICE_UNAVAILABLE` — No block indexed yet.
+- `500 INTERNAL_ERROR` — Failed to create RPC snapshot.
+- Standard `DiscoveryError` mapping for storage errors.
+
+## 6.8 History Endpoint (Not Yet Specified)
 
 `POST /v1/discovery/history`
 
