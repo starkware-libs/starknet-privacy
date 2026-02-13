@@ -9,7 +9,8 @@
 mod common;
 
 use common::{
-    DevnetClient, DevnetConfig, IndexerClient, DEFAULT_BLOCK_TIMEOUT, DEFAULT_STARTUP_TIMEOUT,
+    DevnetClient, DevnetConfig, IndexerClient, IndexerSpawnConfig, DEFAULT_BLOCK_TIMEOUT,
+    DEFAULT_STARTUP_TIMEOUT,
 };
 
 const BINARY: &str = env!("CARGO_BIN_EXE_discovery-service");
@@ -17,9 +18,15 @@ const BINARY: &str = env!("CARGO_BIN_EXE_discovery-service");
 #[tokio::test]
 async fn test_startup_and_shutdown() {
     let devnet = DevnetClient::spawn(DevnetConfig::default()).expect("Failed to spawn devnet");
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), None)
-        .await
-        .expect("Failed to spawn indexer");
+    let mut indexer = IndexerClient::spawn(
+        BINARY,
+        IndexerSpawnConfig {
+            ws_url: devnet.ws_url(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("Failed to spawn indexer");
 
     indexer
         .wait_for_logs(
@@ -42,9 +49,15 @@ async fn test_startup_and_shutdown() {
 #[tokio::test]
 async fn test_new_block_notification() {
     let devnet = DevnetClient::spawn(DevnetConfig::default()).expect("Failed to spawn devnet");
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), None)
-        .await
-        .expect("Failed to spawn indexer");
+    let mut indexer = IndexerClient::spawn(
+        BINARY,
+        IndexerSpawnConfig {
+            ws_url: devnet.ws_url(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("Failed to spawn indexer");
 
     indexer
         .wait_for_log("Subscribed to new heads", DEFAULT_STARTUP_TIMEOUT)
@@ -66,9 +79,15 @@ async fn test_new_block_notification() {
 async fn test_reconnection_on_devnet_restart() {
     let devnet = DevnetClient::spawn(DevnetConfig::default()).expect("Failed to spawn devnet");
     let port = devnet.port();
-    let mut indexer = IndexerClient::spawn_with_binary(BINARY, &devnet.ws_url(), None)
-        .await
-        .expect("Failed to spawn indexer");
+    let mut indexer = IndexerClient::spawn(
+        BINARY,
+        IndexerSpawnConfig {
+            ws_url: devnet.ws_url(),
+            ..Default::default()
+        },
+    )
+    .await
+    .expect("Failed to spawn indexer");
 
     indexer
         .wait_for_log("Subscribed to new heads", DEFAULT_STARTUP_TIMEOUT)
