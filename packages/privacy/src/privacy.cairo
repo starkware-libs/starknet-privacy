@@ -264,8 +264,7 @@ pub mod Privacy {
                         self.withdraw(:user_addr, :input, ref :token_balances), false,
                     ),
                     ClientAction::Swap(input) => (
-                        self.swap(:user_addr, :user_private_key, :input, ref :token_balances),
-                        false,
+                        self.swap(:user_addr, :user_private_key, :input), false,
                     ),
                 };
                 if should_execute {
@@ -499,15 +498,16 @@ pub mod Privacy {
             ]
         }
 
-        /// Triggers a swap: transfers input tokens to swap executor and executes swap.
+        /// Triggers a swap via the swap executor.
         /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical
         /// (checked in `main`).
+        /// A separate `Withdraw` action must be used before this to transfer input tokens to the
+        /// swap executor.
         fn swap(
             self: @ContractState,
             user_addr: ContractAddress,
             user_private_key: felt252,
             input: SwapInput,
-            ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
             input.assert_valid();
             let SwapInput {
@@ -520,7 +520,6 @@ pub mod Privacy {
                 in_amount,
                 channel_key,
                 index,
-                random,
             } = input;
 
             // Verify the user owns the output note's subchannel.
@@ -530,31 +529,20 @@ pub mod Privacy {
                 );
             // TODO: Verify on note?
 
-            // Use withdraw to transfer funds to the swap executor and emit a withdrawal event.
-            let withdraw_input = WithdrawInput {
-                to_addr: swap_executor, token: in_token, amount: in_amount, random,
-            };
-            let mut server_actions = self
-                .withdraw(:user_addr, input: withdraw_input, ref :token_balances);
-
-            // Append the swap action.
-            server_actions
-                .append(
-                    ServerAction::SwapWithExecutor(
-                        SwapWithExecutorInput {
-                            swap_executor,
-                            swap_contract,
-                            swap_selector,
-                            swap_calldata,
-                            in_token,
-                            out_token,
-                            in_amount,
-                            note_id,
-                        },
-                    ),
-                );
-
-            server_actions
+            array![
+                ServerAction::SwapWithExecutor(
+                    SwapWithExecutorInput {
+                        swap_executor,
+                        swap_contract,
+                        swap_selector,
+                        swap_calldata,
+                        in_token,
+                        out_token,
+                        in_amount,
+                        note_id,
+                    },
+                ),
+            ]
         }
 
         /// Returns the server actions to use a note.
