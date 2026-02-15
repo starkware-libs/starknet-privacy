@@ -71,14 +71,13 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
     debugLog("builder", `TokenBuilder.deposit for ${this.token}`, inputs);
     for (const input of inputs) {
       this.deposits.push({ token: this.token, amount: input.amount });
-      // If recipient is specified, set surplus recipient for this token
-      // Surplus handling will create a note for them with the remaining balance
-      if ("recipient" in input && input.recipient !== undefined) {
-        this.surplusAction = {
-          recipient: toBigInt(input.recipient),
+      if (input.recipient !== undefined) {
+        // similar to an explicit transfer
+        this.createNotes.push({
           token: this.token,
-          withdraw: false,
-        };
+          amount: input.amount,
+          recipient: toBigInt(input.recipient),
+        });
       }
     }
     return this;
