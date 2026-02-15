@@ -333,16 +333,7 @@ pub(crate) impl UserImpl of UserTrait {
             *self.privacy.address,
             || {
                 let mut state = Privacy::contract_state_for_testing();
-                let mut token_balances: TokenBalances = Default::default();
-                // Swap internally calls withdraw which subtracts from balance.
-                token_balances.add_balance(token: input.in_token, amount: input.in_amount);
-                state
-                    .swap(
-                        user_addr: *self.address,
-                        user_private_key: *self.private_key,
-                        :input,
-                        ref :token_balances,
-                    )
+                state.swap(user_addr: *self.address, user_private_key: *self.private_key, :input)
             },
         )
             .span()
@@ -1190,19 +1181,17 @@ pub(crate) impl UserImpl of UserTrait {
         token.supply(address: *self.address, :amount);
     }
 
-    /// Returns (random, swap_input).
-    fn swap_input_with_generated_random(
-        ref self: User,
+    fn swap_input(
+        self: @User,
         in_token: ContractAddress,
         out_token: ContractAddress,
         amount: u128,
         channel_key: felt252,
         index: usize,
-    ) -> (felt252, SwapInput) {
-        let random = self.get_random();
-        let swap_input = SwapInput {
-            swap_executor: self.privacy.swap_executor.address,
-            swap_contract: self.privacy.mock_amm,
+    ) -> SwapInput {
+        SwapInput {
+            swap_executor: *self.privacy.swap_executor.address,
+            swap_contract: *self.privacy.mock_amm,
             swap_selector: selector!("swap"),
             swap_calldata: array![in_token.into(), out_token.into(), amount.into(), 0].span(),
             in_token,
@@ -1210,9 +1199,7 @@ pub(crate) impl UserImpl of UserTrait {
             in_amount: amount,
             channel_key,
             index,
-            random,
-        };
-        (random, swap_input)
+        }
     }
 }
 
