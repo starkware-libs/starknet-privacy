@@ -120,7 +120,7 @@ describe("Private Transfers Integration", () => {
         await alice
           .build(AUTO_ALL)
           .with(env.ace)
-            .deposit({ amount: 100n, recipient: env.alice.address })
+            .deposit({ amount: 100n })
             .transfer({ recipient: env.bob.address, amount: 50n })
             .surplusTo(env.alice.address, true)
           .with(env.bee)
@@ -318,6 +318,74 @@ describe("Private Transfers Integration", () => {
   });
 
   // ============================================================================
+  // Deposit with explicit recipients
+  // ============================================================================
+  describe("Deposit with explicit recipients", () => {
+    it("deposits to bob and carol in same token", async () => {
+      const { env, transfers } = testEnv;
+      const { alice, bob, carol } = transfers;
+      const ace = toBigInt(env.ace);
+
+      mocknet.executeOutside(await bob.build().register().execute());
+      mocknet.executeOutside(await carol.build().register().execute());
+
+      // prettier-ignore
+      mocknet.executeOutside(
+        await alice
+          .build(AUTO_ALL)
+          .with(env.ace)
+            .deposit(
+              { amount: 30n, recipient: env.bob.address },
+              { amount: 50n, recipient: env.carol.address },
+            )
+          .execute()
+      );
+
+      const bobNotes = (await bob.discoverNotes()).notes.get(ace) ?? [];
+      expect(bobNotes.length).toBe(1);
+      expect(bobNotes[0].amount).toBe(30n);
+
+      const carolNotes = (await carol.discoverNotes()).notes.get(ace) ?? [];
+      expect(carolNotes.length).toBe(1);
+      expect(carolNotes[0].amount).toBe(50n);
+
+      expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(920n); // 1000 - 30 - 50
+    });
+
+    it("deposits to bob in ACE and carol in BEE", async () => {
+      const { env, transfers } = testEnv;
+      const { alice, bob, carol } = transfers;
+      const ace = toBigInt(env.ace);
+      const bee = toBigInt(env.bee);
+
+      mocknet.executeOutside(await bob.build().register().execute());
+      mocknet.executeOutside(await carol.build().register().execute());
+
+      // prettier-ignore
+      mocknet.executeOutside(
+        await alice
+          .build(AUTO_ALL)
+          .with(env.ace)
+            .deposit({ amount: 40n, recipient: env.bob.address })
+          .with(env.bee)
+            .deposit({ amount: 60n, recipient: env.carol.address })
+          .execute()
+      );
+
+      const bobAceNotes = (await bob.discoverNotes()).notes.get(ace) ?? [];
+      expect(bobAceNotes.length).toBe(1);
+      expect(bobAceNotes[0].amount).toBe(40n);
+
+      const carolBeeNotes = (await carol.discoverNotes()).notes.get(bee) ?? [];
+      expect(carolBeeNotes.length).toBe(1);
+      expect(carolBeeNotes[0].amount).toBe(60n);
+
+      expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(960n); // 1000 - 40
+      expect(env.contracts.get(bee).balanceOf(env.alice.address)).toBe(940n); // 1000 - 60
+    });
+  });
+
+  // ============================================================================
   // Swap Scenario (separate describe to use different setup)
   // ============================================================================
   const SWAP_HELPER_ADDRESS = "0x53A2";
@@ -345,7 +413,7 @@ describe("Private Transfers Integration", () => {
       await alice
         .build(AUTO_ALL)
         .with(env.ace)
-          .deposit({ amount: 100n, recipient: env.alice.address })
+          .deposit({ amount: 100n })
           .withdraw({ recipient: swapHelper.address, amount: 10n })
         .with(env.bee)
           .transfer({ recipient: env.alice.address, amount: Open, depositor: swapHelper.address })

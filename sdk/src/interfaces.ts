@@ -383,9 +383,7 @@ export type TransferOutput = { recipient: StarknetAddress } & (
   | { amount: Open; depositor: StarknetAddress }
 );
 export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
-export type DepositInput = { recipient?: StarknetAddress } & {
-  amount: Amount;
-};
+export type DepositInput = { recipient?: StarknetAddress; amount: Amount };
 
 /**
  * Token-specific sub-builder for operations on a single token.

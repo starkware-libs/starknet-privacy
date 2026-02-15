@@ -733,6 +733,10 @@ export const PrivacyPoolABI = [
             "type": "core::felt252"
           },
           {
+            "name": "token",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
             "name": "amount",
             "type": "core::integer::u128"
           }
