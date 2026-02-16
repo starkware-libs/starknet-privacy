@@ -7,8 +7,8 @@ pub mod Privacy {
     use openzeppelin::introspection::src5::SRC5Component;
     use privacy::actions::{
         AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
-        DepositInput, InputValidation, InvokeInput, OpenChannelInput, OpenSubchannelInput,
-        ReadAssertInput, ServerAction, SetViewingKeyInput, SwapInput, TransferFromInput,
+        DepositInput, InputValidation, InvokeExternalInput, InvokeInput, OpenChannelInput,
+        OpenSubchannelInput, ReadAssertInput, ServerAction, SetViewingKeyInput, TransferFromInput,
         TransferToInput, UseNoteInput, WithdrawInput,
     };
     use privacy::errors::internal_errors;
@@ -263,9 +263,7 @@ pub mod Privacy {
                     ClientAction::Withdraw(input) => (
                         self.withdraw(:user_addr, :input, ref :token_balances), false,
                     ),
-                    ClientAction::Swap(input) => (
-                        self.swap(:user_addr, :user_private_key, :input), false,
-                    ),
+                    ClientAction::InvokeExternal(input) => (self.invoke_external(:input), false),
                 };
                 if should_execute {
                     has_privacy_action = true;
@@ -498,52 +496,14 @@ pub mod Privacy {
             ]
         }
 
-        /// Triggers a swap via the swap executor.
-        /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical
-        /// (checked in `main`).
-        /// A separate `Withdraw` action must be used before this to transfer input tokens to the
-        /// swap executor.
-        fn swap(
-            self: @ContractState,
-            user_addr: ContractAddress,
-            user_private_key: felt252,
-            input: SwapInput,
+        /// Invokes an external contract by forwarding the contract address and calldata as a
+        /// server-side Invoke action.
+        fn invoke_external(
+            self: @ContractState, input: InvokeExternalInput,
         ) -> Array<ServerAction> {
             input.assert_valid();
-            let SwapInput {
-                swap_executor,
-                swap_contract,
-                swap_selector,
-                swap_calldata,
-                in_token,
-                out_token,
-                in_amount,
-                channel_key,
-                index,
-            } = input;
-
-            // Verify the user owns the output note's subchannel.
-            let note_id = self
-                ._checked_note_id(
-                    :user_addr, :user_private_key, :channel_key, token: out_token, :index,
-                );
-            // TODO: Verify on note?
-
-            // Serialize executor params into calldata for the generic invoke.
-            let mut calldata: Array<felt252> = array![];
-            swap_contract.serialize(ref calldata);
-            swap_selector.serialize(ref calldata);
-            swap_calldata.serialize(ref calldata);
-            in_token.serialize(ref calldata);
-            out_token.serialize(ref calldata);
-            in_amount.serialize(ref calldata);
-            note_id.serialize(ref calldata);
-
-            array![
-                ServerAction::Invoke(
-                    InvokeInput { contract_address: swap_executor, calldata: calldata.span() },
-                ),
-            ]
+            let InvokeExternalInput { contract_address, calldata } = input;
+            array![ServerAction::Invoke(InvokeInput { contract_address, calldata })]
         }
 
         /// Returns the server actions to use a note.
