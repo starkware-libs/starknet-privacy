@@ -212,51 +212,19 @@ pub(crate) impl WithdrawInputValid of InputValidation<WithdrawInput> {
     }
 }
 
-/// Input for the `Swap` client action.
+/// Input for the `PrepareInvoke` client action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct SwapInput {
-    /// The swap executor contract address.
-    // TODO: Read from storage.
-    pub swap_executor: ContractAddress,
-    /// The AMM/DEX contract to call for the swap.
-    pub swap_contract: ContractAddress,
-    /// The selector of the swap function to call.
-    pub swap_selector: felt252,
-    /// The calldata to pass to the swap function.
-    pub swap_calldata: Span<felt252>,
-    /// The token to swap from.
-    pub in_token: ContractAddress,
-    /// The token to swap to.
-    pub out_token: ContractAddress,
-    /// The amount to swap.
-    pub in_amount: u128,
-    /// The channel key for the note to deposit into.
-    pub channel_key: felt252,
-    /// The index of the note to deposit into within the channel.
-    pub index: usize,
+pub struct PrepareInvokeInput {
+    /// The target contract address to invoke.
+    pub contract_address: ContractAddress,
+    /// The calldata to pass to the target contract.
+    pub calldata: Span<felt252>,
 }
 
-pub(crate) impl SwapInputValid of InputValidation<SwapInput> {
-    fn assert_valid(self: SwapInput) {
-        let SwapInput {
-            swap_executor,
-            swap_contract,
-            swap_selector,
-            swap_calldata: _,
-            in_token,
-            out_token,
-            in_amount,
-            channel_key,
-            index: _,
-        } = self;
-        assert(swap_executor.is_non_zero(), errors::ZERO_SWAP_EXECUTOR);
-        assert(swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
-        assert(swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
-        assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
-        assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
-        assert(in_amount.is_non_zero(), errors::ZERO_AMOUNT);
-        assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-        assert(in_token != out_token, errors::SWAP_TO_SAME_TOKEN);
+pub(crate) impl PrepareInvokeInputValid of InputValidation<PrepareInvokeInput> {
+    fn assert_valid(self: PrepareInvokeInput) {
+        let PrepareInvokeInput { contract_address, calldata: _ } = self;
+        assert(contract_address.is_non_zero(), errors::ZERO_CONTRACT_ADDRESS);
     }
 }
 
@@ -283,9 +251,9 @@ pub enum ClientAction {
     UseNote: UseNoteInput,
     /// Withdraw funds from the contract.
     Withdraw: WithdrawInput,
-    /// Triggers a swap: transfers input tokens to swap executor and executes swap.
-    /// The swap output is deposited into an open note.
-    Swap: SwapInput,
+    /// Prepares an invoke action: forwards the contract address and calldata as a server-side
+    /// Invoke action.
+    PrepareInvoke: PrepareInvokeInput,
 }
 
 #[generate_trait]
@@ -297,7 +265,7 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
     const USE_NOTES_PHASE: u8 = 4;
     const CREATE_NOTES_PHASE: u8 = 5;
     const WITHDRAW_PHASE: u8 = 6;
-    const SWAP_PHASE: u8 = 7;
+    const INVOKE_PHASE: u8 = 7;
 
     /// Returns the phase associated with this action.
     fn phase(self: @ClientAction) -> u8 {
@@ -310,7 +278,7 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
             ClientAction::CreateOpenNote(_) => Self::CREATE_NOTES_PHASE,
             ClientAction::UseNote(_) => Self::USE_NOTES_PHASE,
             ClientAction::Withdraw(_) => Self::WITHDRAW_PHASE,
-            ClientAction::Swap(_) => Self::SWAP_PHASE,
+            ClientAction::PrepareInvoke(_) => Self::INVOKE_PHASE,
         }
     }
 }

@@ -16,6 +16,10 @@ pub mod SwapExecutor {
 
     #[abi(embed_v0)]
     pub impl SwapExecutorImpl of ISwapExecutor<ContractState> {
+        // TODO: Validate inputs (e.g. non-zero addresses, non-zero amounts, in_token !=
+        // out_token). These validations were previously done by the privacy contract's client
+        // action, but now that the client action is generic (PrepareInvoke), input validation
+        // is the executor's responsibility.
         fn privacy_invoke(
             ref self: ContractState,
             swap_contract: ContractAddress,
