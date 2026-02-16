@@ -4,8 +4,9 @@ use core::traits::Neg;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    InvokeInput, OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, SwapInput,
-    TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
+    InvokeInput, OpenChannelInput, OpenSubchannelInput, PrepareInvokeInput, ServerAction,
+    SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+    WriteOnceInput,
 };
 use privacy::events;
 use privacy::hashes::{
@@ -67,6 +68,13 @@ pub impl NoteZero of Zero<Note> {
 
     fn is_non_zero(self: @Note) -> bool {
         !self.is_zero()
+    }
+}
+
+pub impl PrepareInvokeInputIntoInvokeInput of Into<PrepareInvokeInput, InvokeInput> {
+    fn into(self: PrepareInvokeInput) -> InvokeInput {
+        let PrepareInvokeInput { contract_address, calldata } = self;
+        InvokeInput { contract_address, calldata }
     }
 }
 
@@ -328,12 +336,12 @@ pub(crate) impl UserImpl of UserTrait {
         (random, output)
     }
 
-    fn internal_swap(self: @User, input: SwapInput) -> Span<ServerAction> {
+    fn internal_prepare_invoke(self: @User, input: PrepareInvokeInput) -> Span<ServerAction> {
         interact_with_state(
             *self.privacy.address,
             || {
                 let mut state = Privacy::contract_state_for_testing();
-                state.swap(user_addr: *self.address, user_private_key: *self.private_key, :input)
+                state.prepare_invoke(:input)
             },
         )
             .span()
@@ -1181,24 +1189,26 @@ pub(crate) impl UserImpl of UserTrait {
         token.supply(address: *self.address, :amount);
     }
 
-    fn swap_input(
+    fn prepare_invoke_swap_input(
         self: @User,
         in_token: ContractAddress,
         out_token: ContractAddress,
         amount: u128,
         channel_key: felt252,
         index: usize,
-    ) -> SwapInput {
-        SwapInput {
-            swap_executor: *self.privacy.swap_executor.address,
+    ) -> PrepareInvokeInput {
+        let note_id = compute_note_id(:channel_key, token: out_token, :index);
+        let calldata = build_swap_executor_calldata(
             swap_contract: *self.privacy.mock_amm,
             swap_selector: selector!("swap"),
             swap_calldata: array![in_token.into(), out_token.into(), amount.into(), 0].span(),
-            in_token,
-            out_token,
+            :in_token,
+            :out_token,
             in_amount: amount,
-            channel_key,
-            index,
+            :note_id,
+        );
+        PrepareInvokeInput {
+            contract_address: *self.privacy.swap_executor.address, calldata: calldata.span(),
         }
     }
 }
@@ -1798,6 +1808,27 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
     }
 }
 
+/// Builds the calldata for a swap executor invocation.
+pub(crate) fn build_swap_executor_calldata(
+    swap_contract: ContractAddress,
+    swap_selector: felt252,
+    swap_calldata: Span<felt252>,
+    in_token: ContractAddress,
+    out_token: ContractAddress,
+    in_amount: u128,
+    note_id: felt252,
+) -> Array<felt252> {
+    let mut calldata: Array<felt252> = array![];
+    swap_contract.serialize(ref calldata);
+    swap_selector.serialize(ref calldata);
+    swap_calldata.serialize(ref calldata);
+    in_token.serialize(ref calldata);
+    out_token.serialize(ref calldata);
+    in_amount.serialize(ref calldata);
+    note_id.serialize(ref calldata);
+    calldata
+}
+
 /// Creates an `InvokeInput` for the swap executor from the given swap parameters.
 pub(crate) fn invoke_swap_input(
     swap_executor: ContractAddress,
@@ -1809,14 +1840,9 @@ pub(crate) fn invoke_swap_input(
     in_amount: u128,
     note_id: felt252,
 ) -> InvokeInput {
-    let mut calldata: Array<felt252> = array![];
-    swap_contract.serialize(ref calldata);
-    swap_selector.serialize(ref calldata);
-    swap_calldata.serialize(ref calldata);
-    in_token.serialize(ref calldata);
-    out_token.serialize(ref calldata);
-    in_amount.serialize(ref calldata);
-    note_id.serialize(ref calldata);
+    let calldata = build_swap_executor_calldata(
+        :swap_contract, :swap_selector, :swap_calldata, :in_token, :out_token, :in_amount, :note_id,
+    );
     InvokeInput { contract_address: swap_executor, calldata: calldata.span() }
 }
 
