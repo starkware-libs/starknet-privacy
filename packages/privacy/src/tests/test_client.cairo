@@ -2,8 +2,7 @@ use core::num::traits::Zero;
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
     OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction, SetViewingKeyInput,
-    SwapInput, SwapWithExecutorInput, TransferFromInput, TransferToInput, UseNoteInput,
-    WithdrawInput,
+    SwapInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
 use privacy::objects::{EncSubchannelInfo, EncUserAddr};
@@ -12,6 +11,7 @@ use privacy::tests::utils_for_tests::{
     ComplianceTrait, CreateEncNoteInputIntoServerActionTrait,
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
+    invoke_swap_input,
 };
 use privacy::utils::constants::{OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
@@ -4129,8 +4129,8 @@ fn test_execute_use_note_swap() {
                 amount,
             },
         ),
-        ServerAction::SwapWithExecutor(
-            SwapWithExecutorInput {
+        ServerAction::Invoke(
+            invoke_swap_input(
                 swap_executor: swap_input.swap_executor,
                 swap_contract: swap_input.swap_contract,
                 swap_selector: swap_input.swap_selector,
@@ -4138,8 +4138,8 @@ fn test_execute_use_note_swap() {
                 in_token: swap_input.in_token,
                 out_token: swap_input.out_token,
                 in_amount: swap_input.in_amount,
-                note_id,
-            },
+                :note_id,
+            ),
         ),
     ]
         .span();
@@ -4460,22 +4460,22 @@ fn test_internal_actions() {
     };
     let actions = user_1.internal_swap(input: swap_input);
 
-    // Expected: SwapWithExecutor.
+    // Expected: Invoke.
     let expected_note_id = compute_note_id(
         channel_key: channel_key_swap, token: out_token_addr, :index,
     );
     let expected_actions = [
-        ServerAction::SwapWithExecutor(
-            SwapWithExecutorInput {
-                swap_executor,
-                swap_contract,
-                swap_selector,
+        ServerAction::Invoke(
+            invoke_swap_input(
+                :swap_executor,
+                :swap_contract,
+                :swap_selector,
                 swap_calldata: swap_calldata.span(),
                 in_token: token_addr,
                 out_token: out_token_addr,
                 in_amount: swap_amount,
                 note_id: expected_note_id,
-            },
+            ),
         ),
     ]
         .span();
@@ -6127,9 +6127,10 @@ fn test_swap_client_action() {
     );
 }
 
+// TODO: Consider moving to swap_executor tests.
 #[test]
 fn test_swap_without_withdraw_fails() {
-    // Verify that applying a SwapWithExecutor server action without a prior withdraw fails
+    // Verify that applying an Invoke server action without a prior withdraw fails
     // because the swap executor doesn't have the input tokens.
     let mut test: Test = Default::default();
     let in_token = test.new_token();
@@ -6183,8 +6184,8 @@ fn test_swap_without_withdraw_fails() {
     let note_id = compute_note_id(:channel_key, token: out_token_addr, index: 0);
     expected_server_actions
         .append(
-            ServerAction::SwapWithExecutor(
-                SwapWithExecutorInput {
+            ServerAction::Invoke(
+                invoke_swap_input(
                     swap_executor: swap_input.swap_executor,
                     swap_contract: swap_input.swap_contract,
                     swap_selector: swap_input.swap_selector,
@@ -6192,8 +6193,8 @@ fn test_swap_without_withdraw_fails() {
                     in_token: swap_input.in_token,
                     out_token: swap_input.out_token,
                     in_amount: swap_input.in_amount,
-                    note_id,
-                },
+                    :note_id,
+                ),
             ),
         );
     assert_eq!(server_actions, expected_server_actions.span());
@@ -6671,9 +6672,9 @@ fn test_swap_doesnt_execute_during_execute() {
         ),
         // Withdraw: EmitWithdrawal.
         ServerAction::EmitWithdrawal(expected_withdrawal_event),
-        // Swap: SwapExecutor.
-        ServerAction::SwapWithExecutor(
-            SwapWithExecutorInput {
+        // Swap: Invoke.
+        ServerAction::Invoke(
+            invoke_swap_input(
                 swap_executor: swap_executor_addr,
                 swap_contract: amm_address,
                 swap_selector: selector!("swap"),
@@ -6682,7 +6683,7 @@ fn test_swap_doesnt_execute_during_execute() {
                 out_token: out_token_addr,
                 in_amount: swap_amount,
                 note_id: open_note_id,
-            },
+            ),
         ),
     ]
         .span();

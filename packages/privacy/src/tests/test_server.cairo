@@ -1,13 +1,13 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    AppendToVecInput, ReadAssertInput, ServerAction, SwapWithExecutorInput, TransferFromInput,
+    AppendToVecInput, InvokeInput, ReadAssertInput, ServerAction, TransferFromInput,
     TransferToInput,
 };
 use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note};
 use privacy::swap_executor::errors as swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
-    constants,
+    constants, invoke_swap_input,
 };
 use privacy::utils::constants::{OPEN_NOTE_SALT, PROOF_VALIDITY_BLOCK_INTERVAL};
 use privacy::utils::{ProofFacts, _compute_message_hash, open_note, to_write_once_action, unpacking};
@@ -930,7 +930,7 @@ fn test_deposit_to_open_note_transfer_assertions() {
 }
 
 #[test]
-fn test_apply_swap_with_executor() {
+fn test_apply_invoke_swap() {
     let mut test: Test = Default::default();
     let input_token = test.new_token();
     let output_token = test.new_token();
@@ -981,23 +981,23 @@ fn test_apply_swap_with_executor() {
     ]
         .span();
 
-    // Create Swap input.
-    let swap_input = SwapWithExecutorInput {
+    // Create Invoke input.
+    let invoke_input = invoke_swap_input(
         swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
-        swap_calldata,
+        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
-        note_id,
         in_amount: swap_amount,
-    };
+        :note_id,
+    );
 
     // Spy on events before executing.
     let mut spy = spy_events();
 
-    // Execute the swap action.
-    test.privacy.apply_actions([ServerAction::SwapWithExecutor(swap_input)].span());
+    // Execute the invoke action.
+    test.privacy.apply_actions([ServerAction::Invoke(invoke_input)].span());
 
     // Verify open note was filled with swap amount.
     let filled_note = test.privacy.get_note(:note_id);
@@ -1035,7 +1035,56 @@ fn test_apply_swap_with_executor() {
 }
 
 #[test]
-fn test_apply_swap_with_executor_assertions() {
+fn test_apply_invoke_missing_selector() {
+    let mut test: Test = Default::default();
+    let amm_address = test.privacy.mock_amm;
+
+    // Invoke the AMM contract which doesn't have `privacy_invoke` - should fail with
+    // ENTRYPOINT_NOT_FOUND.
+    let invoke_input = InvokeInput { contract_address: amm_address, calldata: [].span() };
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: 'ENTRYPOINT_NOT_FOUND');
+
+    // Invoke the privacy contract iteslf, which doesn't have `privacy_invoke` - should fail with
+    // ENTRYPOINT_NOT_FOUND.
+    let invoke_input = InvokeInput { contract_address: test.privacy.address, calldata: [].span() };
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: 'ENTRYPOINT_NOT_FOUND');
+}
+
+#[test]
+fn test_apply_invoke_propagates_panic() {
+    let mut test: Test = Default::default();
+    let input_token = test.new_token();
+    let output_token = test.new_token();
+    let swap_amount = constants::DEFAULT_AMOUNT;
+    let executor_addr = test.privacy.swap_executor.address;
+    let amm_address = test.privacy.mock_amm;
+
+    // Don't fund the swap executor - `privacy_invoke` will panic with INSUFFICIENT_BALANCE.
+    let invoke_input = invoke_swap_input(
+        swap_executor: executor_addr,
+        swap_contract: amm_address,
+        swap_selector: selector!("swap"),
+        swap_calldata: [
+            input_token.contract_address().into(), output_token.contract_address().into(),
+            swap_amount.into(), 0,
+        ]
+            .span(),
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        in_amount: swap_amount,
+        note_id: 'SOME_NOTE',
+    );
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(
+        :result, expected_error: swap_executor_errors::INSUFFICIENT_BALANCE,
+    );
+}
+
+// TODO: Consider moving to swap_executor tests.
+#[test]
+fn test_apply_invoke_swap_with_executor_assertions() {
     let mut test: Test = Default::default();
     let input_token = test.new_token();
     let output_token = test.new_token();
@@ -1066,22 +1115,20 @@ fn test_apply_swap_with_executor_assertions() {
     ]
         .span();
 
-    // Base valid swap input (will be modified for each error case).
-    let valid_swap_input = SwapWithExecutorInput {
+    // Base valid invoke input (will be modified for each error case).
+    let valid_invoke_input = invoke_swap_input(
         swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
-        swap_calldata,
+        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
-        note_id,
         in_amount: swap_amount,
-    };
+        :note_id,
+    );
 
     // Catch INSUFFICIENT_BALANCE.
-    let result = test
-        .privacy
-        .safe_apply_actions([ServerAction::SwapWithExecutor(valid_swap_input)].span());
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(valid_invoke_input)].span());
     assert_panic_with_felt_error(
         :result, expected_error: swap_executor_errors::INSUFFICIENT_BALANCE,
     );
@@ -1089,20 +1136,23 @@ fn test_apply_swap_with_executor_assertions() {
     // Catch INSUFFICIENT_BALANCE from AMM.
     // Fund swap executor with input tokens.
     input_token.supply(address: executor_addr, amount: swap_amount);
-    let result = test
-        .privacy
-        .safe_apply_actions([ServerAction::SwapWithExecutor(valid_swap_input)].span());
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(valid_invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: 'ERC20: insufficient balance');
 
     // Catch ZERO_OUT_AMOUNT
     // Fund swap executor with input tokens.
     input_token.supply(address: executor_addr, amount: swap_amount);
-    let swap_input = SwapWithExecutorInput {
-        swap_selector: selector!("noop_swap"), swap_calldata: [].span(), ..valid_swap_input,
-    };
-    let result = test
-        .privacy
-        .safe_apply_actions([ServerAction::SwapWithExecutor(swap_input)].span());
+    let noop_invoke_input = invoke_swap_input(
+        swap_executor: executor_addr,
+        swap_contract: amm_address,
+        swap_selector: selector!("noop_swap"),
+        swap_calldata: [].span(),
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        in_amount: swap_amount,
+        :note_id,
+    );
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(noop_invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_OUT_AMOUNT);
 
     // Catch RECEIVED_AMOUNT_OVERFLOW
@@ -1111,14 +1161,19 @@ fn test_apply_swap_with_executor_assertions() {
     output_token.supply(address: amm_address, amount: 1);
     // Fund swap executor with input tokens.
     input_token.supply(address: executor_addr, amount: swap_amount);
-    let swap_input = SwapWithExecutorInput {
+    let overflow_invoke_input = invoke_swap_input(
+        swap_executor: executor_addr,
+        swap_contract: amm_address,
         swap_selector: selector!("overflow_swap"),
         swap_calldata: [output_token.contract_address().into()].span(),
-        ..valid_swap_input,
-    };
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        in_amount: swap_amount,
+        :note_id,
+    );
     let result = test
         .privacy
-        .safe_apply_actions([ServerAction::SwapWithExecutor(swap_input)].span());
+        .safe_apply_actions([ServerAction::Invoke(overflow_invoke_input)].span());
     assert_panic_with_felt_error(
         :result, expected_error: swap_executor_errors::RECEIVED_AMOUNT_OVERFLOW,
     );
@@ -1157,19 +1212,17 @@ fn test_apply_swap_with_executor_deposit_assertions() {
 
     // Catch NOTE_NOT_FOUND
     let nonexistent_note_id = 'NONEXISTENT_NOTE';
-    let swap_input = SwapWithExecutorInput {
+    let invoke_input = invoke_swap_input(
         swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
-        swap_calldata,
+        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
-        note_id: nonexistent_note_id,
         in_amount: swap_amount,
-    };
-    let result = test
-        .privacy
-        .safe_apply_actions([ServerAction::SwapWithExecutor(swap_input)].span());
+        note_id: nonexistent_note_id,
+    );
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     // Catch NOTE_NOT_OPEN
@@ -1180,19 +1233,17 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     user.cheat_create_enc_note_e2e(:create_note_input);
     let (note_id_enc, _) = user.compute_enc_note(:create_note_input);
 
-    let swap_input = SwapWithExecutorInput {
+    let invoke_input = invoke_swap_input(
         swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
-        swap_calldata,
+        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
-        note_id: note_id_enc,
         in_amount: swap_amount,
-    };
-    let result = test
-        .privacy
-        .safe_apply_actions([ServerAction::SwapWithExecutor(swap_input)].span());
+        note_id: note_id_enc,
+    );
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
 
     // Catch NOTE_ALREADY_DEPOSITED
@@ -1203,24 +1254,22 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id_filled, _) = user.compute_open_note(:create_note_input);
 
-    let swap_input = SwapWithExecutorInput {
+    let invoke_input = invoke_swap_input(
         swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
-        swap_calldata,
+        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
-        note_id: note_id_filled,
         in_amount: swap_amount,
-    };
+        note_id: note_id_filled,
+    );
 
     // First swap succeeds.
-    test.privacy.apply_actions([ServerAction::SwapWithExecutor(swap_input)].span());
+    test.privacy.apply_actions([ServerAction::Invoke(invoke_input)].span());
 
     // Second swap to same note should fail.
-    let result = test
-        .privacy
-        .safe_apply_actions([ServerAction::SwapWithExecutor(swap_input)].span());
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
     // Catch CALLER_NOT_DEPOSITOR
@@ -1232,18 +1281,16 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id_mismatch, _) = user.compute_open_note(:create_note_input);
 
-    let swap_input = SwapWithExecutorInput {
+    let invoke_input = invoke_swap_input(
         swap_executor: executor_addr,
         swap_contract: amm_address,
         swap_selector: selector!("swap"),
-        swap_calldata,
+        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
-        note_id: note_id_mismatch,
         in_amount: swap_amount,
-    };
-    let result = test
-        .privacy
-        .safe_apply_actions([ServerAction::SwapWithExecutor(swap_input)].span());
+        note_id: note_id_mismatch,
+    );
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
 }
