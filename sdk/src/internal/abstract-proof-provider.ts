@@ -51,5 +51,5 @@ export abstract class AbstractProofProvider implements ProofProviderInterface {
     };
   }
 
-  abstract prove(invocation: ProofInvocation): Promise<Proof>;
+  abstract prove(invocation: ProofInvocation): Proof | Promise<Proof>;
 }

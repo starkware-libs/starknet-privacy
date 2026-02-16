@@ -31,7 +31,7 @@ export class MockProofProvider extends AbstractProofProvider {
     return constants.StarknetChainId.SN_SEPOLIA;
   }
 
-  async prove(invocation: ProofInvocation): Promise<Proof> {
+  prove(invocation: ProofInvocation): Proof {
     const calldata = invocation.calldata as string[];
     const userAddress = BigInt(calldata[0]);
     const privateKey = BigInt(calldata[1]);
