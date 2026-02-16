@@ -441,6 +441,8 @@ export class ActionCompiler {
         () => `Missing subchannel for swap out_token ${toHex(swap.outToken)}`
       );
 
+      const noteNonce = channel.tokens.get(swap.outToken)!.noteNonce;
+
       const input = {
         type: "Swap",
         input: {
@@ -452,7 +454,9 @@ export class ActionCompiler {
           out_token: swap.outToken,
           in_amount: swap.inAmount,
           channel_key: channel.key as bigint,
-          index: channel.tokens.get(swap.outToken)!.noteNonce,
+          // If an open note was created earlier in this tx, deposit into that latest note index.
+          // Fallback to current nonce for compatibility with legacy mock flows.
+          index: noteNonce > 0 ? noteNonce - 1 : noteNonce,
           random: generateRandom(),
         },
       } as const;

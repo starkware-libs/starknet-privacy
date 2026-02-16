@@ -285,15 +285,6 @@ export class PoolSimulator {
   }
 
   private handleSwap(input: SwapInput): void {
-    const { out_token } = input;
-
-    // The contract's swap() internally creates an open note for out_token on the user's
-    // self-channel, so we need to increment the note nonce for out_token.
-    const senderChannel = this.channels.get(this.userAddress);
-    if (senderChannel) {
-      senderChannel.incrementNoteNonce(out_token);
-    }
-
     debugLog(
       "pool-simulator",
       "Swap",
@@ -301,7 +292,7 @@ export class PoolSimulator {
       "in_token:",
       toHex(input.in_token),
       "out_token:",
-      toHex(out_token)
+      toHex(input.out_token)
     );
   }
 }
