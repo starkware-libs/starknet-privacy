@@ -96,7 +96,7 @@
 8. Attempt to use multiple notes that were created for different viewing keys in the same transfer.
 9. Deposit, change viewing key, deposit again.
 10. Change viewing key, create note, use with new key.
-11. Set viewing key and verify that compliance is still able to view all user data (encrypted private key updated).
+11. Set viewing key and verify that the auditing entity is still able to view all user data (encrypted private key updated).
 12. Set viewing key multiple times across 10 blocks.
 13. After set viewing key, open a new channel to the user using the new viewing key (reopen channel that already existed with previous viewing key).
 14. Try to create a note to a channel associated with the old viewing key after SetViewingKey.
@@ -110,8 +110,8 @@
 - Try to modularize flows, so we can share modules across different flows (i.e. merging notes, depositing to a single note).
 - Use test parameters to create multiple similar tests at once.
 
-# Set compliance public key
-- register+withdraw (enc with compliance pub key), set compliance pub key, register+withdraw, test its the right compliance key + right encryption (try to decrypt) for both before and after the set.
+# Set auditing entity public key
+- register+withdraw (enc with auditing entity pub key), set auditing entity pub key, register+withdraw, test its the right auditing entity key + right encryption (try to decrypt) for both before and after the set.
 
 # General
 - Test actions phases (all actions together in the correct order)

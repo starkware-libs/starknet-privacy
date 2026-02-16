@@ -34,7 +34,7 @@ const SHARED_X: felt252 = 0x9abc;
 // Additional inputs for encryption tests
 const EPHEMERAL_SECRET: felt252 = 0xabcd;
 const AMOUNT: u128 = 1000;
-const COMPLIANCE_PRIVATE_KEY: felt252 = 0x54321;
+const AUDITING_ENTITY_PRIVATE_KEY: felt252 = 0x54321;
 const USER_ADDR: felt252 = 0x999;
 const USER_PRIVATE_KEY: felt252 = 0x888;
 
@@ -93,8 +93,8 @@ fn generate_reference_hashes() {
     let enc_note_amount = enc_note_packed_value(CHANNEL_KEY, token, INDEX, SALT, AMOUNT);
     let dec_note_amount = decode_note_amount(enc_note_amount, CHANNEL_KEY, token, INDEX);
 
-    // Derive compliance public key for ECDH tests
-    let compliance_public_key = derive_public_key(COMPLIANCE_PRIVATE_KEY);
+    // Derive auditing entity public key for ECDH tests
+    let auditing_entity_public_key = derive_public_key(AUDITING_ENTITY_PRIVATE_KEY);
     let user_addr = to_address(USER_ADDR);
 
     // Encrypt outgoing channel info
@@ -102,13 +102,13 @@ fn generate_reference_hashes() {
         sender, SENDER_PRIVATE_KEY, INDEX, recipient, SALT.into(),
     );
 
-    // Encrypt private key (for compliance)
+    // Encrypt private key (for auditing entity)
     let enc_private_key = encrypt_private_key(
-        EPHEMERAL_SECRET, compliance_public_key, USER_PRIVATE_KEY,
+        EPHEMERAL_SECRET, auditing_entity_public_key, USER_PRIVATE_KEY,
     );
 
-    // Encrypt user address (for compliance)
-    let enc_user_addr = encrypt_user_addr(EPHEMERAL_SECRET, compliance_public_key, user_addr);
+    // Encrypt user address (for auditing entity)
+    let enc_user_addr = encrypt_user_addr(EPHEMERAL_SECRET, auditing_entity_public_key, user_addr);
 
     // Print in format parseable by sdk/scripts/generate-cairo-refs.ts
     println!("=== CAIRO REFERENCE HASHES ===");
@@ -127,8 +127,8 @@ fn generate_reference_hashes() {
     println!("inputs.amount: {}", AMOUNT);
     println!("inputs.recipientPrivateKey: 0x{:x}", recipient_private_key);
     println!("inputs.recipientPublicKeyDerived: 0x{:x}", recipient_public_key_derived);
-    println!("inputs.compliancePrivateKey: 0x{:x}", COMPLIANCE_PRIVATE_KEY);
-    println!("inputs.compliancePublicKey: 0x{:x}", compliance_public_key);
+    println!("inputs.auditingEntityPrivateKey: 0x{:x}", AUDITING_ENTITY_PRIVATE_KEY);
+    println!("inputs.auditingEntityPublicKey: 0x{:x}", auditing_entity_public_key);
     println!("inputs.userAddr: 0x{:x}", USER_ADDR);
     println!("inputs.userPrivateKey: 0x{:x}", USER_PRIVATE_KEY);
 
@@ -204,8 +204,8 @@ fn generate_reference_storage_slots() {
     // Formula for simple vars: address = sn_keccak(variable_name)
 
     // --- Simple variables ---
-    // compliance_public_key - felt252 (simple variable, address = sn_keccak(name))
-    let compliance_public_key_slot = selector!("compliance_public_key");
+    // auditing_entity_public_key - felt252 (simple variable, address = sn_keccak(name))
+    let auditing_entity_public_key_slot = selector!("auditing_entity_public_key");
 
     // public_key[user_addr] - Map<ContractAddress, felt252>
     let public_key_slot = map_entry_address(
@@ -259,7 +259,7 @@ fn generate_reference_storage_slots() {
     );
 
     // Flat output for discovery-core compatibility
-    println!("slots.compliancePublicKeyAddress: 0x{:x}", compliance_public_key_slot);
+    println!("slots.auditingEntityPublicKeyAddress: 0x{:x}", auditing_entity_public_key_slot);
     println!("slots.senderPublicKeyAddress: 0x{:x}", public_key_slot);
     println!("slots.recipientPublicKeyAddress: 0x{:x}", recipient_public_key_slot);
     println!("slots.encPrivateKeyEphemeralAddress: 0x{:x}", enc_private_key_slot);

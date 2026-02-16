@@ -38,7 +38,7 @@ fn test_enc_channel_info_is_all_non_zero() {
 #[test]
 fn test_enc_private_key_is_all_non_zero() {
     let mut enc_private_key = EncPrivateKey {
-        compliance_public_key: 'COMPLIANCE_PUBLIC_KEY',
+        auditing_entity_public_key: 'AUDITING_ENTITY_PUBLIC_KEY',
         ephemeral_pubkey: 'EPHEMERAL_PUBKEY',
         enc_private_key: 'ENC_PRIVATE_KEY',
     };
@@ -113,11 +113,11 @@ fn test_token_balances_final_balance_must_be_zero() {
 
 #[test]
 fn test_enc_private_key_to_write_once_action() {
-    let compliance_public_key = 'COMPLIANCE_PUBLIC_KEY';
+    let auditing_entity_public_key = 'AUDITING_ENTITY_PUBLIC_KEY';
     let ephemeral_pubkey = 'EPHEMERAL_PUBKEY';
     let enc_private_key = 'ENC_PRIVATE_KEY';
     let enc_private_key_obj = EncPrivateKey {
-        compliance_public_key, ephemeral_pubkey, enc_private_key,
+        auditing_entity_public_key, ephemeral_pubkey, enc_private_key,
     };
     let key = 'KEY';
     let storage_address = map_entry_address(
@@ -129,7 +129,7 @@ fn test_enc_private_key_to_write_once_action() {
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address,
-                value: [compliance_public_key, ephemeral_pubkey, enc_private_key].span(),
+                value: [auditing_entity_public_key, ephemeral_pubkey, enc_private_key].span(),
             },
         ),
     );
@@ -348,7 +348,7 @@ fn enc_private_key_serialization_format() {
     let mock_contract_address = deploy_mock_contract();
     let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
     let enc_private_key = EncPrivateKey {
-        compliance_public_key: 'COMPLIANCE_PUBLIC_KEY',
+        auditing_entity_public_key: 'AUDITING_ENTITY_PUBLIC_KEY',
         ephemeral_pubkey: 'EPHEMERAL_PUBKEY',
         enc_private_key: 'ENC_PRIVATE_KEY',
     };
