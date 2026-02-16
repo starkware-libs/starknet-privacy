@@ -407,6 +407,8 @@ pub enum ServerAction {
     EmitDeposit: events::Deposit,
     /// Emit [`OpenNoteCreated`](privacy::events::OpenNoteCreated) event.
     EmitOpenNoteCreated: events::OpenNoteCreated,
+    /// Emit [`NoteUsed`](privacy::events::NoteUsed) event.
+    EmitNoteUsed: events::NoteUsed,
     /// Execute a swap via the swap executor contract.
     SwapWithExecutor: SwapWithExecutorInput,
 }
