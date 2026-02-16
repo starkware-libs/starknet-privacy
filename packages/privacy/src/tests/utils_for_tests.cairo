@@ -16,9 +16,9 @@ use privacy::hashes::{
     compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker, hash,
 };
 use privacy::interface::{
-    IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
-    IComplianceDispatcher, IComplianceDispatcherTrait, IComplianceSafeDispatcher,
-    IComplianceSafeDispatcherTrait, IFeesDispatcher, IFeesDispatcherTrait, IFeesSafeDispatcher,
+    IAuditorDispatcher, IAuditorDispatcherTrait, IAuditorSafeDispatcher,
+    IAuditorSafeDispatcherTrait, IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher,
+    IClientSafeDispatcherTrait, IFeesDispatcher, IFeesDispatcherTrait, IFeesSafeDispatcher,
     IFeesSafeDispatcherTrait, IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher,
     IServerSafeDispatcherTrait, IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher,
     IViewsSafeDispatcherTrait,
@@ -109,7 +109,7 @@ pub(crate) impl CreateOpenNoteInputIntoServerActionImpl of CreateOpenNoteInputIn
         );
         let enc_recipient_addr = encrypt_user_addr(
             ephemeral_secret: *self.random,
-            compliance_public_key: user.privacy.get_compliance_public_key(),
+            auditor_public_key: user.privacy.get_auditor_public_key(),
             user_addr: *self.recipient_addr,
         );
 
@@ -177,8 +177,8 @@ pub(crate) struct PrivacyCfg {
     safe_client: IClientSafeDispatcher,
     views: IViewsDispatcher,
     safe_views: IViewsSafeDispatcher,
-    compliance: IComplianceDispatcher,
-    safe_compliance: IComplianceSafeDispatcher,
+    auditor: IAuditorDispatcher,
+    safe_auditor: IAuditorSafeDispatcher,
     fees: IFeesDispatcher,
     safe_fees: IFeesSafeDispatcher,
     pub strk_token: Token,
@@ -866,7 +866,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn compute_enc_user_addr(self: @User, random: felt252) -> EncUserAddr {
         encrypt_user_addr(
             ephemeral_secret: random,
-            compliance_public_key: self.privacy.get_compliance_public_key(),
+            auditor_public_key: self.privacy.get_auditor_public_key(),
             user_addr: *self.address,
         )
     }
@@ -1113,7 +1113,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn compute_enc_private_key(self: @User, random: felt252) -> EncPrivateKey {
         encrypt_private_key(
             ephemeral_secret: random,
-            compliance_public_key: self.privacy.get_compliance_public_key(),
+            auditor_public_key: self.privacy.get_auditor_public_key(),
             private_key: *self.private_key,
         )
     }
@@ -1227,27 +1227,27 @@ pub(crate) impl UserImpl of UserTrait {
 }
 
 #[derive(Drop, Copy)]
-pub(crate) struct Compliance {
+pub(crate) struct Auditor {
     pub private_key: felt252,
     pub public_key: felt252,
 }
 
 #[generate_trait]
-pub(crate) impl ComplianceImpl of ComplianceTrait {
-    fn decrypt_private_key(self: @Compliance, enc_private_key: EncPrivateKey) -> felt252 {
-        decrypt_private_key(:enc_private_key, compliance_private_key: *self.private_key)
+pub(crate) impl AuditorImpl of AuditorTrait {
+    fn decrypt_private_key(self: @Auditor, enc_private_key: EncPrivateKey) -> felt252 {
+        decrypt_private_key(:enc_private_key, auditor_private_key: *self.private_key)
     }
 
-    fn decrypt_user_addr(self: @Compliance, enc_user_addr: EncUserAddr) -> ContractAddress {
-        decrypt_enc_user_addr(:enc_user_addr, compliance_private_key: *self.private_key)
+    fn decrypt_user_addr(self: @Auditor, enc_user_addr: EncUserAddr) -> ContractAddress {
+        decrypt_enc_user_addr(:enc_user_addr, auditor_private_key: *self.private_key)
     }
 }
 
-impl DefaultComplianceImpl of Default<Compliance> {
-    fn default() -> Compliance {
-        let private_key = 'COMPLIANCE_PRIVATE_KEY';
+impl DefaultAuditorImpl of Default<Auditor> {
+    fn default() -> Auditor {
+        let private_key = 'AUDITOR_PRIVATE_KEY';
         let public_key = derive_public_key(:private_key);
-        Compliance { private_key, public_key }
+        Auditor { private_key, public_key }
     }
 }
 
@@ -1255,7 +1255,7 @@ impl DefaultComplianceImpl of Default<Compliance> {
 pub(crate) struct Test {
     pub privacy: PrivacyCfg,
     pub nonce: usize,
-    pub compliance: Compliance,
+    pub auditor: Auditor,
 }
 
 #[generate_trait]
@@ -1288,11 +1288,11 @@ pub(crate) impl TestImpl of TestTrait {
         ('DEPOSITOR' + self.nonce.into()).try_into().unwrap()
     }
 
-    /// Mock function to generate a new compliance private key.
+    /// Mock function to generate a new auditor encrypted private key.
     fn mock_new_enc_private_key(ref self: Test) -> EncPrivateKey {
         self.nonce += 1;
         EncPrivateKey {
-            compliance_public_key: self.compliance.public_key,
+            auditor_public_key: self.auditor.public_key,
             ephemeral_pubkey: 'EPHEMERAL_PUBKEY' + self.nonce.into(),
             enc_private_key: 'ENC_PRIVATE_KEY' + self.nonce.into(),
         }
@@ -1302,7 +1302,7 @@ pub(crate) impl TestImpl of TestTrait {
     fn mock_new_enc_address(ref self: Test) -> EncUserAddr {
         self.nonce += 1;
         EncUserAddr {
-            compliance_public_key: self.compliance.public_key,
+            auditor_public_key: self.auditor.public_key,
             ephemeral_pubkey: 'EPHEMERAL_PUBKEY' + self.nonce.into(),
             enc_user_addr: 'ENC_USER_ADDR' + self.nonce.into(),
         }
@@ -1369,11 +1369,11 @@ pub(crate) impl TestImpl of TestTrait {
         )
     }
 
-    fn replace_compliance_key(ref self: Test) {
+    fn replace_auditor_key(ref self: Test) {
         self.nonce += 1;
-        self.compliance.private_key = 'COMPLIANCE_PRIVATE_KEY' + self.nonce.into();
-        self.compliance.public_key = derive_public_key(private_key: self.compliance.private_key);
-        self.privacy.set_compliance_public_key(compliance_public_key: self.compliance.public_key);
+        self.auditor.private_key = 'AUDITOR_PRIVATE_KEY' + self.nonce.into();
+        self.auditor.public_key = derive_public_key(private_key: self.auditor.private_key);
+        self.privacy.set_auditor_public_key(auditor_public_key: self.auditor.public_key);
     }
 }
 
@@ -1444,8 +1444,8 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.views.nullifier_exists(:nullifier)
     }
 
-    fn get_compliance_public_key(self: @PrivacyCfg) -> felt252 {
-        self.views.get_compliance_public_key()
+    fn get_auditor_public_key(self: @PrivacyCfg) -> felt252 {
+        self.views.get_auditor_public_key()
     }
 
     /// Supply STRK to `caller` and approve the privacy contract for the fee.
@@ -1646,18 +1646,18 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         );
     }
 
-    fn set_compliance_public_key(self: @PrivacyCfg, compliance_public_key: felt252) {
+    fn set_auditor_public_key(self: @PrivacyCfg, auditor_public_key: felt252) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.token_admin,
         );
-        self.compliance.set_compliance_public_key(:compliance_public_key);
+        self.auditor.set_auditor_public_key(:auditor_public_key);
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_set_compliance_public_key(
-        self: @PrivacyCfg, compliance_public_key: felt252,
+    fn safe_set_auditor_public_key(
+        self: @PrivacyCfg, auditor_public_key: felt252,
     ) -> Result<(), Array<felt252>> {
-        self.safe_compliance.set_compliance_public_key(:compliance_public_key)
+        self.safe_auditor.set_auditor_public_key(:auditor_public_key)
     }
 
     fn set_fee(self: @PrivacyCfg, fee_amount: u128, fee_collector: ContractAddress) {
@@ -1729,17 +1729,17 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
 impl DefaultTestImpl of Default<Test> {
     fn default() -> Test {
-        let compliance: Compliance = Default::default();
+        let auditor: Auditor = Default::default();
         let roles: Roles = Default::default();
-        let privacy = deploy_privacy(:roles, compliance_public_key: compliance.public_key);
+        let privacy = deploy_privacy(:roles, auditor_public_key: auditor.public_key);
 
-        Test { privacy, nonce: Zero::zero(), compliance }
+        Test { privacy, nonce: Zero::zero(), auditor }
     }
 }
 
 pub(crate) fn _deploy_privacy(
     governance_admin: ContractAddress,
-    compliance_public_key: felt252,
+    auditor_public_key: felt252,
     fee_amount: u128,
     fee_collector: ContractAddress,
 ) -> ContractAddress {
@@ -1752,7 +1752,7 @@ pub(crate) fn _deploy_privacy(
         class_hash: *contract_class_hash,
         :deployment_params,
         :governance_admin,
-        :compliance_public_key,
+        :auditor_public_key,
         :fee_amount,
         :fee_collector,
     )
@@ -1761,10 +1761,10 @@ pub(crate) fn _deploy_privacy(
 }
 
 /// Deploy a new privacy contract and set the roles.
-fn deploy_privacy(roles: Roles, compliance_public_key: felt252) -> PrivacyCfg {
+fn deploy_privacy(roles: Roles, auditor_public_key: felt252) -> PrivacyCfg {
     let contract_address = _deploy_privacy(
         governance_admin: roles.governance_admin,
-        compliance_public_key: compliance_public_key,
+        :auditor_public_key,
         fee_amount: constants::DEFAULT_FEE_AMOUNT,
         fee_collector: constants::DEFAULT_FEE_COLLECTOR,
     );
@@ -1781,8 +1781,8 @@ fn deploy_privacy(roles: Roles, compliance_public_key: felt252) -> PrivacyCfg {
         safe_client: IClientSafeDispatcher { contract_address },
         views: IViewsDispatcher { contract_address },
         safe_views: IViewsSafeDispatcher { contract_address },
-        compliance: IComplianceDispatcher { contract_address },
-        safe_compliance: IComplianceSafeDispatcher { contract_address },
+        auditor: IAuditorDispatcher { contract_address },
+        safe_auditor: IAuditorSafeDispatcher { contract_address },
         fees: IFeesDispatcher { contract_address },
         safe_fees: IFeesSafeDispatcher { contract_address },
         strk_token: Token::STRK,
@@ -1936,18 +1936,17 @@ pub(crate) fn invoke_swap_input(
 }
 
 /// Returns private_key decrypted from the given `enc_private_key` and
-/// compliance's `private_key`.
+/// the auditor's `private_key`.
 pub(crate) fn decrypt_private_key(
-    enc_private_key: EncPrivateKey, compliance_private_key: felt252,
+    enc_private_key: EncPrivateKey, auditor_private_key: felt252,
 ) -> felt252 {
     // Sanity check.
     assert_eq!(
-        enc_private_key.compliance_public_key,
-        derive_public_key(private_key: compliance_private_key),
+        enc_private_key.auditor_public_key, derive_public_key(private_key: auditor_private_key),
     );
     // Find shared point.
     let shared_x = _find_shared_x(
-        ephemeral_pubkey: enc_private_key.ephemeral_pubkey, private_key: compliance_private_key,
+        ephemeral_pubkey: enc_private_key.ephemeral_pubkey, private_key: auditor_private_key,
     );
 
     // Decrypt private key.
@@ -1984,15 +1983,15 @@ pub(crate) fn decrypt_subchannel_token(
 }
 
 pub(crate) fn decrypt_enc_user_addr(
-    enc_user_addr: EncUserAddr, compliance_private_key: felt252,
+    enc_user_addr: EncUserAddr, auditor_private_key: felt252,
 ) -> ContractAddress {
     // Sanity check.
     assert_eq!(
-        enc_user_addr.compliance_public_key, derive_public_key(private_key: compliance_private_key),
+        enc_user_addr.auditor_public_key, derive_public_key(private_key: auditor_private_key),
     );
     // Decrypt user address.
     let shared_x = _find_shared_x(
-        ephemeral_pubkey: enc_user_addr.ephemeral_pubkey, private_key: compliance_private_key,
+        ephemeral_pubkey: enc_user_addr.ephemeral_pubkey, private_key: auditor_private_key,
     );
     let user_addr = enc_user_addr.enc_user_addr - compute_enc_user_addr_hash(:shared_x);
     user_addr.try_into().unwrap()
