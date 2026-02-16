@@ -539,6 +539,35 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       case "Withdraw":
         return [this.withdraw(action.input.token, action.input.to_addr, action.input.amount)];
 
+      case "Swap": {
+        const calldata = action.input.swap_calldata as any;
+        const swapCall: Call = {
+          contractAddress: toHex(action.input.swap_contract),
+          entrypoint: "swap",
+          calldata,
+        };
+        const swapActions: MockServerAction[] = [];
+        // Create open note for output tokens (the swap result will be deposited here)
+        swapActions.push(
+          this.createOpenNote(
+            sender,
+            privateKey,
+            sender,
+            this.publicKeys.get(sender)!,
+            action.input.out_token,
+            action.input.index,
+            action.input.swap_executor
+          )
+        );
+        // Withdraw input tokens to swap executor
+        swapActions.push(
+          this.withdraw(action.input.in_token, action.input.swap_executor, action.input.in_amount)
+        );
+        // Execute the swap call (this will fill the open note with output tokens)
+        swapActions.push(this.followupCall(swapCall));
+        return swapActions;
+      }
+
       case "FollowupCall":
         return [this.followupCall(action.input.call)];
       default:
@@ -879,6 +908,14 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
             () => `Withdraw amount must be non-negative: ${action.input.amount}`
           );
           updateTotal(action.input.token, -action.input.amount);
+          break;
+
+        case "Swap":
+          assert(
+            action.input.in_amount >= 0n,
+            () => `Swap in_amount must be non-negative: ${action.input.in_amount}`
+          );
+          updateTotal(action.input.in_token, -action.input.in_amount);
           break;
 
         default:

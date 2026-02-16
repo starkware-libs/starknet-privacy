@@ -23,6 +23,7 @@ import type {
   OpenChannelInput,
   OpenSubchannelInput,
   SetViewingKeyInput,
+  SwapInput,
   UseNoteInput,
 } from "./client-actions.js";
 import { compute_channel_key, compute_note_id } from "../utils/hashes.js";
@@ -77,6 +78,11 @@ export class PoolSimulator {
 
       case "Withdraw":
         // Withdrawals don't affect tracking state (handled by MockPoolContract)
+        break;
+
+      case "Swap":
+        // Swap creates an open note on out_token — need to increment note nonce
+        this.handleSwap(action.input);
         break;
 
       case "FollowupCall":
@@ -275,6 +281,27 @@ export class PoolSimulator {
       toHex(recipient_addr),
       "token:",
       toHex(token)
+    );
+  }
+
+  private handleSwap(input: SwapInput): void {
+    const { out_token } = input;
+
+    // The contract's swap() internally creates an open note for out_token on the user's
+    // self-channel, so we need to increment the note nonce for out_token.
+    const senderChannel = this.channels.get(this.userAddress);
+    if (senderChannel) {
+      senderChannel.incrementNoteNonce(out_token);
+    }
+
+    debugLog(
+      "pool-simulator",
+      "Swap",
+      toHex(this.userAddress),
+      "in_token:",
+      toHex(input.in_token),
+      "out_token:",
+      toHex(out_token)
     );
   }
 }

@@ -1,10 +1,11 @@
 import { describe, expect, it, beforeEach, afterAll } from "vitest";
 import { createTestEnv, MockTestEnv, POOL_ADDRESS } from "./helpers/test-fixtures.js";
 import { SimplePrivateTransfersImpl } from "../src/simple-private-transfers.js";
-import { debugHint, isDebugEnabled, toBigInt, toHex } from "../src/utils/index.js";
+import { debugHint, isDebugEnabled, toBigInt } from "../src/utils/index.js";
 import { derivePublicKey } from "../src/utils/crypto.js";
 import { MockSwapHelper } from "../src/testing/contracts.js";
 import { compute_channel_key, compute_note_id } from "../src/testing/index.js";
+import { hash } from "starknet";
 
 describe("SimplePrivateTransfers", () => {
   let testEnv: MockTestEnv;
@@ -109,12 +110,16 @@ describe("SimplePrivateTransfers", () => {
     );
     const beeNoteId = compute_note_id(channelKey, bee, 0);
 
-    // Swap 10 ACE for BEE using the swap helper
+    // Swap 10 ACE for BEE using native ClientAction::Swap
     mocknet.executeOutside(
-      await alice.swap(env.ace, 10n, env.bee, {
-        contractAddress: toHex(swapHelper.address),
-        entrypoint: "swap",
-        calldata: [ace, bee, 10n, POOL_ADDRESS, beeNoteId],
+      await alice.swap({
+        swapExecutor: toBigInt(swapHelper.address),
+        swapContract: toBigInt(swapHelper.address),
+        swapSelector: hash.getSelectorFromName("swap"),
+        swapCalldata: [ace, bee, 10n, toBigInt(POOL_ADDRESS), beeNoteId],
+        inToken: ace,
+        outToken: bee,
+        inAmount: 10n,
       })
     );
 

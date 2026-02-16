@@ -1,16 +1,15 @@
-import { Call } from "starknet";
 import {
   SimplePrivateTransfersInterface,
   PrivateTransfersInterface,
   Amount,
   Channel,
   Note,
-  Open,
   PrivateRegistry,
   StarknetAddress,
   All,
   ExecuteResult,
-} from "./interfaces.js"; // Assuming you moved interfaces
+  SwapAction,
+} from "./interfaces.js";
 import { AddressMap } from "./utils/maps.js";
 import { isAll } from "./utils/validation.js";
 
@@ -57,20 +56,8 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
     return builder.transfer({ recipient, amount }).surplusTo(this.inner.user, false).execute();
   }
 
-  swap(
-    fromToken: StarknetAddress,
-    fromAmount: Amount,
-    toToken: StarknetAddress,
-    helperCall: Call
-  ): Promise<ExecuteResult> {
-    return this.build(fromToken)
-      .withdraw({ recipient: helperCall.contractAddress, amount: fromAmount })
-      .surplusTo(this.inner.user, false) // Keep ACE surplus as private note
-      .with(toToken)
-      .transfer({ recipient: this.inner.user, amount: Open, depositor: helperCall.contractAddress })
-      .done()
-      .call(helperCall)
-      .execute();
+  swap(swap: SwapAction): Promise<ExecuteResult> {
+    return this.build(swap.inToken).surplusTo(this.inner.user, false).done().swap(swap).execute();
   }
 
   private build(token: StarknetAddress) {

@@ -53,6 +53,7 @@ type ClientActions = {
   createEncNotes: Extract<ClientAction, { type: "CreateEncNote" }>[];
   createOpenNotes: Extract<ClientAction, { type: "CreateOpenNote" }>[];
   withdraws: Extract<ClientAction, { type: "Withdraw" }>[];
+  swap?: Extract<ClientAction, { type: "Swap" }>;
   followupCall?: Extract<ClientAction, { type: "FollowupCall" }>;
 };
 
@@ -215,6 +216,7 @@ export class ActionCompiler {
       createEncNotes: [],
       createOpenNotes: [],
       withdraws: [],
+      swap: undefined,
       followupCall: undefined,
     };
 
@@ -425,7 +427,39 @@ export class ActionCompiler {
 
     // surpluses were handled in resolveNotes
 
-    // 8. FollowupCall
+    // 8. Swap (native ClientAction::Swap — requires channel context for out_token)
+    if (actions.swap) {
+      const swap = actions.swap;
+      // Ensure the user's self-channel and out_token subchannel exist
+      const channel = transformOpenSubchannel(
+        { recipient: this.userAddress, token: swap.outToken },
+        false
+      );
+      assert(channel, () => `Missing channel context for swap out_token ${toHex(swap.outToken)}`);
+      assert(
+        channel.tokens.has(swap.outToken),
+        () => `Missing subchannel for swap out_token ${toHex(swap.outToken)}`
+      );
+
+      const input = {
+        type: "Swap",
+        input: {
+          swap_executor: swap.swapExecutor,
+          swap_contract: swap.swapContract,
+          swap_selector: swap.swapSelector,
+          swap_calldata: swap.swapCalldata,
+          in_token: swap.inToken,
+          out_token: swap.outToken,
+          in_amount: swap.inAmount,
+          channel_key: channel.key as bigint,
+          index: channel.tokens.get(swap.outToken)!.noteNonce,
+          random: generateRandom(),
+        },
+      } as const;
+      clientActions.swap = execute(input);
+    }
+
+    // 9. FollowupCall
     if (actions.followupCall) {
       const input = {
         type: "FollowupCall",
@@ -561,6 +595,12 @@ export class ActionCompiler {
           update(c.token, -c.amount);
         }
       }
+    }
+
+    // Outputs: Swap (withdraws inAmount of inToken)
+    if (actions.swap) {
+      assert(actions.swap.inAmount > 0n, () => `Swap inAmount must be positive`);
+      update(actions.swap.inToken, -actions.swap.inAmount);
     }
 
     const notesDiscoveryLevel = options?.autoDiscover?.notes;

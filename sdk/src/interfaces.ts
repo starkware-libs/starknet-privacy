@@ -165,6 +165,23 @@ export type FollowupCallAction = {
   call: Call;
 };
 
+export type SwapAction = {
+  /** The SwapExecutor contract address */
+  swapExecutor: StarknetAddressBigint;
+  /** The AMM/DEX contract to call for the swap */
+  swapContract: StarknetAddressBigint;
+  /** The selector of the swap function on the AMM/DEX */
+  swapSelector: bigint;
+  /** The calldata to pass to the swap function */
+  swapCalldata: bigint[];
+  /** The token to swap from (input token) */
+  inToken: StarknetAddressBigint;
+  /** The token to swap to (output token) */
+  outToken: StarknetAddressBigint;
+  /** The amount of input tokens to swap */
+  inAmount: Amount;
+};
+
 /** Actions - context comes from registry */
 export type Actions = {
   setViewingKey?: SetViewingKeyAction;
@@ -176,6 +193,7 @@ export type Actions = {
   withdraws?: WithdrawAction[];
   surpluses?: SurplusAction[];
   followupCall?: FollowupCallAction;
+  swap?: SwapAction;
 };
 
 // ============ Auto-Discovery & Registry Types ============
@@ -296,15 +314,10 @@ export interface SimplePrivateTransfersInterface {
   ): Promise<ExecuteResult>;
 
   /**
-   * will withdraw to the contract in `helperCall` and then deposit to the privacy pool in `toToken`
-   * Note: a noteid will be added to the helper calldata
+   * Swap tokens privately: withdraw inToken to swap executor, execute swap via AMM/DEX,
+   * deposit outToken back as a private note. Uses native ClientAction::Swap.
    */
-  swap(
-    fromToken: StarknetAddress,
-    fromAmount: Amount,
-    toToken: StarknetAddress,
-    helperCall: Call
-  ): Promise<ExecuteResult>;
+  swap(swap: SwapAction): Promise<ExecuteResult>;
 }
 
 /**
@@ -513,6 +526,13 @@ export interface PrivateTransfersBuilder {
 
   /** Add an arbitrary Starknet call that will run on starknet after the private operations are executed */
   call(call: Call): this;
+
+  /**
+   * Add a swap operation that withdraws inToken to the swap executor, executes the swap via
+   * the AMM/DEX contract, and deposits the output token back into a private note.
+   * This produces a native ClientAction::Swap on the contract (not a FollowupCall).
+   */
+  swap(swap: SwapAction): this;
 
   /**
    * Set the default recipient for any surplus across all tokens.

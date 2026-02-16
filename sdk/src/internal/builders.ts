@@ -23,6 +23,7 @@ import {
   type TransferOutput,
   type SurplusAction,
   type FollowupCallAction,
+  type SwapAction,
   type Amount,
   Open,
   PrivateTransfersInterface,
@@ -148,6 +149,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   public setViewingKey?: SetViewingKeyAction;
   public openChannels: OpenChannelAction[] = [];
   public followupCall?: FollowupCallAction;
+  public swapAction?: SwapAction;
   public tokenBuilders = new AddressMap<TokenOperationsBuilderImpl>(
     (token) => new TokenOperationsBuilderImpl(this, token)
   );
@@ -178,6 +180,11 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
 
   call(call: Call): this {
     this.followupCall = { call };
+    return this;
+  }
+
+  swap(swap: SwapAction): this {
+    this.swapAction = swap;
     return this;
   }
 
@@ -261,6 +268,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
       withdraws,
       surpluses,
       followupCall: this.followupCall,
+      swap: this.swapAction,
     };
 
     // Execute via PrivateTransfers - ActionCompiler will resolve contexts
