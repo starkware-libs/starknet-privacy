@@ -150,62 +150,62 @@ pub(crate) fn encrypt_channel_info(
     EncChannelInfo { ephemeral_pubkey: ephemeral_pub_x, enc_channel_key, enc_sender_addr }
 }
 
-/// Encrypts the private key for the compliance using ECDH.
+/// Encrypts the private key for the auditing entity using ECDH.
 /// Assumes all the inputs are not zero.
 ///
 /// High level:
 /// - User picks a fresh random scalar `r` (= `ephemeral_secret`).
 /// - User publishes the ephemeral public key `R = rG` (only the x-coordinate is stored).
-/// - User derives a shared secret with the compliance:
-///   `S = r * K_compliance`, where `K_compliance` is the compliance's public key as a curve point
-///   (only the x-coordinate is used as the shared secret material).
+/// - User derives a shared secret with the auditing entity:
+///   `S = r * K_auditing_entity`, where `K_auditing_entity` is the auditing entity's public key as
+///   a curve point (only the x-coordinate is used as the shared secret material).
 ///
 /// Specifically, we output:
 /// - `ephemeral_pubkey = (rG).x`
-/// - `enc_private_key  = h( ENC_PRIVATE_KEY_TAG, (rK_compliance).x ) + private_key`
+/// - `enc_private_key  = h( ENC_PRIVATE_KEY_TAG, (rK_auditing_entity).x ) + private_key`
 ///
-/// Decryption (Compliance):
+/// Decryption (Auditing Entity):
 /// - Reconstruct `R` from `R.x` (curve point recovery).
-/// - Compute `S = k_compliance * R = k_compliance * (rG)`.
+/// - Compute `S = k_auditing_entity * R = k_auditing_entity * (rG)`.
 /// - Take `S.x` and subtract the same hash masks to recover the plaintext fields.
 pub(crate) fn encrypt_private_key(
-    ephemeral_secret: felt252, compliance_public_key: felt252, private_key: felt252,
+    ephemeral_secret: felt252, auditing_entity_public_key: felt252, private_key: felt252,
 ) -> EncPrivateKey {
     let (ephemeral_pub_x, shared_x) = _compute_shared_x(
-        :ephemeral_secret, public_key: compliance_public_key,
+        :ephemeral_secret, public_key: auditing_entity_public_key,
     );
     // Encrypt channel information.
     let enc_private_key = compute_enc_private_key_hash(:shared_x) + private_key;
-    EncPrivateKey { compliance_public_key, ephemeral_pubkey: ephemeral_pub_x, enc_private_key }
+    EncPrivateKey { auditing_entity_public_key, ephemeral_pubkey: ephemeral_pub_x, enc_private_key }
 }
 
-/// Encrypts the user address when withdrawing for the compliance using ECDH.
+/// Encrypts the user address when withdrawing for the auditing entity using ECDH.
 /// Assumes all the inputs are not zero.
 ///
 /// High level:
 /// - User picks a fresh random scalar `r` (= `ephemeral_secret`).
 /// - User publishes the ephemeral public key `R = rG` (only the x-coordinate is stored).
-/// - User derives a shared secret with the compliance:
-///   `S = r * K_compliance`, where `K_compliance` is the compliance's public key as a curve point
-///   (only the x-coordinate is used as the shared secret material).
+/// - User derives a shared secret with the auditing entity:
+///   `S = r * K_auditing_entity`, where `K_auditing_entity` is the auditing entity's public key as
+///   a curve point (only the x-coordinate is used as the shared secret material).
 ///
 /// Specifically, we output:
 /// - `ephemeral_pubkey = (rG).x`
-/// - `enc_user_addr  = h( ENC_USER_ADDR_TAG, (rK_compliance).x ) + user_addr`
+/// - `enc_user_addr  = h( ENC_USER_ADDR_TAG, (rK_auditing_entity).x ) + user_addr`
 ///
-/// Decryption (Compliance):
+/// Decryption (Auditing Entity):
 /// - Reconstruct `R` from `R.x` (curve point recovery).
-/// - Compute `S = k_compliance * R = k_compliance * (rG)`.
+/// - Compute `S = k_auditing_entity * R = k_auditing_entity * (rG)`.
 /// - Take `S.x` and subtract the same hash masks to recover the plaintext fields.
 pub(crate) fn encrypt_user_addr(
-    ephemeral_secret: felt252, compliance_public_key: felt252, user_addr: ContractAddress,
+    ephemeral_secret: felt252, auditing_entity_public_key: felt252, user_addr: ContractAddress,
 ) -> EncUserAddr {
     let (ephemeral_pub_x, shared_x) = _compute_shared_x(
-        :ephemeral_secret, public_key: compliance_public_key,
+        :ephemeral_secret, public_key: auditing_entity_public_key,
     );
     // Encrypt address.
     let enc_user_addr = compute_enc_user_addr_hash(:shared_x) + user_addr.into();
-    EncUserAddr { compliance_public_key, ephemeral_pubkey: ephemeral_pub_x, enc_user_addr }
+    EncUserAddr { auditing_entity_public_key, ephemeral_pubkey: ephemeral_pub_x, enc_user_addr }
 }
 
 

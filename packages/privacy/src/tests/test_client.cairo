@@ -8,7 +8,7 @@ use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id}
 use privacy::objects::{EncSubchannelInfo, EncUserAddr};
 use privacy::swap_executor::errors as swap_executor_errors;
 use privacy::tests::utils_for_tests::{
-    ComplianceTrait, CreateEncNoteInputIntoServerActionTrait,
+    AuditingEntityTrait, CreateEncNoteInputIntoServerActionTrait,
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
     invoke_swap_input,
@@ -141,9 +141,9 @@ fn test_set_viewing_key_decrypt_private_key() {
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
 
-    // Compliance should be able to decrypt the private key.
+    // Auditing entity should be able to decrypt the private key.
     let enc_private_key = user.get_enc_private_key();
-    let decrypted_private_key = test.compliance.decrypt_private_key(:enc_private_key);
+    let decrypted_private_key = test.auditing_entity.decrypt_private_key(:enc_private_key);
     assert_eq!(decrypted_private_key, user.private_key);
 }
 
@@ -3633,7 +3633,7 @@ fn test_withdraw_decrypt_user_addr() {
             to_addr: user_1.address, :token, :amount, :channel_key, index: 0,
         );
 
-    // Compliance should be able to decrypt the user address.
+    // Auditing entity should be able to decrypt the user address.
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
     // events[0]: NoteUsed leaked from reverted execute call (snforge revert issue).
     // events[1]: NoteUsed from apply_actions.
@@ -3656,11 +3656,11 @@ fn test_withdraw_decrypt_user_addr() {
     );
     let (_, event) = events[2];
     let enc_user_addr = EncUserAddr {
-        compliance_public_key: *event.data[0],
+        auditing_entity_public_key: *event.data[0],
         ephemeral_pubkey: *event.data[1],
         enc_user_addr: *event.data[2],
     };
-    let decrypted_user_addr = test.compliance.decrypt_user_addr(:enc_user_addr);
+    let decrypted_user_addr = test.auditing_entity.decrypt_user_addr(:enc_user_addr);
     assert_eq!(decrypted_user_addr, user_1.address);
 }
 
@@ -3684,17 +3684,17 @@ fn test_create_open_note_decrypt_recipient_addr() {
     let mut spy_events = spy_events();
     user_1.cheat_create_open_note_e2e(:create_note_input);
 
-    // Compliance should be able to decrypt the sender address from the OpenNoteCreated event.
+    // Auditing entity should be able to decrypt the sender address from the OpenNoteCreated event.
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 1);
     let (_, event) = events[0];
     let enc_recipient_addr = EncUserAddr {
-        compliance_public_key: *event.data[0],
+        auditing_entity_public_key: *event.data[0],
         ephemeral_pubkey: *event.data[1],
         enc_user_addr: *event.data[2],
     };
     let decrypted_recipient_addr = test
-        .compliance
+        .auditing_entity
         .decrypt_user_addr(enc_user_addr: enc_recipient_addr);
     assert_eq!(decrypted_recipient_addr, user_2.address);
 }
@@ -6270,7 +6270,7 @@ fn test_swap_client_action() {
     let expected_withdrawal_event = events::Withdrawal {
         enc_user_addr: encrypt_user_addr(
             ephemeral_secret: random,
-            compliance_public_key: test.privacy.get_compliance_public_key(),
+            auditing_entity_public_key: test.privacy.get_auditing_entity_public_key(),
             user_addr: user.address,
         ),
         to_addr: swap_executor_addr,
