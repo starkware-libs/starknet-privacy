@@ -603,6 +603,24 @@ fn test_apply_emit_open_note_created() {
 }
 
 #[test]
+fn test_apply_emit_note_used() {
+    let mut test: Test = Default::default();
+    let nullifier = test.mock_new_nullifier();
+    let expected_event = events::NoteUsed { nullifier };
+    let actions = array![ServerAction::EmitNoteUsed(expected_event)];
+    let mut spy = spy_events();
+    test.privacy.apply_actions(actions.span());
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("NoteUsed"),
+        expected_event_name: "NoteUsed",
+    );
+}
+
+#[test]
 fn test_apply_actions_paused() {
     let mut test: Test = Default::default();
     test.privacy.pause();

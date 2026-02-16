@@ -75,3 +75,10 @@ pub struct OpenNoteDeposited {
     /// The deposited amount.
     pub amount: u128,
 }
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct NoteUsed {
+    /// The nullifier of the used note.
+    #[key]
+    pub nullifier: felt252,
+}
