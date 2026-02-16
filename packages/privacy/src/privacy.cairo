@@ -111,6 +111,7 @@ pub mod Privacy {
         CompliancePublicKeySet: events::CompliancePublicKeySet,
         OpenNoteCreated: events::OpenNoteCreated,
         OpenNoteDeposited: events::OpenNoteDeposited,
+        NoteUsed: events::NoteUsed,
     }
 
     #[constructor]
@@ -586,6 +587,7 @@ pub mod Privacy {
                 to_write_once_action(
                     storage_address: self.nullifiers.entry(nullifier).into(), value: true,
                 ),
+                ServerAction::EmitNoteUsed(events::NoteUsed { nullifier }),
             ]
         }
 
@@ -850,6 +852,7 @@ pub mod Privacy {
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
                     ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
+                    ServerAction::EmitNoteUsed(event) => self.emit(event),
                 };
             };
         }
