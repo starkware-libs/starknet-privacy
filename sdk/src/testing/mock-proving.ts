@@ -64,7 +64,7 @@ export class CallMockProofProvider extends AbstractProofProvider {
 
     // Compute transaction hash using the same parameters as the signer
     // The signer wraps the call in getExecuteCalldata format
-    const details = await this.getDefaultDetails();
+    const details = this.getDefaultDetails();
     const executeCalldata = transaction.getExecuteCalldata(
       [
         {

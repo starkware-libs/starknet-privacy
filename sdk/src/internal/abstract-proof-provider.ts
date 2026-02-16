@@ -26,14 +26,12 @@ export abstract class AbstractProofProvider implements ProofProviderInterface {
    * Shared default factory details for proof invocations.
    * Same structure for both real and mock providers.
    */
-  async getDefaultDetails(): Promise<ProofInvocationFactoryDetails> {
+  getDefaultDetails(): ProofInvocationFactoryDetails {
     return this.buildDefaultDetails(this.getChainId());
   }
 
   /** Build details from chainId and nonce; used by getDefaultDetails. */
-  protected buildDefaultDetails(
-    chainId: constants.StarknetChainId,
-  ): ProofInvocationFactoryDetails {
+  protected buildDefaultDetails(chainId: constants.StarknetChainId): ProofInvocationFactoryDetails {
     return {
       versions: [ETransactionVersion.V3],
       nonce: PROOF_INVOCATION_NONCE,

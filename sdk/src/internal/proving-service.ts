@@ -35,19 +35,11 @@ function isProveTransactionResult(value: unknown): value is ProveTransactionResu
   const r = value as Record<string, unknown>;
   const proof = r.proof;
   const proofOk =
-    (Array.isArray(proof) && proof.length > 0) ||
-    (typeof proof === "string" && proof.length > 0);
-  return (
-    proofOk &&
-    Array.isArray(r.proof_facts) &&
-    Array.isArray(r.l2_to_l1_messages)
-  );
+    (Array.isArray(proof) && proof.length > 0) || (typeof proof === "string" && proof.length > 0);
+  return proofOk && Array.isArray(r.proof_facts) && Array.isArray(r.l2_to_l1_messages);
 }
 
-export type BlockId =
-  | "latest"
-  | { block_hash: string }
-  | { block_number: number };
+export type BlockId = "latest" | { block_hash: string } | { block_number: number };
 
 export class ProvingService {
   private baseUrl: string;
@@ -76,7 +68,11 @@ export class ProvingService {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg === "Failed to fetch" || msg.includes("NetworkError") || msg.includes("Load failed")) {
+      if (
+        msg === "Failed to fetch" ||
+        msg.includes("NetworkError") ||
+        msg.includes("Load failed")
+      ) {
         throw new Error(
           `Proving service unreachable at ${this.baseUrl}. ` +
             "If running in the browser, the service may not allow CORS—try using the mock prover (unset VITE_PROVING_SERVICE_URL) or a CORS proxy."
@@ -113,10 +109,7 @@ export class ProvingService {
     return this.call<string>("starknet_specVersion", []);
   }
 
-  async proveTransaction(
-    blockId: BlockId,
-    transaction: object
-  ): Promise<ProveTransactionResult> {
+  async proveTransaction(blockId: BlockId, transaction: object): Promise<ProveTransactionResult> {
     const result = await this.call<ProveTransactionResult>("starknet_proveTransaction", {
       block_id: blockId,
       transaction,
