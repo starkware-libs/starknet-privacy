@@ -4,8 +4,7 @@ use starknet::ContractAddress;
 pub trait ISwapExecutor<T> {
     /// Executes a swap on an external AMM/DEX and deposits the result to an open note.
     ///
-    /// Executes a swap operation on an external AMM/DEX contract, then deposits the received
-    /// output tokens to an open note on the caller (privacy contract).
+    /// Called by the privacy contract via the `INVOKE_SELECTOR` predetermined selector.
     ///
     /// #### Parameters
     /// - `swap_contract` (`ContractAddress`) - The AMM/DEX contract to call for the swap.
@@ -15,9 +14,6 @@ pub trait ISwapExecutor<T> {
     /// - `out_token` (`ContractAddress`) - The token address of the output funds.
     /// - `in_amount` (`u128`) - The amount of input funds to swap.
     /// - `note_id` (`felt252`) - The identifier of the open note to deposit the output to.
-    ///
-    /// #### Returns
-    /// None
     ///
     /// #### Preconditions
     /// - Assumes all parameters are non-zero.
@@ -30,7 +26,7 @@ pub trait ISwapExecutor<T> {
     /// 2. Records output token balance, executes the swap, calculates received amount.
     /// 3. Approves the caller (privacy contract) to transfer the received output funds.
     /// 4. Calls `deposit_to_open_note` on the caller with `note_id` and the received amount.
-    fn swap(
+    fn privacy_invoke(
         ref self: T,
         swap_contract: ContractAddress,
         swap_selector: felt252,

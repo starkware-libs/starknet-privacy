@@ -67,7 +67,7 @@ fn test_swap_basic(preexisting_balance: u128) {
     test
         .privacy
         .swap_executor
-        .swap(
+        .privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
@@ -123,7 +123,7 @@ fn test_swap_propagates_amm_error() {
     let result = test
         .privacy
         .swap_executor
-        .safe_swap(
+        .safe_privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             swap_selector: selector!("swap"),
             swap_calldata: swap_calldata.span(),
@@ -161,7 +161,7 @@ fn test_swap_panics_on_zero_out_amount() {
     let result = test
         .privacy
         .swap_executor
-        .safe_swap(
+        .safe_privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             swap_selector: selector!("noop_swap"),
             swap_calldata: [].span(),
@@ -203,7 +203,7 @@ fn test_swap_received_amount_overflow() {
     let result = test
         .privacy
         .swap_executor
-        .safe_swap(
+        .safe_privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             swap_selector: selector!("overflow_swap"),
             swap_calldata: swap_calldata.span(),
@@ -227,7 +227,7 @@ fn test_swap_insufficient_balance() {
     let result = test
         .privacy
         .swap_executor
-        .safe_swap(
+        .safe_privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             swap_selector: selector!("swap"),
             swap_calldata: [
@@ -294,7 +294,7 @@ fn test_swap_caller_not_privacy_contract() {
     let result = test
         .privacy
         .swap_executor
-        .safe_swap(
+        .safe_privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             swap_selector: selector!("swap"),
             swap_calldata: [

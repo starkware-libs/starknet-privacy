@@ -51,6 +51,8 @@ pub mod constants {
     pub const VIRTUAL_SNOS: felt252 = 'VIRTUAL_SNOS';
     /// The output version for the virtual Starknet OS.
     pub const VIRTUAL_SNOS0: felt252 = 'VIRTUAL_SNOS0';
+    /// Selector called with the `Invoke` action.
+    pub const INVOKE_SELECTOR: felt252 = selector!("privacy_invoke");
 }
 
 /// Returns the generator point.

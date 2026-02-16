@@ -7,8 +7,8 @@ pub mod Privacy {
     use openzeppelin::introspection::src5::SRC5Component;
     use privacy::actions::{
         AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
-        DepositInput, InputValidation, OpenChannelInput, OpenSubchannelInput, ReadAssertInput,
-        ServerAction, SetViewingKeyInput, SwapInput, SwapWithExecutorInput, TransferFromInput,
+        DepositInput, InputValidation, InvokeInput, OpenChannelInput, OpenSubchannelInput,
+        ReadAssertInput, ServerAction, SetViewingKeyInput, SwapInput, TransferFromInput,
         TransferToInput, UseNoteInput, WithdrawInput,
     };
     use privacy::errors::internal_errors;
@@ -22,8 +22,7 @@ pub mod Privacy {
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
         TokenBalancesTrait,
     };
-    use privacy::swap_executor::interface::{ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait};
-    use privacy::utils::constants::OPEN_NOTE_SALT;
+    use privacy::utils::constants::{INVOKE_SELECTOR, OPEN_NOTE_SALT};
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
         decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
@@ -529,18 +528,19 @@ pub mod Privacy {
                 );
             // TODO: Verify on note?
 
+            // Serialize executor params into calldata for the generic invoke.
+            let mut calldata: Array<felt252> = array![];
+            swap_contract.serialize(ref calldata);
+            swap_selector.serialize(ref calldata);
+            swap_calldata.serialize(ref calldata);
+            in_token.serialize(ref calldata);
+            out_token.serialize(ref calldata);
+            in_amount.serialize(ref calldata);
+            note_id.serialize(ref calldata);
+
             array![
-                ServerAction::SwapWithExecutor(
-                    SwapWithExecutorInput {
-                        swap_executor,
-                        swap_contract,
-                        swap_selector,
-                        swap_calldata,
-                        in_token,
-                        out_token,
-                        in_amount,
-                        note_id,
-                    },
+                ServerAction::Invoke(
+                    InvokeInput { contract_address: swap_executor, calldata: calldata.span() },
                 ),
             ]
         }
@@ -833,17 +833,10 @@ pub mod Privacy {
                                 storage_address: input.storage_address, value: input.value,
                             );
                     },
-                    ServerAction::SwapWithExecutor(input) => {
+                    ServerAction::Invoke(input) => {
                         self
-                            ._apply_swap_with_executor(
-                                swap_executor: input.swap_executor,
-                                swap_contract: input.swap_contract,
-                                swap_selector: input.swap_selector,
-                                swap_calldata: input.swap_calldata,
-                                in_token: input.in_token,
-                                out_token: input.out_token,
-                                in_amount: input.in_amount,
-                                note_id: input.note_id,
+                            ._apply_invoke(
+                                contract_address: input.contract_address, calldata: input.calldata,
                             );
                     },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
@@ -910,27 +903,13 @@ pub mod Privacy {
             assert(current_value == value, errors::VALUE_MISMATCH);
         }
 
-        fn _apply_swap_with_executor(
-            ref self: ContractState,
-            swap_executor: ContractAddress,
-            swap_contract: ContractAddress,
-            swap_selector: felt252,
-            swap_calldata: Span<felt252>,
-            in_token: ContractAddress,
-            out_token: ContractAddress,
-            in_amount: u128,
-            note_id: felt252,
+        fn _apply_invoke(
+            ref self: ContractState, contract_address: ContractAddress, calldata: Span<felt252>,
         ) {
-            ISwapExecutorDispatcher { contract_address: swap_executor }
-                .swap(
-                    :swap_contract,
-                    :swap_selector,
-                    :swap_calldata,
-                    :in_token,
-                    :out_token,
-                    :in_amount,
-                    :note_id,
-                );
+            call_contract_syscall(
+                address: contract_address, entry_point_selector: INVOKE_SELECTOR, :calldata,
+            )
+                .unwrap_syscall();
         }
     }
 
