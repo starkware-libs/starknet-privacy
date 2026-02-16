@@ -364,26 +364,13 @@ pub struct ReadAssertInput {
     pub value: felt252,
 }
 
-/// Input for the `SwapWithExecutor` server action.
+/// Input for the `Invoke` server action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct SwapWithExecutorInput {
-    /// The swap executor contract address.
-    // TODO: Move to storage.
-    pub swap_executor: ContractAddress,
-    /// The AMM/DEX contract to call for the swap.
-    pub swap_contract: ContractAddress,
-    /// The selector of the swap function to call.
-    pub swap_selector: felt252,
-    /// The calldata to pass to the swap function.
-    pub swap_calldata: Span<felt252>,
-    /// The token address to swap from.
-    pub in_token: ContractAddress,
-    /// The token address to swap to.
-    pub out_token: ContractAddress,
-    /// The input amount for swap.
-    pub in_amount: u128,
-    /// The note id for the open note to deposit into.
-    pub note_id: felt252,
+pub struct InvokeInput {
+    /// The target contract address to invoke.
+    pub contract_address: ContractAddress,
+    /// The calldata to pass to the target contract.
+    pub calldata: Span<felt252>,
 }
 
 /// An action to be executed by the server.
@@ -407,6 +394,6 @@ pub enum ServerAction {
     EmitDeposit: events::Deposit,
     /// Emit [`OpenNoteCreated`](privacy::events::OpenNoteCreated) event.
     EmitOpenNoteCreated: events::OpenNoteCreated,
-    /// Execute a swap via the swap executor contract.
-    SwapWithExecutor: SwapWithExecutorInput,
+    /// Invoke an external contract via a predetermined selector.
+    Invoke: InvokeInput,
 }
