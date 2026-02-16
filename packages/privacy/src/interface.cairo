@@ -594,8 +594,8 @@ pub trait IViews<T> {
 
     /// Returns the encrypted private key of the given user address.
     ///
-    /// The private key is encrypted using the compliance public key and can only be decrypted by
-    /// the compliance authority.
+    /// The private key is encrypted using the auditor public key and can only be decrypted
+    /// by the auditor.
     ///
     /// #### Parameters
     /// - `user_addr` (`ContractAddress`): The address whose encrypted
@@ -606,22 +606,22 @@ pub trait IViews<T> {
     /// with the user, or a zero struct if the user is not registered.
     fn get_enc_private_key(self: @T, user_addr: ContractAddress) -> EncPrivateKey;
 
-    /// Returns the compliance public key used for encrypting private keys.
+    /// Returns the auditor public key used for encrypting private keys.
     ///
-    /// This public key is used to encrypt user private keys so that only the compliance authority
+    /// This public key is used to encrypt user private keys so that only the auditor
     /// can decrypt them. It is also used to encrypt the user_addr when withdrawing.
     ///
     /// #### Parameters
     /// None
     ///
     /// #### Returns
-    /// - (`felt252`): The compliance public key.
-    fn get_compliance_public_key(self: @T) -> felt252;
+    /// - (`felt252`): The auditor public key.
+    fn get_auditor_public_key(self: @T) -> felt252;
 }
 
 #[starknet::interface]
-pub trait ICompliance<T> {
-    fn set_compliance_public_key(ref self: T, compliance_public_key: felt252);
+pub trait IAuditor<T> {
+    fn set_auditor_public_key(ref self: T, auditor_public_key: felt252);
 }
 
 #[starknet::interface]
