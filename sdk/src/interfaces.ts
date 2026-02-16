@@ -585,7 +585,7 @@ export type AccountSignerRaw = Account & { signer: SignerRawInterface };
 export interface ProofProviderInterface {
   /** Get the default factory details for creating proof invocations. */
   getDefaultDetails(): ProofInvocationFactoryDetails;
-  prove(invocation: ProofInvocation): Promise<Proof>;
+  prove(invocation: ProofInvocation): Proof | Promise<Proof>;
 }
 
 export interface DiscoveryProviderInterface {

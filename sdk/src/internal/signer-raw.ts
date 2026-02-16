@@ -21,7 +21,7 @@ import { Signer } from "starknet";
  */
 export class SignerRaw extends Signer implements SignerRawInterface {
   /** Public wrapper for the protected signRaw, so callers can sign a precomputed hash. */
-  public override async signRaw(msgHash: string): Promise<Signature> {
+  public override signRaw(msgHash: string): Promise<Signature> {
     return super.signRaw(msgHash);
   }
 }

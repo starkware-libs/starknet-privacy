@@ -44,8 +44,8 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
   /**
    * Get the current viewing key from the provider
    */
-  protected async getViewingKey(): Promise<ViewingKey> {
-    return await this.viewingKeyProvider.getViewingKey();
+  protected getViewingKey(): Promise<ViewingKey> | ViewingKey {
+    return this.viewingKeyProvider.getViewingKey();
   }
 
   /**
