@@ -15,7 +15,7 @@ pub struct ViewingKeySet {
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct Withdrawal {
-    /// Encrypted address of the withdrawing user. Can be decrypted by compliance.
+    /// Encrypted address of the withdrawing user. Can be decrypted by the auditing entity.
     pub enc_user_addr: EncUserAddr,
     /// The address the funds are withdrawn to.
     #[key]
@@ -40,15 +40,15 @@ pub struct Deposit {
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
-pub struct CompliancePublicKeySet {
-    /// The compliance public key.
+pub struct AuditingEntityPublicKeySet {
+    /// The auditing entity public key.
     #[key]
-    pub compliance_public_key: felt252,
+    pub auditing_entity_public_key: felt252,
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct OpenNoteCreated {
-    /// Encrypted recipient address (the note owner). Can be decrypted by compliance.
+    /// Encrypted recipient address (the note owner). Can be decrypted by the auditing entity.
     pub enc_recipient_addr: EncUserAddr,
     /// Address allowed to deposit into the note.
     #[key]

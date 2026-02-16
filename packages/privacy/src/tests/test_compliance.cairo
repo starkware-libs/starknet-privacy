@@ -10,53 +10,61 @@ use starkware_utils_testing::test_utils::{
 };
 
 #[test]
-fn test_set_compliance_public_key() {
+fn test_set_auditing_entity_public_key() {
     let mut test: Test = Default::default();
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
-    let compliance_public_key_before = test.compliance.public_key;
+    assert_eq!(test.privacy.get_auditing_entity_public_key(), test.auditing_entity.public_key);
+    let auditing_entity_public_key_before = test.auditing_entity.public_key;
     let mut spy = spy_events();
-    test.replace_compliance_key();
-    assert_ne!(test.compliance.public_key, compliance_public_key_before);
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
-    let expected_event = events::CompliancePublicKeySet {
-        compliance_public_key: test.compliance.public_key,
+    test.replace_auditing_entity_key();
+    assert_ne!(test.auditing_entity.public_key, auditing_entity_public_key_before);
+    assert_eq!(test.privacy.get_auditing_entity_public_key(), test.auditing_entity.public_key);
+    let expected_event = events::AuditingEntityPublicKeySet {
+        auditing_entity_public_key: test.auditing_entity.public_key,
     };
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 1);
     assert_expected_event_emitted(
         spied_event: events[0],
         :expected_event,
-        expected_event_selector: @selector!("CompliancePublicKeySet"),
-        expected_event_name: "CompliancePublicKeySet",
+        expected_event_selector: @selector!("AuditingEntityPublicKeySet"),
+        expected_event_name: "AuditingEntityPublicKeySet",
     );
     // Set the same key again.
     let mut spy = spy_events();
-    test.privacy.set_compliance_public_key(compliance_public_key: test.compliance.public_key);
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
+    test
+        .privacy
+        .set_auditing_entity_public_key(
+            auditing_entity_public_key: test.auditing_entity.public_key,
+        );
+    assert_eq!(test.privacy.get_auditing_entity_public_key(), test.auditing_entity.public_key);
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 1);
     assert_expected_event_emitted(
         spied_event: events[0],
         :expected_event,
-        expected_event_selector: @selector!("CompliancePublicKeySet"),
-        expected_event_name: "CompliancePublicKeySet",
+        expected_event_selector: @selector!("AuditingEntityPublicKeySet"),
+        expected_event_name: "AuditingEntityPublicKeySet",
     );
 }
 
 #[test]
-fn test_set_compliance_public_key_assertions() {
+fn test_set_auditing_entity_public_key_assertions() {
     let mut test: Test = Default::default();
 
     // Catch ONLY_TOKEN_ADMIN.
     let result = test
         .privacy
-        .safe_set_compliance_public_key(compliance_public_key: test.compliance.public_key);
+        .safe_set_auditing_entity_public_key(
+            auditing_entity_public_key: test.auditing_entity.public_key,
+        );
     assert_panic_with_error(:result, expected_error: AccessErrors::ONLY_TOKEN_ADMIN.describe());
 
-    // Catch ZERO_COMPLIANCE_PUBLIC_KEY.
+    // Catch ZERO_AUDITING_ENTITY_PUBLIC_KEY.
     cheat_caller_address_once(
         contract_address: test.privacy.address, caller_address: test.privacy.roles.token_admin,
     );
-    let result = test.privacy.safe_set_compliance_public_key(compliance_public_key: Zero::zero());
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_COMPLIANCE_PUBLIC_KEY);
+    let result = test
+        .privacy
+        .safe_set_auditing_entity_public_key(auditing_entity_public_key: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AUDITING_ENTITY_PUBLIC_KEY);
 }

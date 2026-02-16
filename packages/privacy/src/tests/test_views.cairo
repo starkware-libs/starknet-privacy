@@ -16,8 +16,8 @@ use starkware_utils_testing::test_utils::assert_panic_with_error;
 #[test]
 fn test_constructor() {
     let mut test: Test = Default::default();
-    // Test compliance public key.
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
+    // Test auditing entity public key.
+    assert_eq!(test.privacy.get_auditing_entity_public_key(), test.auditing_entity.public_key);
     // Test roles.
     let contract_roles = IRolesDispatcher { contract_address: test.privacy.address };
     assert!(contract_roles.is_governance_admin(account: test.privacy.roles.governance_admin));
@@ -31,20 +31,20 @@ fn test_constructor() {
 }
 
 #[test]
-#[should_panic(expected: 'ZERO_COMPLIANCE_PUBLIC_KEY')]
+#[should_panic(expected: 'ZERO_AUDITING_ENTITY_PUBLIC_KEY')]
 fn test_constructor_assertions() {
     let mut state = Privacy::contract_state_for_testing();
     Privacy::constructor(
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
-        compliance_public_key: Zero::zero(),
+        auditing_entity_public_key: Zero::zero(),
     );
 }
 
 #[test]
-fn test_get_compliance_public_key() {
+fn test_get_auditing_entity_public_key() {
     let mut test: Test = Default::default();
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
+    assert_eq!(test.privacy.get_auditing_entity_public_key(), test.auditing_entity.public_key);
 }
 
 #[test]
