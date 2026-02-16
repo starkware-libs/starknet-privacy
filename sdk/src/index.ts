@@ -12,9 +12,7 @@ export {
   ProvingServiceProofProvider,
   normalizeProvingServiceUrl,
 } from "./internal/proving-service-provider.js";
-export type {
-  ProvingServiceProofProviderOptions,
-} from "./internal/proving-service-provider.js";
+export type { ProvingServiceProofProviderOptions } from "./internal/proving-service-provider.js";
 export { SignerRaw } from "./internal/signer-raw.js";
 export type { AccountSignerRaw, SignerRawInterface } from "./interfaces.js";
 export {

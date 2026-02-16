@@ -6,10 +6,7 @@
  * - Mock implementation: passes through client actions directly
  */
 
-import type {
-  BigNumberish,
-  CallResult,
-} from "starknet";
+import type { BigNumberish, CallResult } from "starknet";
 import { CallData, ETransactionVersion3, hash, stark } from "starknet";
 
 import type { SignerRawInterface } from "../interfaces.js";

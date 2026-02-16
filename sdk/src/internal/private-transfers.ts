@@ -27,7 +27,7 @@ export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
 export class PrivateTransfers extends AbstractPrivateTransfers {
   constructor(
     private readonly params: {
-      account: AccountSignerRaw;
+      account: AccountSignerRaw; // the user account (for signing)
       viewingKeyProvider: ViewingKeyProvider;
       provingProvider: ProofProviderInterface;
       discoveryProvider: DiscoveryProviderInterface;
@@ -51,10 +51,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     // Compile actions
     const { clientActions, registry, warnings } = await compiler.compile(actions, options);
 
-    // Create invocation for proving (getDefaultDetails may be async e.g. for proving service)
-    const details = await Promise.resolve(
-      this.params.provingProvider.getDefaultDetails()
-    );
+    const details = this.params.provingProvider.getDefaultDetails();
     const invocation = await this.params.proofInvocationFactory.create(
       { address: this.params.account.address, signer: this.params.account.signer, viewingKey },
       this.params.poolContractAddress,

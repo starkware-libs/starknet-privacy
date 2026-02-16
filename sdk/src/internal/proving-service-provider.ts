@@ -92,9 +92,7 @@ export class ProvingServiceProofProvider extends AbstractProofProvider {
       calldata: ensureHexCalldata(inv.calldata as string[]),
       signature: stark
         .formatSignature(inv.signature ?? [])
-        .map((s: string) =>
-          typeof s === "string" && s.startsWith("0x") ? s : num.toHex(s)
-        ),
+        .map((s: string) => (typeof s === "string" && s.startsWith("0x") ? s : num.toHex(s))),
       nonce: num.toHex(inv.nonce),
       resource_bounds: {
         l1_gas: {

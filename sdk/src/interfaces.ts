@@ -585,8 +585,8 @@ export type AccountSignerRaw = Account & { signer: SignerRawInterface };
  * Operator API contract — the proving service must implement this surface.
  */
 export interface ProofProviderInterface {
-  /** Get the default factory details for creating proof invocations (may be async e.g. to fetch nonce) */
-  getDefaultDetails(): ProofInvocationFactoryDetails | Promise<ProofInvocationFactoryDetails>;
+  /** Get the default factory details for creating proof invocations. */
+  getDefaultDetails(): ProofInvocationFactoryDetails;
   prove(invocation: ProofInvocation): Promise<Proof>;
 }
 
