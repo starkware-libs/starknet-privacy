@@ -1,6 +1,27 @@
 {
   "_comment": "Reference values from Cairo implementation. Regenerate with: npx tsx scripts/generate-cairo-refs.ts",
   "_ttl_days": 1,
+  "proofFacts": {
+    "poolAddress": "0xabcde",
+    "baseBlockNumber": 100,
+    "serializedActionsLength": 6,
+    "serializedActions": ["0x1", "0x0", "0x111", "0x2", "0x222", "0x333"],
+    "messageHash": "0x43c2c4bed5b9d57091a9911e102161896ec50ce6e265ba7fbd34a3d312bc55b",
+    "serializedLength": 9,
+    "serialized": [
+      "0x0",
+      "0x5649525455414c5f534e4f53",
+      "0x0",
+      "0x5649525455414c5f534e4f5330",
+      "0x64",
+      "0x0",
+      "0x0",
+      "0x1",
+      "0x43c2c4bed5b9d57091a9911e102161896ec50ce6e265ba7fbd34a3d312bc55b"
+    ],
+    "virtualSnos": "0x5649525455414c5f534e4f53",
+    "virtualSnos0": "0x5649525455414c5f534e4f5330"
+  },
   "inputs": {
     "sender": "0x123",
     "recipient": "0x456",

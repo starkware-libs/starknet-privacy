@@ -48,3 +48,4 @@ export {
   type DecodedError,
 } from "./error-decoder.js";
 export { toBigInt, toBytes, toHex, type Numeric } from "./convert.js";
+export { buildProofFacts } from "./proof-facts.js";

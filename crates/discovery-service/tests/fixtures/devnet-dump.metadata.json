@@ -1,6 +1,9 @@
 {
-  "timestamp": 1770203859,
-  "contract_address": "0x2af189f2f77758dacd689baf7d0166e65b03f25be65f54f7d131b9cc8a0438d",
+  "timestamp": 1770918190,
+  "contract_address": "0x69cc8b5846952745321d5fe6a62593e78ce925fb7e781a9ac2cc46f339702b6",
   "alice_address": "0x34ba56f92265f0868c57d3fe72ecab144fc96f97954bbbc4252cef8e8a979ba",
-  "alice_private_key": "0xb137668388dbe9acdfa3bc734cc2c469"
+  "alice_viewing_key": "0xa11ce",
+  "bob_address": "0x2939f2dc3f80cc7d620e8a86f2e69c1e187b7ff44b74056647368b5c49dc370",
+  "bob_viewing_key": "0xb0b",
+  "strk_token": "0x4718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d"
 }

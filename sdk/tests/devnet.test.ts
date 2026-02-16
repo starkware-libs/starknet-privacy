@@ -5,7 +5,7 @@
  * and test real interactions with the privacy pool.
  */
 
-import { describe, it, beforeAll, afterAll, expect } from "vitest";
+import { describe, it, beforeAll, beforeEach, afterAll, expect } from "vitest";
 import { Devnet, createDevnetTestEnv, type DevnetTestEnv } from "../src/testing/index.js";
 import { debugLog } from "../src/utils/logging.js";
 
@@ -72,7 +72,12 @@ describe("Devnet Integration", () => {
     });
 
     const { callAndProof: bobCallAndProof } = await transfers.bob.build().register().execute();
-    await devnet.executeOutside(bobCallAndProof);
+    const bobReceipt = await devnet.executeOutside(bobCallAndProof);
+    console.log("Bob register status:", bobReceipt.execution_status);
+    if (bobReceipt.isReverted()) {
+      console.error("Bob register REVERTED:", bobReceipt.revert_reason);
+    }
+    expect(bobReceipt.isReverted()).toBe(false);
 
     const { callAndProof } = await transfers.alice
       .build({
@@ -81,14 +86,19 @@ describe("Devnet Integration", () => {
         autoDiscover: { notes: "refresh", channels: "refresh" },
       })
       .with(env.strk)
-      .deposit({ amount: 100n, recipient: env.alice.address })
+      .deposit({ amount: 100n })
       .transfer({ recipient: env.bob.address, amount: 50n })
+      .surplusTo(env.alice.address)
       .execute();
 
-    debugLog("test", "should deposit", "call", callAndProof.call);
+    console.log("Alice deposit+transfer calldata length:", callAndProof.call.calldata.length);
 
     const receipt = await devnet.executeOutside(callAndProof);
-    debugLog("test", "should deposit", receipt);
+    console.log("Alice deposit status:", receipt.execution_status);
+    if (receipt.isReverted()) {
+      console.error("Alice deposit REVERTED:", receipt.revert_reason);
+    }
+    expect(receipt.isReverted()).toBe(false);
 
     const notes = await transfers.alice.discoverNotes();
     debugLog("test", "should deposit", "notes", notes);

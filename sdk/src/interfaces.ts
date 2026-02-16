@@ -83,6 +83,7 @@ export type Proof = {
 export type CallAndProof = {
   readonly call: Call;
   readonly proof: Proof;
+  readonly proofFacts?: string[];
 };
 
 export type PrivateInvocationResult = {

@@ -70,13 +70,12 @@ jobs:
         uses: software-mansion/setup-scarb@v1
         with:
           scarb-version: "2.15.1"
-      - name: Install starknet-foundry and starknet-devnet via asdf
+      - name: Install starknet-foundry via asdf
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         uses: asdf-vm/actions/install@v3
         with:
           tool_versions: |
             starknet-foundry nightly-2026-02-03
-            starknet-devnet 0.7.2
       - name: Generate Cairo reference data
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         run: |
@@ -88,11 +87,10 @@ jobs:
           npm run generate:cairo-refs
           cp tests/fixtures/cairo-reference-data.json ../crates/discovery-core/tests/fixtures/cairo-reference-data.json
 
-      - name: Install starknet-devnet via asdf
-        if: github.event_name != 'push' && steps.cairo-check.outputs.changed != 'true'
-        uses: asdf-vm/actions/install@v3
-        with:
-          tool_versions: starknet-devnet 0.7.2
+      - name: Install starknet-devnet
+        run: |
+          curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-11/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
+          chmod +x /usr/local/bin/starknet-devnet
 
       - name: Rust test
         run: cargo nextest run --workspace --all-targets

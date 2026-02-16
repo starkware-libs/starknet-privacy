@@ -67,6 +67,39 @@ Clone the repo and from within the projects root folder run:
 curl --proto '=https' --tlsv1.2 -sSf https://sh.starkup.dev | sh
 ```
 
+### Starknet Devnet
+
+This project uses a [custom fork of starknet-devnet](https://github.com/m-kus/starknet-devnet) that includes a blockifier version supporting the new transaction version with proofs. Install from the `APOLLO-PRE-PROOF-DEMO-11` release:
+
+If you have a previous asdf installation of starknet-devnet, remove it first:
+
+```bash
+asdf plugin remove starknet-devnet
+```
+
+Then install from the release:
+
+```bash
+# macOS (Apple Silicon)
+curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-11/starknet-devnet-aarch64-apple-darwin.tar.gz -o /tmp/starknet-devnet.tar.gz
+sudo tar -xzf /tmp/starknet-devnet.tar.gz -C /usr/local/bin
+sudo chmod +x /usr/local/bin/starknet-devnet
+rm /tmp/starknet-devnet.tar.gz
+
+# Linux (x86_64)
+curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-11/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz -o /tmp/starknet-devnet.tar.gz
+sudo tar -xzf /tmp/starknet-devnet.tar.gz -C /usr/local/bin
+sudo chmod +x /usr/local/bin/starknet-devnet
+rm /tmp/starknet-devnet.tar.gz
+```
+
+Verify the installation:
+
+```bash
+which starknet-devnet
+# Expected: /usr/local/bin/starknet-devnet
+```
+
 ## Getting help
 
 Reach out to the maintainer at any of the following:

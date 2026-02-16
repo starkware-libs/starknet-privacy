@@ -50,8 +50,6 @@ jobs:
   devnet:
     name: Devnet Test
     runs-on: ubuntu-latest
-    # FIXME: set continue-on-error to false once starknet-devnet supports get_execution_info_v3_syscall
-    continue-on-error: true
     defaults:
       run:
         working-directory: sdk
@@ -70,11 +68,10 @@ jobs:
         with:
           scarb-version: "2.15.1"
 
-      - name: Install starknet-devnet via asdf
-        uses: asdf-vm/actions/install@v3
-        with:
-          tool_versions: |
-            starknet-devnet 0.7.2
+      - name: Install starknet-devnet
+        run: |
+          curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-11/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
+          chmod +x /usr/local/bin/starknet-devnet
 
       - name: Install npm dependencies
         run: npm ci

@@ -176,10 +176,16 @@ impl<C: ChainState> Indexer<C> {
                     }
                 }
                 _ = self.rx_shutdown.recv() => {
-                    subscription.unsubscribe().await?;
-                    info!("Unsubscribed from new heads");
-                    stream.close().await?;
-                    info!("Closed WebSocket connection");
+                    if let Err(err) = subscription.unsubscribe().await {
+                        error!(%err, "Failed to unsubscribe during shutdown");
+                    } else {
+                        info!("Unsubscribed from new heads");
+                    }
+                    if let Err(err) = stream.close().await {
+                        error!(%err, "Failed to close WebSocket during shutdown");
+                    } else {
+                        info!("Closed WebSocket connection");
+                    }
                     return Ok(());
                 }
             }
