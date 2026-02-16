@@ -18,8 +18,8 @@ use starkware_utils_testing::test_utils::assert_panic_with_error;
 #[test]
 fn test_constructor() {
     let mut test: Test = Default::default();
-    // Test compliance public key.
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
+    // Test auditor public key.
+    assert_eq!(test.privacy.get_auditor_public_key(), test.auditor.public_key);
     // Test roles.
     let contract_roles = IRolesDispatcher { contract_address: test.privacy.address };
     assert!(contract_roles.is_governance_admin(account: test.privacy.roles.governance_admin));
@@ -33,13 +33,13 @@ fn test_constructor() {
 }
 
 #[test]
-#[should_panic(expected: 'ZERO_COMPLIANCE_PUBLIC_KEY')]
-fn test_constructor_zero_compliance_public_key() {
+#[should_panic(expected: 'ZERO_AUDITOR_PUBLIC_KEY')]
+fn test_constructor_zero_auditor_public_key() {
     let mut state = Privacy::contract_state_for_testing();
     Privacy::constructor(
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
-        compliance_public_key: Zero::zero(),
+        auditor_public_key: Zero::zero(),
         fee_amount: Zero::zero(),
         fee_collector: Zero::zero(),
     );
@@ -52,16 +52,16 @@ fn test_constructor_zero_fee_collector() {
     Privacy::constructor(
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
-        compliance_public_key: 'COMPLIANCE_PUBLIC_KEY'.try_into().unwrap(),
+        auditor_public_key: 'AUDITOR_PUBLIC_KEY'.try_into().unwrap(),
         fee_amount: DEFAULT_FEE_AMOUNT,
         fee_collector: Zero::zero(),
     );
 }
 
 #[test]
-fn test_get_compliance_public_key() {
+fn test_get_auditor_public_key() {
     let mut test: Test = Default::default();
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
+    assert_eq!(test.privacy.get_auditor_public_key(), test.auditor.public_key);
 }
 
 #[test]
