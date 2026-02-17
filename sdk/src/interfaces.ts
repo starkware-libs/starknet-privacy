@@ -75,7 +75,7 @@ export type Note = {
 export type NoteId = BigNumberish;
 
 export type Proof = {
-  readonly data: string[];
+  readonly data: string;
   readonly output: string[]; // array of felts
   /** Proof facts from the proving service; must be included in the tx when submitting to the chain. */
   readonly proofFacts: string[];

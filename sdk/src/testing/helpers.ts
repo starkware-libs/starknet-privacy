@@ -8,7 +8,7 @@ import type { CallAndProof, Proof } from "../interfaces.js";
 
 export function createMockProof(overrides?: Partial<Proof>): Proof {
   return {
-    data: ["0x0", "0x1", "0x2", "0x3"] as string[],
+    data: "",
     output: ["0x0"],
     proofFacts: [],
     ...overrides,

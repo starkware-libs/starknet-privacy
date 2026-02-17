@@ -47,9 +47,9 @@ const DEPLOY_RESOURCE_BOUNDS = {
   l1_data_gas: { max_amount: 3_500n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };
 const POOL_RESOURCE_BOUNDS = {
-  l2_gas: { max_amount: 4_000_000n, max_price_per_unit: L2_GAS_PRICE },
+  l2_gas: { max_amount: 2_000_000_000n, max_price_per_unit: L2_GAS_PRICE },
   l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
-  l1_data_gas: { max_amount: 1_100n, max_price_per_unit: L1_DATA_GAS_PRICE },
+  l1_data_gas: { max_amount: 5_000n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };
 
 function createProvingProvider(
@@ -204,10 +204,8 @@ describe("Privacy StarkNet integration (custom pool)", () => {
       OutsideExecutionVersion.V2,
     );
     console.log("[debug] proof facts:", callAndProof.proof.proofFacts);
-    console.log("[debug] proof data:", callAndProof.proof.data.slice(0, 50));
     console.log("[debug] proof data type:", typeof callAndProof.proof.data);
     console.log("[debug] proof data length:", callAndProof.proof.data.length);
-    // console.log("[debug] proof data casting to BigNumberish:", (callAndProof.proof.data as unknown as BigNumberish[]).slice(0, 50));
     console.log("[debug] outside transaction:", outsideTransaction);
     const executeTx = await adminAccount.executeFromOutside(outsideTransaction, {
       tip: 0n,
