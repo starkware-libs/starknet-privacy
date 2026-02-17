@@ -18,9 +18,10 @@ use privacy::hashes::{
 use privacy::interface::{
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
     IComplianceDispatcher, IComplianceDispatcherTrait, IComplianceSafeDispatcher,
-    IComplianceSafeDispatcherTrait, IServerDispatcher, IServerDispatcherTrait,
-    IServerSafeDispatcher, IServerSafeDispatcherTrait, IViewsDispatcher, IViewsDispatcherTrait,
-    IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
+    IComplianceSafeDispatcherTrait, IFeesDispatcher, IFeesDispatcherTrait, IFeesSafeDispatcher,
+    IFeesSafeDispatcherTrait, IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher,
+    IServerSafeDispatcherTrait, IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher,
+    IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
@@ -54,7 +55,8 @@ use starkware_utils::components::pausable::interface::{
 };
 use starkware_utils_testing::test_utils::{
     Deployable, TokenConfig, TokenHelperTrait, cheat_caller_address_once, generic_load,
-    set_account_as_app_role_admin, set_account_as_security_agent, set_account_as_token_admin,
+    set_account_as_app_governor, set_account_as_app_role_admin, set_account_as_security_agent,
+    set_account_as_token_admin,
 };
 
 pub impl NoteZero of Zero<Note> {
@@ -131,6 +133,9 @@ pub(crate) mod constants {
     pub const TOKEN_SUPPLY: u256 = 10_u256.pow(12 + DECIMALS.into());
     pub const TOKEN_OWNER: ContractAddress = 'TOKEN_OWNER'.try_into().unwrap();
     pub const DEFAULT_AMOUNT: u128 = 10_u128.pow(DECIMALS.into());
+    pub const DEFAULT_FEE_AMOUNT: u128 = 1000;
+    pub const DEFAULT_FEE_COLLECTOR: ContractAddress = 'FEE_COLLECTOR'.try_into().unwrap();
+    pub const PAYMASTER: ContractAddress = 'PAYMASTER'.try_into().unwrap();
 }
 
 
@@ -140,6 +145,7 @@ pub(crate) struct Roles {
     pub security_agent: ContractAddress,
     pub app_role_admin: ContractAddress,
     pub token_admin: ContractAddress,
+    pub app_governor: ContractAddress,
 }
 
 impl DefaultRolesImpl of Default<Roles> {
@@ -149,6 +155,7 @@ impl DefaultRolesImpl of Default<Roles> {
             security_agent: 'SECURITY_AGENT'.try_into().unwrap(),
             app_role_admin: 'APP_ROLE_ADMIN'.try_into().unwrap(),
             token_admin: 'TOKEN_ADMIN'.try_into().unwrap(),
+            app_governor: 'APP_GOVERNOR'.try_into().unwrap(),
         }
     }
 }
@@ -172,6 +179,9 @@ pub(crate) struct PrivacyCfg {
     safe_views: IViewsSafeDispatcher,
     compliance: IComplianceDispatcher,
     safe_compliance: IComplianceSafeDispatcher,
+    fees: IFeesDispatcher,
+    safe_fees: IFeesSafeDispatcher,
+    pub strk_token: Token,
     pub swap_executor: SwapExecutorCfg,
     pub mock_amm: ContractAddress,
 }
@@ -1432,16 +1442,55 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.views.get_compliance_public_key()
     }
 
+    /// Supply STRK to `caller` and approve the privacy contract for the fee.
+    fn _fund_fee(self: @PrivacyCfg, caller: ContractAddress) {
+        let fee_amount = self.fees.get_fee_amount();
+        if fee_amount.is_non_zero() {
+            let strk_address = self.strk_token.contract_address();
+            self.strk_token.supply(address: caller, amount: fee_amount);
+            cheat_caller_address_once(contract_address: strk_address, caller_address: caller);
+            // TODO: Replace with helper approve when implemented.
+            IERC20Dispatcher { contract_address: strk_address }
+                .approve(spender: *self.address, amount: fee_amount.into());
+        }
+    }
+
     fn apply_actions(self: @PrivacyCfg, actions: Span<ServerAction>) {
-        self.cheat_proof_facts(:actions);
-        self.server.apply_actions(:actions);
+        self.apply_actions_as(:actions, caller: constants::PAYMASTER);
     }
 
     #[feature("safe_dispatcher")]
     fn safe_apply_actions(
         self: @PrivacyCfg, actions: Span<ServerAction>,
     ) -> Result<(), Array<felt252>> {
+        self.safe_apply_actions_as(:actions, caller: constants::PAYMASTER)
+    }
+
+    fn apply_actions_as(self: @PrivacyCfg, actions: Span<ServerAction>, caller: ContractAddress) {
+        self._fund_fee(:caller);
         self.cheat_proof_facts(:actions);
+        cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
+        self.server.apply_actions(:actions);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_apply_actions_as(
+        self: @PrivacyCfg, actions: Span<ServerAction>, caller: ContractAddress,
+    ) -> Result<(), Array<felt252>> {
+        self._fund_fee(:caller);
+        self.cheat_proof_facts(:actions);
+        cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
+        self.safe_server.apply_actions(:actions)
+    }
+
+    /// Like `safe_apply_actions_as` but without auto-funding the fee.
+    /// Use this to test fee-related error conditions (e.g. insufficient balance/allowance).
+    #[feature("safe_dispatcher")]
+    fn safe_apply_actions_as_unfunded(
+        self: @PrivacyCfg, actions: Span<ServerAction>, caller: ContractAddress,
+    ) -> Result<(), Array<felt252>> {
+        self.cheat_proof_facts(:actions);
+        cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
         self.safe_server.apply_actions(:actions)
     }
 
@@ -1605,6 +1654,28 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_compliance.set_compliance_public_key(:compliance_public_key)
     }
 
+    fn set_fee(self: @PrivacyCfg, fee_amount: u128, fee_collector: ContractAddress) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.roles.app_governor,
+        );
+        self.fees.set_fee(:fee_amount, :fee_collector);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_set_fee(
+        self: @PrivacyCfg, fee_amount: u128, fee_collector: ContractAddress,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_fees.set_fee(:fee_amount, :fee_collector)
+    }
+
+    fn get_fee_amount(self: @PrivacyCfg) -> u128 {
+        self.fees.get_fee_amount()
+    }
+
+    fn get_fee_collector(self: @PrivacyCfg) -> ContractAddress {
+        self.fees.get_fee_collector()
+    }
+
     fn revert_actions_for_testing(self: @PrivacyCfg, actions: Span<ServerAction>) {
         for action in actions {
             match *action {
@@ -1661,7 +1732,10 @@ impl DefaultTestImpl of Default<Test> {
 }
 
 pub(crate) fn _deploy_privacy(
-    governance_admin: ContractAddress, compliance_public_key: felt252,
+    governance_admin: ContractAddress,
+    compliance_public_key: felt252,
+    fee_amount: u128,
+    fee_collector: ContractAddress,
 ) -> ContractAddress {
     let contract_class_hash = declare(contract: "Privacy")
         .unwrap_syscall()
@@ -1673,6 +1747,8 @@ pub(crate) fn _deploy_privacy(
         :deployment_params,
         :governance_admin,
         :compliance_public_key,
+        :fee_amount,
+        :fee_collector,
     )
         .expect('Privacy deployment failed');
     contract_address
@@ -1681,7 +1757,10 @@ pub(crate) fn _deploy_privacy(
 /// Deploy a new privacy contract and set the roles.
 fn deploy_privacy(roles: Roles, compliance_public_key: felt252) -> PrivacyCfg {
     let contract_address = _deploy_privacy(
-        governance_admin: roles.governance_admin, compliance_public_key: compliance_public_key,
+        governance_admin: roles.governance_admin,
+        compliance_public_key: compliance_public_key,
+        fee_amount: constants::DEFAULT_FEE_AMOUNT,
+        fee_collector: constants::DEFAULT_FEE_COLLECTOR,
     );
     let roles = _set_privacy_roles(contract: contract_address, :roles);
     // TODO: Remove this from general deployment and only deploy when needed.
@@ -1700,6 +1779,9 @@ fn deploy_privacy(roles: Roles, compliance_public_key: felt252) -> PrivacyCfg {
         safe_views: IViewsSafeDispatcher { contract_address },
         compliance: IComplianceDispatcher { contract_address },
         safe_compliance: IComplianceSafeDispatcher { contract_address },
+        fees: IFeesDispatcher { contract_address },
+        safe_fees: IFeesSafeDispatcher { contract_address },
+        strk_token: Token::STRK,
         swap_executor: SwapExecutorCfg {
             address: swap_executor, privacy_address: contract_address,
         },
@@ -1716,6 +1798,9 @@ fn _set_privacy_roles(contract: ContractAddress, roles: Roles) -> Roles {
     );
     set_account_as_token_admin(
         :contract, account: roles.token_admin, app_role_admin: roles.app_role_admin,
+    );
+    set_account_as_app_governor(
+        :contract, account: roles.app_governor, app_role_admin: roles.app_role_admin,
     );
     roles
 }
