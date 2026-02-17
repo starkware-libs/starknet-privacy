@@ -42,7 +42,6 @@ import {
 } from "../utils/hashes.js";
 
 import { toHex } from "../utils/convert.js";
-import { Call } from "starknet";
 import { ClientAction } from "../internal/client-actions.js";
 
 type OpenNote = {
@@ -539,8 +538,9 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       case "Withdraw":
         return [this.withdraw(action.input.token, action.input.to_addr, action.input.amount)];
 
-      case "FollowupCall":
-        return [this.followupCall(action.input.call)];
+      case "Invoke":
+        return [this.invoke(action.input.contract_address, action.input.calldata)];
+
       default:
         throw new Error(`Unsupported action type in mock: ${(action as ClientAction).type}`);
     }
@@ -817,11 +817,15 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     };
   }
 
-  private followupCall(call: Call): MockServerAction {
+  private invoke(
+    contractAddress: StarknetAddressBigint,
+    calldata: bigint[]
+  ): MockServerAction {
     return {
-      type: "FollowupCall",
+      type: "Invoke",
       apply: () => {
-        this.contracts.call(call.contractAddress, call.entrypoint, call.calldata as unknown[]);
+        const entrypoint = "privacy_invoke";
+        this.contracts.call(contractAddress, entrypoint, calldata);
       },
       deferred: true,
     };

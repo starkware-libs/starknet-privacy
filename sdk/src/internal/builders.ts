@@ -22,12 +22,12 @@ import {
   type DepositInput,
   type TransferOutput,
   type SurplusAction,
-  type FollowupCallAction,
+  type InvokeAction,
   type Amount,
   Open,
   PrivateTransfersInterface,
 } from "../interfaces.js";
-import type { Call } from "starknet";
+import type { CallDetails } from "starknet";
 import { AddressMap, toBigInt } from "../utils/index.js";
 import { debugLog } from "../utils/logging.js";
 import { isOpenNote } from "../utils/validation.js";
@@ -146,7 +146,7 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
 export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   public setViewingKey?: SetViewingKeyAction;
   public openChannels: OpenChannelAction[] = [];
-  public followupCall?: FollowupCallAction;
+  public invokes: InvokeAction[] = [];
   public tokenBuilders = new AddressMap<TokenOperationsBuilderImpl>(
     (token) => new TokenOperationsBuilderImpl(this, token)
   );
@@ -175,8 +175,8 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     return this;
   }
 
-  call(call: Call): this {
-    this.followupCall = { call };
+  call(callDetails: CallDetails): this {
+    this.invokes.push({ callDetails: callDetails });
     return this;
   }
 
@@ -259,7 +259,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
       createNotes,
       withdraws,
       surpluses,
-      followupCall: this.followupCall,
+      invokes: this.invokes,
     };
 
     // Execute via PrivateTransfers - ActionCompiler will resolve contexts

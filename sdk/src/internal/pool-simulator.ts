@@ -79,8 +79,8 @@ export class PoolSimulator {
         // Withdrawals don't affect tracking state (handled by MockPoolContract)
         break;
 
-      case "FollowupCall":
-        // Followup calls don't affect tracking state
+      case "Invoke":
+        // Invokes don't affect tracking state
         break;
     }
   }

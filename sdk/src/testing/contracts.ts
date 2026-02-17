@@ -51,7 +51,7 @@ export class MockSwapHelper implements MockContract {
     private contracts: MockContracts
   ) {}
 
-  swap(
+  privacy_invoke(
     fromToken: StarknetAddress,
     toToken: StarknetAddress,
     amount: Amount,

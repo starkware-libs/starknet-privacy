@@ -84,8 +84,8 @@ ${struct.members.map((m) => `  ${m.name}: ${mapType(m.type)};`).join("\n")}
   })
   .join("\n\n")}
 
-export type FollowupCallInput = {
-  call: Call;
+export type InvokeInput = {
+  callDetails: CallDetails;
 };
 
 /**
@@ -93,12 +93,12 @@ export type FollowupCallInput = {
  */
 export type ClientAction =
 ${clientAction.variants.map((v) => `  | { type: "${v.name}"; input: ${typeName(v.type)} }`).join("\n")}
-  | { type: "FollowupCall"; input: FollowupCallInput };
+  | { type: "Invoke"; input: InvokeInput };
 
 /** All valid client action type names */
 export const CLIENT_ACTION_TYPES = [
 ${clientAction.variants.map((v) => `  "${v.name}",`).join("\n")}
-  "FollowupCall",
+  "Invoke",
 ] as const;
 
 export type ClientActionType = (typeof CLIENT_ACTION_TYPES)[number];

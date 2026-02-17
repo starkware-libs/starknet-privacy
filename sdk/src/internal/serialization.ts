@@ -20,16 +20,9 @@ function toCairoEnum(action: ClientAction): CairoCustomEnum {
 }
 
 /**
- * Check if an action is a Cairo ABI action (not client-side only).
- */
-function isCairoAction(action: ClientAction): action is ClientAction {
-  return action.type !== "FollowupCall";
-}
-
-/**
  * Convert an array of ClientActions to CairoCustomEnums for Cairo calldata serialization.
  * Filters out client-side-only actions like FollowupCall.
  */
 export function serializeClientActions(actions: ClientAction[]): CairoCustomEnum[] {
-  return actions.filter(isCairoAction).map(toCairoEnum);
+  return actions.map(toCairoEnum);
 }
