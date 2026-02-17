@@ -12,7 +12,7 @@ use starkware_utils_testing::test_utils::{TokenHelperTrait, assert_panic_with_fe
 #[test]
 #[test_case(Zero::zero())]
 #[test_case(constants::DEFAULT_AMOUNT)]
-fn test_swap_basic(preexisting_balance: u128) {
+fn test_privacy_invoke_basic(preexisting_balance: u128) {
     // Setup test environment.
     let mut test: Test = Default::default();
     let input_token = test.new_token();
@@ -67,7 +67,7 @@ fn test_swap_basic(preexisting_balance: u128) {
     test
         .privacy
         .swap_executor
-        .swap(
+        .privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
@@ -97,7 +97,7 @@ fn test_swap_basic(preexisting_balance: u128) {
 }
 
 #[test]
-fn test_swap_propagates_amm_error() {
+fn test_privacy_invoke_propagates_amm_error() {
     // Test that errors from the AMM contract are properly propagated.
     let mut test: Test = Default::default();
     let input_token = test.new_token();
@@ -123,7 +123,7 @@ fn test_swap_propagates_amm_error() {
     let result = test
         .privacy
         .swap_executor
-        .safe_swap(
+        .safe_privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             swap_selector: selector!("swap"),
             swap_calldata: swap_calldata.span(),
@@ -138,7 +138,7 @@ fn test_swap_propagates_amm_error() {
 }
 
 #[test]
-fn test_swap_panics_on_zero_out_amount() {
+fn test_privacy_invoke_panics_on_zero_out_amount() {
     // Test that when swap returns 0 tokens, the function panics.
     let mut test: Test = Default::default();
     let input_token = test.new_token();
@@ -161,7 +161,7 @@ fn test_swap_panics_on_zero_out_amount() {
     let result = test
         .privacy
         .swap_executor
-        .safe_swap(
+        .safe_privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             swap_selector: selector!("noop_swap"),
             swap_calldata: [].span(),
@@ -174,7 +174,7 @@ fn test_swap_panics_on_zero_out_amount() {
 }
 
 #[test]
-fn test_swap_received_amount_overflow() {
+fn test_privacy_invoke_received_amount_overflow() {
     // Test that error is raised when swap returns an amount exceeding u128::MAX.
     let mut test: Test = Default::default();
     let input_token = test.new_token();
@@ -203,7 +203,7 @@ fn test_swap_received_amount_overflow() {
     let result = test
         .privacy
         .swap_executor
-        .safe_swap(
+        .safe_privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             swap_selector: selector!("overflow_swap"),
             swap_calldata: swap_calldata.span(),
@@ -216,7 +216,7 @@ fn test_swap_received_amount_overflow() {
 }
 
 #[test]
-fn test_swap_insufficient_balance() {
+fn test_privacy_invoke_insufficient_balance() {
     // Test that swap fails when the swap executor has insufficient balance.
     let mut test: Test = Default::default();
     let input_token = test.new_token();
@@ -227,7 +227,7 @@ fn test_swap_insufficient_balance() {
     let result = test
         .privacy
         .swap_executor
-        .safe_swap(
+        .safe_privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             swap_selector: selector!("swap"),
             swap_calldata: [
@@ -244,7 +244,7 @@ fn test_swap_insufficient_balance() {
 }
 
 #[test]
-fn test_swap_caller_not_privacy_contract() {
+fn test_privacy_invoke_caller_not_privacy_contract() {
     // Test that swap fails when caller doesn't implement deposit_to_open_note.
     // The swap itself succeeds but the call to deposit_to_open_note on the caller fails.
     let mut test: Test = Default::default();
@@ -294,7 +294,7 @@ fn test_swap_caller_not_privacy_contract() {
     let result = test
         .privacy
         .swap_executor
-        .safe_swap(
+        .safe_privacy_invoke(
             swap_contract: test.privacy.mock_amm,
             swap_selector: selector!("swap"),
             swap_calldata: [

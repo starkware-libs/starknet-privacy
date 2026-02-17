@@ -4,7 +4,7 @@ use core::traits::Neg;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, SwapInput,
+    InvokeInput, OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, SwapInput,
     TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
 };
 use privacy::events;
@@ -1745,9 +1745,10 @@ fn deploy_mock_amm() -> ContractAddress {
     contract_address
 }
 
+
 #[generate_trait]
 pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
-    fn swap(
+    fn privacy_invoke(
         self: @SwapExecutorCfg,
         swap_contract: ContractAddress,
         in_token: ContractAddress,
@@ -1762,7 +1763,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         let swap_selector = selector!("swap");
         let swap_calldata = [in_token.into(), out_token.into(), in_amount.into(), 0].span();
         dispatcher
-            .swap(
+            .privacy_invoke(
                 :swap_contract,
                 :swap_selector,
                 :swap_calldata,
@@ -1774,7 +1775,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_swap(
+    fn safe_privacy_invoke(
         self: @SwapExecutorCfg,
         swap_contract: ContractAddress,
         swap_selector: felt252,
@@ -1785,7 +1786,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         note_id: felt252,
     ) -> Result<(), Array<felt252>> {
         ISwapExecutorSafeDispatcher { contract_address: *self.address }
-            .swap(
+            .privacy_invoke(
                 :swap_contract,
                 :swap_selector,
                 :swap_calldata,
@@ -1795,6 +1796,28 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
                 :note_id,
             )
     }
+}
+
+/// Creates an `InvokeInput` for the swap executor from the given swap parameters.
+pub(crate) fn invoke_swap_input(
+    swap_executor: ContractAddress,
+    swap_contract: ContractAddress,
+    swap_selector: felt252,
+    swap_calldata: Span<felt252>,
+    in_token: ContractAddress,
+    out_token: ContractAddress,
+    in_amount: u128,
+    note_id: felt252,
+) -> InvokeInput {
+    let mut calldata: Array<felt252> = array![];
+    swap_contract.serialize(ref calldata);
+    swap_selector.serialize(ref calldata);
+    swap_calldata.serialize(ref calldata);
+    in_token.serialize(ref calldata);
+    out_token.serialize(ref calldata);
+    in_amount.serialize(ref calldata);
+    note_id.serialize(ref calldata);
+    InvokeInput { contract_address: swap_executor, calldata: calldata.span() }
 }
 
 /// Returns private_key decrypted from the given `enc_private_key` and

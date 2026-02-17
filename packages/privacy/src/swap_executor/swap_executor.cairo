@@ -16,7 +16,7 @@ pub mod SwapExecutor {
 
     #[abi(embed_v0)]
     pub impl SwapExecutorImpl of ISwapExecutor<ContractState> {
-        fn swap(
+        fn privacy_invoke(
             ref self: ContractState,
             swap_contract: ContractAddress,
             swap_selector: felt252,
