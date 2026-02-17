@@ -28,13 +28,13 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
-use privacy::swap_executor::interface::{
+use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
+use privacy::tests::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
+use privacy::tests::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
+use privacy::tests::mock_swap_executor::{
     ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait, ISwapExecutorSafeDispatcher,
     ISwapExecutorSafeDispatcherTrait,
 };
-use privacy::swap_executor::swap_executor::SwapExecutor::deploy_for_test as deploy_swap_executor_for_test;
-use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
-use privacy::tests::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::utils::constants::{OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     ProofFacts, _compute_message_hash, derive_public_key, enc_note_packed_value,
@@ -1194,7 +1194,7 @@ pub(crate) impl UserImpl of UserTrait {
         token.supply(address: *self.address, :amount);
     }
 
-    fn invoke_external_swap_input(
+    fn invoke_external_mock_swap_executor_input(
         self: @User,
         in_token: ContractAddress,
         out_token: ContractAddress,
@@ -1202,13 +1202,7 @@ pub(crate) impl UserImpl of UserTrait {
         note_id: felt252,
     ) -> InvokeExternalInput {
         let calldata = build_swap_executor_calldata(
-            swap_contract: *self.privacy.mock_amm,
-            swap_selector: selector!("swap"),
-            swap_calldata: array![in_token.into(), out_token.into(), amount.into(), 0].span(),
-            :in_token,
-            :out_token,
-            in_amount: amount,
-            :note_id,
+            :in_token, :out_token, in_amount: amount, :note_id,
         );
         InvokeExternalInput {
             contract_address: *self.privacy.swap_executor.address, calldata: calldata.span(),
@@ -1690,8 +1684,11 @@ fn deploy_privacy(roles: Roles, compliance_public_key: felt252) -> PrivacyCfg {
         governance_admin: roles.governance_admin, compliance_public_key: compliance_public_key,
     );
     let roles = _set_privacy_roles(contract: contract_address, :roles);
-    let swap_executor = deploy_swap_executor();
+    // TODO: Remove this from general deployment and only deploy when needed.
     let mock_amm = deploy_mock_amm();
+    let swap_executor = deploy_mock_swap_executor(
+        amm_address: mock_amm, selector: selector!("swap"),
+    );
     PrivacyCfg {
         address: contract_address,
         roles,
@@ -1737,13 +1734,18 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
 }
 
 /// Deploy a new swap executor contract.
-fn deploy_swap_executor() -> ContractAddress {
-    let class_hash = declare(contract: "SwapExecutor").unwrap_syscall().contract_class().class_hash;
+pub(crate) fn deploy_mock_swap_executor(
+    amm_address: ContractAddress, selector: felt252,
+) -> ContractAddress {
+    let class_hash = declare(contract: "MockSwapExecutor")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
-    let (contract_address, _) = deploy_swap_executor_for_test(
-        class_hash: *class_hash, :deployment_params,
+    let (contract_address, _) = deploy_mock_swap_executor_for_test(
+        class_hash: *class_hash, :deployment_params, :amm_address, :selector,
     )
-        .expect('SwapExecutor deployment failed');
+        .expect('MockSwapExecutor deploy failed');
     contract_address
 }
 
@@ -1763,7 +1765,6 @@ fn deploy_mock_amm() -> ContractAddress {
 pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
     fn privacy_invoke(
         self: @SwapExecutorCfg,
-        swap_contract: ContractAddress,
         in_token: ContractAddress,
         out_token: ContractAddress,
         in_amount: u128,
@@ -1772,59 +1773,28 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.privacy_address,
         );
-        let dispatcher = ISwapExecutorDispatcher { contract_address: *self.address };
-        let swap_selector = selector!("swap");
-        let swap_calldata = [in_token.into(), out_token.into(), in_amount.into(), 0].span();
-        dispatcher
-            .privacy_invoke(
-                :swap_contract,
-                :swap_selector,
-                :swap_calldata,
-                :in_token,
-                :out_token,
-                :in_amount,
-                :note_id,
-            );
+        ISwapExecutorDispatcher { contract_address: *self.address }
+            .privacy_invoke(:in_token, :out_token, :in_amount, :note_id);
     }
 
     #[feature("safe_dispatcher")]
     fn safe_privacy_invoke(
         self: @SwapExecutorCfg,
-        swap_contract: ContractAddress,
-        swap_selector: felt252,
-        swap_calldata: Span<felt252>,
         in_token: ContractAddress,
         out_token: ContractAddress,
         in_amount: u128,
         note_id: felt252,
     ) -> Result<(), Array<felt252>> {
         ISwapExecutorSafeDispatcher { contract_address: *self.address }
-            .privacy_invoke(
-                :swap_contract,
-                :swap_selector,
-                :swap_calldata,
-                :in_token,
-                :out_token,
-                :in_amount,
-                :note_id,
-            )
+            .privacy_invoke(:in_token, :out_token, :in_amount, :note_id)
     }
 }
 
 /// Builds the calldata for a swap executor invocation.
 pub(crate) fn build_swap_executor_calldata(
-    swap_contract: ContractAddress,
-    swap_selector: felt252,
-    swap_calldata: Span<felt252>,
-    in_token: ContractAddress,
-    out_token: ContractAddress,
-    in_amount: u128,
-    note_id: felt252,
+    in_token: ContractAddress, out_token: ContractAddress, in_amount: u128, note_id: felt252,
 ) -> Array<felt252> {
     let mut calldata: Array<felt252> = array![];
-    swap_contract.serialize(ref calldata);
-    swap_selector.serialize(ref calldata);
-    swap_calldata.serialize(ref calldata);
     in_token.serialize(ref calldata);
     out_token.serialize(ref calldata);
     in_amount.serialize(ref calldata);
@@ -1833,19 +1803,14 @@ pub(crate) fn build_swap_executor_calldata(
 }
 
 /// Creates an `InvokeInput` for the swap executor from the given swap parameters.
-pub(crate) fn invoke_swap_input(
+pub(crate) fn invoke_mock_swap_executor_input(
     swap_executor: ContractAddress,
-    swap_contract: ContractAddress,
-    swap_selector: felt252,
-    swap_calldata: Span<felt252>,
     in_token: ContractAddress,
     out_token: ContractAddress,
     in_amount: u128,
     note_id: felt252,
 ) -> InvokeInput {
-    let calldata = build_swap_executor_calldata(
-        :swap_contract, :swap_selector, :swap_calldata, :in_token, :out_token, :in_amount, :note_id,
-    );
+    let calldata = build_swap_executor_calldata(:in_token, :out_token, :in_amount, :note_id);
     InvokeInput { contract_address: swap_executor, calldata: calldata.span() }
 }
 

@@ -6,10 +6,12 @@ pub trait IMockAMM<T> {
     fn swap(ref self: T, in_token: ContractAddress, out_token: ContractAddress, amount: u256);
 
     /// Does nothing - used to test zero received amount scenario.
-    fn noop_swap(ref self: T);
+    fn noop_swap(ref self: T, in_token: ContractAddress, out_token: ContractAddress, amount: u256);
 
     /// Returns an amount exceeding u128::MAX - used to test overflow error.
-    fn overflow_swap(ref self: T, out_token: ContractAddress);
+    fn overflow_swap(
+        ref self: T, in_token: ContractAddress, out_token: ContractAddress, amount: u256,
+    );
 }
 
 /// Mock AMM contract for testing swap functionality.
@@ -47,10 +49,18 @@ pub mod MockAMM {
 
         fn noop_swap(
             ref self: ContractState,
+            in_token: ContractAddress,
+            out_token: ContractAddress,
+            amount: u256,
         ) { // Does nothing - simulates a swap that returns 0 tokens.
         }
 
-        fn overflow_swap(ref self: ContractState, out_token: ContractAddress) {
+        fn overflow_swap(
+            ref self: ContractState,
+            in_token: ContractAddress,
+            out_token: ContractAddress,
+            amount: u256,
+        ) {
             // Transfer an amount exceeding MAX_U128 to caller.
             let overflow_amount: u256 = MAX_U128.into() + 1;
             IERC20Dispatcher { contract_address: out_token }

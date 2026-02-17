@@ -6,7 +6,7 @@ use privacy::actions::{
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
 use privacy::objects::{EncSubchannelInfo, EncUserAddr};
-use privacy::swap_executor::errors as swap_executor_errors;
+use privacy::tests::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     ComplianceTrait, CreateEncNoteInputIntoServerActionTrait,
     CreateOpenNoteInputIntoServerActionTrait, InvokeExternalInputIntoServerActionTrait, NoteZero,
@@ -4203,7 +4203,7 @@ fn test_execute_use_note_swap() {
         :channel_key, token: out_token_addr, index: create_open_note_input.index,
     );
     let invoke_external_input = user
-        .invoke_external_swap_input(
+        .invoke_external_mock_swap_executor_input(
             in_token: token_addr, out_token: out_token_addr, :amount, :note_id,
         );
     let random = user.get_random();
@@ -4376,7 +4376,7 @@ fn test_execute_deposit_swap() {
         :channel_key, token: token_out_addr, index: create_open_note_input.index,
     );
     let invoke_external_input = user
-        .invoke_external_swap_input(
+        .invoke_external_mock_swap_executor_input(
             in_token: token_addr, out_token: token_out_addr, amount: 100, :note_id,
         );
     let random = user.get_random();
@@ -4590,7 +4590,7 @@ fn test_internal_actions() {
     let note_id = compute_note_id(channel_key: channel_key_swap, token: out_token_addr, :index);
 
     let invoke_external_input = user_1
-        .invoke_external_swap_input(
+        .invoke_external_mock_swap_executor_input(
             in_token: token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
         );
     let actions = user_1.internal_invoke_external(input: invoke_external_input);
@@ -5189,7 +5189,7 @@ fn test_actions_out_of_order() {
     user.open_subchannel_e2e(recipient: user, token_addr: out_token_addr, index: 1);
     let note_id = compute_note_id(:channel_key, token: out_token_addr, index: open_note.index);
     let invoke_external_input = user
-        .invoke_external_swap_input(
+        .invoke_external_mock_swap_executor_input(
             in_token: token_addr, out_token: out_token_addr, :amount, :note_id,
         );
     let client_actions = [
@@ -5730,7 +5730,7 @@ fn test_no_privacy_actions() {
     let note_id = compute_note_id(:channel_key, token: out_token_addr, index: 0);
     let invoke_action = ClientAction::InvokeExternal(
         user
-            .invoke_external_swap_input(
+            .invoke_external_mock_swap_executor_input(
                 in_token: token_addr, out_token: out_token_addr, :amount, :note_id,
             ),
     );
@@ -6152,7 +6152,7 @@ fn test_swap_client_action() {
     let out_channel_key = user.compute_channel_key(recipient: user);
     let note_id = compute_note_id(channel_key: out_channel_key, token: out_token_addr, index: 0);
     let invoke_external_input = user
-        .invoke_external_swap_input(
+        .invoke_external_mock_swap_executor_input(
             in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
         );
 
@@ -6277,7 +6277,7 @@ fn test_swap_without_withdraw_fails() {
     let channel_key = user.compute_channel_key(recipient: user);
     let note_id = compute_note_id(:channel_key, token: out_token_addr, index: 0);
     let invoke_external_input = user
-        .invoke_external_swap_input(
+        .invoke_external_mock_swap_executor_input(
             in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
         );
     let server_actions = user
@@ -6295,7 +6295,7 @@ fn test_swap_without_withdraw_fails() {
     assert_eq!(server_actions, expected_server_actions.span());
     let result = test.privacy.safe_apply_actions(actions: server_actions);
     assert_panic_with_felt_error(
-        :result, expected_error: swap_executor_errors::INSUFFICIENT_BALANCE,
+        :result, expected_error: mock_swap_executor_errors::INSUFFICIENT_BALANCE,
     );
 }
 
@@ -6391,7 +6391,7 @@ fn test_invoke_external_swap_deposit_errors() {
     // created).
     let note_id = compute_note_id(:channel_key, token: out_token_addr, index: 0);
     let invoke_external_input = user
-        .invoke_external_swap_input(
+        .invoke_external_mock_swap_executor_input(
             in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
         );
     let random = user.get_random();
@@ -6458,7 +6458,7 @@ fn test_invoke_external_swap_deposit_errors() {
 
     let note_id = compute_note_id(:channel_key, token: out_token_addr, index: 1);
     let invoke_external_input_1 = user
-        .invoke_external_swap_input(
+        .invoke_external_mock_swap_executor_input(
             in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
         );
 
@@ -6516,7 +6516,7 @@ fn test_invoke_external_swap_deposit_errors() {
 
     let note_id = compute_note_id(:channel_key, token: out_token_addr, index: 2);
     let invoke_external_input_2 = user
-        .invoke_external_swap_input(
+        .invoke_external_mock_swap_executor_input(
             in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
         );
     let client_actions = [
@@ -6614,7 +6614,7 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
     let use_note_input = UseNoteInput { channel_key, token: in_token_addr, index: 0 };
     let note_id = compute_note_id(:channel_key, token: out_token_addr, index: 0);
     let invoke_external_input = user
-        .invoke_external_swap_input(
+        .invoke_external_mock_swap_executor_input(
             in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
         );
     let random = user.get_random();
@@ -6681,7 +6681,7 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
         ServerAction::EmitWithdrawal(expected_withdrawal_event),
         // Swap: Invoke.
         user
-            .invoke_external_swap_input(
+            .invoke_external_mock_swap_executor_input(
                 in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
             )
             .into_server_action(),
