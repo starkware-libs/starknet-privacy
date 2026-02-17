@@ -3,6 +3,7 @@ pub mod mock_account;
 pub mod mock_amm;
 pub mod test_client;
 pub mod test_compliance;
+pub mod test_fees;
 pub mod test_hashes;
 pub mod test_objects;
 pub mod test_server;
