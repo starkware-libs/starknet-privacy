@@ -1,7 +1,9 @@
 use core::num::traits::Zero;
 use privacy::objects::{EncOutgoingChannelInfo, EncSubchannelInfo};
 use privacy::privacy::Privacy;
-use privacy::tests::utils_for_tests::constants::DEFAULT_AMOUNT;
+use privacy::tests::utils_for_tests::constants::{
+    DEFAULT_AMOUNT, DEFAULT_FEE_AMOUNT, DEFAULT_FEE_COLLECTOR,
+};
 use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::unpacking;
@@ -32,12 +34,27 @@ fn test_constructor() {
 
 #[test]
 #[should_panic(expected: 'ZERO_COMPLIANCE_PUBLIC_KEY')]
-fn test_constructor_assertions() {
+fn test_constructor_zero_compliance_public_key() {
     let mut state = Privacy::contract_state_for_testing();
     Privacy::constructor(
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
         compliance_public_key: Zero::zero(),
+        fee_amount: Zero::zero(),
+        fee_collector: Zero::zero(),
+    );
+}
+
+#[test]
+#[should_panic(expected: 'ZERO_FEE_COLLECTOR')]
+fn test_constructor_zero_fee_collector() {
+    let mut state = Privacy::contract_state_for_testing();
+    Privacy::constructor(
+        ref state,
+        governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
+        compliance_public_key: 'COMPLIANCE_PUBLIC_KEY'.try_into().unwrap(),
+        fee_amount: DEFAULT_FEE_AMOUNT,
+        fee_collector: Zero::zero(),
     );
 }
 
@@ -45,6 +62,18 @@ fn test_constructor_assertions() {
 fn test_get_compliance_public_key() {
     let mut test: Test = Default::default();
     assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
+}
+
+#[test]
+fn test_get_fee_amount() {
+    let test: Test = Default::default();
+    assert_eq!(test.privacy.get_fee_amount(), DEFAULT_FEE_AMOUNT);
+}
+
+#[test]
+fn test_get_fee_collector() {
+    let test: Test = Default::default();
+    assert_eq!(test.privacy.get_fee_collector(), DEFAULT_FEE_COLLECTOR);
 }
 
 #[test]
