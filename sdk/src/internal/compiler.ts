@@ -53,7 +53,7 @@ type ClientActions = {
   createEncNotes: Extract<ClientAction, { type: "CreateEncNote" }>[];
   createOpenNotes: Extract<ClientAction, { type: "CreateOpenNote" }>[];
   withdraws: Extract<ClientAction, { type: "Withdraw" }>[];
-  followupCall?: Extract<ClientAction, { type: "FollowupCall" }>;
+  invokes: Extract<ClientAction, { type: "InvokeExternal" }>[];
 };
 
 // Enforces that input has no extra properties beyond what's expected for its type
@@ -215,7 +215,7 @@ export class ActionCompiler {
       createEncNotes: [],
       createOpenNotes: [],
       withdraws: [],
-      followupCall: undefined,
+      invokes: [],
     };
 
     debugLog("compiler", "transformToClientActions", actions);
@@ -425,16 +425,18 @@ export class ActionCompiler {
 
     // surpluses were handled in resolveNotes
 
-    // 8. FollowupCall
-    if (actions.followupCall) {
-      const input = {
-        type: "FollowupCall",
-        input: {
-          call: actions.followupCall.call,
-        },
-      } as const; // typescipt magic
-
-      clientActions.followupCall = execute(input);
+    // 8. InvokeExternal
+    if (actions.invokes) {
+      for (const action of actions.invokes) {
+        const input = {
+          type: "InvokeExternal",
+          input: {
+            contract_address: action.callDetails.contractAddress as unknown as StarknetAddressBigint,
+            calldata: action.callDetails.calldata as unknown as bigint[],
+          },
+        } as const; // typescipt magic
+        execute(input, clientActions.invokes);
+      }
     }
 
     return Object.values(clientActions)

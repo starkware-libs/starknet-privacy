@@ -72,7 +72,6 @@ function main(): void {
  * Run: npx tsx scripts/generate-client-actions.ts
  */
 
-import { Call } from "starknet";
 import { StarknetAddressBigint } from "../interfaces.js";
 
 ${clientAction.variants
@@ -84,21 +83,15 @@ ${struct.members.map((m) => `  ${m.name}: ${mapType(m.type)};`).join("\n")}
   })
   .join("\n\n")}
 
-export type FollowupCallInput = {
-  call: Call;
-};
-
 /**
  * Union of all client actions.
  */
 export type ClientAction =
-${clientAction.variants.map((v) => `  | { type: "${v.name}"; input: ${typeName(v.type)} }`).join("\n")}
-  | { type: "FollowupCall"; input: FollowupCallInput };
+${clientAction.variants.map((v) => `  | { type: "${v.name}"; input: ${typeName(v.type)} }`).join("\n")};
 
 /** All valid client action type names */
 export const CLIENT_ACTION_TYPES = [
 ${clientAction.variants.map((v) => `  "${v.name}",`).join("\n")}
-  "FollowupCall",
 ] as const;
 
 export type ClientActionType = (typeof CLIENT_ACTION_TYPES)[number];

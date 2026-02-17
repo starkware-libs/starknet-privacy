@@ -1,4 +1,4 @@
-import { Call } from "starknet";
+import { CallDetails } from "starknet";
 import {
   SimplePrivateTransfersInterface,
   PrivateTransfersInterface,
@@ -61,7 +61,7 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
     fromToken: StarknetAddress,
     fromAmount: Amount,
     toToken: StarknetAddress,
-    helperCall: Call
+    helperCall: CallDetails
   ): Promise<ExecuteResult> {
     return this.build(fromToken)
       .withdraw({ recipient: helperCall.contractAddress, amount: fromAmount })
