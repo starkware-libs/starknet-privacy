@@ -34,6 +34,6 @@ export class NoValidateProofProvider implements ProofProviderInterface {
       entrypoint: "execute_view",
       calldata: invocation.calldata!,
     });
-    return { output: result, data: undefined!, proof_facts: [] };
+    return { output: result, data: undefined!, proofFacts: [] };
   }
 }

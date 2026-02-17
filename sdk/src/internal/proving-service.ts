@@ -14,9 +14,10 @@ export interface ProvingServiceConfig {
   requestTimeoutMs?: number;
 }
 
-/** Result of starknet_proveTransaction. proof is u32[] or base64 string depending on service. */
+/** Result of starknet_proveTransaction. */
 export interface ProveTransactionResult {
-  proof: number[] | string;
+  /** Becomes Proof.data. */
+  proof: string[];
   proof_facts: string[];
   l2_to_l1_messages: MessageToL1[];
 }

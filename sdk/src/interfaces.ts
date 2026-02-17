@@ -75,10 +75,10 @@ export type Note = {
 export type NoteId = BigNumberish;
 
 export type Proof = {
-  readonly data: Uint8Array;
+  readonly data: string[];
   readonly output: string[]; // array of felts
   /** Proof facts from the proving service; must be included in the tx when submitting to the chain. */
-  readonly proof_facts: string[];
+  readonly proofFacts: string[];
 };
 
 /**
@@ -87,7 +87,6 @@ export type Proof = {
 export type CallAndProof = {
   readonly call: Call;
   readonly proof: Proof;
-  readonly proofFacts?: string[];
 };
 
 export type PrivateInvocationResult = {
