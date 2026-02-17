@@ -41,7 +41,7 @@ export class MockProofProvider extends AbstractProofProvider {
     const callbacks = this.pool.execute(userAddress, privateKey, ...clientActions);
 
     return {
-      data: ["0x0", "0x1", "0x2", "0x3"] as string[],
+      data: "",
       // Store callbacks in output (duck-typed, will be extracted by MockPublicCallBuilder)
       output: callbacks as unknown as string[],
       proofFacts: [],

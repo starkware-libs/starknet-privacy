@@ -422,9 +422,10 @@ export class Devnet {
       OutsideExecutionVersion.V2
     );
 
+    // Mock proof provider returns proofFacts but proof.data may be undefined; use placeholder for sequencer
     const response = await this.setup.admin.executeFromOutside(outsideTransaction, {
       proofFacts: callAndProof.proof.proofFacts,
-      proof: callAndProof.proof.data
+      proof: callAndProof.proof.data ?? "",
     });
     return this.provider!.waitForTransaction(response.transaction_hash);
   }

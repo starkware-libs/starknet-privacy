@@ -7,8 +7,14 @@ import {
   type constants,
   type OutsideExecutionOptions,
 } from "starknet";
-import { CallMockProofProvider, IndexerDiscoveryProvider } from "starknet-sdk/testing";
-import { createPrivateTransfers, SetupRequirement, type AccountSignerRaw } from "starknet-sdk";
+import { IndexerDiscoveryProvider } from "starknet-sdk/testing";
+import {
+  createPrivateTransfers,
+  ProvingServiceProofProvider,
+  SetupRequirement,
+  type AccountSignerRaw,
+  type ProofProviderInterface,
+} from "starknet-sdk";
 import { IndexerClient } from "../src/indexer-client.js";
 
 const RPC = "http://34.170.239.64:9545/rpc/v0_10";
@@ -23,10 +29,9 @@ const POOL_CLASS_HASH =
   "0x3121db23aa238a8c03fecb1953b0db6697f0a9e55ff464f46690ef25af2a69e";
 const COMPLIANCE_PUBLIC_KEY =
   "0x02fbf66c1dd8c556f8f9ee8852669513a9559385194da39ff0e33ed38586fe47";
+const PROVING_SERVICE_URL = process.env.PROVING_SERVICE_URL ?? "http://136.115.124.93:3000";
 
 // Manual resource bounds for integration sepolia (no tip oracle data available).
-// Actual block prices: l2_gas=8e9, l1_gas=1e12, l1_data_gas=1000.
-// We use 2x headroom on prices. L1 gas usage is always 0 but sequencer enforces min price.
 const L2_GAS_PRICE = 16_000_000_000n;
 const L1_GAS_PRICE = 1_000_000_000_000n;
 const L1_DATA_GAS_PRICE = 2_000n;
@@ -41,10 +46,23 @@ const DEPLOY_RESOURCE_BOUNDS = {
   l1_data_gas: { max_amount: 3_500n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };
 const POOL_RESOURCE_BOUNDS = {
-  l2_gas: { max_amount: 4_000_000n, max_price_per_unit: L2_GAS_PRICE },
+  l2_gas: { max_amount: 2_000_000_000n, max_price_per_unit: L2_GAS_PRICE },
   l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
-  l1_data_gas: { max_amount: 1_100n, max_price_per_unit: L1_DATA_GAS_PRICE },
+  l1_data_gas: { max_amount: 5_000n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };
+
+function createProvingProvider(
+  provider: RpcProvider,
+  account: Account,
+): ProofProviderInterface {
+  return new ProvingServiceProofProvider(
+    PROVING_SERVICE_URL,
+    provider,
+    CHAIN_ID,
+    account,
+    { requestTimeoutMs: 600_000 },
+  );
+}
 
 const accountsMap = JSON.parse(
   readFileSync(new URL("../accounts.json", import.meta.url), "utf-8"),
@@ -127,28 +145,34 @@ describe("Privacy StarkNet integration", () => {
     const transfers = createPrivateTransfers({
       account: aliceAccount as unknown as AccountSignerRaw,
       viewingKeyProvider: { getViewingKey: () => BigInt(alice.private_key) },
-      provingProvider: new CallMockProofProvider(provider, CHAIN_ID),
+      provingProvider: createProvingProvider(provider, aliceAccount),
       discoveryProvider: discovery,
       poolContractAddress: poolAddress,
     });
 
     // Mint tokens to Alice (admin is the minter)
     console.log("[debug] minting 100 tokens to alice:", alice.address);
-    const mintTx = await adminAccount.execute({
-      contractAddress: TOKEN,
-      entrypoint: "permissionedMint",
-      calldata: [alice.address, "100", "0"],
-    }, { tip: 0n, resourceBounds: ERC20_RESOURCE_BOUNDS });
+    const mintTx = await adminAccount.execute(
+      {
+        contractAddress: TOKEN,
+        entrypoint: "permissionedMint",
+        calldata: [alice.address, "100", "0"],
+      },
+      { tip: 0n, resourceBounds: ERC20_RESOURCE_BOUNDS },
+    );
     const mintReceipt = await provider.waitForTransaction(mintTx.transaction_hash);
     console.log("[debug] mint tx:", mintTx.transaction_hash, "status:", mintReceipt.isSuccess() ? "OK" : "FAILED");
 
     // Approve pool to spend Alice's tokens
     console.log("[debug] approving pool to spend 100 tokens");
-    const approveTx = await aliceAccount.execute({
-      contractAddress: TOKEN,
-      entrypoint: "approve",
-      calldata: [poolAddress, "100", "0"],
-    }, { tip: 0n, resourceBounds: ERC20_RESOURCE_BOUNDS });
+    const approveTx = await aliceAccount.execute(
+      {
+        contractAddress: TOKEN,
+        entrypoint: "approve",
+        calldata: [poolAddress, "100", "0"],
+      },
+      { tip: 0n, resourceBounds: ERC20_RESOURCE_BOUNDS },
+    );
     const approveReceipt = await provider.waitForTransaction(approveTx.transaction_hash);
     console.log("[debug] approve tx:", approveTx.transaction_hash, "status:", approveReceipt.isSuccess() ? "OK" : "FAILED");
 
@@ -167,8 +191,7 @@ describe("Privacy StarkNet integration", () => {
       .surplusTo(alice.address)
       .execute();
     console.log("[debug] execute() completed successfully");
-
-    console.log("[debug] proofFacts:", callAndProof.proofFacts ? `${callAndProof.proofFacts.length} elements` : "undefined");
+    console.log("[debug] ProofFacts:", callAndProof.proof.proofFacts ? `${callAndProof.proof.proofFacts.length} elements` : "undefined");
 
     // Submit via outside execution (admin submits on behalf of Alice).
     // This is required because proofFacts change the tx hash, and the account
@@ -187,13 +210,13 @@ describe("Privacy StarkNet integration", () => {
     const executeTx = await adminAccount.executeFromOutside(outsideTransaction, {
       tip: 0n,
       resourceBounds: POOL_RESOURCE_BOUNDS,
-      proofFacts: callAndProof.proofFacts,
-      proof: [0],
+      proofFacts: callAndProof.proof.proofFacts,
+      proof: callAndProof.proof.data,
     });
     const receipt = await provider.waitForTransaction(executeTx.transaction_hash);
     if (!receipt.isSuccess()) {
       console.error("Transaction reverted:", JSON.stringify(receipt, null, 2));
     }
     expect(receipt.isSuccess()).toBe(true);
-  }, 120_000);
+  }, 600_000); // 10 min — proving + execute can be slow
 });

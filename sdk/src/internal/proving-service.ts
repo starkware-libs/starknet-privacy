@@ -16,8 +16,8 @@ export interface ProvingServiceConfig {
 
 /** Result of starknet_proveTransaction. */
 export interface ProveTransactionResult {
-  /** Becomes Proof.data. */
-  proof: string[];
+  /** Proof data: base64-encoded binary from the proving service. */
+  proof: string;
   proof_facts: string[];
   l2_to_l1_messages: MessageToL1[];
 }
@@ -35,8 +35,7 @@ function isProveTransactionResult(value: unknown): value is ProveTransactionResu
   }
   const r = value as Record<string, unknown>;
   const proof = r.proof;
-  const proofOk =
-    (Array.isArray(proof) && proof.length > 0) || (typeof proof === "string" && proof.length > 0);
+  const proofOk = typeof proof === "string" && proof.length > 0;
   return proofOk && Array.isArray(r.proof_facts) && Array.isArray(r.l2_to_l1_messages);
 }
 
