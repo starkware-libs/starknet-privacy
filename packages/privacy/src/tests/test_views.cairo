@@ -38,6 +38,8 @@ fn test_constructor_assertions() {
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
         compliance_public_key: Zero::zero(),
+        fee_amount: Zero::zero(),
+        fee_recipient: Zero::zero(),
     );
 }
 

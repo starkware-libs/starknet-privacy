@@ -29,6 +29,7 @@ pub(crate) trait IAccount<TState> {
 
 pub mod constants {
     use core::num::traits::{Pow, Zero};
+    use starknet::ContractAddress;
 
     /// The salt value in the [`Note`](privacy::objects::Note) (packed with the amount in
     /// `packed_value`) identifies which type of note it is;
@@ -51,6 +52,11 @@ pub mod constants {
     pub const VIRTUAL_SNOS: felt252 = 'VIRTUAL_SNOS';
     /// The output version for the virtual Starknet OS.
     pub const VIRTUAL_SNOS0: felt252 = 'VIRTUAL_SNOS0';
+    /// STRK fee token address — same on all Starknet networks (mainnet, sepolia, devnet).
+    pub const STRK_TOKEN_ADDRESS: ContractAddress =
+        0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d
+        .try_into()
+        .unwrap();
 }
 
 /// Returns the generator point.

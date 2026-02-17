@@ -49,6 +49,7 @@ pub const INVALID_PROOF_MSG: felt252 = 'INVALID_PROOF_MSG';
 pub const SWAP_TO_SAME_TOKEN: felt252 = 'SWAP_TO_SAME_TOKEN';
 pub const ZERO_SWAP_EXECUTOR: felt252 = 'ZERO_SWAP_EXECUTOR';
 pub const TOKEN_MISMATCH: felt252 = 'TOKEN_MISMATCH';
+pub const ZERO_FEE_RECIPIENT: felt252 = 'ZERO_FEE_RECIPIENT';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';
