@@ -16,13 +16,13 @@ pub mod Privacy {
         compute_channel_key, compute_channel_marker, compute_note_id, compute_nullifier,
         compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker,
     };
-    use privacy::interface::{IClient, ICompliance, IServer, IViews};
+    use privacy::interface::{IClient, ICompliance, IFees, IServer, IViews};
     use privacy::objects::{
         EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
         TokenBalancesTrait,
     };
-    use privacy::utils::constants::{INVOKE_SELECTOR, OPEN_NOTE_SALT};
+    use privacy::utils::constants::{INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS};
     use privacy::utils::{
         StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
         decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
@@ -89,6 +89,10 @@ pub mod Privacy {
         enc_private_key: Map<ContractAddress, EncPrivateKey>,
         /// Public key of the compliance used for private key encryptions.
         compliance_public_key: felt252,
+        /// Fee amount (in FRI) charged per `apply_actions` call.
+        fee_amount: u128,
+        /// Address that receives the fee.
+        fee_collector: ContractAddress,
     }
 
     #[event]
@@ -115,11 +119,16 @@ pub mod Privacy {
 
     #[constructor]
     pub(crate) fn constructor(
-        ref self: ContractState, governance_admin: ContractAddress, compliance_public_key: felt252,
+        ref self: ContractState,
+        governance_admin: ContractAddress,
+        compliance_public_key: felt252,
+        fee_amount: u128,
+        fee_collector: ContractAddress,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(upgrade_delay: Zero::zero());
         self._set_compliance_public_key(:compliance_public_key);
+        self._set_fee(:fee_amount, :fee_collector);
     }
 
     #[abi(embed_v0)]
@@ -708,6 +717,7 @@ pub mod Privacy {
         fn apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             self.pausable.assert_not_paused();
             validate_proof(:actions);
+            self._collect_fee();
             self._apply_actions(:actions);
         }
 
@@ -758,6 +768,19 @@ pub mod Privacy {
 
     #[generate_trait]
     pub impl ServerInternalImpl of ServerInternalTrait {
+        fn _collect_fee(ref self: ContractState) {
+            let fee_amount = self.fee_amount.read();
+            if fee_amount.is_non_zero() {
+                let fee_collector = self.fee_collector.read();
+                IERC20Dispatcher { contract_address: STRK_TOKEN_ADDRESS }
+                    .checked_transfer_from(
+                        sender: get_caller_address(),
+                        recipient: fee_collector,
+                        amount: fee_amount.into(),
+                    );
+            }
+        }
+
         fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             for action in actions {
                 match *action {
@@ -942,6 +965,35 @@ pub mod Privacy {
             assert(compliance_public_key.is_non_zero(), errors::ZERO_COMPLIANCE_PUBLIC_KEY);
             self.compliance_public_key.write(compliance_public_key);
             self.emit(events::CompliancePublicKeySet { compliance_public_key });
+        }
+    }
+
+    #[generate_trait]
+    impl FeesInternalImpl of FeesInternalTrait {
+        fn _set_fee(ref self: ContractState, fee_amount: u128, fee_collector: ContractAddress) {
+            if fee_amount.is_non_zero() {
+                assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
+            }
+            self.fee_amount.write(fee_amount);
+            self.fee_collector.write(fee_collector);
+            // TODO: Consider emitting an event.
+        }
+    }
+
+    #[abi(embed_v0)]
+    pub impl FeesImpl of IFees<ContractState> {
+        fn set_fee(ref self: ContractState, fee_amount: u128, fee_collector: ContractAddress) {
+            // TODO: Change to real role.
+            self.roles.only_app_governor();
+            self._set_fee(:fee_amount, :fee_collector);
+        }
+
+        fn get_fee_amount(self: @ContractState) -> u128 {
+            self.fee_amount.read()
+        }
+
+        fn get_fee_collector(self: @ContractState) -> ContractAddress {
+            self.fee_collector.read()
         }
     }
 }

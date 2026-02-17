@@ -623,3 +623,27 @@ pub trait IViews<T> {
 pub trait ICompliance<T> {
     fn set_compliance_public_key(ref self: T, compliance_public_key: felt252);
 }
+
+#[starknet::interface]
+pub trait IFees<T> {
+    /// Sets the fee amount and fee collector for `apply_actions` calls.
+    ///
+    /// #### Parameters
+    /// - `fee_amount` (`u128`): The fee amount in FRI per transaction. Set to 0 to disable fees.
+    /// - `fee_collector` (`ContractAddress`): The address that receives the fee. Must be non-zero
+    /// when `fee_amount` is non-zero.
+    ///
+    /// #### Reverts
+    /// - [`ZERO_FEE_COLLECTOR`](privacy::errors::ZERO_FEE_COLLECTOR): Thrown if `fee_amount` is
+    /// non-zero and `fee_collector` is zero.
+    ///
+    /// #### Access Control
+    /// - Only app governor.
+    fn set_fee(ref self: T, fee_amount: u128, fee_collector: ContractAddress);
+
+    /// Returns the current fee amount in FRI.
+    fn get_fee_amount(self: @T) -> u128;
+
+    /// Returns the current fee collector address.
+    fn get_fee_collector(self: @T) -> ContractAddress;
+}
