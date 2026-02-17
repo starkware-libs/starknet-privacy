@@ -94,7 +94,6 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
           calldata: proof.output,
         },
         proof,
-        proofFacts,
       },
       registry,
       warnings,

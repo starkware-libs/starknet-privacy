@@ -8,7 +8,7 @@ import {
   type OutsideExecutionOptions,
 } from "starknet";
 import { CallMockProofProvider, IndexerDiscoveryProvider } from "starknet-sdk/testing";
-import { createPrivateTransfers, SetupRequirement } from "starknet-sdk";
+import { createPrivateTransfers, SetupRequirement, type AccountSignerRaw } from "starknet-sdk";
 import { IndexerClient } from "../src/indexer-client.js";
 
 const RPC = "http://34.170.239.64:9545/rpc/v0_10";
@@ -125,7 +125,7 @@ describe("Privacy StarkNet integration", () => {
 
   it("deposit with auto-register", async () => {
     const transfers = createPrivateTransfers({
-      account: aliceAccount,
+      account: aliceAccount as unknown as AccountSignerRaw,
       viewingKeyProvider: { getViewingKey: () => BigInt(alice.private_key) },
       provingProvider: new CallMockProofProvider(provider, CHAIN_ID),
       discoveryProvider: discovery,
