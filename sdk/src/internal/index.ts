@@ -13,17 +13,8 @@ export { SignerRaw } from "./signer-raw.js";
 export type { AccountSignerRaw, SignerRawInterface } from "../interfaces.js";
 export { ProvingService } from "./proving-service.js";
 export type {
-  BlockId,
   MessageToL1,
   ProvingServiceConfig,
   ProveTransactionResult,
 } from "./proving-service.js";
-export {
-  BlockNotFoundError,
-  InvalidTransactionHashError,
-  mapProvingServiceError,
-  ProvingServiceError,
-  ProvingServiceInternalError,
-  UnsupportedTransactionVersionError,
-  ValidationFailedError,
-} from "./proving-service-errors.js";
+export type { BlockIdentifier } from "starknet";

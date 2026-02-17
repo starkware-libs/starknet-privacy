@@ -3,7 +3,7 @@
  * Structured similarly to starknet's RpcProvider.
  */
 
-import { mapProvingServiceError } from "./proving-service-errors.js";
+import type { BlockIdentifier } from "starknet";
 
 /** Default request timeout: 600s (proofs take ~1–2 min; guide recommends --max-time 600). */
 const DEFAULT_REQUEST_TIMEOUT_MS = 600_000;
@@ -38,8 +38,6 @@ function isProveTransactionResult(value: unknown): value is ProveTransactionResu
   const proofOk = typeof proof === "string" && proof.length > 0;
   return proofOk && Array.isArray(r.proof_facts) && Array.isArray(r.l2_to_l1_messages);
 }
-
-export type BlockId = "latest" | { block_hash: string } | { block_number: number };
 
 export class ProvingService {
   private baseUrl: string;
@@ -94,7 +92,9 @@ export class ProvingService {
     };
 
     if (json.error) {
-      throw mapProvingServiceError(json.error);
+      const { code, message, data } = json.error;
+      const detail = typeof data === "string" ? `${message}: ${data}` : message;
+      throw new Error(`Proving service error (code ${code}) ${detail}`);
     }
 
     const result = json.result;
@@ -109,7 +109,10 @@ export class ProvingService {
     return this.call<string>("starknet_specVersion", []);
   }
 
-  async proveTransaction(blockId: BlockId, transaction: object): Promise<ProveTransactionResult> {
+  async proveTransaction(
+    blockId: BlockIdentifier,
+    transaction: object
+  ): Promise<ProveTransactionResult> {
     const result = await this.call<ProveTransactionResult>("starknet_proveTransaction", {
       block_id: blockId,
       transaction,

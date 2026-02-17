@@ -6,24 +6,12 @@
 import type { Account, constants, ProviderInterface } from "starknet";
 import { num, stark } from "starknet";
 import type { Proof, ProofInvocationWithPayload } from "../interfaces.js";
-import { ensureHexCalldata, toHex } from "../utils/convert.js";
+import { toHex } from "../utils/convert.js";
 import { AbstractProofProvider } from "./abstract-proof-provider.js";
 import { ProvingService } from "./proving-service.js";
 
-const DEFAULT_PROVING_SERVICE_PORT = 3000;
 /** Default request timeout: 600s (proofs take ~1–2 min; guide recommends --max-time 600). */
 const DEFAULT_REQUEST_TIMEOUT_MS = 600_000;
-
-/**
- * Proving service URL. If a host is given (no scheme), defaults to http and port 3000.
- */
-export function normalizeProvingServiceUrl(hostOrUrl: string): string {
-  const s = hostOrUrl.trim();
-  if (s.startsWith("http://") || s.startsWith("https://")) {
-    return s;
-  }
-  return s.includes(":") ? `http://${s}` : `http://${s}:${DEFAULT_PROVING_SERVICE_PORT}`;
-}
 
 /** Options for ProvingServiceProofProvider. */
 export type ProvingServiceProofProviderOptions = {
@@ -35,6 +23,8 @@ export type ProvingServiceProofProviderOptions = {
  * Proof provider that sends the invocation to a remote proving service (JSON-RPC)
  * and returns the STARK proof. Server actions for execute_actions come from the
  * L2-to-L1 message payload (from_address = pool).
+ *
+ * @param provingServiceUrl - Full base URL of the proving service (e.g. https://prover.example.com:3000)
  */
 export class ProvingServiceProofProvider extends AbstractProofProvider {
   private readonly provingService: ProvingService;
@@ -48,7 +38,7 @@ export class ProvingServiceProofProvider extends AbstractProofProvider {
   ) {
     super();
     this.provingService = new ProvingService({
-      baseUrl: normalizeProvingServiceUrl(provingServiceUrl),
+      baseUrl: provingServiceUrl,
       requestTimeoutMs: options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
     });
   }
@@ -63,7 +53,9 @@ export class ProvingServiceProofProvider extends AbstractProofProvider {
       type: "INVOKE",
       version: "0x3",
       sender_address: toHex(inv.contractAddress),
-      calldata: ensureHexCalldata(inv.calldata as string[]),
+      calldata: (inv.calldata as string[]).map((x) =>
+        x.startsWith("0x") ? x : `0x${BigInt(x).toString(16)}`
+      ),
       signature: stark
         .formatSignature(inv.signature ?? [])
         .map((s: string) => (typeof s === "string" && s.startsWith("0x") ? s : num.toHex(s))),

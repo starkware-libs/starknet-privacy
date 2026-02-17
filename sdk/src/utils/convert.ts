@@ -52,9 +52,3 @@ export function toHex(value: Numeric, { prefix = true }: { prefix?: boolean } = 
   return prefix ? `0x${hex}` : hex;
 }
 
-// ============ Calldata ============
-
-/** Ensure calldata elements are 0x-prefixed hex (starknet signer/RPC expect this). */
-export function ensureHexCalldata(calldata: string[]): string[] {
-  return calldata.map((x) => (x.startsWith("0x") ? x : `0x${BigInt(x).toString(16)}`));
-}
