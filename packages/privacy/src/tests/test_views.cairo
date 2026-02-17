@@ -330,20 +330,20 @@ fn test_prepare_tx() {
     println!("acc_1_viewing_private_key: {}", acc_1_viewing_private_key);
     println!("acc_1_viewing_public_key: {}", acc_1_viewing_public_key);
 
-    // Account 2.
+    // Account 4.
     println!("--------------------------------");
-    println!("Account 2");
+    println!("Account 4");
     let acc_2_addr: ContractAddress =
-        0x05499b2112812a5437837750d27131f2de280531fb066a290269f77922fc3f97
+        0x0042f3d0b459a7c1dde5879ac3137b553ffcee22da85ceadf05190555835f647
         .try_into()
         .unwrap();
-    let acc_2_private_key = 0x13034027ffd68fc59cac2f7854d53eebcb7287f2dcd44231f2585967ad08f62;
+    let acc_2_private_key = 0x3ab21bbef6577ed8e8cf3e4a5c212362c5d16938c23f84be45c0ab20d99f36;
     let acc_2_viewing_private_key = acc_2_private_key - 1;
     let acc_2_public_key = derive_public_key(acc_2_private_key);
     let acc_2_viewing_public_key = derive_public_key(acc_2_viewing_private_key);
     assert_eq!(
         acc_2_public_key,
-        0x3a277bfbb20949cb08aba3d9ddd889d9dcc7a445c48770c2f86eb7b3fd3a05d,
+        0x6d94865c72bd5545aa8308313fb8f2d652cda32d58d6a7227d593a6d8017175,
         "INVALID_ACC_2_PUBLIC_KEY",
     );
     println!("acc_2_addr: {:?}", acc_2_addr);
@@ -540,6 +540,7 @@ fn test_prepare_tx() {
     ]
         .span();
     println!("client_actions: {:?}", client_actions);
+    println!("length of client_actions: {}", client_actions.len());
     let user_addr = acc_2_addr;
     let user_private_key = acc_2_viewing_private_key;
     println!("================================================");
