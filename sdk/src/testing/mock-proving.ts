@@ -44,7 +44,7 @@ export class CallMockProofProvider extends AbstractProofProvider {
 
     // execute_view returns Span<ServerAction> which is serialized with its length prefix.
     // apply_actions also expects Span<ServerAction> with the length prefix, so we pass it through as-is.
-    return { output: result, data: undefined!, proof_facts: [] };
+    return { output: result, data: undefined!, proofFacts: [] };
   }
 
   /**

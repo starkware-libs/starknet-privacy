@@ -14,32 +14,6 @@ const DEFAULT_PROVING_SERVICE_PORT = 3000;
 /** Default request timeout: 600s (proofs take ~1–2 min; guide recommends --max-time 600). */
 const DEFAULT_REQUEST_TIMEOUT_MS = 600_000;
 
-/** Decode base64 to bytes (Node: Buffer; browser: atob). */
-function base64ToBytes(base64: string): Uint8Array {
-  if (typeof Buffer !== "undefined") {
-    return new Uint8Array(Buffer.from(base64, "base64"));
-  }
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-/** Proof to bytes: u32[] packed big-endian, or base64 string decoded. */
-function proofToBytes(proof: number[] | string): Uint8Array {
-  if (typeof proof === "string") {
-    return base64ToBytes(proof);
-  }
-  const buf = new Uint8Array(proof.length * 4);
-  const view = new DataView(buf.buffer);
-  for (let i = 0; i < proof.length; i++) {
-    view.setUint32(i * 4, proof[i] >>> 0, false);
-  }
-  return buf;
-}
-
 /**
  * Proving service URL. If a host is given (no scheme), defaults to http and port 3000.
  */
@@ -124,13 +98,12 @@ export class ProvingServiceProofProvider extends AbstractProofProvider {
     );
     const output = poolMessage?.payload ?? [];
 
-    const proofBytes = proofToBytes(result.proof);
     const proofFacts = result.proof_facts ?? [];
 
     return {
-      data: proofBytes,
+      data: result.proof,
       output,
-      proof_facts: proofFacts,
+      proofFacts,
     };
   }
 }
