@@ -114,3 +114,13 @@ pub struct SubchannelCursor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_note_index: Option<u64>,
 }
+
+impl SubchannelCursor {
+    /// Returns the next note index to scan from.
+    ///
+    /// If `last_note_index` is `Some(i)`, returns `i + 1` (resume after last
+    /// scanned). If `None`, returns 0 (fresh cursor).
+    pub fn start_index(&self) -> u64 {
+        self.last_note_index.map_or(0, |i| i + 1)
+    }
+}
