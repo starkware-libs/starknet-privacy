@@ -51,7 +51,10 @@ async fn main() {
         }),
         None => ServiceConfig::default(),
     };
-    config.apply_env_overrides();
+    config.apply_env_overrides().unwrap_or_else(|e| {
+        eprintln!("Configuration error: {e}");
+        std::process::exit(1);
+    });
 
     // Extract log level before build_configs() consumes the config
     let log_level = config.logging.level.clone();
