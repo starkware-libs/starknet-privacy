@@ -29,6 +29,8 @@ import {
 import { TracingRpcProvider } from "./tracing-provider.js";
 import type { CallAndProof, PrivateTransfersInterface } from "../interfaces.js";
 import { createPrivateTransfers } from "../factory.js";
+import type { AccountSignerRaw } from "../interfaces.js";
+import { SignerRaw } from "../internal/signer-raw.js";
 import { CallMockProofProvider } from "./mock-proving.js";
 import {
   ContractDiscoveryProvider,
@@ -81,11 +83,11 @@ export interface DevnetConfig {
 }
 
 export interface DevnetEnvironment {
-  alice: Account;
-  bob: Account;
+  alice: AccountSignerRaw;
+  bob: AccountSignerRaw;
   admin: Account;
   /** Extra user accounts beyond alice and bob (index 0 = 3rd user, etc.) */
-  extraAccounts: Account[];
+  extraAccounts: AccountSignerRaw[];
   strk: string;
   eth: string;
   privacy: PrivacyPoolContract;
@@ -217,8 +219,8 @@ export class Devnet {
       public_key: string;
     }>;
 
-    // Create user accounts (alice, bob, and any extra)
-    const userAccounts: Account[] = [];
+    // Create user accounts (alice, bob, and any extra) with SignerRaw for proof invocations
+    const userAccounts: AccountSignerRaw[] = [];
     for (let i = 0; i < this.config.userAccounts; i++) {
       const raw = accounts[i];
       const keyBytes = new Uint8Array(
@@ -228,7 +230,11 @@ export class Devnet {
           .map((byte) => parseInt(byte, 16))
       );
       userAccounts.push(
-        new Account({ provider: this.provider, address: raw.address, signer: keyBytes })
+        new Account({
+          provider: this.provider,
+          address: raw.address,
+          signer: new SignerRaw(keyBytes),
+        }) as AccountSignerRaw
       );
     }
     const [alice, bob] = userAccounts;
@@ -418,8 +424,9 @@ export class Devnet {
       OutsideExecutionVersion.V2
     );
 
+    // Mock proof provider returns proofFacts but proof.data may be undefined; use placeholder for sequencer
     const response = await this.setup.admin.executeFromOutside(outsideTransaction, {
-      proofFacts: callAndProof.proofFacts,
+      proofFacts: callAndProof.proof.proofFacts,
     });
     return this.provider!.waitForTransaction(response.transaction_hash);
   }

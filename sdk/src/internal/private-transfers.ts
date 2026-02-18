@@ -11,14 +11,14 @@ import type {
   ViewingKeyProvider,
   StarknetAddress,
 } from "../interfaces.js";
-import type { Account, TypedContractV2 } from "starknet";
+import type { TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
 import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
 import { debugLog } from "../utils/logging.js";
+import type { AccountSignerRaw } from "../interfaces.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toHex } from "../utils/convert.js";
-import { buildProofFacts } from "../utils/proof-facts.js";
 
 // Export the specific typed contract type for the Privacy Pool
 export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
@@ -26,7 +26,7 @@ export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
 export class PrivateTransfers extends AbstractPrivateTransfers {
   constructor(
     private readonly params: {
-      account: Account; // the user account (for signing)
+      account: AccountSignerRaw; // the user account (for signing)
       viewingKeyProvider: ViewingKeyProvider;
       provingProvider: ProofProviderInterface;
       discoveryProvider: DiscoveryProviderInterface;
@@ -50,7 +50,6 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     // Compile actions
     const { clientActions, registry, warnings } = await compiler.compile(actions, options);
 
-    // Create invocation for proving
     const details = this.params.provingProvider.getDefaultDetails();
     const invocation = await this.params.proofInvocationFactory.create(
       { address: this.params.account.address, signer: this.params.account.signer, viewingKey },
@@ -66,26 +65,6 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     const parsedOutput = () => this.params.proofInvocationFactory.parseOutput(proof.output);
     debugLog("private-transfers", "execute", "parsed server actions", parsedOutput);
 
-    // Build proof facts for on-chain validation (requires a real provider)
-    let proofFacts: string[] | undefined;
-    if (typeof this.params.account.getBlock === "function") {
-      const latestBlock = await this.params.account.getBlock("latest");
-      const currentBlockNumber = BigInt(latestBlock.block_number);
-      // Blockifier requires base_block_number to be at least STORED_BLOCK_HASH_BUFFER (10)
-      // blocks behind the current block, and the block must have a non-zero stored hash.
-      // TODO: Consider lowering this buffer to account for proving time, or making it configurable.
-      const baseBlockNumber = currentBlockNumber > 10n ? currentBlockNumber - 10n : 1n;
-      const baseBlock = await this.params.account.getBlock(Number(baseBlockNumber));
-      const chainId = await this.params.account.getChainId();
-      proofFacts = buildProofFacts(
-        this.params.poolContractAddress,
-        proof.output,
-        baseBlockNumber,
-        baseBlock.block_hash ?? "0x0",
-        chainId
-      );
-    }
-
     return {
       callAndProof: {
         call: {
@@ -94,7 +73,6 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
           calldata: proof.output,
         },
         proof,
-        proofFacts,
       },
       registry,
       warnings,
