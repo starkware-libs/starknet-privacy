@@ -12,7 +12,10 @@ use privacy::tests::utils_for_tests::{
 use privacy::utils::constants::{OPEN_NOTE_SALT, PROOF_VALIDITY_BLOCK_INTERVAL};
 use privacy::utils::{ProofFacts, _compute_message_hash, open_note, to_write_once_action, unpacking};
 use privacy::{errors, events};
-use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, map_entry_address, spy_events};
+use snforge_std::{
+    CheatSpan, EventSpyTrait, EventsFilterTrait, TokenTrait, cheat_proof_facts, map_entry_address,
+    spy_events,
+};
 use starknet::{ContractAddress, get_block_number};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
 use starkware_utils::constants::MAX_U128;
@@ -634,7 +637,17 @@ fn test_apply_actions_assertions() {
     let actions = [].span();
     let proof_facts: ProofFacts = Default::default();
 
-    // Catch PROOF_FACTS_DESERIALIZE_ERROR.
+    // Catch EMPTY_PROOF_FACTS (no proof facts cheated).
+    let result = test.privacy.safe_apply_actions_without_cheat(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::EMPTY_PROOF_FACTS);
+
+    // Catch PROOF_FACTS_DESERIALIZE_ERROR (non-empty but invalid serialization).
+    let invalid_proof_facts = [0x1].span();
+    cheat_proof_facts(
+        contract_address: test.privacy.address,
+        proof_facts: invalid_proof_facts,
+        span: CheatSpan::TargetCalls(1),
+    );
     let result = test.privacy.safe_apply_actions_without_cheat(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::PROOF_FACTS_DESERIALIZE_ERROR);
 
