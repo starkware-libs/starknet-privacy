@@ -1,5 +1,9 @@
 import { Account, RpcProvider, type constants } from "starknet";
-import { createPrivateTransfers, type PrivateTransfersInterface } from "starknet-sdk";
+import {
+  createPrivateTransfers,
+  ProvingServiceProofProvider,
+  type PrivateTransfersInterface,
+} from "starknet-sdk";
 // Direct import avoids pulling in Node-only modules from the testing barrel
 // @ts-expect-error — deep import into dist, not part of the declared exports
 import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
@@ -25,10 +29,18 @@ export function createTransfers(
   config: AppConfig,
 ): PrivateTransfersInterface {
   const discovery = new IndexerDiscoveryProvider(config.indexerUrl);
+  const provingProvider = config.provingServiceUrl
+    ? new ProvingServiceProofProvider(
+        config.provingServiceUrl,
+        provider,
+        config.chainId,
+        account,
+      )
+    : new NoValidateProofProvider(provider, config.chainId);
   return createPrivateTransfers({
     account,
     viewingKeyProvider: { getViewingKey: () => BigInt(accountConfig.viewingKey) },
-    provingProvider: new NoValidateProofProvider(provider, config.chainId),
+    provingProvider,
     discoveryProvider: discovery,
     poolContractAddress: config.poolAddress,
   });
@@ -61,5 +73,5 @@ export const ERC20_RESOURCE_BOUNDS = {
 export const POOL_RESOURCE_BOUNDS = {
   l2_gas: { max_amount: 4_000_000n, max_price_per_unit: L2_GAS_PRICE },
   l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
-  l1_data_gas: { max_amount: 1_100n, max_price_per_unit: L1_DATA_GAS_PRICE },
+  l1_data_gas: { max_amount: 4_000n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };
