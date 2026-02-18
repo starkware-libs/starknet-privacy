@@ -25,6 +25,10 @@ pub enum ConfigError {
         "environment variable '{0}' is required but not set (referenced in config as ${{...}})"
     )]
     EnvVarRequired(String),
+    #[error(
+        "incomplete TLS configuration: both TLS_CERT_PATH and TLS_KEY_PATH must be set together"
+    )]
+    IncompleteTls,
 }
 
 /// Configuration for the RPC backend (flattened, no nested pool section).
@@ -93,6 +97,25 @@ impl Default for IndexerConfig {
     }
 }
 
+/// TLS configuration for the API server.
+#[derive(Debug, Clone, Deserialize)]
+pub struct TlsConfig {
+    /// Path to PEM-encoded certificate file.
+    pub cert_path: String,
+    /// Path to PEM-encoded private key file.
+    pub key_path: String,
+    /// Maximum duration for a TLS handshake before the connection is dropped.
+    #[serde(
+        default = "default_handshake_timeout",
+        deserialize_with = "deserialize_secs"
+    )]
+    pub handshake_timeout: Duration,
+}
+
+fn default_handshake_timeout() -> Duration {
+    Duration::from_secs(10)
+}
+
 /// Configuration for the API server.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
@@ -102,6 +125,8 @@ pub struct ApiServerConfig {
     /// Maximum duration for an HTTP request before timeout.
     #[serde(deserialize_with = "deserialize_secs")]
     pub request_timeout: Duration,
+    /// Optional TLS configuration. When set, the server terminates TLS directly.
+    pub tls: Option<TlsConfig>,
     /// Populated from the `[limits]` section by `build_configs()`, not deserialized directly.
     #[serde(skip_deserializing)]
     pub validation_limits: ValidationLimits,
@@ -113,6 +138,7 @@ impl Default for ApiServerConfig {
             host: "127.0.0.1:8080".to_string(),
             health_max_lag_secs: 5,
             request_timeout: Duration::from_secs(30),
+            tls: None,
             validation_limits: ValidationLimits::default(),
         }
     }
@@ -174,7 +200,7 @@ impl ServiceConfig {
     }
 
     /// Override config fields with known env vars (applied after file loading).
-    pub fn apply_env_overrides(&mut self) {
+    pub fn apply_env_overrides(&mut self) -> Result<(), ConfigError> {
         if let Ok(v) = std::env::var("RPC_URL") {
             self.rpc.url = v;
         }
@@ -192,6 +218,22 @@ impl ServiceConfig {
                 self.limits.server_budget = n;
             }
         }
+
+        let cert_path = std::env::var("TLS_CERT_PATH").ok();
+        let key_path = std::env::var("TLS_KEY_PATH").ok();
+        match (cert_path, key_path) {
+            (Some(cert_path), Some(key_path)) => {
+                self.api.tls = Some(TlsConfig {
+                    cert_path,
+                    key_path,
+                    handshake_timeout: default_handshake_timeout(),
+                });
+            }
+            (None, None) => {}
+            _ => return Err(ConfigError::IncompleteTls),
+        }
+
+        Ok(())
     }
 
     /// Build component configs from the service config.
@@ -363,7 +405,7 @@ host = "127.0.0.1:8080"
         }
 
         let mut config = ServiceConfig::load(f.path()).unwrap();
-        config.apply_env_overrides();
+        config.apply_env_overrides().unwrap();
 
         assert_eq!(config.api.host, "0.0.0.0:9999");
 
@@ -442,5 +484,58 @@ host = "127.0.0.1:8080"
         assert_eq!(idx.connect_timeout, Duration::from_secs(42));
         assert_eq!(api.host, "0.0.0.0:3000");
         assert_eq!(api.validation_limits.server_budget, 200);
+    }
+
+    #[test]
+    fn test_tls_config() {
+        // SAFETY: test-only, single-threaded access to unique env var names.
+
+        // Both set → TlsConfig populated
+        unsafe {
+            std::env::set_var("TLS_CERT_PATH", "/tmp/cert.pem");
+            std::env::set_var("TLS_KEY_PATH", "/tmp/key.pem");
+        }
+        let mut config = ServiceConfig::default();
+        config.apply_env_overrides().unwrap();
+        let tls = config.api.tls.expect("TLS config should be set");
+        assert_eq!(tls.cert_path, "/tmp/cert.pem");
+        assert_eq!(tls.key_path, "/tmp/key.pem");
+        assert_eq!(tls.handshake_timeout, Duration::from_secs(10));
+
+        // Neither set → None
+        unsafe {
+            std::env::remove_var("TLS_CERT_PATH");
+            std::env::remove_var("TLS_KEY_PATH");
+        }
+        let mut config = ServiceConfig::default();
+        config.apply_env_overrides().unwrap();
+        assert!(config.api.tls.is_none());
+
+        // Only one set → error
+        unsafe {
+            std::env::set_var("TLS_CERT_PATH", "/tmp/cert.pem");
+        }
+        let mut config = ServiceConfig::default();
+        assert!(config.apply_env_overrides().is_err());
+        unsafe {
+            std::env::remove_var("TLS_CERT_PATH");
+        }
+
+        // TOML file
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        writeln!(
+            f,
+            r#"
+[api.tls]
+cert_path = "/etc/ssl/cert.pem"
+key_path = "/etc/ssl/key.pem"
+"#
+        )
+        .unwrap();
+        let config = ServiceConfig::load(f.path()).unwrap();
+        let tls = config.api.tls.expect("TLS config should be set from TOML");
+        assert_eq!(tls.cert_path, "/etc/ssl/cert.pem");
+        assert_eq!(tls.key_path, "/etc/ssl/key.pem");
+        assert_eq!(tls.handshake_timeout, Duration::from_secs(10));
     }
 }

@@ -1,6 +1,7 @@
 # Discovery Service configuration
 # All sections and fields are optional — sensible defaults are used when omitted.
-# Env vars override matching fields: RPC_URL, WS_URL, API_HOST, RUST_LOG, SERVER_BUDGET.
+# Env vars override matching fields: RPC_URL, WS_URL, API_HOST, RUST_LOG, SERVER_BUDGET,
+# TLS_CERT_PATH, TLS_KEY_PATH.
 # Supports env var expansion: ${VAR} (required) or ${VAR:-default} (with fallback).
 #
 # Full spec: crates/discovery-service/specs/18-configuration.md
@@ -26,6 +27,11 @@ backoff_max_interval = 60
 host = "127.0.0.1:8080"
 health_max_lag_secs = 5
 request_timeout = 30
+
+# [api.tls]
+# cert_path = "/etc/ssl/cert.pem"
+# key_path = "/etc/ssl/key.pem"
+# handshake_timeout = 10
 
 [logging]
 level = "info"
