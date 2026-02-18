@@ -140,6 +140,7 @@ mod tests {
     use super::*;
     use crate::chain_state::mock::MockChainState;
     use discovery_core::discovery::ChannelCursor;
+    use discovery_core::privacy_pool::types::SecretFelt;
 
     #[tokio::test]
     async fn test_valid_request_uses_head_as_block_ref() {
@@ -202,7 +203,7 @@ mod tests {
             cursor.channels.insert(
                 Felt::from(channel_index as u64),
                 ChannelCursor {
-                    channel_key: Felt::ZERO,
+                    channel_key: SecretFelt::new(Felt::ZERO),
                     subchannel_discovery_complete: false,
                     last_subchannel_index: None,
                     subchannels: Default::default(),
@@ -223,7 +224,7 @@ mod tests {
         let limits = ValidationLimits::default();
         let mut cursor = DiscoveryCursor::default();
         let mut channel_cursor = ChannelCursor {
-            channel_key: Felt::ZERO,
+            channel_key: SecretFelt::new(Felt::ZERO),
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: Default::default(),

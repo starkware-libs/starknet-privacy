@@ -16,6 +16,7 @@ use crate::discovery::{DiscoveryError, COST_NOTE_PROBING};
 
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::hashes::compute_note_id;
+use crate::privacy_pool::types::SecretFelt;
 use crate::privacy_pool::views::IViews;
 
 /// Default max probe offset for notes discovery. Caps the jump distance to
@@ -47,7 +48,7 @@ pub struct ExponentialProbeResult {
 /// Returns `(last_index, has_more)`. When `has_more` is `false`, the search is complete.
 pub async fn find_last_note_index_paginated<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     cursor: &mut SubchannelCursor,
     budget: &IoBudget,
@@ -153,7 +154,7 @@ where
 /// handle iteration via cursor-based pagination.
 pub async fn exponential_probe<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     start_index: u64,
     prior_max_index: Option<u64>,
@@ -227,15 +228,20 @@ mod tests {
     use crate::storage_backend::MockBackend;
     use crate::test_fixtures::{get_channel_key, get_subchannel_token, load_devnet_fixture};
 
-    const CK: Felt = Felt::from_hex_unchecked("0x12345");
+    const CK_FELT: Felt = Felt::from_hex_unchecked("0x12345");
     const TK: Felt = Felt::from_hex_unchecked("0x67890");
+
+    fn ck() -> SecretFelt {
+        SecretFelt::new(CK_FELT)
+    }
 
     /// Creates a mock backend with notes at indices 0..=last_index.
     fn mock_with_notes(last_index: Option<u64>) -> MockBackend {
+        let channel_key = ck();
         let mut backend = MockBackend::empty();
         if let Some(last) = last_index {
             for i in 0..=last {
-                let note_id = compute_note_id(CK, TK, i);
+                let note_id = compute_note_id(&channel_key, TK, i);
                 let slot = storage_slots::notes(note_id);
                 backend.insert(slot, Felt::ONE); // non-zero = exists
             }
@@ -247,9 +253,10 @@ mod tests {
     async fn test_exponential_probe_empty() {
         let backend = mock_with_notes(None);
         let budget = IoBudget::new(100);
+        let channel_key = ck();
         let result = exponential_probe(
             &backend,
-            CK,
+            &channel_key,
             TK,
             0,
             None,
@@ -269,9 +276,10 @@ mod tests {
         // Elements at 0 only. Probes: offset 0→0 (hit), 1→1 (miss).
         let backend = mock_with_notes(Some(0));
         let budget = IoBudget::new(100);
+        let channel_key = ck();
         let result = exponential_probe(
             &backend,
-            CK,
+            &channel_key,
             TK,
             0,
             None,
@@ -292,9 +300,10 @@ mod tests {
         // 3→3 (hit), 7→7 (miss)
         let backend = mock_with_notes(Some(4));
         let budget = IoBudget::new(100);
+        let channel_key = ck();
         let result = exponential_probe(
             &backend,
-            CK,
+            &channel_key,
             TK,
             0,
             None,
@@ -314,9 +323,10 @@ mod tests {
         let backend = mock_with_notes(Some(100));
         // Budget for only 2 probes: offsets 0, 1
         let budget = IoBudget::new(2 * COST_NOTE_PROBING);
+        let channel_key = ck();
         let result = exponential_probe(
             &backend,
-            CK,
+            &channel_key,
             TK,
             0,
             None,
@@ -387,7 +397,7 @@ mod tests {
         .await
         .expect("Alice should have at least one channel");
 
-        let token = get_subchannel_token(&backend, channel_key)
+        let token = get_subchannel_token(&backend, &channel_key)
             .await
             .expect("Alice's channel should have at least one subchannel");
 
@@ -395,7 +405,7 @@ mod tests {
         let budget = IoBudget::new(100);
 
         let (last_index, has_more) =
-            find_last_note_index_paginated(&backend, channel_key, token, &mut cursor, &budget)
+            find_last_note_index_paginated(&backend, &channel_key, token, &mut cursor, &budget)
                 .await
                 .unwrap();
 
@@ -407,14 +417,14 @@ mod tests {
     #[tokio::test]
     async fn test_find_last_note_index_empty() {
         let backend = MockBackend::empty();
-        let channel_key = Felt::from_hex_unchecked("0x12345");
+        let channel_key = SecretFelt::new(Felt::from_hex_unchecked("0x12345"));
         let token = Felt::from_hex_unchecked("0x67890");
 
         let mut cursor = SubchannelCursor::default();
         let budget = IoBudget::new(100);
 
         let (last_index, has_more) =
-            find_last_note_index_paginated(&backend, channel_key, token, &mut cursor, &budget)
+            find_last_note_index_paginated(&backend, &channel_key, token, &mut cursor, &budget)
                 .await
                 .unwrap();
 
@@ -435,7 +445,7 @@ mod tests {
         .await
         .expect("Alice should have at least one channel");
 
-        let token = get_subchannel_token(&backend, channel_key)
+        let token = get_subchannel_token(&backend, &channel_key)
             .await
             .expect("Alice's channel should have at least one subchannel");
 
@@ -445,7 +455,7 @@ mod tests {
         // but no first_empty found — budget_exhausted (all probes hit).
         let budget = IoBudget::new(COST_NOTE_PROBING);
         let (last_index, has_more) =
-            find_last_note_index_paginated(&backend, channel_key, token, &mut cursor, &budget)
+            find_last_note_index_paginated(&backend, &channel_key, token, &mut cursor, &budget)
                 .await
                 .unwrap();
 
@@ -457,7 +467,7 @@ mod tests {
         // Resume with more budget
         let budget = IoBudget::new(100);
         let (last_index, has_more) =
-            find_last_note_index_paginated(&backend, channel_key, token, &mut cursor, &budget)
+            find_last_note_index_paginated(&backend, &channel_key, token, &mut cursor, &budget)
                 .await
                 .unwrap();
 

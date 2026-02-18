@@ -6,11 +6,14 @@ pub mod validators;
 
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 use discovery_core::storage_backend::StorageBackend;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+use tower_http::cors::CorsLayer;
+use tower_http::timeout::TimeoutLayer;
 use tracing::info;
 
 use crate::chain_state::ChainState;
@@ -79,6 +82,14 @@ where
                 "/v1/sync/preflight_check",
                 post(preflight_check_handler::<B>),
             )
+            .layer(CorsLayer::permissive())
+            .layer(DefaultBodyLimit::max(
+                self.config.validation_limits.max_request_body_bytes,
+            ))
+            .layer(TimeoutLayer::with_status_code(
+                axum::http::StatusCode::REQUEST_TIMEOUT,
+                self.config.request_timeout,
+            ))
             .with_state(app_state);
 
         let listener = TcpListener::bind(&self.config.host)

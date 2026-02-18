@@ -7,6 +7,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
+use discovery_core::privacy_pool::types::{secret_felt_serde, SecretFelt};
 use flate2::read::GzDecoder;
 use nix::sys::signal::Signal;
 use starknet_types_core::felt::Felt;
@@ -21,9 +22,11 @@ pub struct DumpMetadata {
     pub timestamp: u64,
     pub contract_address: Felt,
     pub alice_address: Felt,
-    pub alice_viewing_key: Felt,
+    #[serde(deserialize_with = "secret_felt_serde::deserialize")]
+    pub alice_viewing_key: SecretFelt,
     pub bob_address: Felt,
-    pub bob_viewing_key: Felt,
+    #[serde(deserialize_with = "secret_felt_serde::deserialize")]
+    pub bob_viewing_key: SecretFelt,
     pub strk_token: Felt,
 }
 

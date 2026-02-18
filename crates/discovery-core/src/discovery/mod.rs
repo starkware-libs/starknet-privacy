@@ -34,6 +34,9 @@ pub const COST_NOTE_PROBING: usize = 1;
 /// Cost for a single `get_public_key` (1 storage slot read).
 pub const COST_PUBLIC_KEY: usize = 1;
 
+/// Minimum server budget — must cover at least one channel info fetch.
+pub const MIN_SERVER_BUDGET: usize = COST_CHANNEL_INFO;
+
 /// Errors that can occur during channel discovery.
 #[derive(Debug, Error)]
 pub enum DiscoveryError {
