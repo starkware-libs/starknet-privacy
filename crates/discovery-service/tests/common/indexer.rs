@@ -33,6 +33,8 @@ pub struct IndexerClient {
     log_rx: mpsc::Receiver<String>,
     /// The host:port the API server is listening on.
     api_host: String,
+    /// Whether TLS is enabled for this instance.
+    tls_enabled: bool,
 }
 
 /// Configuration for spawning the indexer.
@@ -43,6 +45,10 @@ pub struct IndexerSpawnConfig {
     pub api_port: Option<u16>,
     pub contract_address: Option<Felt>,
     pub rpc_url: Option<String>,
+    /// Path to PEM-encoded certificate file for TLS.
+    pub tls_cert_path: Option<String>,
+    /// Path to PEM-encoded private key file for TLS.
+    pub tls_key_path: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -62,6 +68,12 @@ impl IndexerClient {
         if let Some(rpc_url) = &config.rpc_url {
             cmd.env("RPC_URL", rpc_url);
         }
+        if let Some(cert_path) = &config.tls_cert_path {
+            cmd.env("TLS_CERT_PATH", cert_path);
+        }
+        if let Some(key_path) = &config.tls_key_path {
+            cmd.env("TLS_KEY_PATH", key_path);
+        }
 
         let mut process = cmd.spawn()?;
 
@@ -76,16 +88,25 @@ impl IndexerClient {
             }
         });
 
+        let tls_enabled = config.tls_cert_path.is_some();
+
         Ok(Self {
             process,
             log_rx,
             api_host,
+            tls_enabled,
         })
     }
 
     /// The `host:port` the API server is bound to.
     pub fn api_host(&self) -> &str {
         &self.api_host
+    }
+
+    /// The base URL for the API server (`http://` or `https://` depending on TLS).
+    pub fn base_url(&self) -> String {
+        let scheme = if self.tls_enabled { "https" } else { "http" };
+        format!("{}://{}", scheme, self.api_host)
     }
 
     /// Wait for all given patterns to appear in logs (in any order).
@@ -141,7 +162,7 @@ impl IndexerClient {
         endpoint: &str,
         body: &Req,
     ) -> Result<(StatusCode, String)> {
-        let url = format!("http://{}/{}", self.api_host, endpoint);
+        let url = format!("{}/{}", self.base_url(), endpoint);
         let response = reqwest::Client::new().post(&url).json(body).send().await?;
         let status = response.status();
         let body_text = response.text().await?;

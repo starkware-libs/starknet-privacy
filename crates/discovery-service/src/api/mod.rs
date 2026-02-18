@@ -9,8 +9,8 @@ use std::sync::Arc;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
+use axum_server::tls_rustls::RustlsConfig;
 use discovery_core::storage_backend::StorageBackend;
-use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 use tower_http::timeout::TimeoutLayer;
@@ -42,6 +42,8 @@ pub enum ApiServerError {
     Bind(String),
     #[error("server error: {0}")]
     Serve(String),
+    #[error("TLS configuration error: {0}")]
+    Tls(String),
 }
 
 /// Shared state for the API handlers.
@@ -73,7 +75,6 @@ where
             validation_limits: self.config.validation_limits.clone(),
         });
 
-        // TODO: Add TLS termination (spec 5.1)
         let app = Router::new()
             .route("/health", get(health_handler::<B>))
             .route("/v1/sync/incoming_state", post(incoming_sync_handler::<B>))
@@ -92,20 +93,46 @@ where
             ))
             .with_state(app_state);
 
-        let listener = TcpListener::bind(&self.config.host)
-            .await
-            .map_err(|e| ApiServerError::Bind(e.to_string()))?;
+        let addr = self
+            .config
+            .host
+            .parse()
+            .map_err(|e: std::net::AddrParseError| ApiServerError::Bind(e.to_string()))?;
 
-        info!("API server listening on {}", self.config.host);
-
+        let handle = axum_server::Handle::new();
+        let shutdown_handle = handle.clone();
         let mut rx_shutdown = self.rx_shutdown.resubscribe();
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                let _ = rx_shutdown.recv().await;
-                info!("API server shutting down");
-            })
-            .await
-            .map_err(|e| ApiServerError::Serve(e.to_string()))?;
+        tokio::spawn(async move {
+            let _ = rx_shutdown.recv().await;
+            info!("API server shutting down");
+            shutdown_handle.graceful_shutdown(None);
+        });
+
+        if let Some(tls) = &self.config.tls {
+            // Both aws-lc-rs and ring features are enabled transitively, so rustls
+            // cannot auto-detect a provider. Install ring explicitly.
+            let _ = rustls::crypto::ring::default_provider().install_default();
+
+            let rustls_config = RustlsConfig::from_pem_file(&tls.cert_path, &tls.key_path)
+                .await
+                .map_err(|e| ApiServerError::Tls(e.to_string()))?;
+
+            info!("API server listening on {} (TLS)", self.config.host);
+
+            axum_server::bind_rustls(addr, rustls_config)
+                .handle(handle)
+                .serve(app.into_make_service())
+                .await
+                .map_err(|e| ApiServerError::Serve(e.to_string()))?;
+        } else {
+            info!("API server listening on {}", self.config.host);
+
+            axum_server::bind(addr)
+                .handle(handle)
+                .serve(app.into_make_service())
+                .await
+                .map_err(|e| ApiServerError::Serve(e.to_string()))?;
+        }
 
         info!("API server has shut down");
         Ok(())
