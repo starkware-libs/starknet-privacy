@@ -634,8 +634,15 @@ fn test_apply_actions_assertions() {
     let actions = [].span();
     let proof_facts: ProofFacts = Default::default();
 
-    // Catch PROOF_FACTS_DESERIALIZE_ERROR.
+    // Catch EMPTY_PROOF_FACTS (no proof facts cheated).
     let result = test.privacy.safe_apply_actions_without_cheat(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::EMPTY_PROOF_FACTS);
+
+    // Catch PROOF_FACTS_DESERIALIZE_ERROR (non-empty but invalid serialization).
+    let invalid_proof_facts = [0x1].span();
+    let result = test
+        .privacy
+        .safe_apply_actions_with_raw_proof_facts(:actions, raw_proof_facts: invalid_proof_facts);
     assert_panic_with_felt_error(:result, expected_error: errors::PROOF_FACTS_DESERIALIZE_ERROR);
 
     // Catch INVALID_PROGRAM_VARIANT.
