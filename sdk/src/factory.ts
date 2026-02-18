@@ -9,8 +9,8 @@ import type {
   DiscoveryProviderInterface,
   StarknetAddress,
 } from "./interfaces.js";
-import type { Account } from "starknet";
 import { PrivateTransfers } from "./internal/private-transfers.js";
+import type { AccountSignerRaw } from "./interfaces.js";
 import {
   ProofInvocationFactory,
   type ProofInvocationFactoryInterface,
@@ -34,7 +34,7 @@ import {
  * ```
  */
 export function createPrivateTransfers(params: {
-  account: Account;
+  account: AccountSignerRaw;
   viewingKeyProvider: ViewingKeyProvider;
   proofInvocationFactory?: ProofInvocationFactoryInterface;
   provingProvider: ProofProviderInterface;
