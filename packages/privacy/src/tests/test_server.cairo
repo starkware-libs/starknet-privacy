@@ -1365,10 +1365,11 @@ fn test_apply_swap_with_executor_deposit_assertions() {
 #[test]
 fn test_apply_actions_with_fee() {
     let test: Test = Default::default();
+    let fee_amount = constants::DEFAULT_FEE_AMOUNT;
+    let fee_collector = constants::DEFAULT_FEE_COLLECTOR;
+    test.privacy.set_fee(:fee_amount, :fee_collector);
     let strk_token = test.privacy.strk_token;
-    let fee_amount = test.privacy.get_fee_amount();
     assert!(fee_amount.is_non_zero());
-    let fee_collector = test.privacy.get_fee_collector();
     let privacy_address = test.privacy.address;
     let caller: ContractAddress = 'CALLER'.try_into().unwrap();
 
@@ -1393,9 +1394,7 @@ fn test_apply_actions_with_zero_fee() {
     let privacy_address = test.privacy.address;
     let caller: ContractAddress = 'NO_STRK_CALLER'.try_into().unwrap();
     let fee_collector = test.privacy.get_fee_collector();
-
-    // Disable the fee.
-    test.privacy.set_fee(fee_amount: 0, fee_collector: Zero::zero());
+    assert!(test.privacy.get_fee_amount().is_zero());
 
     // Verify all balances before apply_actions.
     assert_eq!(strk_token.balance_of(address: caller), Zero::zero());
@@ -1414,11 +1413,12 @@ fn test_apply_actions_with_zero_fee() {
 #[test]
 fn test_apply_actions_with_fee_assertions() {
     let test: Test = Default::default();
+    let fee_amount = constants::DEFAULT_FEE_AMOUNT;
+    let fee_collector = constants::DEFAULT_FEE_COLLECTOR;
+    test.privacy.set_fee(:fee_amount, :fee_collector);
     let strk_token = test.privacy.strk_token;
-    let fee_collector = test.privacy.get_fee_collector();
     let privacy_address = test.privacy.address;
     let caller: ContractAddress = 'BROKE_CALLER'.try_into().unwrap();
-    let fee_amount = test.privacy.get_fee_amount();
     assert!(fee_amount.is_non_zero());
 
     // Verify all balances before apply_actions.

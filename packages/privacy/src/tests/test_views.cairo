@@ -30,7 +30,10 @@ fn test_constructor() {
     // Test replaceability.
     let contract_replaceability = IReplaceableDispatcher { contract_address: test.privacy.address };
     assert_eq!(contract_replaceability.get_upgrade_delay(), Zero::zero());
-    // TODO: Verify constructor events (FeeSet, CompliancePublicKeySet).
+    // Test fee amount and collector.
+    assert_eq!(test.privacy.get_fee_amount(), Zero::zero());
+    assert_eq!(test.privacy.get_fee_collector(), Zero::zero());
+    // TODO: Verify constructor events (CompliancePublicKeySet).
 }
 
 #[test]
@@ -41,21 +44,6 @@ fn test_constructor_zero_auditor_public_key() {
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
         auditor_public_key: Zero::zero(),
-        fee_amount: Zero::zero(),
-        fee_collector: Zero::zero(),
-    );
-}
-
-#[test]
-#[should_panic(expected: 'ZERO_FEE_COLLECTOR')]
-fn test_constructor_zero_fee_collector() {
-    let mut state = Privacy::contract_state_for_testing();
-    Privacy::constructor(
-        ref state,
-        governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
-        auditor_public_key: 'AUDITOR_PUBLIC_KEY'.try_into().unwrap(),
-        fee_amount: DEFAULT_FEE_AMOUNT,
-        fee_collector: Zero::zero(),
     );
 }
 
@@ -67,14 +55,22 @@ fn test_get_auditor_public_key() {
 
 #[test]
 fn test_get_fee_amount() {
-    let test: Test = Default::default();
-    assert_eq!(test.privacy.get_fee_amount(), DEFAULT_FEE_AMOUNT);
+    let mut test: Test = Default::default();
+    assert_eq!(test.privacy.get_fee_amount(), Zero::zero());
+    let fee_amount = DEFAULT_FEE_AMOUNT;
+    let fee_collector = DEFAULT_FEE_COLLECTOR;
+    test.privacy.set_fee(:fee_amount, :fee_collector);
+    assert_eq!(test.privacy.get_fee_amount(), fee_amount);
 }
 
 #[test]
 fn test_get_fee_collector() {
-    let test: Test = Default::default();
-    assert_eq!(test.privacy.get_fee_collector(), DEFAULT_FEE_COLLECTOR);
+    let mut test: Test = Default::default();
+    assert_eq!(test.privacy.get_fee_collector(), Zero::zero());
+    let fee_amount = DEFAULT_FEE_AMOUNT;
+    let fee_collector = DEFAULT_FEE_COLLECTOR;
+    test.privacy.set_fee(:fee_amount, :fee_collector);
+    assert_eq!(test.privacy.get_fee_collector(), fee_collector);
 }
 
 #[test]

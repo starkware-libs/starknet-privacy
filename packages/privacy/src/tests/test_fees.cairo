@@ -13,16 +13,14 @@ use starkware_utils_testing::test_utils::{
 #[test]
 fn test_set_fee() {
     let test: Test = Default::default();
-    let fee_amount_0 = constants::DEFAULT_FEE_AMOUNT;
-    let fee_collector_0 = constants::DEFAULT_FEE_COLLECTOR;
-    let fee_amount_1: u128 = 2000;
+    let fee_amount_1: u128 = constants::DEFAULT_FEE_AMOUNT;
     let fee_collector_1: ContractAddress = 'FEE_COLLECTOR_1'.try_into().unwrap();
-    let fee_amount_2: u128 = 3000;
+    let fee_amount_2: u128 = constants::DEFAULT_FEE_AMOUNT + 1;
     let fee_collector_2: ContractAddress = 'FEE_COLLECTOR_2'.try_into().unwrap();
 
     // Verify the default fee is set.
-    assert_eq!(test.privacy.get_fee_amount(), fee_amount_0);
-    assert_eq!(test.privacy.get_fee_collector(), fee_collector_0);
+    assert_eq!(test.privacy.get_fee_amount(), Zero::zero());
+    assert_eq!(test.privacy.get_fee_collector(), Zero::zero());
 
     // Change both fee amount and collector.
     test.privacy.set_fee(fee_amount: fee_amount_1, fee_collector: fee_collector_1);
@@ -58,7 +56,7 @@ fn test_set_fee() {
 #[test]
 fn test_set_fee_event() {
     let test: Test = Default::default();
-    let fee_amount: u128 = 2000;
+    let fee_amount: u128 = constants::DEFAULT_FEE_AMOUNT;
     let fee_collector: ContractAddress = 'FEE_COLLECTOR_1'.try_into().unwrap();
 
     let mut spy = spy_events();
