@@ -171,11 +171,11 @@ async fn process_channel<S: IViews>(
     max_cursor_subchannels: usize,
     budget: &IoBudget,
 ) -> Result<ProcessChannelResult, DiscoveryError> {
-    let channel_key = cursor.channel_key;
+    let channel_key = cursor.channel_key.clone();
 
     discover_subchannels_paginated(
         pool,
-        channel_key,
+        &channel_key,
         &mut cursor,
         max_cursor_subchannels,
         budget,
@@ -188,7 +188,7 @@ async fn process_channel<S: IViews>(
         .subchannels
         .extract_if(|_, sc| !sc.note_discovery_complete)
         .map(|(token, sc_cursor)| {
-            process_subchannel(pool, channel_key, token, sc_cursor, viewing_key, budget)
+            process_subchannel(pool, &channel_key, token, sc_cursor, viewing_key, budget)
         })
         .collect();
 
@@ -225,7 +225,7 @@ async fn process_channel<S: IViews>(
 #[instrument(skip_all, fields(token = felt_hex(&token)))]
 async fn process_subchannel<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     mut cursor: SubchannelCursor,
     viewing_key: &SecretFelt,
@@ -279,7 +279,7 @@ mod tests {
         let f = load_devnet_fixture();
         let backend = MockBackend::new(f.slots);
         let recipient = f.constants.bob_address;
-        let viewing_key = SecretFelt::new(f.constants.bob_viewing_key);
+        let viewing_key = &f.constants.bob_viewing_key;
 
         // Step 1: budget = COST_NUM_CHANNELS (1)
         // Fetches total_n_channels = 1. No budget left for channel discovery.
@@ -288,7 +288,7 @@ mod tests {
         let out = sync_incoming_state(
             &backend,
             recipient,
-            &viewing_key,
+            viewing_key,
             cursor,
             CursorLimits {
                 max_channels: 1024,
@@ -312,7 +312,7 @@ mod tests {
         let out = sync_incoming_state(
             &backend,
             recipient,
-            &viewing_key,
+            viewing_key,
             out.cursor,
             CursorLimits {
                 max_channels: 1024,
@@ -343,7 +343,7 @@ mod tests {
         let out = sync_incoming_state(
             &backend,
             recipient,
-            &viewing_key,
+            viewing_key,
             out.cursor,
             CursorLimits {
                 max_channels: 1024,
@@ -381,7 +381,7 @@ mod tests {
         let out = sync_incoming_state(
             &backend,
             recipient,
-            &viewing_key,
+            viewing_key,
             out.cursor,
             CursorLimits {
                 max_channels: 1024,
@@ -412,7 +412,7 @@ mod tests {
         let out = sync_incoming_state(
             &backend,
             recipient,
-            &viewing_key,
+            viewing_key,
             out.cursor,
             CursorLimits {
                 max_channels: 1024,

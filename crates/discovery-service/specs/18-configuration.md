@@ -42,6 +42,7 @@ backoff_max_interval = 60
 [api]
 host = "127.0.0.1:8080"
 health_max_lag_secs = 5
+request_timeout = 30        # seconds
 
 [logging]
 level = "info"
@@ -51,8 +52,11 @@ max_cursor_channels = 256
 max_cursor_subchannels_per_channel = 64
 max_outgoing_recipients = 64
 server_budget = 100
+max_request_body_bytes = 102400
 batch_budget = 16
 ```
+
+**Budget clamping:** `server_budget` is clamped to `MIN_SERVER_BUDGET` (3 = `COST_CHANNEL_INFO`) at startup. Values below the minimum trigger a warning log and are raised to the minimum.
 
 ## Env Var Overrides
 

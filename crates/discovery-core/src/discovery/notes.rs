@@ -76,7 +76,7 @@ pub struct NotesDiscoveryResult {
 /// probe range. Re-probe triggers when `last_note_index == max_note_index`.
 pub async fn discover_notes_paginated<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     cursor: &mut SubchannelCursor,
     private_key: &SecretFelt,
@@ -148,7 +148,7 @@ pub async fn discover_notes_paginated<S: IViews>(
 ///   must not be pruned even if the scan reaches `max_note_index`.
 async fn probe_note_boundary<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     cursor: &mut SubchannelCursor,
     budget: &IoBudget,
@@ -198,7 +198,7 @@ async fn probe_note_boundary<S: IViews>(
 #[allow(clippy::too_many_arguments)]
 async fn discover_notes<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     start_index: u64,
     end_index: u64,
@@ -248,7 +248,7 @@ async fn discover_notes<S: IViews>(
 /// having a cached amount from the probe.
 async fn process_note_batch<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     indices: std::ops::Range<u64>,
     private_key: &SecretFelt,
@@ -309,7 +309,7 @@ async fn process_note_batch<S: IViews>(
 
 /// Unpacks and decrypts a single note from its packed storage value.
 fn decrypt_note(
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     index: u64,
     note_id: Felt,
@@ -338,7 +338,7 @@ mod tests {
     /// returns the result along with the cursor for inspection.
     async fn discover_with_fresh_cursor(
         backend: &MockBackend,
-        channel_key: Felt,
+        channel_key: &SecretFelt,
         token: Felt,
         private_key: &SecretFelt,
         budget: &IoBudget,
@@ -360,13 +360,13 @@ mod tests {
     #[tokio::test]
     async fn test_discover_no_notes() {
         let backend = MockBackend::empty();
-        let channel_key = Felt::from_hex_unchecked("0x12345");
+        let channel_key = SecretFelt::new(Felt::from_hex_unchecked("0x12345"));
         let token = Felt::from_hex_unchecked("0x67890");
         let budget = IoBudget::new(100);
 
         let zero_key = SecretFelt::new(Felt::ZERO);
         let (notes, cursor) =
-            discover_with_fresh_cursor(&backend, channel_key, token, &zero_key, &budget).await;
+            discover_with_fresh_cursor(&backend, &channel_key, token, &zero_key, &budget).await;
 
         assert_eq!(notes.len(), 0);
         assert!(
@@ -388,14 +388,14 @@ mod tests {
         .await
         .expect("Alice should have at least one channel");
 
-        let token = get_subchannel_token(&backend, channel_key)
+        let token = get_subchannel_token(&backend, &channel_key)
             .await
             .expect("Alice's channel should have at least one subchannel");
 
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = &fixture.constants.alice_viewing_key;
         let (notes, cursor) =
-            discover_with_fresh_cursor(&backend, channel_key, token, &key, &budget).await;
+            discover_with_fresh_cursor(&backend, &channel_key, token, key, &budget).await;
 
         // Alice deposited 100 STRK, transferred 50 to Bob.
         // The transfer consumed the deposit and wrote a change note (50 STRK)
@@ -419,14 +419,14 @@ mod tests {
         .await
         .expect("Bob should have at least one channel");
 
-        let token = get_subchannel_token(&backend, channel_key)
+        let token = get_subchannel_token(&backend, &channel_key)
             .await
             .expect("Bob's channel should have at least one subchannel");
 
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = &fixture.constants.bob_viewing_key;
         let (notes, cursor) =
-            discover_with_fresh_cursor(&backend, channel_key, token, &key, &budget).await;
+            discover_with_fresh_cursor(&backend, &channel_key, token, key, &budget).await;
 
         // Bob withdrew his 50 STRK note → nullifier exists → filtered out
         assert_eq!(notes.len(), 0, "Bob's note is spent");
@@ -447,16 +447,16 @@ mod tests {
         .await
         .expect("Alice should have at least one channel");
 
-        let token = get_subchannel_token(&backend, channel_key)
+        let token = get_subchannel_token(&backend, &channel_key)
             .await
             .expect("Alice's channel should have at least one subchannel");
 
         // First discovery — Alice has 1 unspent change note (50 STRK at index 0)
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = &fixture.constants.alice_viewing_key;
         let mut cursor = SubchannelCursor::default();
         let notes =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
+            discover_notes_paginated(&backend, &channel_key, token, &mut cursor, key, &budget)
                 .await
                 .unwrap();
         assert_eq!(notes.len(), 1, "1 unspent change note");
@@ -464,7 +464,7 @@ mod tests {
 
         // Incremental discovery — should find 0 new notes (sentinel at index 1)
         let notes2 =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
+            discover_notes_paginated(&backend, &channel_key, token, &mut cursor, key, &budget)
                 .await
                 .unwrap();
         assert_eq!(notes2.len(), 0);
@@ -479,13 +479,13 @@ mod tests {
         // After fix: pagination discovers all 3 notes across multiple calls.
         use crate::privacy_pool::{hashes::compute_note_id, storage_slots};
 
-        let channel_key = Felt::from_hex_unchecked("0x12345");
+        let channel_key = SecretFelt::new(Felt::from_hex_unchecked("0x12345"));
         let token = Felt::from_hex_unchecked("0x67890");
         let zero_key = SecretFelt::new(Felt::ZERO);
 
         let mut backend = MockBackend::empty();
         for index in 0..=2u64 {
-            let note_id = compute_note_id(channel_key, token, index);
+            let note_id = compute_note_id(&channel_key, token, index);
             let slot = storage_slots::notes(note_id);
             backend.insert(slot, Felt::ONE);
         }
@@ -497,7 +497,7 @@ mod tests {
             let budget = IoBudget::new(100);
             let notes = discover_notes_paginated(
                 &backend,
-                channel_key,
+                &channel_key,
                 token,
                 &mut cursor,
                 &zero_key,
@@ -537,15 +537,15 @@ mod tests {
         .await
         .expect("Alice should have at least one channel");
 
-        let token = get_subchannel_token(&backend, channel_key)
+        let token = get_subchannel_token(&backend, &channel_key)
             .await
             .expect("Alice's channel should have at least one subchannel");
 
         // Budget exhausted before starting
         let budget = IoBudget::new(0);
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = &fixture.constants.alice_viewing_key;
         let (notes, cursor) =
-            discover_with_fresh_cursor(&backend, channel_key, token, &key, &budget).await;
+            discover_with_fresh_cursor(&backend, &channel_key, token, key, &budget).await;
 
         assert_eq!(notes.len(), 0);
         assert!(
@@ -560,13 +560,13 @@ mod tests {
         // Offsets: [0, 1, 3, 7, ..., 1023] = 11 probes at COST_NOTE_PROBING=1 each.
         // All return empty (Felt::ZERO), so sentinel is found at offset 0.
         let backend = MockBackend::empty();
-        let channel_key = Felt::from_hex_unchecked("0x12345");
+        let channel_key = SecretFelt::new(Felt::from_hex_unchecked("0x12345"));
         let token = Felt::from_hex_unchecked("0x67890");
         let budget = IoBudget::new(100);
 
         let zero_key = SecretFelt::new(Felt::ZERO);
         let (notes, cursor) =
-            discover_with_fresh_cursor(&backend, channel_key, token, &zero_key, &budget).await;
+            discover_with_fresh_cursor(&backend, &channel_key, token, &zero_key, &budget).await;
 
         assert_eq!(notes.len(), 0);
         assert!(
@@ -589,13 +589,13 @@ mod tests {
         )
         .await
         .unwrap();
-        let token = get_subchannel_token(&backend, channel_key).await.unwrap();
+        let token = get_subchannel_token(&backend, &channel_key).await.unwrap();
 
         let mut cursor = SubchannelCursor::default();
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = &fixture.constants.bob_viewing_key;
         let notes =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
+            discover_notes_paginated(&backend, &channel_key, token, &mut cursor, key, &budget)
                 .await
                 .unwrap();
 
@@ -616,15 +616,15 @@ mod tests {
         )
         .await
         .unwrap();
-        let token = get_subchannel_token(&backend, channel_key).await.unwrap();
+        let token = get_subchannel_token(&backend, &channel_key).await.unwrap();
 
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = &fixture.constants.alice_viewing_key;
         let mut cursor = SubchannelCursor::default();
 
         // First call with enough budget to discover notes.
         let budget = IoBudget::new(100);
         let notes =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
+            discover_notes_paginated(&backend, &channel_key, token, &mut cursor, key, &budget)
                 .await
                 .unwrap();
         assert_eq!(notes.len(), 1);
@@ -634,7 +634,7 @@ mod tests {
         // It should find sentinel at index 1 and return immediately.
         let budget2 = IoBudget::new(100);
         let notes2 =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget2)
+            discover_notes_paginated(&backend, &channel_key, token, &mut cursor, key, &budget2)
                 .await
                 .unwrap();
         assert_eq!(notes2.len(), 0);
@@ -653,17 +653,17 @@ mod tests {
         )
         .await
         .unwrap();
-        let token = get_subchannel_token(&backend, channel_key).await.unwrap();
+        let token = get_subchannel_token(&backend, &channel_key).await.unwrap();
 
         let mut cursor = SubchannelCursor::default();
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = &fixture.constants.bob_viewing_key;
         // Bob has 1 note at index 0.
         // Exponential probe: 11 offsets [0..1023], all probed at COST_NOTE_PROBING=1.
         //   Offset 0 hits, offset 1 is empty sentinel. Cost = 11.
         // Scan: budget exhausted (0 remaining) → has_more = true.
         let budget = IoBudget::new(11);
         let notes =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
+            discover_notes_paginated(&backend, &channel_key, token, &mut cursor, key, &budget)
                 .await
                 .unwrap();
 
@@ -694,13 +694,13 @@ mod tests {
         )
         .await
         .unwrap();
-        let token = get_subchannel_token(&backend, channel_key).await.unwrap();
+        let token = get_subchannel_token(&backend, &channel_key).await.unwrap();
 
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = &fixture.constants.alice_viewing_key;
         let budget = IoBudget::new(100);
 
         let (notes, cursor) =
-            discover_with_fresh_cursor(&backend, channel_key, token, &key, &budget).await;
+            discover_with_fresh_cursor(&backend, &channel_key, token, key, &budget).await;
 
         assert_eq!(notes.len(), 1, "1 unspent note");
         assert!(cursor.note_discovery_complete);

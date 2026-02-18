@@ -58,6 +58,66 @@ impl fmt::Debug for SecretFelt {
     }
 }
 
+/// Serde helpers for `SecretFelt`. Use with `#[serde(serialize_with, deserialize_with)]`.
+pub mod secret_felt_serde {
+    use super::*;
+    use serde::{Deserializer, Serializer};
+
+    pub fn serialize<S>(secret: &SecretFelt, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        Felt::serialize(&secret.0, s)
+    }
+
+    pub fn deserialize<'de, D>(d: D) -> Result<SecretFelt, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Felt::deserialize(d).map(SecretFelt::new)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_debug_redacts_value() {
+        let secret = SecretFelt::new(Felt::from(42u64));
+        let debug_output = format!("{:?}", secret);
+        assert_eq!(debug_output, "[REDACTED]");
+        assert!(!debug_output.contains("42"));
+    }
+
+    #[test]
+    fn test_zeroize_on_drop() {
+        let mut secret = SecretFelt::new(Felt::from(12345u64));
+        assert_ne!(*secret, Felt::ZERO);
+        secret.zeroize();
+        assert_eq!(*secret, Felt::ZERO);
+    }
+
+    #[test]
+    fn test_secret_felt_serde_roundtrip() {
+        #[derive(Serialize, Deserialize)]
+        struct Wrapper {
+            #[serde(
+                serialize_with = "secret_felt_serde::serialize",
+                deserialize_with = "secret_felt_serde::deserialize"
+            )]
+            key: SecretFelt,
+        }
+
+        let original = Wrapper {
+            key: SecretFelt::new(Felt::from(0xdeadbeefu64)),
+        };
+        let json = serde_json::to_string(&original).unwrap();
+        let restored: Wrapper = serde_json::from_str(&json).unwrap();
+        assert_eq!(*restored.key, *original.key);
+    }
+}
+
 /// Ciphertext for an ECDH-based encryption of channel data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EncChannelInfo {
@@ -91,10 +151,10 @@ pub struct EncSubchannelInfo {
 }
 
 /// Decrypted channel information.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct ChannelInfo {
     /// The channel key.
-    pub channel_key: Felt,
+    pub channel_key: SecretFelt,
     /// The sender's address.
     pub sender_addr: Felt,
 }

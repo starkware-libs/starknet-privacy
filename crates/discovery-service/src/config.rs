@@ -9,10 +9,11 @@
 use std::path::Path;
 use std::time::Duration;
 
-use discovery_core::discovery::CursorLimits;
+use discovery_core::discovery::{CursorLimits, MIN_SERVER_BUDGET};
 use regex::Regex;
 use serde::Deserialize;
 use thiserror::Error;
+use tracing::warn;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
@@ -89,6 +90,9 @@ impl Default for IndexerConfig {
 pub struct ApiServerConfig {
     pub host: String,
     pub health_max_lag_secs: u64,
+    /// Maximum duration for an HTTP request before timeout.
+    #[serde(deserialize_with = "deserialize_secs")]
+    pub request_timeout: Duration,
     /// Populated from the `[limits]` section by `build_configs()`, not deserialized directly.
     #[serde(skip_deserializing)]
     pub validation_limits: ValidationLimits,
@@ -99,6 +103,7 @@ impl Default for ApiServerConfig {
         Self {
             host: "127.0.0.1:8080".to_string(),
             health_max_lag_secs: 5,
+            request_timeout: Duration::from_secs(30),
             validation_limits: ValidationLimits::default(),
         }
     }
@@ -115,14 +120,17 @@ pub struct ValidationLimits {
     pub max_outgoing_recipients: usize,
     /// Server-controlled I/O budget per request.
     pub server_budget: usize,
+    /// Maximum request body size in bytes.
+    pub max_request_body_bytes: usize,
 }
 
 impl Default for ValidationLimits {
     fn default() -> Self {
         Self {
             cursor_limits: CursorLimits::default(),
-            max_outgoing_recipients: 64,
-            server_budget: 100,
+            max_outgoing_recipients: 32,
+            server_budget: 256,
+            max_request_body_bytes: 102_400,
         }
     }
 }
@@ -180,6 +188,14 @@ impl ServiceConfig {
     /// so this just injects `limits` into `api`.
     /// Must be called after `apply_env_overrides()`.
     pub fn build_configs(mut self) -> (RpcConfig, IndexerConfig, ApiServerConfig) {
+        if self.limits.server_budget < MIN_SERVER_BUDGET {
+            warn!(
+                configured = self.limits.server_budget,
+                minimum = MIN_SERVER_BUDGET,
+                "server_budget below minimum, clamping"
+            );
+            self.limits.server_budget = MIN_SERVER_BUDGET;
+        }
         self.api.validation_limits = self.limits;
         (self.rpc, self.indexer, self.api)
     }
@@ -363,6 +379,39 @@ host = "127.0.0.1:8080"
         let api_defaults = ApiServerConfig::default();
         assert_eq!(api.host, api_defaults.host);
         assert_eq!(api.health_max_lag_secs, api_defaults.health_max_lag_secs);
+    }
+
+    #[test]
+    fn test_build_configs_clamps_budget_below_minimum() {
+        let mut config = ServiceConfig::default();
+        config.limits.server_budget = 1; // below MIN_SERVER_BUDGET (3)
+
+        let (_, _, api) = config.build_configs();
+
+        assert_eq!(
+            api.validation_limits.server_budget, MIN_SERVER_BUDGET,
+            "budget below minimum should be clamped to MIN_SERVER_BUDGET"
+        );
+    }
+
+    #[test]
+    fn test_build_configs_preserves_budget_at_minimum() {
+        let mut config = ServiceConfig::default();
+        config.limits.server_budget = MIN_SERVER_BUDGET;
+
+        let (_, _, api) = config.build_configs();
+
+        assert_eq!(api.validation_limits.server_budget, MIN_SERVER_BUDGET);
+    }
+
+    #[test]
+    fn test_build_configs_preserves_budget_above_minimum() {
+        let mut config = ServiceConfig::default();
+        config.limits.server_budget = 50;
+
+        let (_, _, api) = config.build_configs();
+
+        assert_eq!(api.validation_limits.server_budget, 50);
     }
 
     #[test]
