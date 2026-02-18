@@ -5,16 +5,12 @@
  * MockServerAction[] callbacks as the proof output.
  */
 
-import type {
-  Proof,
-  ProofProviderInterface,
-  ProofInvocation,
-  ProofInvocationFactoryDetails,
-} from "../interfaces.js";
+import type { Proof, ProofInvocation } from "../interfaces.js";
 import type { ClientAction } from "../internal/client-actions.js";
+import { AbstractProofProvider } from "../internal/abstract-proof-provider.js";
 import type { MockPoolContract } from "./mock-pool-contract.js";
 import { bigintReviver } from "./mock-proof-invocation-factory.js";
-import { constants, ETransactionVersion } from "starknet";
+import { constants } from "starknet";
 
 /**
  * Mock proof provider that executes actions on MockPoolContract.
@@ -26,30 +22,16 @@ import { constants, ETransactionVersion } from "starknet";
  * 2. Executes the actions (getting callbacks)
  * 3. Returns callbacks in proof.output
  */
-export class MockProofProvider implements ProofProviderInterface {
-  constructor(private pool: MockPoolContract) {}
-
-  getDefaultDetails(): ProofInvocationFactoryDetails {
-    return {
-      versions: [ETransactionVersion.V3],
-      nonce: 0n,
-      skipValidate: true,
-      resourceBounds: {
-        l1_gas: { max_amount: 0n, max_price_per_unit: 0n },
-        l2_gas: { max_amount: 0n, max_price_per_unit: 0n },
-        l1_data_gas: { max_amount: 0n, max_price_per_unit: 0n },
-      },
-      tip: 0n,
-      paymasterData: [],
-      accountDeploymentData: [],
-      nonceDataAvailabilityMode: "L1",
-      feeDataAvailabilityMode: "L1",
-      version: ETransactionVersion.V3,
-      chainId: constants.StarknetChainId.SN_SEPOLIA, // Mock chain ID
-    };
+export class MockProofProvider extends AbstractProofProvider {
+  constructor(private pool: MockPoolContract) {
+    super();
   }
 
-  async prove(invocation: ProofInvocation): Promise<Proof> {
+  protected getChainId(): constants.StarknetChainId {
+    return constants.StarknetChainId.SN_SEPOLIA;
+  }
+
+  prove(invocation: ProofInvocation): Proof {
     const calldata = invocation.calldata as string[];
     const userAddress = BigInt(calldata[0]);
     const privateKey = BigInt(calldata[1]);
@@ -59,10 +41,10 @@ export class MockProofProvider implements ProofProviderInterface {
     const callbacks = this.pool.execute(userAddress, privateKey, ...clientActions);
 
     return {
-      data: new Uint8Array([0, 1, 2, 3]),
-      outputHash: "0x0",
+      data: "",
       // Store callbacks in output (duck-typed, will be extracted by MockPublicCallBuilder)
       output: callbacks as unknown as string[],
+      proofFacts: [],
     };
   }
 }
