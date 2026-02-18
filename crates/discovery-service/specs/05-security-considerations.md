@@ -7,6 +7,7 @@ Keys are provided per request and not stored, but additional safeguards are requ
 **Transit security:**
 
 - All API endpoints MUST be served over TLS 1.3+.
+- The service supports optional TLS termination via `[api.tls]` config or `TLS_CERT_PATH`/`TLS_KEY_PATH` env vars. When omitted, a reverse proxy is expected to provide TLS.
 - Clients SHOULD verify server certificates.
 
 **Memory handling:**
