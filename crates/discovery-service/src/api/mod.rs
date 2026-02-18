@@ -4,6 +4,8 @@ pub mod handlers;
 pub mod types;
 pub mod validators;
 
+use std::fs::File;
+use std::io::BufReader;
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
@@ -42,6 +44,8 @@ pub enum ApiServerError {
     Bind(String),
     #[error("server error: {0}")]
     Serve(String),
+    #[error("TLS configuration error: {0}")]
+    Tls(String),
 }
 
 /// Shared state for the API handlers.
@@ -73,7 +77,6 @@ where
             validation_limits: self.config.validation_limits.clone(),
         });
 
-        // TODO: Add TLS termination (spec 5.1)
         let app = Router::new()
             .route("/health", get(health_handler::<B>))
             .route("/v1/sync/incoming_state", post(incoming_sync_handler::<B>))
@@ -92,20 +95,57 @@ where
             ))
             .with_state(app_state);
 
-        let listener = TcpListener::bind(&self.config.host)
+        let tcp_listener = TcpListener::bind(&self.config.host)
             .await
             .map_err(|e| ApiServerError::Bind(e.to_string()))?;
 
-        info!("API server listening on {}", self.config.host);
-
         let mut rx_shutdown = self.rx_shutdown.resubscribe();
-        axum::serve(listener, app)
-            .with_graceful_shutdown(async move {
-                let _ = rx_shutdown.recv().await;
-                info!("API server shutting down");
-            })
-            .await
-            .map_err(|e| ApiServerError::Serve(e.to_string()))?;
+        let shutdown_signal = async move {
+            let _ = rx_shutdown.recv().await;
+            info!("API server shutting down");
+        };
+
+        if let Some(tls) = &self.config.tls {
+            // Both aws-lc-rs and ring features are enabled transitively, so rustls
+            // cannot auto-detect a provider. Install ring explicitly.
+            let _ = rustls::crypto::ring::default_provider().install_default();
+
+            let certs = rustls_pemfile::certs(&mut BufReader::new(
+                File::open(&tls.cert_path)
+                    .map_err(|e| ApiServerError::Tls(format!("open cert: {e}")))?,
+            ))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| ApiServerError::Tls(format!("parse certs: {e}")))?;
+
+            let key = rustls_pemfile::private_key(&mut BufReader::new(
+                File::open(&tls.key_path)
+                    .map_err(|e| ApiServerError::Tls(format!("open key: {e}")))?,
+            ))
+            .map_err(|e| ApiServerError::Tls(format!("parse key: {e}")))?
+            .ok_or_else(|| ApiServerError::Tls("no private key found".into()))?;
+
+            let server_config = rustls::ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(certs, key)
+                .map_err(|e| ApiServerError::Tls(e.to_string()))?;
+
+            let tls_acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(server_config));
+            let tls_listener = tls_listener::builder(tls_acceptor)
+                .handshake_timeout(tls.handshake_timeout)
+                .listen(tcp_listener);
+
+            info!("API server listening on {} (TLS)", self.config.host);
+            axum::serve(tls_listener, app)
+                .with_graceful_shutdown(shutdown_signal)
+                .await
+                .map_err(|e| ApiServerError::Serve(e.to_string()))?;
+        } else {
+            info!("API server listening on {}", self.config.host);
+            axum::serve(tcp_listener, app)
+                .with_graceful_shutdown(shutdown_signal)
+                .await
+                .map_err(|e| ApiServerError::Serve(e.to_string()))?;
+        }
 
         info!("API server has shut down");
         Ok(())
