@@ -44,6 +44,10 @@ host = "127.0.0.1:8080"
 health_max_lag_secs = 5
 request_timeout = 30        # seconds
 
+[api.tls]
+cert_path = "/etc/ssl/cert.pem"
+key_path = "/etc/ssl/key.pem"
+
 [logging]
 level = "info"
 
@@ -70,6 +74,10 @@ These env vars override the corresponding config file values at runtime:
 | `RUST_LOG` | `logging.level` | `info` |
 | `SERVER_BUDGET` | `limits.server_budget` | `100` |
 | `BATCH_BUDGET` | `limits.batch_budget` | `16` |
+| `TLS_CERT_PATH` | `api.tls.cert_path` | — (TLS disabled) |
+| `TLS_KEY_PATH` | `api.tls.key_path` | — (TLS disabled) |
+
+Both `TLS_CERT_PATH` and `TLS_KEY_PATH` must be set together. Setting only one is a configuration error.
 
 RPC pool settings, indexer timeouts, and validation limits (except server/batch budget) have no env var — configurable only via file.
 
