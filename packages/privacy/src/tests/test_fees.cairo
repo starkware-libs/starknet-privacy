@@ -1,12 +1,29 @@
 use core::num::traits::Zero;
-use privacy::errors;
 use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, constants};
+use privacy::{errors, events};
+use snforge_std::{EventSpyTrait, EventsFilterTrait, spy_events};
 use starknet::ContractAddress;
 use starkware_utils::components::roles::errors::AccessErrors::ONLY_APP_GOVERNOR;
 use starkware_utils::errors::Describable;
 use starkware_utils_testing::test_utils::{
-    assert_panic_with_error, assert_panic_with_felt_error, cheat_caller_address_once,
+    assert_expected_event_emitted, assert_panic_with_error, assert_panic_with_felt_error,
+    cheat_caller_address_once,
 };
+
+fn assert_fee_set_event(
+    ref spy: snforge_std::EventSpy,
+    contract_address: ContractAddress,
+    expected_event: events::FeeSet,
+) {
+    let events = spy.get_events().emitted_by(:contract_address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("FeeSet"),
+        expected_event_name: "FeeSet",
+    );
+}
 
 #[test]
 fn test_set_fee() {
@@ -51,6 +68,30 @@ fn test_set_fee() {
     test.privacy.set_fee(fee_amount: 0, fee_collector: Zero::zero());
     assert_eq!(test.privacy.get_fee_amount(), 0);
     assert_eq!(test.privacy.get_fee_collector(), Zero::zero());
+}
+
+#[test]
+fn test_set_fee_event() {
+    let test: Test = Default::default();
+    let fee_amount: u128 = 2000;
+    let fee_collector: ContractAddress = 'FEE_COLLECTOR_1'.try_into().unwrap();
+
+    let mut spy = spy_events();
+    test.privacy.set_fee(:fee_amount, :fee_collector);
+    assert_fee_set_event(
+        ref :spy,
+        contract_address: test.privacy.address,
+        expected_event: events::FeeSet { fee_amount, fee_collector },
+    );
+
+    // Set the same values again.
+    let mut spy = spy_events();
+    test.privacy.set_fee(:fee_amount, :fee_collector);
+    assert_fee_set_event(
+        ref :spy,
+        contract_address: test.privacy.address,
+        expected_event: events::FeeSet { fee_amount, fee_collector },
+    );
 }
 
 #[test]
