@@ -1082,7 +1082,6 @@ fn test_apply_invoke_propagates_panic() {
     );
 }
 
-// TODO: Consider moving to swap_executor tests.
 #[test]
 fn test_apply_invoke_swap_with_executor_assertions() {
     let mut test: Test = Default::default();
@@ -1261,6 +1260,7 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     let recipient = user;
     user.open_channel_e2e(:recipient, index: 0);
     user.open_subchannel_e2e(:recipient, token_addr: output_token.contract_address(), index: 0);
+    user.open_subchannel_e2e(:recipient, token_addr: input_token.contract_address(), index: 1);
 
     // Fund swap executor with input tokens (enough for multiple attempts).
     input_token.supply(address: executor_addr, amount: swap_amount * 4);
@@ -1339,6 +1339,27 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     );
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
+
+    // Catch TOKEN_MISMATCH: open note is for input token; executor deposits output token.
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient,
+            token_addr: input_token.contract_address(),
+            index: 0,
+            depositor: executor_addr,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id, _) = user.compute_open_note(:create_note_input);
+
+    let invoke_input = invoke_mock_swap_executor_input(
+        swap_executor: executor_addr,
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        in_amount: swap_amount,
+        :note_id,
+    );
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_MISMATCH);
 }
 
 #[test]

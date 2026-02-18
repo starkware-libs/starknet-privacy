@@ -281,7 +281,6 @@ pub mod Privacy {
                 }
                 server_actions.extend(actions);
             }
-            // TODO: Consider allowing Deposit + Swap.
             assert(has_privacy_action, errors::NO_PRIVACY_ACTIONS);
             token_balances.squash().assert_valid();
 
