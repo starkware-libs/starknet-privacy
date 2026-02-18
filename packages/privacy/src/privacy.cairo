@@ -16,7 +16,7 @@ pub mod Privacy {
         compute_channel_key, compute_channel_marker, compute_note_id, compute_nullifier,
         compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker,
     };
-    use privacy::interface::{IClient, ICompliance, IFees, IServer, IViews};
+    use privacy::interface::{IAuditor, IClient, IFees, IServer, IViews};
     use privacy::objects::{
         EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
@@ -87,8 +87,8 @@ pub mod Privacy {
         public_key: Map<ContractAddress, felt252>,
         /// Map of user addresses to their encrypted private key.
         enc_private_key: Map<ContractAddress, EncPrivateKey>,
-        /// Public key of the compliance used for private key encryptions.
-        compliance_public_key: felt252,
+        /// Public key of the auditor used for private key encryptions.
+        auditor_public_key: felt252,
         /// Fee amount (in FRI) charged per `apply_actions` call.
         fee_amount: u128,
         /// Address that receives the fee.
@@ -111,23 +111,24 @@ pub mod Privacy {
         ViewingKeySet: events::ViewingKeySet,
         Withdrawal: events::Withdrawal,
         Deposit: events::Deposit,
-        CompliancePublicKeySet: events::CompliancePublicKeySet,
+        AuditorPublicKeySet: events::AuditorPublicKeySet,
         OpenNoteCreated: events::OpenNoteCreated,
         OpenNoteDeposited: events::OpenNoteDeposited,
         NoteUsed: events::NoteUsed,
+        FeeSet: events::FeeSet,
     }
 
     #[constructor]
     pub(crate) fn constructor(
         ref self: ContractState,
         governance_admin: ContractAddress,
-        compliance_public_key: felt252,
+        auditor_public_key: felt252,
         fee_amount: u128,
         fee_collector: ContractAddress,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(upgrade_delay: Zero::zero());
-        self._set_compliance_public_key(:compliance_public_key);
+        self._set_auditor_public_key(:auditor_public_key);
         self._set_fee(:fee_amount, :fee_collector);
     }
 
@@ -302,10 +303,10 @@ pub mod Privacy {
             let user_public_key = derive_public_key(private_key: user_private_key);
             assert(user_public_key.is_non_zero(), internal_errors::ZERO_DERIVED_PUBLIC_KEY);
 
-            // Encrypt the private key for the compliance.
+            // Encrypt the private key for the auditor.
             let enc_private_key = encrypt_private_key(
                 ephemeral_secret: random,
-                compliance_public_key: self.compliance_public_key.read(),
+                auditor_public_key: self.auditor_public_key.read(),
                 private_key: user_private_key,
             );
             assert(enc_private_key.is_all_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
@@ -488,10 +489,10 @@ pub mod Privacy {
 
             token_balances.subtract_balance(:token, :amount);
 
-            // Encrypt the user address for the compliance.
+            // Encrypt the user address for the auditor.
             let enc_user_addr = encrypt_user_addr(
                 ephemeral_secret: random,
-                compliance_public_key: self.compliance_public_key.read(),
+                auditor_public_key: self.auditor_public_key.read(),
                 :user_addr,
             );
             assert(enc_user_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
@@ -651,10 +652,10 @@ pub mod Privacy {
             let note = open_note(:token, :depositor);
             assert(note.packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
 
-            // Encrypt the recipient address for the compliance.
+            // Encrypt the recipient address for the auditor.
             let enc_recipient_addr = encrypt_user_addr(
                 ephemeral_secret: random,
-                compliance_public_key: self.compliance_public_key.read(),
+                auditor_public_key: self.auditor_public_key.read(),
                 user_addr: recipient_addr,
             );
             assert(enc_recipient_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
@@ -931,26 +932,26 @@ pub mod Privacy {
             self.enc_private_key.read(user_addr)
         }
 
-        fn get_compliance_public_key(self: @ContractState) -> felt252 {
-            self.compliance_public_key.read()
+        fn get_auditor_public_key(self: @ContractState) -> felt252 {
+            self.auditor_public_key.read()
         }
     }
 
     #[abi(embed_v0)]
-    pub impl ComplianceImpl of ICompliance<ContractState> {
-        fn set_compliance_public_key(ref self: ContractState, compliance_public_key: felt252) {
+    pub impl AuditorImpl of IAuditor<ContractState> {
+        fn set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
             // TODO: Change to the real role.
             self.roles.only_token_admin();
-            self._set_compliance_public_key(:compliance_public_key);
+            self._set_auditor_public_key(:auditor_public_key);
         }
     }
 
     #[generate_trait]
-    impl ComplianceInternalImpl of ComplianceInternalTrait {
-        fn _set_compliance_public_key(ref self: ContractState, compliance_public_key: felt252) {
-            assert(compliance_public_key.is_non_zero(), errors::ZERO_COMPLIANCE_PUBLIC_KEY);
-            self.compliance_public_key.write(compliance_public_key);
-            self.emit(events::CompliancePublicKeySet { compliance_public_key });
+    impl AuditorInternalImpl of AuditorInternalTrait {
+        fn _set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
+            assert(auditor_public_key.is_non_zero(), errors::ZERO_AUDITOR_PUBLIC_KEY);
+            self.auditor_public_key.write(auditor_public_key);
+            self.emit(events::AuditorPublicKeySet { auditor_public_key });
         }
     }
 
@@ -975,7 +976,7 @@ pub mod Privacy {
             }
             self.fee_amount.write(fee_amount);
             self.fee_collector.write(fee_collector);
-            // TODO: Consider emitting an event.
+            self.emit(events::FeeSet { fee_amount, fee_collector });
         }
     }
 

@@ -15,7 +15,7 @@ pub struct ViewingKeySet {
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct Withdrawal {
-    /// Encrypted address of the withdrawing user. Can be decrypted by compliance.
+    /// Encrypted address of the withdrawing user. Can be decrypted by the auditor.
     pub enc_user_addr: EncUserAddr,
     /// The address the funds are withdrawn to.
     #[key]
@@ -40,15 +40,15 @@ pub struct Deposit {
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
-pub struct CompliancePublicKeySet {
-    /// The compliance public key.
+pub struct AuditorPublicKeySet {
+    /// The auditor public key.
     #[key]
-    pub compliance_public_key: felt252,
+    pub auditor_public_key: felt252,
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct OpenNoteCreated {
-    /// Encrypted recipient address (the note owner). Can be decrypted by compliance.
+    /// Encrypted recipient address (the note owner). Can be decrypted by the auditor.
     pub enc_recipient_addr: EncUserAddr,
     /// Address allowed to deposit into the note.
     #[key]
@@ -81,4 +81,13 @@ pub struct NoteUsed {
     /// The nullifier of the used note.
     #[key]
     pub nullifier: felt252,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct FeeSet {
+    /// The fee amount in FRI per `apply_actions` call.
+    pub fee_amount: u128,
+    /// The address that receives the fee.
+    #[key]
+    pub fee_collector: ContractAddress,
 }

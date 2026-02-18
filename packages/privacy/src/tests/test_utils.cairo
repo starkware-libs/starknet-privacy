@@ -18,12 +18,12 @@ use starkware_utils::constants::{MAX_U128, MAX_U32, TWO_POW_128};
 fn test_encrypt_private_key_decrypt() {
     let private_key = hash(['PRIVATE_KEY'].span());
     let random = hash(['RANDOM'].span());
-    let compliance_private_key = hash(['COMPLIANCE_PRIVATE_KEY'].span());
-    let compliance_public_key = derive_public_key(private_key: compliance_private_key);
+    let auditor_private_key = hash(['AUDITOR_PRIVATE_KEY'].span());
+    let auditor_public_key = derive_public_key(private_key: auditor_private_key);
     let enc_private_key = encrypt_private_key(
-        ephemeral_secret: random, :compliance_public_key, :private_key,
+        ephemeral_secret: random, :auditor_public_key, :private_key,
     );
-    let dec_private_key = decrypt_private_key(:enc_private_key, :compliance_private_key);
+    let dec_private_key = decrypt_private_key(:enc_private_key, :auditor_private_key);
     assert_eq!(dec_private_key, private_key);
 }
 
@@ -31,12 +31,12 @@ fn test_encrypt_private_key_decrypt() {
 fn test_encrypt_user_addr_decrypt() {
     let user_addr = hash(['USER_ADDR'].span()).try_into().unwrap();
     let random = hash(['RANDOM'].span());
-    let compliance_private_key = hash(['COMPLIANCE_PRIVATE_KEY'].span());
-    let compliance_public_key = derive_public_key(private_key: compliance_private_key);
+    let auditor_private_key = hash(['AUDITOR_PRIVATE_KEY'].span());
+    let auditor_public_key = derive_public_key(private_key: auditor_private_key);
     let enc_user_addr = encrypt_user_addr(
-        ephemeral_secret: random, :compliance_public_key, :user_addr,
+        ephemeral_secret: random, :auditor_public_key, :user_addr,
     );
-    let dec_user_addr = decrypt_enc_user_addr(:enc_user_addr, :compliance_private_key);
+    let dec_user_addr = decrypt_enc_user_addr(:enc_user_addr, :auditor_private_key);
     assert_eq!(dec_user_addr, user_addr);
 }
 
