@@ -6240,7 +6240,6 @@ fn test_swap_client_action() {
     );
 }
 
-// TODO: Consider moving to swap_executor tests.
 #[test]
 fn test_swap_without_withdraw_fails() {
     // Verify that applying an Invoke server action without a prior withdraw fails
@@ -6335,7 +6334,6 @@ fn test_invoke_external_client_action_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
 }
 
-// TODO: Move to server tests.
 #[test]
 fn test_invoke_external_swap_deposit_errors() {
     // Test swap errors that occur during server action execution (deposit-related).
@@ -6527,7 +6525,40 @@ fn test_invoke_external_swap_deposit_errors() {
     let server_actions = user.execute(:client_actions);
     let result = test.privacy.safe_apply_actions(actions: server_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
-    // TODO: Catch TOKEN_MISMATCH error.
+
+    // === Test TOKEN_MISMATCH ===
+    // Create an open note for the *input* token; swap executor will try to deposit *output*
+    // token into it, triggering TOKEN_MISMATCH.
+    let create_enc_note_input_5 = user
+        .new_enc_note_with_generated_salt(
+            recipient: user, token_addr: in_token_addr, amount: swap_amount, index: 5,
+        );
+    user.increase_token_balance(token: in_token, amount: swap_amount);
+    user
+        .cheat_deposit(
+            token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_5,
+        );
+    let use_note_input_5 = UseNoteInput { channel_key, token: in_token_addr, index: 5 };
+
+    let create_open_note_input_token_mismatch = user
+        .new_open_note_with_generated_random(
+            recipient: user, token_addr: in_token_addr, index: 6, depositor: swap_executor_addr,
+        );
+    user.cheat_create_open_note_e2e(create_note_input: create_open_note_input_token_mismatch);
+
+    let note_id = compute_note_id(:channel_key, token: in_token_addr, index: 6);
+    let invoke_external_input_token_mismatch = user
+        .invoke_external_mock_swap_executor_input(
+            in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
+        );
+    let client_actions = [
+        ClientAction::UseNote(use_note_input_5), ClientAction::Withdraw(withdraw_input),
+        ClientAction::InvokeExternal(invoke_external_input_token_mismatch),
+    ]
+        .span();
+    let server_actions = user.execute(:client_actions);
+    let result = test.privacy.safe_apply_actions(actions: server_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_MISMATCH);
 }
 
 #[test]
