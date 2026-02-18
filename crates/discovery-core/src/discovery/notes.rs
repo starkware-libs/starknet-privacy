@@ -19,7 +19,9 @@ use starknet_types_core::felt::Felt;
 use tracing::{debug, trace};
 
 use crate::discovery::cursor::SubchannelCursor;
-use crate::discovery::last_note_index::{exponential_ascend, ExponentialProbeResult};
+use crate::discovery::last_note_index::{
+    exponential_probe, ExponentialProbeResult, DEFAULT_MAX_PROBE_OFFSET,
+};
 use crate::discovery::{DiscoveryError, COST_NOTE, COST_NOTE_PROBING};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::{decrypt_note_amount, unpack_note_amount};
@@ -164,12 +166,14 @@ async fn probe_note_boundary<S: IViews>(
         cache,
         last_found_index,
         probe_complete,
-    } = exponential_ascend(
+        ..
+    } = exponential_probe(
         pool,
         channel_key,
         token,
         start_index,
         cursor.max_note_index,
+        Some(DEFAULT_MAX_PROBE_OFFSET),
         budget,
     )
     .await?;
