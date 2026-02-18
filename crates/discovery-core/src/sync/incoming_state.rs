@@ -5,17 +5,15 @@
 //!
 //! Channel and subchannel processing is concurrent via [`FuturesUnordered`].
 
-use futures::stream::{FuturesUnordered, StreamExt};
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
 use tracing::{debug, instrument, trace};
 
+use super::{discover_and_process_subchannels, process_pending_channels};
 use crate::discovery::incoming_channels::{discover_incoming_channels_paginated, IncomingChannel};
 use crate::discovery::notes::{discover_notes_paginated, DecryptedNote};
-use crate::discovery::subchannels::discover_subchannels_paginated;
-use crate::discovery::DiscoveryError;
-use crate::discovery::{ChannelCursor, CursorLimits, DiscoveryCursor, SubchannelCursor};
+use crate::discovery::{ChannelCursor, CursorLimits, DiscoveryCursor, DiscoveryError};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::felt_hex;
 use crate::privacy_pool::types::SecretFelt;
@@ -42,21 +40,6 @@ pub struct IncomingSubchannel {
     pub sender_addr: Felt,
     /// The token address.
     pub token: Felt,
-}
-
-/// Result of processing a single channel (internal).
-struct ProcessChannelResult {
-    sender_addr: Felt,
-    subchannels: Vec<IncomingSubchannel>,
-    notes: Vec<DecryptedNote>,
-    cursor: ChannelCursor,
-}
-
-/// Result of processing a single subchannel (internal).
-struct ProcessSubchannelResult {
-    token: Felt,
-    notes: Vec<DecryptedNote>,
-    cursor: SubchannelCursor,
 }
 
 /// Runs hierarchical discovery: channels → subchannels → notes.
@@ -115,33 +98,22 @@ pub async fn sync_incoming_state<S: IViews>(
     let mut new_subchannels: Vec<IncomingSubchannel> = Vec::new();
     let mut new_notes: Vec<DecryptedNote> = Vec::new();
 
-    // Extract incomplete channels for processing; complete ones stay in
-    // the cursor. The client is responsible for pruning complete entries.
-    let mut pending_futures: FuturesUnordered<_> = cursor
-        .channels
-        .extract_if(|_, ch| !ch.is_complete())
-        .map(|(sender_addr, ch_cursor)| {
-            process_channel(
-                pool,
-                sender_addr,
-                ch_cursor,
-                viewing_key,
-                cursor_limits.max_subchannels,
-                budget,
-            )
-        })
-        .collect();
-
-    while let Some(result) = pending_futures.next().await {
-        let ProcessChannelResult {
+    // Process incomplete channels concurrently.
+    let channel_results = process_pending_channels(&mut cursor, |sender_addr, ch_cursor| {
+        process_channel(
+            pool,
             sender_addr,
-            subchannels: channel_subchannels,
-            notes: channel_notes,
-            cursor: new_cursor,
-        } = result?;
+            ch_cursor,
+            viewing_key,
+            cursor_limits.max_subchannels,
+            budget,
+        )
+    })
+    .await?;
+
+    for (_, (channel_subchannels, channel_notes)) in channel_results {
         new_subchannels.extend(channel_subchannels);
         new_notes.extend(channel_notes);
-        cursor.channels.insert(sender_addr, new_cursor);
     }
 
     debug!(
@@ -161,95 +133,50 @@ pub async fn sync_incoming_state<S: IViews>(
 }
 
 /// Processes a single channel: discovers subchannels, then runs note
-/// discovery for each subchannel concurrently via [`FuturesUnordered`].
+/// discovery for each subchannel concurrently.
 #[instrument(skip_all, fields(sender = felt_hex(&sender_addr)))]
 async fn process_channel<S: IViews>(
     pool: &S,
     sender_addr: Felt,
-    mut cursor: ChannelCursor,
+    cursor: ChannelCursor,
     viewing_key: &SecretFelt,
     max_cursor_subchannels: usize,
     budget: &IoBudget,
-) -> Result<ProcessChannelResult, DiscoveryError> {
-    let channel_key = cursor.channel_key.ok_or_else(|| {
-        DiscoveryError::InvalidCursor("channel_key is required for incoming channel".into())
-    })?;
-
-    discover_subchannels_paginated(
+) -> Result<((Vec<IncomingSubchannel>, Vec<DecryptedNote>), ChannelCursor), DiscoveryError> {
+    let (sc_results, cursor) = discover_and_process_subchannels(
         pool,
-        channel_key,
-        &mut cursor,
+        cursor,
         max_cursor_subchannels,
         budget,
+        |channel_key, token, mut sc_cursor| async move {
+            if sc_cursor.note_discovery_complete {
+                return Ok((Vec::new(), sc_cursor));
+            }
+            let notes = discover_notes_paginated(
+                pool, channel_key, token, &mut sc_cursor, viewing_key, budget,
+            )
+            .await?;
+            Ok((notes, sc_cursor))
+        },
     )
     .await?;
 
-    // Extract incomplete subchannels for processing; complete ones stay
-    // in the cursor. The client is responsible for pruning complete entries.
-    let mut pending_futures: FuturesUnordered<_> = cursor
-        .subchannels
-        .extract_if(|_, sc| !sc.note_discovery_complete)
-        .map(|(token, sc_cursor)| {
-            process_subchannel(pool, channel_key, token, sc_cursor, viewing_key, budget)
-        })
-        .collect();
-
-    let mut subchannels: Vec<IncomingSubchannel> = Vec::new();
-    let mut notes: Vec<DecryptedNote> = Vec::new();
-    while let Some(result) = pending_futures.next().await {
-        let ProcessSubchannelResult {
-            token,
-            notes: new_notes,
-            cursor: new_cursor,
-        } = result?;
+    let mut subchannels = Vec::new();
+    let mut notes = Vec::new();
+    for (token, token_notes) in sc_results {
         subchannels.push(IncomingSubchannel { sender_addr, token });
         // Enrich notes with sender and token context (see decrypt_note:
         // sender_addr and token are initialized to Felt::ZERO).
-        for mut note in new_notes {
+        for mut note in token_notes {
             debug_assert_eq!(note.sender_addr, Felt::ZERO, "sender_addr already set");
             debug_assert_eq!(note.token, Felt::ZERO, "token already set");
             note.sender_addr = sender_addr;
             note.token = token;
             notes.push(note);
         }
-        cursor.subchannels.insert(token, new_cursor);
     }
 
-    Ok(ProcessChannelResult {
-        sender_addr,
-        subchannels,
-        notes,
-        cursor,
-    })
-}
-
-/// Processes a single subchannel: discovers notes via pagination.
-#[instrument(skip_all, fields(token = felt_hex(&token)))]
-async fn process_subchannel<S: IViews>(
-    pool: &S,
-    channel_key: Felt,
-    token: Felt,
-    mut cursor: SubchannelCursor,
-    viewing_key: &SecretFelt,
-    budget: &IoBudget,
-) -> Result<ProcessSubchannelResult, DiscoveryError> {
-    if cursor.note_discovery_complete {
-        return Ok(ProcessSubchannelResult {
-            token,
-            notes: Vec::new(),
-            cursor,
-        });
-    }
-
-    let notes =
-        discover_notes_paginated(pool, channel_key, token, &mut cursor, viewing_key, budget)
-            .await?;
-
-    Ok(ProcessSubchannelResult {
-        token,
-        notes,
-        cursor,
-    })
+    Ok(((subchannels, notes), cursor))
 }
 
 #[cfg(test)]
