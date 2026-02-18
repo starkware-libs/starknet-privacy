@@ -11,13 +11,19 @@ Keys are provided per request and not stored, but additional safeguards are requ
 
 **Memory handling:**
 
-- Decryption keys MUST be zeroed from memory after request processing completes.
+- Decryption keys MUST be zeroed from memory after request processing completes. Implemented via `SecretFelt` wrapper (zeroize-on-drop, redacted Debug, no Copy/Serde).
+- `viewing_key` and `channel_key` are typed as `SecretFelt` from API deserialization through hash/decryption primitives.
 - Core dumps and swap SHOULD be disabled or encrypted in production deployments.
 
 **Logging hygiene:**
 
 - Structured logging MUST filter sensitive fields including `private_key` and decrypted note contents.
-- Request/response logging MUST NOT include key material.
+- Request/response logging MUST NOT include key material. `SecretFelt::Debug` prints `[REDACTED]`.
+
+**Error sanitization:**
+
+- Decryption errors MUST NOT leak channel indices or internal error details to the client. Details are logged server-side at `warn` level; the client receives a generic `DECRYPTION_FAILED` message.
+- RPC/storage errors MUST NOT be forwarded verbatim. The client receives `Internal error`; details are logged server-side.
 
 ## 5.2 Timing and Side-Channel Attacks
 
@@ -37,15 +43,15 @@ Timing and side-channel attacks are out of scope for the initial implementation.
 
 ### 5.3.1 Known Attack Vectors (audit 2026-02-04)
 
-The following vectors have been identified and require mitigation:
+The following vectors have been identified and mitigated:
 
 | Vector | Severity | Status |
 |--------|----------|--------|
-| Unbounded task spawning from `cursor.channels` / `cursor.subchannels` HashMaps — each entry spawns a tokio task, attacker can pack ~50K entries in a 2MB body | CRITICAL | TODO |
-| No explicit request body size limit — Axum 2MB default is ~4000× larger than a legitimate request | CRITICAL | TODO |
-| No HTTP-level request timeout — slow RPC responses block worker threads up to 100min per request | HIGH | TODO |
-| HashMap deserialization memory spike from large cursors | MEDIUM | mitigated by body limit once set |
-| `max_reads: 0` accepted, wastes snapshot creation | LOW | TODO |
+| Unbounded task spawning from `cursor.channels` / `cursor.subchannels` HashMaps — each entry spawns a tokio task, attacker can pack ~50K entries in a 2MB body | CRITICAL | mitigated by body size limit (C1) |
+| No explicit request body size limit — Axum 2MB default is ~4000× larger than a legitimate request | CRITICAL | DONE — `DefaultBodyLimit` configurable via `max_request_body_bytes` (default 100KB) |
+| No HTTP-level request timeout — slow RPC responses block worker threads up to 100min per request | HIGH | DONE — `TimeoutLayer` configurable via `api.request_timeout` (default 30s) |
+| HashMap deserialization memory spike from large cursors | MEDIUM | mitigated by body size limit |
+| `max_reads: 0` accepted, wastes snapshot creation | LOW | DONE — `min_server_budget()` clamp (minimum 67 with default config, derived from full discovery pipeline costs) |
 
 ## 5.4 Input Validation
 
@@ -55,7 +61,8 @@ The following request fields are validated by the service:
 - **last_known_block:** If provided, checked for canonical status (reorg detection). Returns `BLOCK_REORGED` if no longer canonical.
 - **block_ref:** If provided, used as-is for querying. No separate existence check — an invalid hash surfaces as an RPC error.
 - **cursor:** Structural validation via serde deserialization. Malformed JSON results in `INVALID_REQUEST`. **Note:** cursor HashMap sizes (`channels`, `subchannels`) are NOT validated — an attacker can submit arbitrarily large maps that spawn unbounded concurrent tasks. Size caps MUST be enforced before task spawning.
-- **recipient_address, decryption_key:** Accepted as Felt values without format validation.
+- **recipient_address:** Accepted as a Felt value without format validation.
+- **viewing_key:** Deserialized as `SecretFelt` (transparent serde, zeroized on drop). Accepted without format validation.
 
 ## 5.5 Privacy Model
 

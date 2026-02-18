@@ -8,11 +8,11 @@
 //! ```ignore
 //! // First request: get count, then discover all
 //! let count = get_incoming_channel_count(&pool, recipient, &budget).await?;
-//! let result = discover_incoming_channels(&pool, recipient, &key, 0, count as usize, &budget).await?;
+//! let result = discover_incoming_channels(&pool, recipient, key, 0, count as usize, &budget).await?;
 //!
 //! // Subsequent requests: compute remaining channels
 //! let remaining = (cached_count - start) as usize;
-//! let result = discover_incoming_channels(&pool, recipient, &key, start, remaining, &budget).await?;
+//! let result = discover_incoming_channels(&pool, recipient, key, start, remaining, &budget).await?;
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -25,14 +25,18 @@ use crate::discovery::{DiscoveryError, COST_CHANNEL_INFO, COST_NUM_CHANNELS};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::decrypt_channel_info;
 use crate::privacy_pool::felt_hex;
-use crate::privacy_pool::types::SecretFelt;
+use crate::privacy_pool::types::{secret_felt_serde, SecretFelt};
 use crate::privacy_pool::views::IViews;
 
 /// A discovered and decrypted incoming channel.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IncomingChannel {
     /// The channel key.
-    pub channel_key: Felt,
+    #[serde(
+        serialize_with = "secret_felt_serde::serialize",
+        deserialize_with = "secret_felt_serde::deserialize"
+    )]
+    pub channel_key: SecretFelt,
     /// The sender's address.
     pub sender_addr: Felt,
 }
@@ -224,7 +228,7 @@ pub async fn discover_incoming_channels_paginated<S: IViews>(
             .channels
             .entry(channel.sender_addr)
             .or_insert(ChannelCursor {
-                channel_key: channel.channel_key,
+                channel_key: channel.channel_key.clone(),
                 subchannel_discovery_complete: false,
                 last_subchannel_index: None,
                 subchannels: Default::default(),
@@ -290,11 +294,11 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
 
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = &fixture.constants.alice_viewing_key;
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &key,
+            key,
             0,
             count as usize,
             &budget,
@@ -324,11 +328,11 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
 
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = &fixture.constants.bob_viewing_key;
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.bob_address,
-            &key,
+            key,
             0,
             count as usize,
             &budget,
@@ -358,13 +362,13 @@ mod tests {
             .unwrap();
         assert_eq!(count, 1);
 
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = &fixture.constants.alice_viewing_key;
 
         // First discovery - get all channels
         let result1 = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &key,
+            key,
             0,
             count as usize,
             &budget,
@@ -381,7 +385,7 @@ mod tests {
         let result2 = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &key,
+            key,
             result1.last_index.unwrap() + 1,
             0,
             &budget,
@@ -422,11 +426,11 @@ mod tests {
 
         // Now discover with insufficient budget (COST_CHANNEL_INFO = 3)
         let budget = IoBudget::new(2);
-        let key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let key = &fixture.constants.alice_viewing_key;
         let result = discover_incoming_channels(
             &backend,
             fixture.constants.alice_address,
-            &key,
+            key,
             0,
             count as usize,
             &budget,
@@ -446,12 +450,12 @@ mod tests {
 
         let mut cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = &fixture.constants.bob_viewing_key;
 
         let channels = discover_incoming_channels_paginated(
             &backend,
             fixture.constants.bob_address,
-            &key,
+            key,
             &mut cursor,
             usize::MAX,
             &budget,
@@ -468,7 +472,7 @@ mod tests {
         let sender_addr = channels[0].sender_addr;
         assert!(cursor.channels.contains_key(&sender_addr));
         assert_ne!(
-            cursor.channels[&sender_addr].channel_key,
+            *cursor.channels[&sender_addr].channel_key,
             Felt::ZERO,
             "channel_key should be set for incoming channels"
         );
@@ -482,12 +486,12 @@ mod tests {
         let mut cursor = DiscoveryCursor::default();
         // Budget = 0: can't even fetch channel count
         let budget = IoBudget::new(0);
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = &fixture.constants.bob_viewing_key;
 
         let channels = discover_incoming_channels_paginated(
             &backend,
             fixture.constants.bob_address,
-            &key,
+            key,
             &mut cursor,
             usize::MAX,
             &budget,
@@ -507,19 +511,13 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = &fixture.constants.bob_viewing_key;
 
         // num_channels = 0 → empty result, has_more = false (nothing requested)
-        let result = discover_incoming_channels(
-            &backend,
-            fixture.constants.bob_address,
-            &key,
-            0,
-            0,
-            &budget,
-        )
-        .await
-        .unwrap();
+        let result =
+            discover_incoming_channels(&backend, fixture.constants.bob_address, key, 0, 0, &budget)
+                .await
+                .unwrap();
 
         assert!(result.channels.is_empty());
         assert_eq!(result.last_index, None);
@@ -533,7 +531,7 @@ mod tests {
 
         let mut cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = &fixture.constants.bob_viewing_key;
 
         // Pre-fill cursor to capacity (1 entry, max_cursor_channels = 1).
         insert_dummy_channel_cursor(&mut cursor);
@@ -541,7 +539,7 @@ mod tests {
         let channels = discover_incoming_channels_paginated(
             &backend,
             fixture.constants.bob_address,
-            &key,
+            key,
             &mut cursor,
             1,
             &budget,
@@ -563,7 +561,7 @@ mod tests {
 
         let mut cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(100);
-        let key = SecretFelt::new(fixture.constants.bob_viewing_key);
+        let key = &fixture.constants.bob_viewing_key;
 
         // 1 existing entry + max_cursor_channels = 2 → 1 slot available.
         insert_dummy_channel_cursor(&mut cursor);
@@ -571,7 +569,7 @@ mod tests {
         let channels = discover_incoming_channels_paginated(
             &backend,
             fixture.constants.bob_address,
-            &key,
+            key,
             &mut cursor,
             2,
             &budget,

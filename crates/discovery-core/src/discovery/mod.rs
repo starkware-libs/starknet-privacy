@@ -34,6 +34,17 @@ pub const COST_NOTE_PROBING: usize = 1;
 /// Cost for a single `get_public_key` (1 storage slot read).
 pub const COST_PUBLIC_KEY: usize = 1;
 
+/// Minimum server budget to make progress through one step at each discovery level:
+/// fetch channel count, discover one channel, discover one subchannel (×2 for sentinel),
+/// probe note boundary, and scan 10 notes.
+pub fn min_server_budget(max_note_log_index: u32) -> usize {
+    COST_NUM_CHANNELS
+        + COST_CHANNEL_INFO
+        + 2 * COST_SUBCHANNEL_INFO
+        + last_note_index::boundary_budget(max_note_log_index)
+        + 10 * COST_NOTE
+}
+
 /// Errors that can occur during channel discovery.
 #[derive(Debug, Error)]
 pub enum DiscoveryError {

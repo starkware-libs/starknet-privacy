@@ -15,7 +15,7 @@ use starknet_types_core::felt::Felt;
 use crate::discovery::cursor::ChannelCursor;
 use crate::discovery::DiscoveryCursor;
 use crate::io_budget::IoBudget;
-use crate::privacy_pool::types::SecretFelt;
+use crate::privacy_pool::types::{secret_felt_serde, SecretFelt};
 
 /// Devnet fixture loaded from devnet-state.json.
 #[derive(Deserialize)]
@@ -29,9 +29,11 @@ pub struct DevnetFixture {
 pub struct DevnetConstants {
     pub contract_address: Felt,
     pub alice_address: Felt,
-    pub alice_viewing_key: Felt,
+    #[serde(deserialize_with = "secret_felt_serde::deserialize")]
+    pub alice_viewing_key: SecretFelt,
     pub bob_address: Felt,
-    pub bob_viewing_key: Felt,
+    #[serde(deserialize_with = "secret_felt_serde::deserialize")]
+    pub bob_viewing_key: SecretFelt,
     pub admin_address: Felt,
     pub eth_token: Felt,
     pub strk_token: Felt,
@@ -51,16 +53,19 @@ pub struct CairoRefFixture {
 pub struct CairoRefInputs {
     pub sender: Felt,
     pub recipient: Felt,
-    pub sender_private_key: Felt,
+    #[serde(deserialize_with = "secret_felt_serde::deserialize")]
+    pub sender_private_key: SecretFelt,
     pub recipient_public_key: Felt,
-    pub channel_key: Felt,
+    #[serde(deserialize_with = "secret_felt_serde::deserialize")]
+    pub channel_key: SecretFelt,
     pub token: Felt,
     pub index: u64,
     pub salt: Felt,
     pub shared_x: Felt,
     pub ephemeral_secret: Felt,
     pub amount: u64,
-    pub recipient_private_key: Felt,
+    #[serde(deserialize_with = "secret_felt_serde::deserialize")]
+    pub recipient_private_key: SecretFelt,
     pub recipient_public_key_derived: Felt,
     pub auditor_private_key: Felt,
     pub auditor_public_key: Felt,
@@ -142,7 +147,7 @@ pub fn insert_dummy_channel_cursor(cursor: &mut DiscoveryCursor) {
     cursor.channels.insert(
         Felt::from(0xdead_u64),
         ChannelCursor {
-            channel_key: Felt::ZERO,
+            channel_key: SecretFelt::new(Felt::ZERO),
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: Default::default(),
@@ -154,8 +159,8 @@ pub fn insert_dummy_channel_cursor(cursor: &mut DiscoveryCursor) {
 pub async fn get_channel_key(
     backend: &crate::storage_backend::MockBackend,
     recipient: starknet_types_core::felt::Felt,
-    private_key: &starknet_types_core::felt::Felt,
-) -> Option<starknet_types_core::felt::Felt> {
+    private_key: &SecretFelt,
+) -> Option<SecretFelt> {
     use crate::discovery::incoming_channels::{
         discover_incoming_channels, get_incoming_channel_count,
     };
@@ -164,18 +169,18 @@ pub async fn get_channel_key(
     let count = get_incoming_channel_count(backend, recipient, &budget)
         .await
         .ok()??;
-    let key = SecretFelt::new(*private_key);
-    let result = discover_incoming_channels(backend, recipient, &key, 0, count as usize, &budget)
-        .await
-        .ok()?;
+    let result =
+        discover_incoming_channels(backend, recipient, private_key, 0, count as usize, &budget)
+            .await
+            .ok()?;
 
-    result.channels.first().map(|c| c.channel_key)
+    result.channels.first().map(|c| c.channel_key.clone())
 }
 
 /// Helper to discover subchannels and get the first token for a channel.
 pub async fn get_subchannel_token(
     backend: &crate::storage_backend::MockBackend,
-    channel_key: starknet_types_core::felt::Felt,
+    channel_key: &SecretFelt,
 ) -> Option<starknet_types_core::felt::Felt> {
     use crate::discovery::subchannels::discover_subchannels;
 
