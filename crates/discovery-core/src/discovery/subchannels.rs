@@ -14,6 +14,7 @@ use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::decrypt_subchannel_token;
 use crate::privacy_pool::felt_hex;
 use crate::privacy_pool::hashes::compute_subchannel_id;
+use crate::privacy_pool::types::SecretFelt;
 use crate::privacy_pool::views::IViews;
 
 /// A discovered and decrypted subchannel.
@@ -64,7 +65,7 @@ pub struct SubchannelDiscoveryResult {
 /// for incremental discovery.
 pub async fn discover_subchannels<PrivacyPool: IViews>(
     privacy_pool: &PrivacyPool,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     start_index: u64,
     num_subchannels: usize,
     budget: &IoBudget,
@@ -94,7 +95,7 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
             break;
         }
 
-        let token = decrypt_subchannel_token(&encrypted, &channel_key, index);
+        let token = decrypt_subchannel_token(&encrypted, channel_key, index);
 
         subchannels.push(Subchannel { index, token });
         index += 1;
@@ -133,7 +134,7 @@ pub async fn discover_subchannels<PrivacyPool: IViews>(
 /// cursor, and sets `subchannel_discovery_complete` once the sentinel is found.
 pub async fn discover_subchannels_paginated<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     cursor: &mut ChannelCursor,
     max_cursor_subchannels: usize,
     budget: &IoBudget,
@@ -179,10 +180,10 @@ mod tests {
     async fn test_discover_no_subchannels() {
         let backend = MockBackend::empty();
         // Use a random channel key - empty backend returns zero for all slots
-        let channel_key = Felt::from_hex_unchecked("0x12345");
+        let channel_key = SecretFelt::new(Felt::from_hex_unchecked("0x12345"));
         let budget = IoBudget::new(100);
 
-        let result = discover_subchannels(&backend, channel_key, 0, usize::MAX, &budget)
+        let result = discover_subchannels(&backend, &channel_key, 0, usize::MAX, &budget)
             .await
             .unwrap();
 
@@ -207,7 +208,7 @@ mod tests {
 
         // Now discover subchannels for this channel
         let budget = IoBudget::new(100);
-        let result = discover_subchannels(&backend, channel_key, 0, usize::MAX, &budget)
+        let result = discover_subchannels(&backend, &channel_key, 0, usize::MAX, &budget)
             .await
             .unwrap();
 
@@ -239,7 +240,7 @@ mod tests {
 
         // Now discover subchannels for this channel
         let budget = IoBudget::new(100);
-        let result = discover_subchannels(&backend, channel_key, 0, usize::MAX, &budget)
+        let result = discover_subchannels(&backend, &channel_key, 0, usize::MAX, &budget)
             .await
             .unwrap();
 
@@ -271,7 +272,7 @@ mod tests {
 
         // First discovery - should find 1 subchannel
         let budget = IoBudget::new(100);
-        let result1 = discover_subchannels(&backend, channel_key, 0, usize::MAX, &budget)
+        let result1 = discover_subchannels(&backend, &channel_key, 0, usize::MAX, &budget)
             .await
             .unwrap();
         assert_eq!(result1.subchannels.len(), 1);
@@ -281,7 +282,7 @@ mod tests {
 
         // Incremental discovery starting from last_index + 1 - should find 0 new subchannels
         let result2 =
-            discover_subchannels(&backend, channel_key, last_index + 1, usize::MAX, &budget)
+            discover_subchannels(&backend, &channel_key, last_index + 1, usize::MAX, &budget)
                 .await
                 .unwrap();
         assert_eq!(result2.subchannels.len(), 0);
@@ -305,7 +306,7 @@ mod tests {
 
         // Budget exhausted before starting (COST_SUBCHANNEL_INFO = 2)
         let budget = IoBudget::new(1);
-        let result = discover_subchannels(&backend, channel_key, 0, usize::MAX, &budget)
+        let result = discover_subchannels(&backend, &channel_key, 0, usize::MAX, &budget)
             .await
             .unwrap();
 
@@ -328,17 +329,22 @@ mod tests {
         .unwrap();
 
         let mut cursor = ChannelCursor {
-            channel_key,
+            channel_key: channel_key.clone(),
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
         };
 
         let budget = IoBudget::new(100);
-        let subs =
-            discover_subchannels_paginated(&backend, channel_key, &mut cursor, usize::MAX, &budget)
-                .await
-                .unwrap();
+        let subs = discover_subchannels_paginated(
+            &backend,
+            &channel_key,
+            &mut cursor,
+            usize::MAX,
+            &budget,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(subs.len(), 1, "should discover 1 subchannel (STRK)");
         assert!(
@@ -367,7 +373,7 @@ mod tests {
         .unwrap();
 
         let mut cursor = ChannelCursor {
-            channel_key,
+            channel_key: channel_key.clone(),
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
@@ -375,17 +381,22 @@ mod tests {
 
         // First call: full discovery
         let budget = IoBudget::new(100);
-        discover_subchannels_paginated(&backend, channel_key, &mut cursor, usize::MAX, &budget)
+        discover_subchannels_paginated(&backend, &channel_key, &mut cursor, usize::MAX, &budget)
             .await
             .unwrap();
         assert!(cursor.subchannel_discovery_complete);
 
         // Second call: 0 budget — should return empty immediately
         let budget = IoBudget::new(0);
-        let subs =
-            discover_subchannels_paginated(&backend, channel_key, &mut cursor, usize::MAX, &budget)
-                .await
-                .unwrap();
+        let subs = discover_subchannels_paginated(
+            &backend,
+            &channel_key,
+            &mut cursor,
+            usize::MAX,
+            &budget,
+        )
+        .await
+        .unwrap();
 
         assert!(subs.is_empty(), "should skip when total is cached");
         assert_eq!(budget.remaining(), 0, "no budget should be consumed");
@@ -409,14 +420,14 @@ mod tests {
 
         // Fresh cursor: empty map + no total → should discover subchannels
         let mut fresh = ChannelCursor {
-            channel_key,
+            channel_key: channel_key.clone(),
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::new(),
         };
         let budget = IoBudget::new(100);
         let subs =
-            discover_subchannels_paginated(&backend, channel_key, &mut fresh, usize::MAX, &budget)
+            discover_subchannels_paginated(&backend, &channel_key, &mut fresh, usize::MAX, &budget)
                 .await
                 .unwrap();
         assert_eq!(subs.len(), 1, "fresh cursor should discover subchannels");
@@ -424,7 +435,7 @@ mod tests {
         // Fully enumerated cursor: empty map + skip=true → should skip entirely
         // (simulates state after all notes processed and entries pruned)
         let mut done = ChannelCursor {
-            channel_key,
+            channel_key: channel_key.clone(),
             subchannel_discovery_complete: true,
             last_subchannel_index: Some(0),
             subchannels: HashMap::new(),
@@ -432,7 +443,7 @@ mod tests {
         let budget = IoBudget::new(100);
         let before = budget.remaining();
         let subs =
-            discover_subchannels_paginated(&backend, channel_key, &mut done, usize::MAX, &budget)
+            discover_subchannels_paginated(&backend, &channel_key, &mut done, usize::MAX, &budget)
                 .await
                 .unwrap();
         assert!(subs.is_empty(), "enumerated cursor should skip");
@@ -454,7 +465,7 @@ mod tests {
 
         let budget = IoBudget::new(100);
         let before = budget.remaining();
-        let result = discover_subchannels(&backend, channel_key, 0, 0, &budget)
+        let result = discover_subchannels(&backend, &channel_key, 0, 0, &budget)
             .await
             .unwrap();
 
@@ -484,7 +495,7 @@ mod tests {
 
         // Pre-fill cursor to capacity (1 entry, max = 1).
         let mut cursor = ChannelCursor {
-            channel_key,
+            channel_key: channel_key.clone(),
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::from([(Felt::from(0xabc), Default::default())]),
@@ -492,7 +503,7 @@ mod tests {
 
         let budget = IoBudget::new(100);
         let before = budget.remaining();
-        let subs = discover_subchannels_paginated(&backend, channel_key, &mut cursor, 1, &budget)
+        let subs = discover_subchannels_paginated(&backend, &channel_key, &mut cursor, 1, &budget)
             .await
             .unwrap();
 
@@ -519,14 +530,14 @@ mod tests {
 
         // 1 existing entry + max_cursor_subchannels=2 → 1 slot available.
         let mut cursor = ChannelCursor {
-            channel_key,
+            channel_key: channel_key.clone(),
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: HashMap::from([(Felt::from(0xabc), Default::default())]),
         };
 
         let budget = IoBudget::new(100);
-        let subs = discover_subchannels_paginated(&backend, channel_key, &mut cursor, 2, &budget)
+        let subs = discover_subchannels_paginated(&backend, &channel_key, &mut cursor, 2, &budget)
             .await
             .unwrap();
 

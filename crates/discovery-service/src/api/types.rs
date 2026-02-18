@@ -9,6 +9,7 @@ use discovery_core::discovery::notes::DecryptedNote;
 use discovery_core::discovery::outgoing_channels::OutgoingChannel;
 use discovery_core::discovery::DiscoveryCursor;
 use discovery_core::discovery::DiscoveryError;
+use discovery_core::privacy_pool::types::{secret_felt_serde, SecretFelt};
 use discovery_core::sync::incoming_state::IncomingSubchannel;
 use discovery_core::sync::outgoing_state::OutgoingSubchannel;
 use serde::{Deserialize, Serialize};
@@ -92,14 +93,13 @@ pub fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErr
                 )
             }
         }
-        DiscoveryError::Decryption { index, source } => (
-            StatusCode::BAD_REQUEST,
-            ApiErrorResponse::with_details(
-                error_codes::DECRYPTION_FAILED,
-                format!("Decryption failed at index {}: {}", index, source),
-                serde_json::json!({ "index": index }),
-            ),
-        ),
+        DiscoveryError::Decryption { index, source } => {
+            warn!("Decryption failed at channel index {}: {}", index, source);
+            (
+                StatusCode::BAD_REQUEST,
+                ApiErrorResponse::new(error_codes::DECRYPTION_FAILED, "Decryption failed"),
+            )
+        }
         DiscoveryError::TaskPanicked(msg) => {
             warn!("Discovery task panicked: {}", msg);
             (
@@ -123,7 +123,11 @@ pub struct SyncRequestBase {
     /// The privacy pool contract address.
     pub contract_address: Felt,
     /// The caller's private viewing key.
-    pub viewing_key: Felt,
+    #[serde(
+        serialize_with = "secret_felt_serde::serialize",
+        deserialize_with = "secret_felt_serde::deserialize"
+    )]
+    pub viewing_key: SecretFelt,
     /// Block hash for reorg detection. Set on first request of a new sync
     /// session to the `block_hash` from your last completed sync.
     /// Server returns 409 if this block was reorged out.
@@ -253,7 +257,11 @@ pub struct PreflightCheckRequest {
     /// The sender's address.
     pub sender_address: Felt,
     /// The sender's private viewing key.
-    pub viewing_key: Felt,
+    #[serde(
+        serialize_with = "secret_felt_serde::serialize",
+        deserialize_with = "secret_felt_serde::deserialize"
+    )]
+    pub viewing_key: SecretFelt,
     /// The recipient's address.
     pub recipient: Felt,
     /// The token address.
