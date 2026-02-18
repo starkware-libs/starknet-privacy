@@ -1,7 +1,8 @@
 use core::num::traits::Zero;
-use privacy::swap_executor::errors;
+use privacy::tests::mock_swap_executor::errors;
 use privacy::tests::utils_for_tests::{
-    PrivacyCfgTrait, SwapExecutorCfgTrait, Test, TestTrait, UserTrait, constants,
+    PrivacyCfgTrait, SwapExecutorCfg, SwapExecutorCfgTrait, Test, TestTrait, UserTrait, constants,
+    deploy_mock_swap_executor,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::unpacking;
@@ -68,7 +69,6 @@ fn test_privacy_invoke_basic(preexisting_balance: u128) {
         .privacy
         .swap_executor
         .privacy_invoke(
-            swap_contract: test.privacy.mock_amm,
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
             in_amount: swap_amount,
@@ -115,18 +115,10 @@ fn test_privacy_invoke_propagates_amm_error() {
     input_token.supply(address: test.privacy.swap_executor.address, amount: swap_amount);
 
     // Don't fund AMM - transfer will fail due to insufficient balance.
-    let swap_calldata: Array<felt252> = array![
-        input_token.contract_address().into(), output_token.contract_address().into(),
-        swap_amount.into(), // amount low
-        0 // amount high
-    ];
     let result = test
         .privacy
         .swap_executor
         .safe_privacy_invoke(
-            swap_contract: test.privacy.mock_amm,
-            swap_selector: selector!("swap"),
-            swap_calldata: swap_calldata.span(),
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
             in_amount: swap_amount,
@@ -146,25 +138,25 @@ fn test_privacy_invoke_panics_on_zero_out_amount() {
     let swap_amount = constants::DEFAULT_AMOUNT;
     let note_id: felt252 = 'NOTE_ID';
 
+    let swap_executor = deploy_mock_swap_executor(
+        amm_address: test.privacy.mock_amm, selector: selector!("noop_swap"),
+    );
+
     // Fund swap executor with input tokens.
-    input_token.supply(address: test.privacy.swap_executor.address, amount: swap_amount);
+    input_token.supply(address: swap_executor, amount: swap_amount);
 
     // Verify balances before swap.
-    assert_eq!(
-        input_token.balance_of(address: test.privacy.swap_executor.address), swap_amount.into(),
-    );
+    assert_eq!(input_token.balance_of(address: swap_executor), swap_amount.into());
     assert_eq!(input_token.balance_of(address: test.privacy.mock_amm), 0);
-    assert_eq!(output_token.balance_of(address: test.privacy.swap_executor.address), 0);
+    assert_eq!(output_token.balance_of(address: swap_executor), 0);
     assert_eq!(output_token.balance_of(address: test.privacy.mock_amm), 0);
 
     // Call noop_swap which does nothing (returns 0 tokens) - should panic.
-    let result = test
-        .privacy
-        .swap_executor
+    let swap_executor_cfg = SwapExecutorCfg {
+        address: swap_executor, privacy_address: test.privacy.address,
+    };
+    let result = swap_executor_cfg
         .safe_privacy_invoke(
-            swap_contract: test.privacy.mock_amm,
-            swap_selector: selector!("noop_swap"),
-            swap_calldata: [].span(),
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
             in_amount: swap_amount,
@@ -182,8 +174,11 @@ fn test_privacy_invoke_received_amount_overflow() {
     let swap_amount = constants::DEFAULT_AMOUNT;
     let note_id: felt252 = 'NOTE_ID';
 
+    let swap_executor = deploy_mock_swap_executor(
+        amm_address: test.privacy.mock_amm, selector: selector!("overflow_swap"),
+    );
     // Fund swap executor with input tokens.
-    input_token.supply(address: test.privacy.swap_executor.address, amount: swap_amount);
+    input_token.supply(address: swap_executor, amount: swap_amount);
 
     // Fund AMM with output tokens exceeding u128::MAX.
     // Note: supply takes u128, so we supply MAX_U128 first, then 1 more.
@@ -191,22 +186,17 @@ fn test_privacy_invoke_received_amount_overflow() {
     output_token.supply(address: test.privacy.mock_amm, amount: 1);
 
     // Verify balances before swap.
-    assert_eq!(
-        input_token.balance_of(address: test.privacy.swap_executor.address), swap_amount.into(),
-    );
+    assert_eq!(input_token.balance_of(address: swap_executor), swap_amount.into());
     assert_eq!(input_token.balance_of(address: test.privacy.mock_amm), 0);
-    assert_eq!(output_token.balance_of(address: test.privacy.swap_executor.address), 0);
+    assert_eq!(output_token.balance_of(address: swap_executor), 0);
     assert_eq!(output_token.balance_of(address: test.privacy.mock_amm), MAX_U128.into() + 1);
 
     // Call overflow_swap which returns an amount exceeding u128::MAX.
-    let swap_calldata = array![output_token.contract_address().into()];
-    let result = test
-        .privacy
-        .swap_executor
+    let swap_executor_cfg = SwapExecutorCfg {
+        address: swap_executor, privacy_address: test.privacy.address,
+    };
+    let result = swap_executor_cfg
         .safe_privacy_invoke(
-            swap_contract: test.privacy.mock_amm,
-            swap_selector: selector!("overflow_swap"),
-            swap_calldata: swap_calldata.span(),
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
             in_amount: swap_amount,
@@ -228,13 +218,6 @@ fn test_privacy_invoke_insufficient_balance() {
         .privacy
         .swap_executor
         .safe_privacy_invoke(
-            swap_contract: test.privacy.mock_amm,
-            swap_selector: selector!("swap"),
-            swap_calldata: [
-                input_token.contract_address().into(), output_token.contract_address().into(),
-                swap_amount.into(), 0,
-            ]
-                .span(),
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
             in_amount: swap_amount,
@@ -295,13 +278,6 @@ fn test_privacy_invoke_caller_not_privacy_contract() {
         .privacy
         .swap_executor
         .safe_privacy_invoke(
-            swap_contract: test.privacy.mock_amm,
-            swap_selector: selector!("swap"),
-            swap_calldata: [
-                input_token.contract_address().into(), output_token.contract_address().into(),
-                swap_amount.into(), 0,
-            ]
-                .span(),
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
             in_amount: swap_amount,

@@ -4,10 +4,10 @@ use privacy::actions::{
     TransferToInput,
 };
 use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note};
-use privacy::swap_executor::errors as swap_executor_errors;
+use privacy::tests::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
-    constants, invoke_swap_input,
+    constants, deploy_mock_swap_executor, invoke_mock_swap_executor_input,
 };
 use privacy::utils::constants::{OPEN_NOTE_SALT, PROOF_VALIDITY_BLOCK_INTERVAL};
 use privacy::utils::{ProofFacts, _compute_message_hash, open_note, to_write_once_action, unpacking};
@@ -992,19 +992,9 @@ fn test_apply_invoke_swap() {
     assert_eq!(output_token.balance_of(address: executor_addr), 0);
     assert_eq!(output_token.balance_of(address: amm_address), swap_amount.into());
 
-    // Prepare swap calldata: [input_token, output_token, amount (u256 = low, high)].
-    let swap_calldata = [
-        input_token.contract_address().into(), output_token.contract_address().into(),
-        swap_amount.into(), 0,
-    ]
-        .span();
-
     // Create Invoke input.
-    let invoke_input = invoke_swap_input(
+    let invoke_input = invoke_mock_swap_executor_input(
         swap_executor: executor_addr,
-        swap_contract: amm_address,
-        swap_selector: selector!("swap"),
-        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
         in_amount: swap_amount,
@@ -1077,18 +1067,10 @@ fn test_apply_invoke_propagates_panic() {
     let output_token = test.new_token();
     let swap_amount = constants::DEFAULT_AMOUNT;
     let executor_addr = test.privacy.swap_executor.address;
-    let amm_address = test.privacy.mock_amm;
 
     // Don't fund the swap executor - `privacy_invoke` will panic with INSUFFICIENT_BALANCE.
-    let invoke_input = invoke_swap_input(
+    let invoke_input = invoke_mock_swap_executor_input(
         swap_executor: executor_addr,
-        swap_contract: amm_address,
-        swap_selector: selector!("swap"),
-        swap_calldata: [
-            input_token.contract_address().into(), output_token.contract_address().into(),
-            swap_amount.into(), 0,
-        ]
-            .span(),
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
         in_amount: swap_amount,
@@ -1096,7 +1078,7 @@ fn test_apply_invoke_propagates_panic() {
     );
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(
-        :result, expected_error: swap_executor_errors::INSUFFICIENT_BALANCE,
+        :result, expected_error: mock_swap_executor_errors::INSUFFICIENT_BALANCE,
     );
 }
 
@@ -1126,29 +1108,92 @@ fn test_apply_invoke_swap_with_executor_assertions() {
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id, _) = user.compute_open_note(:create_note_input);
 
-    // Prepare valid swap calldata.
-    let swap_calldata = [
-        input_token.contract_address().into(), output_token.contract_address().into(),
-        swap_amount.into(), 0,
-    ]
-        .span();
-
     // Base valid invoke input (will be modified for each error case).
-    let valid_invoke_input = invoke_swap_input(
+    let valid_invoke_input = invoke_mock_swap_executor_input(
         swap_executor: executor_addr,
-        swap_contract: amm_address,
-        swap_selector: selector!("swap"),
-        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
         in_amount: swap_amount,
         :note_id,
     );
 
+    // Catch ZERO_IN_TOKEN
+    let zero_in_token_invoke_input = invoke_mock_swap_executor_input(
+        swap_executor: executor_addr,
+        in_token: Zero::zero(),
+        out_token: output_token.contract_address(),
+        in_amount: swap_amount,
+        :note_id,
+    );
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::Invoke(zero_in_token_invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: mock_swap_executor_errors::ZERO_IN_TOKEN);
+
+    // Catch ZERO_OUT_TOKEN
+    let zero_out_token_invoke_input = invoke_mock_swap_executor_input(
+        swap_executor: executor_addr,
+        in_token: input_token.contract_address(),
+        out_token: Zero::zero(),
+        in_amount: swap_amount,
+        :note_id,
+    );
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::Invoke(zero_out_token_invoke_input)].span());
+    assert_panic_with_felt_error(
+        :result, expected_error: mock_swap_executor_errors::ZERO_OUT_TOKEN,
+    );
+
+    // Catch ZERO_IN_AMOUNT
+    let zero_in_amount_invoke_input = invoke_mock_swap_executor_input(
+        swap_executor: executor_addr,
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        in_amount: 0,
+        :note_id,
+    );
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::Invoke(zero_in_amount_invoke_input)].span());
+    assert_panic_with_felt_error(
+        :result, expected_error: mock_swap_executor_errors::ZERO_IN_AMOUNT,
+    );
+
+    // Catch ZERO_NOTE_ID
+    let zero_note_id_invoke_input = invoke_mock_swap_executor_input(
+        swap_executor: executor_addr,
+        in_token: input_token.contract_address(),
+        out_token: output_token.contract_address(),
+        in_amount: swap_amount,
+        note_id: Zero::zero(),
+    );
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::Invoke(zero_note_id_invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: mock_swap_executor_errors::ZERO_NOTE_ID);
+
+    // Catch IN_TOKEN_EQUAL_TO_OUT_TOKEN
+    let in_token_equal_to_out_token_invoke_input = invoke_mock_swap_executor_input(
+        swap_executor: executor_addr,
+        in_token: input_token.contract_address(),
+        out_token: input_token.contract_address(),
+        in_amount: swap_amount,
+        :note_id,
+    );
+    let result = test
+        .privacy
+        .safe_apply_actions(
+            [ServerAction::Invoke(in_token_equal_to_out_token_invoke_input)].span(),
+        );
+    assert_panic_with_felt_error(
+        :result, expected_error: mock_swap_executor_errors::IN_TOKEN_EQUAL_TO_OUT_TOKEN,
+    );
+
     // Catch INSUFFICIENT_BALANCE.
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(valid_invoke_input)].span());
     assert_panic_with_felt_error(
-        :result, expected_error: swap_executor_errors::INSUFFICIENT_BALANCE,
+        :result, expected_error: mock_swap_executor_errors::INSUFFICIENT_BALANCE,
     );
 
     // Catch INSUFFICIENT_BALANCE from AMM.
@@ -1159,31 +1204,33 @@ fn test_apply_invoke_swap_with_executor_assertions() {
 
     // Catch ZERO_OUT_AMOUNT
     // Fund swap executor with input tokens.
-    input_token.supply(address: executor_addr, amount: swap_amount);
-    let noop_invoke_input = invoke_swap_input(
-        swap_executor: executor_addr,
-        swap_contract: amm_address,
-        swap_selector: selector!("noop_swap"),
-        swap_calldata: [].span(),
+    let noop_swap_executor = deploy_mock_swap_executor(
+        :amm_address, selector: selector!("noop_swap"),
+    );
+    input_token.supply(address: noop_swap_executor, amount: swap_amount);
+    let noop_invoke_input = invoke_mock_swap_executor_input(
+        swap_executor: noop_swap_executor,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
         in_amount: swap_amount,
         :note_id,
     );
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(noop_invoke_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: swap_executor_errors::ZERO_OUT_AMOUNT);
+    assert_panic_with_felt_error(
+        :result, expected_error: mock_swap_executor_errors::ZERO_OUT_AMOUNT,
+    );
 
     // Catch RECEIVED_AMOUNT_OVERFLOW
+    let overflow_swap_executor = deploy_mock_swap_executor(
+        :amm_address, selector: selector!("overflow_swap"),
+    );
     // Fund AMM with MAX_U128 + 1 output tokens (supply takes u128, so we call it twice).
     output_token.supply(address: amm_address, amount: MAX_U128);
     output_token.supply(address: amm_address, amount: 1);
     // Fund swap executor with input tokens.
-    input_token.supply(address: executor_addr, amount: swap_amount);
-    let overflow_invoke_input = invoke_swap_input(
-        swap_executor: executor_addr,
-        swap_contract: amm_address,
-        swap_selector: selector!("overflow_swap"),
-        swap_calldata: [output_token.contract_address().into()].span(),
+    input_token.supply(address: overflow_swap_executor, amount: swap_amount);
+    let overflow_invoke_input = invoke_mock_swap_executor_input(
+        swap_executor: overflow_swap_executor,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
         in_amount: swap_amount,
@@ -1193,7 +1240,7 @@ fn test_apply_invoke_swap_with_executor_assertions() {
         .privacy
         .safe_apply_actions([ServerAction::Invoke(overflow_invoke_input)].span());
     assert_panic_with_felt_error(
-        :result, expected_error: swap_executor_errors::RECEIVED_AMOUNT_OVERFLOW,
+        :result, expected_error: mock_swap_executor_errors::RECEIVED_AMOUNT_OVERFLOW,
     );
 }
 
@@ -1221,20 +1268,10 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     // Fund AMM with output tokens (enough for multiple swaps).
     output_token.supply(address: amm_address, amount: swap_amount * 4);
 
-    // Prepare valid swap calldata.
-    let swap_calldata = [
-        input_token.contract_address().into(), output_token.contract_address().into(),
-        swap_amount.into(), 0,
-    ]
-        .span();
-
     // Catch NOTE_NOT_FOUND
     let nonexistent_note_id = 'NONEXISTENT_NOTE';
-    let invoke_input = invoke_swap_input(
+    let invoke_input = invoke_mock_swap_executor_input(
         swap_executor: executor_addr,
-        swap_contract: amm_address,
-        swap_selector: selector!("swap"),
-        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
         in_amount: swap_amount,
@@ -1251,11 +1288,8 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     user.cheat_create_enc_note_e2e(:create_note_input);
     let (note_id_enc, _) = user.compute_enc_note(:create_note_input);
 
-    let invoke_input = invoke_swap_input(
+    let invoke_input = invoke_mock_swap_executor_input(
         swap_executor: executor_addr,
-        swap_contract: amm_address,
-        swap_selector: selector!("swap"),
-        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
         in_amount: swap_amount,
@@ -1272,11 +1306,8 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id_filled, _) = user.compute_open_note(:create_note_input);
 
-    let invoke_input = invoke_swap_input(
+    let invoke_input = invoke_mock_swap_executor_input(
         swap_executor: executor_addr,
-        swap_contract: amm_address,
-        swap_selector: selector!("swap"),
-        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
         in_amount: swap_amount,
@@ -1299,11 +1330,8 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     user.cheat_create_open_note_e2e(:create_note_input);
     let (note_id_mismatch, _) = user.compute_open_note(:create_note_input);
 
-    let invoke_input = invoke_swap_input(
+    let invoke_input = invoke_mock_swap_executor_input(
         swap_executor: executor_addr,
-        swap_contract: amm_address,
-        swap_selector: selector!("swap"),
-        :swap_calldata,
         in_token: input_token.contract_address(),
         out_token: output_token.contract_address(),
         in_amount: swap_amount,
