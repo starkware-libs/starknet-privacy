@@ -16,6 +16,7 @@ use crate::discovery::{DiscoveryError, COST_NOTE_PROBING};
 
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::hashes::compute_note_id;
+use crate::privacy_pool::types::SecretFelt;
 use crate::privacy_pool::views::IViews;
 
 /// Maximum budget for a single [`find_boundary`] call.
@@ -44,7 +45,7 @@ pub fn boundary_budget(max_note_log_index: u32) -> usize {
 /// `cursor.last_existing_index()`.
 pub async fn find_last_note_index<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     cursor: &mut SubchannelCursor,
     max_note_log_index: u32,
@@ -102,7 +103,7 @@ pub async fn find_last_note_index<S: IViews>(
 /// `(last_existing_index, step_count)`.
 async fn bisect_boundary<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     mut lower_bound: u64,
     mut upper_bound: u64,
@@ -142,7 +143,7 @@ async fn bisect_boundary<S: IViews>(
 /// the full batch unconditionally.
 async fn exponential_probe<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     start_index: u64,
     max_note_log_index: u32,
@@ -188,16 +189,21 @@ mod tests {
     use crate::storage_backend::MockBackend;
     use crate::test_fixtures::{get_channel_key, get_subchannel_token, load_devnet_fixture};
 
-    const CK: Felt = Felt::from_hex_unchecked("0x12345");
+    const CK_FELT: Felt = Felt::from_hex_unchecked("0x12345");
     const TK: Felt = Felt::from_hex_unchecked("0x67890");
     const DEFAULT_MAX_LOG: u32 = 30;
 
+    fn ck() -> SecretFelt {
+        SecretFelt::new(CK_FELT)
+    }
+
     /// Creates a mock backend with notes at indices 0..=last_index.
     fn mock_with_notes(last_index: Option<u64>) -> MockBackend {
+        let channel_key = ck();
         let mut backend = MockBackend::empty();
         if let Some(last) = last_index {
             for i in 0..=last {
-                let note_id = compute_note_id(CK, TK, i);
+                let note_id = compute_note_id(&channel_key, TK, i);
                 let slot = storage_slots::notes(note_id);
                 backend.insert(slot, Felt::ONE); // non-zero = exists
             }
@@ -208,8 +214,9 @@ mod tests {
     #[tokio::test]
     async fn test_exponential_probe_empty() {
         let backend = mock_with_notes(None);
+        let channel_key = ck();
         let mut cache = HashMap::new();
-        let result = exponential_probe(&backend, CK, TK, 0, DEFAULT_MAX_LOG, &mut cache)
+        let result = exponential_probe(&backend, &channel_key, TK, 0, DEFAULT_MAX_LOG, &mut cache)
             .await
             .unwrap();
 
@@ -221,9 +228,10 @@ mod tests {
     async fn test_exponential_probe_one_element() {
         // Elements at 0 only. Probes: offset 0→0 (hit), 1→1 (miss).
         let backend = mock_with_notes(Some(0));
+        let channel_key = ck();
         let mut cache = HashMap::new();
         let (lower_bound, upper_bound) =
-            exponential_probe(&backend, CK, TK, 0, DEFAULT_MAX_LOG, &mut cache)
+            exponential_probe(&backend, &channel_key, TK, 0, DEFAULT_MAX_LOG, &mut cache)
                 .await
                 .unwrap()
                 .expect("non-empty subchannel");
@@ -238,9 +246,10 @@ mod tests {
         // Elements at 0..=4. Probes: offset 0→0 (hit), 1→1 (hit),
         // 3→3 (hit), 7→7 (miss). Sentinel found.
         let backend = mock_with_notes(Some(4));
+        let channel_key = ck();
         let mut cache = HashMap::new();
         let (lower_bound, upper_bound) =
-            exponential_probe(&backend, CK, TK, 0, DEFAULT_MAX_LOG, &mut cache)
+            exponential_probe(&backend, &channel_key, TK, 0, DEFAULT_MAX_LOG, &mut cache)
                 .await
                 .unwrap()
                 .expect("non-empty subchannel");
@@ -255,9 +264,10 @@ mod tests {
         // Notes at 0..=2. Probe offsets [0, 1, 3, ...]:
         //   0→hit, 1→hit, 3→miss (sentinel). Gap at index 2 is unprobed.
         let backend = mock_with_notes(Some(2));
+        let channel_key = ck();
         let mut cache = HashMap::new();
         let (lower_bound, upper_bound) =
-            exponential_probe(&backend, CK, TK, 0, DEFAULT_MAX_LOG, &mut cache)
+            exponential_probe(&backend, &channel_key, TK, 0, DEFAULT_MAX_LOG, &mut cache)
                 .await
                 .unwrap()
                 .expect("non-empty subchannel");
@@ -272,8 +282,9 @@ mod tests {
         // 10 notes at 0..=9. With max_note_log_index=3, probe offsets are
         // [0, 1, 3, 7] — all hit. Should error.
         let backend = mock_with_notes(Some(9));
+        let channel_key = ck();
         let mut cache = HashMap::new();
-        let result = exponential_probe(&backend, CK, TK, 0, 3, &mut cache).await;
+        let result = exponential_probe(&backend, &channel_key, TK, 0, 3, &mut cache).await;
 
         assert!(result.is_err(), "all probes hit should error");
         let error = result.unwrap_err().to_string();
@@ -288,10 +299,17 @@ mod tests {
         let backend = mock_with_notes(None);
         let budget = IoBudget::new(100);
         let mut cursor = SubchannelCursor::default();
-        let (cache, has_more) =
-            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
-                .await
-                .unwrap();
+        let channel_key = ck();
+        let (cache, has_more) = find_last_note_index(
+            &backend,
+            &channel_key,
+            TK,
+            &mut cursor,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
 
         assert!(cache.is_empty());
         assert!(!has_more);
@@ -308,11 +326,18 @@ mod tests {
     async fn test_find_last_note_index_one_note() {
         let backend = mock_with_notes(Some(0));
         let budget = IoBudget::new(100);
+        let channel_key = ck();
         let mut cursor = SubchannelCursor::default();
-        let (cache, has_more) =
-            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
-                .await
-                .unwrap();
+        let (cache, has_more) = find_last_note_index(
+            &backend,
+            &channel_key,
+            TK,
+            &mut cursor,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(cache.len(), 1);
         assert!(!has_more);
@@ -329,11 +354,18 @@ mod tests {
         // Bisection: mid=2, hit → lo=2. lo+1==hi(3) → done. 1 bisect step.
         let backend = mock_with_notes(Some(2));
         let budget = IoBudget::new(100);
+        let channel_key = ck();
         let mut cursor = SubchannelCursor::default();
-        let (cache, has_more) =
-            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
-                .await
-                .unwrap();
+        let (cache, has_more) = find_last_note_index(
+            &backend,
+            &channel_key,
+            TK,
+            &mut cursor,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
 
         assert!(!has_more);
         assert_eq!(cursor.total_n_notes, Some(3));
@@ -354,11 +386,18 @@ mod tests {
         // lo+1==hi(5) → done. 2 bisect steps.
         let backend = mock_with_notes(Some(4));
         let budget = IoBudget::new(100);
+        let channel_key = ck();
         let mut cursor = SubchannelCursor::default();
-        let (_cache, has_more) =
-            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
-                .await
-                .unwrap();
+        let (_cache, has_more) = find_last_note_index(
+            &backend,
+            &channel_key,
+            TK,
+            &mut cursor,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
 
         assert!(!has_more);
         assert_eq!(cursor.total_n_notes, Some(5));
@@ -370,13 +409,20 @@ mod tests {
     #[tokio::test]
     async fn test_find_last_note_index_budget_insufficient() {
         let backend = mock_with_notes(Some(100));
+        let channel_key = ck();
         let mut cursor = SubchannelCursor::default();
         // Budget below the minimum for boundary finding.
         let budget = IoBudget::new(boundary_budget(DEFAULT_MAX_LOG) - 1);
-        let (cache, has_more) =
-            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
-                .await
-                .unwrap();
+        let (cache, has_more) = find_last_note_index(
+            &backend,
+            &channel_key,
+            TK,
+            &mut cursor,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
 
         assert!(cache.is_empty());
         assert!(has_more, "budget insufficient — no boundary found");
@@ -401,7 +447,7 @@ mod tests {
         .await
         .expect("Alice should have at least one channel");
 
-        let token = get_subchannel_token(&backend, channel_key)
+        let token = get_subchannel_token(&backend, &channel_key)
             .await
             .expect("Alice's channel should have at least one subchannel");
 
@@ -409,7 +455,7 @@ mod tests {
         let budget = IoBudget::new(100);
 
         let (_cache, has_more) =
-            find_last_note_index(&backend, channel_key, token, &mut cursor, 30, &budget)
+            find_last_note_index(&backend, &channel_key, token, &mut cursor, 30, &budget)
                 .await
                 .unwrap();
 
@@ -422,13 +468,15 @@ mod tests {
     #[tokio::test]
     async fn test_find_last_note_index_empty_fixture() {
         let backend = MockBackend::empty();
+        let channel_key = ck();
 
         let mut cursor = SubchannelCursor::default();
         let budget = IoBudget::new(100);
 
-        let (_cache, has_more) = find_last_note_index(&backend, CK, TK, &mut cursor, 30, &budget)
-            .await
-            .unwrap();
+        let (_cache, has_more) =
+            find_last_note_index(&backend, &channel_key, TK, &mut cursor, 30, &budget)
+                .await
+                .unwrap();
 
         assert!(!has_more);
         assert_eq!(cursor.total_n_notes, Some(0));
@@ -448,7 +496,7 @@ mod tests {
         .await
         .expect("Alice should have at least one channel");
 
-        let token = get_subchannel_token(&backend, channel_key)
+        let token = get_subchannel_token(&backend, &channel_key)
             .await
             .expect("Alice's channel should have at least one subchannel");
 
@@ -457,7 +505,7 @@ mod tests {
         // Budget below minimum — can't start boundary finding.
         let budget = IoBudget::new(boundary_budget(30) - 1);
         let (_cache, has_more) =
-            find_last_note_index(&backend, channel_key, token, &mut cursor, 30, &budget)
+            find_last_note_index(&backend, &channel_key, token, &mut cursor, 30, &budget)
                 .await
                 .unwrap();
 
@@ -467,7 +515,7 @@ mod tests {
         // Resume with sufficient budget.
         let budget = IoBudget::new(100);
         let (_cache, has_more) =
-            find_last_note_index(&backend, channel_key, token, &mut cursor, 30, &budget)
+            find_last_note_index(&backend, &channel_key, token, &mut cursor, 30, &budget)
                 .await
                 .unwrap();
 
@@ -479,23 +527,36 @@ mod tests {
     #[tokio::test]
     async fn test_find_last_note_index_skips_when_cached() {
         let backend = mock_with_notes(Some(4));
+        let channel_key = ck();
         let mut cursor = SubchannelCursor::default();
 
         // First call: finds boundary.
         let budget = IoBudget::new(100);
-        let (_cache, has_more) =
-            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
-                .await
-                .unwrap();
+        let (_cache, has_more) = find_last_note_index(
+            &backend,
+            &channel_key,
+            TK,
+            &mut cursor,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
         assert!(!has_more);
         assert_eq!(cursor.total_n_notes, Some(5));
         let remaining_after_first = budget.remaining();
 
         // Second call: cached, returns immediately without consuming budget.
-        let (cache, has_more) =
-            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
-                .await
-                .unwrap();
+        let (cache, has_more) = find_last_note_index(
+            &backend,
+            &channel_key,
+            TK,
+            &mut cursor,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
         assert!(!has_more);
         assert!(cache.is_empty(), "no probe needed — cached");
         assert_eq!(
