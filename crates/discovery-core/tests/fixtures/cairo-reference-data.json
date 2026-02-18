@@ -15,8 +15,8 @@
     "amount": 1000,
     "recipientPrivateKey": "0x12345",
     "recipientPublicKeyDerived": "0x2f8ffcb446d2a062ef18561eb507b08ea01d52d4c594e90cfca47f075cb952",
-    "compliancePrivateKey": "0x54321",
-    "compliancePublicKey": "0x61d0f6b01e5696a475786dbbd6de15f984b23a553be50018489781de416140",
+    "auditorPrivateKey": "0x54321",
+    "auditorPublicKey": "0x61d0f6b01e5696a475786dbbd6de15f984b23a553be50018489781de416140",
     "userAddr": "0x999",
     "userPrivateKey": "0x888",
     "channelMarker": "0x750d461a5bf2f1abcd22c04af817e946d1a81e69402c2e0fc24663e70194a2c",
@@ -26,7 +26,7 @@
     "nullifier": "0x42301c4c2b44b24d874ddfbeacfbbcfe8c54135a4673a390b4128152f3d8afb"
   },
   "slots": {
-    "compliancePublicKeyAddress": "0xf8612cacb74429aab92a1b3e95db91c6a0c6e6436b0777064ed21bb4ecb0ed",
+    "auditorPublicKeyAddress": "0x18223681ac4182236a5f10794ec6fa3530a5cb1a18aff2005fbbed58772ec28",
     "senderPublicKeyAddress": "0x5935778edf7d690937af7b24298a23b064e54fcfd2e01e181ba011593a848bf",
     "recipientPublicKeyAddress": "0x703dc5fd86f5987705cf14bd6c50c0e55120f37a0ecac2d8895ccd7e909e62f",
     "encPrivateKeyEphemeralAddress": "0x440935e6c56281ba4630e9e15910ccb4b8e586b78caa00aee2dab9027248aac",

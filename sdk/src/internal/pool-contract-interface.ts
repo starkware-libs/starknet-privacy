@@ -31,7 +31,7 @@ export type NoteData = {
 };
 
 export type EncPrivateKey = {
-  compliance_public_key: BigNumberish;
+  auditor_public_key: BigNumberish;
   ephemeral_pubkey: BigNumberish;
   enc_private_key: BigNumberish;
 };
@@ -57,5 +57,5 @@ export interface PoolContractInterface {
   nullifier_exists(nullifier: BigNumberish): boolean | Promise<boolean>;
   get_public_key(userAddr: BigNumberish): BigNumberish | Promise<BigNumberish>;
   get_enc_private_key(userAddr: BigNumberish): EncPrivateKey | Promise<EncPrivateKey>;
-  get_compliance_public_key(): BigNumberish | Promise<BigNumberish>;
+  get_auditor_public_key(): BigNumberish | Promise<BigNumberish>;
 }

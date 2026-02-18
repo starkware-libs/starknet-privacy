@@ -80,8 +80,8 @@ pub trait IViews: Send + Sync {
     /// Returns a user's encrypted private key.
     async fn get_enc_private_key(&self, user_addr: Felt) -> Result<EncPrivateKey, StorageError>;
 
-    /// Returns the compliance public key.
-    async fn get_compliance_public_key(&self) -> Result<Felt, StorageError>;
+    /// Returns the auditor public key.
+    async fn get_auditor_public_key(&self) -> Result<Felt, StorageError>;
 
     /// Batch-reads channel info for `count` consecutive channels starting at `start_index`.
     ///
@@ -171,9 +171,9 @@ impl<T: RawStorageAccess> IViews for T {
         })
     }
 
-    #[tracing::instrument(name = "get_compliance_public_key", level = "debug", skip(self))]
-    async fn get_compliance_public_key(&self) -> Result<Felt, StorageError> {
-        let slot = storage_slots::compliance_public_key();
+    #[tracing::instrument(name = "get_auditor_public_key", level = "debug", skip(self))]
+    async fn get_auditor_public_key(&self) -> Result<Felt, StorageError> {
+        let slot = storage_slots::auditor_public_key();
         self.read_slot(slot).await
     }
 

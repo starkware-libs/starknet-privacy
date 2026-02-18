@@ -69,10 +69,10 @@ fn slot(name: &str, keys: &[Felt]) -> Felt {
     get_storage_var_address(name, keys).expect("storage var name exceeds 31 chars")
 }
 
-/// Storage slot for the compliance public key.
-/// Cairo: `compliance_public_key: PublicKey`
-pub fn compliance_public_key() -> Felt {
-    slot("compliance_public_key", &[])
+/// Storage slot for the auditor public key.
+/// Cairo: `auditor_public_key: PublicKey`
+pub fn auditor_public_key() -> Felt {
+    slot("auditor_public_key", &[])
 }
 
 /// Storage slot for a user's public key.
@@ -167,8 +167,8 @@ mod tests {
         let f = load_cairo_ref_fixture();
 
         assert_eq!(
-            compliance_public_key(),
-            f.slots.compliance_public_key_address
+            auditor_public_key(),
+            f.slots.auditor_public_key_address
         );
         assert_eq!(
             public_key(f.inputs.sender),

@@ -60,8 +60,8 @@ pub struct CairoRefInputs {
     pub amount: u64,
     pub recipient_private_key: Felt,
     pub recipient_public_key_derived: Felt,
-    pub compliance_private_key: Felt,
-    pub compliance_public_key: Felt,
+    pub auditor_private_key: Felt,
+    pub auditor_public_key: Felt,
     pub user_addr: Felt,
     pub user_private_key: Felt,
     pub channel_marker: Felt,
@@ -107,7 +107,7 @@ pub struct CairoRefOutputs {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CairoRefSlots {
-    pub compliance_public_key_address: Felt,
+    pub auditor_public_key_address: Felt,
     pub sender_public_key_address: Felt,
     pub recipient_public_key_address: Felt,
     pub enc_private_key_ephemeral_address: Felt,

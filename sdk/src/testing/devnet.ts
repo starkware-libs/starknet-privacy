@@ -353,13 +353,13 @@ export class Devnet {
     debugLog("devnet", "setup", "class hash:", classHash);
 
     // Deploy the contract
-    // Constructor params: governance_admin: ContractAddress, compliance_public_key: felt252
+    // Constructor params: governance_admin: ContractAddress, auditor_public_key: felt252
     const deployResponse = await deployer.deployContract(
       {
         classHash,
         constructorCalldata: [
           deployer.address, // governance_admin
-          "0x1", // compliance_public_key (dummy value)
+          "0x1", // auditor_public_key (dummy value)
         ],
         salt: "0x0", // Deterministic salt for reproducible contract address
       },
