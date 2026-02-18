@@ -1,0 +1,74 @@
+{
+    "_comment": "Golden test vectors for proving service compatibility.",
+    "_sequencerCommit": "2154a3f850463631521302b7c9344fa8a2167009",
+    "_sequencerDockerfile": "https://github.com/starkware-libs/sequencer/blob/2154a3f850463631521302b7c9344fa8a2167009/crates/starknet_os_runner/Dockerfile",
+    "_note": "This commit MUST match SEQUENCER_COMMIT in .github/workflows/typescript-ci.yml",
+    "protocolVersion": "0.10.0",
+    "transactionPayload": {
+        "_comment": "Test vector: SDK input → expected output. One comparison covers all format requirements.",
+        "input": {
+            "contractAddress": "0x123",
+            "calldata": [
+                "1",
+                "256"
+            ],
+            "signature": [
+                "0xabc",
+                "0xdef"
+            ],
+            "nonce": "42",
+            "resourceBounds": {
+                "l1_gas": {
+                    "max_amount": "100",
+                    "max_price_per_unit": "200"
+                },
+                "l2_gas": {
+                    "max_amount": "0",
+                    "max_price_per_unit": "0"
+                },
+                "l1_data_gas": {
+                    "max_amount": "50",
+                    "max_price_per_unit": "100"
+                }
+            },
+            "tip": "0"
+        },
+        "expectedOutput": {
+            "type": "INVOKE",
+            "version": "0x3",
+            "sender_address": "0x123",
+            "calldata": [
+                "0x1",
+                "0x100"
+            ],
+            "signature": [
+                "0xabc",
+                "0xdef"
+            ],
+            "nonce": "0x2a",
+            "resource_bounds": {
+                "l1_gas": {
+                    "max_amount": "0x64",
+                    "max_price_per_unit": "0xc8"
+                },
+                "l2_gas": {
+                    "max_amount": "0x0",
+                    "max_price_per_unit": "0x0"
+                },
+                "l1_data_gas": {
+                    "max_amount": "0x32",
+                    "max_price_per_unit": "0x64"
+                }
+            },
+            "tip": "0x0",
+            "paymaster_data": [],
+            "account_deployment_data": [],
+            "nonce_data_availability_mode": "L1",
+            "fee_data_availability_mode": "L1"
+        }
+    },
+    "proofFacts": {
+        "_comment": "ProofFacts array must have exactly this many elements",
+        "expectedLength": 9
+    }
+}

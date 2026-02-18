@@ -22,6 +22,13 @@ export interface ProveTransactionResult {
   l2_to_l1_messages: MessageToL1[];
 }
 
+/** Fields of ProveTransactionResult - keep in sync with interface above. */
+export const PROVE_TRANSACTION_RESULT_FIELDS: readonly (keyof ProveTransactionResult)[] = [
+  "proof",
+  "proof_facts",
+  "l2_to_l1_messages"
+];
+
 export interface MessageToL1 {
   from_address: string;
   to_address: string;
@@ -73,7 +80,7 @@ export class ProvingService {
       ) {
         throw new Error(
           `Proving service unreachable at ${this.baseUrl}. ` +
-            "If running in the browser, the service may not allow CORS—try using the mock prover (unset VITE_PROVING_SERVICE_URL) or a CORS proxy."
+          "If running in the browser, the service may not allow CORS—try using the mock prover (unset VITE_PROVING_SERVICE_URL) or a CORS proxy."
         );
       }
       throw err;

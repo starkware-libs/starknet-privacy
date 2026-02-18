@@ -81,3 +81,125 @@ jobs:
 
       - name: Run devnet tests
         run: npm run test:devnet
+
+  # Proving Service Integration Test
+  # Only runs when proving-service related code changes (on PRs)
+  # Always runs on push to main
+  # Uses the official Dockerfile from starkware-libs/sequencer
+  proving-service:
+    name: Proving Service Integration
+    runs-on: ubuntu-latest
+
+    env:
+      # Pinned sequencer version - must match proving-service-golden.json
+      SEQUENCER_COMMIT: "2154a3f850463631521302b7c9344fa8a2167009"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Check if relevant files changed (only matters for PRs)
+      - name: Check for proving-service changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            proving:
+              # Broad patterns - safer to run more often than miss a breaking change
+              # NOTE: Test "proving service filter covers all dependencies" validates this list
+              - 'sdk/src/internal/proving-service*.ts'
+              - 'sdk/src/internal/abstract-proof-provider.ts'
+              - 'sdk/src/internal/pool-contract-interface.ts'
+              - 'sdk/src/internal/channel.ts'
+              - 'sdk/src/utils/**'
+              - 'sdk/src/interfaces.ts'
+              - 'sdk/tests/fixtures/proving-service-golden.json'
+              - 'sdk/tests/internal/proving-service.test.ts'
+              - '.github/workflows/typescript-ci.yml'
+
+      - uses: actions/setup-node@v4
+        # Run if: push to main OR relevant files changed on PR
+        if: github.event_name == 'push' || steps.changes.outputs.proving == 'true'
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: sdk/package-lock.json
+
+      - name: Install npm dependencies
+        if: github.event_name == 'push' || steps.changes.outputs.proving == 'true'
+        working-directory: sdk
+        run: npm ci
+
+      - name: Set up Docker Buildx
+        if: github.event_name == 'push' || steps.changes.outputs.proving == 'true'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Cache Docker layers
+        if: github.event_name == 'push' || steps.changes.outputs.proving == 'true'
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-buildx-${{ env.SEQUENCER_COMMIT }}
+          restore-keys: |
+            ${{ runner.os }}-buildx-
+
+      - name: Clone sequencer and build proving service
+        if: github.event_name == 'push' || steps.changes.outputs.proving == 'true'
+        run: |
+          git clone --depth=1 https://github.com/starkware-libs/sequencer.git /tmp/sequencer
+          cd /tmp/sequencer
+          git fetch --depth=1 origin $SEQUENCER_COMMIT
+          git checkout $SEQUENCER_COMMIT
+
+          # Build using the sequencer's Dockerfile with caching
+          docker buildx build \
+            --cache-from type=local,src=/tmp/.buildx-cache \
+            --cache-to type=local,dest=/tmp/.buildx-cache-new,mode=max \
+            --load \
+            -t proving-service \
+            -f crates/starknet_os_runner/Dockerfile .
+
+          # Move cache to avoid cache growth
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+        timeout-minutes: 45
+
+      - name: Start proving service
+        if: github.event_name == 'push' || steps.changes.outputs.proving == 'true'
+        run: |
+          docker run -d --name proving-service -p 6060:6060 proving-service
+
+          # Wait for service to be ready
+          echo "Waiting for proving service..."
+          for i in {1..60}; do
+            if curl -s -X POST http://localhost:6060 \
+              -H "Content-Type: application/json" \
+              -d '{"jsonrpc":"2.0","id":1,"method":"starknet_specVersion","params":[]}' \
+              | grep -q "result"; then
+              echo "Proving service is ready!"
+              exit 0
+            fi
+            echo "Attempt $i/60..."
+            sleep 5
+          done
+          echo "Service failed to start"
+          docker logs proving-service
+          exit 1
+        timeout-minutes: 10
+
+      - name: Run proving service tests
+        if: github.event_name == 'push' || steps.changes.outputs.proving == 'true'
+        working-directory: sdk
+        run: npm run test:proving-service
+        env:
+          PROVING_SERVICE_URL: http://localhost:6060
+
+      - name: Cleanup
+        if: always() && (github.event_name == 'push' || steps.changes.outputs.proving == 'true')
+        run: |
+          docker logs proving-service || true
+          docker stop proving-service || true
+          docker rm proving-service || true
+
+      - name: Skip message
+        if: github.event_name == 'pull_request' && steps.changes.outputs.proving != 'true'
+        run: echo "Skipped - no proving-service related changes detected"
