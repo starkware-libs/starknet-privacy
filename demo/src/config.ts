@@ -17,6 +17,8 @@ export type AppConfig = {
   adminAddress: string;
   adminKey: string;
   accounts: AccountConfig[];
+  /** Proving service URL (e.g. http://136.115.124.93:3000). If set, uses real prover; otherwise mock. */
+  provingServiceUrl?: string;
 };
 
 function requireEnv(key: string): string {
@@ -44,5 +46,8 @@ export function loadConfig(): AppConfig {
     adminAddress: requireEnv("VITE_ADMIN_ADDRESS"),
     adminKey: requireEnv("VITE_ADMIN_KEY"),
     accounts,
+    provingServiceUrl: import.meta.env.VITE_PROVING_SERVICE_URL as
+      | string
+      | undefined,
   };
 }

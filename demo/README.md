@@ -31,6 +31,7 @@ npm install
 | `VITE_ADMIN_ADDRESS` | Admin/minter account address |
 | `VITE_ADMIN_KEY` | Admin account private key |
 | `VITE_ACCOUNTS` | JSON array of user accounts (see `.env.example`) |
+| `VITE_PROVING_SERVICE_URL` | Optional. Proving service URL (e.g. `http://136.115.124.93:3000`). If unset, the app uses the mock prover (`execute_view` only) |
 
 ## Running
 
@@ -85,6 +86,6 @@ Open http://localhost:5173.
 
 - **Vite + React + TypeScript** — single-page app
 - **SDK consumption** — `starknet-sdk` linked from `../sdk` (same as e2e)
-- **Proof provider** — `NoValidateProofProvider` calls `execute_view` directly (no real proving)
+- **Proof provider** — With `VITE_PROVING_SERVICE_URL` set, uses the real proving service; otherwise `NoValidateProofProvider` calls `execute_view` directly (mock, no real proof). In the browser, the real prover requires the service to allow CORS.
 - **Discovery** — `IndexerDiscoveryProvider` talks to the local discovery service
 - **Resource bounds** — hardcoded for integration sepolia (2x headroom over actual block prices)

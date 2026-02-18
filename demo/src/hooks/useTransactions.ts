@@ -125,6 +125,9 @@ export function useTransactions(
 
         const executeTx = await userAccount.execute(callAndProof.call, {
           resourceBounds: POOL_RESOURCE_BOUNDS,
+          ...(callAndProof.proof.proofFacts?.length
+            ? { proofFacts: callAndProof.proof.proofFacts }
+            : {}),
         });
         console.log(`[Deposit] pool tx: ${executeTx.transaction_hash}`);
         const receipt = await provider.waitForTransaction(
@@ -160,6 +163,9 @@ export function useTransactions(
 
         const executeTx = await userAccount.execute(callAndProof.call, {
           resourceBounds: POOL_RESOURCE_BOUNDS,
+          ...(callAndProof.proof.proofFacts?.length
+            ? { proofFacts: callAndProof.proof.proofFacts }
+            : {}),
         });
         console.log(`[Withdraw] pool tx: ${executeTx.transaction_hash}`);
         const receipt = await provider.waitForTransaction(
@@ -196,6 +202,9 @@ export function useTransactions(
 
         const executeTx = await userAccount.execute(callAndProof.call, {
           resourceBounds: POOL_RESOURCE_BOUNDS,
+          ...(callAndProof.proof.proofFacts?.length
+            ? { proofFacts: callAndProof.proof.proofFacts }
+            : {}),
         });
         console.log(`[Transfer] pool tx: ${executeTx.transaction_hash}`);
         const receipt = await provider.waitForTransaction(
