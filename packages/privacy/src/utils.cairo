@@ -427,6 +427,7 @@ pub(crate) fn validate_proof(actions: Span<ServerAction>) {
     let contract_address = execution_info.contract_address;
     let mut proof_facts = execution_info.tx_info.proof_facts;
     let proof_facts_struct: ProofFacts = Serde::deserialize(ref proof_facts)
+    assert(!proof_facts_span.is_empty(), errors::EMPTY_PROOF_FACTS);
         .expect(errors::PROOF_FACTS_DESERIALIZE_ERROR);
     assert(proof_facts_struct.program_variant == VIRTUAL_SNOS, errors::INVALID_PROGRAM_VARIANT);
     assert(
