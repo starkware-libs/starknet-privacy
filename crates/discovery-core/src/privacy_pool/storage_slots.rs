@@ -2,9 +2,10 @@ use starknet_core::utils::get_storage_var_address;
 use starknet_crypto::pedersen_hash;
 use starknet_types_core::felt::Felt;
 
-/// Storage slots for encrypted private key (2 consecutive slots).
+/// Storage slots for encrypted private key (3 consecutive slots).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EncPrivateKeySlots {
+    pub auditor_public_key: Felt,
     pub ephemeral_pubkey: Felt,
     pub enc_private_key: Felt,
 }
@@ -34,7 +35,11 @@ pub struct EncOutgoingChannelInfoSlots {
 
 impl EncPrivateKeySlots {
     pub fn to_vec(self) -> Vec<Felt> {
-        vec![self.ephemeral_pubkey, self.enc_private_key]
+        vec![
+            self.auditor_public_key,
+            self.ephemeral_pubkey,
+            self.enc_private_key,
+        ]
     }
 }
 
@@ -69,10 +74,10 @@ fn slot(name: &str, keys: &[Felt]) -> Felt {
     get_storage_var_address(name, keys).expect("storage var name exceeds 31 chars")
 }
 
-/// Storage slot for the compliance public key.
-/// Cairo: `compliance_public_key: PublicKey`
-pub fn compliance_public_key() -> Felt {
-    slot("compliance_public_key", &[])
+/// Storage slot for the auditor public key.
+/// Cairo: `auditor_public_key: PublicKey`
+pub fn auditor_public_key() -> Felt {
+    slot("auditor_public_key", &[])
 }
 
 /// Storage slot for a user's public key.
@@ -83,12 +88,13 @@ pub fn public_key(user_address: Felt) -> Felt {
 
 /// Storage slots for a user's encrypted private key.
 /// Cairo: `enc_private_key: LegacyMap<ContractAddress, EncPrivateKey>`
-/// EncPrivateKey has 2 fields: ephemeral_public_key and enc_private_key.
+/// EncPrivateKey has 3 fields: auditor_public_key, ephemeral_pubkey, and enc_private_key.
 pub fn enc_private_key(user_address: Felt) -> EncPrivateKeySlots {
     let base = slot("enc_private_key", &[user_address]);
     EncPrivateKeySlots {
-        ephemeral_pubkey: base,
-        enc_private_key: base + Felt::ONE,
+        auditor_public_key: base,
+        ephemeral_pubkey: base + Felt::ONE,
+        enc_private_key: base + Felt::TWO,
     }
 }
 
@@ -166,10 +172,7 @@ mod tests {
     fn test_storage_slots_with_cairo_vectors() {
         let f = load_cairo_ref_fixture();
 
-        assert_eq!(
-            compliance_public_key(),
-            f.slots.compliance_public_key_address
-        );
+        assert_eq!(auditor_public_key(), f.slots.auditor_public_key_address);
         assert_eq!(
             public_key(f.inputs.sender),
             f.slots.sender_public_key_address
@@ -181,12 +184,16 @@ mod tests {
 
         let enc_pk = enc_private_key(f.inputs.sender);
         assert_eq!(
+            enc_pk.auditor_public_key,
+            f.slots.enc_private_key_auditor_pub_key_address,
+        );
+        assert_eq!(
             enc_pk.ephemeral_pubkey,
-            f.slots.enc_private_key_ephemeral_address
+            f.slots.enc_private_key_ephemeral_address,
         );
         assert_eq!(
             enc_pk.enc_private_key,
-            f.slots.enc_private_key_enc_key_address
+            f.slots.enc_private_key_enc_key_address,
         );
 
         assert_eq!(

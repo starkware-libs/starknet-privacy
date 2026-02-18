@@ -169,11 +169,11 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
 
   get_enc_private_key(_userAddr: StarknetAddressBigint): EncPrivateKey {
     // Mock doesn't store encrypted private keys
-    return { compliance_public_key: 0n, ephemeral_pubkey: 0n, enc_private_key: 0n };
+    return { auditor_public_key: 0n, ephemeral_pubkey: 0n, enc_private_key: 0n };
   }
 
-  get_compliance_public_key(): bigint {
-    // Mock returns dummy compliance key
+  get_auditor_public_key(): bigint {
+    // Mock returns dummy auditor key
     return 1n;
   }
 

@@ -5,6 +5,12 @@
 - `cargo clippy` - lints (0 warnings required), including integration tests (all targets)
 - `cargo test` - all tests pass
 
+**TypeScript verification checklist:**
+- `cd sdk && npm run format:check` - prettier formatting
+- `cd sdk && npm run lint:check` - eslint lints
+- `cd sdk && npm run build` - compiles
+- `cd sdk && npm run test:fast` - tests pass (excludes devnet/parallel-discovery)
+
 ## Cross-layer consistency
 
 When changing Rust code, always check whether the change must be reflected in other layers:
