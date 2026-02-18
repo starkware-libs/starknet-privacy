@@ -30,6 +30,7 @@ fn test_constructor() {
     // Test replaceability.
     let contract_replaceability = IReplaceableDispatcher { contract_address: test.privacy.address };
     assert_eq!(contract_replaceability.get_upgrade_delay(), Zero::zero());
+    // TODO: Verify constructor events (FeeSet, CompliancePublicKeySet).
 }
 
 #[test]

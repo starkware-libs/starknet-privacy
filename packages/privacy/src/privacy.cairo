@@ -115,6 +115,7 @@ pub mod Privacy {
         OpenNoteCreated: events::OpenNoteCreated,
         OpenNoteDeposited: events::OpenNoteDeposited,
         NoteUsed: events::NoteUsed,
+        FeeSet: events::FeeSet,
     }
 
     #[constructor]
@@ -976,7 +977,7 @@ pub mod Privacy {
             }
             self.fee_amount.write(fee_amount);
             self.fee_collector.write(fee_collector);
-            // TODO: Consider emitting an event.
+            self.emit(events::FeeSet { fee_amount, fee_collector });
         }
     }
 
