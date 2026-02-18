@@ -29,6 +29,13 @@ export interface ProveTransactionResult {
   l2_to_l1_messages: MessageToL1[];
 }
 
+/** Fields of ProveTransactionResult - keep in sync with interface above. */
+export const PROVE_TRANSACTION_RESULT_FIELDS: readonly (keyof ProveTransactionResult)[] = [
+  "proof",
+  "proof_facts",
+  "l2_to_l1_messages"
+];
+
 export interface MessageToL1 {
   from_address: string;
   to_address: string;

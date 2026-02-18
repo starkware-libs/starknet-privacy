@@ -43,6 +43,7 @@
     "test": "vitest run",
     "test:fast": "vitest run --exclude '**/devnet.test.ts' --exclude '**/parallel-discovery.test.ts'",
     "test:devnet": "vitest run --coverage.enabled=false tests/devnet.test.ts",
+    "test:proving-service": "vitest run --coverage.enabled=false tests/internal/proving-service.test.ts",
     "test:browser": "vitest run --browser.enabled --coverage.enabled=false --exclude '**/devnet.test.ts'",
     "test:watch": "vitest watch",
     "all": "npm run build && npm run lint && npm run format && npm run test",

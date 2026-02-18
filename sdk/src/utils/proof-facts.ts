@@ -21,13 +21,14 @@ import { shortStringToFelt } from "./crypto.js";
 import { toBigInt } from "./convert.js";
 import type { BigNumberish } from "starknet";
 
-const PROOF_VERSION = shortStringToFelt("PROOF0");
-const VIRTUAL_SNOS = shortStringToFelt("VIRTUAL_SNOS");
-const VIRTUAL_SNOS0 = shortStringToFelt("VIRTUAL_SNOS0");
+// Protocol constants - must match proving service for proofs to validate on L1
+export const PROOF_VERSION = shortStringToFelt("PROOF0");
+export const VIRTUAL_SNOS = shortStringToFelt("VIRTUAL_SNOS");
+export const VIRTUAL_SNOS0 = shortStringToFelt("VIRTUAL_SNOS0");
 
 // Allowed virtual OS program hash from blockifier versioned constants.
 // Source: https://github.com/starkware-libs/sequencer/blob/586b07b38d87f608b632e5795071d31317faf6c4/crates/blockifier/resources/blockifier_versioned_constants_0_14_2.json
-const VIRTUAL_PROGRAM_HASH = "0x6972cfa5c07f702981678547574e239a24ad8bb53cc081ad738ccb10839fd1a";
+export const VIRTUAL_PROGRAM_HASH = "0x6972cfa5c07f702981678547574e239a24ad8bb53cc081ad738ccb10839fd1a";
 
 // STRK fee token address — same on all Starknet networks (mainnet, sepolia, devnet).
 const STRK_FEE_TOKEN_ADDRESS = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
