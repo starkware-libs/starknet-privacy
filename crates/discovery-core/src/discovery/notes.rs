@@ -312,8 +312,8 @@ fn decrypt_note(
     let amount = decrypt_note_amount(enc_amount, salt, channel_key, token, index);
     trace!(index, amount, "unspent note found");
     DecryptedNote {
-        sender_addr: Felt::ZERO,
-        token: Felt::ZERO,
+        sender_addr: Felt::ZERO, // set by the sync orchestrator after discovery
+        token: Felt::ZERO,       // set by the sync orchestrator after discovery
         index,
         note_id,
         amount,
