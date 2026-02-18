@@ -70,8 +70,11 @@ pub struct EncChannelInfo {
 }
 
 /// Ciphertext for an ECDH-based encryption of private key.
+/// Used by the auditor to decrypt the user's private key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EncPrivateKey {
+    /// Auditor public key used for encryption.
+    pub auditor_public_key: Felt,
     /// Ephemeral ECDH public key x-coordinate (rG.x).
     pub ephemeral_pubkey: Felt,
     /// Encrypted private key.

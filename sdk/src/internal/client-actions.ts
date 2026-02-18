@@ -64,17 +64,9 @@ export type WithdrawInput = {
   random: bigint;
 };
 
-export type SwapInput = {
-  swap_executor: StarknetAddressBigint;
-  swap_contract: StarknetAddressBigint;
-  swap_selector: bigint;
-  swap_calldata: unknown;
-  in_token: StarknetAddressBigint;
-  out_token: StarknetAddressBigint;
-  in_amount: bigint;
-  channel_key: bigint;
-  index: number;
-  random: bigint;
+export type InvokeExternalInput = {
+  contract_address: StarknetAddressBigint;
+  calldata: unknown;
 };
 
 export type FollowupCallInput = {
@@ -93,7 +85,7 @@ export type ClientAction =
   | { type: "Deposit"; input: DepositInput }
   | { type: "UseNote"; input: UseNoteInput }
   | { type: "Withdraw"; input: WithdrawInput }
-  | { type: "Swap"; input: SwapInput }
+  | { type: "InvokeExternal"; input: InvokeExternalInput }
   | { type: "FollowupCall"; input: FollowupCallInput };
 
 /** All valid client action type names */
@@ -106,7 +98,7 @@ export const CLIENT_ACTION_TYPES = [
   "Deposit",
   "UseNote",
   "Withdraw",
-  "Swap",
+  "InvokeExternal",
   "FollowupCall",
 ] as const;
 

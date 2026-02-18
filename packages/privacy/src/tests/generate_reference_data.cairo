@@ -218,7 +218,8 @@ fn generate_reference_storage_slots() {
     );
 
     // enc_private_key[user_addr] - Map<ContractAddress, EncPrivateKey>
-    // EncPrivateKey is a struct with 2 fields stored at consecutive addresses
+    // EncPrivateKey is a struct with 3 fields stored at consecutive addresses:
+    // auditor_public_key, ephemeral_pubkey, enc_private_key
     let enc_private_key_slot = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [SENDER].span(),
     );
@@ -262,8 +263,9 @@ fn generate_reference_storage_slots() {
     println!("slots.auditorPublicKeyAddress: 0x{:x}", auditor_public_key_slot);
     println!("slots.senderPublicKeyAddress: 0x{:x}", public_key_slot);
     println!("slots.recipientPublicKeyAddress: 0x{:x}", recipient_public_key_slot);
-    println!("slots.encPrivateKeyEphemeralAddress: 0x{:x}", enc_private_key_slot);
-    println!("slots.encPrivateKeyEncKeyAddress: 0x{:x}", enc_private_key_slot + 1);
+    println!("slots.encPrivateKeyAuditorPubKeyAddress: 0x{:x}", enc_private_key_slot);
+    println!("slots.encPrivateKeyEphemeralAddress: 0x{:x}", enc_private_key_slot + 1);
+    println!("slots.encPrivateKeyEncKeyAddress: 0x{:x}", enc_private_key_slot + 2);
     println!("slots.channelExistsAddress: 0x{:x}", channel_exists_slot);
     println!("slots.recipientChannelsBaseAddress: 0x{:x}", recipient_channels_base);
     println!("slots.recipientChannelsElementAddress: 0x{:x}", recipient_channels_element);

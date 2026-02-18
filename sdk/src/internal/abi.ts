@@ -207,47 +207,15 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "privacy::actions::SwapInput",
+    "name": "privacy::actions::InvokeExternalInput",
     "members": [
       {
-        "name": "swap_executor",
+        "name": "contract_address",
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
-        "name": "swap_contract",
-        "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
-        "name": "swap_selector",
-        "type": "core::felt252"
-      },
-      {
-        "name": "swap_calldata",
+        "name": "calldata",
         "type": "core::array::Span::<core::felt252>"
-      },
-      {
-        "name": "in_token",
-        "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
-        "name": "out_token",
-        "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
-        "name": "in_amount",
-        "type": "core::integer::u128"
-      },
-      {
-        "name": "channel_key",
-        "type": "core::felt252"
-      },
-      {
-        "name": "index",
-        "type": "core::integer::u32"
-      },
-      {
-        "name": "random",
-        "type": "core::felt252"
       }
     ]
   },
@@ -288,8 +256,8 @@ export const PrivacyPoolABI = [
         "type": "privacy::actions::WithdrawInput"
       },
       {
-        "name": "Swap",
-        "type": "privacy::actions::SwapInput"
+        "name": "InvokeExternal",
+        "type": "privacy::actions::InvokeExternalInput"
       }
     ]
   },
@@ -404,7 +372,7 @@ export const PrivacyPoolABI = [
     "name": "privacy::objects::EncPrivateKey",
     "members": [
       {
-        "name": "compliance_public_key",
+        "name": "auditor_public_key",
         "type": "core::felt252"
       },
       {
@@ -440,7 +408,7 @@ export const PrivacyPoolABI = [
     "name": "privacy::objects::EncUserAddr",
     "members": [
       {
-        "name": "compliance_public_key",
+        "name": "auditor_public_key",
         "type": "core::felt252"
       },
       {
@@ -517,39 +485,25 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "privacy::actions::SwapWithExecutorInput",
+    "name": "privacy::events::NoteUsed",
     "members": [
       {
-        "name": "swap_executor",
-        "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
-        "name": "swap_contract",
-        "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
-        "name": "swap_selector",
+        "name": "nullifier",
         "type": "core::felt252"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "privacy::actions::InvokeInput",
+    "members": [
+      {
+        "name": "contract_address",
+        "type": "core::starknet::contract_address::ContractAddress"
       },
       {
-        "name": "swap_calldata",
+        "name": "calldata",
         "type": "core::array::Span::<core::felt252>"
-      },
-      {
-        "name": "in_token",
-        "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
-        "name": "out_token",
-        "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
-        "name": "in_amount",
-        "type": "core::integer::u128"
-      },
-      {
-        "name": "note_id",
-        "type": "core::felt252"
       }
     ]
   },
@@ -594,8 +548,12 @@ export const PrivacyPoolABI = [
         "type": "privacy::events::OpenNoteCreated"
       },
       {
-        "name": "SwapWithExecutor",
-        "type": "privacy::actions::SwapWithExecutorInput"
+        "name": "EmitNoteUsed",
+        "type": "privacy::events::NoteUsed"
+      },
+      {
+        "name": "Invoke",
+        "type": "privacy::actions::InvokeInput"
       }
     ]
   },
@@ -981,7 +939,7 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
-        "name": "get_compliance_public_key",
+        "name": "get_auditor_public_key",
         "inputs": [],
         "outputs": [
           {
@@ -994,24 +952,73 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "impl",
-    "name": "ComplianceImpl",
-    "interface_name": "privacy::interface::ICompliance"
+    "name": "AuditorImpl",
+    "interface_name": "privacy::interface::IAuditor"
   },
   {
     "type": "interface",
-    "name": "privacy::interface::ICompliance",
+    "name": "privacy::interface::IAuditor",
     "items": [
       {
         "type": "function",
-        "name": "set_compliance_public_key",
+        "name": "set_auditor_public_key",
         "inputs": [
           {
-            "name": "compliance_public_key",
+            "name": "auditor_public_key",
             "type": "core::felt252"
           }
         ],
         "outputs": [],
         "state_mutability": "external"
+      }
+    ]
+  },
+  {
+    "type": "impl",
+    "name": "FeesImpl",
+    "interface_name": "privacy::interface::IFees"
+  },
+  {
+    "type": "interface",
+    "name": "privacy::interface::IFees",
+    "items": [
+      {
+        "type": "function",
+        "name": "set_fee",
+        "inputs": [
+          {
+            "name": "fee_amount",
+            "type": "core::integer::u128"
+          },
+          {
+            "name": "fee_collector",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "get_fee_amount",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::integer::u128"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_fee_collector",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
       }
     ]
   },
@@ -1639,8 +1646,16 @@ export const PrivacyPoolABI = [
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
-        "name": "compliance_public_key",
+        "name": "auditor_public_key",
         "type": "core::felt252"
+      },
+      {
+        "name": "fee_amount",
+        "type": "core::integer::u128"
+      },
+      {
+        "name": "fee_collector",
+        "type": "core::starknet::contract_address::ContractAddress"
       }
     ]
   },
@@ -2406,11 +2421,11 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "event",
-    "name": "privacy::events::CompliancePublicKeySet",
+    "name": "privacy::events::AuditorPublicKeySet",
     "kind": "struct",
     "members": [
       {
-        "name": "compliance_public_key",
+        "name": "auditor_public_key",
         "type": "core::felt252",
         "kind": "key"
       }
@@ -2472,6 +2487,35 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "event",
+    "name": "privacy::events::NoteUsed",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "nullifier",
+        "type": "core::felt252",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "privacy::events::FeeSet",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "fee_amount",
+        "type": "core::integer::u128",
+        "kind": "data"
+      },
+      {
+        "name": "fee_collector",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
     "name": "privacy::privacy::Privacy::Event",
     "kind": "enum",
     "variants": [
@@ -2516,8 +2560,8 @@ export const PrivacyPoolABI = [
         "kind": "nested"
       },
       {
-        "name": "CompliancePublicKeySet",
-        "type": "privacy::events::CompliancePublicKeySet",
+        "name": "AuditorPublicKeySet",
+        "type": "privacy::events::AuditorPublicKeySet",
         "kind": "nested"
       },
       {
@@ -2528,6 +2572,16 @@ export const PrivacyPoolABI = [
       {
         "name": "OpenNoteDeposited",
         "type": "privacy::events::OpenNoteDeposited",
+        "kind": "nested"
+      },
+      {
+        "name": "NoteUsed",
+        "type": "privacy::events::NoteUsed",
+        "kind": "nested"
+      },
+      {
+        "name": "FeeSet",
+        "type": "privacy::events::FeeSet",
         "kind": "nested"
       }
     ]
