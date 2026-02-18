@@ -120,16 +120,11 @@ pub mod Privacy {
 
     #[constructor]
     pub(crate) fn constructor(
-        ref self: ContractState,
-        governance_admin: ContractAddress,
-        auditor_public_key: felt252,
-        fee_amount: u128,
-        fee_collector: ContractAddress,
+        ref self: ContractState, governance_admin: ContractAddress, auditor_public_key: felt252,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(upgrade_delay: Zero::zero());
         self._set_auditor_public_key(:auditor_public_key);
-        self._set_fee(:fee_amount, :fee_collector);
     }
 
     #[abi(embed_v0)]
