@@ -2,6 +2,7 @@ import { Account, RpcProvider, type constants } from "starknet";
 import {
   createPrivateTransfers,
   ProvingServiceProofProvider,
+  type AccountSignerRaw,
   type PrivateTransfersInterface,
 } from "starknet-sdk";
 // Direct import avoids pulling in Node-only modules from the testing barrel
@@ -28,7 +29,7 @@ export function createTransfers(
   accountConfig: AccountConfig,
   config: AppConfig,
 ): PrivateTransfersInterface {
-  const discovery = new IndexerDiscoveryProvider(config.indexerUrl);
+  const discovery = new IndexerDiscoveryProvider(config.indexerUrl, config.poolAddress);
   const provingProvider = config.provingServiceUrl
     ? new ProvingServiceProofProvider(
         config.provingServiceUrl,
@@ -38,7 +39,7 @@ export function createTransfers(
       )
     : new NoValidateProofProvider(provider, config.chainId);
   return createPrivateTransfers({
-    account,
+    account: account as AccountSignerRaw,
     viewingKeyProvider: { getViewingKey: () => BigInt(accountConfig.viewingKey) },
     provingProvider,
     discoveryProvider: discovery,
@@ -73,5 +74,5 @@ export const ERC20_RESOURCE_BOUNDS = {
 export const POOL_RESOURCE_BOUNDS = {
   l2_gas: { max_amount: 4_000_000n, max_price_per_unit: L2_GAS_PRICE },
   l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
-  l1_data_gas: { max_amount: 1_100n, max_price_per_unit: L1_DATA_GAS_PRICE },
+  l1_data_gas: { max_amount: 4_000n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };

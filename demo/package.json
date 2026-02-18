@@ -11,8 +11,11 @@
   "dependencies": {
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "starknet": "9.2.1",
+    "starknet": "github:m-kus/starknet.js#375736f96cf928b1555407767d96a7751b546808",
     "starknet-sdk": "file:../sdk"
+  },
+  "overrides": {
+    "starknet": "$starknet"
   },
   "devDependencies": {
     "@types/react": "^19.1.4",
