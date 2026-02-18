@@ -13,7 +13,6 @@ use starknet_core::types::{BlockId, Felt};
 use tracing::debug;
 
 use discovery_core::privacy_pool::felt_hex;
-use discovery_core::privacy_pool::types::SecretFelt;
 
 use crate::api::types::{
     error_codes, ApiErrorResponse, HealthResponse, IncomingSyncRequest, IncomingSyncResponse,
@@ -61,7 +60,6 @@ where
 /// Validated and resolved shared context for sync handlers.
 struct SyncContext<S> {
     block_ref: Felt,
-    viewing_key: SecretFelt,
     snapshot: S,
     budget: IoBudget,
     cursor_limits: CursorLimits,
@@ -80,7 +78,6 @@ where
     validate_cursor(&base.cursor, &state.validation_limits)?;
     let block_ref =
         validate_block_ref(base.last_known_block, base.block_ref, &state.backend).await?;
-    let viewing_key = SecretFelt::new(base.viewing_key);
 
     let snapshot = state
         .backend
@@ -92,7 +89,6 @@ where
 
     Ok(SyncContext {
         block_ref,
-        viewing_key,
         snapshot,
         budget,
         cursor_limits,
@@ -134,7 +130,7 @@ where
     let discovery_output = discovery_core::sync::incoming_state::sync_incoming_state(
         &context.snapshot,
         request.recipient_address,
-        &context.viewing_key,
+        &request.base.viewing_key,
         request.base.cursor,
         context.cursor_limits,
         &context.budget,
@@ -198,7 +194,7 @@ where
     let discovery_output = discovery_core::sync::outgoing_state::sync_outgoing_state(
         &context.snapshot,
         request.sender_address,
-        &context.viewing_key,
+        &request.base.viewing_key,
         request.base.cursor,
         context.cursor_limits,
         &context.budget,
@@ -260,8 +256,6 @@ where
         )
         .await;
 
-    let viewing_key = SecretFelt::new(request.viewing_key);
-
     debug!(
         sender = felt_hex(&request.sender_address),
         recipient = felt_hex(&request.recipient),
@@ -273,7 +267,7 @@ where
     let result = discovery_core::sync::preflight_check::preflight_check(
         &snapshot,
         request.sender_address,
-        &viewing_key,
+        &request.viewing_key,
         request.recipient,
         request.token,
     )

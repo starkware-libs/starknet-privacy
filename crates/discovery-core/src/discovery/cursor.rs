@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
+use crate::privacy_pool::types::{secret_felt_serde, SecretFelt};
+
 /// Capacity limits for cursor growth during paginated discovery.
 ///
 /// These caps prevent unbounded cursor expansion when processing accounts
@@ -84,10 +86,12 @@ impl DiscoveryCursor {
 /// Cursor state for a single channel (shared by incoming and outgoing).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChannelCursor {
-    // TODO: Consider encrypting/masking channel_key in the serialized cursor
-    // to avoid exposing it in plaintext (sensitive value).
     /// The channel key for this channel.
-    pub channel_key: Felt,
+    #[serde(
+        serialize_with = "secret_felt_serde::serialize",
+        deserialize_with = "secret_felt_serde::deserialize"
+    )]
+    pub channel_key: SecretFelt,
 
     /// All subchannels have been enumerated. Set by the discovery service
     /// once the sentinel subchannel is reached. When `true`, no further
