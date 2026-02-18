@@ -1509,6 +1509,20 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_server.apply_actions(:actions)
     }
 
+    /// Cheats with raw proof facts (e.g. invalid serialization) and calls apply_actions.
+    /// Use to test PROOF_FACTS_DESERIALIZE_ERROR (requires non-empty invalid data).
+    #[feature("safe_dispatcher")]
+    fn safe_apply_actions_with_raw_proof_facts(
+        self: @PrivacyCfg, actions: Span<ServerAction>, raw_proof_facts: Span<felt252>,
+    ) -> Result<(), Array<felt252>> {
+        cheat_proof_facts(
+            contract_address: *self.address,
+            proof_facts: raw_proof_facts,
+            span: CheatSpan::TargetCalls(1),
+        );
+        self.safe_server.apply_actions(:actions)
+    }
+
     fn deposit_to_open_note(
         self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) {
