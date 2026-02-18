@@ -2,10 +2,15 @@
 
 ## 12.1 Per-Request Keys are the Default
 
-- Keys are supplied with each sync request.
+- Keys are supplied with each sync request as `viewing_key` (typed `SecretFelt`).
 - The service decrypts channels and notes and returns decrypted data.
 - Keys are not stored.
-- Keys MUST be zeroed from memory after request processing.
+- Keys are zeroed from memory after request processing via `SecretFelt` (zeroize-on-drop). The `SecretFelt` wrapper:
+  - Implements `Deref<Target=Felt>` for transparent use
+  - Excludes `Copy` (prevents silent copies of secrets)
+  - Excludes direct `Serde` (uses explicit serde helpers at system boundaries)
+  - Prints `[REDACTED]` for `Debug` (prevents accidental logging)
+- `SecretFelt` is used from API deserialization through `channel_key` in cursors, hash functions, and decryption primitives.
 
 This avoids persistent sensitive material in infrastructure.
 

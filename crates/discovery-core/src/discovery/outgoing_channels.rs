@@ -17,18 +17,22 @@ use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::decrypt_outgoing_recipient_addr;
 use crate::privacy_pool::felt_hex;
 use crate::privacy_pool::hashes::{compute_channel_key, compute_outgoing_channel_id};
-use crate::privacy_pool::types::SecretFelt;
+use crate::privacy_pool::types::{secret_felt_serde, SecretFelt};
 use crate::privacy_pool::views::IViews;
 
 /// A discovered and decrypted outgoing channel.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutgoingChannel {
     /// The decrypted recipient address.
     pub recipient_addr: Felt,
     /// The recipient's public viewing key.
     pub recipient_public_key: Felt,
     /// The channel key derived from sender + recipient identity.
-    pub channel_key: Felt,
+    #[serde(
+        serialize_with = "secret_felt_serde::serialize",
+        deserialize_with = "secret_felt_serde::deserialize"
+    )]
+    pub channel_key: SecretFelt,
     /// `true` when this channel does not yet exist on-chain and was computed
     /// from a requested recipient's public key (a "future" channel).
     #[serde(default)]
@@ -124,7 +128,7 @@ pub async fn discover_outgoing_channels_paginated<S: IViews>(
             .channels
             .entry(channel.recipient_addr)
             .or_insert_with(|| ChannelCursor {
-                channel_key: channel.channel_key,
+                channel_key: channel.channel_key.clone(),
                 subchannel_discovery_complete: false,
                 last_subchannel_index: None,
                 subchannels: HashMap::new(),
@@ -286,13 +290,13 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let viewing_key = &fixture.constants.alice_viewing_key;
         let budget = IoBudget::new(100);
 
         let result = discover_outgoing_channels(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             0,
             usize::MAX,
             &budget,
@@ -326,14 +330,14 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let viewing_key = &fixture.constants.alice_viewing_key;
         let mut cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(100);
 
         let channels = discover_outgoing_channels_paginated(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             &mut cursor,
             usize::MAX,
             &budget,
@@ -350,7 +354,7 @@ mod tests {
         let channels2 = discover_outgoing_channels_paginated(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             &mut cursor,
             usize::MAX,
             &budget,
@@ -367,7 +371,7 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let viewing_key = &fixture.constants.alice_viewing_key;
         let mut cursor = DiscoveryCursor::default();
 
         // Budget for 1 channel (COST_OUTGOING_CHANNEL_INFO = 3)
@@ -375,7 +379,7 @@ mod tests {
         let channels = discover_outgoing_channels_paginated(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             &mut cursor,
             usize::MAX,
             &budget,
@@ -396,7 +400,7 @@ mod tests {
         let channels2 = discover_outgoing_channels_paginated(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             &mut cursor,
             usize::MAX,
             &budget,
@@ -415,14 +419,14 @@ mod tests {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
-        let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let viewing_key = &fixture.constants.alice_viewing_key;
         let budget = IoBudget::new(100);
 
         // Alice has 2 outgoing channels; cap at 1.
         let result = discover_outgoing_channels(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             0,
             1,
             &budget,
@@ -438,7 +442,7 @@ mod tests {
         let result2 = discover_outgoing_channels(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             1,
             usize::MAX,
             &budget,
@@ -458,7 +462,7 @@ mod tests {
 
         let mut cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(100);
-        let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let viewing_key = &fixture.constants.alice_viewing_key;
 
         // Pre-fill cursor to capacity (1 entry, max_cursor_channels = 1).
         insert_dummy_channel_cursor(&mut cursor);
@@ -466,7 +470,7 @@ mod tests {
         let channels = discover_outgoing_channels_paginated(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             &mut cursor,
             1,
             &budget,
@@ -489,7 +493,7 @@ mod tests {
 
         let mut cursor = DiscoveryCursor::default();
         let budget = IoBudget::new(100);
-        let viewing_key = SecretFelt::new(fixture.constants.alice_viewing_key);
+        let viewing_key = &fixture.constants.alice_viewing_key;
 
         // 1 existing entry + max_cursor_channels = 2 → 1 slot available.
         insert_dummy_channel_cursor(&mut cursor);
@@ -497,7 +501,7 @@ mod tests {
         let channels = discover_outgoing_channels_paginated(
             &backend,
             fixture.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             &mut cursor,
             2,
             &budget,

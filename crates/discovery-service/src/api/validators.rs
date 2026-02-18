@@ -82,8 +82,8 @@ pub async fn validate_block_ref<B: ChainState>(
     Ok(block_ref)
 }
 
-/// Rejects a collection that exceeds a size limit.
-fn validate_collection_size(
+/// Rejects a value that exceeds an upper bound.
+fn validate_bound(
     actual_size: usize,
     max_allowed: usize,
     field_name: &str,
@@ -108,17 +108,54 @@ pub fn validate_cursor(
     cursor: &DiscoveryCursor,
     limits: &ValidationLimits,
 ) -> Result<(), (StatusCode, ApiErrorResponse)> {
-    validate_collection_size(
+    validate_bound(
         cursor.channels.len(),
         limits.cursor_limits.max_channels,
         "cursor channels",
     )?;
+
+    let max_notes = 1u64
+        .checked_shl(limits.cursor_limits.max_note_log_index)
+        .unwrap_or(u64::MAX);
+
     for channel_cursor in cursor.channels.values() {
-        validate_collection_size(
+        validate_bound(
             channel_cursor.subchannels.len(),
             limits.cursor_limits.max_subchannels,
             "channel subchannels",
         )?;
+
+        for subchannel_cursor in channel_cursor.subchannels.values() {
+            if let Some(total_n_notes) = subchannel_cursor.total_n_notes {
+                if total_n_notes > max_notes {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        ApiErrorResponse::new(
+                            error_codes::INVALID_REQUEST,
+                            format!(
+                                "total_n_notes {} exceeds maximum {}",
+                                total_n_notes, max_notes
+                            ),
+                        ),
+                    ));
+                }
+            }
+            if let Some(last_note_index) = subchannel_cursor.last_note_index {
+                if last_note_index >= max_notes {
+                    return Err((
+                        StatusCode::BAD_REQUEST,
+                        ApiErrorResponse::new(
+                            error_codes::INVALID_REQUEST,
+                            format!(
+                                "last_note_index {} exceeds maximum valid index {}",
+                                last_note_index,
+                                max_notes - 1
+                            ),
+                        ),
+                    ));
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -128,7 +165,7 @@ pub fn validate_recipients(
     recipients: &HashSet<Felt>,
     limits: &ValidationLimits,
 ) -> Result<(), (StatusCode, ApiErrorResponse)> {
-    validate_collection_size(
+    validate_bound(
         recipients.len(),
         limits.max_outgoing_recipients,
         "recipients",
@@ -139,7 +176,8 @@ pub fn validate_recipients(
 mod tests {
     use super::*;
     use crate::chain_state::mock::MockChainState;
-    use discovery_core::discovery::ChannelCursor;
+    use discovery_core::discovery::{ChannelCursor, SubchannelCursor};
+    use discovery_core::privacy_pool::types::SecretFelt;
 
     #[tokio::test]
     async fn test_valid_request_uses_head_as_block_ref() {
@@ -202,7 +240,7 @@ mod tests {
             cursor.channels.insert(
                 Felt::from(channel_index as u64),
                 ChannelCursor {
-                    channel_key: Felt::ZERO,
+                    channel_key: SecretFelt::new(Felt::ZERO),
                     subchannel_discovery_complete: false,
                     last_subchannel_index: None,
                     subchannels: Default::default(),
@@ -223,7 +261,7 @@ mod tests {
         let limits = ValidationLimits::default();
         let mut cursor = DiscoveryCursor::default();
         let mut channel_cursor = ChannelCursor {
-            channel_key: Felt::ZERO,
+            channel_key: SecretFelt::new(Felt::ZERO),
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: Default::default(),
@@ -273,6 +311,92 @@ mod tests {
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert_eq!(error.error.code, error_codes::INVALID_REQUEST);
         assert!(error.error.message.contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn test_cursor_total_n_notes_exceeds_bound() {
+        let limits = ValidationLimits::default();
+        // max_note_log_index=30 → max_notes = 2^30 = 1_073_741_824
+        let max_notes = 1u64 << limits.cursor_limits.max_note_log_index;
+
+        let mut cursor = DiscoveryCursor::default();
+        let mut channel_cursor = ChannelCursor {
+            channel_key: SecretFelt::new(Felt::ZERO),
+            subchannel_discovery_complete: false,
+            last_subchannel_index: None,
+            subchannels: Default::default(),
+        };
+        channel_cursor.subchannels.insert(
+            Felt::ONE,
+            SubchannelCursor {
+                total_n_notes: Some(max_notes + 1),
+                ..Default::default()
+            },
+        );
+        cursor.channels.insert(Felt::ONE, channel_cursor);
+
+        let result = validate_cursor(&cursor, &limits);
+        assert!(result.is_err());
+
+        let (status, error) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(error.error.message.contains("total_n_notes"));
+    }
+
+    #[test]
+    fn test_cursor_last_note_index_exceeds_bound() {
+        let limits = ValidationLimits::default();
+        let max_notes = 1u64 << limits.cursor_limits.max_note_log_index;
+
+        let mut cursor = DiscoveryCursor::default();
+        let mut channel_cursor = ChannelCursor {
+            channel_key: SecretFelt::new(Felt::ZERO),
+            subchannel_discovery_complete: false,
+            last_subchannel_index: None,
+            subchannels: Default::default(),
+        };
+        channel_cursor.subchannels.insert(
+            Felt::ONE,
+            SubchannelCursor {
+                // last_note_index is 0-based, so max_notes (= 2^30) is out of bounds
+                last_note_index: Some(max_notes),
+                ..Default::default()
+            },
+        );
+        cursor.channels.insert(Felt::ONE, channel_cursor);
+
+        let result = validate_cursor(&cursor, &limits);
+        assert!(result.is_err());
+
+        let (status, error) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(error.error.message.contains("last_note_index"));
+    }
+
+    #[test]
+    fn test_cursor_valid_note_bounds() {
+        let limits = ValidationLimits::default();
+        let max_notes = 1u64 << limits.cursor_limits.max_note_log_index;
+
+        let mut cursor = DiscoveryCursor::default();
+        let mut channel_cursor = ChannelCursor {
+            channel_key: SecretFelt::new(Felt::ZERO),
+            subchannel_discovery_complete: false,
+            last_subchannel_index: None,
+            subchannels: Default::default(),
+        };
+        channel_cursor.subchannels.insert(
+            Felt::ONE,
+            SubchannelCursor {
+                total_n_notes: Some(max_notes),
+                last_note_index: Some(max_notes - 1),
+                ..Default::default()
+            },
+        );
+        cursor.channels.insert(Felt::ONE, channel_cursor);
+
+        let result = validate_cursor(&cursor, &limits);
+        assert!(result.is_ok());
     }
 
     // RPC error handling is tested via integration tests with real devnet

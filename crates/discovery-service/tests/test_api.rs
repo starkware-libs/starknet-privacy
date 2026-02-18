@@ -8,6 +8,7 @@ use common::{
     setup_devnet_with_dump, setup_indexer, DevnetClient, DevnetConfig, IndexerClient,
     IndexerSpawnConfig, DEFAULT_STARTUP_TIMEOUT,
 };
+use discovery_core::privacy_pool::types::SecretFelt;
 use discovery_service::api::{
     HealthResponse, IncomingSyncRequest, OutgoingSyncRequest, PreflightCheckRequest,
     SyncRequestBase,
@@ -73,7 +74,7 @@ async fn test_incoming_sync_basic() {
     // Verify result structure
     for channel in &response.channels {
         assert!(
-            channel.channel_key != Felt::ZERO,
+            *channel.channel_key != Felt::ZERO,
             "Channel key should not be zero"
         );
     }
@@ -95,7 +96,7 @@ async fn test_incoming_sync_pagination() {
         recipient_address: metadata.alice_address,
         base: SyncRequestBase {
             contract_address: metadata.contract_address,
-            viewing_key: metadata.alice_viewing_key,
+            viewing_key: metadata.alice_viewing_key.clone(),
             last_known_block: None,
             block_ref: None,
             cursor: Default::default(),
@@ -181,7 +182,7 @@ async fn test_incoming_sync_no_head() {
         recipient_address: Felt::from_hex("0x1234").unwrap(),
         base: SyncRequestBase {
             contract_address: Felt::from_hex("0x123").unwrap(),
-            viewing_key: Felt::from_hex("0x5678").unwrap(),
+            viewing_key: SecretFelt::new(Felt::from_hex("0x5678").unwrap()),
             last_known_block: None,
             block_ref: None,
             cursor: Default::default(),
@@ -209,7 +210,7 @@ async fn test_incoming_sync_contract_not_found() {
         recipient_address: Felt::from_hex("0x1234").unwrap(),
         base: SyncRequestBase {
             contract_address: Felt::from_hex("0xdeadbeef").unwrap(),
-            viewing_key: Felt::from_hex("0x5678").unwrap(),
+            viewing_key: SecretFelt::new(Felt::from_hex("0x5678").unwrap()),
             last_known_block: None,
             block_ref: None,
             cursor: Default::default(),
@@ -290,7 +291,7 @@ async fn test_outgoing_sync_idempotent() {
         recipients: None,
         base: SyncRequestBase {
             contract_address: metadata.contract_address,
-            viewing_key: metadata.alice_viewing_key,
+            viewing_key: metadata.alice_viewing_key.clone(),
             last_known_block: None,
             block_ref: None,
             cursor: Default::default(),
@@ -344,7 +345,7 @@ async fn test_preflight_check_basic() {
     let request = PreflightCheckRequest {
         contract_address: metadata.contract_address,
         sender_address: metadata.alice_address,
-        viewing_key: metadata.alice_viewing_key,
+        viewing_key: metadata.alice_viewing_key.clone(),
         recipient: metadata.bob_address,
         token: metadata.strk_token,
     };
@@ -387,7 +388,7 @@ async fn test_preflight_check_basic() {
     let request_unknown_sender = PreflightCheckRequest {
         contract_address: metadata.contract_address,
         sender_address: unknown_sender,
-        viewing_key: Felt::from_hex("0x1234").unwrap(),
+        viewing_key: SecretFelt::new(Felt::from_hex("0x1234").unwrap()),
         recipient: metadata.bob_address,
         token: metadata.strk_token,
     };
