@@ -213,9 +213,7 @@ pub mod Privacy {
             // Used to make sure a storage action was included in the client actions.
             let mut has_privacy_action = false;
             for client_action in client_actions {
-                let action_phase = client_action.phase();
-                assert(action_phase >= curr_phase, errors::ACTIONS_OUT_OF_ORDER);
-                curr_phase = action_phase;
+                curr_phase = client_action.assert_phase_and_get_next(:curr_phase);
                 let (actions, should_execute) = match *client_action {
                     ClientAction::SetViewingKey(input) => (
                         self.set_viewing_key(:user_addr, :user_private_key, :input), true,
