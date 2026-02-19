@@ -9,7 +9,7 @@ pub mod Privacy {
         AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
         DepositInput, InputValidation, InvokeExternalInput, InvokeInput, OpenChannelInput,
         OpenSubchannelInput, ReadAssertInput, ServerAction, SetViewingKeyInput, TransferFromInput,
-        TransferToInput, UseNoteInput, WithdrawInput,
+        TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -713,7 +713,10 @@ pub mod Privacy {
             assert(token == note_token, errors::TOKEN_MISMATCH);
             assert(get_caller_address() == depositor, errors::CALLER_NOT_DEPOSITOR);
 
-            self._apply_transfer_from(from_addr: depositor, :token, :amount);
+            IERC20Dispatcher { contract_address: token }
+                .checked_transfer_from(
+                    sender: depositor, recipient: get_contract_address(), amount: amount.into(),
+                );
 
             // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
             let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
@@ -742,44 +745,12 @@ pub mod Privacy {
         fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             for action in actions {
                 match *action {
-                    ServerAction::WriteOnce(input) => {
-                        self
-                            ._apply_write_once(
-                                storage_address: input.storage_address, new_value: input.value,
-                            );
-                    },
-                    ServerAction::AppendToVec(input) => {
-                        self
-                            ._apply_append_to_vector(
-                                key: input.recipient_addr, value: input.enc_channel_info,
-                            );
-                    },
-                    ServerAction::TransferFrom(input) => {
-                        self
-                            ._apply_transfer_from(
-                                from_addr: input.from_addr,
-                                token: input.token,
-                                amount: input.amount,
-                            );
-                    },
-                    ServerAction::TransferTo(input) => {
-                        self
-                            ._apply_transfer_to(
-                                to_addr: input.to_addr, token: input.token, amount: input.amount,
-                            );
-                    },
-                    ServerAction::ReadAssert(input) => {
-                        self
-                            ._apply_read_assert(
-                                storage_address: input.storage_address, value: input.value,
-                            );
-                    },
-                    ServerAction::Invoke(input) => {
-                        self
-                            ._apply_invoke(
-                                contract_address: input.contract_address, calldata: input.calldata,
-                            );
-                    },
+                    ServerAction::WriteOnce(input) => self._apply_write_once(:input),
+                    ServerAction::AppendToVec(input) => self._apply_append_to_vector(:input),
+                    ServerAction::TransferFrom(input) => self._apply_transfer_from(:input),
+                    ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
+                    ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
+                    ServerAction::Invoke(input) => self._apply_invoke(:input),
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
@@ -789,58 +760,51 @@ pub mod Privacy {
             };
         }
 
-        fn _apply_write_once(
-            ref self: ContractState, storage_address: felt252, new_value: Span<felt252>,
-        ) {
+        fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
+            let WriteOnceInput { storage_address, value } = input;
             let base: StorageBaseAddress = storage_base_address_from_felt252(addr: storage_address);
             let mut offset = 0;
-            for value in new_value {
+            for felt in value {
                 let address = storage_address_from_base_and_offset(:base, :offset);
                 assert(
                     storage_read_syscall(address_domain: 0, :address).unwrap_syscall().is_zero(),
                     errors::NON_ZERO_VALUE,
                 );
-                storage_write_syscall(address_domain: 0, :address, value: *value).unwrap_syscall();
+                storage_write_syscall(address_domain: 0, :address, value: *felt).unwrap_syscall();
 
                 offset += 1;
             }
         }
 
-        fn _apply_append_to_vector(
-            ref self: ContractState, key: ContractAddress, value: EncChannelInfo,
-        ) {
-            self.recipient_channels.entry(key).push(value);
+        fn _apply_append_to_vector(ref self: ContractState, input: AppendToVecInput) {
+            let AppendToVecInput { recipient_addr, enc_channel_info } = input;
+            self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
         }
 
-        fn _apply_transfer_from(
-            ref self: ContractState,
-            from_addr: ContractAddress,
-            token: ContractAddress,
-            amount: u128,
-        ) {
+        fn _apply_transfer_from(ref self: ContractState, input: TransferFromInput) {
+            let TransferFromInput { from_addr, token, amount } = input;
             IERC20Dispatcher { contract_address: token }
                 .checked_transfer_from(
                     sender: from_addr, recipient: get_contract_address(), amount: amount.into(),
                 )
         }
 
-        fn _apply_transfer_to(
-            ref self: ContractState, to_addr: ContractAddress, token: ContractAddress, amount: u128,
-        ) {
+        fn _apply_transfer_to(ref self: ContractState, input: TransferToInput) {
+            let TransferToInput { to_addr, token, amount } = input;
             // Note: This function should NOT panic as the contract should have the balance.
             IERC20Dispatcher { contract_address: token }
                 .checked_transfer(recipient: to_addr, amount: amount.into())
         }
 
-        fn _apply_read_assert(ref self: ContractState, storage_address: felt252, value: felt252) {
+        fn _apply_read_assert(ref self: ContractState, input: ReadAssertInput) {
+            let ReadAssertInput { storage_address, value } = input;
             let target = StorageBase::<felt252> { __base_address__: storage_address };
             let current_value = target.read();
             assert(current_value == value, errors::VALUE_MISMATCH);
         }
 
-        fn _apply_invoke(
-            ref self: ContractState, contract_address: ContractAddress, calldata: Span<felt252>,
-        ) {
+        fn _apply_invoke(ref self: ContractState, input: InvokeInput) {
+            let InvokeInput { contract_address, calldata } = input;
             call_contract_syscall(
                 address: contract_address, entry_point_selector: INVOKE_SELECTOR, :calldata,
             )
