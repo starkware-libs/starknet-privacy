@@ -16,7 +16,7 @@ pub mod Privacy {
         compute_channel_key, compute_channel_marker, compute_note_id, compute_nullifier,
         compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker,
     };
-    use privacy::interface::{IAuditor, IClient, IFees, IServer, IViews};
+    use privacy::interface::{IAdmin, IClient, IServer, IViews};
     use privacy::objects::{
         EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
         EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
@@ -726,6 +726,19 @@ pub mod Privacy {
 
     #[generate_trait]
     pub impl ServerInternalImpl of ServerInternalTrait {
+        fn collect_fee(ref self: ContractState) {
+            let fee_amount = self.fee_amount.read();
+            if fee_amount.is_non_zero() {
+                let fee_collector = self.fee_collector.read();
+                IERC20Dispatcher { contract_address: STRK_TOKEN_ADDRESS }
+                    .checked_transfer_from(
+                        sender: get_caller_address(),
+                        recipient: fee_collector,
+                        amount: fee_amount.into(),
+                    );
+            }
+        }
+
         fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             for action in actions {
                 match *action {
@@ -884,44 +897,24 @@ pub mod Privacy {
         fn get_auditor_public_key(self: @ContractState) -> felt252 {
             self.auditor_public_key.read()
         }
+
+        fn get_fee_amount(self: @ContractState) -> u128 {
+            self.fee_amount.read()
+        }
+
+        fn get_fee_collector(self: @ContractState) -> ContractAddress {
+            self.fee_collector.read()
+        }
     }
 
     #[abi(embed_v0)]
-    pub impl AuditorImpl of IAuditor<ContractState> {
+    pub impl AdminImpl of IAdmin<ContractState> {
         fn set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
             // TODO: Change to the real role.
             self.roles.only_token_admin();
             self._set_auditor_public_key(:auditor_public_key);
         }
-    }
 
-    #[generate_trait]
-    impl AuditorInternalImpl of AuditorInternalTrait {
-        fn _set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
-            assert(auditor_public_key.is_non_zero(), errors::ZERO_AUDITOR_PUBLIC_KEY);
-            self.auditor_public_key.write(auditor_public_key);
-            self.emit(events::AuditorPublicKeySet { auditor_public_key });
-        }
-    }
-
-    #[generate_trait]
-    impl FeesInternalImpl of FeesInternalTrait {
-        fn collect_fee(ref self: ContractState) {
-            let fee_amount = self.fee_amount.read();
-            if fee_amount.is_non_zero() {
-                let fee_collector = self.fee_collector.read();
-                IERC20Dispatcher { contract_address: STRK_TOKEN_ADDRESS }
-                    .checked_transfer_from(
-                        sender: get_caller_address(),
-                        recipient: fee_collector,
-                        amount: fee_amount.into(),
-                    );
-            }
-        }
-    }
-
-    #[abi(embed_v0)]
-    pub impl FeesImpl of IFees<ContractState> {
         fn set_fee(ref self: ContractState, fee_amount: u128, fee_collector: ContractAddress) {
             // TODO: Change to real role.
             self.roles.only_app_governor();
@@ -932,13 +925,14 @@ pub mod Privacy {
             self.fee_collector.write(fee_collector);
             self.emit(events::FeeSet { fee_amount, fee_collector });
         }
+    }
 
-        fn get_fee_amount(self: @ContractState) -> u128 {
-            self.fee_amount.read()
-        }
-
-        fn get_fee_collector(self: @ContractState) -> ContractAddress {
-            self.fee_collector.read()
+    #[generate_trait]
+    impl AdminInternalImpl of AdminInternalTrait {
+        fn _set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
+            assert(auditor_public_key.is_non_zero(), errors::ZERO_AUDITOR_PUBLIC_KEY);
+            self.auditor_public_key.write(auditor_public_key);
+            self.emit(events::AuditorPublicKeySet { auditor_public_key });
         }
     }
 }
