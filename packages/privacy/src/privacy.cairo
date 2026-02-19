@@ -915,13 +915,24 @@ pub mod Privacy {
             self._set_auditor_public_key(:auditor_public_key);
         }
 
-        fn set_fee(ref self: ContractState, fee_amount: u128, fee_collector: ContractAddress) {
+        fn set_fee_amount(ref self: ContractState, fee_amount: u128) {
             // TODO: Change to real role.
             self.roles.only_app_governor();
+            let fee_collector = self.fee_collector.read();
             if fee_amount.is_non_zero() {
                 assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
             }
             self.fee_amount.write(fee_amount);
+            self.emit(events::FeeSet { fee_amount, fee_collector });
+        }
+
+        fn set_fee_collector(ref self: ContractState, fee_collector: ContractAddress) {
+            // TODO: Change to real role.
+            self.roles.only_app_governor();
+            let fee_amount = self.fee_amount.read();
+            if fee_amount.is_non_zero() {
+                assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
+            }
             self.fee_collector.write(fee_collector);
             self.emit(events::FeeSet { fee_amount, fee_collector });
         }

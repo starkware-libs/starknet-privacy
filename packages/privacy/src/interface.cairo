@@ -629,18 +629,7 @@ pub trait IViews<T> {
 pub trait IAdmin<T> {
     fn set_auditor_public_key(ref self: T, auditor_public_key: felt252);
 
-    /// Sets the fee amount and fee collector for `apply_actions` calls.
-    ///
-    /// #### Parameters
-    /// - `fee_amount` (`u128`): The fee amount in FRI per transaction. Set to 0 to disable fees.
-    /// - `fee_collector` (`ContractAddress`): The address that receives the fee. Must be non-zero
-    /// when `fee_amount` is non-zero.
-    ///
-    /// #### Reverts
-    /// - [`ZERO_FEE_COLLECTOR`](privacy::errors::ZERO_FEE_COLLECTOR): Thrown if `fee_amount` is
-    /// non-zero and `fee_collector` is zero.
-    ///
-    /// #### Access Control
-    /// - Only app governor.
-    fn set_fee(ref self: T, fee_amount: u128, fee_collector: ContractAddress);
+    fn set_fee_amount(ref self: T, fee_amount: u128);
+
+    fn set_fee_collector(ref self: T, fee_collector: ContractAddress);
 }
