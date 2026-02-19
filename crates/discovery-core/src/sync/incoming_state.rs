@@ -171,9 +171,7 @@ async fn process_channel<S: IViews>(
     max_cursor_subchannels: usize,
     budget: &IoBudget,
 ) -> Result<ProcessChannelResult, DiscoveryError> {
-    let channel_key = cursor.channel_key.ok_or_else(|| {
-        DiscoveryError::InvalidCursor("channel_key is required for incoming channel".into())
-    })?;
+    let channel_key = cursor.channel_key;
 
     discover_subchannels_paginated(
         pool,

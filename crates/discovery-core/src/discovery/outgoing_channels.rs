@@ -124,7 +124,7 @@ pub async fn discover_outgoing_channels_paginated<S: IViews>(
             .channels
             .entry(channel.recipient_addr)
             .or_insert_with(|| ChannelCursor {
-                channel_key: Some(channel.channel_key),
+                channel_key: channel.channel_key,
                 subchannel_discovery_complete: false,
                 last_subchannel_index: None,
                 subchannels: HashMap::new(),
