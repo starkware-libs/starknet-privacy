@@ -120,16 +120,11 @@ pub mod Privacy {
 
     #[constructor]
     pub(crate) fn constructor(
-        ref self: ContractState,
-        governance_admin: ContractAddress,
-        auditor_public_key: felt252,
-        fee_amount: u128,
-        fee_collector: ContractAddress,
+        ref self: ContractState, governance_admin: ContractAddress, auditor_public_key: felt252,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(upgrade_delay: Zero::zero());
         self._set_auditor_public_key(:auditor_public_key);
-        self._set_fee(:fee_amount, :fee_collector);
     }
 
     #[abi(embed_v0)]
@@ -969,15 +964,6 @@ pub mod Privacy {
                     );
             }
         }
-
-        fn _set_fee(ref self: ContractState, fee_amount: u128, fee_collector: ContractAddress) {
-            if fee_amount.is_non_zero() {
-                assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
-            }
-            self.fee_amount.write(fee_amount);
-            self.fee_collector.write(fee_collector);
-            self.emit(events::FeeSet { fee_amount, fee_collector });
-        }
     }
 
     #[abi(embed_v0)]
@@ -985,7 +971,12 @@ pub mod Privacy {
         fn set_fee(ref self: ContractState, fee_amount: u128, fee_collector: ContractAddress) {
             // TODO: Change to real role.
             self.roles.only_app_governor();
-            self._set_fee(:fee_amount, :fee_collector);
+            if fee_amount.is_non_zero() {
+                assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
+            }
+            self.fee_amount.write(fee_amount);
+            self.fee_collector.write(fee_collector);
+            self.emit(events::FeeSet { fee_amount, fee_collector });
         }
 
         fn get_fee_amount(self: @ContractState) -> u128 {

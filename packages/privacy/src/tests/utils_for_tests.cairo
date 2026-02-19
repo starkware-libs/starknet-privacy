@@ -1747,8 +1747,6 @@ pub(crate) fn _deploy_privacy(
         :deployment_params,
         :governance_admin,
         :auditor_public_key,
-        :fee_amount,
-        :fee_collector,
     )
         .expect('Privacy deployment failed');
     contract_address
