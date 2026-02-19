@@ -394,7 +394,7 @@ pub struct ProofFacts {
     pub program_variant: felt252,
     /// The hash of the virtual Starknet OS program.
     pub virtual_program_hash: felt252,
-    /// The output version ('VIRTUAL_SNOS0').
+    /// The output version; enforced to be 'VIRTUAL_SNOS0'.
     pub starknet_os_output_version: felt252,
     /// The base block number.
     pub base_block_number: u64,
