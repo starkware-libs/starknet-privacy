@@ -59,7 +59,8 @@ fn test_get_fee_amount() {
     assert_eq!(test.privacy.get_fee_amount(), Zero::zero());
     let fee_amount = DEFAULT_FEE_AMOUNT;
     let fee_collector = DEFAULT_FEE_COLLECTOR;
-    test.privacy.set_fee(:fee_amount, :fee_collector);
+    test.privacy.set_fee_collector(:fee_collector);
+    test.privacy.set_fee_amount(:fee_amount);
     assert_eq!(test.privacy.get_fee_amount(), fee_amount);
 }
 
@@ -67,9 +68,8 @@ fn test_get_fee_amount() {
 fn test_get_fee_collector() {
     let mut test: Test = Default::default();
     assert_eq!(test.privacy.get_fee_collector(), Zero::zero());
-    let fee_amount = DEFAULT_FEE_AMOUNT;
     let fee_collector = DEFAULT_FEE_COLLECTOR;
-    test.privacy.set_fee(:fee_amount, :fee_collector);
+    test.privacy.set_fee_collector(:fee_collector);
     assert_eq!(test.privacy.get_fee_collector(), fee_collector);
 }
 
