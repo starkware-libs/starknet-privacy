@@ -347,7 +347,7 @@ fn test_apply_write_once_enc_note_assertions() {
 }
 
 #[test]
-fn test_apply_append_to_vector() {
+fn test_apply_append_to_vec() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let (enc_channel_info, _) = test.mock_new_channel();
