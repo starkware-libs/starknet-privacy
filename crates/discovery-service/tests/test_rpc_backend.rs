@@ -20,10 +20,10 @@ use std::path::Path;
 use common::{DevnetClient, DevnetConfig, DumpMetadata};
 use discovery_core::privacy_pool::views::IViews;
 use discovery_core::storage_backend::StorageBackend;
-use discovery_service::rpc_backend::{RpcBackend, RpcConfig};
+use discovery_service::config::RpcConfig;
+use discovery_service::rpc_backend::RpcBackend;
 use expect_test::expect;
 use starknet_core::types::Felt;
-use url::Url;
 
 const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
 
@@ -47,13 +47,16 @@ async fn setup_devnet() -> (DevnetClient, DumpMetadata) {
 async fn test_public_key_lookup() {
     let (devnet, metadata) = setup_devnet().await;
 
-    let backend = RpcBackend::new(RpcConfig::new(
-        Url::parse(&devnet.rpc_url()).unwrap(),
-        metadata.contract_address,
-    ))
-    .unwrap();
+    let rpc_config = RpcConfig {
+        url: devnet.rpc_url(),
+        ..Default::default()
+    };
+    let backend = RpcBackend::new(rpc_config).unwrap();
 
-    let snapshot = backend.snapshot(None).await.unwrap();
+    let snapshot = backend
+        .snapshot(metadata.contract_address, None)
+        .await
+        .unwrap();
 
     // Alice should have a registered public key
     let alice_pubkey = snapshot
