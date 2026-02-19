@@ -732,36 +732,22 @@ pub mod Privacy {
 
             // Read the Note from storage and assert it exists.
             let note_entry = self.notes.entry(note_id);
-            let note = note_entry.read();
-            let packed_value = note.packed_value;
-            let note_token = note.token;
-            let depositor = note.depositor;
+            let Note { packed_value, token: note_token, depositor } = note_entry.read();
             assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
-            // Unpack the packed_value to get (salt, current_amount).
-            let (salt, current_amount) = unpacking(packed_value: note.packed_value);
-
-            // Assert it's an open note (salt == OPEN_NOTE_SALT).
+            let (salt, current_amount) = unpacking(:packed_value);
             assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
-
-            // Assert the note hasn't been deposited to yet (current_amount == 0).
             assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
-
-            // Assert the token matches the note's token.
             assert(token == note_token, errors::TOKEN_MISMATCH);
+            assert(get_caller_address() == depositor, errors::CALLER_NOT_DEPOSITOR);
 
-            // Assert the caller is the depositor.
-            let caller = get_caller_address();
-            assert(caller == depositor, errors::CALLER_NOT_DEPOSITOR);
-
-            // Transfer funds from the depositor (caller).
             self._apply_transfer_from(from_addr: depositor, :token, :amount);
 
             // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
             let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
+            assert(new_packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
             note_entry.packed_value.write(new_packed_value);
 
-            // Emit the OpenNoteDeposited event.
             self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
         }
     }
