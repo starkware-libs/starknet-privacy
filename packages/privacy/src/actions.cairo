@@ -281,6 +281,19 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
             ClientAction::InvokeExternal(_) => Self::INVOKE_PHASE,
         }
     }
+
+    /// Asserts action_phase >= curr_phase (ACTIONS_OUT_OF_ORDER) and returns the phase to advance
+    /// to.
+    /// InvokeExternal is only allowed once per Tx.
+    fn assert_phase_and_get_next(self: @ClientAction, curr_phase: u8) -> u8 {
+        let action_phase = self.phase();
+        assert(action_phase >= curr_phase, errors::ACTIONS_OUT_OF_ORDER);
+        if action_phase == Self::INVOKE_PHASE {
+            action_phase + 1
+        } else {
+            action_phase
+        }
+    }
 }
 
 /// Input for the `WriteOnce` action.
