@@ -642,5 +642,7 @@ pub trait IAdmin<T> {
     ///
     /// #### Access Control
     /// - Only app governor.
-    fn set_fee(ref self: T, fee_amount: u128, fee_collector: ContractAddress);
+    fn set_fee_amount(ref self: T, fee_amount: u128);
+
+    fn set_fee_collector(ref self: T, fee_collector: ContractAddress);
 }

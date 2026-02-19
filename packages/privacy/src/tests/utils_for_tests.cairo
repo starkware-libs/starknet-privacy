@@ -1650,18 +1650,30 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_admin.set_auditor_public_key(:auditor_public_key)
     }
 
-    fn set_fee(self: @PrivacyCfg, fee_amount: u128, fee_collector: ContractAddress) {
+    fn set_fee_amount(self: @PrivacyCfg, fee_amount: u128) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.app_governor,
         );
-        self.admin.set_fee(:fee_amount, :fee_collector);
+        self.admin.set_fee_amount(:fee_amount);
+    }
+
+    fn set_fee_collector(self: @PrivacyCfg, fee_collector: ContractAddress) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.roles.app_governor,
+        );
+        self.admin.set_fee_collector(:fee_collector);
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_set_fee(
-        self: @PrivacyCfg, fee_amount: u128, fee_collector: ContractAddress,
+    fn safe_set_fee_amount(self: @PrivacyCfg, fee_amount: u128) -> Result<(), Array<felt252>> {
+        self.safe_admin.set_fee_amount(:fee_amount)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_set_fee_collector(
+        self: @PrivacyCfg, fee_collector: ContractAddress,
     ) -> Result<(), Array<felt252>> {
-        self.safe_admin.set_fee(:fee_amount, :fee_collector)
+        self.safe_admin.set_fee_collector(:fee_collector)
     }
 
     fn get_fee_amount(self: @PrivacyCfg) -> u128 {
