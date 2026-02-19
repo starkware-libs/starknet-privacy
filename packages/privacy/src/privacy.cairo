@@ -808,7 +808,7 @@ pub mod Privacy {
             IERC20Dispatcher { contract_address: token }
                 .checked_transfer_from(
                     sender: from_addr, recipient: get_contract_address(), amount: amount.into(),
-                );
+                )
         }
 
         fn _apply_transfer_to(
@@ -816,7 +816,7 @@ pub mod Privacy {
         ) {
             // Note: This function should NOT panic as the contract should have the balance.
             IERC20Dispatcher { contract_address: token }
-                .checked_transfer(recipient: to_addr, amount: amount.into());
+                .checked_transfer(recipient: to_addr, amount: amount.into())
         }
 
         fn _apply_read_assert(ref self: ContractState, storage_address: felt252, value: felt252) {
