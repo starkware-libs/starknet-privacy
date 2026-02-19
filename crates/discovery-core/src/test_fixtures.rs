@@ -142,7 +142,7 @@ pub fn insert_dummy_channel_cursor(cursor: &mut DiscoveryCursor) {
     cursor.channels.insert(
         Felt::from(0xdead_u64),
         ChannelCursor {
-            channel_key: None,
+            channel_key: Felt::ZERO,
             subchannel_discovery_complete: false,
             last_subchannel_index: None,
             subchannels: Default::default(),

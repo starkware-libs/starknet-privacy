@@ -947,56 +947,6 @@ export const PrivacyPoolABI = [
           }
         ],
         "state_mutability": "view"
-      }
-    ]
-  },
-  {
-    "type": "impl",
-    "name": "AuditorImpl",
-    "interface_name": "privacy::interface::IAuditor"
-  },
-  {
-    "type": "interface",
-    "name": "privacy::interface::IAuditor",
-    "items": [
-      {
-        "type": "function",
-        "name": "set_auditor_public_key",
-        "inputs": [
-          {
-            "name": "auditor_public_key",
-            "type": "core::felt252"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      }
-    ]
-  },
-  {
-    "type": "impl",
-    "name": "FeesImpl",
-    "interface_name": "privacy::interface::IFees"
-  },
-  {
-    "type": "interface",
-    "name": "privacy::interface::IFees",
-    "items": [
-      {
-        "type": "function",
-        "name": "set_fee",
-        "inputs": [
-          {
-            "name": "fee_amount",
-            "type": "core::integer::u128"
-          },
-          {
-            "name": "fee_collector",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
       },
       {
         "type": "function",
@@ -1019,6 +969,45 @@ export const PrivacyPoolABI = [
           }
         ],
         "state_mutability": "view"
+      }
+    ]
+  },
+  {
+    "type": "impl",
+    "name": "AdminImpl",
+    "interface_name": "privacy::interface::IAdmin"
+  },
+  {
+    "type": "interface",
+    "name": "privacy::interface::IAdmin",
+    "items": [
+      {
+        "type": "function",
+        "name": "set_auditor_public_key",
+        "inputs": [
+          {
+            "name": "auditor_public_key",
+            "type": "core::felt252"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "set_fee",
+        "inputs": [
+          {
+            "name": "fee_amount",
+            "type": "core::integer::u128"
+          },
+          {
+            "name": "fee_collector",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
       }
     ]
   },
@@ -1648,14 +1637,6 @@ export const PrivacyPoolABI = [
       {
         "name": "auditor_public_key",
         "type": "core::felt252"
-      },
-      {
-        "name": "fee_amount",
-        "type": "core::integer::u128"
-      },
-      {
-        "name": "fee_collector",
-        "type": "core::starknet::contract_address::ContractAddress"
       }
     ]
   },

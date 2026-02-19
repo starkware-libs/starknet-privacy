@@ -50,8 +50,9 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
 
 ```json
 {
+  "contract_address": "0x...",
   "recipient_address": "0x...",
-  "decryption_key": "0x...",
+  "viewing_key": "0x...",
   "cursor": {
     "last_known_block": "0x...",
     "block_ref": null,
@@ -155,6 +156,7 @@ Typically users should have this information cached locally but in case there's 
 
 ```json
 {
+  "contract_address": "0x...",
   "sender_addr": "0x...",
   "recipient_addr": "0x...",
   "channel_key": "0x...",
