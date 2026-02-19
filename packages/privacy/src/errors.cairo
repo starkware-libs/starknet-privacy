@@ -44,6 +44,7 @@ pub const PROOF_EXPIRED: felt252 = 'PROOF_EXPIRED';
 pub const INVALID_PROOF_MSG: felt252 = 'INVALID_PROOF_MSG';
 pub const TOKEN_MISMATCH: felt252 = 'TOKEN_MISMATCH';
 pub const ZERO_FEE_COLLECTOR: felt252 = 'ZERO_FEE_COLLECTOR';
+pub const MULTIPLE_INVOKES: felt252 = 'MULTIPLE_INVOKES';
 
 pub(crate) mod internal_errors {
     pub const ZERO_ENC_CHANNEL_INFO: felt252 = 'ZERO_ENC_CHANNEL_INFO';

@@ -218,6 +218,7 @@ pub mod Privacy {
             let mut token_balances: TokenBalances = Default::default();
             // Used to make sure a storage action was included in the client actions.
             let mut has_privacy_action = false;
+            let mut has_invoke = false;
             for client_action in client_actions {
                 let action_phase = client_action.phase();
                 assert(action_phase >= curr_phase, errors::ACTIONS_OUT_OF_ORDER);
@@ -273,7 +274,11 @@ pub mod Privacy {
                     ClientAction::Withdraw(input) => (
                         self.withdraw(:user_addr, :input, ref :token_balances), false,
                     ),
-                    ClientAction::InvokeExternal(input) => (self.invoke_external(:input), false),
+                    ClientAction::InvokeExternal(input) => {
+                        assert(!has_invoke, errors::MULTIPLE_INVOKES);
+                        has_invoke = true;
+                        (self.invoke_external(:input), false)
+                    },
                 };
                 if should_execute {
                     has_privacy_action = true;
