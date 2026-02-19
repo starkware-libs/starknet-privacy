@@ -390,11 +390,13 @@ pub(crate) fn open_note(token: ContractAddress, depositor: ContractAddress) -> N
 pub struct ProofFacts {
     /// The proof version.
     pub proof_version: felt252,
-    /// The proven program variant; enforced to be 'VIRTUAL_SNOS'.
+    /// The proven program variant; enforced to be
+    /// [`VIRTUAL_SNOS`](privacy::utils::constants::VIRTUAL_SNOS).
     pub program_variant: felt252,
     /// The hash of the virtual Starknet OS program.
     pub virtual_program_hash: felt252,
-    /// The output version ('VIRTUAL_SNOS0').
+    /// The output version; enforced to be
+    /// [`VIRTUAL_SNOS0`](privacy::utils::constants::VIRTUAL_SNOS0).
     pub starknet_os_output_version: felt252,
     /// The base block number.
     pub base_block_number: u64,
