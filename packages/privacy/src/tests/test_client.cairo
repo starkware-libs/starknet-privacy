@@ -6298,6 +6298,27 @@ fn test_swap_without_withdraw_fails() {
 }
 
 #[test]
+fn test_multiple_invoke_external_reverts() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+
+    let dummy_invoke = InvokeExternalInput {
+        contract_address: test.privacy.swap_executor.address, calldata: [].span(),
+    };
+    let client_actions = [
+        ClientAction::InvokeExternal(dummy_invoke), ClientAction::InvokeExternal(dummy_invoke),
+    ]
+        .span();
+
+    let result = user.safe_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::MULTIPLE_INVOKES);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::MULTIPLE_INVOKES);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::MULTIPLE_INVOKES);
+}
+
+#[test]
 fn test_invoke_external_client_action_assertions() {
     // Test InvokeExternal validation errors.
     let mut test: Test = Default::default();
