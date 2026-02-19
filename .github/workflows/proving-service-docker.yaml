@@ -1,0 +1,104 @@
+name: Proving Service Docker
+
+permissions:
+  contents: read
+  packages: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      sequencer_commit:
+        description: 'Commit hash from starkware-libs/sequencer'
+        required: true
+        type: string
+
+jobs:
+  build:
+    name: Build (${{ matrix.platform }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Clone sequencer at specified commit
+        run: |
+          git clone --depth 1 https://github.com/starkware-libs/sequencer.git sequencer
+          cd sequencer
+          git fetch --depth 1 origin ${{ inputs.sequencer_commit }}
+          git checkout ${{ inputs.sequencer_commit }}
+        shell: bash
+
+      - name: Install proving utils
+        run: |
+          cd sequencer
+          bash scripts/install_stwo_run_and_prove.sh
+        shell: bash
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v5
+        id: build
+        with:
+          context: sequencer
+          file: sequencer/crates/starknet_os_runner/Dockerfile
+          platforms: ${{ matrix.platform }}
+          build-args: PROVING_UTILS_DIR=build/proving-utils
+          cache-from: type=gha,scope=proving-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=proving-${{ matrix.platform }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ inputs.sequencer_commit }}
+          outputs: type=image,"name=ghcr.io/${{ github.repository }}/proving-service",push-by-digest=true,name-canonical=true,push=true
+
+      - run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+        shell: bash
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge manifests
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: true
+
+      - name: Create multi-arch manifest
+        run: |
+          tag="rev-${{ inputs.sequencer_commit }}"
+          image="ghcr.io/${{ github.repository }}/proving-service"
+          sources=$(cd /tmp/digests && printf "${image}@sha256:%s " *)
+          docker buildx imagetools create -t "${image}:${tag}" $sources
+        shell: bash
