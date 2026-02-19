@@ -768,10 +768,8 @@ pub mod Privacy {
                 match *action {
                     ServerAction::WriteOnce(input) => {
                         self
-                            ._apply_write(
-                                storage_address: input.storage_address,
-                                new_value: input.value,
-                                require_zero: true,
+                            ._apply_write_once(
+                                storage_address: input.storage_address, new_value: input.value,
                             );
                     },
                     ServerAction::AppendToVec(input) => {
@@ -815,27 +813,20 @@ pub mod Privacy {
             };
         }
 
-        fn _apply_write(
-            ref self: ContractState,
-            storage_address: felt252,
-            new_value: Span<felt252>,
-            require_zero: bool,
+        fn _apply_write_once(
+            ref self: ContractState, storage_address: felt252, new_value: Span<felt252>,
         ) {
             let base: StorageBaseAddress = storage_base_address_from_felt252(addr: storage_address);
             let mut offset = 0;
             for value in new_value {
                 let address = storage_address_from_base_and_offset(:base, :offset);
-                offset += 1;
-
-                if require_zero {
-                    assert(
-                        storage_read_syscall(address_domain: 0, :address)
-                            .unwrap_syscall()
-                            .is_zero(),
-                        errors::NON_ZERO_VALUE,
-                    );
-                }
+                assert(
+                    storage_read_syscall(address_domain: 0, :address).unwrap_syscall().is_zero(),
+                    errors::NON_ZERO_VALUE,
+                );
                 storage_write_syscall(address_domain: 0, :address, value: *value).unwrap_syscall();
+
+                offset += 1;
             }
         }
 
