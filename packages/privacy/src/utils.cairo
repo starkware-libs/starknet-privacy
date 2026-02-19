@@ -425,30 +425,27 @@ pub(crate) impl ProofFactsDefaultImpl of Default<ProofFacts> {
 pub(crate) fn validate_proof(actions: Span<ServerAction>) {
     let execution_info = get_execution_info_v3_syscall().unwrap_syscall();
     let contract_address = execution_info.contract_address;
-    let mut proof_facts = execution_info.tx_info.proof_facts;
-    assert(!proof_facts.is_empty(), errors::EMPTY_PROOF_FACTS);
-    let proof_facts_struct: ProofFacts = Serde::deserialize(ref proof_facts)
+    let mut proof_facts_span = execution_info.tx_info.proof_facts;
+    assert(!proof_facts_span.is_empty(), errors::EMPTY_PROOF_FACTS);
+    let proof_facts: ProofFacts = Serde::deserialize(ref proof_facts_span)
         .expect(errors::PROOF_FACTS_DESERIALIZE_ERROR);
-    assert(proof_facts_struct.program_variant == VIRTUAL_SNOS, errors::INVALID_PROGRAM_VARIANT);
+    assert(proof_facts.program_variant == VIRTUAL_SNOS, errors::INVALID_PROGRAM_VARIANT);
     assert(
-        proof_facts_struct.starknet_os_output_version == VIRTUAL_SNOS0,
-        errors::INVALID_OS_OUTPUT_VERSION,
+        proof_facts.starknet_os_output_version == VIRTUAL_SNOS0, errors::INVALID_OS_OUTPUT_VERSION,
     );
 
     // Assert base block number is recent.
     let current_block_number = execution_info.block_info.block_number;
-    let proof_block_number = proof_facts_struct.base_block_number;
+    let proof_block_number = proof_facts.base_block_number;
     assert(proof_block_number <= current_block_number, errors::INVALID_BASE_BLOCK_NUMBER);
     assert(
-        proof_block_number + PROOF_VALIDITY_BLOCK_INTERVAL >= current_block_number,
+        current_block_number <= proof_block_number + PROOF_VALIDITY_BLOCK_INTERVAL,
         errors::PROOF_EXPIRED,
     );
     // Assert that the message hash is included in the L1 messages,
     // meaning the proof is valid for this transaction.
     let message_hash = _compute_message_hash(:actions, :contract_address);
-    assert(
-        proof_facts_struct.message_to_l1_hashes == [message_hash].span(), errors::INVALID_PROOF_MSG,
-    );
+    assert(proof_facts.message_to_l1_hashes == [message_hash].span(), errors::INVALID_PROOF_MSG);
 }
 
 /// The message hash is computed from the L1 message, which includes:
