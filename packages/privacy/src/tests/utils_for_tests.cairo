@@ -16,12 +16,10 @@ use privacy::hashes::{
     compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker, hash,
 };
 use privacy::interface::{
-    IAuditorDispatcher, IAuditorDispatcherTrait, IAuditorSafeDispatcher,
-    IAuditorSafeDispatcherTrait, IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher,
-    IClientSafeDispatcherTrait, IFeesDispatcher, IFeesDispatcherTrait, IFeesSafeDispatcher,
-    IFeesSafeDispatcherTrait, IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher,
-    IServerSafeDispatcherTrait, IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher,
-    IViewsSafeDispatcherTrait,
+    IAdminDispatcher, IAdminDispatcherTrait, IAdminSafeDispatcher, IAdminSafeDispatcherTrait,
+    IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
+    IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
+    IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
@@ -177,10 +175,8 @@ pub(crate) struct PrivacyCfg {
     safe_client: IClientSafeDispatcher,
     views: IViewsDispatcher,
     safe_views: IViewsSafeDispatcher,
-    auditor: IAuditorDispatcher,
-    safe_auditor: IAuditorSafeDispatcher,
-    fees: IFeesDispatcher,
-    safe_fees: IFeesSafeDispatcher,
+    admin: IAdminDispatcher,
+    safe_admin: IAdminSafeDispatcher,
     pub strk_token: Token,
     pub swap_executor: SwapExecutorCfg,
     pub mock_amm: ContractAddress,
@@ -1444,7 +1440,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     /// Supply STRK to `caller` and approve the privacy contract for the fee.
     fn _fund_fee(self: @PrivacyCfg, caller: ContractAddress) {
-        let fee_amount = self.fees.get_fee_amount();
+        let fee_amount = self.views.get_fee_amount();
         if fee_amount.is_non_zero() {
             let strk_address = self.strk_token.contract_address();
             self.strk_token.supply(address: caller, amount: fee_amount);
@@ -1644,36 +1640,36 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.token_admin,
         );
-        self.auditor.set_auditor_public_key(:auditor_public_key);
+        self.admin.set_auditor_public_key(:auditor_public_key);
     }
 
     #[feature("safe_dispatcher")]
     fn safe_set_auditor_public_key(
         self: @PrivacyCfg, auditor_public_key: felt252,
     ) -> Result<(), Array<felt252>> {
-        self.safe_auditor.set_auditor_public_key(:auditor_public_key)
+        self.safe_admin.set_auditor_public_key(:auditor_public_key)
     }
 
     fn set_fee(self: @PrivacyCfg, fee_amount: u128, fee_collector: ContractAddress) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.app_governor,
         );
-        self.fees.set_fee(:fee_amount, :fee_collector);
+        self.admin.set_fee(:fee_amount, :fee_collector);
     }
 
     #[feature("safe_dispatcher")]
     fn safe_set_fee(
         self: @PrivacyCfg, fee_amount: u128, fee_collector: ContractAddress,
     ) -> Result<(), Array<felt252>> {
-        self.safe_fees.set_fee(:fee_amount, :fee_collector)
+        self.safe_admin.set_fee(:fee_amount, :fee_collector)
     }
 
     fn get_fee_amount(self: @PrivacyCfg) -> u128 {
-        self.fees.get_fee_amount()
+        self.views.get_fee_amount()
     }
 
     fn get_fee_collector(self: @PrivacyCfg) -> ContractAddress {
-        self.fees.get_fee_collector()
+        self.views.get_fee_collector()
     }
 
     fn revert_actions_for_testing(self: @PrivacyCfg, actions: Span<ServerAction>) {
@@ -1775,10 +1771,8 @@ fn deploy_privacy(roles: Roles, auditor_public_key: felt252) -> PrivacyCfg {
         safe_client: IClientSafeDispatcher { contract_address },
         views: IViewsDispatcher { contract_address },
         safe_views: IViewsSafeDispatcher { contract_address },
-        auditor: IAuditorDispatcher { contract_address },
-        safe_auditor: IAuditorSafeDispatcher { contract_address },
-        fees: IFeesDispatcher { contract_address },
-        safe_fees: IFeesSafeDispatcher { contract_address },
+        admin: IAdminDispatcher { contract_address },
+        safe_admin: IAdminSafeDispatcher { contract_address },
         strk_token: Token::STRK,
         swap_executor: SwapExecutorCfg {
             address: swap_executor, privacy_address: contract_address,
