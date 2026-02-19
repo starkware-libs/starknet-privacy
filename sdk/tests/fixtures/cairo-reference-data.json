@@ -22,6 +22,22 @@
     "virtualSnos": "0x5649525455414c5f534e4f53",
     "virtualSnos0": "0x5649525455414c5f534e4f5330"
   },
+  "slots": {
+    "auditorPublicKeyAddress": "0x18223681ac4182236a5f10794ec6fa3530a5cb1a18aff2005fbbed58772ec28",
+    "senderPublicKeyAddress": "0x5935778edf7d690937af7b24298a23b064e54fcfd2e01e181ba011593a848bf",
+    "recipientPublicKeyAddress": "0x703dc5fd86f5987705cf14bd6c50c0e55120f37a0ecac2d8895ccd7e909e62f",
+    "encPrivateKeyAuditorPubKeyAddress": "0x440935e6c56281ba4630e9e15910ccb4b8e586b78caa00aee2dab9027248aac",
+    "encPrivateKeyEphemeralAddress": "0x440935e6c56281ba4630e9e15910ccb4b8e586b78caa00aee2dab9027248aad",
+    "encPrivateKeyEncKeyAddress": "0x440935e6c56281ba4630e9e15910ccb4b8e586b78caa00aee2dab9027248aae",
+    "channelExistsAddress": "0x4f06b03b13f7c07258b1511863de37c23aaeb1788ab31033485214777a2fbee",
+    "recipientChannelsBaseAddress": "0x5039a0f3a2efd831149644f87a421ded13d54721469cd2a552d761d2f523646",
+    "recipientChannelsElementAddress": "0x1964d92b29305036d5487cc7726d73ef02560413e3cb5a8358009f7651eeb6e",
+    "subchannelExistsAddress": "0x3751517ee3ad8e8c32d34b55e6c4997d36ccb713a20a95256b42a3dc387331d",
+    "subchannelTokensSaltAddress": "0x108e08a6481cf28ef8c73e1673e2cadaa0f8ee1ac790d188301786f7d8867ed",
+    "subchannelTokensEncTokenAddress": "0x108e08a6481cf28ef8c73e1673e2cadaa0f8ee1ac790d188301786f7d8867ee",
+    "notesAddress": "0x5d4262aaab99930ce4823d3409f1c043542f144522081296890bcf6b92a025d",
+    "nullifiersAddress": "0xac670230830586718e11a75d0b71104a960532c2e060f8eb0c5afbd3fc4def"
+  },
   "inputs": {
     "sender": "0x123",
     "recipient": "0x456",
@@ -45,22 +61,6 @@
     "subchannelMarker": "0x777b17d81fbb126303906d8076aa8dadaec72a6a25a3e31b51946216edeed7c",
     "noteId": "0x6b098ad0b0b4b1881a77f962eb0650de748f24efcabd5a64ac941e9a05777e8",
     "nullifier": "0x42301c4c2b44b24d874ddfbeacfbbcfe8c54135a4673a390b4128152f3d8afb"
-  },
-  "slots": {
-    "auditorPublicKeyAddress": "0x18223681ac4182236a5f10794ec6fa3530a5cb1a18aff2005fbbed58772ec28",
-    "senderPublicKeyAddress": "0x5935778edf7d690937af7b24298a23b064e54fcfd2e01e181ba011593a848bf",
-    "recipientPublicKeyAddress": "0x703dc5fd86f5987705cf14bd6c50c0e55120f37a0ecac2d8895ccd7e909e62f",
-    "encPrivateKeyAuditorPubKeyAddress": "0x440935e6c56281ba4630e9e15910ccb4b8e586b78caa00aee2dab9027248aac",
-    "encPrivateKeyEphemeralAddress": "0x440935e6c56281ba4630e9e15910ccb4b8e586b78caa00aee2dab9027248aad",
-    "encPrivateKeyEncKeyAddress": "0x440935e6c56281ba4630e9e15910ccb4b8e586b78caa00aee2dab9027248aae",
-    "channelExistsAddress": "0x4f06b03b13f7c07258b1511863de37c23aaeb1788ab31033485214777a2fbee",
-    "recipientChannelsBaseAddress": "0x5039a0f3a2efd831149644f87a421ded13d54721469cd2a552d761d2f523646",
-    "recipientChannelsElementAddress": "0x1964d92b29305036d5487cc7726d73ef02560413e3cb5a8358009f7651eeb6e",
-    "subchannelExistsAddress": "0x3751517ee3ad8e8c32d34b55e6c4997d36ccb713a20a95256b42a3dc387331d",
-    "subchannelTokensSaltAddress": "0x108e08a6481cf28ef8c73e1673e2cadaa0f8ee1ac790d188301786f7d8867ed",
-    "subchannelTokensEncTokenAddress": "0x108e08a6481cf28ef8c73e1673e2cadaa0f8ee1ac790d188301786f7d8867ee",
-    "notesAddress": "0x5d4262aaab99930ce4823d3409f1c043542f144522081296890bcf6b92a025d",
-    "nullifiersAddress": "0xac670230830586718e11a75d0b71104a960532c2e060f8eb0c5afbd3fc4def"
   },
   "outputs": {
     "channelKey": "0x29f111f2674fda971bbee26106be4792a4336860bea7f3c4289d9c8dc16a948",

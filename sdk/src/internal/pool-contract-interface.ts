@@ -58,4 +58,6 @@ export interface PoolContractInterface {
   get_public_key(userAddr: BigNumberish): BigNumberish | Promise<BigNumberish>;
   get_enc_private_key(userAddr: BigNumberish): EncPrivateKey | Promise<EncPrivateKey>;
   get_auditor_public_key(): BigNumberish | Promise<BigNumberish>;
+  get_fee_amount(): bigint | number | Promise<bigint | number>;
+  get_fee_collector(): BigNumberish | Promise<BigNumberish>;
 }

@@ -42,7 +42,7 @@ const INPUT_TYPE_MAP: Record<string, string> = {
 // Type mappings for OUTPUT/RETURN values
 const OUTPUT_TYPE_MAP: Record<string, string> = {
   "core::felt252": "BigNumberish",
-  "core::integer::u128": "bigint",
+  "core::integer::u128": "bigint | number",
   "core::integer::u64": "bigint | number",
   "core::integer::u32": "number",
   "core::starknet::contract_address::ContractAddress": "BigNumberish",
