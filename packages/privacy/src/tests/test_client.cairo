@@ -22,6 +22,7 @@ use snforge_std::{
     CheatSpan, EventSpyTrait, EventsFilterTrait, TokenTrait, cheat_tip, cheat_transaction_version,
     map_entry_address, spy_events,
 };
+use starknet::account::Call;
 use starknet::{ContractAddress, VALIDATED};
 use starkware_utils::erc20::erc20_errors::Erc20Error;
 use starkware_utils::errors::Describable;
@@ -4628,6 +4629,34 @@ fn test_execute_assertions() {
     user.privacy.cheat_zero_caller_address();
     let result = user.safe_execute_without_cheat(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_RESOURCE_PRICE);
+
+    // Catch EXPECTED_ONE_CALL (zero calls).
+    let result = test.privacy.safe_execute_with_calls(calls: array![]);
+    assert_panic_with_felt_error(:result, expected_error: errors::EXPECTED_ONE_CALL);
+
+    // Catch EXPECTED_ONE_CALL (2 calls).
+    let valid_call = *test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: user.address, user_private_key: user.private_key, client_actions: [].span(),
+        )[0];
+    let result = test.privacy.safe_execute_with_calls(calls: array![valid_call, valid_call]);
+    assert_panic_with_felt_error(:result, expected_error: errors::EXPECTED_ONE_CALL);
+
+    // Catch INVALID_CALL_TO.
+    let invalid_call = Call { to: user.address, ..valid_call };
+    let result = test.privacy.safe_execute_with_calls(calls: array![invalid_call]);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALL_TO);
+
+    // Catch INVALID_CALL_SELECTOR.
+    let invalid_call = Call { selector: selector!("invalid_selector"), ..valid_call };
+    let result = test.privacy.safe_execute_with_calls(calls: array![invalid_call]);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALL_SELECTOR);
+
+    // Catch INVALID_CALLDATA.
+    let invalid_call = Call { calldata: [0x0].span(), ..valid_call };
+    let result = test.privacy.safe_execute_with_calls(calls: array![invalid_call]);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLDATA);
 
     // Catch INVALID_SIGNATURE.
     let mut user_invalid = test.new_user_with_is_valid(is_valid: false);

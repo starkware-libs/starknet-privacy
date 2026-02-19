@@ -4,7 +4,7 @@ use core::ec::{EcPoint, EcPointTrait};
 use core::iter::Extend;
 use core::never;
 use core::num::traits::{WrappingAdd, WrappingSub, Zero};
-use privacy::actions::{ServerAction, WriteOnceInput};
+use privacy::actions::{ClientAction, ServerAction, WriteOnceInput};
 use privacy::errors;
 use privacy::errors::internal_errors;
 use privacy::hashes::{
@@ -18,6 +18,7 @@ use privacy::objects::{
 use privacy::utils::constants::{
     ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
 };
+use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{get_execution_info_v3_syscall, send_message_to_l1_syscall};
 use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
@@ -319,6 +320,23 @@ pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
     for resource_bounds in tx_info.resource_bounds {
         assert(resource_bounds.max_price_per_unit.is_zero(), errors::NON_ZERO_RESOURCE_PRICE);
     }
+}
+
+/// Asserts that the calls are valid and deserializes the calldata.
+/// Returns the input for `execute_view` function: (user_addr, user_private_key, client_actions).
+pub(crate) fn extract_execute_view_inputs(
+    calls: Array<Call>, contract_address: ContractAddress,
+) -> (ContractAddress, felt252, Span<ClientAction>) {
+    assert(calls.len() == 1, errors::EXPECTED_ONE_CALL);
+    let call = calls[0];
+    assert(*call.to == contract_address, errors::INVALID_CALL_TO);
+    assert(*call.selector == selector!("execute_view"), errors::INVALID_CALL_SELECTOR);
+    let mut serialized = *call.calldata;
+    let (user_addr, user_private_key, client_actions) = Serde::<
+        (ContractAddress, felt252, Span<ClientAction>),
+    >::deserialize(ref :serialized)
+        .expect(errors::INVALID_CALLDATA);
+    (user_addr, user_private_key, client_actions)
 }
 
 pub(crate) fn assert_valid_signature(user_addr: ContractAddress, tx_info: Box<TxInfo>) {
