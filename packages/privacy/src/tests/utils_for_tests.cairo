@@ -54,9 +54,9 @@ use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
 use starkware_utils_testing::test_utils::{
-    Deployable, TokenConfig, TokenHelperTrait, cheat_caller_address_once, generic_load,
-    set_account_as_app_governor, set_account_as_app_role_admin, set_account_as_security_agent,
-    set_account_as_token_admin,
+    Deployable, TokenConfig, TokenHelperTrait, advance_block_number_global,
+    cheat_caller_address_once, generic_load, set_account_as_app_governor,
+    set_account_as_app_role_admin, set_account_as_security_agent, set_account_as_token_admin,
 };
 
 pub impl NoteZero of Zero<Note> {
@@ -1641,6 +1641,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let message_hash = _compute_message_hash(:actions, contract_address: *self.address);
         let mut proof_facts: ProofFacts = Default::default();
         proof_facts.message_to_l1_hashes = [message_hash].span();
+        advance_block_number_global(blocks: 1);
         self._cheat_proof_facts(:proof_facts);
     }
 
