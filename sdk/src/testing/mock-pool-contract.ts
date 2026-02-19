@@ -177,6 +177,14 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     return 1n;
   }
 
+  get_fee_amount(): bigint | number {
+    return 0n;
+  }
+
+  get_fee_collector(): bigint {
+    return 0n;
+  }
+
   // ============ Helper Methods for Discovery ============
 
   /**
