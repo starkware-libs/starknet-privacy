@@ -301,10 +301,10 @@ pub(crate) fn packing(value_1: u128, value_2: u128) -> felt252 {
 /// Unpacks a single felt252 into two u128 values (120 bits for value_1, 128 bits for value_2).
 /// Inverse of `packing`: `packed_value = value_1 * 2^128 + value_2`
 pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
-    let packed_u256: u256 = packed_value.into();
+    let u256 { high, low } = packed_value.into();
     // Sanity check that value_1 (high bits) is 120 bits.
-    assert(packed_u256.high < TWO_POW_120, internal_errors::UNPACK1_OUT_OF_BOUNDS);
-    (packed_u256.high, packed_u256.low)
+    assert(high < TWO_POW_120, internal_errors::UNPACK1_OUT_OF_BOUNDS);
+    (high, low)
 }
 
 pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
