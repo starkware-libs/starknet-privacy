@@ -1388,7 +1388,8 @@ fn test_apply_actions_with_fee() {
     let test: Test = Default::default();
     let fee_amount = constants::DEFAULT_FEE_AMOUNT;
     let fee_collector = constants::DEFAULT_FEE_COLLECTOR;
-    test.privacy.set_fee(:fee_amount, :fee_collector);
+    test.privacy.set_fee_collector(:fee_collector);
+    test.privacy.set_fee_amount(:fee_amount);
     let strk_token = test.privacy.strk_token;
     assert!(fee_amount.is_non_zero());
     let privacy_address = test.privacy.address;
@@ -1436,7 +1437,8 @@ fn test_apply_actions_with_fee_assertions() {
     let test: Test = Default::default();
     let fee_amount = constants::DEFAULT_FEE_AMOUNT;
     let fee_collector = constants::DEFAULT_FEE_COLLECTOR;
-    test.privacy.set_fee(:fee_amount, :fee_collector);
+    test.privacy.set_fee_collector(:fee_collector);
+    test.privacy.set_fee_amount(:fee_amount);
     let strk_token = test.privacy.strk_token;
     let privacy_address = test.privacy.address;
     let caller: ContractAddress = 'BROKE_CALLER'.try_into().unwrap();
