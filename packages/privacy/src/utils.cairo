@@ -343,7 +343,7 @@ pub(crate) fn extract_server_actions_from_execute_and_panic(
 ) -> Span<ServerAction> {
     let origin_panic_data = syscall_result.expect_err(internal_errors::EXPECTED_PANIC).span();
     let mut panic_data = origin_panic_data;
-    // On success, the panic data should be [`OK_WRAPPER`, <deserialized server actions>,
+    // On success, the panic data should be [`OK_WRAPPER`, <serialized server actions>,
     // `OK_WRAPPER`, `ENTRYPOINT_FAILED`].
     if panic_data.pop_front() != Some(@OK_WRAPPER) {
         panic(origin_panic_data.into());
