@@ -268,7 +268,10 @@ pub mod Privacy {
                     ClientAction::Withdraw(input) => (
                         self.withdraw(:user_addr, :input, ref :token_balances), false,
                     ),
-                    ClientAction::InvokeExternal(input) => (self.invoke_external(:input), false),
+                    ClientAction::InvokeExternal(input) => {
+                        curr_phase = ClientActionTrait::FINAL_PHASE;
+                        (self.invoke_external(:input), false)
+                    },
                 };
                 if should_execute {
                     has_privacy_action = true;

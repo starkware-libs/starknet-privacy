@@ -266,6 +266,8 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
     const CREATE_NOTES_PHASE: u8 = 5;
     const WITHDRAW_PHASE: u8 = 6;
     const INVOKE_PHASE: u8 = 7;
+    /// Terminal phase; no actions allowed after invoke.
+    const FINAL_PHASE: u8 = 8;
 
     /// Returns the phase associated with this action.
     fn phase(self: @ClientAction) -> u8 {
