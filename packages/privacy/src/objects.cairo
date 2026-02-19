@@ -43,9 +43,9 @@ pub struct EncChannelInfo {
 pub impl EncChannelInfoImpl of EncChannelInfoTrait {
     /// Check if all the `EncChannelInfo`'s fields are non-zero.
     fn is_all_non_zero(self: @EncChannelInfo) -> bool {
-        return self.ephemeral_pubkey.is_non_zero()
+        self.ephemeral_pubkey.is_non_zero()
             && self.enc_channel_key.is_non_zero()
-            && self.enc_sender_addr.is_non_zero();
+            && self.enc_sender_addr.is_non_zero()
     }
 }
 
@@ -66,9 +66,9 @@ pub(crate) struct EncPrivateKey {
 pub impl EncPrivateKeyImpl of EncPrivateKeyTrait {
     /// Check if all the `EncPrivateKey`'s fields are non-zero.
     fn is_all_non_zero(self: @EncPrivateKey) -> bool {
-        return self.auditor_public_key.is_non_zero()
+        self.auditor_public_key.is_non_zero()
             && self.ephemeral_pubkey.is_non_zero()
-            && self.enc_private_key.is_non_zero();
+            && self.enc_private_key.is_non_zero()
     }
 }
 
@@ -98,9 +98,9 @@ pub(crate) struct EncUserAddr {
 pub impl EncUserAddrImpl of EncUserAddrTrait {
     /// Check if all the `EncUserAddr`'s fields are non-zero.
     fn is_all_non_zero(self: @EncUserAddr) -> bool {
-        return self.auditor_public_key.is_non_zero()
+        self.auditor_public_key.is_non_zero()
             && self.ephemeral_pubkey.is_non_zero()
-            && self.enc_user_addr.is_non_zero();
+            && self.enc_user_addr.is_non_zero()
     }
 }
 
