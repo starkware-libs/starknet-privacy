@@ -617,15 +617,18 @@ pub trait IViews<T> {
     /// #### Returns
     /// - (`felt252`): The auditor public key.
     fn get_auditor_public_key(self: @T) -> felt252;
+
+    /// Returns the fee amount in FRI.
+    fn get_fee_amount(self: @T) -> u128;
+
+    /// Returns the fee collector address.
+    fn get_fee_collector(self: @T) -> ContractAddress;
 }
 
 #[starknet::interface]
-pub trait IAuditor<T> {
+pub trait IAdmin<T> {
     fn set_auditor_public_key(ref self: T, auditor_public_key: felt252);
-}
 
-#[starknet::interface]
-pub trait IFees<T> {
     /// Sets the fee amount and fee collector for `apply_actions` calls.
     ///
     /// #### Parameters
@@ -640,10 +643,4 @@ pub trait IFees<T> {
     /// #### Access Control
     /// - Only app governor.
     fn set_fee(ref self: T, fee_amount: u128, fee_collector: ContractAddress);
-
-    /// Returns the current fee amount in FRI.
-    fn get_fee_amount(self: @T) -> u128;
-
-    /// Returns the current fee collector address.
-    fn get_fee_collector(self: @T) -> ContractAddress;
 }
