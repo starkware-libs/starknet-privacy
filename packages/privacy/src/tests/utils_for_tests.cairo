@@ -52,9 +52,9 @@ use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
 use starkware_utils_testing::test_utils::{
-    Deployable, TokenConfig, TokenHelperTrait, cheat_caller_address_once, generic_load,
-    set_account_as_app_governor, set_account_as_app_role_admin, set_account_as_security_agent,
-    set_account_as_token_admin,
+    Deployable, TokenConfig, TokenHelperTrait, advance_block_number_global,
+    cheat_caller_address_once, generic_load, set_account_as_app_governor,
+    set_account_as_app_role_admin, set_account_as_security_agent, set_account_as_token_admin,
 };
 
 pub impl NoteZero of Zero<Note> {

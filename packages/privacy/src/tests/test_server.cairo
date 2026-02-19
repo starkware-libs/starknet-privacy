@@ -636,6 +636,8 @@ fn test_apply_actions_assertions() {
     let mut test: Test = Default::default();
     let actions = [].span();
     let proof_facts: ProofFacts = Default::default();
+    // Advance so proof base block is in the past (required for strict < check).
+    advance_block_number_global(blocks: 1);
 
     // Catch EMPTY_PROOF_FACTS (no proof facts cheated).
     let result = test.privacy.safe_apply_actions_without_cheat(:actions);
@@ -697,7 +699,7 @@ fn test_apply_actions_assertions() {
         .safe_apply_actions_with_proof_facts(:actions, proof_facts: proof_facts_expired);
     assert_panic_with_felt_error(:result, expected_error: errors::PROOF_EXPIRED);
 
-    // Catch INVALID_BASE_BLOCK_NUMBER.
+    // Catch INVALID_BASE_BLOCK_NUMBER (future block).
     let mut proof_facts_invalid_base_block_number = proof_facts;
     proof_facts_invalid_base_block_number.base_block_number = get_block_number() + 1;
     let result = test
@@ -705,6 +707,14 @@ fn test_apply_actions_assertions() {
         .safe_apply_actions_with_proof_facts(
             :actions, proof_facts: proof_facts_invalid_base_block_number,
         );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_BASE_BLOCK_NUMBER);
+
+    // Catch INVALID_BASE_BLOCK_NUMBER (current block; proof base must be strictly in the past).
+    let mut proof_facts_current_block = proof_facts;
+    proof_facts_current_block.base_block_number = get_block_number();
+    let result = test
+        .privacy
+        .safe_apply_actions_with_proof_facts(:actions, proof_facts: proof_facts_current_block);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_BASE_BLOCK_NUMBER);
 }
 
