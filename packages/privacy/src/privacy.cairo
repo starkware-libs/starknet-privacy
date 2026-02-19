@@ -33,7 +33,7 @@ pub mod Privacy {
     };
     use privacy::{errors, events};
     use starknet::storage::{
-        Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
+        Map, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::storage_access::{
@@ -820,7 +820,7 @@ pub mod Privacy {
         }
 
         fn _apply_read_assert(ref self: ContractState, storage_address: felt252, value: felt252) {
-            let target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
+            let target = StorageBase::<felt252> { __base_address__: storage_address };
             let current_value = target.read();
             assert(current_value == value, errors::VALUE_MISMATCH);
         }
