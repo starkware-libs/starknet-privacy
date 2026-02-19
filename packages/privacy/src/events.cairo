@@ -84,9 +84,14 @@ pub struct NoteUsed {
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
-pub struct FeeSet {
+pub struct FeeAmountSet {
     /// The fee amount in FRI per `apply_actions` call.
+    #[key]
     pub fee_amount: u128,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct FeeCollectorSet {
     /// The address that receives the fee.
     #[key]
     pub fee_collector: ContractAddress,
