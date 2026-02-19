@@ -5303,6 +5303,20 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (invoke -> second invoke; final phase allows no actions).
+    let dummy_invoke = InvokeExternalInput {
+        contract_address: test.privacy.swap_executor.address, calldata: [].span(),
+    };
+    let client_actions = [
+        ClientAction::InvokeExternal(invoke_external_input),
+        ClientAction::InvokeExternal(dummy_invoke),
+    ]
+        .span();
+    let result = user.safe_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 }
 
 #[test]
@@ -6295,6 +6309,27 @@ fn test_swap_without_withdraw_fails() {
     assert_panic_with_felt_error(
         :result, expected_error: mock_swap_executor_errors::INSUFFICIENT_BALANCE,
     );
+}
+
+#[test]
+fn test_multiple_invoke_external_reverts() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+
+    let dummy_invoke = InvokeExternalInput {
+        contract_address: test.privacy.swap_executor.address, calldata: [].span(),
+    };
+    let client_actions = [
+        ClientAction::InvokeExternal(dummy_invoke), ClientAction::InvokeExternal(dummy_invoke),
+    ]
+        .span();
+
+    let result = user.safe_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 }
 
 #[test]

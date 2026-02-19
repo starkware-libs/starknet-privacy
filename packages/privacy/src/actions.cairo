@@ -266,6 +266,8 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
     const CREATE_NOTES_PHASE: u8 = 5;
     const WITHDRAW_PHASE: u8 = 6;
     const INVOKE_PHASE: u8 = 7;
+    /// Terminal phase; no actions allowed after invoke.
+    const FINAL_PHASE: u8 = 8;
 
     /// Returns the phase associated with this action.
     fn phase(self: @ClientAction) -> u8 {
@@ -279,6 +281,18 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
             ClientAction::UseNote(_) => Self::USE_NOTES_PHASE,
             ClientAction::Withdraw(_) => Self::WITHDRAW_PHASE,
             ClientAction::InvokeExternal(_) => Self::INVOKE_PHASE,
+        }
+    }
+
+    /// Asserts action_phase >= curr_phase (ACTIONS_OUT_OF_ORDER) and returns the phase to advance
+    /// to.
+    /// InvokeExternal advances to FINAL_PHASE; all other actions advance to their own phase.
+    fn assert_phase_and_advance(action_phase: u8, curr_phase: u8) -> u8 {
+        assert(action_phase >= curr_phase, errors::ACTIONS_OUT_OF_ORDER);
+        if action_phase == Self::INVOKE_PHASE {
+            Self::FINAL_PHASE
+        } else {
+            action_phase
         }
     }
 }
