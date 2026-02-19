@@ -25,13 +25,17 @@ pub trait IClient<T> {
     ///   the user to a recipient.
     ///   - [`OpenSubchannel`](privacy::actions::ClientAction::OpenSubchannel): Open a new
     ///   subchannel (of specific token) from the user to a recipient.
+    ///   - [`CreateEncNote`](privacy::actions::ClientAction::CreateEncNote): Creates a new
+    ///   encrypted note with a specified amount.
+    ///   - [`CreateOpenNote`](privacy::actions::ClientAction::CreateOpenNote): Creates a new open
+    ///   note (zero-value, to be filled by a server action).
     ///   - [`Deposit`](privacy::actions::ClientAction::Deposit): Deposit funds into the contract.
     ///   - [`UseNote`](privacy::actions::ClientAction::UseNote): Uses up a note (creates a
     ///   nullifier for it).
-    ///   - [`CreateNote`](privacy::actions::ClientAction::CreateNote): Creates a new note based on
-    ///   the specified input.
     ///   - [`Withdraw`](privacy::actions::ClientAction::Withdraw): Withdraw funds from the
     ///   contract.
+    ///   - [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal): Invokes an external
+    ///   contract (forwards as a server-side Invoke action).
     ///
     /// #### Returns
     /// None
@@ -45,20 +49,15 @@ pub trait IClient<T> {
     /// - The TX signature must be valid for `user_addr`.
     /// - `client_actions` must be valid sequential actions to execute on the current state of the
     /// contract.
-    /// - `client_actions` must be ordered in the order of the
-    /// [`ClientAction`](privacy::actions::ClientAction) enum:
-    /// [`SetViewingKey`](privacy::actions::ClientAction::SetViewingKey),
-    /// [`OpenChannel`](privacy::actions::ClientAction::OpenChannel),
-    /// [`OpenSubchannel`](privacy::actions::ClientAction::OpenSubchannel),
-    /// [`Deposit`](privacy::actions::ClientAction::Deposit),
-    /// [`UseNote`](privacy::actions::ClientAction::UseNote),
-    /// [`CreateNote`](privacy::actions::ClientAction::CreateNote),
-    /// [`Withdraw`](privacy::actions::ClientAction::Withdraw).
+    /// - `client_actions` must be ordered by phase: SetViewingKey, OpenChannel, OpenSubchannel,
+    /// Deposit, UseNote, CreateEncNote/CreateOpenNote, Withdraw, InvokeExternal.
     /// - At most one [`SetViewingKey`](privacy::actions::ClientAction::SetViewingKey) action is
     /// allowed per transaction.
     /// - At least one privacy-related action must be included
-    /// ([`Deposit`](privacy::actions::ClientAction::Deposit) and
-    /// [`Withdraw`](privacy::actions::ClientAction::Withdraw) are not privacy-related actions).
+    /// ([`Deposit`](privacy::actions::ClientAction::Deposit),
+    /// [`Withdraw`](privacy::actions::ClientAction::Withdraw), and
+    /// [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) are not
+    /// privacy-related).
     ///
     /// #### Events Emitted
     /// None
@@ -157,6 +156,7 @@ pub trait IClient<T> {
     /// - [`ZERO_RECIPIENT_PUBLIC_KEY`](privacy::errors::ZERO_RECIPIENT_PUBLIC_KEY): Thrown if the
     /// recipient public key is zero.
     /// - [`ZERO_RANDOM`](privacy::errors::ZERO_RANDOM): Thrown if the random value is zero.
+    /// - [`ZERO_SALT`](privacy::errors::ZERO_SALT): Thrown if the salt is zero.
     /// - [`SENDER_NOT_REGISTERED`](privacy::errors::SENDER_NOT_REGISTERED): Thrown if the sender is
     /// not registered with a viewing key.
     /// - [`SENDER_NOT_AUTHENTICATED`](privacy::errors::SENDER_NOT_AUTHENTICATED): Thrown if the
@@ -176,6 +176,7 @@ pub trait IClient<T> {
     /// - [`ZERO_CHANNEL_KEY`](privacy::errors::ZERO_CHANNEL_KEY): Thrown if the channel key is
     /// zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
+    /// - [`ZERO_SALT`](privacy::errors::ZERO_SALT): Thrown if the salt is zero.
     /// - [`INVALID_CHANNEL`](privacy::errors::INVALID_CHANNEL): Thrown if the channel does not
     /// exist.
     /// - [`INDEX_NOT_SEQUENTIAL`](privacy::errors::INDEX_NOT_SEQUENTIAL): Thrown if the subchannel
@@ -194,16 +195,20 @@ pub trait IClient<T> {
     /// - [`SUBCHANNEL_NOT_FOUND`](privacy::errors::SUBCHANNEL_NOT_FOUND): Thrown if the subchannel
     /// does not exist.
     /// - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if the note does not exist.
+    /// - [`ZERO_NOTE_AMOUNT_USAGE`](privacy::errors::ZERO_NOTE_AMOUNT_USAGE): Thrown if the note
+    /// has zero amount (e.g. open note not yet deposited to).
     /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the nullifier already
     /// exists (the note already spent before).
     ///
-    /// **Errors for [`CreateNote`](privacy::actions::ClientAction::CreateNote) action:**
+    /// **Errors for [`CreateEncNote`](privacy::actions::ClientAction::CreateEncNote) action:**
     /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if the recipient
     /// address is zero.
     /// - [`ZERO_RECIPIENT_PUBLIC_KEY`](privacy::errors::ZERO_RECIPIENT_PUBLIC_KEY): Thrown if the
     /// recipient public key is zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
-    /// - [`SALT_TOO_SMALL`](privacy::errors::SALT_TOO_SMALL): Thrown if the salt < 2.
+    /// - [`ZERO_SALT`](privacy::errors::ZERO_SALT): Thrown if the salt is zero.
+    /// - [`SALT_TOO_SMALL`](privacy::errors::SALT_TOO_SMALL): Thrown if the salt is not greater
+    /// than [`OPEN_NOTE_SALT`](privacy::utils::constants::OPEN_NOTE_SALT) (i.e. salt <= 1).
     /// - [`SALT_EXCEEDS_120_BITS`](privacy::errors::SALT_EXCEEDS_120_BITS): Thrown if the salt
     /// exceeds 120 bits.
     /// - [`SUBCHANNEL_NOT_FOUND`](privacy::errors::SUBCHANNEL_NOT_FOUND): Thrown if the subchannel
@@ -214,14 +219,33 @@ pub trait IClient<T> {
     /// if token balances become negative during execution.
     /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the note id already exists.
     ///
+    /// **Errors for [`CreateOpenNote`](privacy::actions::ClientAction::CreateOpenNote) action:**
+    /// - [`ZERO_RECIPIENT_ADDR`](privacy::errors::ZERO_RECIPIENT_ADDR): Thrown if the recipient
+    /// address is zero.
+    /// - [`ZERO_RECIPIENT_PUBLIC_KEY`](privacy::errors::ZERO_RECIPIENT_PUBLIC_KEY): Thrown if the
+    /// recipient public key is zero.
+    /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
+    /// - [`ZERO_DEPOSITOR`](privacy::errors::ZERO_DEPOSITOR): Thrown if the depositor address is
+    /// zero.
+    /// - [`ZERO_RANDOM`](privacy::errors::ZERO_RANDOM): Thrown if the random value is zero.
+    /// - [`SUBCHANNEL_NOT_FOUND`](privacy::errors::SUBCHANNEL_NOT_FOUND): Thrown if the subchannel
+    /// does not exist.
+    /// - [`INDEX_NOT_SEQUENTIAL`](privacy::errors::INDEX_NOT_SEQUENTIAL): Thrown if the note index
+    /// is not sequential.
+    /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the note id already exists.
+    ///
     /// **Errors for [`Withdraw`](privacy::actions::ClientAction::Withdraw) action:**
-    /// - [`ZERO_WITHDRAWAL_TARGET`](privacy::errors::ZERO_WITHDRAWAL_TARGET): Thrown if the
-    /// withdrawal target address is zero.
+    /// - [`ZERO_TO_ADDR`](privacy::errors::ZERO_TO_ADDR): Thrown if the withdrawal target address
+    /// is zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
     /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if the withdrawal amount is zero.
     /// - [`ZERO_RANDOM`](privacy::errors::ZERO_RANDOM): Thrown if the random value is zero.
     /// - [`NEGATIVE_INTERMEDIATE_BALANCE`](privacy::errors::NEGATIVE_INTERMEDIATE_BALANCE): Thrown
     /// if token balances become negative during execution.
+    ///
+    /// **Errors for [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) action:**
+    /// - [`ZERO_CONTRACT_ADDRESS`](privacy::errors::ZERO_CONTRACT_ADDRESS): Thrown if the target
+    /// contract address is zero.
     ///
     /// #### Access Control
     /// - Any address can call this function.
@@ -294,16 +318,28 @@ pub trait IClient<T> {
     /// **For [`UseNote`](privacy::actions::ClientAction::UseNote) action:**
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the nullifier to storage
     /// to mark the note as spent.
+    /// - [`EmitNoteUsed`](privacy::actions::ServerAction::EmitNoteUsed): Emits a
+    /// [`NoteUsed`](privacy::events::NoteUsed) event.
     ///
-    /// **For [`CreateNote`](privacy::actions::ClientAction::CreateNote) action:**
+    /// **For [`CreateEncNote`](privacy::actions::ClientAction::CreateEncNote) action:**
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the encrypted note to
     /// storage.
+    ///
+    /// **For [`CreateOpenNote`](privacy::actions::ClientAction::CreateOpenNote) action:**
+    /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the open note to
+    /// storage.
+    /// - [`EmitOpenNoteCreated`](privacy::actions::ServerAction::EmitOpenNoteCreated): Emits an
+    /// [`OpenNoteCreated`](privacy::events::OpenNoteCreated) event.
     ///
     /// **For [`Withdraw`](privacy::actions::ClientAction::Withdraw) action:**
     /// - [`TransferTo`](privacy::actions::ServerAction::TransferTo): Transfers tokens from the
     /// contract to the withdrawal target via ERC20 `transfer`.
     /// - [`EmitWithdrawal`](privacy::actions::ServerAction::EmitWithdrawal): Emits a
     /// [`Withdrawal`](privacy::events::Withdrawal) event.
+    ///
+    /// **For [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) action:**
+    /// - [`Invoke`](privacy::actions::ServerAction::Invoke): Invokes the target contract with the
+    /// given calldata.
     ///
     /// #### Preconditions
     /// - `user_addr` must not be zero.
@@ -396,13 +432,20 @@ pub trait IServer<T> {
     ///   [`Withdrawal`](privacy::events::Withdrawal) event.
     ///   - [`EmitDeposit`](privacy::actions::ServerAction::EmitDeposit): Emit a
     ///   [`Deposit`](privacy::events::Deposit) event.
+    ///   - [`EmitOpenNoteCreated`](privacy::actions::ServerAction::EmitOpenNoteCreated): Emit an
+    ///   [`OpenNoteCreated`](privacy::events::OpenNoteCreated) event.
+    ///   - [`EmitNoteUsed`](privacy::actions::ServerAction::EmitNoteUsed): Emit a
+    ///   [`NoteUsed`](privacy::events::NoteUsed) event.
+    ///   - [`Invoke`](privacy::actions::ServerAction::Invoke): Invoke an external contract.
     ///
     /// #### Returns
     /// None
     ///
     /// #### Preconditions
     /// - The contract must not be paused.
-    /// - `proof_facts` field in the TX info must be valid.
+    /// - The caller must have sufficient STRK balance and allowance to pay the fee (see
+    /// [`get_fee_amount`](privacy::interface::IFees::get_fee_amount)).
+    /// - `proof_facts` in the TX info must be valid for the given `actions` (see Reverts).
     /// - For [`WriteOnce`](privacy::actions::ServerAction::WriteOnce) actions, the storage location
     /// must be empty (zero) before writing.
     /// - For [`ReadAssert`](privacy::actions::ServerAction::ReadAssert) actions, the storage
@@ -418,8 +461,29 @@ pub trait IServer<T> {
     /// [`EmitWithdrawal`](privacy::actions::ServerAction::EmitWithdrawal) action is executed.
     /// - [`Deposit`](privacy::events::Deposit): Emitted when
     /// [`EmitDeposit`](privacy::actions::ServerAction::EmitDeposit) action is executed.
+    /// - [`OpenNoteCreated`](privacy::events::OpenNoteCreated): Emitted when
+    /// [`EmitOpenNoteCreated`](privacy::actions::ServerAction::EmitOpenNoteCreated) action is
+    /// executed.
+    /// - [`NoteUsed`](privacy::events::NoteUsed): Emitted when
+    /// [`EmitNoteUsed`](privacy::actions::ServerAction::EmitNoteUsed) action is executed.
     ///
     /// #### Reverts
+    /// **Context validation (before applying actions):**
+    /// - Thrown if the contract is paused (from Pausable component).
+    /// - [`PROOF_FACTS_DESERIALIZE_ERROR`](privacy::errors::PROOF_FACTS_DESERIALIZE_ERROR): Thrown
+    /// if `proof_facts` in the TX info cannot be deserialized.
+    /// - [`INVALID_PROGRAM_VARIANT`](privacy::errors::INVALID_PROGRAM_VARIANT): Thrown if the proof
+    /// program variant is invalid.
+    /// - [`INVALID_OS_OUTPUT_VERSION`](privacy::errors::INVALID_OS_OUTPUT_VERSION): Thrown if the
+    /// proof OS output version is invalid.
+    /// - [`INVALID_BASE_BLOCK_NUMBER`](privacy::errors::INVALID_BASE_BLOCK_NUMBER): Thrown if the
+    /// proof block number is in the future.
+    /// - [`PROOF_EXPIRED`](privacy::errors::PROOF_EXPIRED): Thrown if the proof is too old.
+    /// - [`INVALID_PROOF_MSG`](privacy::errors::INVALID_PROOF_MSG): Thrown if the proof message
+    /// hash does not match the computed hash of the actions.
+    /// - Fee collection (STRK transfer from caller to fee collector) may revert with ERC20 errors
+    /// (e.g. insufficient balance or allowance) when fee is non-zero.
+    ///
     /// **Errors for [`WriteOnce`](privacy::actions::ServerAction::WriteOnce) action:**
     /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the value at the specified
     /// storage path already exists (is not zero).
@@ -434,10 +498,15 @@ pub trait IServer<T> {
     /// - `INSUFFICIENT_ALLOWANCE`: Thrown if the sender has insufficient token allowance (from
     /// ERC20 contract).
     ///
+    /// **Errors for [`Invoke`](privacy::actions::ServerAction::Invoke) action:**
+    /// - The invoked contract may revert with any error.
+    ///
     /// #### Access Control
     /// - Any address can call this function.
     ///
     /// #### Notes
+    /// - A fee (in STRK) is collected from the caller before applying actions when
+    /// [`get_fee_amount`](privacy::interface::IFees::get_fee_amount) is non-zero.
     /// - All actions are applied sequentially in the order they appear in the span.
     /// - If any action fails, the entire transaction reverts and no state changes are applied.
     fn apply_actions(ref self: T, actions: Span<ServerAction>);
@@ -457,6 +526,7 @@ pub trait IServer<T> {
     /// None
     ///
     /// #### Preconditions
+    /// - The contract must not be paused.
     /// - `note_id` must not be zero.
     /// - `token` must not be zero.
     /// - `amount` must not be zero.
@@ -472,6 +542,7 @@ pub trait IServer<T> {
     /// succeeds.
     ///
     /// #### Reverts
+    /// - `PAUSED`: Thrown if the contract is paused.
     /// - [`ZERO_NOTE_ID`](privacy::errors::ZERO_NOTE_ID): Thrown if `note_id` is zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if `token` is zero.
     /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
@@ -566,6 +637,9 @@ pub trait IViews<T> {
 
     /// Returns the note for a given note id.
     ///
+    /// The [`Note`](privacy::objects::Note) struct contains `packed_value` (salt and amount),
+    /// `token`, and `depositor` (zero for encrypted notes).
+    ///
     /// #### Parameters
     /// - `note_id` (`felt252`): The id of the note.
     ///
@@ -618,15 +692,49 @@ pub trait IViews<T> {
     /// - (`felt252`): The auditor public key.
     fn get_auditor_public_key(self: @T) -> felt252;
 
-    /// Returns the fee amount in FRI.
+
+    /// Returns the fee amount charged per `apply_actions` call.
+    ///
+    /// #### Parameters
+    /// None
+    ///
+    /// #### Returns
+    /// - (`u128`): The fee amount in FRI. Zero when fees are disabled.
     fn get_fee_amount(self: @T) -> u128;
 
     /// Returns the fee collector address.
+    ///
+    /// #### Parameters
+    /// None
+    ///
+    /// #### Returns
+    /// - (`ContractAddress`): The fee collector address.
     fn get_fee_collector(self: @T) -> ContractAddress;
 }
 
 #[starknet::interface]
 pub trait IAdmin<T> {
+    /// Sets the auditor public key used for encrypting user private keys and withdrawal addresses.
+    ///
+    /// This key is used to encrypt user private keys (so only the auditor can decrypt them) and to
+    /// encrypt the user address when withdrawing. Only the token admin can call this function.
+    ///
+    /// #### Parameters
+    /// - `auditor_public_key` (`felt252`): The new auditor public key. Must be non-zero.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Events Emitted
+    /// - [`AuditorPublicKeySet`](privacy::events::AuditorPublicKeySet): Emitted with the new
+    /// auditor public key.
+    ///
+    /// #### Reverts
+    /// - [`ZERO_AUDITOR_PUBLIC_KEY`](privacy::errors::ZERO_AUDITOR_PUBLIC_KEY): Thrown if
+    /// `auditor_public_key` is zero.
+    ///
+    /// #### Access Control
+    /// - Only token admin.
     fn set_auditor_public_key(ref self: T, auditor_public_key: felt252);
 
     /// Sets the fee amount and fee collector for `apply_actions` calls.
@@ -635,6 +743,12 @@ pub trait IAdmin<T> {
     /// - `fee_amount` (`u128`): The fee amount in FRI per transaction. Set to 0 to disable fees.
     /// - `fee_collector` (`ContractAddress`): The address that receives the fee. Must be non-zero
     /// when `fee_amount` is non-zero.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Events Emitted
+    /// - [`FeeSet`](privacy::events::FeeSet): Emitted with the new fee amount and fee collector.
     ///
     /// #### Reverts
     /// - [`ZERO_FEE_COLLECTOR`](privacy::errors::ZERO_FEE_COLLECTOR): Thrown if `fee_amount` is
