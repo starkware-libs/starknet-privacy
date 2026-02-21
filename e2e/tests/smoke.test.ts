@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { constants } from "starknet";
-import { Devnet, CallMockProofProvider, IndexerDiscoveryProvider } from "starknet-sdk/testing";
-import { createPrivateTransfers, SetupRequirement } from "starknet-sdk";
+import { Devnet, CallMockProofProvider, IndexerDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
+import { createPrivateTransfers, SetupRequirement } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../src/harness.js";
 
 describe("E2E Smoke", () => {

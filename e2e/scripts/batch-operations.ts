@@ -33,12 +33,12 @@ import {
   type constants,
   type OutsideExecutionOptions,
 } from "starknet";
-import { IndexerDiscoveryProvider } from "starknet-sdk/testing";
+import { IndexerDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
 import {
   createPrivateTransfers,
   ProvingServiceProofProvider,
   type TokenOperationsBuilder,
-} from "starknet-sdk";
+} from "@starkware-libs/starknet-privacy-sdk";
 interface AccountEntry {
   name: string;
   address: string;

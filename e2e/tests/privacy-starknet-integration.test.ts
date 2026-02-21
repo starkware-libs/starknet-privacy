@@ -6,12 +6,12 @@ import {
   type constants,
   type OutsideExecutionOptions,
 } from "starknet";
-import { IndexerDiscoveryProvider } from "starknet-sdk/testing";
+import { IndexerDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
 import {
   createPrivateTransfers,
   ProvingServiceProofProvider,
   SetupRequirement,
-} from "starknet-sdk";
+} from "@starkware-libs/starknet-privacy-sdk";
 import { IndexerClient } from "../src/indexer-client.js";
 import { declarePoolClass } from "../src/harness.js";
 
