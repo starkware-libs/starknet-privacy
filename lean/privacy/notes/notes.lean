@@ -1,5 +1,6 @@
 import privacy.actions
 import privacy.utils
+import privacy.transactions.immutability
 
 def note_exists (m: Memory) (note_id: ℕ) : Prop :=
     m .Notes [note_id, 0] ≠ 0
@@ -42,3 +43,23 @@ theorem note_exists_monotone {crypto: Crypto} {rm: ReachableMemory crypto} {acti
   case OpenDeposit inp => exact (note_exists_open_deposit success note_id).2 h
 
   all_goals exact h
+
+structure UserPrivKey (crypto: Crypto) (m: Memory) where
+  addr: ℕ
+  k: crypto.PrivateKeys
+  h_k: m MemoryType.PublicKeys [addr] = crypto.priv_to_pub k
+
+abbrev UserPrivKey.extend
+    {crypto: Crypto} {rm rm': ReachableMemory crypto}
+    (bob: UserPrivKey crypto rm)
+    (h_extends: rm'.extends rm) :
+    UserPrivKey crypto rm' :=
+  {
+    addr := bob.addr,
+    k := bob.k,
+    h_k := by
+      rw [←bob.h_k]
+      apply immutability h_extends _ (by simp)
+      rw [bob.h_k]
+      apply crypto.zero_not_public_key
+  }

@@ -184,3 +184,11 @@ theorem NoteImplies.from_open_note_event
         contradiction
 
     all_goals contradiction
+
+theorem NoteImplies.extend
+    {crypto: Crypto} {rm₀ rm₁: ReachableMemory crypto} {inp: CreateNoteInput}
+    (h_extends: rm₁.extends rm₀) (note_imp: NoteImplies rm₀ inp) :
+    Nonempty (NoteImplies rm₁ inp) := by
+  apply NoteImplies.from_action
+  obtain ⟨ℓ, h_extends⟩ := h_extends
+  simp [←h_extends, note_imp.h_action]

@@ -137,11 +137,12 @@ def use_note (crypto: Crypto) (inp: UseNoteInput) (m: Memory) : List ServerActio
   let dec_amount := note_amount crypto m (inp.note_id crypto) inp.c inp.token inp.i
   ([
     .WriteOnce .Nullifiers [inp.nullifier crypto] 1,
+    .Event (.UseNote (inp.nullifier crypto)),
   ], subchannel_exists ∧ r ≠ 0 ∧ dec_amount = inp.amount ∧ inp.kbob ∈ crypto.PrivateKeys ∧ inp.amount ≠ 0)
 
--------------
--- Deposit --
--------------
+-----------------------
+-- Open-note deposit --
+-----------------------
 
 -- Deposit funds into an open note.
 structure OpenDepositInput where
@@ -150,6 +151,21 @@ structure OpenDepositInput where
 def open_deposit (_crypto: Crypto) (inp: OpenDepositInput) (_m: Memory) : List ServerAction × Bool :=
   ([
     .OpenDeposit inp.note_id inp.amount inp.token
+  ], true)
+
+--------------
+-- Withdraw --
+--------------
+
+structure WithdrawInput where
+  (addralice amount token: ℕ)
+
+def WithdrawInput.user_enc (crypto: Crypto) (inp: WithdrawInput) : ℕ :=
+  crypto.enc crypto.council_pub_key [inp.addralice]
+
+def withdraw (crypto: Crypto) (inp: WithdrawInput) (_m: Memory) : List ServerAction × Bool :=
+  ([
+    .Event (.Withdraw (inp.user_enc crypto) inp.amount inp.token)
   ], true)
 
 ------------
@@ -163,6 +179,7 @@ inductive Action where
   | CreateNote (inp: CreateNoteInput)
   | UseNote (inp: UseNoteInput)
   | OpenDeposit (inp: OpenDepositInput)
+  | Withdraw (inp: WithdrawInput)
 
 abbrev filter_CreateNote (action: Action) : Option CreateNoteInput :=
   match action with
@@ -189,4 +206,13 @@ abbrev filter_OpenDeposit (action: Action) : Option OpenDepositInput :=
 
 theorem filter_OpenDeposit_some (action: Action) :
     filter_OpenDeposit action = some inp ↔ action = .OpenDeposit inp := by
+  cases action; all_goals simp
+
+abbrev filter_Withdraw (action: Action) : Option WithdrawInput :=
+  match action with
+    | .Withdraw inp => some inp
+    | _ => none
+
+theorem filter_Withdraw_some (action: Action) :
+    filter_Withdraw action = some inp ↔ action = .Withdraw inp := by
   cases action; all_goals simp
