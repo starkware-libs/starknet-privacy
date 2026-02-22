@@ -130,10 +130,9 @@ structure OpenSubchannelInfo (crypto: Crypto) (inp: OpenSubchannelInput) (m: Mem
   h_m': m' = (open_subchannel crypto inp m |> process_action crypto m).m
   r_ne_zero: inp.r ≠ 0
   channel_exists: m .ChannelMarkers [crypto.hash [inp.c, inp.addralice, inp.addrbob, inp.Kbob]] ≠ 0
-  prev_subchannel_exists: inp.k₁ = 0 ∨ m .SubchannelTokens [crypto.hash [inp.c, inp.k₀, inp.k₁ - 1], 0] ≠ 0
+  prev_subchannel_exists: inp.k = 0 ∨ m .SubchannelTokens [crypto.hash [inp.c, inp.k - 1], 0] ≠ 0
   old_token_was_zero: m .SubchannelTokens [inp.subchannel_id crypto, 0] = 0
   old_hash_was_zero: m .SubchannelMarkers [inp.subchannel_marker crypto] = 0
-  k₀_lt_MAX_K₀: inp.k₀ < crypto.MAX_K₀
   no_change: ∀ t, ∀ x,
     (t, x) ≠ (.SubchannelMarkers, [inp.subchannel_marker crypto]) →
     (t, x) ≠ (.SubchannelTokens, [inp.subchannel_id crypto, 0]) →
@@ -156,7 +155,7 @@ def open_subchannel_info
     Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true, decide_eq_false_iff_not,
     Bool.or_eq_true, decide_eq_true_eq] at success₀ success₁
 
-  let ⟨r_ne_zero, channel_exists, prev_subchannel_exists, k₀_lt_MAX_K₀⟩ := success₀
+  let ⟨r_ne_zero, channel_exists, prev_subchannel_exists⟩ := success₀
   simp only [ServerAction.run_all, ServerAction.run, List.foldl_cons, Bool.true_and,
     ne_eq, Prod.mk.injEq, reduceCtorEq, List.cons.injEq, List.ne_cons_self, and_false, and_self,
     not_false_eq_true, write_ne, List.foldl_nil, Bool.and_eq_true, decide_eq_true_eq] at success₁
@@ -170,7 +169,6 @@ def open_subchannel_info
     prev_subchannel_exists := prev_subchannel_exists,
     old_token_was_zero := old_token_was_zero,
     old_hash_was_zero := old_hash_was_zero,
-    k₀_lt_MAX_K₀ := k₀_lt_MAX_K₀,
     no_change := by
       intro t x h₀ h₁ h₂
       simp [m', h₀, h₁, h₂, open_subchannel, ServerAction.run_all, ServerAction.run]

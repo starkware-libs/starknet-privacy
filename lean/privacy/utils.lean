@@ -41,7 +41,6 @@ structure Crypto where
   unpack: ℕ → ℕ × ℕ
   unpack_pack: ∀ x y, unpack (pack x y) = (x, y)
   unpack_zero: unpack 0 = (0, 0)
-  MAX_K₀ : ℕ
   council_priv_key: PrivateKeys
   council_pub_key: ℕ
   h_council_priv_key: council_pub_key = priv_to_pub council_priv_key
