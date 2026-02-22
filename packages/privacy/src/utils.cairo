@@ -83,7 +83,7 @@ pub(crate) fn encrypt_subchannel_info(
 
 /// Computes the shared x-coordinate for ECDH.
 /// Assumes all the inputs are not zero.
-/// Returns (`ephemeral_public_key` (x-coordinate), `shared_secret` (x-coordinate)).
+/// Returns non-zero (`ephemeral_public_key` (x-coordinate), `shared_secret` (x-coordinate)).
 ///
 /// High-level overview:
 /// - `ephemeral_secret` is a freshly generated random scalar `r`.
@@ -95,10 +95,12 @@ fn _compute_shared_x(ephemeral_secret: felt252, public_key: felt252) -> (felt252
     // Compute ephemeral public key.
     let ephemeral_pub_point = GEN_P().mul(scalar: ephemeral_secret);
     let ephemeral_pub_x = ephemeral_pub_point.try_into().unwrap().x();
+    assert(ephemeral_pub_x.is_non_zero(), internal_errors::ZERO_EPHEMERAL_PUBKEY);
     // Compute shared point.
     let public_point = EcPointTrait::new_from_x(x: public_key).unwrap();
     let shared_point = public_point.mul(scalar: ephemeral_secret);
     let shared_x = shared_point.try_into().unwrap().x();
+    assert(shared_x.is_non_zero(), internal_errors::ZERO_SHARED);
     (ephemeral_pub_x, shared_x)
 }
 
