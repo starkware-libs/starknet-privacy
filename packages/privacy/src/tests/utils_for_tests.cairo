@@ -3,7 +3,7 @@ use core::num::traits::Zero;
 use core::traits::Neg;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
-    AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
+    AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
     InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput, ServerAction,
     SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
     WriteOnceInput,
@@ -1383,7 +1383,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                 ),
                 value: true,
             ),
-            ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
+            ServerAction::Append(AppendInput { recipient_addr, enc_channel_info }),
         ]
             .span();
         self.apply_actions(:actions);
@@ -1672,18 +1672,30 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_admin.set_auditor_public_key(:auditor_public_key)
     }
 
-    fn set_fee(self: @PrivacyCfg, fee_amount: u128, fee_collector: ContractAddress) {
+    fn set_fee_amount(self: @PrivacyCfg, fee_amount: u128) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.app_governor,
         );
-        self.admin.set_fee(:fee_amount, :fee_collector);
+        self.admin.set_fee_amount(:fee_amount);
+    }
+
+    fn set_fee_collector(self: @PrivacyCfg, fee_collector: ContractAddress) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.roles.app_governor,
+        );
+        self.admin.set_fee_collector(:fee_collector);
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_set_fee(
-        self: @PrivacyCfg, fee_amount: u128, fee_collector: ContractAddress,
+    fn safe_set_fee_amount(self: @PrivacyCfg, fee_amount: u128) -> Result<(), Array<felt252>> {
+        self.safe_admin.set_fee_amount(:fee_amount)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_set_fee_collector(
+        self: @PrivacyCfg, fee_collector: ContractAddress,
     ) -> Result<(), Array<felt252>> {
-        self.safe_admin.set_fee(:fee_amount, :fee_collector)
+        self.safe_admin.set_fee_collector(:fee_collector)
     }
 
     fn get_fee_amount(self: @PrivacyCfg) -> u128 {
@@ -1705,7 +1717,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                         storage_address += 1;
                     }
                 },
-                ServerAction::AppendToVec(AppendToVecInput {
+                ServerAction::Append(AppendInput {
                     recipient_addr, ..,
                 }) => { self.pop_from_vec(:recipient_addr); },
                 _ => {},

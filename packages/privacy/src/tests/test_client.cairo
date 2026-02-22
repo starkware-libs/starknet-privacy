@@ -1,6 +1,6 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
+    AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
     InvokeExternalInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
     SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
 };
@@ -824,8 +824,8 @@ fn test_open_channel() {
         ServerAction::ReadAssert(
             ReadAssertInput { storage_address: public_key_storage_path, value: user_2.public_key },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
@@ -872,8 +872,8 @@ fn test_open_channel_self_channel() {
         ServerAction::ReadAssert(
             ReadAssertInput { storage_address: public_key_storage_path, value: user.public_key },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
@@ -1134,8 +1134,8 @@ fn test_open_channel_multiple_channels_same_sender() {
                 storage_address: public_key_storage_path_1, value: user_2.public_key,
             },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info_1,
             },
         ),
@@ -1152,8 +1152,8 @@ fn test_open_channel_multiple_channels_same_sender() {
                 storage_address: public_key_storage_path_2, value: user_3.public_key,
             },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_3.address, enc_channel_info: expected_enc_channel_info_2,
             },
         ),
@@ -1248,8 +1248,8 @@ fn test_open_channel_multiple_channels_same_recipient() {
                 storage_address: public_key_storage_path_1, value: user_1.public_key,
             },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_1.address, enc_channel_info: expected_enc_channel_info_1,
             },
         ),
@@ -1266,8 +1266,8 @@ fn test_open_channel_multiple_channels_same_recipient() {
                 storage_address: public_key_storage_path_2, value: user_1.public_key,
             },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_1.address, enc_channel_info: expected_enc_channel_info_2,
             },
         ),
@@ -3824,8 +3824,8 @@ fn test_execute_open_channel() {
                 storage_address: recipient_public_key_storage_path, value: user_2.public_key,
             },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
@@ -4451,8 +4451,8 @@ fn test_internal_actions() {
         ServerAction::ReadAssert(
             ReadAssertInput { storage_address: public_key_storage_path, value: user_2.public_key },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
@@ -5332,6 +5332,17 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
+    // Catch ACTIONS_OUT_OF_ORDER (invoke -> second invoke).
+    let client_actions = [
+        ClientAction::InvokeExternal(invoke_external_input),
+        ClientAction::InvokeExternal(invoke_external_input),
+    ]
+        .span();
+    let result = user.safe_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 }
 
 #[test]
@@ -5489,7 +5500,7 @@ fn test_client_apply_writes() {
         ServerAction::ReadAssert(
             ReadAssertInput { storage_address: public_key_storage_path, value: public_key },
         ),
-        ServerAction::AppendToVec(AppendToVecInput { recipient_addr: address, enc_channel_info }),
+        ServerAction::Append(AppendInput { recipient_addr: address, enc_channel_info }),
         to_write_once_action(storage_address: channel_exists_storage_path, value: true),
         to_write_once_action(
             storage_address: outgoing_channels_storage_path, value: enc_outgoing_channel_info,
@@ -6324,6 +6335,27 @@ fn test_swap_without_withdraw_fails() {
     assert_panic_with_felt_error(
         :result, expected_error: mock_swap_executor_errors::INSUFFICIENT_BALANCE,
     );
+}
+
+#[test]
+fn test_multiple_invoke_external_reverts() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+
+    let dummy_invoke = InvokeExternalInput {
+        contract_address: test.privacy.swap_executor.address, calldata: [].span(),
+    };
+    let client_actions = [
+        ClientAction::InvokeExternal(dummy_invoke), ClientAction::InvokeExternal(dummy_invoke),
+    ]
+        .span();
+
+    let result = user.safe_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 }
 
 #[test]

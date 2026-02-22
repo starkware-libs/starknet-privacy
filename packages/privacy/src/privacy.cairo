@@ -6,7 +6,7 @@ pub mod Privacy {
     use openzeppelin::interfaces::token::erc20::IERC20Dispatcher;
     use openzeppelin::introspection::src5::SRC5Component;
     use privacy::actions::{
-        AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
+        AppendInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
         DepositInput, InputValidation, InvokeExternalInput, InvokeInput, OpenChannelInput,
         OpenSubchannelInput, ReadAssertInput, ServerAction, SetViewingKeyInput, TransferFromInput,
         TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
@@ -116,7 +116,8 @@ pub mod Privacy {
         OpenNoteCreated: events::OpenNoteCreated,
         OpenNoteDeposited: events::OpenNoteDeposited,
         NoteUsed: events::NoteUsed,
-        FeeSet: events::FeeSet,
+        FeeAmountSet: events::FeeAmountSet,
+        FeeCollectorSet: events::FeeCollectorSet,
     }
 
     #[constructor]
@@ -208,9 +209,7 @@ pub mod Privacy {
             // Used to make sure a storage action was included in the client actions.
             let mut has_privacy_action = false;
             for client_action in client_actions {
-                let action_phase = client_action.phase();
-                assert(action_phase >= curr_phase, errors::ACTIONS_OUT_OF_ORDER);
-                curr_phase = action_phase;
+                curr_phase = client_action.assert_phase_and_get_next(:curr_phase);
                 let (actions, should_execute) = match *client_action {
                     ClientAction::SetViewingKey(input) => (
                         self.set_viewing_key(:user_addr, :user_private_key, :input), true,
@@ -382,7 +381,7 @@ pub mod Privacy {
                         value: recipient_public_key,
                     },
                 ),
-                ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
+                ServerAction::Append(AppendInput { recipient_addr, enc_channel_info }),
                 to_write_once_action(
                     storage_address: self.channel_exists.entry(channel_marker).into(), value: true,
                 ),
@@ -736,7 +735,7 @@ pub mod Privacy {
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => self._apply_write_once(:input),
-                    ServerAction::AppendToVec(input) => self._apply_append_to_vec(:input),
+                    ServerAction::Append(input) => self._apply_append(:input),
                     ServerAction::TransferFrom(input) => self._apply_transfer_from(:input),
                     ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
                     ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
@@ -766,8 +765,8 @@ pub mod Privacy {
             }
         }
 
-        fn _apply_append_to_vec(ref self: ContractState, input: AppendToVecInput) {
-            let AppendToVecInput { recipient_addr, enc_channel_info } = input;
+        fn _apply_append(ref self: ContractState, input: AppendInput) {
+            let AppendInput { recipient_addr, enc_channel_info } = input;
             self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
         }
 
@@ -869,15 +868,25 @@ pub mod Privacy {
             self._set_auditor_public_key(:auditor_public_key);
         }
 
-        fn set_fee(ref self: ContractState, fee_amount: u128, fee_collector: ContractAddress) {
+        fn set_fee_amount(ref self: ContractState, fee_amount: u128) {
             // TODO: Change to real role.
             self.roles.only_app_governor();
             if fee_amount.is_non_zero() {
-                assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
+                assert(self.fee_collector.read().is_non_zero(), errors::ZERO_FEE_COLLECTOR);
             }
             self.fee_amount.write(fee_amount);
+            self.emit(events::FeeAmountSet { fee_amount });
+        }
+
+        fn set_fee_collector(ref self: ContractState, fee_collector: ContractAddress) {
+            // TODO: Change to real role.
+            self.roles.only_app_governor();
+            let fee_amount = self.fee_amount.read();
+            if fee_amount.is_non_zero() {
+                assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
+            }
             self.fee_collector.write(fee_collector);
-            self.emit(events::FeeSet { fee_amount, fee_collector });
+            self.emit(events::FeeCollectorSet { fee_collector });
         }
     }
 

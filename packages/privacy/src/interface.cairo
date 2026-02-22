@@ -292,7 +292,7 @@ pub trait IClient<T> {
     /// recipient's public key in storage matches the provided public key.
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the channel existence
     /// flag to storage.
-    /// - [`AppendToVec`](privacy::actions::ServerAction::AppendToVec): Appends the encrypted
+    /// - [`Append`](privacy::actions::ServerAction::Append): Appends the encrypted
     /// channel info to the recipient's channel vector.
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the encrypted outgoing
     /// channel info to storage.
@@ -414,7 +414,7 @@ pub trait IServer<T> {
     ///   Each [`ServerAction`](privacy::actions::ServerAction) variant has the following purpose:
     ///   - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Verify that a storage value is
     ///   zero/empty and then write to it.
-    ///   - [`AppendToVec`](privacy::actions::ServerAction::AppendToVec): Append an encrypted
+    ///   - [`Append`](privacy::actions::ServerAction::Append): Append an encrypted
     ///   channel info value to a recipient's channel vector in storage.
     ///   - [`TransferFrom`](privacy::actions::ServerAction::TransferFrom): Transfer tokens from a
     ///   user to the contract via ERC20 `transfer_from`.
@@ -733,24 +733,48 @@ pub trait IAdmin<T> {
     /// - Only token admin.
     fn set_auditor_public_key(ref self: T, auditor_public_key: felt252);
 
-    /// Sets the fee amount and fee collector for `apply_actions` calls.
+    /// Sets the fee amount in FRI per `apply_actions` call.
     ///
     /// #### Parameters
-    /// - `fee_amount` (`u128`): The fee amount in FRI per transaction. Set to 0 to disable fees.
-    /// - `fee_collector` (`ContractAddress`): The address that receives the fee. Must be non-zero
-    /// when `fee_amount` is non-zero.
+    /// - `fee_amount` (`u128`): The fee amount. Set to 0 to disable fees.
     ///
     /// #### Returns
     /// None
     ///
+    /// #### Preconditions
+    /// - The fee collector must be non-zero when `fee_amount` is non-zero.
+    ///
     /// #### Events Emitted
-    /// - [`FeeSet`](privacy::events::FeeSet): Emitted with the new fee amount and fee collector.
+    /// - [`FeeAmountSet`](privacy::events::FeeAmountSet): Emitted with the new fee amount.
     ///
     /// #### Reverts
     /// - [`ZERO_FEE_COLLECTOR`](privacy::errors::ZERO_FEE_COLLECTOR): Thrown if `fee_amount` is
+    /// non-zero and the fee collector is zero (set the collector first).
+    ///
+    /// #### Access Control
+    /// - Only app governor.
+    fn set_fee_amount(ref self: T, fee_amount: u128);
+
+    /// Sets the address that receives the fee from `apply_actions` calls.
+    ///
+    /// #### Parameters
+    /// - `fee_collector` (`ContractAddress`): The address to which fees are sent.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Preconditions
+    /// - If setting the collector to zero, the fee amount must already be zero.
+    ///
+    /// #### Events Emitted
+    /// - [`FeeCollectorSet`](privacy::events::FeeCollectorSet): Emitted with the new fee
+    /// collector.
+    ///
+    /// #### Reverts
+    /// - [`ZERO_FEE_COLLECTOR`](privacy::errors::ZERO_FEE_COLLECTOR): Thrown if the fee amount is
     /// non-zero and `fee_collector` is zero.
     ///
     /// #### Access Control
     /// - Only app governor.
-    fn set_fee(ref self: T, fee_amount: u128, fee_collector: ContractAddress);
+    fn set_fee_collector(ref self: T, fee_collector: ContractAddress);
 }

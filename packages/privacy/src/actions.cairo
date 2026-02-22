@@ -281,6 +281,19 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
             ClientAction::InvokeExternal(_) => Self::INVOKE_PHASE,
         }
     }
+
+    /// Asserts action_phase >= curr_phase (ACTIONS_OUT_OF_ORDER) and returns the phase to advance
+    /// to.
+    /// InvokeExternal is only allowed once per Tx.
+    fn assert_phase_and_get_next(self: @ClientAction, curr_phase: u8) -> u8 {
+        let action_phase = self.phase();
+        assert(action_phase >= curr_phase, errors::ACTIONS_OUT_OF_ORDER);
+        if action_phase == Self::INVOKE_PHASE {
+            action_phase + 1
+        } else {
+            action_phase
+        }
+    }
 }
 
 /// Input for the `WriteOnce` action.
@@ -292,9 +305,9 @@ pub struct WriteOnceInput {
     pub value: Span<felt252>,
 }
 
-/// Input for the `AppendToVec` action.
+/// Input for the `Append` action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct AppendToVecInput {
+pub struct AppendInput {
     /// The recipient's address, which is the key of the map in storage.
     pub recipient_addr: ContractAddress,
     /// The channel info to append.
@@ -347,7 +360,7 @@ pub enum ServerAction {
     /// Verify that a storage value is zero/empty and then write to it.
     WriteOnce: WriteOnceInput,
     /// Append a `EncChannelInfo` value to `recipient_addr`'s vector in storage.
-    AppendToVec: AppendToVecInput,
+    Append: AppendInput,
     /// Transfer tokens from a user to the contract (ERC20 transfer_from).
     TransferFrom: TransferFromInput,
     /// Transfer tokens from the contract to a recipient (ERC20 transfer).

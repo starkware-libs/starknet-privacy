@@ -1,7 +1,6 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    AppendToVecInput, InvokeInput, ReadAssertInput, ServerAction, TransferFromInput,
-    TransferToInput,
+    AppendInput, InvokeInput, ReadAssertInput, ServerAction, TransferFromInput, TransferToInput,
 };
 use privacy::objects::{EncOutgoingChannelInfo, Note};
 use privacy::tests::mock_swap_executor::errors as mock_swap_executor_errors;
@@ -348,15 +347,15 @@ fn test_apply_write_once_enc_note_assertions() {
 }
 
 #[test]
-fn test_apply_append_to_vec() {
+fn test_apply_append() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let (enc_channel_info, _) = test.mock_new_channel();
 
     // Append channel to vector
     let actions: Array<ServerAction> = array![
-        ServerAction::AppendToVec(
-            AppendToVecInput { recipient_addr: user.address, enc_channel_info: enc_channel_info },
+        ServerAction::Append(
+            AppendInput { recipient_addr: user.address, enc_channel_info: enc_channel_info },
         ),
     ];
     test.privacy.apply_actions(actions.span());
@@ -1386,7 +1385,8 @@ fn test_apply_actions_with_fee() {
     let test: Test = Default::default();
     let fee_amount = constants::DEFAULT_FEE_AMOUNT;
     let fee_collector = constants::DEFAULT_FEE_COLLECTOR;
-    test.privacy.set_fee(:fee_amount, :fee_collector);
+    test.privacy.set_fee_collector(:fee_collector);
+    test.privacy.set_fee_amount(:fee_amount);
     let strk_token = test.privacy.strk_token;
     assert!(fee_amount.is_non_zero());
     let privacy_address = test.privacy.address;
@@ -1434,7 +1434,8 @@ fn test_apply_actions_with_fee_assertions() {
     let test: Test = Default::default();
     let fee_amount = constants::DEFAULT_FEE_AMOUNT;
     let fee_collector = constants::DEFAULT_FEE_COLLECTOR;
-    test.privacy.set_fee(:fee_amount, :fee_collector);
+    test.privacy.set_fee_collector(:fee_collector);
+    test.privacy.set_fee_amount(:fee_amount);
     let strk_token = test.privacy.strk_token;
     let privacy_address = test.privacy.address;
     let caller: ContractAddress = 'BROKE_CALLER'.try_into().unwrap();
