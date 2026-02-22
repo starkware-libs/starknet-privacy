@@ -298,7 +298,7 @@ pub trait IClient<T> {
     /// recipient's public key in storage matches the provided public key.
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the channel existence
     /// flag to storage.
-    /// - [`AppendToVec`](privacy::actions::ServerAction::AppendToVec): Appends the encrypted
+    /// - [`Append`](privacy::actions::ServerAction::Append): Appends the encrypted
     /// channel info to the recipient's channel vector.
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the encrypted outgoing
     /// channel info to storage.
@@ -418,7 +418,7 @@ pub trait IServer<T> {
     ///   Each [`ServerAction`](privacy::actions::ServerAction) variant has the following purpose:
     ///   - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Verify that a storage value is
     ///   zero/empty and then write to it.
-    ///   - [`AppendToVec`](privacy::actions::ServerAction::AppendToVec): Append an encrypted
+    ///   - [`Append`](privacy::actions::ServerAction::Append): Append an encrypted
     ///   channel info value to a recipient's channel vector in storage.
     ///   - [`TransferFrom`](privacy::actions::ServerAction::TransferFrom): Transfer tokens from a
     ///   user to the contract via ERC20 `transfer_from`.
