@@ -6,7 +6,7 @@ use privacy::tests::utils_for_tests::constants::{
 };
 use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
 use privacy::utils::constants::OPEN_NOTE_SALT;
-use privacy::utils::unpacking;
+use privacy::utils::unpack;
 use snforge_std::TokenTrait;
 use starkware_utils::components::replaceability::interface::{
     IReplaceableDispatcher, IReplaceableDispatcherTrait,
@@ -244,7 +244,7 @@ fn test_get_note() {
     // Deposit to the existing open note and verify.
     depositor.fund_and_deposit_to_open_note(:token, note_id: open_note_id, :amount);
     let filled_note = test.privacy.get_note(note_id: open_note_id);
-    let (salt, stored_amount) = unpacking(packed_value: filled_note.packed_value);
+    let (salt, stored_amount) = unpack(packed_value: filled_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount);
     assert_eq!(filled_note.token, token_addr);

@@ -1,4 +1,4 @@
-use core::dict::{Felt252Dict, SquashedFelt252Dict, SquashedFelt252DictTrait};
+use core::dict::{Felt252Dict, Felt252DictEntryTrait, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
 use privacy::errors;
 use starknet::ContractAddress;
@@ -9,15 +9,13 @@ pub(crate) type SquashedTokenBalances = SquashedFelt252Dict<u128>;
 #[generate_trait]
 pub(crate) impl TokenBalancesImpl of TokenBalancesTrait {
     fn add_balance(ref self: TokenBalances, token: ContractAddress, amount: u128) {
-        let key = token.into();
-        let current_balance = self.get(:key);
-        self.insert(:key, value: current_balance + amount);
+        let (entry, current_balance) = self.entry(key: token.into());
+        self = entry.finalize(new_value: current_balance + amount);
     }
     fn subtract_balance(ref self: TokenBalances, token: ContractAddress, amount: u128) {
-        let key = token.into();
-        let current_balance = self.get(:key);
+        let (entry, current_balance) = self.entry(key: token.into());
         assert(current_balance >= amount, errors::NEGATIVE_INTERMEDIATE_BALANCE);
-        self.insert(:key, value: current_balance - amount);
+        self = entry.finalize(new_value: current_balance - amount);
     }
     fn assert_valid(self: SquashedTokenBalances) {
         for (_token, _, balance) in self.into_entries() {

@@ -9,7 +9,7 @@ use privacy::tests::utils_for_tests::{
     constants, deploy_mock_swap_executor, invoke_mock_swap_executor_input,
 };
 use privacy::utils::constants::{OPEN_NOTE_SALT, PROOF_VALIDITY_BLOCK_INTERVAL};
-use privacy::utils::{ProofFacts, _compute_message_hash, open_note, to_write_once_action, unpacking};
+use privacy::utils::{ProofFacts, _compute_message_hash, open_note, to_write_once_action, unpack};
 use privacy::{errors, events};
 use snforge_std::{
     CheatSpan, EventSpyTrait, EventsFilterTrait, TokenTrait, cheat_proof_facts, map_entry_address,
@@ -829,7 +829,7 @@ fn test_deposit_to_open_note() {
 
     // Verify note packed_value updated with OPEN_NOTE_SALT and amount.
     let filled_note = test.privacy.get_note(:note_id);
-    let (salt, stored_amount) = unpacking(packed_value: filled_note.packed_value);
+    let (salt, stored_amount) = unpack(packed_value: filled_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount);
     assert_eq!(filled_note.token, token_addr);
@@ -992,7 +992,7 @@ fn test_apply_invoke_swap() {
 
     // Verify open note was created with zero amount.
     let initial_note = test.privacy.get_note(:note_id);
-    let (initial_salt, initial_amount) = unpacking(packed_value: initial_note.packed_value);
+    let (initial_salt, initial_amount) = unpack(packed_value: initial_note.packed_value);
     assert_eq!(initial_salt, OPEN_NOTE_SALT);
     assert_eq!(initial_amount, 0);
 
@@ -1027,7 +1027,7 @@ fn test_apply_invoke_swap() {
 
     // Verify open note was filled with swap amount.
     let filled_note = test.privacy.get_note(:note_id);
-    let (filled_salt, filled_amount) = unpacking(packed_value: filled_note.packed_value);
+    let (filled_salt, filled_amount) = unpack(packed_value: filled_note.packed_value);
     assert_eq!(filled_salt, OPEN_NOTE_SALT);
     assert_eq!(filled_amount, swap_amount);
     assert_eq!(filled_note.token, output_token.contract_address());

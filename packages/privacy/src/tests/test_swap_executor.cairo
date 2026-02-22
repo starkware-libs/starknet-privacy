@@ -5,7 +5,7 @@ use privacy::tests::utils_for_tests::{
     deploy_mock_swap_executor,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
-use privacy::utils::unpacking;
+use privacy::utils::unpack;
 use snforge_std::TokenTrait;
 use starkware_utils::constants::MAX_U128;
 use starkware_utils_testing::test_utils::{TokenHelperTrait, assert_panic_with_felt_error};
@@ -89,7 +89,7 @@ fn test_privacy_invoke_basic(preexisting_balance: u128) {
 
     // Verify the open note was deposited.
     let stored_note = test.privacy.get_note(:note_id);
-    let (salt, stored_amount) = unpacking(packed_value: stored_note.packed_value);
+    let (salt, stored_amount) = unpack(packed_value: stored_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, swap_amount);
     assert_eq!(stored_note.token, output_token.contract_address());
@@ -261,7 +261,7 @@ fn test_privacy_invoke_caller_not_privacy_contract() {
 
     // Verify note exists but is not yet deposited.
     let note_before = test.privacy.get_note(:note_id);
-    let (salt_before, amount_before) = unpacking(packed_value: note_before.packed_value);
+    let (salt_before, amount_before) = unpack(packed_value: note_before.packed_value);
     assert_eq!(salt_before, OPEN_NOTE_SALT);
     assert_eq!(amount_before, 0);
 
@@ -289,7 +289,7 @@ fn test_privacy_invoke_caller_not_privacy_contract() {
 
     // Verify the note was NOT deposited (amount should still be 0).
     let note_after = test.privacy.get_note(:note_id);
-    let (salt_after, amount_after) = unpacking(packed_value: note_after.packed_value);
+    let (salt_after, amount_after) = unpack(packed_value: note_after.packed_value);
     assert_eq!(salt_after, OPEN_NOTE_SALT);
     assert_eq!(amount_after, 0);
     assert_eq!(note_after.token, output_token.contract_address());

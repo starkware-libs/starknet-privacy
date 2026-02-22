@@ -38,7 +38,7 @@ use privacy::utils::constants::{OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     ProofFacts, _compute_message_hash, derive_public_key, enc_note_packed_value,
     encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
-    is_canonical_key, packing, to_write_once_action,
+    is_canonical_key, pack, to_write_once_action,
 };
 use snforge_std::{
     CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
@@ -847,7 +847,7 @@ pub(crate) impl UserImpl of UserTrait {
         let note_id = compute_note_id(
             :channel_key, token: create_note_input.token, index: create_note_input.index,
         );
-        let packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: Zero::zero());
+        let packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: Zero::zero());
         (
             note_id,
             Note {

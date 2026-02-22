@@ -8,7 +8,7 @@ use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     _encrypt_note_amount, decode_note_amount, decrypt_note_amount, derive_public_key,
     enc_note_packed_value, encrypt_channel_info, encrypt_private_key, encrypt_subchannel_info,
-    encrypt_user_addr, open_note, packing, to_write_once_action, unpacking,
+    encrypt_user_addr, open_note, pack, to_write_once_action, unpack,
 };
 use snforge_std::map_entry_address;
 use starknet::ContractAddress;
@@ -137,7 +137,7 @@ fn test_open_note_packed_value_decode_note_amount() {
             packed_value: note.packed_value, channel_key: Zero::zero(), :token, index: Zero::zero(),
         );
         assert_eq!(dec_amount, Zero::zero());
-        let packed_value_with_amount = packing(value_1: OPEN_NOTE_SALT, value_2: *amount);
+        let packed_value_with_amount = pack(value_1: OPEN_NOTE_SALT, value_2: *amount);
         let dec_amount_with_amount = decode_note_amount(
             packed_value: packed_value_with_amount,
             channel_key: Zero::zero(),
@@ -153,7 +153,7 @@ fn test_open_note() {
     let token = 'TOKEN'.try_into().unwrap();
     let depositor = 'DEPOSITOR'.try_into().unwrap();
     let note = open_note(:token, :depositor);
-    let (salt, amount) = unpacking(note.packed_value);
+    let (salt, amount) = unpack(note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(amount, 0);
     assert_eq!(note.token, token);
@@ -161,22 +161,22 @@ fn test_open_note() {
 }
 
 #[test]
-fn test_packing_unpacking() {
+fn test_pack_unpack() {
     let max_120_bits: u128 = TWO_POW_120.try_into().unwrap() - 1;
     let max_u128: u128 = (TWO_POW_128 - 1).try_into().unwrap();
     let values: [(u128, u128); 4] = [
         (1, 1), (1, max_u128), (max_120_bits, 1), (max_120_bits, max_u128),
     ];
     for (value_1, value_2) in values.span() {
-        let packed_value = packing(value_1: (*value_1).into(), value_2: *value_2);
-        let (unpacked_value_1, unpacked_value_2) = unpacking(:packed_value);
+        let packed_value = pack(value_1: (*value_1).into(), value_2: *value_2);
+        let (unpacked_value_1, unpacked_value_2) = unpack(:packed_value);
         assert_eq!(unpacked_value_1, *value_1);
         assert_eq!(unpacked_value_2, *value_2);
     }
 }
 
 #[test]
-fn test_packing_unpacking_random() {
+fn test_pack_unpack_random() {
     let mut nonce = 0;
     for _ in 0..100_u32 {
         nonce += 1;
@@ -188,8 +188,8 @@ fn test_packing_unpacking_random() {
         let value_2_128_bits: u128 = (hash(['VALUE_2', nonce.into()].span()).into() % TWO_POW_128)
             .try_into()
             .unwrap();
-        let packed_value = packing(value_1: value_1_120_bits, value_2: value_2_128_bits);
-        let (unpacked_value_1, unpacked_value_2) = unpacking(:packed_value);
+        let packed_value = pack(value_1: value_1_120_bits, value_2: value_2_128_bits);
+        let (unpacked_value_1, unpacked_value_2) = unpack(:packed_value);
         assert_eq!(unpacked_value_1, value_1_120_bits);
         assert_eq!(unpacked_value_2, value_2_128_bits);
     }
@@ -202,7 +202,7 @@ fn test_decode_note_amount_open_note() {
     let token: ContractAddress = hash(['TOKEN'].span()).try_into().unwrap();
     let index: usize = 0;
     for amount in amounts.span() {
-        let packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: *amount);
+        let packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: *amount);
         let decoded_amount = decode_note_amount(:packed_value, :channel_key, :token, :index);
         assert_eq!(decoded_amount, *amount);
     }
@@ -213,7 +213,7 @@ fn test_decode_note_amount_open_note_empty() {
     let channel_key = hash(['CHANNEL_KEY'].span());
     let token: ContractAddress = hash(['TOKEN'].span()).try_into().unwrap();
     let index: usize = 0;
-    let packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: 0);
+    let packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: 0);
     decode_note_amount(:packed_value, :channel_key, :token, :index);
 }
 
