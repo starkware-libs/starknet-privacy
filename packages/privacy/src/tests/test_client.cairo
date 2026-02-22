@@ -3721,7 +3721,10 @@ fn test_execute_set_viewing_key() {
 
     let random = user_1.get_random();
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random })].span();
+    let mut spy = spy_events();
     let actions = user_1.execute(:client_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
     let enc_private_key = user_1.compute_enc_private_key(:random);
     let public_key_storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
@@ -3743,14 +3746,19 @@ fn test_execute_set_viewing_key() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    let mut spy = spy_events();
     let view_actions = user_1.execute_view(:client_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
     assert_eq!(view_actions, actions);
+    let mut spy = spy_events();
     let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
     assert_eq!(panic_data_actions, actions);
     assert_eq!(user_1.get_public_key(), Zero::zero());
     assert_eq!(user_1.get_enc_private_key().ephemeral_pubkey, Zero::zero());
     assert_eq!(user_1.get_enc_private_key().enc_private_key, Zero::zero());
-    // TODO: Verify no events emitted (currently not tested because of snforge revert issue).
 
     let mut spy_events = spy_events();
     test.privacy.apply_actions(:actions);
@@ -5734,11 +5742,13 @@ fn test_execute_create_open_note() {
             recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let index = 0;
+    let random = user_1.get_random();
     let create_note_input = user_1
-        .new_open_note_with_generated_random(recipient: user_2, :token_addr, :index, :depositor);
+        .new_open_note(recipient: user_2, :token_addr, :index, :depositor, :random);
 
     // Execute client actions.
     let client_actions = [ClientAction::CreateOpenNote(create_note_input)].span();
+    let mut spy = spy_events();
     let actions = user_1.execute(:client_actions);
 
     // Compute expected values.
@@ -5750,20 +5760,43 @@ fn test_execute_create_open_note() {
     // Check expected server actions.
     assert_eq!(actions, create_note_input.into_server_actions(user: user_1));
 
+    // Verify no events emitted.
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
+
     // Verify view and panic paths return the same actions.
+    let mut spy = spy_events();
     let view_actions = user_1.execute_view(:client_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
     assert_eq!(view_actions, actions);
+    let mut spy = spy_events();
     let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
     assert_eq!(panic_data_actions, actions);
 
     // Verify storage before execution.
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
-    // TODO: Verify no events emitted (currently not tested because of snforge revert issue).
-
     // Execute actions and verify storage after.
+    let mut spy = spy_events();
     test.privacy.apply_actions(:actions);
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    let expected_event = events::OpenNoteCreated {
+        enc_recipient_addr: user_2.compute_enc_user_addr(random: random.into()),
+        depositor,
+        token: token_addr,
+        note_id,
+    };
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("OpenNoteCreated"),
+        expected_event_name: "OpenNoteCreated",
+    );
 }
 
 #[test]

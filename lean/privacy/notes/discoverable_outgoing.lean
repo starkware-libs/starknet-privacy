@@ -63,7 +63,7 @@ theorem NoteImplies.scan_outgoing
 
   simp only [scan_outgoing_notes_for_sender, List.bind_eq_flatMap, List.mem_dedup, List.mem_flatMap,
     List.pure_def, List.mem_singleton]
-  refine ⟨inp.addrbob, ?_, inp.token, h_Kbob ▸ note_imp.subchannel.scan, inp.to_scanned_note crypto, ?_, ?_⟩
+  refine ⟨inp.addrbob, ?_, inp.token, h_Kbob ▸ note_imp.subchannel.scan_for_channel, inp.to_scanned_note crypto, ?_, ?_⟩
   · rw [note_imp.h_kalice]
     use outgoing_channels_are_discoverable note_imp.subchannel.channel.h_channel_exists
   · rw [h_Kbob]

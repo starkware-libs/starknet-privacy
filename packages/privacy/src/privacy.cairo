@@ -151,7 +151,6 @@ pub mod Privacy {
                 :calls, contract_address: execution_info.contract_address,
             );
             let server_actions = self.execute_view(:user_addr, :user_private_key, :client_actions);
-            // TODO: Consider sending message before assert valid signature?
             assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
             send_message_to_server(:server_actions);
         }

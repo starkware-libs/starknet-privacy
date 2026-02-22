@@ -223,7 +223,7 @@ theorem open_subchannel_immutable
     run_action₀ crypto (.OpenSubchannel inp) m₁ = run_action₀ crypto (.OpenSubchannel inp) m₀ := by
   dsimp only [run_action₀, open_subchannel] at *
   rw [decide_eq_true_iff] at success
-  have ⟨h₀, h₁, h₂, h₃⟩ := success
+  have ⟨h₀, h₁, h₂⟩ := success
 
   dsimp only [immutable_fn, mem_cell_fn] at imm₀ imm₁
 
