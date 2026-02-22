@@ -26,11 +26,13 @@ pub mod Privacy {
         StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
         decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
         encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_server_actions_from_execute_and_panic, is_canonical_key,
-        open_note, packing, panic_with_server_actions, send_message_to_server, to_write_once_action,
-        unpacking, validate_proof,
+        encrypt_user_addr, extract_execute_view_inputs,
+        extract_server_actions_from_execute_and_panic, is_canonical_key, open_note, packing,
+        panic_with_server_actions, send_message_to_server, to_write_once_action, unpacking,
+        validate_proof,
     };
     use privacy::{errors, events};
+    use starknet::account::Call;
     use starknet::storage::{
         Map, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
@@ -138,23 +140,16 @@ pub mod Privacy {
 
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
-        fn __validate__(
-            self: @ContractState,
-            user_addr: ContractAddress,
-            user_private_key: felt252,
-            client_actions: Span<ClientAction>,
-        ) -> felt252 {
+        fn __validate__(self: @ContractState, calls: Array<Call>) -> felt252 {
             VALIDATED
         }
 
-        fn __execute__(
-            ref self: ContractState,
-            user_addr: ContractAddress,
-            user_private_key: felt252,
-            client_actions: Span<ClientAction>,
-        ) {
+        fn __execute__(ref self: ContractState, calls: Array<Call>) {
             let execution_info = get_execution_info();
             assert_valid_execution_info(:execution_info);
+            let (user_addr, user_private_key, client_actions) = extract_execute_view_inputs(
+                :calls, contract_address: execution_info.contract_address,
+            );
             let server_actions = self.execute_view(:user_addr, :user_private_key, :client_actions);
             assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
             send_message_to_server(:server_actions);

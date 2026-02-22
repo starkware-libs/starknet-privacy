@@ -45,6 +45,7 @@ use snforge_std::{
     Token, TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare, interact_with_state,
     map_entry_address, spy_messages_to_l1, store,
 };
+use starknet::account::Call;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
 use starknet::{ContractAddress, ResourcesBounds, SyscallResultTrait};
@@ -235,8 +236,7 @@ pub(crate) impl UserImpl of UserTrait {
     ) -> Result<(), Array<felt252>> {
         self
             .privacy
-            .safe_client
-            .__execute__(
+            .safe_execute_without_cheats(
                 user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
             )
     }
@@ -1535,9 +1535,10 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         user_private_key: felt252,
         client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
+        let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
         self.cheat_before_execute();
         let mut spy = spy_messages_to_l1();
-        self.client.__execute__(:user_addr, :user_private_key, :client_actions);
+        self.client.__execute__(:calls);
         self.general_assert_spy_messages(ref :spy);
         spy_messages_to_server_actions(ref :spy)
     }
@@ -1549,8 +1550,28 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         user_private_key: felt252,
         client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
+        let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
         self.cheat_before_execute();
-        self.safe_client.__execute__(:user_addr, :user_private_key, :client_actions)
+        self.safe_client.__execute__(:calls)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_execute_without_cheats(
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
+    ) -> Result<(), Array<felt252>> {
+        let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+        self.safe_client.__execute__(:calls)
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_execute_with_calls(
+        self: @PrivacyCfg, calls: Array<Call>,
+    ) -> Result<(), Array<felt252>> {
+        self.cheat_before_execute();
+        self.safe_client.__execute__(:calls)
     }
 
     #[feature("safe_dispatcher")]
@@ -1579,7 +1600,8 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         user_private_key: felt252,
         client_actions: Span<ClientAction>,
     ) -> felt252 {
-        self.client.__validate__(:user_addr, :user_private_key, :client_actions)
+        let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+        self.client.__validate__(:calls)
     }
 
     fn execute_view(
@@ -1726,6 +1748,23 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         );
         self.store_zero(:storage_address);
         self.store_zero(storage_address: storage_address + 1);
+    }
+
+    fn wrap_inputs_into_calls(
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
+    ) -> Array<Call> {
+        let mut calldata = array![];
+        user_addr.serialize(ref calldata);
+        user_private_key.serialize(ref calldata);
+        client_actions.serialize(ref calldata);
+        array![
+            Call {
+                to: *self.address, selector: selector!("execute_view"), calldata: calldata.span(),
+            },
+        ]
     }
 }
 

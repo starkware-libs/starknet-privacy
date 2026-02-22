@@ -3,6 +3,7 @@ use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
 };
 use starknet::ContractAddress;
+use starknet::account::Call;
 
 #[starknet::interface]
 pub trait IClient<T> {
@@ -14,28 +15,9 @@ pub trait IClient<T> {
     /// A single client action may compile to multiple server actions.
     ///
     /// #### Parameters
-    /// - `user_addr` (`ContractAddress`): The address of the user executing the actions.
-    /// - `user_private_key` (`felt252`): The private key of the user executing the actions.
-    /// - `client_actions` (`Span<`[`ClientAction`](privacy::actions::ClientAction)`>`): The list of
-    /// client actions to compile.
-    ///   Each [`ClientAction`](privacy::actions::ClientAction) variant has the following purpose:
-    ///   - [`SetViewingKey`](privacy::actions::ClientAction::SetViewingKey): Register a user with a
-    ///   viewing key.
-    ///   - [`OpenChannel`](privacy::actions::ClientAction::OpenChannel): Open a new channel from
-    ///   the user to a recipient.
-    ///   - [`OpenSubchannel`](privacy::actions::ClientAction::OpenSubchannel): Open a new
-    ///   subchannel (of specific token) from the user to a recipient.
-    ///   - [`CreateEncNote`](privacy::actions::ClientAction::CreateEncNote): Creates a new
-    ///   encrypted note with a specified amount.
-    ///   - [`CreateOpenNote`](privacy::actions::ClientAction::CreateOpenNote): Creates a new open
-    ///   note (zero-value, to be filled by a server action).
-    ///   - [`Deposit`](privacy::actions::ClientAction::Deposit): Deposit funds into the contract.
-    ///   - [`UseNote`](privacy::actions::ClientAction::UseNote): Uses up a note (creates a
-    ///   nullifier for it).
-    ///   - [`Withdraw`](privacy::actions::ClientAction::Withdraw): Withdraw funds from the
-    ///   contract.
-    ///   - [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal): Invokes an external
-    ///   contract (forwards as a server-side Invoke action).
+    /// - `calls` (`Array<`[`Call`](starknet::account::Call)`>`): Must contain exactly one call
+    /// targeting this contract with selector `execute_view` and calldata serializing to
+    /// `(user_addr, user_private_key, client_actions)`.
     ///
     /// #### Returns
     /// None
@@ -44,20 +26,11 @@ pub trait IClient<T> {
     /// - The caller address must be zero.
     /// - The TX version must be >= 3.
     /// - The effective fee of the transaction is zero (i.e. `tip` and `resource_bounds`).
-    /// - `user_addr` must not be zero.
-    /// - `user_private_key` must not be zero and must be canonical.
+    /// - `calls` must contain exactly one call to this contract with selector `execute_view`.
+    /// - The single call's calldata must deserialize to `(user_addr, user_private_key,
+    /// client_actions)` where `client_actions` are valid sequential actions on the current state,
+    /// see [`execute_view`](privacy::interface::IClient::execute_view) for more details.
     /// - The TX signature must be valid for `user_addr`.
-    /// - `client_actions` must be valid sequential actions to execute on the current state of the
-    /// contract.
-    /// - `client_actions` must be ordered by phase: SetViewingKey, OpenChannel, OpenSubchannel,
-    /// Deposit, UseNote, CreateEncNote/CreateOpenNote, Withdraw, InvokeExternal.
-    /// - At most one [`SetViewingKey`](privacy::actions::ClientAction::SetViewingKey) action is
-    /// allowed per transaction.
-    /// - At least one privacy-related action must be included
-    /// ([`Deposit`](privacy::actions::ClientAction::Deposit),
-    /// [`Withdraw`](privacy::actions::ClientAction::Withdraw), and
-    /// [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) are not
-    /// privacy-related).
     ///
     /// #### Events Emitted
     /// None
@@ -78,6 +51,13 @@ pub trait IClient<T> {
     /// transaction resource prices are not zero.
     /// - [`INVALID_SIGNATURE`](privacy::errors::INVALID_SIGNATURE): Thrown if the TX signature is
     /// invalid (The TX signature should be of `user_addr` who is executing the actions).
+    /// - [`EXPECTED_ONE_CALL`](privacy::errors::EXPECTED_ONE_CALL): Thrown if `calls.len() != 1`.
+    /// - [`INVALID_CALL_TO`](privacy::errors::INVALID_CALL_TO): Thrown if the call's `to` is not
+    /// this contract.
+    /// - [`INVALID_CALL_SELECTOR`](privacy::errors::INVALID_CALL_SELECTOR): Thrown if the call's
+    /// selector is not `selector!("execute_view")`.
+    /// - [`INVALID_CALLDATA`](privacy::errors::INVALID_CALLDATA): Thrown if the call's calldata
+    /// does not deserialize to `(ContractAddress, felt252, Span<ClientAction>)`.
     /// - See [`execute_and_panic`](privacy::interface::IClient::execute_and_panic) for errors that
     /// occur during client action processing.
     ///
@@ -85,17 +65,13 @@ pub trait IClient<T> {
     /// - Only zero caller address.
     ///
     /// #### Notes
-    /// - This function internally calls [`execute_view`](privacy::interface::IClient::execute_view)
-    /// to compile the client actions into server actions.
+    /// - This function parses the single call and internally calls
+    /// [`execute_view`](privacy::interface::IClient::execute_view) to compile the client actions
+    /// into server actions.
     /// - See [`execute_view`](privacy::interface::IClient::execute_view) Returns section for
     /// details on which server actions each client action produces.
     /// - This function does not change the state of the contract.
-    fn __execute__(
-        ref self: T,
-        user_addr: ContractAddress,
-        user_private_key: felt252,
-        client_actions: Span<ClientAction>,
-    );
+    fn __execute__(ref self: T, calls: Array<Call>);
 
     /// Processes client actions and panics with the compiled server actions or an error.
     ///
@@ -109,8 +85,9 @@ pub trait IClient<T> {
     /// - `user_addr` (`ContractAddress`): The address of the user executing the actions.
     /// - `user_private_key` (`felt252`): The private key of the user executing the actions.
     /// - `client_actions` (`Span<`[`ClientAction`](privacy::actions::ClientAction)`>`): The list of
-    /// client actions to compile. See [`__execute__`](privacy::interface::IClient::__execute__) for
-    /// more details.
+    /// client actions to compile. See [`execute_view`](privacy::interface::IClient::execute_view)
+    /// for the action list; [`__execute__`](privacy::interface::IClient::__execute__) receives
+    /// these inputs via a single call's calldata.
     ///
     /// #### Returns
     /// Always panics, on success it panics with the serialized server actions wrapped with
@@ -121,7 +98,7 @@ pub trait IClient<T> {
     /// - `user_private_key` must not be zero and must be canonical.
     /// - `client_actions` must be valid sequential actions to execute on the current state of the
     /// contract.
-    /// - See [`__execute__`](privacy::interface::IClient::__execute__) for additional constraints
+    /// - See [`execute_view`](privacy::interface::IClient::execute_view) for additional constraints
     /// on `client_actions`.
     ///
     /// #### Events Emitted
@@ -275,8 +252,25 @@ pub trait IClient<T> {
     /// - `user_addr` (`ContractAddress`): The address of the user executing the actions.
     /// - `user_private_key` (`felt252`): The private key of the user executing the actions.
     /// - `client_actions` (`Span<`[`ClientAction`](privacy::actions::ClientAction)`>`): The list of
-    /// client actions to compile, see [`__execute__`](privacy::interface::IClient::__execute__) for
-    /// more details.
+    /// client actions to compile. The logical client actions are:
+    ///   Each [`ClientAction`](privacy::actions::ClientAction) variant has the following purpose:
+    ///   - [`SetViewingKey`](privacy::actions::ClientAction::SetViewingKey): Register a user with a
+    ///   viewing key.
+    ///   - [`OpenChannel`](privacy::actions::ClientAction::OpenChannel): Open a new channel from
+    ///   the user to a recipient.
+    ///   - [`OpenSubchannel`](privacy::actions::ClientAction::OpenSubchannel): Open a new
+    ///   subchannel (of specific token) from the user to a recipient.
+    ///   - [`CreateEncNote`](privacy::actions::ClientAction::CreateEncNote): Creates a new
+    ///   encrypted note with a specified amount.
+    ///   - [`CreateOpenNote`](privacy::actions::ClientAction::CreateOpenNote): Creates a new open
+    ///   note (zero-value, to be filled by a server action).
+    ///   - [`Deposit`](privacy::actions::ClientAction::Deposit): Deposit funds into the contract.
+    ///   - [`UseNote`](privacy::actions::ClientAction::UseNote): Uses up a note (creates a
+    ///   nullifier for it).
+    ///   - [`Withdraw`](privacy::actions::ClientAction::Withdraw): Withdraw funds from the
+    ///   contract.
+    ///   - [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal): Invokes an external
+    ///   contract (forwards as a server-side Invoke action).
     ///
     /// #### Returns
     /// - (`Span<`[`ServerAction`](privacy::actions::ServerAction)`>`): The compiled server actions
@@ -346,8 +340,18 @@ pub trait IClient<T> {
     /// - `user_private_key` must not be zero and must be canonical.
     /// - `client_actions` must be valid sequential actions to execute on the current state of the
     /// contract.
-    /// - See [`__execute__`](privacy::interface::IClient::__execute__) for additional constraints
-    /// on `client_actions`.
+    /// - `client_actions` must be valid sequential actions to execute on the current state of the
+    /// contract.
+    /// - `client_actions` must be ordered by phase: SetViewingKey, OpenChannel, OpenSubchannel,
+    /// Deposit, UseNote, CreateEncNote/CreateOpenNote, Withdraw, InvokeExternal.
+    /// - At most one [`SetViewingKey`](privacy::actions::ClientAction::SetViewingKey) action and at
+    /// most one [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) action are
+    /// allowed per transaction.
+    /// - At least one privacy-related action must be included
+    /// ([`Deposit`](privacy::actions::ClientAction::Deposit),
+    /// [`Withdraw`](privacy::actions::ClientAction::Withdraw), and
+    /// [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) are not
+    /// privacy-related).
     ///
     /// #### Events Emitted
     /// None
@@ -380,27 +384,19 @@ pub trait IClient<T> {
     ///
     /// This function is called by the account (privacy) contract during transaction validation to
     /// check if the transaction can be executed. It always returns
-    /// [`VALIDATED`](starknet::VALIDATED) to indicate that the transaction is valid.
+    /// [`VALIDATED`](starknet::VALIDATED).
     ///
     /// #### Parameters
-    /// - `user_addr` (`ContractAddress`): The address of the user executing the actions.
-    /// - `user_private_key` (`felt252`): The private key of the user executing the actions.
-    /// - `client_actions` (`Span<`[`ClientAction`](privacy::actions::ClientAction)`>`): The list of
-    /// client actions to validate.
+    /// - `calls` (`Array<`[`Call`](starknet::account::Call)`>`): The calls passed by the account
+    /// framework.
     ///
     /// #### Returns
-    /// - (`felt252`): Always returns [`VALIDATED`](starknet::VALIDATED) to indicate the transaction
-    /// is valid.
+    /// - (`felt252`): Always returns [`VALIDATED`](starknet::VALIDATED).
     ///
     /// #### Notes
     /// - This function is part of the account contract interface and is called automatically during
     /// transaction validation.
-    fn __validate__(
-        self: @T,
-        user_addr: ContractAddress,
-        user_private_key: felt252,
-        client_actions: Span<ClientAction>,
-    ) -> felt252;
+    fn __validate__(self: @T, calls: Array<Call>) -> felt252;
 }
 
 #[starknet::interface]
