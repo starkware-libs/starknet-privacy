@@ -1263,7 +1263,6 @@ fn test_apply_invoke_swap_with_executor_assertions() {
 
 #[test]
 fn test_apply_swap_with_executor_deposit_assertions() {
-    // TODO: Test token balances after snforge reverts work.
     let mut test: Test = Default::default();
     let input_token = test.new_token();
     let output_token = test.new_token();
@@ -1271,6 +1270,7 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     let executor_addr = test.privacy.swap_executor.address;
     let amm_address = test.privacy.mock_amm;
     let token_addr = output_token.contract_address();
+    let privacy_address = test.privacy.address;
 
     // Setup user with viewing key and subchannel.
     let mut user = test.new_user();
@@ -1286,6 +1286,14 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     // Fund AMM with output tokens (enough for multiple swaps).
     output_token.supply(address: amm_address, amount: swap_amount * 4);
 
+    // Initial balances (after funding).
+    assert_eq!(input_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(input_token.balance_of(address: executor_addr), (swap_amount * 4).into());
+    assert_eq!(input_token.balance_of(address: amm_address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: executor_addr), Zero::zero());
+    assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 4).into());
+
     // Catch NOTE_NOT_FOUND
     let nonexistent_note_id = 'NONEXISTENT_NOTE';
     let invoke_input = invoke_mock_swap_executor_input(
@@ -1297,6 +1305,13 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     );
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+    // Balances unchanged (revert).
+    assert_eq!(input_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(input_token.balance_of(address: executor_addr), (swap_amount * 4).into());
+    assert_eq!(input_token.balance_of(address: amm_address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: executor_addr), Zero::zero());
+    assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 4).into());
 
     // Catch NOTE_NOT_OPEN
     let create_note_input = user
@@ -1315,6 +1330,13 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     );
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
+    // Balances unchanged (revert).
+    assert_eq!(input_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(input_token.balance_of(address: executor_addr), (swap_amount * 4).into());
+    assert_eq!(input_token.balance_of(address: amm_address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: executor_addr), Zero::zero());
+    assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 4).into());
 
     // Catch NOTE_ALREADY_DEPOSITED
     let create_note_input = user
@@ -1332,12 +1354,34 @@ fn test_apply_swap_with_executor_deposit_assertions() {
         note_id: note_id_filled,
     );
 
+    // Balances before first swap.
+    assert_eq!(input_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(input_token.balance_of(address: executor_addr), (swap_amount * 4).into());
+    assert_eq!(input_token.balance_of(address: amm_address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: executor_addr), Zero::zero());
+    assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 4).into());
+
     // First swap succeeds.
     test.privacy.apply_actions([ServerAction::Invoke(invoke_input)].span());
+    // Balances after successful swap: input executor->amm, output amm->privacy (via executor).
+    assert_eq!(input_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(input_token.balance_of(address: executor_addr), (swap_amount * 3).into());
+    assert_eq!(input_token.balance_of(address: amm_address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: privacy_address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: executor_addr), Zero::zero());
+    assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 3).into());
 
     // Second swap to same note should fail.
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
+    // Balances unchanged (revert).
+    assert_eq!(input_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(input_token.balance_of(address: executor_addr), (swap_amount * 3).into());
+    assert_eq!(input_token.balance_of(address: amm_address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: privacy_address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: executor_addr), Zero::zero());
+    assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 3).into());
 
     // Catch CALLER_NOT_DEPOSITOR
     let wrong_depositor: ContractAddress = 'WRONG_DEPOSITOR'.try_into().unwrap();
@@ -1357,13 +1401,20 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     );
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
+    // Balances unchanged (revert).
+    assert_eq!(input_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(input_token.balance_of(address: executor_addr), (swap_amount * 3).into());
+    assert_eq!(input_token.balance_of(address: amm_address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: privacy_address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: executor_addr), Zero::zero());
+    assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 3).into());
 
     // Catch TOKEN_MISMATCH: open note is for input token; executor deposits output token.
     let create_note_input = user
         .new_open_note_with_generated_random(
             :recipient,
             token_addr: input_token.contract_address(),
-            index: 0,
+            index: Zero::zero(),
             depositor: executor_addr,
         );
     user.cheat_create_open_note_e2e(:create_note_input);
@@ -1378,6 +1429,13 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     );
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_MISMATCH);
+    // Balances unchanged (revert).
+    assert_eq!(input_token.balance_of(address: privacy_address), Zero::zero());
+    assert_eq!(input_token.balance_of(address: executor_addr), (swap_amount * 3).into());
+    assert_eq!(input_token.balance_of(address: amm_address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: privacy_address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: executor_addr), Zero::zero());
+    assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 3).into());
 }
 
 #[test]

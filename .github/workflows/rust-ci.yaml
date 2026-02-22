@@ -75,7 +75,7 @@ jobs:
         uses: asdf-vm/actions/install@v3
         with:
           tool_versions: |
-            starknet-foundry nightly-2026-02-03
+            starknet-foundry nightly-2026-02-20
       - name: Generate Cairo reference data
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         run: |
