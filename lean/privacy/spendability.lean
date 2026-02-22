@@ -54,7 +54,7 @@ theorem spendable_note
   · exact h_amount_ne_zero
   · unfold note_used at h_not_used
     simp at h_not_used
-    exact h_not_used
+    exact ⟨h_not_used, by trivial⟩
 
 def spend_notes
     (crypto: Crypto) (m: Memory) (addrbob: ℕ) (kbob: crypto.PrivateKeys)

@@ -37,6 +37,14 @@ def ReachableMemory.add
     success := by unfold actions'; simpa [rm.success]
   }
 
+def ReachableMemory.in_add
+    {crypto: Crypto}
+    (rm: ReachableMemory crypto)
+    (action: Action)
+    (success: (run_action crypto action rm.m).success) :
+    action ∈ (rm.add action success).actions := by
+  simp [ReachableMemory.add, List.mem_cons]
+
 theorem ReachableMemory.add_m
     {crypto: Crypto}
     {rm: ReachableMemory crypto} {action: Action} (success: (run_action crypto action rm.m).success) :

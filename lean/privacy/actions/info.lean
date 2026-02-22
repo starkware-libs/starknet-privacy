@@ -252,6 +252,7 @@ structure UseNoteInfo (crypto: Crypto) (inp: UseNoteInput) (m: Memory) where
     (t, x) ≠ (.Nullifiers, [inp.nullifier crypto]) →
     m' t x = m t x
   memory_diff₀: m' .Nullifiers [inp.nullifier crypto] = 1
+  events: (use_note crypto inp m |> process_action crypto m).events = [.UseNote (inp.nullifier crypto)]
 
 def use_note_info
   (crypto: Crypto) (inp: UseNoteInput) (m: Memory)
@@ -281,6 +282,7 @@ def use_note_info
       simp [m', h₀, use_note, ServerAction.run_all, ServerAction.run]
     memory_diff₀ := by
       simp [m', use_note, ServerAction.run_all, ServerAction.run]
+    events := by rfl
   }
 
 -------------
