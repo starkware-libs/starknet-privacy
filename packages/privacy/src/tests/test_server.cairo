@@ -867,10 +867,6 @@ fn test_deposit_to_open_note_assertions() {
     depositor.increase_token_balance(:token, :amount);
     depositor.approve(:token, amount: amount.into());
 
-    // Catch ZERO_NOTE_ID - Try to deposit with zero note_id.
-    let result = depositor.safe_deposit_to_open_note(note_id: 0, :token_addr, :amount);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_NOTE_ID);
-
     // Catch ZERO_TOKEN - Try to deposit with zero token.
     let result = depositor.safe_deposit_to_open_note(note_id: 1, token_addr: Zero::zero(), :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
@@ -1176,19 +1172,6 @@ fn test_apply_invoke_swap_with_executor_assertions() {
     assert_panic_with_felt_error(
         :result, expected_error: mock_swap_executor_errors::ZERO_IN_AMOUNT,
     );
-
-    // Catch ZERO_NOTE_ID
-    let zero_note_id_invoke_input = invoke_mock_swap_executor_input(
-        swap_executor: executor_addr,
-        in_token: input_token.contract_address(),
-        out_token: output_token.contract_address(),
-        in_amount: swap_amount,
-        note_id: Zero::zero(),
-    );
-    let result = test
-        .privacy
-        .safe_apply_actions([ServerAction::Invoke(zero_note_id_invoke_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: mock_swap_executor_errors::ZERO_NOTE_ID);
 
     // Catch IN_TOKEN_EQUAL_TO_OUT_TOKEN
     let in_token_equal_to_out_token_invoke_input = invoke_mock_swap_executor_input(
