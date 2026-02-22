@@ -1,6 +1,6 @@
 use core::num::traits::Zero;
 use privacy::actions::{
-    AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
+    AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
     InvokeExternalInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
     SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
 };
@@ -823,8 +823,8 @@ fn test_open_channel() {
         ServerAction::ReadAssert(
             ReadAssertInput { storage_address: public_key_storage_path, value: user_2.public_key },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
@@ -871,8 +871,8 @@ fn test_open_channel_self_channel() {
         ServerAction::ReadAssert(
             ReadAssertInput { storage_address: public_key_storage_path, value: user.public_key },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
@@ -1133,8 +1133,8 @@ fn test_open_channel_multiple_channels_same_sender() {
                 storage_address: public_key_storage_path_1, value: user_2.public_key,
             },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info_1,
             },
         ),
@@ -1151,8 +1151,8 @@ fn test_open_channel_multiple_channels_same_sender() {
                 storage_address: public_key_storage_path_2, value: user_3.public_key,
             },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_3.address, enc_channel_info: expected_enc_channel_info_2,
             },
         ),
@@ -1247,8 +1247,8 @@ fn test_open_channel_multiple_channels_same_recipient() {
                 storage_address: public_key_storage_path_1, value: user_1.public_key,
             },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_1.address, enc_channel_info: expected_enc_channel_info_1,
             },
         ),
@@ -1265,8 +1265,8 @@ fn test_open_channel_multiple_channels_same_recipient() {
                 storage_address: public_key_storage_path_2, value: user_1.public_key,
             },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_1.address, enc_channel_info: expected_enc_channel_info_2,
             },
         ),
@@ -3823,8 +3823,8 @@ fn test_execute_open_channel() {
                 storage_address: recipient_public_key_storage_path, value: user_2.public_key,
             },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
@@ -4450,8 +4450,8 @@ fn test_internal_actions() {
         ServerAction::ReadAssert(
             ReadAssertInput { storage_address: public_key_storage_path, value: user_2.public_key },
         ),
-        ServerAction::AppendToVec(
-            AppendToVecInput {
+        ServerAction::Append(
+            AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
             },
         ),
@@ -5471,7 +5471,7 @@ fn test_client_apply_writes() {
         ServerAction::ReadAssert(
             ReadAssertInput { storage_address: public_key_storage_path, value: public_key },
         ),
-        ServerAction::AppendToVec(AppendToVecInput { recipient_addr: address, enc_channel_info }),
+        ServerAction::Append(AppendInput { recipient_addr: address, enc_channel_info }),
         to_write_once_action(storage_address: channel_exists_storage_path, value: true),
         to_write_once_action(
             storage_address: outgoing_channels_storage_path, value: enc_outgoing_channel_info,

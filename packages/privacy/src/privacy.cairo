@@ -6,7 +6,7 @@ pub mod Privacy {
     use openzeppelin::interfaces::token::erc20::IERC20Dispatcher;
     use openzeppelin::introspection::src5::SRC5Component;
     use privacy::actions::{
-        AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
+        AppendInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
         DepositInput, InputValidation, InvokeExternalInput, InvokeInput, OpenChannelInput,
         OpenSubchannelInput, ReadAssertInput, ServerAction, SetViewingKeyInput, TransferFromInput,
         TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
@@ -386,7 +386,7 @@ pub mod Privacy {
                         value: recipient_public_key,
                     },
                 ),
-                ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
+                ServerAction::Append(AppendInput { recipient_addr, enc_channel_info }),
                 to_write_once_action(
                     storage_address: self.channel_exists.entry(channel_marker).into(), value: true,
                 ),
@@ -740,7 +740,7 @@ pub mod Privacy {
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => self._apply_write_once(:input),
-                    ServerAction::AppendToVec(input) => self._apply_append_to_vec(:input),
+                    ServerAction::Append(input) => self._apply_append(:input),
                     ServerAction::TransferFrom(input) => self._apply_transfer_from(:input),
                     ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
                     ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
@@ -770,8 +770,8 @@ pub mod Privacy {
             }
         }
 
-        fn _apply_append_to_vec(ref self: ContractState, input: AppendToVecInput) {
-            let AppendToVecInput { recipient_addr, enc_channel_info } = input;
+        fn _apply_append(ref self: ContractState, input: AppendInput) {
+            let AppendInput { recipient_addr, enc_channel_info } = input;
             self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
         }
 

@@ -3,7 +3,7 @@ use core::num::traits::Zero;
 use core::traits::Neg;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
-    AppendToVecInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
+    AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
     InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput, ServerAction,
     SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
     WriteOnceInput,
@@ -1383,7 +1383,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                 ),
                 value: true,
             ),
-            ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
+            ServerAction::Append(AppendInput { recipient_addr, enc_channel_info }),
         ]
             .span();
         self.apply_actions(:actions);
@@ -1695,7 +1695,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                         storage_address += 1;
                     }
                 },
-                ServerAction::AppendToVec(AppendToVecInput {
+                ServerAction::Append(AppendInput {
                     recipient_addr, ..,
                 }) => { self.pop_from_vec(:recipient_addr); },
                 _ => {},
