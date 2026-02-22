@@ -7,26 +7,6 @@ import privacy.notes.open_deposits
 import privacy.transactions.immutability
 import privacy.utils
 
-structure UserPrivKey (crypto: Crypto) (m: Memory) where
-  addr: ℕ
-  k: crypto.PrivateKeys
-  h_k: m MemoryType.PublicKeys [addr] = crypto.priv_to_pub k
-
-abbrev UserPrivKey.extend
-    {crypto: Crypto} {rm rm': ReachableMemory crypto}
-    (bob: UserPrivKey crypto rm)
-    (h_extends: rm'.extends rm) :
-    UserPrivKey crypto rm' :=
-  {
-    addr := bob.addr,
-    k := bob.k,
-    h_k := by
-      rw [←bob.h_k]
-      apply immutability h_extends _ (by simp)
-      rw [bob.h_k]
-      apply crypto.zero_not_public_key
-  }
-
 theorem filtered_scan_notes_eq_notes_from_actions
     {crypto: Crypto} {rm: ReachableMemory crypto}
     (bob: UserPrivKey crypto rm.m)

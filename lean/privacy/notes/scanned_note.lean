@@ -24,6 +24,9 @@ theorem ScannedNote.note_id_eq {crypto: Crypto} {sn sn': ScannedNote} :
   ext
   repeat assumption
 
+abbrev ScannedNote.nullifier (crypto: Crypto) (sn: ScannedNote) (priv_key: ℕ) : ℕ :=
+  crypto.hash [sn.c, sn.token, sn.i, priv_key]
+
 abbrev ScannedNote.amount (crypto: Crypto) (m: Memory) (sn: ScannedNote) : ℕ :=
   note_amount crypto m (sn.note_id crypto) sn.c sn.token sn.i
 

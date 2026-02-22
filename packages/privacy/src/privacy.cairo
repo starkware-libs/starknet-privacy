@@ -18,9 +18,8 @@ pub mod Privacy {
     };
     use privacy::interface::{IAdmin, IClient, IServer, IViews};
     use privacy::objects::{
-        EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
-        EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
-        TokenBalancesTrait,
+        EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
+        TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::constants::{INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS};
     use privacy::utils::{
@@ -299,7 +298,6 @@ pub mod Privacy {
                 auditor_public_key: self.auditor_public_key.read(),
                 private_key: user_private_key,
             );
-            assert(enc_private_key.is_all_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
             array![
                 to_write_once_action(
@@ -374,7 +372,6 @@ pub mod Privacy {
                 :sender_addr, :sender_private_key, :index, :recipient_addr, :salt,
             );
 
-            assert(enc_channel_info.is_all_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
             assert(channel_marker.is_non_zero(), internal_errors::ZERO_CHANNEL_MARKER);
             assert(outgoing_channel_id.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_ID);
 
@@ -485,7 +482,6 @@ pub mod Privacy {
                 auditor_public_key: self.auditor_public_key.read(),
                 :user_addr,
             );
-            assert(enc_user_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
 
             array![
                 ServerAction::TransferTo(TransferToInput { to_addr, token, amount }),
@@ -625,7 +621,6 @@ pub mod Privacy {
                 auditor_public_key: self.auditor_public_key.read(),
                 user_addr: recipient_addr,
             );
-            assert(enc_recipient_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
 
             array![
                 to_write_once_action(:storage_address, value: note),

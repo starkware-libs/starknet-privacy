@@ -3,7 +3,7 @@ use privacy::actions::{
     AppendToVecInput, InvokeInput, ReadAssertInput, ServerAction, TransferFromInput,
     TransferToInput,
 };
-use privacy::objects::{EncOutgoingChannelInfo, EncPrivateKeyTrait, Note};
+use privacy::objects::{EncOutgoingChannelInfo, Note};
 use privacy::tests::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
@@ -216,7 +216,6 @@ fn test_apply_write_once_private_key() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let enc_private_key = test.mock_new_enc_private_key();
-    assert!(enc_private_key.is_all_non_zero());
 
     // Verify private key is zero before writing.
     let private_key = user.get_enc_private_key();
@@ -239,7 +238,6 @@ fn test_apply_write_once_private_key_assertions() {
     let mut test: Test = Default::default();
     let user = test.new_user();
     let enc_private_key = test.mock_new_enc_private_key();
-    assert!(enc_private_key.is_all_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(

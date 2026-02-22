@@ -39,16 +39,6 @@ pub struct EncChannelInfo {
     pub enc_sender_addr: felt252,
 }
 
-#[generate_trait]
-pub impl EncChannelInfoImpl of EncChannelInfoTrait {
-    /// Check if all the `EncChannelInfo`'s fields are non-zero.
-    fn is_all_non_zero(self: @EncChannelInfo) -> bool {
-        return self.ephemeral_pubkey.is_non_zero()
-            && self.enc_channel_key.is_non_zero()
-            && self.enc_sender_addr.is_non_zero();
-    }
-}
-
 /// Ciphertext for an ECDH-based encryption of private key.
 /// Used for the auditor to be able to decrypt the private key.
 #[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy)]
@@ -60,16 +50,6 @@ pub(crate) struct EncPrivateKey {
     /// Encrypted private key.
     /// `enc_private_key = h(ENC_PRIVATE_KEY_TAG, rK.x) + private_key`
     pub enc_private_key: felt252,
-}
-
-#[generate_trait]
-pub impl EncPrivateKeyImpl of EncPrivateKeyTrait {
-    /// Check if all the `EncPrivateKey`'s fields are non-zero.
-    fn is_all_non_zero(self: @EncPrivateKey) -> bool {
-        return self.auditor_public_key.is_non_zero()
-            && self.ephemeral_pubkey.is_non_zero()
-            && self.enc_private_key.is_non_zero();
-    }
 }
 
 /// An encrypted subchannel info, to be written to storage.
@@ -92,16 +72,6 @@ pub(crate) struct EncUserAddr {
     /// Encrypted user address.
     /// `enc_user_addr = h(ENC_USER_ADDR_TAG, rK.x) + user_addr`
     pub enc_user_addr: felt252,
-}
-
-#[generate_trait]
-pub impl EncUserAddrImpl of EncUserAddrTrait {
-    /// Check if all the `EncUserAddr`'s fields are non-zero.
-    fn is_all_non_zero(self: @EncUserAddr) -> bool {
-        return self.auditor_public_key.is_non_zero()
-            && self.ephemeral_pubkey.is_non_zero()
-            && self.enc_user_addr.is_non_zero();
-    }
 }
 
 /// An encrypted outgoing channel info, to be written to storage.
