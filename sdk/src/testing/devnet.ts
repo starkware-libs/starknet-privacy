@@ -417,7 +417,7 @@ export class Devnet {
     );
 
     const response = await this.setup.admin.executeFromOutside(outsideTransaction, {
-      proofFacts: callAndProof.proofFacts,
+      proofFacts: callAndProof.proof.proofFacts,
     });
     return this.provider!.waitForTransaction(response.transaction_hash);
   }
