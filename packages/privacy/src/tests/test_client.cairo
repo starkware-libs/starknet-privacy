@@ -4623,7 +4623,6 @@ fn test_execute_and_panic_assertions() {
 
 #[test]
 fn test_actions_out_of_order() {
-    // TODO: execute_and_panic is not tested here because of snforge storage revert issue.
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
@@ -4648,6 +4647,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch ACTIONS_OUT_OF_ORDER (open channel -> set viewing key).
     let salt = user.get_salt().into();
@@ -4667,6 +4668,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (open subchannel -> set viewing key).
@@ -4690,6 +4693,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (open subchannel -> open channel).
@@ -4719,6 +4724,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> set viewing key).
     let client_actions = [
@@ -4729,6 +4736,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> open channel).
@@ -4748,6 +4757,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> open subchannel).
@@ -4769,6 +4780,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> set viewing key).
     user.open_subchannel_e2e(recipient: user, :token_addr, index: 0);
@@ -4781,6 +4794,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> open channel).
@@ -4800,6 +4815,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> open subchannel).
@@ -4821,6 +4838,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> deposit).
     let client_actions = [
@@ -4831,6 +4850,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> set viewing key).
@@ -4843,6 +4864,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> open channel).
@@ -4863,6 +4886,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> open subchannel).
@@ -4885,6 +4910,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> deposit).
     let client_actions = [
@@ -4897,6 +4924,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> use note).
     let client_actions = [
@@ -4907,6 +4936,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> set viewing key).
@@ -4922,6 +4953,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> open channel).
@@ -4941,6 +4974,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> open subchannel).
@@ -4962,6 +4997,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> deposit).
     let client_actions = [
@@ -4973,6 +5010,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> use note).
     let client_actions = [
@@ -4982,6 +5021,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> set viewing key).
@@ -4996,6 +5037,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open channel).
@@ -5018,6 +5061,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open subchannel).
@@ -5042,6 +5087,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> deposit).
     let client_actions = [
@@ -5055,6 +5102,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> use note).
@@ -5070,6 +5119,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create enc note).
     let client_actions = [
@@ -5084,6 +5135,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create open note).
     let client_actions = [
@@ -5097,6 +5150,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> set viewing key).
@@ -5118,6 +5173,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> open channel).
     let client_actions = [
@@ -5137,6 +5194,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> open subchannel).
@@ -5159,6 +5218,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> deposit).
     let client_actions = [
@@ -5171,6 +5232,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> use note).
     let client_actions = [
@@ -5181,6 +5244,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> create enc note).
@@ -5194,6 +5259,8 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> create open note).
     let client_actions = [
@@ -5205,6 +5272,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> withdraw).
@@ -5219,6 +5288,8 @@ fn test_actions_out_of_order() {
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_execute_view(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_execute_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> second invoke).

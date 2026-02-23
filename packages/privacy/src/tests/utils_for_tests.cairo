@@ -6,7 +6,6 @@ use privacy::actions::{
     AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
     InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput, ServerAction,
     SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
-    WriteOnceInput,
 };
 use privacy::events;
 use privacy::hashes::{
@@ -34,7 +33,7 @@ use privacy::tests::mock_swap_executor::{
     ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait, ISwapExecutorSafeDispatcher,
     ISwapExecutorSafeDispatcherTrait,
 };
-use privacy::utils::constants::{OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
+use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     ProofFacts, _compute_message_hash, derive_public_key, enc_note_packed_value,
     encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
@@ -258,14 +257,13 @@ pub(crate) impl UserImpl of UserTrait {
         assert!(result.is_err());
         let mut panic_data = result.unwrap_err();
         let len = panic_data.len();
-        assert_eq!(*panic_data[len - 1], OK_WRAPPER);
+        assert_eq!(*panic_data[len - 1], ENTRYPOINT_FAILED);
+        assert_eq!(*panic_data[len - 2], OK_WRAPPER);
         assert_eq!(*panic_data[0], OK_WRAPPER);
-        #[allow(manual_assert)]
         let _ = panic_data.pop_front();
         let mut serialized_server_actions = panic_data.span();
         let server_actions: Span<ServerAction> = Serde::deserialize(ref serialized_server_actions)
             .expect('DESERIALIZE_FAILED');
-        self.privacy.revert_actions_for_testing(actions: server_actions);
         server_actions
     }
 
@@ -1704,25 +1702,6 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     fn get_fee_collector(self: @PrivacyCfg) -> ContractAddress {
         self.views.get_fee_collector()
-    }
-
-    fn revert_actions_for_testing(self: @PrivacyCfg, actions: Span<ServerAction>) {
-        for action in actions {
-            match *action {
-                ServerAction::WriteOnce(WriteOnceInput {
-                    mut storage_address, value, ..,
-                }) => {
-                    for _ in value {
-                        self.store_zero(:storage_address);
-                        storage_address += 1;
-                    }
-                },
-                ServerAction::Append(AppendInput {
-                    recipient_addr, ..,
-                }) => { self.pop_from_vec(:recipient_addr); },
-                _ => {},
-            }
-        }
     }
 
     fn store_zero(self: @PrivacyCfg, storage_address: felt252) {
