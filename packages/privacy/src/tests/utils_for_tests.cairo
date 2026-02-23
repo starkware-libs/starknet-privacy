@@ -1,7 +1,6 @@
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::traits::Neg;
-use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
     InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput, ServerAction,
@@ -1123,10 +1122,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn approve(self: @User, token: Token, amount: u256) {
-        let token_addr = token.contract_address();
-        cheat_caller_address_once(contract_address: token_addr, caller_address: *self.address);
-        IERC20Dispatcher { contract_address: token_addr }
-            .approve(spender: *self.privacy.address, :amount);
+        token.approve(owner: *self.address, spender: *self.privacy.address, :amount);
     }
 
     /// Execute deposit_to_open_note as this user (caller).
@@ -1440,12 +1436,10 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn _fund_fee(self: @PrivacyCfg, caller: ContractAddress) {
         let fee_amount = self.views.get_fee_amount();
         if fee_amount.is_non_zero() {
-            let strk_address = self.strk_token.contract_address();
             self.strk_token.supply(address: caller, amount: fee_amount);
-            cheat_caller_address_once(contract_address: strk_address, caller_address: caller);
-            // TODO: Replace with helper approve when implemented.
-            IERC20Dispatcher { contract_address: strk_address }
-                .approve(spender: *self.address, amount: fee_amount.into());
+            self
+                .strk_token
+                .approve(owner: caller, spender: *self.address, amount: fee_amount.into());
         }
     }
 
