@@ -77,7 +77,7 @@ export function usePrivateState(
     setError(null);
 
     try {
-      const indexer = new IndexerDiscoveryProvider(config.indexerUrl);
+      const indexer = new IndexerDiscoveryProvider(config.indexerUrl, config.poolAddress);
       const [tokenBalance, feeTokenBalance, { notes: notesMap }, channelsResult, requirement] =
         await Promise.all([
           getErc20Balance(provider, config.tokenAddress, account.address),

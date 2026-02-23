@@ -5,7 +5,6 @@ Developer-facing demo app for interacting with the privacy pool on StarkNet inte
 ## Prerequisites
 
 - Node.js 20+
-- Rust toolchain (for the discovery service)
 
 ## Setup
 
@@ -24,6 +23,7 @@ npm install
 |----------|-------------|
 | `VITE_RPC_URL` | StarkNet RPC endpoint |
 | `VITE_INDEXER_URL` | Discovery service API URL |
+| `VITE_PROVING_SERVICE_URL` | Proving service URL. If unset, the app uses the mock prover (`execute_view` only) |
 | `VITE_POOL_ADDRESS` | Privacy pool contract address |
 | `VITE_TOKEN_ADDRESS` | ERC-20 token contract address |
 | `VITE_FEE_TOKEN_ADDRESS` | Fee token contract address |
@@ -34,37 +34,6 @@ npm install
 
 ## Running
 
-Three components need to be running simultaneously. Use separate terminals.
-
-### 1. Discovery service
-
-Build (once):
-
-```bash
-cargo build -p discovery-service
-```
-
-Run with the provided config:
-
-```bash
-cargo run -p discovery-service -- --config demo/discovery-service.toml
-```
-
-Or with env vars directly:
-
-```bash
-CONTRACT_ADDRESS=0x29a9cf26f2de1dbe16923fd6da791a2158497baeb9cc2fb8f99ed464938d731 \
-RPC_URL=http://34.170.239.64:9545/rpc/v0_10 \
-WS_URL=ws://34.170.239.64:9545/ws/rpc/v0_8 \
-API_HOST=127.0.0.1:8080 \
-RUST_LOG=info \
-cargo run -p discovery-service
-```
-
-Wait for `API server listening` in the logs before proceeding.
-
-### 2. Demo app
-
 ```bash
 cd demo
 npm run dev
@@ -72,7 +41,7 @@ npm run dev
 
 Open http://localhost:5173.
 
-### 3. Verify
+### Verify
 
 1. Select an account from the dropdown
 2. Click **Refresh** — transparent and private balances appear
@@ -85,6 +54,6 @@ Open http://localhost:5173.
 
 - **Vite + React + TypeScript** — single-page app
 - **SDK consumption** — `starknet-sdk` linked from `../sdk` (same as e2e)
-- **Proof provider** — `NoValidateProofProvider` calls `execute_view` directly (no real proving)
-- **Discovery** — `IndexerDiscoveryProvider` talks to the local discovery service
+- **Proof provider** — With `VITE_PROVING_SERVICE_URL` set, uses the real proving service; otherwise `NoValidateProofProvider` calls `execute_view` directly (mock, no real proof)
+- **Discovery** — `IndexerDiscoveryProvider` talks to the remote discovery service
 - **Resource bounds** — hardcoded for integration sepolia (2x headroom over actual block prices)
