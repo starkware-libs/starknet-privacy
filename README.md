@@ -1,71 +1,101 @@
-<div align="center">
-  <img alt="Cairo Logo" src="cairo_logo.png" width="200">
-</div>
+# Starknet Privacy
 
-<div align="center">
+Privacy pool protocol for Starknet.
 
 [![License: Apache2.0](https://img.shields.io/badge/License-Apache2.0-green.svg)](LICENSE)
-</div>
 
-# Template Cairo Repo
+Users submit private transfers through the SDK, which compiles client actions into a transaction. An operator-side proving service executes these transactions in virtual Starknet blocks, generates validity proofs, and submits them to Starknet for on-chain verification. A discovery service indexes encrypted on-chain storage so wallets can efficiently sync their notes without scanning the full chain.
 
-## Title
+## Architecture
 
-[Website](link-to-website) | [Docs](link-to-docs)
+```mermaid
+graph LR
+    subgraph Offchain
+        Wallet([Wallet])
+        SDK[SDK]
+        Discovery[Discovery]
+        Proving[Proving]
+    end
 
-## Content
+    subgraph Onchain
+        Contract[Privacy Pool]
+        Helpers[Invoke Helpers]
+    end
 
-- [Overview](#overview)
-- [Dependencies](#dependencies)
-- [Installation](#installation)
-- [Getting help](#getting-help)
-- [Build and Test](#build-and-test)
-- [Audit](#audit)
-- [Security](#security)
-
-## Overview
-
-This a template repo for new Cairo projects, use this repo as a start.
-You can fork the repo or start a new repo and do the following:
-
-In this repo run
-
-```bash
-git clone https://github.com/starkware-libs/template-cairo-repo.git
-cd template-cairo-repo
-git fetch origin
-git format-patch 40b4468^..HEAD
-```
-This will create a file like 0001-Your-commit-message.patch.
-
-In the new repo run
-```bash
-git clone https://github.com/username/new-repo.git
-cd new-repo
-git am ../template-cairo-repo/0001-Your-commit-message.patch
-git push origin <branch-name>
+    Wallet --> SDK
+    SDK --> Discovery
+    SDK --> Proving
+    SDK --> Contract
+    Discovery --> Contract
+    Proving --> Contract
+    Contract --> Helpers
 ```
 
-Make sure to edit Scarb.toml to define workspace in this repo.
+- **SDK** — Orchestrates private transfers (register, transfer, discover)
+- **Discovery Service** — Indexes encrypted on-chain storage for efficient wallet sync
+- **Proving Service** — Proves virtual Starknet blocks and submits validity proofs on-chain
+- **Privacy Pool Contract** — Source of truth for actions, storage layout, cryptography
+- **Invoke Helpers** — External contracts callable from within a private transaction (e.g. swap executors)
 
+## Repository map
 
-| Smart contract   | Description                                                                                                                            |
-|------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| [Smart Contract 1](packages/smart_contract_1)             | Smart contract 1 description                                                                                                 |
-| [Smart Contract 2](packages/smart_Contract_2)          | Smart contract 2 description                                                        |
-| [ETC...](packages/etc)       | Etc...                                                                  |
+```
+starknet-privacy/
+├── packages/privacy/        Cairo smart contract (Scarb workspace)
+├── crates/
+│   ├── discovery-core/      Core discovery logic & cryptography (Rust library)
+│   └── discovery-service/   HTTP indexing service with SQLite cache (Rust binary)
+├── sdk/                     TypeScript SDK for private transfers
+├── e2e/                     End-to-end tests & devnet fixture generation
+├── deploy/
+│   └── discovery-service/   Dockerfile & deployment docs
+├── lean/                    Formal verification (Lean)
+├── demo/                    Web demo application
+├── docs/                    Audit reports & security docs
+└── .claude/
+    ├── CLAUDE.md            Project-level agent instructions
+    ├── rules/               Code style, testing, verification rules
+    └── specs/               Discovery service specifications
+```
 
-## Dependencies
+Each component directory contains its own README with architecture details, API docs, and build instructions.
 
-- Cairo dependencies such as [Scarb](https://docs.swmansion.com/scarb/) and [Starknet foundry](https://foundry-rs.github.io/starknet-foundry/index.html) - install using [starkup](https://github.com/software-mansion/starkup).
+## Docker images
 
-## Installation
+### Discovery Service
 
-Clone the repo and from within the projects root folder run:
+See [deploy/discovery-service](deploy/discovery-service) for the Dockerfile, configuration reference, and run instructions.
+
+```bash
+docker build -f deploy/discovery-service/Dockerfile -t discovery-service .
+docker run --rm -e RPC_URL=http://host.docker.internal:5050 -p 8080:8080 discovery-service
+```
+
+### Proving Service
+
+The proving service uses a pluggable backend. Docker image documentation is forthcoming.
+
+### Pathfinder (RPC Node) + Fake L1
+
+See [deploy/pathfinder](deploy/pathfinder) for Pathfinder configuration, blockifier constants, and the Anvil-based fake L1 setup.
+
+## Prerequisites
+
+### Cairo
+
+Install [Scarb](https://docs.swmansion.com/scarb/) and [Starknet Foundry](https://foundry-rs.github.io/starknet-foundry/index.html) via [starkup](https://github.com/software-mansion/starkup):
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.starkup.dev | sh
 ```
+
+### Rust
+
+Stable toolchain. Install via [rustup](https://rustup.rs/) if needed.
+
+### Node.js
+
+Version 18 or later.
 
 ### Starknet Devnet
 
@@ -100,27 +130,18 @@ which starknet-devnet
 # Expected: /usr/local/bin/starknet-devnet
 ```
 
-## Getting help
-
-Reach out to the maintainer at any of the following:
-
-- [GitHub Discussions](discussions)
-- Contact options listed on this [GitHub profile](https://github.com/starkware-libs)
-
-## Build and Test
-
-Build the contracts from the repo root:
+## Build and test
 
 ```bash
-scarb build
-
+scarb build && scarb test          # Cairo contract
+cargo build && cargo test          # Rust crates
+cd sdk && npm ci && npm test       # TypeScript SDK
+cd e2e && npm ci && npm test       # E2E (requires devnet + built artifacts)
 ```
 
-To run the tests, execute:
+## License
 
-```bash
-scarb test
-```
+[Apache 2.0](LICENSE)
 
 ## Audit
 
@@ -128,6 +149,4 @@ Find the latest audit report in [docs/audit](docs/audit).
 
 ## Security
 
-This repo follows good practices of security, but 100% security cannot be assured. This repo is provided "as is" without any warranty. Use at your own risk.
-
-For more information and to report security issues, please refer to our [security documentation](docs/SECURITY.md).
+For more information and to report security issues, please refer to the [security documentation](docs/SECURITY.md).
