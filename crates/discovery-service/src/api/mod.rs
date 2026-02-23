@@ -16,10 +16,13 @@ use tracing::info;
 use crate::chain_state::ChainState;
 use crate::config::{ApiServerConfig, ValidationLimits};
 
-pub use handlers::{health_handler, incoming_sync_handler, outgoing_sync_handler};
+pub use handlers::{
+    health_handler, incoming_sync_handler, outgoing_sync_handler, preflight_check_handler,
+};
 pub use types::{
     ApiErrorBody, ApiErrorResponse, HealthResponse, IncomingSyncRequest, IncomingSyncResponse,
-    OutgoingSyncRequest, OutgoingSyncResponse, SyncRequestBase,
+    OutgoingSyncRequest, OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse,
+    SyncRequestBase,
 };
 
 /// API server for the discovery service.
@@ -72,6 +75,10 @@ where
             .route("/health", get(health_handler::<B>))
             .route("/v1/sync/incoming_state", post(incoming_sync_handler::<B>))
             .route("/v1/sync/outgoing_state", post(outgoing_sync_handler::<B>))
+            .route(
+                "/v1/sync/preflight_check",
+                post(preflight_check_handler::<B>),
+            )
             .with_state(app_state);
 
         let listener = TcpListener::bind(&self.config.host)
