@@ -55,6 +55,4 @@ pub(crate) mod internal_errors {
     pub const PACK_OVERFLOW: felt252 = 'PACK_OVERFLOW';
     pub const UNPACK1_OUT_OF_BOUNDS: felt252 = 'UNPACK1_OUT_OF_BOUNDS';
     pub const UNEXPECTED_ZERO_SALT: felt252 = 'UNEXPECTED_ZERO_SALT';
-    pub const ZERO_EPHEMERAL_PUBKEY: felt252 = 'ZERO_EPHEMERAL_PUBKEY';
-    pub const ZERO_SHARED: felt252 = 'ZERO_SHARED';
 }

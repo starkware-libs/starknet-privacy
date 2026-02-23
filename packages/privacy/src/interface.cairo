@@ -344,8 +344,7 @@ pub trait IClient<T> {
     /// contract.
     /// - `client_actions` must be ordered by phase: SetViewingKey, OpenChannel, OpenSubchannel,
     /// Deposit, UseNote, CreateEncNote/CreateOpenNote, Withdraw, InvokeExternal.
-    /// - At most one [`SetViewingKey`](privacy::actions::ClientAction::SetViewingKey) action and at
-    /// most one [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) action are
+    /// - At most one [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) action is
     /// allowed per transaction.
     /// - At least one privacy-related action must be included
     /// ([`Deposit`](privacy::actions::ClientAction::Deposit),

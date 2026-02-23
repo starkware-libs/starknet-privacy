@@ -1,22 +1,24 @@
 use constants::{PROOF_VALIDITY_BLOCK_INTERVAL, VIRTUAL_SNOS, VIRTUAL_SNOS0};
-use core::ec::stark_curve::{GEN_X, GEN_Y, ORDER};
+use core::ec::stark_curve::{GEN_X, GEN_Y};
 use core::ec::{EcPoint, EcPointTrait};
 use core::iter::Extend;
 use core::never;
 use core::num::traits::{WrappingAdd, WrappingSub, Zero};
+use core::poseidon::poseidon_hash_span;
 use privacy::actions::{ClientAction, ServerAction, WriteOnceInput};
 use privacy::errors;
 use privacy::errors::internal_errors;
 use privacy::hashes::{
     compute_enc_amount_hash, compute_enc_channel_key_hash, compute_enc_private_key_hash,
     compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash, compute_enc_token_hash,
-    compute_enc_user_addr_hash, hash,
+    compute_enc_user_addr_hash,
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
 };
 use privacy::utils::constants::{
-    ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
+    ENTRYPOINT_FAILED, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120,
+    TX_V3,
 };
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
@@ -29,6 +31,7 @@ pub(crate) trait IAccount<TState> {
 }
 
 pub mod constants {
+    use core::ec::stark_curve::ORDER;
     use core::num::traits::{Pow, Zero};
     use starknet::ContractAddress;
 
@@ -42,7 +45,7 @@ pub mod constants {
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
     pub const TX_V3: u64 = 3;
-    /// The packed value for open notes: `packing(salt = OPEN_NOTE_SALT = 1, amount = 0)`.
+    /// The packed value for open notes: `pack(salt = OPEN_NOTE_SALT = 1, amount = 0)`.
     pub const OPEN_NOTE_PACKED_VALUE: felt252 = u256 { high: OPEN_NOTE_SALT, low: Zero::zero() }
         .try_into()
         .unwrap();
@@ -60,6 +63,8 @@ pub mod constants {
         0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d
         .try_into()
         .unwrap();
+    /// Half the order of the Stark curve.
+    pub const HALF_ORDER: u256 = ORDER.into() / 2_u256;
 }
 
 /// Returns the generator point.
@@ -96,12 +101,10 @@ fn _compute_shared_x(ephemeral_secret: felt252, public_key: felt252) -> (felt252
     // Compute ephemeral public key.
     let ephemeral_pub_point = GEN_P().mul(scalar: ephemeral_secret);
     let ephemeral_pub_x = ephemeral_pub_point.try_into().unwrap().x();
-    assert(ephemeral_pub_x.is_non_zero(), internal_errors::ZERO_EPHEMERAL_PUBKEY);
     // Compute shared point.
     let public_point = EcPointTrait::new_from_x(x: public_key).unwrap();
     let shared_point = public_point.mul(scalar: ephemeral_secret);
     let shared_x = shared_point.try_into().unwrap().x();
-    assert(shared_x.is_non_zero(), internal_errors::ZERO_SHARED);
     (ephemeral_pub_x, shared_x)
 }
 
@@ -227,7 +230,7 @@ pub(crate) fn derive_public_key(private_key: felt252) -> felt252 {
 
 /// Checks if the key is canonical, i.e. less than ORDER / 2.
 pub(crate) fn is_canonical_key(key: felt252) -> bool {
-    key.into() < (ORDER.into() / 2_u256)
+    key.into() < HALF_ORDER
 }
 
 /// Encrypts the note amount for encrypted notes.
@@ -251,13 +254,13 @@ pub(crate) fn _encrypt_note_amount(
 /// The first 120 bits are the salt, and the last 128 bits are the encrypted amount.
 /// Assumes all the inputs (except `index`) are not zero and `salt` is 120 bits.
 ///
-/// `packed_value = packing(salt, enc_amount)`.
+/// `packed_value = pack(salt, enc_amount)`.
 /// `enc_amount = (h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt) + amount) % 2^128`.
 pub(crate) fn enc_note_packed_value(
     channel_key: felt252, token: ContractAddress, index: usize, salt: u128, amount: u128,
 ) -> felt252 {
     let enc_amount: u128 = _encrypt_note_amount(:channel_key, :token, :index, :salt, :amount);
-    packing(value_1: salt, value_2: enc_amount)
+    pack(value_1: salt, value_2: enc_amount)
 }
 
 /// Decrypts `enc_amount` using the other parameters.
@@ -276,7 +279,7 @@ pub(crate) fn decrypt_note_amount(
 pub(crate) fn decode_note_amount(
     packed_value: felt252, channel_key: felt252, token: ContractAddress, index: usize,
 ) -> u128 {
-    let (salt, amount) = unpacking(:packed_value);
+    let (salt, amount) = unpack(:packed_value);
     assert(salt.is_non_zero(), internal_errors::UNEXPECTED_ZERO_SALT);
     if salt == OPEN_NOTE_SALT {
         amount
@@ -296,14 +299,14 @@ pub(crate) impl StoragePathIntoFelt<
 /// Packs two u128 values into a single felt252 value.
 /// Equivalent to (value_1 << 128) | value_2.
 /// Assumes: value_1 is 120 bits, value_2 is 128 bits.
-pub(crate) fn packing(value_1: u128, value_2: u128) -> felt252 {
+pub(crate) fn pack(value_1: u128, value_2: u128) -> felt252 {
     let packed = u256 { high: value_1, low: value_2 };
     packed.try_into().expect(internal_errors::PACK_OVERFLOW)
 }
 
 /// Unpacks a single felt252 into two u128 values (120 bits for value_1, 128 bits for value_2).
-/// Inverse of `packing`: `packed_value = value_1 * 2^128 + value_2`
-pub(crate) fn unpacking(packed_value: felt252) -> (u128, u128) {
+/// Inverse of `pack`: `packed_value = value_1 * 2^128 + value_2`
+pub(crate) fn unpack(packed_value: felt252) -> (u128, u128) {
     let u256 { high, low } = packed_value.into();
     // Sanity check that value_1 (high bits) is 120 bits.
     assert(high < TWO_POW_120, internal_errors::UNPACK1_OUT_OF_BOUNDS);
@@ -363,7 +366,7 @@ pub(crate) fn extract_server_actions_from_execute_and_panic(
 ) -> Span<ServerAction> {
     let origin_panic_data = syscall_result.expect_err(internal_errors::EXPECTED_PANIC).span();
     let mut panic_data = origin_panic_data;
-    // On success, the panic data should be [`OK_WRAPPER`, <serialized server actions>,
+    // On success, the panic data should be [`OK_WRAPPER`, <serialized_server_actions>,
     // `OK_WRAPPER`, `ENTRYPOINT_FAILED`].
     if panic_data.pop_front() != Some(@OK_WRAPPER) {
         panic(origin_panic_data.into());
@@ -376,7 +379,7 @@ pub(crate) fn extract_server_actions_from_execute_and_panic(
     if panic_data.pop_front() != Some(@ENTRYPOINT_FAILED) {
         panic(origin_panic_data.into());
     }
-    if panic_data.len().is_non_zero() {
+    if !panic_data.is_empty() {
         panic(origin_panic_data.into());
     }
     server_actions
@@ -451,23 +454,33 @@ pub(crate) fn validate_proof(actions: Span<ServerAction>) {
     assert(!proof_facts_span.is_empty(), errors::EMPTY_PROOF_FACTS);
     let proof_facts: ProofFacts = Serde::deserialize(ref proof_facts_span)
         .expect(errors::PROOF_FACTS_DESERIALIZE_ERROR);
-    assert(proof_facts.program_variant == VIRTUAL_SNOS, errors::INVALID_PROGRAM_VARIANT);
-    assert(
-        proof_facts.starknet_os_output_version == VIRTUAL_SNOS0, errors::INVALID_OS_OUTPUT_VERSION,
-    );
+    let ProofFacts {
+        proof_version: _,
+        program_variant,
+        virtual_program_hash: _,
+        starknet_os_output_version,
+        base_block_number,
+        base_block_hash: _,
+        starknet_os_config_hash: _,
+        message_to_l1_hashes,
+    } = proof_facts;
+
+    // Assert program variant and output version are correct.
+    assert(program_variant == VIRTUAL_SNOS, errors::INVALID_PROGRAM_VARIANT);
+    assert(starknet_os_output_version == VIRTUAL_SNOS0, errors::INVALID_OS_OUTPUT_VERSION);
 
     // Assert base block number is recent.
     let current_block_number = execution_info.block_info.block_number;
-    let proof_block_number = proof_facts.base_block_number;
-    assert(proof_block_number < current_block_number, errors::INVALID_BASE_BLOCK_NUMBER);
+    assert(base_block_number < current_block_number, errors::INVALID_BASE_BLOCK_NUMBER);
     assert(
-        current_block_number <= proof_block_number + PROOF_VALIDITY_BLOCK_INTERVAL,
+        current_block_number <= base_block_number + PROOF_VALIDITY_BLOCK_INTERVAL,
         errors::PROOF_EXPIRED,
     );
+
     // Assert that the message hash is included in the L1 messages,
     // meaning the proof is valid for this transaction.
     let message_hash = _compute_message_hash(:actions, :contract_address);
-    assert(proof_facts.message_to_l1_hashes == [message_hash].span(), errors::INVALID_PROOF_MSG);
+    assert(message_to_l1_hashes == [message_hash].span(), errors::INVALID_PROOF_MSG);
 }
 
 /// The message hash is computed from the L1 message, which includes:
@@ -483,5 +496,5 @@ pub(crate) fn _compute_message_hash(
     actions.serialize(ref payload);
     payload.len().serialize(ref l1_message_data);
     l1_message_data.extend(payload);
-    hash(l1_message_data.span())
+    poseidon_hash_span(l1_message_data.span())
 }

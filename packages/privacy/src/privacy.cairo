@@ -27,8 +27,8 @@ pub mod Privacy {
         decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
         encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
         encrypt_user_addr, extract_execute_view_inputs,
-        extract_server_actions_from_execute_and_panic, is_canonical_key, open_note, packing,
-        panic_with_server_actions, send_message_to_server, to_write_once_action, unpacking,
+        extract_server_actions_from_execute_and_panic, is_canonical_key, open_note, pack,
+        panic_with_server_actions, send_message_to_server, to_write_once_action, unpack,
         validate_proof,
     };
     use privacy::{errors, events};
@@ -209,64 +209,41 @@ pub mod Privacy {
             // Used to make sure a storage action was included in the client actions.
             let mut has_privacy_action = false;
             for client_action in client_actions {
-                curr_phase = client_action.assert_phase_and_get_next(:curr_phase);
-                let (actions, should_execute) = match *client_action {
-                    ClientAction::SetViewingKey(input) => (
-                        self.set_viewing_key(:user_addr, :user_private_key, :input), true,
-                    ),
-                    ClientAction::OpenChannel(input) => (
-                        self
-                            .open_channel(
-                                sender_addr: user_addr,
-                                sender_private_key: user_private_key,
-                                :input,
-                            ),
-                        true,
-                    ),
-                    ClientAction::OpenSubchannel(input) => (
-                        self.open_subchannel(sender_addr: user_addr, :input), true,
-                    ),
-                    ClientAction::Deposit(input) => (
-                        self.deposit(:user_addr, :input, ref :token_balances), false,
-                    ),
-                    ClientAction::CreateEncNote(input) => (
-                        self
-                            .create_enc_note(
-                                sender_addr: user_addr,
-                                sender_private_key: user_private_key,
-                                :input,
-                                ref :token_balances,
-                            ),
-                        true,
-                    ),
-                    ClientAction::CreateOpenNote(input) => (
-                        self
-                            .create_open_note(
-                                sender_addr: user_addr,
-                                sender_private_key: user_private_key,
-                                :input,
-                            ),
-                        true,
-                    ),
-                    ClientAction::UseNote(input) => (
-                        self
-                            .use_note(
-                                owner_addr: user_addr,
-                                owner_private_key: user_private_key,
-                                :input,
-                                ref :token_balances,
-                            ),
-                        true,
-                    ),
-                    ClientAction::Withdraw(input) => (
-                        self.withdraw(:user_addr, :input, ref :token_balances), false,
-                    ),
-                    ClientAction::InvokeExternal(input) => (self.invoke_external(:input), false),
+                client_action.assert_and_advance_phase(ref :curr_phase);
+                let actions = match *client_action {
+                    ClientAction::SetViewingKey(input) => self
+                        .set_viewing_key(:user_addr, :user_private_key, :input),
+                    ClientAction::OpenChannel(input) => self
+                        .open_channel(
+                            sender_addr: user_addr, sender_private_key: user_private_key, :input,
+                        ),
+                    ClientAction::OpenSubchannel(input) => self
+                        .open_subchannel(sender_addr: user_addr, :input),
+                    ClientAction::Deposit(input) => self
+                        .deposit(:user_addr, :input, ref :token_balances),
+                    ClientAction::CreateEncNote(input) => self
+                        .create_enc_note(
+                            sender_addr: user_addr,
+                            sender_private_key: user_private_key,
+                            :input,
+                            ref :token_balances,
+                        ),
+                    ClientAction::CreateOpenNote(input) => self
+                        .create_open_note(
+                            sender_addr: user_addr, sender_private_key: user_private_key, :input,
+                        ),
+                    ClientAction::UseNote(input) => self
+                        .use_note(
+                            owner_addr: user_addr,
+                            owner_private_key: user_private_key,
+                            :input,
+                            ref :token_balances,
+                        ),
+                    ClientAction::Withdraw(input) => self
+                        .withdraw(:user_addr, :input, ref :token_balances),
+                    ClientAction::InvokeExternal(input) => self.invoke_external(:input),
                 };
-                if should_execute {
-                    has_privacy_action = true;
-                    self._apply_actions(actions.span());
-                }
+                self._client_apply_actions(actions: actions.span(), ref :has_privacy_action);
                 server_actions.extend(actions);
             }
             assert(has_privacy_action, errors::NO_PRIVACY_ACTIONS);
@@ -685,7 +662,7 @@ pub mod Privacy {
             let Note { packed_value, token: note_token, depositor } = note_entry.read();
             assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
-            let (salt, current_amount) = unpacking(:packed_value);
+            let (salt, current_amount) = unpack(:packed_value);
             assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
             assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
             assert(token == note_token, errors::TOKEN_MISMATCH);
@@ -697,7 +674,7 @@ pub mod Privacy {
                 );
 
             // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
-            let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
+            let new_packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
             assert(new_packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
             note_entry.packed_value.write(new_packed_value);
 
@@ -738,6 +715,33 @@ pub mod Privacy {
             };
         }
 
+
+        fn _client_apply_actions(
+            ref self: ContractState, actions: Span<ServerAction>, ref has_privacy_action: bool,
+        ) {
+            for action in actions {
+                match *action {
+                    ServerAction::WriteOnce(input) => {
+                        self._apply_write_once(:input);
+                        has_privacy_action = true;
+                    },
+                    ServerAction::Append(input) => {
+                        self._apply_append(:input);
+                        has_privacy_action = true;
+                    },
+                    ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
+                    ServerAction::TransferFrom(_) => {},
+                    ServerAction::TransferTo(_) => {},
+                    ServerAction::Invoke(_) => {},
+                    ServerAction::EmitViewingKeySet(_) => {},
+                    ServerAction::EmitWithdrawal(_) => {},
+                    ServerAction::EmitDeposit(_) => {},
+                    ServerAction::EmitOpenNoteCreated(_) => {},
+                    ServerAction::EmitNoteUsed(_) => {},
+                }
+            }
+        }
+
         fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
             let WriteOnceInput { storage_address, value } = input;
             let base: StorageBaseAddress = storage_base_address_from_felt252(addr: storage_address);
@@ -749,7 +753,6 @@ pub mod Privacy {
                     errors::NON_ZERO_VALUE,
                 );
                 storage_write_syscall(address_domain: 0, :address, value: *felt).unwrap_syscall();
-
                 offset += 1;
             }
         }

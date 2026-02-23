@@ -15,7 +15,7 @@ use privacy::tests::utils_for_tests::{
 use privacy::utils::constants::{OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     decode_note_amount, encrypt_channel_info, encrypt_user_addr, is_canonical_key,
-    to_write_once_action, unpacking,
+    to_write_once_action, unpack,
 };
 use privacy::{errors, events};
 use snforge_std::{
@@ -2738,9 +2738,9 @@ fn test_use_deposited_open_note(open_note_self: bool) {
 
     // Deposit to the open note.
     depositor.fund_and_deposit_to_open_note(:token, :note_id, :amount);
-    // Verify the note now has the deposited amount (use unpacking to ensure it's an open note).
+    // Verify the note now has the deposited amount (use unpack to ensure it's an open note).
     let stored_note = test.privacy.get_note(:note_id);
-    let (salt, stored_amount) = unpacking(packed_value: stored_note.packed_value);
+    let (salt, stored_amount) = unpack(packed_value: stored_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount);
 
@@ -3595,11 +3595,9 @@ fn test_withdraw_decrypt_user_addr() {
 
     // Auditor should be able to decrypt the user address.
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
-    // events[0]: NoteUsed leaked from reverted execute call (snforge revert issue).
-    // events[1]: NoteUsed from apply_actions.
-    // events[2]: Withdrawal from apply_actions.
-    // TODO: Verify 2 events once snforge revert issue is fixed.
-    assert_eq!(events.len(), 3);
+    // events[0]: NoteUsed from apply_actions.
+    // events[1]: Withdrawal from apply_actions.
+    assert_eq!(events.len(), 2);
     let nullifier = user_1.compute_nullifier(sender: user_1, :token_addr, index: 0);
     let expected_note_used = events::NoteUsed { nullifier };
     assert_expected_event_emitted(
@@ -3608,13 +3606,7 @@ fn test_withdraw_decrypt_user_addr() {
         expected_event_selector: @selector!("NoteUsed"),
         expected_event_name: "NoteUsed",
     );
-    assert_expected_event_emitted(
-        spied_event: events[1],
-        expected_event: expected_note_used,
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
-    let (_, event) = events[2];
+    let (_, event) = events[1];
     let enc_user_addr = EncUserAddr {
         auditor_public_key: *event.data[0],
         ephemeral_pubkey: *event.data[1],
@@ -3689,7 +3681,10 @@ fn test_execute_set_viewing_key() {
 
     let random = user_1.get_random();
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random })].span();
+    let mut spy = spy_events();
     let actions = user_1.execute(:client_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
     let enc_private_key = user_1.compute_enc_private_key(:random);
     let public_key_storage_path_felt = map_entry_address(
         map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
@@ -3711,14 +3706,19 @@ fn test_execute_set_viewing_key() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
+    let mut spy = spy_events();
     let view_actions = user_1.execute_view(:client_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
     assert_eq!(view_actions, actions);
+    let mut spy = spy_events();
     let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
     assert_eq!(panic_data_actions, actions);
     assert_eq!(user_1.get_public_key(), Zero::zero());
     assert_eq!(user_1.get_enc_private_key().ephemeral_pubkey, Zero::zero());
     assert_eq!(user_1.get_enc_private_key().enc_private_key, Zero::zero());
-    // TODO: Verify no events emitted (currently not tested because of snforge revert issue).
 
     let mut spy_events = spy_events();
     test.privacy.apply_actions(:actions);
@@ -3962,18 +3962,10 @@ fn test_execute_use_note_create_note() {
         .span();
     let mut spy = spy_events();
     let actions = user_2.execute(:client_actions);
-    // NoteUsed event leaked from reverted execute call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let execute_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(execute_events.len(), 1);
+    assert_eq!(execute_events.len(), 0);
     let nullifier = user_2
         .compute_nullifier(sender: user_1, :token_addr, index: create_note_input.index);
-    assert_expected_event_emitted(
-        spied_event: execute_events[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
     let (note_id, expected_note) = user_2.compute_enc_note(create_note_input: create_note_input_2);
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
@@ -3987,35 +3979,19 @@ fn test_execute_use_note_create_note() {
     assert_eq!(actions, expected_actions);
     let mut spy = spy_events();
     let view_actions = user_2.execute_view(:client_actions);
-    // NoteUsed event leaked from reverted execute_view call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let execute_view_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_view_events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: execute_view_events[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
+    assert_eq!(execute_view_events.len(), 0);
     assert_eq!(view_actions, actions);
     let mut spy = spy_events();
     let panic_data_actions = user_2.execute_and_panic(:client_actions);
-    // NoteUsed event leaked from reverted execute_and_panic call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let execute_and_panic_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_and_panic_events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: execute_and_panic_events[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
+    assert_eq!(execute_and_panic_events.len(), 0);
     assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
@@ -4059,16 +4035,8 @@ fn test_execute_use_note_withdraw() {
         .compute_nullifier(sender: user_1, :token_addr, index: create_note_input.index);
     let mut spy = spy_events();
     let actions = user_2.execute(:client_actions);
-    // NoteUsed event leaked from reverted execute call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let execute_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(execute_events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: execute_events[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
+    assert_eq!(execute_events.len(), 0);
     let nullifier_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
@@ -4088,35 +4056,19 @@ fn test_execute_use_note_withdraw() {
     assert_eq!(actions, expected_actions);
     let mut spy = spy_events();
     let view_actions = user_2.execute_view(:client_actions);
-    // NoteUsed event leaked from reverted execute_view call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let execute_view_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_view_events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: execute_view_events[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
+    assert_eq!(execute_view_events.len(), 0);
     assert_eq!(view_actions, actions);
     let mut spy = spy_events();
     let panic_data_actions = user_2.execute_and_panic(:client_actions);
-    // NoteUsed event leaked from reverted execute_and_panic call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let execute_and_panic_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_and_panic_events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: execute_and_panic_events[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
+    assert_eq!(execute_and_panic_events.len(), 0);
     assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
@@ -4179,16 +4131,8 @@ fn test_execute_use_note_swap() {
         .compute_nullifier(sender: user, :token_addr, index: create_note_input.index);
     let mut spy = spy_events();
     let actions = user.execute(:client_actions);
-    // NoteUsed event leaked from reverted execute call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let execute_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(execute_events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: execute_events[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
+    assert_eq!(execute_events.len(), 0);
     let nullifier_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
@@ -4218,35 +4162,19 @@ fn test_execute_use_note_swap() {
     assert_eq!(actions, expected_actions);
     let mut spy = spy_events();
     let view_actions = user.execute_view(:client_actions);
-    // NoteUsed event leaked from reverted execute_view call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let execute_view_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_view_events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: execute_view_events[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
+    assert_eq!(execute_view_events.len(), 0);
     assert_eq!(view_actions, actions);
     let mut spy = spy_events();
     let panic_data_actions = user.execute_and_panic(:client_actions);
-    // NoteUsed event leaked from reverted execute_and_panic call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let execute_and_panic_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_and_panic_events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: execute_and_panic_events[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
+    assert_eq!(execute_and_panic_events.len(), 0);
     assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
     let note = test.privacy.get_note(:note_id);
@@ -4267,7 +4195,7 @@ fn test_execute_use_note_swap() {
     test.privacy.apply_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
     let note = test.privacy.get_note(:note_id);
-    let (salt, note_amount) = unpacking(packed_value: note.packed_value);
+    let (salt, note_amount) = unpack(packed_value: note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(note_amount, amount);
     assert_eq!(note.token, out_token_addr);
@@ -5480,16 +5408,8 @@ fn test_client_apply_writes() {
         .span();
     // Assert server actions.
     assert_eq!(server_actions, expected_server_actions);
-    // ViewingKeySet event leaked from the reverted execute call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: events[0],
-        expected_event: expected_event_viewing_key_set,
-        expected_event_selector: @selector!("ViewingKeySet"),
-        expected_event_name: "ViewingKeySet",
-    );
+    assert_eq!(events.len(), 0);
     // Assert view actions are the same.
     let view_actions = user.execute_view(:client_actions);
     assert_eq!(view_actions, server_actions);
@@ -5636,21 +5556,13 @@ fn test_client_transfers_dont_execute() {
 
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
-    // NoteUsed event leaked from the reverted inner execute_and_panic call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let events = spy_events_withdraw
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(events.len(), 1);
+    assert_eq!(events.len(), 0);
 
     let nullifier = user.compute_nullifier(sender: user, :token_addr, index: 0);
-    assert_expected_event_emitted(
-        spied_event: events[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
     let nullifier_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
@@ -5790,11 +5702,13 @@ fn test_execute_create_open_note() {
             recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
         );
     let index = 0;
+    let random = user_1.get_random();
     let create_note_input = user_1
-        .new_open_note_with_generated_random(recipient: user_2, :token_addr, :index, :depositor);
+        .new_open_note(recipient: user_2, :token_addr, :index, :depositor, :random);
 
     // Execute client actions.
     let client_actions = [ClientAction::CreateOpenNote(create_note_input)].span();
+    let mut spy = spy_events();
     let actions = user_1.execute(:client_actions);
 
     // Compute expected values.
@@ -5806,20 +5720,43 @@ fn test_execute_create_open_note() {
     // Check expected server actions.
     assert_eq!(actions, create_note_input.into_server_actions(user: user_1));
 
+    // Verify no events emitted.
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
+
     // Verify view and panic paths return the same actions.
+    let mut spy = spy_events();
     let view_actions = user_1.execute_view(:client_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
     assert_eq!(view_actions, actions);
+    let mut spy = spy_events();
     let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 0);
     assert_eq!(panic_data_actions, actions);
 
     // Verify storage before execution.
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
-    // TODO: Verify no events emitted (currently not tested because of snforge revert issue).
-
     // Execute actions and verify storage after.
+    let mut spy = spy_events();
     test.privacy.apply_actions(:actions);
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    let expected_event = events::OpenNoteCreated {
+        enc_recipient_addr: user_2.compute_enc_user_addr(random: random.into()),
+        depositor,
+        token: token_addr,
+        note_id,
+    };
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("OpenNoteCreated"),
+        expected_event_name: "OpenNoteCreated",
+    );
 }
 
 #[test]
@@ -6189,7 +6126,7 @@ fn test_swap_client_action() {
 
     // Verify the open note was filled with swap output.
     let filled_note = test.privacy.get_note(note_id: open_note_id);
-    let (salt, filled_amount) = unpacking(packed_value: filled_note.packed_value);
+    let (salt, filled_amount) = unpack(packed_value: filled_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(filled_amount, swap_amount);
 
@@ -6694,22 +6631,14 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
     assert_eq!(in_token.balance_of(address: amm_address), 0);
     assert_eq!(out_token.balance_of(address: amm_address), swap_amount.into());
 
-    // NoteUsed event leaked from the reverted inner execute call (snforge revert issue).
-    // TODO: Assert 0 events once fixed.
     let events_during_execute = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(events_during_execute.len(), 1);
+    assert_eq!(events_during_execute.len(), 0);
 
     // Assert expected server actions were generated.
     let nullifier = user.compute_nullifier(sender: user, token_addr: in_token_addr, index: 0);
-    assert_expected_event_emitted(
-        spied_event: events_during_execute[0],
-        expected_event: events::NoteUsed { nullifier },
-        expected_event_selector: @selector!("NoteUsed"),
-        expected_event_name: "NoteUsed",
-    );
     let nullifier_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
