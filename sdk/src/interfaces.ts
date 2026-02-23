@@ -5,6 +5,7 @@ import type {
   BlockIdentifier,
   BlockNumber,
   Call,
+  CallDetails,
   constants,
   Invocation,
 } from "starknet";
@@ -162,8 +163,8 @@ export type SurplusAction = {
   withdraw?: boolean;
 };
 
-export type FollowupCallAction = {
-  call: Call;
+export type InvokeAction = {
+  callDetails: CallDetails;
 };
 
 /** Actions - context comes from registry */
@@ -176,7 +177,7 @@ export type Actions = {
   createNotes?: CreateNoteAction[];
   withdraws?: WithdrawAction[];
   surpluses?: SurplusAction[];
-  followupCall?: FollowupCallAction;
+  invoke?: InvokeAction;
 };
 
 // ============ Auto-Discovery & Registry Types ============
@@ -499,7 +500,7 @@ export interface TokenOperationsBuilder {
  *     .withdraw({ recipient: swapHelper, amount: 10n }))
  *   .with(BTC, t => t
  *     .deposit(open)) // semi-transparent note for swap result
- *   .call({ contractAddress: swapHelper, entrypoint: "swap", calldata: [...] })
+ *   .invoke({ contractAddress: swapHelper, entrypoint: "swap", calldata: [...] })
  *   .execute();
  * ```
  */
@@ -510,8 +511,8 @@ export interface PrivateTransfersBuilder {
   /** Setup initial channel for a new recipient. */
   setup(recipient: StarknetAddress): this;
 
-  /** Add an arbitrary Starknet call that will run on starknet after the private operations are executed */
-  call(call: Call): this;
+  /** Add a call to `privacy_invoke` entrypoint that will run on starknet after the private operations are executed */
+  invoke(callDetails: CallDetails): this;
 
   /**
    * Set the default recipient for any surplus across all tokens.
