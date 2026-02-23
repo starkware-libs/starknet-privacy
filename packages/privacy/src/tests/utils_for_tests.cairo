@@ -1,4 +1,5 @@
 use core::ec::EcPointTrait;
+use core::iter::Extend;
 use core::num::traits::Zero;
 use core::traits::Neg;
 use privacy::actions::{
@@ -1729,10 +1730,13 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         user_private_key: felt252,
         client_actions: Span<ClientAction>,
     ) -> Array<Call> {
-        let mut calldata = array![];
-        user_addr.serialize(ref calldata);
-        user_private_key.serialize(ref calldata);
-        client_actions.serialize(ref calldata);
+        let mut params = array![];
+        user_addr.serialize(ref params);
+        user_private_key.serialize(ref params);
+        client_actions.serialize(ref params);
+        let len = params.len();
+        let mut calldata = array![len.into()];
+        calldata.extend(params);
         array![
             Call {
                 to: *self.address, selector: selector!("execute_view"), calldata: calldata.span(),

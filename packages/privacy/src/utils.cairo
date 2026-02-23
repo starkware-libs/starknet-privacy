@@ -337,6 +337,10 @@ pub(crate) fn extract_execute_view_inputs(
     assert(*call.to == contract_address, errors::INVALID_CALL_TO);
     assert(*call.selector == selector!("execute_view"), errors::INVALID_CALL_SELECTOR);
     let mut serialized = *call.calldata;
+    let len: u32 = (*serialized.pop_front().expect(errors::INVALID_CALLDATA))
+        .try_into()
+        .expect(errors::INVALID_CALLDATA);
+    assert(serialized.len() == len, errors::INVALID_CALLDATA);
     let (user_addr, user_private_key, client_actions) = Serde::<
         (ContractAddress, felt252, Span<ClientAction>),
     >::deserialize(ref :serialized)
