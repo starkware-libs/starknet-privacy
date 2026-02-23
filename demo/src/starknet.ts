@@ -27,7 +27,7 @@ export function createTransfers(
   const discovery = new IndexerDiscoveryProvider(config.indexerUrl);
   return createPrivateTransfers({
     account,
-    viewingKeyProvider: { getViewingKey: () => BigInt(accountConfig.viewingKey) },
+    viewingKeyProvider: { getViewingKey: async () => BigInt(accountConfig.viewingKey) },
     provingProvider: new NoValidateProofProvider(provider, config.chainId),
     discoveryProvider: discovery,
     poolContractAddress: config.poolAddress,

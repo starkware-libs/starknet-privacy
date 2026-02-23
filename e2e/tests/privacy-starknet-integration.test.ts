@@ -139,7 +139,7 @@ describe("Privacy StarkNet integration", () => {
   it("deposit with auto-register", async () => {
     const transfers = createPrivateTransfers({
       account: aliceAccount,
-      viewingKeyProvider: { getViewingKey: () => BigInt(alice.private_key) },
+      viewingKeyProvider: { getViewingKey: async () => BigInt(alice.private_key) },
       provingProvider: createProvingProvider(provider),
       discoveryProvider: discovery,
       poolContractAddress: poolAddress,

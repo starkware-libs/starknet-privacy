@@ -92,7 +92,7 @@ export type PrivateInvocationResult = {
 };
 
 export interface ViewingKeyProvider {
-  getViewingKey(): Promise<ViewingKey> | ViewingKey;
+  getViewingKey(): Promise<ViewingKey>;
 }
 
 export type ProofProviderConfig = {
@@ -547,7 +547,7 @@ export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
 export interface ProofProviderInterface {
   /** Get the default factory details for creating proof invocations. */
   getDefaultDetails(): ProofInvocationFactoryDetails;
-  prove(invocation: ProofInvocation): Proof | Promise<Proof>;
+  prove(invocation: ProofInvocation): Promise<Proof>;
 }
 
 export interface DiscoveryProviderInterface {
