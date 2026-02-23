@@ -71,11 +71,26 @@ impl ApiErrorResponse {
 pub fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErrorResponse) {
     match error {
         DiscoveryError::Storage(storage_err) => {
-            warn!("Storage error during discovery: {}", storage_err);
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                ApiErrorResponse::new(error_codes::RPC_UNAVAILABLE, "Upstream RPC is unavailable"),
-            )
+            use discovery_core::storage_backend::StorageError;
+            if matches!(storage_err, StorageError::ContractNotFound) {
+                warn!("Contract not found during discovery");
+                (
+                    StatusCode::NOT_FOUND,
+                    ApiErrorResponse::new(
+                        error_codes::CONTRACT_NOT_FOUND,
+                        "Contract not found at the configured address",
+                    ),
+                )
+            } else {
+                warn!("Storage error during discovery: {}", storage_err);
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    ApiErrorResponse::new(
+                        error_codes::RPC_UNAVAILABLE,
+                        "Upstream RPC is unavailable",
+                    ),
+                )
+            }
         }
         DiscoveryError::Decryption { index, source } => (
             StatusCode::BAD_REQUEST,
@@ -264,6 +279,7 @@ pub mod error_codes {
     pub const DECRYPTION_FAILED: &str = "DECRYPTION_FAILED";
     pub const BLOCK_REORGED: &str = "BLOCK_REORGED";
     pub const SERVICE_UNAVAILABLE: &str = "SERVICE_UNAVAILABLE";
+    pub const CONTRACT_NOT_FOUND: &str = "CONTRACT_NOT_FOUND";
     pub const RPC_UNAVAILABLE: &str = "RPC_UNAVAILABLE";
     pub const INTERNAL_ERROR: &str = "INTERNAL_ERROR";
 }

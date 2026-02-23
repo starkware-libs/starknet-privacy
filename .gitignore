@@ -25,6 +25,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # local env files
+.env
 .env.local
 .env.development.local
 .env.test.local
@@ -83,5 +84,5 @@ __pycache__
 # logs
 *.log
 
-# e2e predeployed accounts
+# e2e predeployed accounts (legacy, replaced by .env ACCOUNTS var)
 accounts.json
