@@ -59,7 +59,7 @@ describe("E2E Smoke", () => {
     const indexerDiscovery = new IndexerDiscoveryProvider(env.indexer.apiUrl, de.privacy.address);
     const aliceIndexer = createPrivateTransfers({
       account: de.alice,
-      viewingKeyProvider: { getViewingKey: () => BigInt("0xA11CE") },
+      viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(de.provider, constants.StarknetChainId.SN_SEPOLIA),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,

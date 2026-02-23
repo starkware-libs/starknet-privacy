@@ -137,7 +137,7 @@ export class Mocknet {
     return new PrivateTransfers({
       // Mock account - only address is used
       account: { address: `0x${userAddress.toString(16)}` } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      viewingKeyProvider: { getViewingKey: () => viewingKey },
+      viewingKeyProvider: { getViewingKey: async () => viewingKey },
       provingProvider: new MockProofProvider(pool),
       discoveryProvider: new ContractDiscoveryProvider(pool),
       proofInvocationFactory: new MockProofInvocationFactory(),

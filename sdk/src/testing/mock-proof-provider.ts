@@ -29,7 +29,7 @@ export class MockProofProvider implements ProofProviderInterface {
     return getDefaultProofDetails(constants.StarknetChainId.SN_SEPOLIA);
   }
 
-  prove(invocation: ProofInvocation): Proof {
+  async prove(invocation: ProofInvocation): Promise<Proof> {
     const calldata = invocation.calldata as string[];
     const userAddress = BigInt(calldata[0]);
     const privateKey = BigInt(calldata[1]);

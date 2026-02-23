@@ -26,7 +26,7 @@ import {
  * ```typescript
  * const privateTransfers = createPrivateTransfers({
  *   account: myAccount,
- *   viewingKeyProvider: { getViewingKey: () => myPrivateKey },
+ *   viewingKeyProvider: { getViewingKey: async () => myPrivateKey },
  *   provingProvider: myProvingProvider,
  *   discoveryProvider: myDiscoveryProvider,
  *   poolContractAddress: poolAddress,
