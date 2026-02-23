@@ -1,0 +1,9 @@
+{
+  "buildCommand": "",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/api/rpc/:path*", "destination": "http://34.170.239.64:9545/rpc/:path*" },
+    { "source": "/api/indexer/:path*", "destination": "http://136.111.213.86:8080/:path*" },
+    { "source": "/api/prover/:path*", "destination": "http://136.115.124.93:3000/:path*" }
+  ]
+}
