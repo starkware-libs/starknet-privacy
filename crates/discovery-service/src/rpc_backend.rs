@@ -89,17 +89,13 @@ impl RpcBackend {
 impl StorageBackend for RpcBackend {
     type Snapshot = RpcSnapshot;
 
-    async fn snapshot(
-        &self,
-        contract_address: Felt,
-        block_id: Option<BlockId>,
-    ) -> Result<Self::Snapshot, StorageError> {
+    async fn snapshot(&self, contract_address: Felt, block_id: Option<BlockId>) -> Self::Snapshot {
         let block_id = block_id.unwrap_or(BlockId::Tag(BlockTag::Latest));
-        Ok(RpcSnapshot {
+        RpcSnapshot {
             backend: self.clone(),
             contract_address,
             block_id,
-        })
+        }
     }
 }
 

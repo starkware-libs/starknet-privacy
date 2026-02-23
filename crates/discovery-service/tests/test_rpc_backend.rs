@@ -53,10 +53,7 @@ async fn test_public_key_lookup() {
     };
     let backend = RpcBackend::new(rpc_config).unwrap();
 
-    let snapshot = backend
-        .snapshot(metadata.contract_address, None)
-        .await
-        .unwrap();
+    let snapshot = backend.snapshot(metadata.contract_address, None).await;
 
     // Alice should have a registered public key
     let alice_pubkey = snapshot

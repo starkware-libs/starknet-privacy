@@ -9,6 +9,7 @@
 use std::path::Path;
 use std::time::Duration;
 
+use discovery_core::discovery::CursorLimits;
 use regex::Regex;
 use serde::Deserialize;
 use thiserror::Error;
@@ -107,10 +108,9 @@ impl Default for ApiServerConfig {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct ValidationLimits {
-    /// Maximum number of channels allowed in the cursor.
-    pub max_cursor_channels: usize,
-    /// Maximum number of subchannels allowed per channel in the cursor.
-    pub max_cursor_subchannels_per_channel: usize,
+    /// Limits on cursor size (channels and subchannels per channel).
+    #[serde(flatten)]
+    pub cursor_limits: CursorLimits,
     /// Maximum number of recipients in an outgoing sync filter.
     pub max_outgoing_recipients: usize,
     /// Server-controlled I/O budget per request.
@@ -120,8 +120,7 @@ pub struct ValidationLimits {
 impl Default for ValidationLimits {
     fn default() -> Self {
         Self {
-            max_cursor_channels: 256,
-            max_cursor_subchannels_per_channel: 64,
+            cursor_limits: CursorLimits::default(),
             max_outgoing_recipients: 64,
             server_budget: 100,
         }
@@ -299,7 +298,7 @@ health_max_lag_secs = 10
 level = "debug"
 
 [limits]
-max_cursor_channels = 128
+max_channels = 128
 server_budget = 50
 "#
         )
@@ -313,7 +312,7 @@ server_budget = 50
         assert_eq!(config.api.host, "0.0.0.0:9090");
         assert_eq!(config.api.health_max_lag_secs, 10);
         assert_eq!(config.logging.level.as_deref(), Some("debug"));
-        assert_eq!(config.limits.max_cursor_channels, 128);
+        assert_eq!(config.limits.cursor_limits.max_channels, 128);
         assert_eq!(config.limits.server_budget, 50);
     }
 

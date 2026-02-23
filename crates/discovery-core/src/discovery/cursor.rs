@@ -13,12 +13,22 @@ use starknet_types_core::felt::Felt;
 /// These caps prevent unbounded cursor expansion when processing accounts
 /// with many channels or subchannels. Discovery stops adding new entries
 /// once the cursor reaches the limit; existing entries are still processed.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CursorLimits {
     /// Maximum number of channels in the cursor at once.
     pub max_channels: usize,
     /// Maximum number of subchannels per channel in the cursor at once.
     pub max_subchannels: usize,
+}
+
+impl Default for CursorLimits {
+    fn default() -> Self {
+        Self {
+            max_channels: 256,
+            max_subchannels: 64,
+        }
+    }
 }
 
 /// Top-level cursor for channel discovery (shared by incoming and outgoing).
