@@ -46,7 +46,6 @@ All settings can be provided via environment variables or a TOML config file (`-
 | `API_HOST` | Bind address for HTTP API | `0.0.0.0:8080` (in Docker) / `127.0.0.1:8080` (native) |
 | `RUST_LOG` | Log level filter | `info` |
 | `SERVER_BUDGET` | I/O budget per request | `100` |
-| `BATCH_BUDGET` | Budget cap per batch | `16` |
 
 ## Running
 
