@@ -536,14 +536,6 @@ fn test_transfer_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
-    // Catch ZERO_CHANNEL_KEY.
-    let result = user_1
-        .safe_transfer(
-            notes_to_use: [UseNoteInput { channel_key: Zero::zero(), ..use_note_input }].span(),
-            notes_to_create: [create_note_input].span(),
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
-
     // Catch SUBCHANNEL_NOT_FOUND - channel doesnt exist.
     let result = user_1
         .safe_transfer(
@@ -1454,23 +1446,6 @@ fn test_open_subchannel_assertions() {
     let result = user_1
         .safe_open_subchannel_execute_view(recipient: user_zero_addr, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
-
-    // Catch ZERO_CHANNEL_KEY.
-    let result = user_1
-        .safe_open_subchannel_with_channel_key(
-            recipient: user_2, :token_addr, :index, :salt, channel_key: Zero::zero(),
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
-    let result = user_1
-        .safe_open_subchannel_with_channel_key_execute_and_panic(
-            recipient: user_2, :token_addr, :index, :salt, channel_key: Zero::zero(),
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
-    let result = user_1
-        .safe_open_subchannel_with_channel_key_execute_view(
-            recipient: user_2, :token_addr, :index, :salt, channel_key: Zero::zero(),
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
 
     // Catch ZERO_TOKEN.
     let result = user_1
@@ -3334,21 +3309,6 @@ fn test_use_note_assertions() {
     let result = user
         .safe_use_note_execute_view(note: UseNoteInput { token: Zero::zero(), ..use_note_input });
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
-
-    // Catch ZERO_CHANNEL_KEY.
-    let result = user
-        .safe_use_note(note: UseNoteInput { channel_key: Zero::zero(), ..use_note_input });
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
-    let result = user
-        .safe_use_note_execute_and_panic(
-            note: UseNoteInput { channel_key: Zero::zero(), ..use_note_input },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
-    let result = user
-        .safe_use_note_execute_view(
-            note: UseNoteInput { channel_key: Zero::zero(), ..use_note_input },
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CHANNEL_KEY);
 
     // Catch SUBCHANNEL_NOT_FOUND (wrong channel key).
     let wrong_channel_key = channel_key + 1;

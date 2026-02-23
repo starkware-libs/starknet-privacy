@@ -73,11 +73,10 @@ pub struct OpenSubchannelInput {
 pub(crate) impl OpenSubchannelInputValid of InputValidation<OpenSubchannelInput> {
     fn assert_valid(self: OpenSubchannelInput) {
         let OpenSubchannelInput {
-            recipient_addr, recipient_public_key, channel_key, index: _, token, salt,
+            recipient_addr, recipient_public_key, channel_key: _, index: _, token, salt,
         } = self;
         assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
         assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
-        assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
         assert(token.is_non_zero(), errors::ZERO_TOKEN);
         assert(salt.is_non_zero(), errors::ZERO_SALT);
     }
@@ -183,8 +182,7 @@ pub struct UseNoteInput {
 
 pub(crate) impl UseNoteInputValid of InputValidation<UseNoteInput> {
     fn assert_valid(self: UseNoteInput) {
-        let UseNoteInput { channel_key, token, index: _ } = self;
-        assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
+        let UseNoteInput { channel_key: _, token, index: _ } = self;
         assert(token.is_non_zero(), errors::ZERO_TOKEN);
     }
 }

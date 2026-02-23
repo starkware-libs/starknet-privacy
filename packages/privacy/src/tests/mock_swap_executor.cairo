@@ -39,7 +39,6 @@ pub mod errors {
     pub const ZERO_IN_TOKEN: felt252 = 'ZERO_IN_TOKEN';
     pub const ZERO_OUT_TOKEN: felt252 = 'ZERO_OUT_TOKEN';
     pub const ZERO_IN_AMOUNT: felt252 = 'ZERO_IN_AMOUNT';
-    pub const ZERO_NOTE_ID: felt252 = 'ZERO_NOTE_ID';
     pub const IN_TOKEN_EQUAL_TO_OUT_TOKEN: felt252 = 'IN_TOKEN_EQUAL_TO_OUT_TOKEN';
     pub const INSUFFICIENT_BALANCE: felt252 = 'INSUFFICIENT_BALANCE';
     pub const ZERO_AMM_ADDRESS: felt252 = 'ZERO_AMM_ADDRESS';
@@ -84,7 +83,6 @@ pub mod MockSwapExecutor {
             assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
             assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
             assert(in_amount.is_non_zero(), errors::ZERO_IN_AMOUNT);
-            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
             assert(in_token != out_token, errors::IN_TOKEN_EQUAL_TO_OUT_TOKEN);
 
             let self_addr = get_contract_address();
