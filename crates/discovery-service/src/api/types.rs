@@ -1,8 +1,18 @@
-//! Shared API types: health response, error response, error codes.
+//! Shared API types: health response, error response, error codes,
+//! and endpoint-specific request/response types.
+
+use std::collections::HashSet;
 
 use axum::http::StatusCode;
+use discovery_core::discovery::incoming_channels::IncomingChannel;
+use discovery_core::discovery::notes::DecryptedNote;
+use discovery_core::discovery::outgoing_channels::OutgoingChannel;
+use discovery_core::discovery::DiscoveryCursor;
 use discovery_core::discovery::DiscoveryError;
+use discovery_core::sync::incoming_state::IncomingSubchannel;
+use discovery_core::sync::outgoing_state::OutgoingSubchannel;
 use serde::{Deserialize, Serialize};
+use starknet_core::types::Felt;
 use tracing::warn;
 
 use crate::chain_state::ChainHead;
@@ -58,8 +68,7 @@ impl ApiErrorResponse {
 }
 
 /// Maps [`DiscoveryError`] to an HTTP status + API error response.
-#[allow(dead_code)] // Used by endpoint handlers in slices 15a–15c.
-pub(crate) fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErrorResponse) {
+pub fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErrorResponse) {
     match error {
         DiscoveryError::Storage(storage_err) => {
             warn!("Storage error during discovery: {}", storage_err);
@@ -88,6 +97,165 @@ pub(crate) fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode,
             ApiErrorResponse::new(error_codes::INVALID_REQUEST, msg),
         ),
     }
+}
+
+/// Fields shared by all sync request types.
+///
+/// Each endpoint-specific request embeds this via `#[serde(flatten)]`
+/// so the JSON wire format is unchanged (fields appear at top level).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncRequestBase {
+    /// The privacy pool contract address.
+    pub contract_address: Felt,
+    /// The caller's private viewing key.
+    pub viewing_key: Felt,
+    /// Block hash for reorg detection. Set on first request of a new sync
+    /// session to the `block_hash` from your last completed sync.
+    /// Server returns 409 if this block was reorged out.
+    /// Leave empty on pagination requests or fresh syncs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_known_block: Option<Felt>,
+    /// Block hash to query state at. Ensures consistent reads across
+    /// paginated requests. Leave empty on first request (server uses
+    /// current head). On pagination, use the value from previous response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_ref: Option<Felt>,
+    /// Discovery cursor for pagination. Use the cursor from previous
+    /// response to continue discovery.
+    #[serde(default)]
+    pub cursor: DiscoveryCursor,
+}
+
+/// Request body for POST /v1/sync/incoming_state.
+///
+/// # Sync Flow
+///
+/// **First request** (fresh sync or new session):
+/// ```json
+/// {
+///   "contract_address": "0x...",
+///   "recipient_address": "0x...",
+///   "viewing_key": "0x...",
+///   "last_known_block": "0x..."  // Optional: for reorg detection
+/// }
+/// ```
+///
+/// **Subsequent requests** (pagination within same session):
+/// ```json
+/// {
+///   "contract_address": "0x...",
+///   "recipient_address": "0x...",
+///   "viewing_key": "0x...",
+///   "block_ref": "0x...",  // From previous response
+///   "cursor": { ... }      // From previous response
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IncomingSyncRequest {
+    /// The recipient's address.
+    pub recipient_address: Felt,
+    #[serde(flatten)]
+    pub base: SyncRequestBase,
+}
+
+/// Response body for POST /v1/sync/incoming_state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IncomingSyncResponse {
+    /// Block hash pinning all reads in this response. Pass back as
+    /// `block_ref` in subsequent requests for consistency.
+    pub block_ref: Felt,
+    /// Discovered incoming channels (one per sender).
+    pub channels: Vec<IncomingChannel>,
+    /// Discovered incoming subchannels (one per sender×token pair).
+    pub subchannels: Vec<IncomingSubchannel>,
+    /// Discovered notes with sender and token context.
+    pub notes: Vec<DecryptedNote>,
+    /// Updated cursor for continuation. Pass back as `cursor` in next request.
+    pub cursor: DiscoveryCursor,
+}
+
+/// Request body for POST /v1/sync/outgoing_state.
+///
+/// # Sync Flow
+///
+/// **First request** (fresh sync):
+/// ```json
+/// {
+///   "contract_address": "0x...",
+///   "sender_address": "0x...",
+///   "viewing_key": "0x...",
+///   "last_known_block": "0x..."  // Optional: for reorg detection
+/// }
+/// ```
+///
+/// **Subsequent requests** (pagination within same session):
+/// ```json
+/// {
+///   "contract_address": "0x...",
+///   "sender_address": "0x...",
+///   "viewing_key": "0x...",
+///   "block_ref": "0x...",  // From previous response
+///   "cursor": { ... }      // From previous response
+/// }
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutgoingSyncRequest {
+    /// The sender's address.
+    pub sender_address: Felt,
+    /// Optional filter: only return channels for these recipients.
+    /// Recipients without an existing on-chain channel are returned
+    /// with `precomputed: true`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recipients: Option<HashSet<Felt>>,
+    #[serde(flatten)]
+    pub base: SyncRequestBase,
+}
+
+/// Response body for POST /v1/sync/outgoing_state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OutgoingSyncResponse {
+    /// Block hash pinning all reads in this response. Pass back as
+    /// `block_ref` in subsequent requests for consistency.
+    pub block_ref: Felt,
+    /// Discovered outgoing channels (one per recipient). Includes both
+    /// on-chain channels (`precomputed: false`) and precomputed channels
+    /// for requested recipients (`precomputed: true`).
+    pub channels: Vec<OutgoingChannel>,
+    /// Discovered outgoing subchannels (one per recipient×token pair).
+    pub subchannels: Vec<OutgoingSubchannel>,
+    /// Updated cursor for continuation. Pass back as `cursor` in next request.
+    pub cursor: DiscoveryCursor,
+}
+
+/// Request body for POST /v1/sync/preflight_check.
+///
+/// A non-paginated readiness check for a `(sender, recipient, token)` tuple.
+/// Returns boolean flags indicating what on-chain setup exists.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreflightCheckRequest {
+    /// The privacy pool contract address.
+    pub contract_address: Felt,
+    /// The sender's address.
+    pub sender_address: Felt,
+    /// The sender's private viewing key.
+    pub viewing_key: Felt,
+    /// The recipient's address.
+    pub recipient: Felt,
+    /// The token address.
+    pub token: Felt,
+}
+
+/// Response body for POST /v1/sync/preflight_check.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PreflightCheckResponse {
+    /// Block hash pinning the reads in this response.
+    pub block_ref: Felt,
+    /// Whether the sender has a public key registered on-chain.
+    pub sender_registered: bool,
+    /// Whether the channel from sender to recipient exists.
+    pub channel_exists: bool,
+    /// Whether the token subchannel exists within the channel.
+    pub subchannel_exists: bool,
 }
 
 /// Well-known error codes.

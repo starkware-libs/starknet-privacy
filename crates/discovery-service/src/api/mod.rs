@@ -1,11 +1,12 @@
 //! Axum API server for the discovery service.
 
-mod handlers;
+pub mod handlers;
 pub mod types;
+pub mod validators;
 
 use std::sync::Arc;
 
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use discovery_core::storage_backend::StorageBackend;
 use tokio::net::TcpListener;
@@ -15,8 +16,14 @@ use tracing::info;
 use crate::chain_state::ChainState;
 use crate::config::{ApiServerConfig, ValidationLimits};
 
-pub use handlers::health_handler;
-pub use types::{ApiErrorBody, ApiErrorResponse, HealthResponse};
+pub use handlers::{
+    health_handler, incoming_sync_handler, outgoing_sync_handler, preflight_check_handler,
+};
+pub use types::{
+    ApiErrorBody, ApiErrorResponse, HealthResponse, IncomingSyncRequest, IncomingSyncResponse,
+    OutgoingSyncRequest, OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse,
+    SyncRequestBase,
+};
 
 /// API server for the discovery service.
 pub struct ApiServer<B> {
@@ -66,6 +73,12 @@ where
         // TODO: Add TLS termination (spec 5.1)
         let app = Router::new()
             .route("/health", get(health_handler::<B>))
+            .route("/v1/sync/incoming_state", post(incoming_sync_handler::<B>))
+            .route("/v1/sync/outgoing_state", post(outgoing_sync_handler::<B>))
+            .route(
+                "/v1/sync/preflight_check",
+                post(preflight_check_handler::<B>),
+            )
             .with_state(app_state);
 
         let listener = TcpListener::bind(&self.config.host)

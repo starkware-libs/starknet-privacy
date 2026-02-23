@@ -334,7 +334,6 @@ pub mod Privacy {
             let channel_key = compute_channel_key(
                 :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key,
             );
-            assert(channel_key.is_non_zero(), internal_errors::UNEXPECTED_ZERO_CHANNEL_KEY);
             let enc_channel_info = encrypt_channel_info(
                 ephemeral_secret: random, :recipient_public_key, :channel_key, :sender_addr,
             );
@@ -347,9 +346,6 @@ pub mod Privacy {
             let enc_outgoing_channel_info = encrypt_outgoing_channel_info(
                 :sender_addr, :sender_private_key, :index, :recipient_addr, :salt,
             );
-
-            assert(channel_marker.is_non_zero(), internal_errors::ZERO_CHANNEL_MARKER);
-            assert(outgoing_channel_id.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_ID);
 
             array![
                 ServerAction::ReadAssert(
@@ -403,8 +399,6 @@ pub mod Privacy {
             let subchannel_marker = compute_subchannel_marker(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
-            assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
-            assert(subchannel_marker.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_MARKER);
 
             array![
                 to_write_once_action(
@@ -502,7 +496,6 @@ pub mod Privacy {
 
             // Compute note_id from the verified components.
             let note_id = compute_note_id(:channel_key, :token, :index);
-            assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
 
             // Read note from storage and assert it exists.
             let packed_value = self.notes.entry(note_id).packed_value.read();
@@ -514,7 +507,6 @@ pub mod Privacy {
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
-            assert(nullifier.is_non_zero(), internal_errors::ZERO_NULLIFIER);
 
             token_balances.add_balance(:token, :amount);
 
@@ -621,7 +613,6 @@ pub mod Privacy {
             let channel_key = compute_channel_key(
                 :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key,
             );
-            assert(channel_key.is_non_zero(), internal_errors::UNEXPECTED_ZERO_CHANNEL_KEY);
 
             // Assert subchannel exists.
             let subchannel_marker = compute_subchannel_marker(
@@ -643,7 +634,6 @@ pub mod Privacy {
 
             // Compute note id and assert it is non-zero.
             let note_id = compute_note_id(:channel_key, :token, :index);
-            assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
 
             let storage_address = self.notes.entry(note_id).into();
             (channel_key, storage_address, note_id)
@@ -664,7 +654,6 @@ pub mod Privacy {
         ) {
             self.pausable.assert_not_paused();
             // Validate inputs.
-            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
             assert(token.is_non_zero(), errors::ZERO_TOKEN);
             assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
 

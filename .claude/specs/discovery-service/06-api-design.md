@@ -138,59 +138,112 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
 
 ## 6.6 Outgoing Channel Sync Endpoint
 
-Whenever a user wants to make a private transfer there are several things to determine:
+Discovers all outgoing channels and subchannels for a sender. The server decrypts outgoing channel data using the sender's `viewing_key` to find recipients and their per-token subchannels. An optional `recipients` filter restricts discovery to specific recipients; recipients without an existing on-chain channel are returned with `precomputed: true`.
 
-1. Is the sender registered in the pool?
-2. Is the receiver registered in the pool?
-3. Is there an existing outgoing channel for the destination address?
-4. Is there an existing subchannel for the target token?
-5. What is the latest note index in that subchannel (if it exists)?
+Uses the same `block_ref`/`last_known_block` reorg-detection pattern and composite `DiscoveryCursor` as the incoming sync endpoint (§6.5).
 
-The channel key is computed on the client using the viewing key. This avoids sending additional secrets to the service.
-
-Typically users should have this information cached locally but in case there's a need to recover it, the following method would do all the checks and encrypted note discovery.
-
-`POST /v1/discovery/outgoing/sync`
+`POST /v1/sync/outgoing_state`
 
 **Request:**
 
 ```json
 {
   "contract_address": "0x...",
-  "sender_addr": "0x...",
-  "recipient_addr": "0x...",
-  "channel_key": "0x...",
-  "token_address": "0x...",
+  "sender_address": "0x...",
+  "viewing_key": "0x...",
+  "last_known_block": "0x...",
   "block_ref": "0x...",
-  "cursor": {
-    "start_note_index": 0
-  },
-  "max_reads": 1000
+  "cursor": { ... },
+  "recipients": ["0x...", "0x..."]
 }
 ```
+
+- `contract_address`: The privacy pool contract address.
+- `sender_address`: The sender's on-chain address.
+- `viewing_key`: The sender's private viewing key (used for server-side decryption of outgoing channel data).
+- `last_known_block`: Optional. For reorg detection on first request of a new sync session.
+- `block_ref`: Optional. Block hash for consistent reads across paginated requests.
+- `cursor`: Composite `DiscoveryCursor` for pagination. Default (empty) on first request.
+- `recipients`: Optional. When set, only return channels for these recipient addresses.
 
 **Response:**
 
 ```json
 {
-  "head": { "block_number": 123456, "block_hash": "0x..." },
-  "sender_registered": true,
-  "receiver_registered": true,
-  "channel_exists": true,
-  "subchannel_exists": true,
-  "total_n_notes": 57,
-  "cursor": {
-    "start_note_index": 57
-  },
-  "stats": { "reads_used": 100 }
+  "block_ref": "0x...",
+  "channels": [
+    {
+      "recipient_addr": "0x...",
+      "recipient_public_key": "0x...",
+      "channel_key": "0x...",
+      "precomputed": false
+    }
+  ],
+  "subchannels": [
+    {
+      "recipient_addr": "0x...",
+      "token": "0x...",
+      "last_note_index": 0
+    }
+  ],
+  "cursor": { ... }
 }
 ```
 
-**Completion detection:** Client computes done status: `cursor.start_note_index >= total_n_notes`.
+- `block_ref`: Block hash pinning all reads. Pass back as `block_ref` in subsequent requests.
+- `channels`: Discovered outgoing channels (one per recipient). `precomputed: true` for recipients requested via `recipients` filter that don't yet have an on-chain channel.
+- `subchannels`: Discovered subchannels (one per recipient×token pair). `last_note_index` is the last note index in the subchannel, or `null` if no notes exist.
+- `cursor`: Updated cursor for continuation.
 
-**Current limitation:** This endpoint supports a single receiver/token pair per request. Future versions may support batch queries for multiple receivers to enable mass payout scenarios.
+**Completion:** Check `cursor.is_complete()` — when all channel and subchannel discovery is done.
 
-## 6.7 History Endpoint (Not Yet Specified)
+## 6.7 Preflight Check Endpoint
+
+A non-paginated readiness check that reports what on-chain setup exists for a `(sender, recipient, token)` tuple. Performs at most 4 direct storage lookups — no scanning, no budget, no cursor.
+
+`POST /v1/sync/preflight_check`
+
+**Request:**
+
+```json
+{
+  "contract_address": "0x...",
+  "sender_address": "0x...",
+  "viewing_key": "0x...",
+  "recipient": "0x...",
+  "token": "0x..."
+}
+```
+
+- `contract_address`: The privacy pool contract address.
+- `sender_address`: The sender's on-chain address.
+- `viewing_key`: The sender's private viewing key (used to derive channel key).
+- `recipient`: The recipient's on-chain address.
+- `token`: The token address to check subchannel for.
+
+**Response:**
+
+```json
+{
+  "block_ref": "0x...",
+  "sender_registered": true,
+  "channel_exists": true,
+  "subchannel_exists": true
+}
+```
+
+- `block_ref`: Block hash pinning the reads. Clients can use this for consistency.
+- `sender_registered`: Whether the sender has a public key registered on-chain.
+- `channel_exists`: Whether the channel from sender to recipient exists. Always `false` if `sender_registered` is `false`.
+- `subchannel_exists`: Whether the token subchannel exists within the channel. Always `false` if `channel_exists` is `false`.
+
+**Error responses:**
+
+- `503 SERVICE_UNAVAILABLE` — No block indexed yet.
+- `500 INTERNAL_ERROR` — Failed to create RPC snapshot.
+- Standard `DiscoveryError` mapping for storage errors.
+
+## 6.8 History Endpoint (Not Yet Specified)
 
 `POST /v1/discovery/history`
 
