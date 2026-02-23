@@ -65,7 +65,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     const cairoActions = serializeClientActions(clientActions);
     const callDataCompiler = new CallData(PrivacyPoolABI);
     const userAddress = toBigInt(user.address);
-    const compiledCalldata = callDataCompiler.compile("__execute__", [
+    const compiledCalldata = callDataCompiler.compile("execute_view", [
       userAddress,
       user.viewingKey,
       cairoActions,
@@ -77,12 +77,12 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
       [
         {
           contractAddress: poolAddressHex,
-          entrypoint: "__execute__",
+          entrypoint: "execute_view",
           calldata: compiledCalldata,
         },
       ],
       {
-        walletAddress: toHex(user.address),
+        walletAddress: poolAddressHex,
         cairoVersion: "1",
         ...details,
       } as V3InvocationsSignerDetails

@@ -8,3 +8,11 @@ export { TokenOperationsBuilderImpl, PrivateTransfersBuilderImpl } from "./build
 export { ActionCompiler } from "./compiler.js";
 export { AbstractDiscoveryProvider } from "./abstract-discovery.js";
 export { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
+export { AbstractProofProvider } from "./abstract-proof-provider.js";
+export { ProvingService } from "./proving-service.js";
+export type {
+  MessageToL1,
+  ProvingServiceConfig,
+  ProveTransactionResult,
+} from "./proving-service.js";
+export type { BlockIdentifier } from "starknet";

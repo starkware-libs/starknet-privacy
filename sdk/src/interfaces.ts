@@ -72,9 +72,10 @@ export type Note = {
 export type NoteId = BigNumberish;
 
 export type Proof = {
-  readonly data: Uint8Array;
-  readonly outputHash: string;
+  readonly data: string;
   readonly output: string[]; // array of felts
+  /** Proof facts from the proving service; must be included in the tx when submitting to the chain. */
+  readonly proofFacts: string[];
 };
 
 /**
@@ -83,7 +84,6 @@ export type Proof = {
 export type CallAndProof = {
   readonly call: Call;
   readonly proof: Proof;
-  readonly proofFacts?: string[];
 };
 
 export type PrivateInvocationResult = {
@@ -532,6 +532,26 @@ export interface PrivateTransfersBuilder {
 export type ProofInvocation = Invocation;
 
 /**
+ * Tx payload details attached by the factory to the invocation for the proving service.
+ * Optional on ProofInvocation so mocks can ignore; proving provider reads from invocation.
+ */
+export interface ProofInvocationPayloadDetails {
+  nonce: bigint;
+  resourceBounds: {
+    l1_gas: { max_amount: bigint; max_price_per_unit: bigint };
+    l2_gas: { max_amount: bigint; max_price_per_unit: bigint };
+    l1_data_gas: { max_amount: bigint; max_price_per_unit: bigint };
+  };
+  tip: bigint;
+  paymasterData: BigNumberish[];
+  accountDeploymentData: BigNumberish[];
+  nonceDataAvailabilityMode: string;
+  feeDataAvailabilityMode: string;
+}
+
+export type ProofInvocationWithPayload = ProofInvocation & ProofInvocationPayloadDetails;
+
+/**
  * Factory details for creating proof invocations.
  * Extends AccountInvocationsFactoryDetails with chainId for signing.
  */
@@ -545,9 +565,9 @@ export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
  * Operator API contract — the proving service must implement this surface.
  */
 export interface ProofProviderInterface {
-  /** Get the default factory details for creating proof invocations */
+  /** Get the default factory details for creating proof invocations. */
   getDefaultDetails(): ProofInvocationFactoryDetails;
-  prove(invocation: ProofInvocation): Promise<Proof>;
+  prove(invocation: ProofInvocation): Proof | Promise<Proof>;
 }
 
 export interface DiscoveryProviderInterface {

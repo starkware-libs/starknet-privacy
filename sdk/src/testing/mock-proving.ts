@@ -6,13 +6,10 @@
  */
 
 import type { constants, ETransactionVersion3, ProviderInterface } from "starknet";
-import { EDAMode, encode, ETransactionVersion, hash, num, stark, transaction } from "starknet";
-import type {
-  Proof,
-  ProofProviderInterface,
-  ProofInvocation,
-  ProofInvocationFactoryDetails,
-} from "../interfaces.js";
+import { EDAMode, encode, hash, num, stark, transaction } from "starknet";
+import type { Proof, ProofInvocation } from "../interfaces.js";
+import { AbstractProofProvider } from "../internal/abstract-proof-provider.js";
+import { buildProofFacts } from "../utils/proof-facts.js";
 import { toBigInt } from "../utils/convert.js";
 
 /** VALIDATED constant - 'VALID' encoded as short string felt252 */
@@ -23,30 +20,16 @@ const VALIDATED = encode.utf8ToBigInt("VALID");
  * This is useful for testing where we want to execute the contract logic
  * without actually generating zero-knowledge proofs.
  */
-export class CallMockProofProvider implements ProofProviderInterface {
+export class CallMockProofProvider extends AbstractProofProvider {
   constructor(
     private readonly provider: ProviderInterface,
     private readonly chainId: constants.StarknetChainId
-  ) {}
+  ) {
+    super();
+  }
 
-  getDefaultDetails(): ProofInvocationFactoryDetails {
-    return {
-      versions: [ETransactionVersion.V3],
-      nonce: 0n,
-      skipValidate: true,
-      resourceBounds: {
-        l1_gas: { max_amount: 0n, max_price_per_unit: 0n },
-        l2_gas: { max_amount: 0n, max_price_per_unit: 0n },
-        l1_data_gas: { max_amount: 0n, max_price_per_unit: 0n },
-      },
-      tip: 0n,
-      paymasterData: [],
-      accountDeploymentData: [],
-      nonceDataAvailabilityMode: "L1",
-      feeDataAvailabilityMode: "L1",
-      version: ETransactionVersion.V3,
-      chainId: this.chainId,
-    };
+  protected getChainId(): constants.StarknetChainId {
+    return this.chainId;
   }
 
   async prove(invocation: ProofInvocation): Promise<Proof> {
@@ -60,9 +43,30 @@ export class CallMockProofProvider implements ProofProviderInterface {
       calldata: invocation.calldata!,
     });
 
+    // Build proof facts for on-chain validation when provider supports getBlock (e.g. e2e with RpcProvider).
+    // Blockifier requires base_block_number to be at least STORED_BLOCK_HASH_BUFFER (10) blocks behind current.
+    let proofFacts: string[] = [];
+    const providerWithBlock = this.provider as ProviderInterface & {
+      getBlock?(id: unknown): Promise<{ block_number: number; block_hash?: string }>;
+    };
+    if (typeof providerWithBlock.getBlock === "function") {
+      const latestBlock = await providerWithBlock.getBlock("latest");
+      const currentBlockNumber = BigInt(latestBlock.block_number);
+      const baseBlockNumber = currentBlockNumber > 10n ? currentBlockNumber - 10n : 1n;
+      const baseBlock = await providerWithBlock.getBlock(Number(baseBlockNumber));
+      const chainId = this.chainId;
+      proofFacts = buildProofFacts(
+        invocation.contractAddress,
+        result,
+        baseBlockNumber,
+        baseBlock.block_hash ?? "0x0",
+        chainId
+      );
+    }
+
     // execute_view returns Span<ServerAction> which is serialized with its length prefix.
     // apply_actions also expects Span<ServerAction> with the length prefix, so we pass it through as-is.
-    return { output: result, outputHash: undefined!, data: undefined! };
+    return { output: result, data: undefined!, proofFacts };
   }
 
   /**
@@ -87,14 +91,14 @@ export class CallMockProofProvider implements ProofProviderInterface {
       [
         {
           contractAddress: invocation.contractAddress,
-          entrypoint: "__execute__",
+          entrypoint: "execute_view",
           calldata,
         },
       ],
       "1" // cairoVersion
     );
     const txHash = hash.calculateInvokeTransactionHash({
-      senderAddress: userAddress,
+      senderAddress: num.toHex(invocation.contractAddress),
       version: details.version as ETransactionVersion3,
       compiledCalldata: executeCalldata,
       chainId: this.chainId,
