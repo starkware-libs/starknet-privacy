@@ -1,126 +1,106 @@
-<div align="center">
-  <img alt="Cairo Logo" src="cairo_logo.png" width="200">
-</div>
+# Starknet Privacy
 
-<div align="center">
+Privacy pool protocol for Starknet.
 
 [![License: Apache2.0](https://img.shields.io/badge/License-Apache2.0-green.svg)](LICENSE)
-</div>
 
-# Template Cairo Repo
+Users submit private transfers through the SDK, which compiles client actions and sends them to an operator-side proving service. The proving service executes these actions in virtual Starknet blocks and returns a validity proof together with proof facts back to the SDK. The SDK builds a transaction that the wallet submits (ideally via a paymaster to avoid leaking sender info) to Starknet. Starknet verifies the proof and provides validated proof facts to the pool contract via syscall. A discovery service indexes encrypted on-chain storage so wallets can efficiently sync their notes without scanning the full chain.
 
-## Title
+## Architecture
 
-[Website](link-to-website) | [Docs](link-to-docs)
+```mermaid
+graph LR
+    subgraph Offchain
+        Wallet([Wallet])
+        SDK[SDK]
+        Discovery[Discovery]
+        Proving[Proving]
+    end
 
-## Content
+    subgraph Onchain
+        Contract[Privacy Pool]
+        Helpers[Invoke Helpers]
+    end
 
-- [Overview](#overview)
-- [Dependencies](#dependencies)
-- [Installation](#installation)
-- [Getting help](#getting-help)
-- [Build and Test](#build-and-test)
-- [Audit](#audit)
-- [Security](#security)
-
-## Overview
-
-This a template repo for new Cairo projects, use this repo as a start.
-You can fork the repo or start a new repo and do the following:
-
-In this repo run
-
-```bash
-git clone https://github.com/starkware-libs/template-cairo-repo.git
-cd template-cairo-repo
-git fetch origin
-git format-patch 40b4468^..HEAD
-```
-This will create a file like 0001-Your-commit-message.patch.
-
-In the new repo run
-```bash
-git clone https://github.com/username/new-repo.git
-cd new-repo
-git am ../template-cairo-repo/0001-Your-commit-message.patch
-git push origin <branch-name>
+    Wallet --> SDK
+    SDK --> Discovery
+    SDK --> Proving
+    SDK --> Contract
+    Discovery --> Contract
+    Proving --> Contract
+    Contract --> Helpers
 ```
 
-Make sure to edit Scarb.toml to define workspace in this repo.
+- **SDK** — Orchestrates private transfers (register, transfer, discover)
+- **Discovery Service** — Indexes encrypted on-chain storage for efficient wallet sync
+- **Proving Service** — Executes actions in virtual Starknet blocks and returns validity proofs + proof facts to the SDK
+- **Privacy Pool Contract** — Source of truth for actions, storage layout, cryptography
+- **Invoke Helpers** — External contracts callable from within a private transaction (e.g. swap executors)
 
+## Compatibility matrix
 
-| Smart contract   | Description                                                                                                                            |
-|------------------|----------------------------------------------------------------------------------------------------------------------------------------|
-| [Smart Contract 1](packages/smart_contract_1)             | Smart contract 1 description                                                                                                 |
-| [Smart Contract 2](packages/smart_Contract_2)          | Smart contract 2 description                                                        |
-| [ETC...](packages/etc)       | Etc...                                                                  |
+All components in a row are tested together. Use matching revisions when deploying.
 
-## Dependencies
+| sequencer | proving-utils | discovery-service | proving-service | starknet-privacy-sdk |
+|-----------|---------------|-------------------|-----------------|----------------------|
+| [`APOLLO-PRE-PROOF-DEMO-16`](https://github.com/starkware-libs/sequencer/releases/tag/APOLLO-PRE-PROOF-DEMO-16) | [`e16f9d0`](https://github.com/starkware-libs/proving-utils/commit/e16f9d027fb026f96bfd3aeed76b41a169372f81) | [`pr-510`](https://github.com/starkware-libs/starknet-privacy/pkgs/container/starknet-privacy%2Fdiscovery-service/701186259?tag=pr-510) | [`rev-5f29e09-e16f9d0`](https://github.com/starkware-libs/starknet-privacy/pkgs/container/starknet-privacy%2Fproving-service/703346885?tag=rev-5f29e09-e16f9d0) | [`0.1.0-dev.1`](https://github.com/starkware-libs/starknet-privacy/pkgs/npm/starknet-privacy-sdk/703792073) |
 
-- Cairo dependencies such as [Scarb](https://docs.swmansion.com/scarb/) and [Starknet foundry](https://foundry-rs.github.io/starknet-foundry/index.html) - install using [starkup](https://github.com/software-mansion/starkup).
+## Repository map
 
-## Installation
+| Directory | Description |
+|-----------|-------------|
+| [`packages/privacy/`](packages/privacy/) | Cairo smart contract ([README](packages/privacy/README.md)) |
+| [`crates/discovery-core/`](crates/discovery-core/) | Core discovery logic & cryptography ([README](crates/discovery-core/README.md)) |
+| [`crates/discovery-service/`](crates/discovery-service/) | HTTP indexing service with SQLite cache ([README](crates/discovery-service/README.md)) |
+| [`sdk/`](sdk/) | TypeScript SDK for private transfers ([README](sdk/README.md)) |
+| [`e2e/`](e2e/) | End-to-end tests & devnet fixture generation ([README](e2e/README.md)) |
+| [`deploy/discovery-service/`](deploy/discovery-service/) | Dockerfile & deployment ([README](deploy/discovery-service/README.md)) |
+| [`deploy/proving-service/`](deploy/proving-service/) | Dockerfile & deployment ([README](deploy/proving-service/README.md)) |
+| [`deploy/pathfinder/`](deploy/pathfinder/) | Pathfinder + fake L1 setup ([README](deploy/pathfinder/README.md)) |
+| [`lean/`](lean/) | Formal verification (Lean) |
+| [`demo/`](demo/) | Web demo application |
+| [`scripts/`](scripts/) | Utility scripts (devnet, deployment, etc.) |
+| [`docs/`](docs/) | Audit reports & security docs ([audit](docs/audit/README.md)) |
+| [`.claude/specs/`](.claude/specs/discovery-service/) | Discovery service specifications ([README](.claude/specs/discovery-service/README.md)) |
 
-Clone the repo and from within the projects root folder run:
+## Docker images
+
+See the deployment READMEs linked above for Dockerfiles, configuration, and run instructions. Images are published to `ghcr.io/starkware-libs/starknet-privacy/`.
+
+## Prerequisites
+
+### Cairo
+
+Install [Scarb](https://docs.swmansion.com/scarb/) and [Starknet Foundry](https://foundry-rs.github.io/starknet-foundry/index.html) via [starkup](https://github.com/software-mansion/starkup):
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.starkup.dev | sh
 ```
 
-### Starknet Devnet
+### Rust
 
-This project uses a [custom fork of starknet-devnet](https://github.com/m-kus/starknet-devnet) that includes a blockifier version supporting the new transaction version with proofs. Install from the `APOLLO-PRE-PROOF-DEMO-11` release:
+Stable toolchain. Install via [rustup](https://rustup.rs/) if needed.
 
-If you have a previous asdf installation of starknet-devnet, remove it first:
+### Node.js
 
-```bash
-asdf plugin remove starknet-devnet
-```
+Version 20 or later.
 
-Then install from the release:
+### E2E tests
 
-```bash
-# macOS (Apple Silicon)
-curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-11/starknet-devnet-aarch64-apple-darwin.tar.gz -o /tmp/starknet-devnet.tar.gz
-sudo tar -xzf /tmp/starknet-devnet.tar.gz -C /usr/local/bin
-sudo chmod +x /usr/local/bin/starknet-devnet
-rm /tmp/starknet-devnet.tar.gz
+See [e2e/README.md](e2e/README.md) for additional setup requirements (devnet, `.env` generation, built artifacts).
 
-# Linux (x86_64)
-curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-11/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz -o /tmp/starknet-devnet.tar.gz
-sudo tar -xzf /tmp/starknet-devnet.tar.gz -C /usr/local/bin
-sudo chmod +x /usr/local/bin/starknet-devnet
-rm /tmp/starknet-devnet.tar.gz
-```
-
-Verify the installation:
+## Build and test
 
 ```bash
-which starknet-devnet
-# Expected: /usr/local/bin/starknet-devnet
+scarb build && scarb test          # Cairo contract
+cargo build && cargo test          # Rust crates
+cd sdk && npm ci && npm test       # TypeScript SDK
+cd e2e && npm ci && npm test       # E2E
 ```
 
-## Getting help
+## License
 
-Reach out to the maintainer at any of the following:
-
-- [GitHub Discussions](discussions)
-- Contact options listed on this [GitHub profile](https://github.com/starkware-libs)
-
-## Build and Test
-
-Build the contracts from the repo root:
-
-```bash
-scarb build
-
-```
-
-To run the tests, execute:
-
-```bash
-scarb test
-```
+[Apache 2.0](LICENSE)
 
 ## Audit
 
@@ -128,6 +108,4 @@ Find the latest audit report in [docs/audit](docs/audit).
 
 ## Security
 
-This repo follows good practices of security, but 100% security cannot be assured. This repo is provided "as is" without any warranty. Use at your own risk.
-
-For more information and to report security issues, please refer to our [security documentation](docs/SECURITY.md).
+For more information and to report security issues, please refer to the [security documentation](docs/SECURITY.md).

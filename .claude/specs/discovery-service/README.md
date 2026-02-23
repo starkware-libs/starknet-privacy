@@ -23,3 +23,7 @@ This folder contains the design specifications for the Privacy Pool Discovery Se
 | [15-rpc-backend-configuration.md](15-rpc-backend-configuration.md) | Single RPC endpoint model, health monitoring, and failover configuration. |
 | [16-operational-monitoring.md](16-operational-monitoring.md) | Health and status endpoints, service level objectives, and alerting thresholds. |
 | [17-cold-start-and-backfill.md](17-cold-start-and-backfill.md) | Behavior during cache backfill, snapshot import/export, and recovery time considerations. |
+
+## See also
+
+- [Discovery service README](../../../crates/discovery-service/README.md) — implementation, API endpoints, and integration tests

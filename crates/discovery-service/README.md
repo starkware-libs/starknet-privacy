@@ -11,33 +11,34 @@ Core value: transform expensive on-chain storage reads into fast local database 
 - Indexer: ingests blocks from RPC and extracts storage diffs relevant to the pool contract.
 - RPC fallback (optional): direct reads during cold start or reorgs.
 
+Detailed design specs: [`.claude/specs/discovery-service/`](../../.claude/specs/discovery-service/README.md)
+
 ## Key design decisions
 - Hybrid hot cache + RPC fallback: cache for most reads; RPC for ingestion and edge cases.
 - Per-request decryption keys: keys provided per request, never stored; decrypted data is request-scoped.
 - Bounded synchronous requests: capped read budget with cursor-based pagination.
 - Soft finality: operates against ACCEPTED_ON_L2 blocks; clients handle reorgs (reindex from scratch).
 
-## API endpoints (planned)
-- POST /v1/discovery/incoming/channels
-- POST /v1/discovery/incoming/subchannels
-- POST /v1/discovery/incoming/notes
-- POST /v1/discovery/incoming/sync
-- POST /v1/discovery/outgoing/sync
-- GET /health
-- GET /status
+## API endpoints
+- `POST /v1/sync/incoming_state` — Discover incoming channels, subchannels, and notes for a recipient. Cursor-based pagination.
+- `POST /v1/sync/outgoing_state` — Discover outgoing channels and subchannels for a sender. Supports recipient filtering. Cursor-based pagination.
+- `POST /v1/sync/preflight_check` — Non-paginated readiness check for a (sender, recipient, token) tuple. Returns registration, channel, and subchannel existence flags.
+- `GET /health` — Health check with chain head lag reporting.
 
-## Operational characteristics (planned)
-- SLO: indexer within 1 block of chain head 99.9% of the time.
+## Operational characteristics
 - Storage: SQLite WAL mode, append-only entries, snapshot support for cold start.
-- Security: TLS termination, per-IP rate limiting, input validation, sensitive field filtering in logs.
-- Resilience: arbitrary reorg depth, RPC health monitoring with failover, graceful backfill.
+- Security: TLS termination (planned), input validation, sensitive field filtering in logs.
+- Resilience: reorg detection via `last_known_block` / `block_ref`, RPC health monitoring, graceful backfill.
 - Compatibility: allowlisted contract, block-height-based layout versioning for upgrades.
 
-## Error handling (planned)
-- BLOCK_REORGED: re-sync from scratch.
-- DECRYPTION_FAILED: check key, retry with correct key.
-- RATE_LIMITED: retry after Retry-After header.
-- SERVICE_UNAVAILABLE: retry with exponential backoff.
+## Error codes
+- `INVALID_REQUEST`: malformed request body or invalid cursor.
+- `DECRYPTION_FAILED`: check key, retry with correct key.
+- `BLOCK_REORGED`: re-sync from scratch.
+- `CONTRACT_NOT_FOUND`: contract not found at the configured address.
+- `RPC_UNAVAILABLE`: upstream RPC is unavailable.
+- `SERVICE_UNAVAILABLE`: retry with exponential backoff.
+- `INTERNAL_ERROR`: internal discovery error.
 
 ## Technology stack (target)
 Rust with Tokio runtime and Axum HTTP server. SQLite in WAL mode for storage. Packaged as static binaries (Linux x86, macOS ARM) and Docker image.
@@ -93,3 +94,9 @@ When expected values change, update snapshots with:
 ```bash
 UPDATE_EXPECT=1 cargo test -p discovery-service --test '*'
 ```
+
+## See also
+
+- [Project root](../../README.md) — architecture overview, prerequisites, build commands
+- [Discovery core](../discovery-core/README.md) — core discovery logic and storage slot computation
+- [Deployment](../../deploy/discovery-service/README.md) — Dockerfile, configuration, and run instructions
