@@ -111,6 +111,7 @@ export function useTransactions(
         await provider.waitForTransaction(approveTx.transaction_hash);
 
         // Build and execute deposit
+        const provingBlockId = await provider.getBlockNumber() - 10;
         const { callAndProof } = await transfers
           .build({
             autoRegister: true,
@@ -120,11 +121,17 @@ export function useTransactions(
           .with(config.tokenAddress, (t) =>
             t.deposit({ amount, recipient: activeAddress }),
           )
-          .execute();
+          .execute({ provingBlockId });
         console.log("[Deposit] callAndProof built, submitting pool tx...");
 
         const executeTx = await userAccount.execute(callAndProof.call, {
           resourceBounds: POOL_RESOURCE_BOUNDS,
+          ...(callAndProof.proof.proofFacts?.length
+            ? {
+                proofFacts: callAndProof.proof.proofFacts,
+                proof: callAndProof.proof.data,
+              }
+            : {}),
         });
         console.log(`[Deposit] pool tx: ${executeTx.transaction_hash}`);
         const receipt = await provider.waitForTransaction(
@@ -146,6 +153,7 @@ export function useTransactions(
 
         console.log(`[Withdraw] amount=${amount} recipient=${activeAddress}`);
 
+        const provingBlockId = await provider.getBlockNumber() - 10;
         const { callAndProof } = await transfers
           .build({
             autoDiscover: { notes: "refresh", channels: "refresh" },
@@ -155,11 +163,17 @@ export function useTransactions(
           .with(config.tokenAddress, (t) =>
             t.withdraw({ amount, recipient: activeAddress }),
           )
-          .execute();
+          .execute({ provingBlockId });
         console.log("[Withdraw] callAndProof built, submitting pool tx...");
 
         const executeTx = await userAccount.execute(callAndProof.call, {
           resourceBounds: POOL_RESOURCE_BOUNDS,
+          ...(callAndProof.proof.proofFacts?.length
+            ? {
+                proofFacts: callAndProof.proof.proofFacts,
+                proof: callAndProof.proof.data,
+              }
+            : {}),
         });
         console.log(`[Withdraw] pool tx: ${executeTx.transaction_hash}`);
         const receipt = await provider.waitForTransaction(
@@ -181,6 +195,7 @@ export function useTransactions(
 
         console.log(`[Transfer] amount=${amount} recipient=${recipient}`);
 
+        const provingBlockId = await provider.getBlockNumber() - 10;
         const { callAndProof } = await transfers
           .build({
             autoSetup: true,
@@ -191,11 +206,17 @@ export function useTransactions(
           .with(config.tokenAddress, (t) =>
             t.transfer({ recipient, amount }),
           )
-          .execute();
+          .execute({ provingBlockId });
         console.log("[Transfer] callAndProof built, submitting pool tx...");
 
         const executeTx = await userAccount.execute(callAndProof.call, {
           resourceBounds: POOL_RESOURCE_BOUNDS,
+          ...(callAndProof.proof.proofFacts?.length
+            ? {
+                proofFacts: callAndProof.proof.proofFacts,
+                proof: callAndProof.proof.data,
+              }
+            : {}),
         });
         console.log(`[Transfer] pool tx: ${executeTx.transaction_hash}`);
         const receipt = await provider.waitForTransaction(

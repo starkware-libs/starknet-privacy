@@ -101,7 +101,7 @@ export function InfoPanel({ state, loading, error, onRefresh }: Props) {
               <tr>
                 <th>Recipient</th>
                 <th>Token</th>
-                <th>Last Note Index</th>
+                <th>Next Note Index</th>
                 <th>Channel Key</th>
               </tr>
             </thead>
