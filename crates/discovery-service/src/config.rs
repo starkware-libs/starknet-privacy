@@ -122,7 +122,7 @@ impl Default for ValidationLimits {
         Self {
             cursor_limits: CursorLimits::default(),
             max_outgoing_recipients: 64,
-            server_budget: 100,
+            server_budget: 200,
         }
     }
 }

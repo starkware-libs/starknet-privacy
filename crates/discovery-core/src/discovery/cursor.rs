@@ -20,6 +20,10 @@ pub struct CursorLimits {
     pub max_channels: usize,
     /// Maximum number of subchannels per channel in the cursor at once.
     pub max_subchannels: usize,
+    /// Maximum exponent for note index probe offsets.
+    /// Offsets: `[0, 1, 3, 7, ..., 2^max_note_log_index - 1]`.
+    /// Default 30 → 31 probes covering ~1 billion indices.
+    pub max_note_log_index: u32,
 }
 
 impl Default for CursorLimits {
@@ -27,6 +31,7 @@ impl Default for CursorLimits {
         Self {
             max_channels: 256,
             max_subchannels: 64,
+            max_note_log_index: 30,
         }
     }
 }
@@ -112,9 +117,6 @@ impl ChannelCursor {
 }
 
 /// Cursor state for a single subchannel (shared by incoming and outgoing).
-///
-/// For incoming (linear scan): only `last_note_index` is used.
-/// For outgoing (exponential search): `last_note_index` = lo, `max_note_index` = hi.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct SubchannelCursor {
     /// All notes in this subchannel have been discovered. Set when the
@@ -122,19 +124,17 @@ pub struct SubchannelCursor {
     #[serde(default)]
     pub note_discovery_complete: bool,
 
-    /// Last note index where a note exists.
-    /// - Incoming: last scanned index.
-    /// - Outgoing: lower bound (lo) for exponential search.
+    /// Last scanned note index (incoming scan progress only).
+    /// Outgoing flow does not use this — it reads `last_existing_index()`
+    /// from `total_n_notes`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_note_index: Option<u64>,
 
-    /// - Incoming: last index confirmed to exist by exponential probe. Linear
-    ///   scan reads notes up to this index. Kept after scan — used to bound the
-    ///   next exponential probe range (`max_note_index * 2`). Re-probe triggers
-    ///   when `last_note_index == max_note_index`.
-    /// - Outgoing: first index confirmed empty (hi); `Some` = bisection phase.
+    /// Cached total number of notes in this subchannel (from boundary finding).
+    /// Analogous to `total_n_channels` at the channel level.
+    /// `None` = not yet probed. `Some(0)` = empty. `Some(n)` = notes at indices 0..n-1.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_note_index: Option<u64>,
+    pub total_n_notes: Option<u64>,
 }
 
 impl SubchannelCursor {
@@ -144,5 +144,11 @@ impl SubchannelCursor {
     /// scanned). If `None`, returns 0 (fresh cursor).
     pub fn start_index(&self) -> u64 {
         self.last_note_index.map_or(0, |i| i + 1)
+    }
+
+    /// Returns the last existing note index, derived from the cached total.
+    /// `None` if not yet probed or subchannel is empty.
+    pub fn last_existing_index(&self) -> Option<u64> {
+        self.total_n_notes.and_then(|n| n.checked_sub(1))
     }
 }
