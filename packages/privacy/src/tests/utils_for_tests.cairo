@@ -2,6 +2,14 @@ use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::poseidon::poseidon_hash_span;
 use core::traits::Neg;
+use ekubo::interfaces::router::TokenAmount;
+use ekubo::types::keys::PoolKey;
+use ekubo_swap_helper::ekubo_swap_helper::EkuboSwapHelper::deploy_for_test as deploy_ekubo_swap_helper_for_test;
+use ekubo_swap_helper::ekubo_swap_helper::{
+    IEkuboSwapHelperDispatcher, IEkuboSwapHelperDispatcherTrait, IEkuboSwapHelperSafeDispatcher,
+    IEkuboSwapHelperSafeDispatcherTrait,
+};
+use ekubo_swap_helper::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM::deploy_for_test as deploy_mock_ekubo_amm_for_test;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
@@ -1350,6 +1358,14 @@ pub(crate) impl VesuImpl of VesuTrait {
     }
 }
 
+#[derive(Drop, Copy)]
+pub(crate) struct Ekubo {
+    pub input_token: Token,
+    pub output_token: Token,
+    pub router: ContractAddress,
+    pub swap_helper: ContractAddress,
+}
+
 #[generate_trait]
 pub(crate) impl TestImpl of TestTrait {
     fn new_user(ref self: Test) -> User {
@@ -1466,6 +1482,15 @@ pub(crate) impl TestImpl of TestTrait {
         let vault = deploy_mock_vesu_vault(underlying_token: underlying_token.contract_address());
         let lending_helper = deploy_vesu_lending_helper();
         Vesu { underlying_token, vault, lending_helper }
+    }
+
+    fn deploy_ekubo_components(ref self: Test) -> Ekubo {
+        let input_token = self.new_token();
+        let output_token = self.new_token();
+        let router = deploy_mock_ekubo_amm();
+        let swap_helper = deploy_ekubo_swap_helper(:router, privacy_address: self.privacy.address)
+            .address;
+        Ekubo { input_token, output_token, router, swap_helper }
     }
 }
 
@@ -2184,6 +2209,112 @@ pub(crate) fn deploy_mock_return_trailing_garbage() -> ContractAddress {
     )
         .expect('TRAILING_GARBAGE_DEPLOY_FAIL');
     contract_address
+}
+
+/// Deploy a new mock Ekubo AMM (implements IRouter::swap for tests).
+pub(crate) fn deploy_mock_ekubo_amm() -> ContractAddress {
+    let class_hash = declare(contract: "MockEkuboAMM").unwrap_syscall().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_ekubo_amm_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('MockEkuboAMM deployment failed');
+    contract_address
+}
+
+/// Deploy a new stateless Ekubo swap helper.
+pub(crate) fn deploy_ekubo_swap_helper(
+    router: ContractAddress, privacy_address: ContractAddress,
+) -> EkuboSwapHelperCfg {
+    let class_hash = declare(contract: "EkuboSwapHelper")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_ekubo_swap_helper_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('EkuboSwapHelper deploy failed');
+    EkuboSwapHelperCfg { address: contract_address, router, privacy_address }
+}
+
+/// Build a PoolKey for the given token pair with default fee/tick_spacing and zero extension.
+/// Tokens are sorted so that token0 < token1 by address value, matching real Ekubo pool keys.
+pub(crate) fn pool_key_for_tokens(token_a: ContractAddress, token_b: ContractAddress) -> PoolKey {
+    let (token0, token1) = if token_a < token_b {
+        (token_a, token_b)
+    } else {
+        (token_b, token_a)
+    };
+    PoolKey { token0, token1, fee: 0, tick_spacing: 1, extension: Zero::zero() }
+}
+
+/// Config for calling the Ekubo swap helper in tests (address + router + privacy contract).
+#[derive(Copy, Drop)]
+pub(crate) struct EkuboSwapHelperCfg {
+    pub address: ContractAddress,
+    pub router: ContractAddress,
+    pub privacy_address: ContractAddress,
+}
+
+#[generate_trait]
+pub(crate) impl EkuboSwapHelperCfgImpl of EkuboSwapHelperCfgTrait {
+    fn privacy_invoke(
+        self: @EkuboSwapHelperCfg,
+        token_amount: TokenAmount,
+        pool_key: ekubo::types::keys::PoolKey,
+        minimum_received: u256,
+        skip_ahead: u128,
+        note_id: felt252,
+    ) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.privacy_address,
+        );
+        IEkuboSwapHelperDispatcher { contract_address: *self.address }
+            .privacy_invoke(
+                router_addr: *self.router,
+                :token_amount,
+                :pool_key,
+                :minimum_received,
+                :skip_ahead,
+                :note_id,
+            );
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_privacy_invoke(
+        self: @EkuboSwapHelperCfg,
+        router_addr: ContractAddress,
+        token_amount: TokenAmount,
+        pool_key: ekubo::types::keys::PoolKey,
+        minimum_received: u256,
+        skip_ahead: u128,
+        note_id: felt252,
+    ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
+        IEkuboSwapHelperSafeDispatcher { contract_address: *self.address }
+            .privacy_invoke(
+                :router_addr, :token_amount, :pool_key, :minimum_received, :skip_ahead, :note_id,
+            )
+    }
+}
+
+/// Build calldata for EkuboSwapHelper::privacy_invoke.
+pub(crate) fn build_ekubo_swap_helper_calldata(
+    router_addr: ContractAddress,
+    token_amount: TokenAmount,
+    pool_key: ekubo::types::keys::PoolKey,
+    minimum_received: u256,
+    skip_ahead: u128,
+    note_id: felt252,
+) -> Array<felt252> {
+    let mut calldata: Array<felt252> = array![];
+    router_addr.serialize(ref calldata);
+    token_amount.serialize(ref calldata);
+    pool_key.serialize(ref calldata);
+    minimum_received.serialize(ref calldata);
+    skip_ahead.serialize(ref calldata);
+    note_id.serialize(ref calldata);
+    calldata
 }
 
 #[generate_trait]

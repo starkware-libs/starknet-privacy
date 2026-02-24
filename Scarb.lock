@@ -2,6 +2,23 @@
 version = 1
 
 [[package]]
+name = "ekubo"
+version = "0.1.0"
+source = "git+https://github.com/EkuboProtocol/starknet-contracts?rev=8b4de8b5701d10b101c06b786740bf45b6cf15cb#8b4de8b5701d10b101c06b786740bf45b6cf15cb"
+
+[[package]]
+name = "ekubo_swap_helper"
+version = "0.1.0"
+dependencies = [
+ "ekubo",
+ "openzeppelin",
+ "privacy",
+ "snforge_std",
+ "starkware_utils",
+ "starkware_utils_testing",
+]
+
+[[package]]
 name = "openzeppelin"
 version = "3.0.0"
 source = "registry+https://scarbs.xyz/"
@@ -143,6 +160,8 @@ dependencies = [
 name = "privacy"
 version = "0.1.0"
 dependencies = [
+ "ekubo",
+ "ekubo_swap_helper",
  "openzeppelin",
  "snforge_std",
  "starkware_utils",
