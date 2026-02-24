@@ -1,4 +1,5 @@
 import type {
+  AccountInvocationItem,
   AccountInvocationsFactoryDetails,
   AllowArray,
   BigNumberish,
@@ -6,7 +7,7 @@ import type {
   BlockNumber,
   Call,
   constants,
-  Invocation,
+  TransactionType,
 } from "starknet";
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
@@ -531,7 +532,11 @@ export interface PrivateTransfersBuilder {
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
 }
 
-export type ProofInvocation = Invocation;
+/** INVOKE branch of AccountInvocationItem; used for proof invocations and buildTransaction. */
+export type ProofInvocation = Extract<
+  AccountInvocationItem,
+  { type: typeof TransactionType.INVOKE }
+>;
 
 /**
  * Factory details for creating proof invocations.

@@ -13,7 +13,7 @@ import type {
   V3InvocationsSignerDetails,
 } from "starknet";
 import type { constants } from "starknet";
-import { CallData, ETransactionVersion, hash } from "starknet";
+import { CallData, ETransactionVersion, hash, TransactionType } from "starknet";
 
 import { serializeClientActions } from "./serialization.js";
 import { PrivacyPoolABI } from "./abi.js";
@@ -137,13 +137,15 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     const compiledCalldata = compileExecuteCalldata(poolAddressHex, executeViewCalldata);
 
     // Sign the transaction using details from the proof provider
-    // TODO: Build the tx once (here) and pass it to the proving service provider.
+    // signTransaction internally calls getExecuteCalldata which wraps the call
+    // into Array<Call> format — the same layout as compiledCalldata. So we pass
+    // the inner executeViewCalldata here, not the already-wrapped compiledCalldata.
     const signature = await user.signer.signTransaction(
       [
         {
           contractAddress: poolAddressHex,
           entrypoint: "execute_view",
-          calldata: compiledCalldata,
+          calldata: executeViewCalldata,
         },
       ],
       {
@@ -154,9 +156,12 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     );
 
     return {
+      type: TransactionType.INVOKE,
       contractAddress: poolAddressHex,
       calldata: compiledCalldata,
-      signature: signature as string[],
+      signature,
+      nonce: details.nonce ?? PROOF_INVOCATION_NONCE,
+      ...details,
     };
   }
 
