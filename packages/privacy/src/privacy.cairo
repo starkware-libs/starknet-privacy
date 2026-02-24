@@ -266,7 +266,6 @@ pub mod Privacy {
 
             // Derive the public key from the private key.
             let user_public_key = derive_public_key(private_key: user_private_key);
-            assert(user_public_key.is_non_zero(), internal_errors::ZERO_DERIVED_PUBLIC_KEY);
 
             // Encrypt the private key for the auditor.
             let enc_private_key = encrypt_private_key(
