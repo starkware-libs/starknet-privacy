@@ -430,10 +430,7 @@ fn test_apply_transfer_to() {
     let mut user = test.new_user();
     let token_addr = token.contract_address();
     user.set_viewing_key_e2e();
-    user
-        .open_channel_with_token_e2e(
-            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
     let note = user
         .new_enc_note_with_generated_salt(recipient: user, :token_addr, :amount, index: 0);
     user.increase_token_balance(:token, :amount);
@@ -752,10 +749,7 @@ fn test_apply_write_once_open_note() {
     let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
 
     let create_note_input = user_1
         .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 0, :depositor);
@@ -787,10 +781,7 @@ fn test_apply_write_once_open_note_assertions() {
     let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
 
     // Create open note first.
     let create_note_input = user_1
