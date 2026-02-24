@@ -2,12 +2,17 @@
 //! These tests execute real client flows and verify contract state with views.
 
 use core::num::traits::Zero;
+use ekubo::interfaces::router::TokenAmount;
+use ekubo::types::i129::i129;
 use privacy::actions::{
-    ClientAction, CreateEncNoteInput, DepositInput, OpenChannelInput, OpenSubchannelInput,
-    SetViewingKeyInput, UseNoteInput, WithdrawInput,
+    ClientAction, CreateEncNoteInput, DepositInput, InvokeExternalInput, OpenChannelInput,
+    OpenSubchannelInput, SetViewingKeyInput, UseNoteInput, WithdrawInput,
 };
 use privacy::objects::OpenNoteDeposit;
-use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait};
+use privacy::tests::utils_for_tests::{
+    PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait, build_ekubo_swap_helper_calldata,
+    pool_key_for_tokens,
+};
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_channel_info, unpack};
 use snforge_std::TokenTrait;
@@ -1798,4 +1803,97 @@ fn test_e2e_create_and_deposit_open_note_same_tx() {
     assert_eq!(filled_note.token, out_token_addr);
     assert_eq!(in_token.balance_of(address: test.privacy.address), Zero::zero());
     assert_eq!(out_token.balance_of(address: test.privacy.address), amount.into());
+}
+
+/// E2E: deposit input token, withdraw to ekubo helper, swap via InvokeExternal, verify open note.
+#[test]
+fn test_e2e_ekubo_invoke() {
+    let mut test: Test = Default::default();
+    let ekubo = test.deploy_ekubo_components();
+    let mut user = test.new_user();
+    let input_token_addr = ekubo.input_token.contract_address();
+    let output_token_addr = ekubo.output_token.contract_address();
+    let helper_addr = ekubo.swap_helper;
+    let amount = 100_u128;
+
+    user.increase_token_balance(token: ekubo.input_token, :amount);
+    user.approve(token: ekubo.input_token, amount: amount.into());
+    // Fund the mock router with output tokens for the 1:1 swap.
+    ekubo.output_token.supply(address: ekubo.router, amount: amount);
+
+    let channel_key_self = user.compute_channel_key(recipient: user);
+
+    // Tx 1: SetViewingKey + OpenChannel(self) + OpenSubchannel(input) + Deposit +
+    // CreateEncNote (input, to self)
+    let create_note_0 = create_enc_note_input(to: user, token: input_token_addr, :amount, index: 0);
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
+                open_subchannel_action(
+                    from: user, to: user, token_addr: input_token_addr, index: 0,
+                ),
+                deposit_action(token_addr: input_token_addr, :amount),
+                ClientAction::CreateEncNote(create_note_0),
+            ]
+                .span(),
+        );
+    assert_eq!(ekubo.input_token.balance_of(address: test.privacy.address), amount.into());
+
+    // Tx 2 (swap): UseNote(input) + Withdraw(input to helper) + OpenSubchannel(output) +
+    // CreateOpenNote(output) + InvokeExternal(ekubo swap)
+    let create_open_output = user
+        .new_open_note_with_generated_random(
+            recipient: user, token_addr: output_token_addr, index: 0,
+        );
+    let (open_note_output_id, _) = user.compute_open_note(create_note_input: create_open_output);
+    let invoke_swap_calldata = build_ekubo_swap_helper_calldata(
+        router_addr: ekubo.router,
+        token_amount: TokenAmount {
+            token: ekubo.input_token.contract_address(), amount: i129 { mag: amount, sign: false },
+        },
+        pool_key: pool_key_for_tokens(
+            ekubo.input_token.contract_address(), ekubo.output_token.contract_address(),
+        ),
+        minimum_received: 0,
+        skip_ahead: 0,
+        note_id: open_note_output_id,
+    );
+    let invoke_swap = InvokeExternalInput {
+        contract_address: ekubo.swap_helper, calldata: invoke_swap_calldata.span(),
+    };
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                open_subchannel_action(
+                    from: user, to: user, token_addr: output_token_addr, index: 1,
+                ),
+                use_note_action(channel_key_self, token_addr: input_token_addr, index: 0),
+                ClientAction::CreateOpenNote(create_open_output),
+                withdraw_action(to_addr: helper_addr, token_addr: input_token_addr, :amount),
+                ClientAction::InvokeExternal(invoke_swap),
+            ]
+                .span(),
+        );
+
+    // Input tokens consumed: privacy has 0, helper has 0, router received them.
+    let nullifier_0 = user.compute_nullifier(sender: user, token_addr: input_token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
+    assert_eq!(ekubo.input_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(ekubo.input_token.balance_of(address: helper_addr), 0);
+    assert_eq!(ekubo.input_token.balance_of(address: ekubo.router), 0);
+    // Output tokens: privacy received them via open note deposit.
+    assert_eq!(ekubo.output_token.balance_of(address: test.privacy.address), amount.into());
+    assert_eq!(ekubo.output_token.balance_of(address: helper_addr), 0);
+    assert_eq!(ekubo.output_token.balance_of(address: ekubo.router), 0);
+    // Open note filled with output amount.
+    let filled_note = test.privacy.get_note(note_id: open_note_output_id);
+    let (filled_salt, filled_amount) = unpack(packed_value: filled_note.packed_value);
+    assert_eq!(filled_salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, amount);
+    assert_eq!(filled_note.token, output_token_addr);
 }
