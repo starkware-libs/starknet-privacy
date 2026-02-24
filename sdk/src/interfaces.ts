@@ -72,9 +72,10 @@ export type Note = {
 export type NoteId = BigNumberish;
 
 export type Proof = {
-  readonly data: Uint8Array;
-  readonly outputHash: string;
+  readonly data: string;
   readonly output: string[]; // array of felts
+  /** Proof facts from the proving service; must be included in the tx when submitting to the chain. */
+  readonly proofFacts: string[];
 };
 
 /**
@@ -83,7 +84,6 @@ export type Proof = {
 export type CallAndProof = {
   readonly call: Call;
   readonly proof: Proof;
-  readonly proofFacts?: string[];
 };
 
 export type PrivateInvocationResult = {
@@ -243,6 +243,8 @@ export type ExecuteOptions = {
   registry?: PrivateRegistry;
   /** If true, registry is not mutated; a new one is returned instead */
   registryConst?: boolean;
+  /** If defined, use the given block id for proving */
+  provingBlockId?: BlockIdentifier;
 };
 
 export type Warning = {
@@ -545,9 +547,10 @@ export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
  * Operator API contract — the proving service must implement this surface.
  */
 export interface ProofProviderInterface {
-  /** Get the default factory details for creating proof invocations */
+  /** Get the default factory details for creating proof invocations. */
   getDefaultDetails(): ProofInvocationFactoryDetails;
-  prove(invocation: ProofInvocation): Promise<Proof>;
+  /** Prove the given invocation against the given block id. If no block id is provided, the latest block is used. */
+  prove(invocation: ProofInvocation, blockId?: BlockIdentifier): Promise<Proof>;
 }
 
 export interface DiscoveryProviderInterface {
