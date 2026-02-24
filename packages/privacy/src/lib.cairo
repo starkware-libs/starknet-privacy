@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod swap_executor;
 pub mod errors;
 pub mod events;
 pub mod hashes;

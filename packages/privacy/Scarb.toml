@@ -13,6 +13,7 @@ scarb.workspace = true
 starknet.workspace = true
 openzeppelin.workspace = true
 starkware_utils.workspace = true
+ekubo.workspace = true
 
 [dev-dependencies]
 assert_macros.workspace = true
