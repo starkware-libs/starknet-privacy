@@ -63,6 +63,23 @@ This writes fixtures directly to:
 
 After regenerating, run `cargo test` from the repo root to confirm Rust tests still pass.
 
+## Declaring a new contract class
+
+When the Cairo contract changes (new constructor param, logic update, etc.), the class hash
+changes and must be re-declared on the target network before deploying new instances.
+
+```bash
+# 1. Rebuild the contract (release profile — no debug info, full inlining)
+scarb --profile release build
+
+# 2. Declare (reads RPC_URL and ACCOUNTS from .env)
+npm run declare-class
+```
+
+The script computes the class hash locally, checks whether it's already declared on-chain,
+and submits a DECLARE v3 transaction if needed. On success it prints the new class hash —
+update `POOL_CLASS_HASH` in `.env` to match.
+
 ## Privacy StarkNet integration (`tests/privacy-starknet-integration.test.ts`)
 
 Tests against a real (non-devnet) StarkNet deployment on integration sepolia.
