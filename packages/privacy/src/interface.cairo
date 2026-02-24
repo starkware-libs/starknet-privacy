@@ -705,6 +705,15 @@ pub trait IViews<T> {
     /// #### Returns
     /// - (`ContractAddress`): The fee collector address.
     fn get_fee_collector(self: @T) -> ContractAddress;
+
+    /// Returns the number of blocks that a proof is valid for.
+    ///
+    /// #### Parameters
+    /// None
+    ///
+    /// #### Returns
+    /// - (`u64`): The number of blocks that a proof is valid for.
+    fn get_proof_validity_blocks(self: @T) -> u64;
 }
 
 #[starknet::interface]
@@ -776,4 +785,27 @@ pub trait IAdmin<T> {
     /// #### Access Control
     /// - Only app governor.
     fn set_fee_collector(ref self: T, fee_collector: ContractAddress);
+
+    /// Sets the number of blocks that a proof is valid for.
+    ///
+    /// #### Parameters
+    /// - `proof_validity_blocks` (`u64`): The number of blocks that a proof is valid for.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Preconditions
+    /// - The number of blocks must be greater than 0.
+    ///
+    /// #### Events Emitted
+    /// - [`ProofValidityBlockIntervalSet`](privacy::events::ProofValidityBlockIntervalSet): Emitted
+    /// with the new proof validity block interval.
+    ///
+    /// #### Reverts
+    /// - [`ZERO_proof_validity_blocks`](privacy::errors::ZERO_proof_validity_blocks):
+    /// Thrown if `proof_validity_blocks` is zero.
+    ///
+    /// #### Access Control
+    /// - Only app governor.
+    fn set_proof_validity_blocks(ref self: T, proof_validity_blocks: u64);
 }

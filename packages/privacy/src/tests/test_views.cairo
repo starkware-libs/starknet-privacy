@@ -2,7 +2,7 @@ use core::num::traits::Zero;
 use privacy::objects::{EncOutgoingChannelInfo, EncSubchannelInfo};
 use privacy::privacy::Privacy;
 use privacy::tests::utils_for_tests::constants::{
-    DEFAULT_AMOUNT, DEFAULT_FEE_AMOUNT, DEFAULT_FEE_COLLECTOR,
+    DEFAULT_AMOUNT, DEFAULT_FEE_AMOUNT, DEFAULT_FEE_COLLECTOR, DEFAULT_PROOF_VALIDITY_BLOCKS,
 };
 use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
 use privacy::utils::constants::OPEN_NOTE_SALT;
@@ -33,7 +33,9 @@ fn test_constructor() {
     // Test fee amount and collector.
     assert_eq!(test.privacy.get_fee_amount(), Zero::zero());
     assert_eq!(test.privacy.get_fee_collector(), Zero::zero());
-    // TODO: Verify constructor events (CompliancePublicKeySet).
+    // Test proof validity blocks.
+    assert_eq!(test.privacy.get_proof_validity_blocks(), DEFAULT_PROOF_VALIDITY_BLOCKS);
+    // TODO: Verify constructor events (CompliancePublicKeySet, ProofValidityBlocksSet).
 }
 
 #[test]
@@ -44,6 +46,19 @@ fn test_constructor_zero_auditor_public_key() {
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
         auditor_public_key: Zero::zero(),
+        proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
+    );
+}
+
+#[test]
+#[should_panic(expected: 'ZERO_PROOF_VALIDITY_BLOCKS')]
+fn test_constructor_zero_proof_validity_blocks() {
+    let mut state = Privacy::contract_state_for_testing();
+    Privacy::constructor(
+        ref state,
+        governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
+        auditor_public_key: 'AUDITOR_PUBLIC_KEY'.try_into().unwrap(),
+        proof_validity_blocks: Zero::zero(),
     );
 }
 
@@ -71,6 +86,15 @@ fn test_get_fee_collector() {
     let fee_collector = DEFAULT_FEE_COLLECTOR;
     test.privacy.set_fee_collector(:fee_collector);
     assert_eq!(test.privacy.get_fee_collector(), fee_collector);
+}
+
+#[test]
+fn test_get_proof_validity_blocks() {
+    let mut test: Test = Default::default();
+    assert_eq!(test.privacy.get_proof_validity_blocks(), DEFAULT_PROOF_VALIDITY_BLOCKS);
+    let proof_validity_blocks = DEFAULT_PROOF_VALIDITY_BLOCKS + 100;
+    test.privacy.set_proof_validity_blocks(:proof_validity_blocks);
+    assert_eq!(test.privacy.get_proof_validity_blocks(), proof_validity_blocks);
 }
 
 #[test]

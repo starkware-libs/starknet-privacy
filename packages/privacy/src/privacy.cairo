@@ -21,15 +21,16 @@ pub mod Privacy {
         EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
         TokenBalances, TokenBalancesTrait,
     };
-    use privacy::utils::constants::{INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS};
+    use privacy::utils::constants::{
+        INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
+    };
     use privacy::utils::{
-        StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
-        decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
-        encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_execute_view_inputs,
+        ProofFacts, StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
+        compute_message_hash, decode_note_amount, derive_public_key, enc_note_packed_value,
+        encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
+        encrypt_subchannel_info, encrypt_user_addr, extract_execute_view_inputs,
         extract_server_actions_from_execute_and_panic, is_canonical_key, open_note, pack,
         panic_with_server_actions, send_message_to_server, to_write_once_action, unpack,
-        validate_proof,
     };
     use privacy::{errors, events};
     use starknet::account::Call;
@@ -40,7 +41,10 @@ pub mod Privacy {
     use starknet::storage_access::{
         StorageBaseAddress, storage_address_from_base_and_offset, storage_base_address_from_felt252,
     };
-    use starknet::syscalls::{call_contract_syscall, storage_read_syscall, storage_write_syscall};
+    use starknet::syscalls::{
+        call_contract_syscall, get_execution_info_v3_syscall, storage_read_syscall,
+        storage_write_syscall,
+    };
     use starknet::{
         ContractAddress, SyscallResultTrait, VALIDATED, get_caller_address, get_contract_address,
         get_execution_info,
@@ -94,6 +98,8 @@ pub mod Privacy {
         fee_amount: u128,
         /// Address that receives the fee.
         fee_collector: ContractAddress,
+        /// The number of blocks that a proof is valid for.
+        proof_validity_blocks: u64,
     }
 
     #[event]
@@ -118,15 +124,20 @@ pub mod Privacy {
         NoteUsed: events::NoteUsed,
         FeeAmountSet: events::FeeAmountSet,
         FeeCollectorSet: events::FeeCollectorSet,
+        ProofValidityBlocksSet: events::ProofValidityBlocksSet,
     }
 
     #[constructor]
     pub(crate) fn constructor(
-        ref self: ContractState, governance_admin: ContractAddress, auditor_public_key: felt252,
+        ref self: ContractState,
+        governance_admin: ContractAddress,
+        auditor_public_key: felt252,
+        proof_validity_blocks: u64,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(upgrade_delay: Zero::zero());
         self._set_auditor_public_key(:auditor_public_key);
+        self._set_proof_validity_blocks(:proof_validity_blocks);
     }
 
     #[abi(embed_v0)]
@@ -643,7 +654,7 @@ pub mod Privacy {
     pub impl ServerImpl of IServer<ContractState> {
         fn apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             self.pausable.assert_not_paused();
-            validate_proof(:actions);
+            self.validate_proof(:actions);
             self.collect_fee();
             self._apply_actions(:actions);
         }
@@ -683,6 +694,43 @@ pub mod Privacy {
 
     #[generate_trait]
     pub impl ServerInternalImpl of ServerInternalTrait {
+        fn validate_proof(self: @ContractState, actions: Span<ServerAction>) {
+            let execution_info = get_execution_info_v3_syscall().unwrap_syscall();
+            let contract_address = execution_info.contract_address;
+            let mut proof_facts_span = execution_info.tx_info.proof_facts;
+            assert(!proof_facts_span.is_empty(), errors::EMPTY_PROOF_FACTS);
+            let proof_facts: ProofFacts = Serde::deserialize(ref proof_facts_span)
+                .expect(errors::PROOF_FACTS_DESERIALIZE_ERROR);
+            assert(proof_facts_span.is_empty(), errors::INVALID_PROOF_FACTS);
+            let ProofFacts {
+                proof_version: _,
+                program_variant,
+                virtual_program_hash: _,
+                starknet_os_output_version,
+                base_block_number,
+                base_block_hash: _,
+                starknet_os_config_hash: _,
+                message_to_l1_hashes,
+            } = proof_facts;
+
+            // Assert program variant and output version are correct.
+            assert(program_variant == VIRTUAL_SNOS, errors::INVALID_PROGRAM_VARIANT);
+            assert(starknet_os_output_version == VIRTUAL_SNOS0, errors::INVALID_OS_OUTPUT_VERSION);
+
+            // Assert base block number is recent.
+            let current_block_number = execution_info.block_info.block_number;
+            assert(base_block_number < current_block_number, errors::INVALID_BASE_BLOCK_NUMBER);
+            assert(
+                current_block_number <= base_block_number + self.proof_validity_blocks.read(),
+                errors::PROOF_EXPIRED,
+            );
+
+            // Assert that the message hash is included in the L1 messages,
+            // meaning the proof is valid for this transaction.
+            let message_hash = compute_message_hash(:actions, :contract_address);
+            assert(message_to_l1_hashes == [message_hash].span(), errors::INVALID_PROOF_MSG);
+        }
+
         fn collect_fee(ref self: ContractState) {
             let fee_amount = self.fee_amount.read();
             if fee_amount.is_non_zero() {
@@ -849,6 +897,10 @@ pub mod Privacy {
         fn get_fee_collector(self: @ContractState) -> ContractAddress {
             self.fee_collector.read()
         }
+
+        fn get_proof_validity_blocks(self: @ContractState) -> u64 {
+            self.proof_validity_blocks.read()
+        }
     }
 
     #[abi(embed_v0)]
@@ -879,6 +931,12 @@ pub mod Privacy {
             self.fee_collector.write(fee_collector);
             self.emit(events::FeeCollectorSet { fee_collector });
         }
+
+        fn set_proof_validity_blocks(ref self: ContractState, proof_validity_blocks: u64) {
+            // TODO: Change to real role.
+            self.roles.only_app_governor();
+            self._set_proof_validity_blocks(:proof_validity_blocks);
+        }
     }
 
     #[generate_trait]
@@ -887,6 +945,12 @@ pub mod Privacy {
             assert(auditor_public_key.is_non_zero(), errors::ZERO_AUDITOR_PUBLIC_KEY);
             self.auditor_public_key.write(auditor_public_key);
             self.emit(events::AuditorPublicKeySet { auditor_public_key });
+        }
+
+        fn _set_proof_validity_blocks(ref self: ContractState, proof_validity_blocks: u64) {
+            assert(proof_validity_blocks.is_non_zero(), errors::ZERO_PROOF_VALIDITY_BLOCKS);
+            self.proof_validity_blocks.write(proof_validity_blocks);
+            self.emit(events::ProofValidityBlocksSet { proof_validity_blocks });
         }
     }
 }
