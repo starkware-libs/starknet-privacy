@@ -6,7 +6,6 @@ import type {
   BlockNumber,
   Call,
   constants,
-  Invocation,
 } from "starknet";
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
@@ -531,7 +530,11 @@ export interface PrivateTransfersBuilder {
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
 }
 
-export type ProofInvocation = Invocation;
+export interface ProofInvocation {
+  contractAddress: string;
+  calldata: string[];
+  signature?: string[];
+}
 
 /**
  * Factory details for creating proof invocations.

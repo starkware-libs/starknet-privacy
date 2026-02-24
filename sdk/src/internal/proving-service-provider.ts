@@ -5,7 +5,7 @@
  */
 
 import type { BlockIdentifier, constants, ProviderInterface } from "starknet";
-import { transaction, TransactionType } from "starknet";
+import { TransactionType } from "starknet";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import { toHex } from "../utils/convert.js";
 import { getDefaultProofDetails } from "./proof-invocation-factory.js";
@@ -65,16 +65,12 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
 
   async prove(invocation: ProofInvocation, blockId?: BlockIdentifier): Promise<Proof> {
     const details = this.getDefaultDetails();
-    const calldata = invocation.calldata as string[];
-
-    const executeCalldata = transaction.getExecuteCalldata(
-      [{ contractAddress: invocation.contractAddress, entrypoint: "execute_view", calldata }],
-      "1" // cairoVersion
-    );
+    // invocation.calldata is already the full __execute__ calldata
+    // (Array<Call> wrapping execute_view), compiled by ProofInvocationFactory.
     const transactionPayload = this.provider.channel.buildTransaction({
       type: TransactionType.INVOKE,
       contractAddress: invocation.contractAddress, // → sender_address in built tx (pool)
-      calldata: executeCalldata,
+      calldata: invocation.calldata,
       signature: invocation.signature ?? [],
       nonce: details.nonce ?? 0n,
       resourceBounds: details.resourceBounds ?? {},

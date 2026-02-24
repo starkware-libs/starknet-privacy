@@ -30,7 +30,7 @@ export class MockProofProvider implements ProofProviderInterface {
   }
 
   async prove(invocation: ProofInvocation): Promise<Proof> {
-    const calldata = invocation.calldata as string[];
+    const calldata = invocation.calldata;
     const userAddress = BigInt(calldata[0]);
     const privateKey = BigInt(calldata[1]);
     const clientActions: ClientAction[] = JSON.parse(calldata[2], bigintReviver);
