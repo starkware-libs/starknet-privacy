@@ -8,8 +8,8 @@ use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, deploy_mock_swap_executor, invoke_mock_swap_executor_input,
 };
-use privacy::utils::constants::{OPEN_NOTE_SALT, PROOF_VALIDITY_BLOCK_INTERVAL};
-use privacy::utils::{ProofFacts, _compute_message_hash, open_note, to_write_once_action, unpack};
+use privacy::utils::constants::OPEN_NOTE_SALT;
+use privacy::utils::{ProofFacts, compute_message_hash, open_note, to_write_once_action, unpack};
 use privacy::{errors, events};
 use snforge_std::{
     CheatSpan, EventSpyTrait, EventsFilterTrait, TokenTrait, cheat_proof_facts, map_entry_address,
@@ -690,7 +690,7 @@ fn test_apply_actions_assertions() {
         .safe_apply_actions_with_proof_facts(:actions, proof_facts: proof_facts_invalid_proof_msg);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_PROOF_MSG);
     let mut proof_facts_invalid_proof_msg = proof_facts;
-    let message_hash = _compute_message_hash(:actions, contract_address: test.privacy.address);
+    let message_hash = compute_message_hash(:actions, contract_address: test.privacy.address);
     proof_facts_invalid_proof_msg.message_to_l1_hashes = [message_hash, message_hash].span();
     let result = test
         .privacy
@@ -700,7 +700,7 @@ fn test_apply_actions_assertions() {
     // Catch PROOF_EXPIRED.
     let mut proof_facts_expired = proof_facts;
     proof_facts_expired.base_block_number = get_block_number();
-    advance_block_number_global(blocks: PROOF_VALIDITY_BLOCK_INTERVAL + 1);
+    advance_block_number_global(blocks: test.privacy.get_proof_validity_blocks() + 1);
     let result = test
         .privacy
         .safe_apply_actions_with_proof_facts(:actions, proof_facts: proof_facts_expired);
