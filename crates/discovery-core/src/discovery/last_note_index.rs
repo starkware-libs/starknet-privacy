@@ -1,13 +1,13 @@
-//! Note index boundary probing.
+//! Note index boundary finding.
 //!
-//! Finds the last note index in a subchannel via exponential search + bisection.
+//! Finds the last note index in a subchannel via exponential probe + bisection.
 //! No decryption, no nullifier checks — just probes note existence.
 //!
-//! [`exponential_probe`] is shared between notes discovery (finds `max_note_index`
-//! for a linear scan) and [`find_last_note_index_paginated`] (outgoing channels).
+//! [`find_last_note_index`] is the unified entry point: runs an atomic probe + bisect
+//! cycle, shared by both incoming (notes discovery) and outgoing (last-note-index)
+//! flows.
 
 use std::collections::HashMap;
-use std::future::Future;
 
 use starknet_types_core::felt::Felt;
 
@@ -18,205 +18,166 @@ use crate::io_budget::IoBudget;
 use crate::privacy_pool::hashes::compute_note_id;
 use crate::privacy_pool::views::IViews;
 
-/// Default max probe offset for notes discovery. Caps the jump distance to
-/// avoid overshooting into sparse index space (offsets: 0, 1, 3, 7, …, 1023).
-pub const DEFAULT_MAX_PROBE_OFFSET: u64 = 1024;
-
-/// Result of a batched exponential probe.
-pub struct ExponentialProbeResult {
-    /// Probed notes that exist: index → (note_id, packed_amount).
-    /// Used as a cache during the linear scan to avoid re-fetching amounts.
-    pub cache: HashMap<u64, (Felt, Felt)>,
-    /// Last index confirmed to exist.
-    /// `None` if the first probe missed (empty subchannel) or budget exhausted.
-    pub last_found_index: Option<u64>,
-    /// First index where no note exists (`None` if all probes hit = need more).
-    /// Used by [`find_last_note_index_paginated`] to set the bisection upper bound.
-    pub first_empty_index: Option<u64>,
-    /// Whether the probe conclusively found the boundary (sentinel or start-of-empty).
-    /// `false` when the batch was truncated by budget before reaching a boundary.
-    pub probe_complete: bool,
+/// Maximum budget for a single [`find_boundary`] call.
+///
+/// `max_note_log_index + 1` probe offsets + up to `max_note_log_index` bisect
+/// steps, each costing `COST_NOTE_PROBING`.
+pub fn boundary_budget(max_note_log_index: u32) -> usize {
+    let max_note_log_index: usize = max_note_log_index
+        .try_into()
+        .expect("max_note_log_index is a config value that must fit in usize");
+    (2 * max_note_log_index + 1) * COST_NOTE_PROBING
 }
 
-/// Finds the last note index via [`exponential_probe`] + [`bisect_boundary`].
+/// Finds the last note index via atomic exponential probe + bisection.
 ///
-/// Runs in two phases, resumable via cursor:
-/// 1. **Ascending**: batched exponential probing to find bounds (`lo`, `hi`).
-/// 2. **Bisection**: sequential binary search for exact boundary.
+/// When `cursor.total_n_notes` is already cached, returns immediately.
+/// Otherwise, budget is allocated atomically: consumes [`boundary_budget`]
+/// upfront, then reclaims unused units after completion. Either completes
+/// fully or makes no progress (budget too small).
 ///
-/// Returns `(last_index, has_more)`. When `has_more` is `false`, the search is complete.
-pub async fn find_last_note_index_paginated<S: IViews>(
+/// Returns `(probe_cache, has_more)`:
+/// - `probe_cache`: index → (note_id, packed_amount) from probe hits (for incoming scan).
+/// - `has_more`: `true` if budget was insufficient and another call is needed.
+///
+/// On success, sets `cursor.total_n_notes`. Callers read the result via
+/// `cursor.last_existing_index()`.
+pub async fn find_last_note_index<S: IViews>(
     pool: &S,
     channel_key: Felt,
     token: Felt,
     cursor: &mut SubchannelCursor,
+    max_note_log_index: u32,
     budget: &IoBudget,
-) -> Result<(Option<u64>, bool), DiscoveryError> {
-    // Phase 1: Ascending (find bounds)
-    if cursor.max_note_index.is_none() {
-        let start = cursor.start_index();
-        let result = exponential_probe(pool, channel_key, token, start, None, None, budget).await?;
-
-        if let Some(last_found_index) = result.last_found_index {
-            cursor.last_note_index = Some(last_found_index);
-        }
-        if let Some(index) = result.first_empty_index {
-            cursor.max_note_index = Some(index);
-        }
-
-        // Budget exhausted, all probes hit, or empty subchannel — nothing to bisect yet.
-        if cursor.max_note_index.is_none() || cursor.last_note_index.is_none() {
-            let has_more = !result.probe_complete;
-            return Ok((cursor.last_note_index, has_more));
-        }
+) -> Result<(HashMap<u64, (Felt, Felt)>, bool), DiscoveryError> {
+    if cursor.total_n_notes.is_some() {
+        return Ok((HashMap::new(), false));
     }
 
-    // Phase 2: Bisection (narrow down to exact boundary, sequential)
-    // Probe returns `(Option<u64>, bool)`:
-    //   `Some(idx)` = note exists at idx, `None` = absent.
-    //   `bool` = budget exhausted (true = stop early).
-    let probe = |idx: u64| {
-        let budget = budget.clone();
-        async move {
-            if !budget.consume(COST_NOTE_PROBING) {
-                return Ok((None, true));
-            }
-            let note_id = compute_note_id(channel_key, token, idx);
-            if pool.get_note(note_id).await? != Felt::ZERO {
-                Ok((Some(idx), false))
-            } else {
-                Ok((None, false))
-            }
-        }
+    let max_budget = boundary_budget(max_note_log_index);
+    if !budget.consume(max_budget) {
+        return Ok((HashMap::new(), true));
+    }
+
+    let start_index = cursor.start_index();
+    let max_bisect_steps: usize = max_note_log_index
+        .try_into()
+        .expect("max_note_log_index is a config value that must fit in usize");
+    let mut cache = HashMap::new();
+
+    let Some((lower_bound, upper_bound)) = exponential_probe(
+        pool,
+        channel_key,
+        token,
+        start_index,
+        max_note_log_index,
+        &mut cache,
+    )
+    .await?
+    else {
+        // Empty subchannel.
+        budget.reclaim(max_bisect_steps * COST_NOTE_PROBING);
+        cursor.total_n_notes = Some(0);
+        return Ok((cache, false));
     };
-    let complete = bisect_boundary(&probe, cursor).await?;
-    Ok((cursor.last_note_index, !complete))
+
+    let (boundary, bisect_step_count) = bisect_boundary(
+        pool,
+        channel_key,
+        token,
+        lower_bound,
+        upper_bound,
+        &mut cache,
+    )
+    .await?;
+    budget.reclaim((max_bisect_steps - bisect_step_count) * COST_NOTE_PROBING);
+    cursor.total_n_notes = Some(boundary + 1);
+    Ok((cache, false))
 }
 
-/// Binary search between `lo` (exists) and `hi` (absent) to find
-/// the exact last occupied index.
+/// Binary search between `lower_bound` (exists) and `upper_bound` (absent) to
+/// find the exact last occupied index. Hits are inserted into `cache`.
 ///
-/// Requires both `cursor.last_note_index` (lo) and `cursor.max_note_index` (hi)
-/// to be `Some`. The probe closure returns `(Option<u64>, bool)` — see
-/// [`find_last_note_index_paginated`] for the contract.
-///
-/// Updates cursor in place. Returns `true` if complete, `false` if budget exhausted.
-async fn bisect_boundary<F, Fut>(
-    probe: F,
-    cursor: &mut SubchannelCursor,
-) -> Result<bool, DiscoveryError>
-where
-    F: Fn(u64) -> Fut,
-    Fut: Future<Output = Result<(Option<u64>, bool), DiscoveryError>>,
-{
-    let (mut lo, mut hi) = match (cursor.last_note_index, cursor.max_note_index) {
-        (Some(lo), Some(hi)) => (lo, hi),
-        _ => unreachable!("bisect_boundary called without both lo and hi"),
-    };
-
-    while lo + 1 < hi {
-        let mid = lo + (hi - lo) / 2;
-        match probe(mid).await? {
-            (Some(_), _) => lo = mid,
-            (None, false) => hi = mid,
-            (None, true) => {
-                cursor.last_note_index = Some(lo);
-                cursor.max_note_index = Some(hi);
-                return Ok(false);
-            }
+/// Budget is pre-allocated by the caller. Returns
+/// `(last_existing_index, step_count)`.
+async fn bisect_boundary<S: IViews>(
+    pool: &S,
+    channel_key: Felt,
+    token: Felt,
+    mut lower_bound: u64,
+    mut upper_bound: u64,
+    cache: &mut HashMap<u64, (Felt, Felt)>,
+) -> Result<(u64, usize), DiscoveryError> {
+    let mut step_count = 0;
+    while lower_bound + 1 < upper_bound {
+        let mid = lower_bound + (upper_bound - lower_bound) / 2;
+        let note_id = compute_note_id(channel_key, token, mid);
+        step_count += 1;
+        let packed = pool.get_note(note_id).await?;
+        if packed != Felt::ZERO {
+            cache.insert(mid, (note_id, packed));
+            lower_bound = mid;
+        } else {
+            upper_bound = mid;
         }
     }
-
-    cursor.last_note_index = Some(lo);
-    cursor.max_note_index = Some(hi);
-    Ok(true)
+    Ok((lower_bound, step_count))
 }
 
 /// Probes note existence at exponentially increasing indices in a single batch.
+/// Hits are inserted into the caller-provided `cache`.
 ///
-/// From `start`, probes at offsets `0, 1, 3, 7, 15, ..., 2^k - 1` capped at
-/// `max_probe_offset`. The `2^k - 1` pattern is denser at the start than
-/// powers of 2, yielding more cache hits for small subchannels.
+/// From `start`, probes at offsets `[0, 1, 3, 7, 15, ..., 2^max_note_log_index - 1]`
+/// (`max_note_log_index + 1` offsets total). The `2^k - 1` pattern is denser at the
+/// start than powers of 2, yielding more cache hits for small subchannels.
 ///
-/// `prior_max_index` narrows the search when a previous probe already found a bound:
-/// - `None` (first discovery): offsets up to `max_probe_offset`
-/// - `Some(m)` (re-probe after scan): range capped at `m * 2`
+/// Returns:
+/// - `Ok(None)` — empty subchannel (first probe missed); no bisection needed.
+/// - `Ok(Some((lower_bound, upper_bound)))` — `lower_bound` is the last index
+///   confirmed to exist (bisection lower bound), `upper_bound` is the first
+///   index confirmed empty (bisection upper bound).
+/// - `Err` — all probes hit, `max_note_log_index` too small.
 ///
-/// `max_probe_offset` caps the maximum offset per batch. Use
-/// `Some(`[`DEFAULT_MAX_PROBE_OFFSET`]`)` for notes discovery or `None` for
-/// unbounded probing (e.g. last-note-index search).
-///
-/// All probed notes that exist are cached in the result for use by the
-/// linear scan phase.
-///
-/// Issues exactly one batch of probes via `pool.get_notes_batch()`. Callers
-/// handle iteration via cursor-based pagination.
-pub async fn exponential_probe<S: IViews>(
+/// Budget is pre-allocated by [`find_last_note_index`] — this function issues
+/// the full batch unconditionally.
+async fn exponential_probe<S: IViews>(
     pool: &S,
     channel_key: Felt,
     token: Felt,
     start_index: u64,
-    prior_max_index: Option<u64>,
-    max_probe_offset: Option<u64>,
-    budget: &IoBudget,
-) -> Result<ExponentialProbeResult, DiscoveryError> {
-    let max_index = match prior_max_index {
-        None => start_index.saturating_add(max_probe_offset.unwrap_or(u64::MAX)),
-        Some(prior_max) => prior_max.saturating_mul(2).max(start_index),
-    };
-    let max_probe_offset = max_index.saturating_sub(start_index);
-
-    // Offsets: [0, 1, 3, 7, 15, ..., 2^k - 1] where 2^k - 1 <= max_probe_offset.
-    let offsets: Vec<u64> = std::iter::once(0)
-        .chain(
-            (1..64)
-                .map(|exp| (1u64 << exp) - 1)
-                .take_while(|&offset| offset <= max_probe_offset),
-        )
+    max_note_log_index: u32,
+    cache: &mut HashMap<u64, (Felt, Felt)>,
+) -> Result<Option<(u64, u64)>, DiscoveryError> {
+    // Offsets: [0, 1, 3, 7, 15, ..., 2^k - 1] where k = max_note_log_index.
+    let offsets: Vec<u64> = (0..=max_note_log_index)
+        .map(|k| if k == 0 { 0 } else { (1u64 << k) - 1 })
         .collect();
 
-    // Consume as many probes as budget allows.
-    let (batch_size, budget_exhausted) = budget.consume_up_to(offsets.len(), COST_NOTE_PROBING);
-    if batch_size == 0 {
-        return Ok(ExponentialProbeResult {
-            cache: HashMap::new(),
-            last_found_index: None,
-            first_empty_index: None,
-            probe_complete: !budget_exhausted,
-        });
-    }
-
-    let note_ids: Vec<_> = offsets[..batch_size]
+    let note_ids: Vec<_> = offsets
         .iter()
         .map(|&off| compute_note_id(channel_key, token, start_index + off))
         .collect();
     let results = pool.get_notes_batch(&note_ids).await?;
 
-    let mut cache = HashMap::new();
-    let mut last_found_index: Option<u64> = None;
-    let mut first_empty_index: Option<u64> = None;
+    let mut lower_bound: Option<u64> = None;
 
     for (i, &packed) in results.iter().enumerate() {
         let idx = start_index + offsets[i];
         if packed != Felt::ZERO {
             cache.insert(idx, (note_ids[i], packed));
-            last_found_index = Some(idx);
+            lower_bound = Some(idx);
         } else {
-            first_empty_index = Some(idx);
-            break;
+            return Ok(lower_bound.map(|lower_bound| (lower_bound, idx)));
         }
     }
-    // Probe is complete when we found a sentinel, or when no notes exist at all
-    // (first probe missed and budget wasn't the limiting factor).
-    let probe_complete =
-        first_empty_index.is_some() || (!budget_exhausted && last_found_index.is_none());
 
-    Ok(ExponentialProbeResult {
-        cache,
-        last_found_index,
-        first_empty_index,
-        probe_complete,
-    })
+    // All probes hit — subchannel has more notes than the probe range
+    // covers (>2^max_note_log_index). Config too small.
+    Err(DiscoveryError::InvalidCursor(format!(
+        "note boundary exceeds max_note_log_index={max_note_log_index} \
+         (>{} notes from start_index={start_index})",
+        1u64.checked_shl(max_note_log_index).unwrap_or(u64::MAX)
+    )))
 }
 
 #[cfg(test)]
@@ -229,6 +190,7 @@ mod tests {
 
     const CK: Felt = Felt::from_hex_unchecked("0x12345");
     const TK: Felt = Felt::from_hex_unchecked("0x67890");
+    const DEFAULT_MAX_LOG: u32 = 30;
 
     /// Creates a mock backend with notes at indices 0..=last_index.
     fn mock_with_notes(last_index: Option<u64>) -> MockBackend {
@@ -246,132 +208,184 @@ mod tests {
     #[tokio::test]
     async fn test_exponential_probe_empty() {
         let backend = mock_with_notes(None);
-        let budget = IoBudget::new(100);
-        let result = exponential_probe(
-            &backend,
-            CK,
-            TK,
-            0,
-            None,
-            Some(DEFAULT_MAX_PROBE_OFFSET),
-            &budget,
-        )
-        .await
-        .unwrap();
+        let mut cache = HashMap::new();
+        let result = exponential_probe(&backend, CK, TK, 0, DEFAULT_MAX_LOG, &mut cache)
+            .await
+            .unwrap();
 
-        assert_eq!(result.last_found_index, None);
-        assert!(result.cache.is_empty());
-        assert!(result.probe_complete);
+        assert!(result.is_none(), "empty subchannel returns None");
+        assert!(cache.is_empty());
     }
 
     #[tokio::test]
     async fn test_exponential_probe_one_element() {
         // Elements at 0 only. Probes: offset 0→0 (hit), 1→1 (miss).
         let backend = mock_with_notes(Some(0));
-        let budget = IoBudget::new(100);
-        let result = exponential_probe(
-            &backend,
-            CK,
-            TK,
-            0,
-            None,
-            Some(DEFAULT_MAX_PROBE_OFFSET),
-            &budget,
-        )
-        .await
-        .unwrap();
+        let mut cache = HashMap::new();
+        let (lower_bound, upper_bound) =
+            exponential_probe(&backend, CK, TK, 0, DEFAULT_MAX_LOG, &mut cache)
+                .await
+                .unwrap()
+                .expect("non-empty subchannel");
 
-        assert_eq!(result.last_found_index, Some(0));
-        assert_eq!(result.cache.len(), 1);
-        assert!(result.probe_complete);
+        assert_eq!(lower_bound, 0);
+        assert_eq!(upper_bound, 1);
+        assert_eq!(cache.len(), 1);
     }
 
     #[tokio::test]
     async fn test_exponential_probe_multiple_elements() {
         // Elements at 0..=4. Probes: offset 0→0 (hit), 1→1 (hit),
-        // 3→3 (hit), 7→7 (miss)
+        // 3→3 (hit), 7→7 (miss). Sentinel found.
+        let backend = mock_with_notes(Some(4));
+        let mut cache = HashMap::new();
+        let (lower_bound, upper_bound) =
+            exponential_probe(&backend, CK, TK, 0, DEFAULT_MAX_LOG, &mut cache)
+                .await
+                .unwrap()
+                .expect("non-empty subchannel");
+
+        assert_eq!(lower_bound, 3);
+        assert_eq!(upper_bound, 7);
+        assert_eq!(cache.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_exponential_probe_gap_between_last_hit_and_sentinel() {
+        // Notes at 0..=2. Probe offsets [0, 1, 3, ...]:
+        //   0→hit, 1→hit, 3→miss (sentinel). Gap at index 2 is unprobed.
+        let backend = mock_with_notes(Some(2));
+        let mut cache = HashMap::new();
+        let (lower_bound, upper_bound) =
+            exponential_probe(&backend, CK, TK, 0, DEFAULT_MAX_LOG, &mut cache)
+                .await
+                .unwrap()
+                .expect("non-empty subchannel");
+
+        assert_eq!(lower_bound, 1);
+        assert_eq!(upper_bound, 3);
+        assert_eq!(cache.len(), 2, "probed indices 0 and 1");
+    }
+
+    #[tokio::test]
+    async fn test_exponential_probe_all_hit_errors() {
+        // 10 notes at 0..=9. With max_note_log_index=3, probe offsets are
+        // [0, 1, 3, 7] — all hit. Should error.
+        let backend = mock_with_notes(Some(9));
+        let mut cache = HashMap::new();
+        let result = exponential_probe(&backend, CK, TK, 0, 3, &mut cache).await;
+
+        assert!(result.is_err(), "all probes hit should error");
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("max_note_log_index=3"),
+            "error should mention the config: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_find_last_note_index_empty_subchannel() {
+        let backend = mock_with_notes(None);
+        let budget = IoBudget::new(100);
+        let mut cursor = SubchannelCursor::default();
+        let (cache, has_more) =
+            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
+                .await
+                .unwrap();
+
+        assert!(cache.is_empty());
+        assert!(!has_more);
+        assert_eq!(cursor.total_n_notes, Some(0));
+        assert_eq!(cursor.last_existing_index(), None);
+        // Probe cost only (31 offsets), bisect budget reclaimed.
+        assert_eq!(
+            budget.remaining(),
+            100 - boundary_budget(DEFAULT_MAX_LOG) + DEFAULT_MAX_LOG as usize
+        );
+    }
+
+    #[tokio::test]
+    async fn test_find_last_note_index_one_note() {
+        let backend = mock_with_notes(Some(0));
+        let budget = IoBudget::new(100);
+        let mut cursor = SubchannelCursor::default();
+        let (cache, has_more) =
+            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
+                .await
+                .unwrap();
+
+        assert_eq!(cache.len(), 1);
+        assert!(!has_more);
+        assert_eq!(cursor.total_n_notes, Some(1));
+        assert_eq!(cursor.last_existing_index(), Some(0));
+        // Adjacent boundary (lo=0, hi=1) — no bisection, bisect budget reclaimed.
+        let num_probe_offsets = DEFAULT_MAX_LOG as usize + 1;
+        assert_eq!(budget.remaining(), 100 - num_probe_offsets);
+    }
+
+    #[tokio::test]
+    async fn test_find_last_note_index_with_gap() {
+        // 3 notes at 0..=2. Probe hits 0, 1, misses 3.
+        // Bisection: mid=2, hit → lo=2. lo+1==hi(3) → done. 1 bisect step.
+        let backend = mock_with_notes(Some(2));
+        let budget = IoBudget::new(100);
+        let mut cursor = SubchannelCursor::default();
+        let (cache, has_more) =
+            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
+                .await
+                .unwrap();
+
+        assert!(!has_more);
+        assert_eq!(cursor.total_n_notes, Some(3));
+        assert_eq!(cache.len(), 3, "probe cached 0,1 + bisect cached 2");
+        let num_probe_offsets = DEFAULT_MAX_LOG as usize + 1;
+        let bisect_steps = 1;
+        assert_eq!(
+            budget.remaining(),
+            100 - num_probe_offsets - bisect_steps,
+            "31 probe + 1 bisect step"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_find_last_note_index_five_notes() {
+        // 5 notes at 0..=4. Probe hits 0, 1, 3, misses at 7.
+        // Bisection: lo=3, hi=7 → mid=5 (miss)→hi=5 → mid=4 (hit)→lo=4.
+        // lo+1==hi(5) → done. 2 bisect steps.
         let backend = mock_with_notes(Some(4));
         let budget = IoBudget::new(100);
-        let result = exponential_probe(
-            &backend,
-            CK,
-            TK,
-            0,
-            None,
-            Some(DEFAULT_MAX_PROBE_OFFSET),
-            &budget,
-        )
-        .await
-        .unwrap();
+        let mut cursor = SubchannelCursor::default();
+        let (_cache, has_more) =
+            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
+                .await
+                .unwrap();
 
-        assert_eq!(result.last_found_index, Some(3));
-        assert_eq!(result.cache.len(), 3);
-        assert!(result.probe_complete);
+        assert!(!has_more);
+        assert_eq!(cursor.total_n_notes, Some(5));
+        let num_probe_offsets = DEFAULT_MAX_LOG as usize + 1;
+        let bisect_steps = 2;
+        assert_eq!(budget.remaining(), 100 - num_probe_offsets - bisect_steps);
     }
 
     #[tokio::test]
-    async fn test_exponential_ascend_probe_incomplete() {
+    async fn test_find_last_note_index_budget_insufficient() {
         let backend = mock_with_notes(Some(100));
-        // Budget for only 2 probes: offsets 0, 1
-        let budget = IoBudget::new(2 * COST_NOTE_PROBING);
-        let result = exponential_probe(
-            &backend,
-            CK,
-            TK,
-            0,
-            None,
-            Some(DEFAULT_MAX_PROBE_OFFSET),
-            &budget,
-        )
-        .await
-        .unwrap();
+        let mut cursor = SubchannelCursor::default();
+        // Budget below the minimum for boundary finding.
+        let budget = IoBudget::new(boundary_budget(DEFAULT_MAX_LOG) - 1);
+        let (cache, has_more) =
+            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
+                .await
+                .unwrap();
 
-        assert_eq!(result.last_found_index, Some(1));
-        assert_eq!(result.cache.len(), 2);
-        assert!(!result.probe_complete);
-    }
-
-    /// Helper: mock bisection probe.
-    fn mock_probe(
-        last_index: Option<u64>,
-    ) -> impl Fn(u64) -> std::future::Ready<Result<(Option<u64>, bool), DiscoveryError>> {
-        move |idx| {
-            let exists = last_index.is_some_and(|last| idx <= last);
-            std::future::ready(Ok(if exists {
-                (Some(idx), false)
-            } else {
-                (None, false)
-            }))
-        }
-    }
-
-    #[tokio::test]
-    async fn test_bisect_boundary_adjacent() {
-        let mut cursor = SubchannelCursor {
-            note_discovery_complete: false,
-            last_note_index: Some(0),
-            max_note_index: Some(1),
-        };
-        let complete = bisect_boundary(mock_probe(Some(0)), &mut cursor)
-            .await
-            .unwrap();
-        assert!(complete);
-        assert_eq!(cursor.last_note_index, Some(0));
-    }
-
-    #[tokio::test]
-    async fn test_bisect_boundary_gap() {
-        let mut cursor = SubchannelCursor {
-            note_discovery_complete: false,
-            last_note_index: Some(3),
-            max_note_index: Some(7),
-        };
-        let complete = bisect_boundary(mock_probe(Some(4)), &mut cursor)
-            .await
-            .unwrap();
-        assert!(complete);
-        assert_eq!(cursor.last_note_index, Some(4));
-        assert_eq!(cursor.max_note_index, Some(5));
+        assert!(cache.is_empty());
+        assert!(has_more, "budget insufficient — no boundary found");
+        assert!(cursor.total_n_notes.is_none());
+        assert_eq!(
+            budget.remaining(),
+            boundary_budget(DEFAULT_MAX_LOG) - 1,
+            "budget unchanged on insufficient allocation"
+        );
     }
 
     #[tokio::test]
@@ -394,36 +408,35 @@ mod tests {
         let mut cursor = SubchannelCursor::default();
         let budget = IoBudget::new(100);
 
-        let (last_index, has_more) =
-            find_last_note_index_paginated(&backend, channel_key, token, &mut cursor, &budget)
+        let (_cache, has_more) =
+            find_last_note_index(&backend, channel_key, token, &mut cursor, 30, &budget)
                 .await
                 .unwrap();
 
         // Alice has 1 note at index 0
-        assert_eq!(last_index, Some(0));
         assert!(!has_more);
+        assert_eq!(cursor.total_n_notes, Some(1));
+        assert_eq!(cursor.last_existing_index(), Some(0));
     }
 
     #[tokio::test]
-    async fn test_find_last_note_index_empty() {
+    async fn test_find_last_note_index_empty_fixture() {
         let backend = MockBackend::empty();
-        let channel_key = Felt::from_hex_unchecked("0x12345");
-        let token = Felt::from_hex_unchecked("0x67890");
 
         let mut cursor = SubchannelCursor::default();
         let budget = IoBudget::new(100);
 
-        let (last_index, has_more) =
-            find_last_note_index_paginated(&backend, channel_key, token, &mut cursor, &budget)
-                .await
-                .unwrap();
+        let (_cache, has_more) = find_last_note_index(&backend, CK, TK, &mut cursor, 30, &budget)
+            .await
+            .unwrap();
 
-        assert_eq!(last_index, None);
         assert!(!has_more);
+        assert_eq!(cursor.total_n_notes, Some(0));
+        assert_eq!(cursor.last_existing_index(), None);
     }
 
     #[tokio::test]
-    async fn test_find_last_note_index_budget_exhausted_ascending() {
+    async fn test_find_last_note_index_budget_insufficient_then_resume() {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
@@ -441,27 +454,54 @@ mod tests {
 
         let mut cursor = SubchannelCursor::default();
 
-        // Budget for 1 probe: batch gets offset 0 only (note at 0 exists),
-        // but no first_empty found — budget_exhausted (all probes hit).
-        let budget = IoBudget::new(COST_NOTE_PROBING);
-        let (last_index, has_more) =
-            find_last_note_index_paginated(&backend, channel_key, token, &mut cursor, &budget)
+        // Budget below minimum — can't start boundary finding.
+        let budget = IoBudget::new(boundary_budget(30) - 1);
+        let (_cache, has_more) =
+            find_last_note_index(&backend, channel_key, token, &mut cursor, 30, &budget)
                 .await
                 .unwrap();
 
-        assert_eq!(last_index, Some(0));
-        assert!(has_more, "budget exhausted during ascending");
-        assert_eq!(cursor.last_note_index, Some(0));
-        assert!(cursor.max_note_index.is_none(), "sentinel not found yet");
+        assert!(has_more, "budget insufficient");
+        assert!(cursor.total_n_notes.is_none(), "boundary not cached yet");
 
-        // Resume with more budget
+        // Resume with sufficient budget.
         let budget = IoBudget::new(100);
-        let (last_index, has_more) =
-            find_last_note_index_paginated(&backend, channel_key, token, &mut cursor, &budget)
+        let (_cache, has_more) =
+            find_last_note_index(&backend, channel_key, token, &mut cursor, 30, &budget)
                 .await
                 .unwrap();
 
-        assert_eq!(last_index, Some(0));
         assert!(!has_more);
+        assert_eq!(cursor.total_n_notes, Some(1));
+        assert_eq!(cursor.last_existing_index(), Some(0));
+    }
+
+    #[tokio::test]
+    async fn test_find_last_note_index_skips_when_cached() {
+        let backend = mock_with_notes(Some(4));
+        let mut cursor = SubchannelCursor::default();
+
+        // First call: finds boundary.
+        let budget = IoBudget::new(100);
+        let (_cache, has_more) =
+            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
+                .await
+                .unwrap();
+        assert!(!has_more);
+        assert_eq!(cursor.total_n_notes, Some(5));
+        let remaining_after_first = budget.remaining();
+
+        // Second call: cached, returns immediately without consuming budget.
+        let (cache, has_more) =
+            find_last_note_index(&backend, CK, TK, &mut cursor, DEFAULT_MAX_LOG, &budget)
+                .await
+                .unwrap();
+        assert!(!has_more);
+        assert!(cache.is_empty(), "no probe needed — cached");
+        assert_eq!(
+            budget.remaining(),
+            remaining_after_first,
+            "no budget consumed"
+        );
     }
 }
