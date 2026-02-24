@@ -43,6 +43,7 @@ pub struct DiscoveryCursor {
 
     /// Total number of channels (cached from `get_num_of_channels` for incoming).
     /// Used as optimization to avoid redundant RPC calls.
+    // TODO: rename to total_n_incoming_channels to avoid confusion on the SDK side.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_n_channels: Option<u64>,
 

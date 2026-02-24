@@ -180,6 +180,8 @@ export class Devnet {
       "1",
       "--dump-on",
       "request", // Enable devnet_dump RPC (no-op unless explicitly called)
+      "--chain-id",
+      "TESTNET",
     ];
 
     // Spawn a devnet instance on a random free port using the system-installed binary
