@@ -4,7 +4,7 @@
  */
 
 import type { BlockIdentifier, constants, ProviderInterface } from "starknet";
-import type { INVOKE_TXN_V3 } from "./proving-service.js";
+import { TransactionType } from "starknet";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import { toHex } from "../utils/convert.js";
 import { getDefaultProofDetails } from "./proof-invocation-factory.js";
@@ -13,10 +13,7 @@ import { DEFAULT_REQUEST_TIMEOUT_MS, ProvingService } from "./proving-service.js
 /** Provider with channel.buildTransaction (e.g. RpcProvider). */
 export type ProvingServiceProvider = ProviderInterface & {
   channel: {
-    buildTransaction(
-      invocation: ProofInvocation,
-      versionType?: "fee" | "transaction"
-    ): INVOKE_TXN_V3;
+    buildTransaction(invocation: unknown, versionType?: "fee" | "transaction"): object;
   };
 };
 
@@ -66,11 +63,22 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
   }
 
   async prove(invocation: ProofInvocation, blockId?: BlockIdentifier): Promise<Proof> {
+    const details = this.getDefaultDetails();
     // invocation.calldata is already the full __execute__ calldata
     // (Array<Call> wrapping execute_view), compiled by ProofInvocationFactory.
     const transactionPayload = this.provider.channel.buildTransaction({
-      ...invocation,
-      calldata: invocation.calldata as string[],
+      type: TransactionType.INVOKE,
+      contractAddress: invocation.contractAddress, // → sender_address in built tx (pool)
+      calldata: invocation.calldata,
+      signature: invocation.signature ?? [],
+      nonce: details.nonce ?? 0n,
+      resourceBounds: details.resourceBounds ?? {},
+      tip: details.tip ?? 0n,
+      paymasterData: details.paymasterData ?? [],
+      accountDeploymentData: details.accountDeploymentData ?? [],
+      nonceDataAvailabilityMode: details.nonceDataAvailabilityMode ?? "L1",
+      feeDataAvailabilityMode: details.feeDataAvailabilityMode ?? "L1",
+      version: details.version,
     });
 
     const result = await this.provingService.proveTransaction(

@@ -3,11 +3,8 @@
  * Structured similarly to starknet's RpcProvider.
  */
 
-import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-09";
 import type { BlockIdentifier } from "starknet";
 
-/** Re-export for use by proving-service-provider. */
-export type { INVOKE_TXN_V3 };
 
 /** Default request timeout: 10s (proofs should take ~3-4 seconds). */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -102,7 +99,7 @@ export class ProvingService {
 
   async proveTransaction(
     blockId: BlockIdentifier,
-    transaction: INVOKE_TXN_V3
+    transaction: object
   ): Promise<ProveTransactionResult> {
     const blockIdParam =
       typeof blockId === "number" || typeof blockId === "bigint"

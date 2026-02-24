@@ -136,7 +136,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     ]);
     const compiledCalldata = compileExecuteCalldata(poolAddressHex, executeViewCalldata);
 
-    // Sign the transaction using details from the proof provider
+    // Sign the transaction using details from the proof provider.
     // signTransaction internally calls getExecuteCalldata which wraps the call
     // into Array<Call> format — the same layout as compiledCalldata. So we pass
     // the inner executeViewCalldata here, not the already-wrapped compiledCalldata.
