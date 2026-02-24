@@ -115,3 +115,6 @@
 
 # General
 - Test actions phases (all actions together in the correct order)
+
+## Set proof validity blocks
+- set and validate proof.

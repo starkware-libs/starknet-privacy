@@ -96,3 +96,10 @@ pub struct FeeCollectorSet {
     #[key]
     pub fee_collector: ContractAddress,
 }
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct ProofValidityBlocksSet {
+    /// The number of blocks that a proof is valid for.
+    #[key]
+    pub proof_validity_blocks: u64,
+}

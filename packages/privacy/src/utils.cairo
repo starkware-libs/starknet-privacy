@@ -1,4 +1,4 @@
-use constants::{PROOF_VALIDITY_BLOCK_INTERVAL, VIRTUAL_SNOS, VIRTUAL_SNOS0};
+use constants::{VIRTUAL_SNOS, VIRTUAL_SNOS0};
 use core::ec::stark_curve::{GEN_X, GEN_Y};
 use core::ec::{EcPoint, EcPointTrait};
 use core::iter::Extend;
@@ -22,7 +22,7 @@ use privacy::utils::constants::{
 };
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
-use starknet::syscalls::{get_execution_info_v3_syscall, send_message_to_l1_syscall};
+use starknet::syscalls::send_message_to_l1_syscall;
 use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
 
 #[starknet::interface]
@@ -49,9 +49,6 @@ pub mod constants {
     pub const OPEN_NOTE_PACKED_VALUE: felt252 = u256 { high: OPEN_NOTE_SALT, low: Zero::zero() }
         .try_into()
         .unwrap();
-    // TODO: Change to the real number of blocks.
-    /// The interval of blocks for which the proof is valid.
-    pub const PROOF_VALIDITY_BLOCK_INTERVAL: u64 = 21_600; // ~12 hours (2 sec/block)
     /// The program variant for the virtual Starknet OS.
     pub const VIRTUAL_SNOS: felt252 = 'VIRTUAL_SNOS';
     /// The output version for the virtual Starknet OS.
@@ -447,49 +444,12 @@ pub(crate) impl ProofFactsDefaultImpl of Default<ProofFacts> {
     }
 }
 
-pub(crate) fn validate_proof(actions: Span<ServerAction>) {
-    let execution_info = get_execution_info_v3_syscall().unwrap_syscall();
-    let contract_address = execution_info.contract_address;
-    let mut proof_facts_span = execution_info.tx_info.proof_facts;
-    assert(!proof_facts_span.is_empty(), errors::EMPTY_PROOF_FACTS);
-    let proof_facts: ProofFacts = Serde::deserialize(ref proof_facts_span)
-        .expect(errors::PROOF_FACTS_DESERIALIZE_ERROR);
-    assert(proof_facts_span.is_empty(), errors::INVALID_PROOF_FACTS);
-    let ProofFacts {
-        proof_version: _,
-        program_variant,
-        virtual_program_hash: _,
-        starknet_os_output_version,
-        base_block_number,
-        base_block_hash: _,
-        starknet_os_config_hash: _,
-        message_to_l1_hashes,
-    } = proof_facts;
-
-    // Assert program variant and output version are correct.
-    assert(program_variant == VIRTUAL_SNOS, errors::INVALID_PROGRAM_VARIANT);
-    assert(starknet_os_output_version == VIRTUAL_SNOS0, errors::INVALID_OS_OUTPUT_VERSION);
-
-    // Assert base block number is recent.
-    let current_block_number = execution_info.block_info.block_number;
-    assert(base_block_number < current_block_number, errors::INVALID_BASE_BLOCK_NUMBER);
-    assert(
-        current_block_number <= base_block_number + PROOF_VALIDITY_BLOCK_INTERVAL,
-        errors::PROOF_EXPIRED,
-    );
-
-    // Assert that the message hash is included in the L1 messages,
-    // meaning the proof is valid for this transaction.
-    let message_hash = _compute_message_hash(:actions, :contract_address);
-    assert(message_to_l1_hashes == [message_hash].span(), errors::INVALID_PROOF_MSG);
-}
-
 /// The message hash is computed from the L1 message, which includes:
 /// - `from_address`: the privacy (self) contract address.
 /// - `to_address`: zero.
 /// - `payload_len`: length of the payload.
 /// - `payload`: `Span<ServerAction>` passed as input to the server function (`apply_actions`).
-pub(crate) fn _compute_message_hash(
+pub(crate) fn compute_message_hash(
     actions: Span<ServerAction>, contract_address: ContractAddress,
 ) -> felt252 {
     let mut l1_message_data: Array<felt252> = array![contract_address.into(), Zero::zero()];
