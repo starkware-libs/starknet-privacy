@@ -100,11 +100,14 @@ pub(crate) fn encrypt_subchannel_info(
 fn _compute_shared_x(ephemeral_secret: felt252, public_key: felt252) -> (felt252, felt252) {
     // Compute ephemeral public key.
     let ephemeral_pub_point = GEN_P().mul(scalar: ephemeral_secret);
-    let ephemeral_pub_x = ephemeral_pub_point.try_into().unwrap().x();
+    let ephemeral_pub_x = ephemeral_pub_point
+        .try_into()
+        .expect(internal_errors::ZERO_EPHEMERAL_PUBLIC)
+        .x();
     // Compute shared point.
     let public_point = EcPointTrait::new_from_x(x: public_key).unwrap();
     let shared_point = public_point.mul(scalar: ephemeral_secret);
-    let shared_x = shared_point.try_into().unwrap().x();
+    let shared_x = shared_point.try_into().expect(internal_errors::ZERO_SHARED).x();
     (ephemeral_pub_x, shared_x)
 }
 
@@ -223,9 +226,10 @@ pub(crate) fn encrypt_user_addr(
 
 /// Derives the public key from the private key.
 /// Assumes the private key is not zero.
+/// Returns non-zero public key.
 pub(crate) fn derive_public_key(private_key: felt252) -> felt252 {
     let private_key_point = GEN_P().mul(scalar: private_key);
-    private_key_point.try_into().unwrap().x()
+    private_key_point.try_into().expect(internal_errors::ZERO_DERIVED_PUBLIC_KEY).x()
 }
 
 /// Checks if the key is canonical, i.e. less than ORDER / 2.
