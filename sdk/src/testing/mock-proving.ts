@@ -38,7 +38,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
 
     // __execute__ calldata is Array<Call> with one Call targeting execute_view.
     // Layout: [1, to, selector, inner_len, ...inner_calldata]
-    const executeViewCalldata = extractExecuteViewCalldata(invocation.calldata as string[]);
+    const executeViewCalldata = extractExecuteViewCalldata(invocation.calldata);
 
     const result = await this.provider.callContract({
       contractAddress: invocation.contractAddress,
@@ -80,7 +80,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     }
 
     // First arg of execute_view calldata is user_addr.
-    const calldata = invocation.calldata as string[];
+    const calldata = invocation.calldata;
     const innerCalldata = extractExecuteViewCalldata(calldata);
     const userAddress = num.toHex(innerCalldata[0]);
 
