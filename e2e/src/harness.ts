@@ -39,14 +39,14 @@ export async function createE2eTestEnv(
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
-      viewingKeyProvider: { getViewingKey: () => BigInt("0xA11CE") },
+      viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
       discoveryProvider: new IndexerDiscoveryProvider(indexer.apiUrl, env.privacy.address),
       poolContractAddress: env.privacy.address,
     }),
     bob: createPrivateTransfers({
       account: env.bob,
-      viewingKeyProvider: { getViewingKey: () => BigInt("0xB0B") },
+      viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
       discoveryProvider: new IndexerDiscoveryProvider(indexer.apiUrl, env.privacy.address),
       poolContractAddress: env.privacy.address,

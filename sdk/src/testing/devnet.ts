@@ -472,14 +472,14 @@ export async function createDevnetTestEnv(
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
-      viewingKeyProvider: { getViewingKey: () => toBigInt("0xA11CE") },
+      viewingKeyProvider: { getViewingKey: async () => toBigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),
     bob: createPrivateTransfers({
       account: env.bob,
-      viewingKeyProvider: { getViewingKey: () => toBigInt("0xB0B") },
+      viewingKeyProvider: { getViewingKey: async () => toBigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
