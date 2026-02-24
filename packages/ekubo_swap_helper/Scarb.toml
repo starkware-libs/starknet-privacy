@@ -1,6 +1,5 @@
 [package]
-name = "privacy"
-readme = "README.md"
+name = "ekubo_swap_helper"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
@@ -13,34 +12,28 @@ scarb.workspace = true
 starknet.workspace = true
 openzeppelin.workspace = true
 starkware_utils.workspace = true
+ekubo.workspace = true
+privacy = { path = "../privacy" }
 
 [dev-dependencies]
 assert_macros.workspace = true
-ekubo.workspace = true
-ekubo_swap_helper = { path = "../ekubo_swap_helper", features = ["test_utils"] }
 snforge_std.workspace = true
 starkware_utils_testing.workspace = true
-vesu_lending_helper = { path = "../vesu_lending_helper", features = ["test_utils"] }
-
-[[test]]
-name = "privacy_unittest"
-build-external-contracts = [
-    "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
-    "ekubo_swap_helper::ekubo_swap_helper::EkuboSwapHelper",
-    "ekubo_swap_helper::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM",
-    "vesu_lending_helper::vesu_lending_helper::VesuLendingHelper",
-    "vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVault",
-    "vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop",
-    "vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow",
-]
 
 [features]
-test_contracts = []
+test_utils = []
+
+[lib]
+
+[[test]]
+name = "ekubo_swap_helper_unittest"
+build-external-contracts = [
+    "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
+    "ekubo_swap_helper::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM",
+]
 
 [scripts]
 test = "snforge test"
-
-[lib]
 
 [[target.starknet-contract]]
 sierra = true
