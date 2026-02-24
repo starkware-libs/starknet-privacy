@@ -1,7 +1,6 @@
 use constants::{PROOF_VALIDITY_BLOCK_INTERVAL, VIRTUAL_SNOS, VIRTUAL_SNOS0};
 use core::ec::stark_curve::{GEN_X, GEN_Y};
 use core::ec::{EcPoint, EcPointTrait};
-use core::iter::Extend;
 use core::never;
 use core::num::traits::{WrappingAdd, WrappingSub, Zero};
 use core::poseidon::poseidon_hash_span;
@@ -494,7 +493,6 @@ pub(crate) fn _compute_message_hash(
     let mut l1_message_data: Array<felt252> = array![contract_address.into(), Zero::zero()];
     let mut payload = array![];
     actions.serialize(ref payload);
-    payload.len().serialize(ref l1_message_data);
-    l1_message_data.extend(payload);
+    payload.serialize(ref l1_message_data);
     poseidon_hash_span(l1_message_data.span())
 }
