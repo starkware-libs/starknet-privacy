@@ -14,6 +14,7 @@ import type {
   ProofInvocationFactoryDetails,
 } from "../interfaces.js";
 import { toBigInt } from "../utils/convert.js";
+import { extractExecuteViewCalldata } from "../internal/proof-invocation-factory.js";
 
 /** VALIDATED constant - 'VALID' encoded as short string felt252 */
 const VALIDATED = encode.utf8ToBigInt("VALID");
@@ -54,10 +55,14 @@ export class CallMockProofProvider implements ProofProviderInterface {
     // execute_view skips this since view functions don't have tx_info.
     await this.validateSignature(invocation);
 
+    // __execute__ calldata is Array<Call> with one Call targeting execute_view.
+    // Layout: [1, to, selector, inner_len, ...inner_calldata]
+    const executeViewCalldata = extractExecuteViewCalldata(invocation.calldata as string[]);
+
     const result = await this.provider.callContract({
       contractAddress: invocation.contractAddress,
       entrypoint: "execute_view",
-      calldata: invocation.calldata!,
+      calldata: executeViewCalldata,
     });
 
     // execute_view returns Span<ServerAction> which is serialized with its length prefix.
@@ -76,9 +81,10 @@ export class CallMockProofProvider implements ProofProviderInterface {
       return;
     }
 
-    // Extract user address from calldata (first element in __execute__ calldata)
+    // First arg of execute_view calldata is user_addr.
     const calldata = invocation.calldata as string[];
-    const userAddress = num.toHex(calldata[0]);
+    const innerCalldata = extractExecuteViewCalldata(calldata);
+    const userAddress = num.toHex(innerCalldata[0]);
 
     // Compute transaction hash using the same parameters as the signer
     // The signer wraps the call in getExecuteCalldata format
