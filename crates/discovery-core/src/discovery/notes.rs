@@ -1,11 +1,11 @@
 //! Notes discovery for a subchannel (channel_key + token pair).
 //!
 //! Two-phase algorithm:
-//! 1. **Exponential probe**: batched probes at exponentially increasing indices
-//!    to find `max_note_index` (the last index confirmed to exist).
-//! 2. **Linear scan**: nullifier-first batches for all notes in
-//!    `start..=max_note_index`. Spent notes skip the amount fetch; cached
-//!    amounts from the probe phase skip it too.
+//! 1. **Boundary finding**: atomic exponential probe + bisection via
+//!    [`find_boundary`] to determine the exact last note index.
+//! 2. **Linear scan**: nullifier-first batches for all notes in the range.
+//!    Spent notes skip the amount fetch; cached amounts from the probe phase
+//!    skip it too.
 //!
 //! Parallelization is possible at higher levels:
 //! - Multiple subchannel scans (for notes) can run in parallel
@@ -19,9 +19,7 @@ use starknet_types_core::felt::Felt;
 use tracing::{debug, trace};
 
 use crate::discovery::cursor::SubchannelCursor;
-use crate::discovery::last_note_index::{
-    exponential_probe, ExponentialProbeResult, DEFAULT_MAX_PROBE_OFFSET,
-};
+use crate::discovery::last_note_index::find_last_note_index;
 use crate::discovery::{DiscoveryError, COST_NOTE, COST_NOTE_PROBING};
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::{decrypt_note_amount, unpack_note_amount};
@@ -66,20 +64,18 @@ pub struct NotesDiscoveryResult {
 /// Discovers notes with cursor-based pagination using batched RPC calls.
 ///
 /// Two-phase algorithm:
-/// 1. **Exponential probe** (when `max_note_index` is unknown or scan caught up):
-///    batched probes to find the last existing note index. All probe hits are
-///    cached for use by the linear scan.
-/// 2. **Linear scan** (when `last_note_index < max_note_index`): nullifier-first
-///    batches that skip amount fetches for spent and cached notes.
-///
-/// `max_note_index` is kept after scan — used to bound the next exponential
-/// probe range. Re-probe triggers when `last_note_index == max_note_index`.
+/// 1. **Boundary finding** (when `total_n_notes` is unknown): atomic exponential
+///    probe + bisection via [`find_boundary`] to determine the exact last note index.
+///    All probe hits are cached for use by the linear scan.
+/// 2. **Linear scan** (when notes remain to scan): nullifier-first batches that
+///    skip amount fetches for spent and cached notes.
 pub async fn discover_notes_paginated<S: IViews>(
     pool: &S,
     channel_key: Felt,
     token: Felt,
     cursor: &mut SubchannelCursor,
     private_key: &SecretFelt,
+    max_note_log_index: u32,
     budget: &IoBudget,
 ) -> Result<Vec<DecryptedNote>, DiscoveryError> {
     let start_index = cursor.start_index();
@@ -87,21 +83,26 @@ pub async fn discover_notes_paginated<S: IViews>(
     debug!(
         token = felt_hex(&token),
         start_index,
-        max_note_index = ?cursor.max_note_index,
+        total_n_notes = ?cursor.total_n_notes,
         budget = budget.remaining(),
         "discover_notes_paginated start"
     );
 
+    // Phase 1: Find boundary if not yet known.
     let (probe_cache, probe_has_more) =
-        probe_note_boundary(pool, channel_key, token, cursor, budget).await?;
+        find_last_note_index(pool, channel_key, token, cursor, max_note_log_index, budget).await?;
+    if probe_has_more {
+        // Not enough budget to find the boundary.
+        return Ok(Vec::new());
+    }
 
-    // None means empty subchannel (first probe missed) or budget exhausted
-    // before any probe ran — either way, nothing to scan.
-    let Some(max_note_index) = cursor.max_note_index else {
-        cursor.note_discovery_complete = !probe_has_more;
+    // Empty subchannel or scan already past the end.
+    let Some(max_note_index) = cursor.last_existing_index() else {
+        cursor.note_discovery_complete = true;
         return Ok(Vec::new());
     };
 
+    // Phase 2: Linear scan.
     let NotesDiscoveryResult {
         notes,
         last_index,
@@ -121,67 +122,21 @@ pub async fn discover_notes_paginated<S: IViews>(
     if let Some(last_index) = last_index {
         cursor.last_note_index = Some(last_index);
     }
-    let has_more = scan_has_more || probe_has_more;
-    cursor.note_discovery_complete = !has_more;
+
+    if !scan_has_more {
+        // Scan complete — no more notes to discover.
+        cursor.note_discovery_complete = true;
+    }
 
     debug!(
         unspent = notes.len(),
         last_scanned = ?last_index,
-        has_more,
+        has_more = scan_has_more,
         budget = budget.remaining(),
         "discover_notes_paginated done"
     );
 
     Ok(notes)
-}
-
-/// Probes for the note boundary, updating `cursor.max_note_index`.
-///
-/// Skips probing when the cursor already has a valid bound beyond `start_index`
-/// (resume-after-budget-exhaustion). Re-probing mid-scan would overwrite
-/// `max_note_index` with a smaller value, losing the known bound.
-///
-/// Returns `(probe_cache, probe_has_more)`:
-/// - `probe_cache`: index -> (note_id, packed_amount) for probe hits.
-/// - `probe_has_more`: `true` when the probe couldn't conclusively find the
-///   boundary (budget exhausted or all probes hit). When `true`, the subchannel
-///   must not be pruned even if the scan reaches `max_note_index`.
-async fn probe_note_boundary<S: IViews>(
-    pool: &S,
-    channel_key: Felt,
-    token: Felt,
-    cursor: &mut SubchannelCursor,
-    budget: &IoBudget,
-) -> Result<(HashMap<u64, (Felt, Felt)>, bool), DiscoveryError> {
-    let start_index = cursor.start_index();
-
-    if cursor
-        .max_note_index
-        .is_some_and(|max_note_index| start_index < max_note_index)
-    {
-        return Ok((HashMap::new(), false));
-    }
-
-    let ExponentialProbeResult {
-        cache,
-        last_found_index,
-        probe_complete,
-        ..
-    } = exponential_probe(
-        pool,
-        channel_key,
-        token,
-        start_index,
-        cursor.max_note_index,
-        Some(DEFAULT_MAX_PROBE_OFFSET),
-        budget,
-    )
-    .await?;
-
-    // Clears max_note_index when no notes found, so the caller skips the linear scan.
-    cursor.max_note_index = last_found_index;
-
-    Ok((cache, !probe_complete))
 }
 
 /// Linear scan of notes in `start_index..=end_index`.
@@ -199,7 +154,7 @@ async fn discover_notes<S: IViews>(
     budget: &IoBudget,
     probe_cache: &HashMap<u64, (Felt, Felt)>,
 ) -> Result<NotesDiscoveryResult, DiscoveryError> {
-    let num_remaining_notes = usize::try_from(end_index - start_index + 1)
+    let num_remaining_notes = usize::try_from((end_index + 1).saturating_sub(start_index))
         .map_err(|_| DiscoveryError::InvalidCursor("note range too large".into()))?;
     let (batch_size, budget_exhausted) = budget.consume_up_to(num_remaining_notes, COST_NOTE);
     if batch_size == 0 {
@@ -324,8 +279,13 @@ fn decrypt_note(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::discovery::last_note_index::boundary_budget;
     use crate::storage_backend::MockBackend;
     use crate::test_fixtures::{get_channel_key, get_subchannel_token, load_devnet_fixture};
+
+    const DEFAULT_MAX_LOG: u32 = 30;
+    /// Number of probe offsets: [0, 1, 3, 7, ..., 2^30-1] = 31 offsets.
+    const NUM_PROBE_OFFSETS: usize = (DEFAULT_MAX_LOG + 1) as usize;
 
     /// Helper: runs discover_notes_paginated with a fresh default cursor and
     /// returns the result along with the cursor for inspection.
@@ -343,6 +303,7 @@ mod tests {
             token,
             &mut cursor,
             private_key,
+            DEFAULT_MAX_LOG,
             budget,
         )
         .await
@@ -448,20 +409,65 @@ mod tests {
         let budget = IoBudget::new(100);
         let key = SecretFelt::new(fixture.constants.alice_viewing_key);
         let mut cursor = SubchannelCursor::default();
-        let notes =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
-                .await
-                .unwrap();
+        let notes = discover_notes_paginated(
+            &backend,
+            channel_key,
+            token,
+            &mut cursor,
+            &key,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
         assert_eq!(notes.len(), 1, "1 unspent change note");
         assert!(cursor.note_discovery_complete);
 
-        // Incremental discovery — should find 0 new notes (sentinel at index 1)
-        let notes2 =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
-                .await
-                .unwrap();
+        // Incremental discovery — total_n_notes was cleared on completion,
+        // re-probes and finds sentinel at index 1. Returns immediately.
+        let notes2 = discover_notes_paginated(
+            &backend,
+            channel_key,
+            token,
+            &mut cursor,
+            &key,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
         assert_eq!(notes2.len(), 0);
         assert!(cursor.note_discovery_complete);
+    }
+
+    #[tokio::test]
+    async fn test_discover_notes_three_notes_with_bisection() {
+        // 3 notes at indices 0, 1, 2. Exponential probe offsets [0, 1, 3, ...]
+        // hit at 0 and 1, miss at 3. Bisection finds note at 2. Total = 3.
+        // All 3 notes discovered in a single call (atomic boundary finding).
+        use crate::privacy_pool::{hashes::compute_note_id, storage_slots};
+
+        let channel_key = Felt::from_hex_unchecked("0x12345");
+        let token = Felt::from_hex_unchecked("0x67890");
+        let zero_key = SecretFelt::new(Felt::ZERO);
+
+        let mut backend = MockBackend::empty();
+        for index in 0..=2u64 {
+            let note_id = compute_note_id(channel_key, token, index);
+            let slot = storage_slots::notes(note_id);
+            backend.insert(slot, Felt::ONE);
+        }
+
+        let budget = IoBudget::new(200);
+        let (notes, cursor) =
+            discover_with_fresh_cursor(&backend, channel_key, token, &zero_key, &budget).await;
+
+        assert!(cursor.note_discovery_complete);
+        assert_eq!(notes.len(), 3, "all 3 notes discovered in one call");
+        let indices: Vec<u64> = notes.iter().map(|n| n.index).collect();
+        assert!(indices.contains(&0));
+        assert!(indices.contains(&1));
+        assert!(indices.contains(&2));
     }
 
     #[tokio::test]
@@ -495,10 +501,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_exponential_probe_empty_subchannel() {
+    async fn test_boundary_finding_empty_subchannel() {
         // Empty subchannel: exponential probe finds sentinel at offset 0.
-        // Offsets: [0, 1, 3, 7, ..., 1023] = 11 probes at COST_NOTE_PROBING=1 each.
-        // All return empty (Felt::ZERO), so sentinel is found at offset 0.
+        // 31 offsets probed at COST_NOTE_PROBING=1 each.
         let backend = MockBackend::empty();
         let channel_key = Felt::from_hex_unchecked("0x12345");
         let token = Felt::from_hex_unchecked("0x67890");
@@ -513,8 +518,11 @@ mod tests {
             cursor.note_discovery_complete,
             "sentinel found, not budget exhaustion"
         );
-        // 11 exponential offsets probed: [0, 1, 3, 7, 15, 31, 63, 127, 255, 511, 1023]
-        assert_eq!(budget.remaining(), 89);
+        assert_eq!(
+            budget.remaining(),
+            100 - NUM_PROBE_OFFSETS,
+            "31 probe offsets consumed"
+        );
     }
 
     #[tokio::test]
@@ -534,10 +542,17 @@ mod tests {
         let mut cursor = SubchannelCursor::default();
         let budget = IoBudget::new(100);
         let key = SecretFelt::new(fixture.constants.bob_viewing_key);
-        let notes =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
-                .await
-                .unwrap();
+        let notes = discover_notes_paginated(
+            &backend,
+            channel_key,
+            token,
+            &mut cursor,
+            &key,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
 
         // Bob's note is spent → filtered out
         assert_eq!(notes.len(), 0, "Bob's note is spent");
@@ -545,7 +560,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_budget_exhaustion_then_resume_skips_initial_probe() {
+    async fn test_budget_exhaustion_then_resume_skips_boundary_finding() {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
@@ -563,26 +578,40 @@ mod tests {
 
         // First call with enough budget to discover notes.
         let budget = IoBudget::new(100);
-        let notes =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
-                .await
-                .unwrap();
+        let notes = discover_notes_paginated(
+            &backend,
+            channel_key,
+            token,
+            &mut cursor,
+            &key,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
         assert_eq!(notes.len(), 1);
         assert!(cursor.note_discovery_complete);
 
-        // Now resume — cursor.last_note_index is Some(0), so start_index = 1.
-        // It should find sentinel at index 1 and return immediately.
+        // Resume — total_n_notes was cleared, re-probes from start_index=1.
+        // Finds sentinel immediately → empty, complete.
         let budget2 = IoBudget::new(100);
-        let notes2 =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget2)
-                .await
-                .unwrap();
+        let notes2 = discover_notes_paginated(
+            &backend,
+            channel_key,
+            token,
+            &mut cursor,
+            &key,
+            DEFAULT_MAX_LOG,
+            &budget2,
+        )
+        .await
+        .unwrap();
         assert_eq!(notes2.len(), 0);
         assert!(cursor.note_discovery_complete);
     }
 
     #[tokio::test]
-    async fn test_paginated_budget_limited() {
+    async fn test_paginated_budget_insufficient_for_boundary() {
         let fixture = load_devnet_fixture();
         let backend = MockBackend::new(fixture.slots);
 
@@ -597,25 +626,34 @@ mod tests {
 
         let mut cursor = SubchannelCursor::default();
         let key = SecretFelt::new(fixture.constants.bob_viewing_key);
-        // Bob has 1 note at index 0.
-        // Exponential probe: 11 offsets [0..1023], all probed at COST_NOTE_PROBING=1.
-        //   Offset 0 hits, offset 1 is empty sentinel. Cost = 11.
-        // Scan: budget exhausted (0 remaining) → has_more = true.
-        let budget = IoBudget::new(11);
-        let notes =
-            discover_notes_paginated(&backend, channel_key, token, &mut cursor, &key, &budget)
-                .await
-                .unwrap();
+        // Budget below the minimum for atomic boundary finding.
+        // Boundary finding requires boundary_budget(30) = 61 upfront.
+        let budget = IoBudget::new(boundary_budget(DEFAULT_MAX_LOG) - 1);
+        let notes = discover_notes_paginated(
+            &backend,
+            channel_key,
+            token,
+            &mut cursor,
+            &key,
+            DEFAULT_MAX_LOG,
+            &budget,
+        )
+        .await
+        .unwrap();
 
-        assert_eq!(notes.len(), 0, "no budget left for scan");
-        assert_eq!(
-            cursor.max_note_index,
-            Some(0),
-            "probe found note at index 0"
+        assert_eq!(notes.len(), 0, "can't start boundary finding");
+        assert!(
+            cursor.total_n_notes.is_none(),
+            "boundary not found — budget insufficient"
         );
         assert!(
             !cursor.note_discovery_complete,
-            "scan budget exhausted is not complete"
+            "budget insufficient is not complete"
+        );
+        assert_eq!(
+            budget.remaining(),
+            boundary_budget(DEFAULT_MAX_LOG) - 1,
+            "budget unchanged — atomic allocation failed"
         );
     }
 
@@ -645,14 +683,12 @@ mod tests {
         assert_eq!(notes.len(), 1, "1 unspent note");
         assert!(cursor.note_discovery_complete);
         assert_eq!(cursor.last_note_index, Some(0));
-        // Probe: 11 probes (offsets 0, 1, 3, 7, ..., 1023) = 11 budget.
-        //   Hit at 0, miss at 1 → cache has index 0.
+        // Probe: 31 offsets consumed. Hit at 0, miss at 1 → cache has index 0.
         // Scan: pre-consume 2 (COST_NOTE), nullifier → unspent, cached → reclaim 1.
-        //   Net scan cost = 1. Total = 12.
-        // Without cache, scan would cost 2 (nullifier + amount fetch). Saves 1.
+        //   Net scan cost = 1. Total = 32.
         assert_eq!(
             budget.remaining(),
-            88,
+            100 - NUM_PROBE_OFFSETS - COST_NOTE + COST_NOTE_PROBING,
             "cache saves 1 budget unit vs no-cache"
         );
     }
