@@ -32,9 +32,10 @@ use privacy::tests::mock_swap_executor::{
     ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait, ISwapExecutorSafeDispatcher,
     ISwapExecutorSafeDispatcherTrait,
 };
+use privacy::tests::utils_for_tests::constants::DEFAULT_PROOF_VALIDITY_BLOCKS;
 use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
-    ProofFacts, _compute_message_hash, derive_public_key, enc_note_packed_value,
+    ProofFacts, compute_message_hash, derive_public_key, enc_note_packed_value,
     encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
     is_canonical_key, pack, to_write_once_action,
 };
@@ -133,6 +134,7 @@ pub(crate) mod constants {
     pub const DEFAULT_FEE_AMOUNT: u128 = 1000;
     pub const DEFAULT_FEE_COLLECTOR: ContractAddress = 'FEE_COLLECTOR'.try_into().unwrap();
     pub const PAYMASTER: ContractAddress = 'PAYMASTER'.try_into().unwrap();
+    pub const DEFAULT_PROOF_VALIDITY_BLOCKS: u64 = 450; // ~15 min (2 sec/block)
 }
 
 
@@ -1634,7 +1636,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     fn cheat_proof_facts(self: @PrivacyCfg, actions: Span<ServerAction>) {
-        let message_hash = _compute_message_hash(:actions, contract_address: *self.address);
+        let message_hash = compute_message_hash(:actions, contract_address: *self.address);
         let mut proof_facts: ProofFacts = Default::default();
         proof_facts.message_to_l1_hashes = [message_hash].span();
         self._cheat_proof_facts(:proof_facts);
@@ -1690,12 +1692,30 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_admin.set_fee_collector(:fee_collector)
     }
 
+    fn set_proof_validity_blocks(self: @PrivacyCfg, proof_validity_blocks: u64) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.roles.app_governor,
+        );
+        self.admin.set_proof_validity_blocks(:proof_validity_blocks);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_set_proof_validity_blocks(
+        self: @PrivacyCfg, proof_validity_blocks: u64,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_admin.set_proof_validity_blocks(:proof_validity_blocks)
+    }
+
     fn get_fee_amount(self: @PrivacyCfg) -> u128 {
         self.views.get_fee_amount()
     }
 
     fn get_fee_collector(self: @PrivacyCfg) -> ContractAddress {
         self.views.get_fee_collector()
+    }
+
+    fn get_proof_validity_blocks(self: @PrivacyCfg) -> u64 {
+        self.views.get_proof_validity_blocks()
     }
 
     fn store_zero(self: @PrivacyCfg, storage_address: felt252) {
@@ -1745,17 +1765,18 @@ impl DefaultTestImpl of Default<Test> {
     fn default() -> Test {
         let auditor: Auditor = Default::default();
         let roles: Roles = Default::default();
-        let privacy = deploy_privacy(:roles, auditor_public_key: auditor.public_key);
+        let privacy = deploy_privacy(
+            :roles,
+            auditor_public_key: auditor.public_key,
+            proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
+        );
 
         Test { privacy, nonce: Zero::zero(), auditor }
     }
 }
 
 pub(crate) fn _deploy_privacy(
-    governance_admin: ContractAddress,
-    auditor_public_key: felt252,
-    fee_amount: u128,
-    fee_collector: ContractAddress,
+    governance_admin: ContractAddress, auditor_public_key: felt252, proof_validity_blocks: u64,
 ) -> ContractAddress {
     let contract_class_hash = declare(contract: "Privacy")
         .unwrap_syscall()
@@ -1767,18 +1788,18 @@ pub(crate) fn _deploy_privacy(
         :deployment_params,
         :governance_admin,
         :auditor_public_key,
+        :proof_validity_blocks,
     )
         .expect('Privacy deployment failed');
     contract_address
 }
 
 /// Deploy a new privacy contract and set the roles.
-fn deploy_privacy(roles: Roles, auditor_public_key: felt252) -> PrivacyCfg {
+fn deploy_privacy(
+    roles: Roles, auditor_public_key: felt252, proof_validity_blocks: u64,
+) -> PrivacyCfg {
     let contract_address = _deploy_privacy(
-        governance_admin: roles.governance_admin,
-        :auditor_public_key,
-        fee_amount: constants::DEFAULT_FEE_AMOUNT,
-        fee_collector: constants::DEFAULT_FEE_COLLECTOR,
+        governance_admin: roles.governance_admin, :auditor_public_key, :proof_validity_blocks,
     );
     let roles = _set_privacy_roles(contract: contract_address, :roles);
     // TODO: Remove this from general deployment and only deploy when needed.

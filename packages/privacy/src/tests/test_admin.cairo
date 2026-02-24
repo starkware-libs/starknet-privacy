@@ -60,3 +60,48 @@ fn test_set_auditor_public_key_assertions() {
     let result = test.privacy.safe_set_auditor_public_key(auditor_public_key: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AUDITOR_PUBLIC_KEY);
 }
+
+#[test]
+fn test_set_proof_validity_blocks() {
+    let mut test: Test = Default::default();
+    let proof_validity_blocks = 1000;
+    assert_ne!(test.privacy.get_proof_validity_blocks(), proof_validity_blocks);
+    let mut spy = spy_events();
+    test.privacy.set_proof_validity_blocks(:proof_validity_blocks);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    let expected_event = events::ProofValidityBlocksSet { proof_validity_blocks };
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("ProofValidityBlocksSet"),
+        expected_event_name: "ProofValidityBlocksSet",
+    );
+    // Set the same value again.
+    let mut spy = spy_events();
+    test.privacy.set_proof_validity_blocks(:proof_validity_blocks);
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("ProofValidityBlocksSet"),
+        expected_event_name: "ProofValidityBlocksSet",
+    );
+}
+
+#[test]
+fn test_set_proof_validity_blocks_assertions() {
+    let mut test: Test = Default::default();
+
+    // Catch ONLY_APP_GOVERNOR.
+    let result = test.privacy.safe_set_proof_validity_blocks(proof_validity_blocks: 1);
+    assert_panic_with_error(:result, expected_error: AccessErrors::ONLY_APP_GOVERNOR.describe());
+
+    // Catch ZERO_PROOF_VALIDITY_BLOCKS.
+    cheat_caller_address_once(
+        contract_address: test.privacy.address, caller_address: test.privacy.roles.app_governor,
+    );
+    let result = test.privacy.safe_set_proof_validity_blocks(proof_validity_blocks: 0);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PROOF_VALIDITY_BLOCKS);
+}
