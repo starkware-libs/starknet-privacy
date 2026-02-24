@@ -80,5 +80,22 @@ describe("E2E Smoke", () => {
 
     const req = await aliceIndexer.discoverRequirement(de.bob.address, de.strk);
     expect(req).toBe(SetupRequirement.Ready);
+
+    // --- Bob's incoming discovery ---
+    const bobIndexer = createPrivateTransfers({
+      account: de.bob,
+      viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
+      provingProvider: new CallMockProofProvider(de.provider, constants.StarknetChainId.SN_SEPOLIA),
+      discoveryProvider: indexerDiscovery,
+      poolContractAddress: de.privacy.address,
+    });
+
+    // Bob should discover 1 incoming note: 50 STRK from Alice
+    const { notes: bobNotes } = await bobIndexer.discoverNotes();
+    expect(bobNotes.size).toBeGreaterThanOrEqual(1);
+    const bobStrkNotes = bobNotes.get(BigInt(de.strk));
+    expect(bobStrkNotes).toBeDefined();
+    expect(bobStrkNotes!.length).toBe(1);
+    expect(bobStrkNotes![0].amount).toBe(50n);
   });
 });
