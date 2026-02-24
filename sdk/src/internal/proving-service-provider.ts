@@ -1,11 +1,10 @@
 /**
  * Proof provider that calls a remote proving service (JSON-RPC starknet_proveTransaction).
- * Builds the invoke tx payload like a regular invoke: wrap (entrypoint, calldata) in Call[]
- * and compile to __execute__ calldata, then buildTransaction.
+ * Uses provider.channel.buildTransaction with details taken from the invocation.
  */
 
 import type { BlockIdentifier, constants, ProviderInterface } from "starknet";
-import { transaction, TransactionType } from "starknet";
+import type { INVOKE_TXN_V3 } from "./proving-service.js";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import { toHex } from "../utils/convert.js";
 import { getDefaultProofDetails } from "./proof-invocation-factory.js";
@@ -14,7 +13,10 @@ import { DEFAULT_REQUEST_TIMEOUT_MS, ProvingService } from "./proving-service.js
 /** Provider with channel.buildTransaction (e.g. RpcProvider). */
 export type ProvingServiceProvider = ProviderInterface & {
   channel: {
-    buildTransaction(invocation: unknown, versionType?: "fee" | "transaction"): object;
+    buildTransaction(
+      invocation: ProofInvocation,
+      versionType?: "fee" | "transaction"
+    ): INVOKE_TXN_V3;
   };
 };
 
@@ -64,26 +66,11 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
   }
 
   async prove(invocation: ProofInvocation, blockId?: BlockIdentifier): Promise<Proof> {
-    const details = this.getDefaultDetails();
-    const calldata = invocation.calldata as string[];
-
-    const executeCalldata = transaction.getExecuteCalldata(
-      [{ contractAddress: invocation.contractAddress, entrypoint: "execute_view", calldata }],
-      "1" // cairoVersion
-    );
+    // invocation.calldata is already the full __execute__ calldata
+    // (Array<Call> wrapping execute_view), compiled by ProofInvocationFactory.
     const transactionPayload = this.provider.channel.buildTransaction({
-      type: TransactionType.INVOKE,
-      contractAddress: invocation.contractAddress, // → sender_address in built tx (pool)
-      calldata: executeCalldata,
-      signature: invocation.signature ?? [],
-      nonce: details.nonce ?? 0n,
-      resourceBounds: details.resourceBounds ?? {},
-      tip: details.tip ?? 0n,
-      paymasterData: details.paymasterData ?? [],
-      accountDeploymentData: details.accountDeploymentData ?? [],
-      nonceDataAvailabilityMode: details.nonceDataAvailabilityMode ?? "L1",
-      feeDataAvailabilityMode: details.feeDataAvailabilityMode ?? "L1",
-      version: details.version,
+      ...invocation,
+      calldata: invocation.calldata as string[],
     });
 
     const result = await this.provingService.proveTransaction(

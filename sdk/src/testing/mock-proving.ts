@@ -6,7 +6,7 @@
  */
 
 import type { constants, ETransactionVersion3, ProviderInterface } from "starknet";
-import { EDAMode, encode, hash, num, stark, transaction } from "starknet";
+import { EDAMode, encode, hash, num, stark } from "starknet";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js";
 import { buildProofFacts } from "../utils/proof-facts.js";
@@ -84,23 +84,14 @@ export class CallMockProofProvider implements ProofProviderInterface {
     const innerCalldata = extractExecuteViewCalldata(calldata);
     const userAddress = num.toHex(innerCalldata[0]);
 
-    // Compute transaction hash using the same parameters as the signer
-    // The signer wraps the call in getExecuteCalldata format
+    // Compute transaction hash using the same parameters as the signer.
+    // invocation.calldata is already the __execute__ calldata (Array<Call> wrapping
+    // execute_view), so use it directly — no re-wrapping via getExecuteCalldata.
     const details = this.getDefaultDetails();
-    const executeCalldata = transaction.getExecuteCalldata(
-      [
-        {
-          contractAddress: invocation.contractAddress,
-          entrypoint: "execute_view",
-          calldata,
-        },
-      ],
-      "1" // cairoVersion
-    );
     const txHash = hash.calculateInvokeTransactionHash({
       senderAddress: num.toHex(invocation.contractAddress),
       version: details.version as ETransactionVersion3,
-      compiledCalldata: executeCalldata,
+      compiledCalldata: calldata,
       chainId: this.chainId,
       nonce: details.nonce!,
       accountDeploymentData: details.accountDeploymentData!,

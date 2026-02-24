@@ -18,6 +18,7 @@ import type {
 import type { CallResult } from "starknet";
 import { Open } from "../interfaces.js";
 import { toHex } from "../utils/convert.js";
+import { TransactionType } from "starknet";
 
 /**
  * JSON replacer that converts BigInts and Symbols to strings with prefix markers.
@@ -56,12 +57,13 @@ export class MockProofInvocationFactory implements ProofInvocationFactoryInterfa
     user: ProofUser,
     poolAddress: StarknetAddress,
     clientActions: ClientAction[],
-    _details: ProofInvocationFactoryDetails
+    details: ProofInvocationFactoryDetails
   ): Promise<ProofInvocation> {
     // For mock, we store the client actions in a way the mock pool can use
     // The mock proof provider will extract and process these
     const poolAddressHex = toHex(poolAddress);
     return {
+      type: TransactionType.INVOKE,
       contractAddress: poolAddressHex,
       calldata: [
         toHex(user.address),
@@ -69,6 +71,8 @@ export class MockProofInvocationFactory implements ProofInvocationFactoryInterfa
         JSON.stringify(clientActions, jsonReplacer),
       ],
       signature: [],
+      ...details,
+      nonce: details.nonce ?? 0n,
     };
   }
 
