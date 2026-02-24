@@ -1,0 +1,11 @@
+//! Error constants for the Ekubo swap executor.
+
+pub const ZERO_IN_TOKEN: felt252 = 'ZERO_IN_TOKEN';
+pub const ZERO_OUT_TOKEN: felt252 = 'ZERO_OUT_TOKEN';
+pub const ZERO_IN_AMOUNT: felt252 = 'ZERO_IN_AMOUNT';
+pub const IN_TOKEN_EQUAL_TO_OUT_TOKEN: felt252 = 'IN_TOKEN_EQUAL_TO_OUT_TOKEN';
+pub const INSUFFICIENT_BALANCE: felt252 = 'INSUFFICIENT_BALANCE';
+pub const ZERO_ROUTER: felt252 = 'ZERO_ROUTER';
+pub const RECEIVED_AMOUNT_OVERFLOW: felt252 = 'RECEIVED_AMOUNT_OVERFLOW';
+pub const ZERO_OUT_AMOUNT: felt252 = 'ZERO_OUT_AMOUNT';
+pub const TOKEN_MISMATCH_POOL: felt252 = 'TOKEN_MISMATCH_POOL';
