@@ -242,10 +242,7 @@ fn test_get_note() {
     let token_addr = token.contract_address();
     let mut depositor = test.new_user();
     let amount = DEFAULT_AMOUNT;
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
 
     // Create and verify encrypted note.
     let enc_note_input = user_1

@@ -627,16 +627,11 @@ pub(crate) impl UserImpl of UserTrait {
     /// Open a channel and a subchannel with the given token.
     /// Returns (random_generated_for_channel, salt_generated_for_subchannel).
     fn open_channel_with_token_e2e(
-        ref self: User,
-        recipient: User,
-        token_addr: ContractAddress,
-        outgoing_channel_index: usize,
-        subchannel_index: usize,
+        ref self: User, recipient: User, token_addr: ContractAddress, outgoing_channel_index: usize,
     ) -> (felt252, felt252, felt252) {
         let (random_channel, salt_channel) = self
             .open_channel_e2e(:recipient, index: outgoing_channel_index);
-        let salt_subchannel = self
-            .open_subchannel_e2e(:recipient, :token_addr, index: subchannel_index);
+        let salt_subchannel = self.open_subchannel_e2e(:recipient, :token_addr, index: 0);
         (random_channel, salt_channel, salt_subchannel)
     }
 

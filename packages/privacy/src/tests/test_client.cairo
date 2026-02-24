@@ -155,14 +155,8 @@ fn test_transfer() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_1, :token_addr, outgoing_channel_index: 1, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
+    user_1.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 1);
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
@@ -206,14 +200,8 @@ fn test_transfer_to_self() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 0);
+    user_2.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let index = 0;
     let create_note_input = user_2
@@ -259,18 +247,9 @@ fn test_transfer_one_to_many() {
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_3, :token_addr, outgoing_channel_index: 1, subchannel_index: 0,
-        );
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_1, :token_addr, outgoing_channel_index: 2, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
+    user_1.open_channel_with_token_e2e(recipient: user_3, :token_addr, outgoing_channel_index: 1);
+    user_1.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 2);
     let index = 0;
     let amount_1 = 1;
     let amount_2 = 8;
@@ -328,18 +307,9 @@ fn test_transfer_many_to_one() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_3
-        .open_channel_with_token_e2e(
-            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
+    user_2.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 0);
+    user_3.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let index = 0;
     let create_note_input = user_2
@@ -403,22 +373,10 @@ fn test_transfer_many_to_many() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_3
-        .open_channel_with_token_e2e(
-            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_3
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 1, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_3, :token_addr, outgoing_channel_index: 0);
+    user_2.open_channel_with_token_e2e(recipient: user_3, :token_addr, outgoing_channel_index: 0);
+    user_3.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 0);
+    user_3.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 1);
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
@@ -1896,10 +1854,7 @@ fn test_create_note_self_note() {
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user
-        .open_channel_with_token_e2e(
-            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let index = 0;
     let create_note_input = user
@@ -1924,10 +1879,7 @@ fn test_create_note_twice() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let amount_1 = 1;
     let depositor = test.mock_new_depositor();
 
@@ -2007,10 +1959,7 @@ fn test_create_note_twice_same_amount() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let index_1 = 0;
     let create_note_input_1 = user_1
@@ -2441,10 +2390,7 @@ fn test_create_and_use_encrypted_note_zero_amount() {
     let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     // Create note with zero amount - this should succeed.
     let create_note_input = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 0, index: 0);
@@ -2472,10 +2418,7 @@ fn test_create_note_subchannel_not_found_wrong_addr() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
 
     // Encrypted note.
     let create_note_input = user_1
@@ -2500,10 +2443,7 @@ fn test_create_note_subchannel_not_found_wrong_private_key() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     user_1.new_key();
 
     // Encrypted note.
@@ -2528,10 +2468,7 @@ fn test_create_note_subchannel_not_found_wrong_public_key() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     user_2.public_key = user_1.public_key;
 
     // Encrypted note.
@@ -2556,10 +2493,7 @@ fn test_create_note_subchannel_not_found_wrong_token() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let wrong_token_addr = test.mock_new_token();
 
     // Encrypted note.
@@ -2588,10 +2522,7 @@ fn test_create_note_decrypt_amount() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
@@ -2621,10 +2552,7 @@ fn test_create_open_note_stores_correctly() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let index = 0;
     let depositor = test.mock_new_depositor();
     let note = user_1
@@ -2646,10 +2574,7 @@ fn test_create_enc_note_stores_one_felt() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let index = 0;
     let create_note_input = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 100, :index);
@@ -2671,10 +2596,7 @@ fn test_use_open_note_empty_note() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let index = 0;
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
@@ -2711,19 +2633,13 @@ fn test_use_deposited_open_note(open_note_self: bool) {
     let amount = constants::DEFAULT_AMOUNT;
 
     // Setup channels: user_1 -> user_2, user_2 -> user_3.
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let outgoing_channel_index = if open_note_self {
         1
     } else {
         0
     };
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_3, :token_addr, :outgoing_channel_index, subchannel_index: 0,
-        );
+    user_2.open_channel_with_token_e2e(recipient: user_3, :token_addr, :outgoing_channel_index);
 
     // Create an open note for user_2 from user_1.
     let index = 0;
@@ -2783,10 +2699,7 @@ fn test_use_deposited_open_note_withdraw() {
     let amount = 100_u128;
 
     // Setup channel: user_1 -> user_2.
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
 
     // Create an open note for user_2.
     let index = 0;
@@ -2836,14 +2749,8 @@ fn test_use_multiple_deposited_open_notes() {
     let total_amount = amount_1 + amount_2;
 
     // Setup channels: user_1 -> user_2, user_2 -> user_3.
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
+    user_2.open_channel_with_token_e2e(recipient: user_3, :token_addr, outgoing_channel_index: 0);
 
     // Create two open notes for user_2 at different indices.
     let create_note_input_1 = user_1
@@ -2910,14 +2817,8 @@ fn test_use_mixed_open_and_enc_notes() {
     let total_amount = enc_amount + open_amount;
 
     // Setup channels.
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
+    user_2.open_channel_with_token_e2e(recipient: user_3, :token_addr, outgoing_channel_index: 0);
 
     // Create an encrypted note at index 0 for user_2.
     let enc_note_input = user_1
@@ -2982,14 +2883,8 @@ fn test_use_deposited_open_note_double_spend() {
     let amount = 100_u128;
 
     // Setup channels.
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
+    user_2.open_channel_with_token_e2e(recipient: user_3, :token_addr, outgoing_channel_index: 0);
 
     // Create and fund an open note.
     let create_note_input = user_1
@@ -3050,10 +2945,7 @@ fn test_use_note() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
@@ -3080,10 +2972,7 @@ fn test_use_note_self_note() {
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user
-        .open_channel_with_token_e2e(
-            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let index = 0;
     let create_note_input = user
@@ -3112,14 +3001,8 @@ fn test_use_note_multiple_notes() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_2.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let amount_1 = 1;
     let amount_2 = 2;
     let create_note_input_1 = user_1
@@ -3186,10 +3069,7 @@ fn test_use_same_note_twice() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
@@ -3211,10 +3091,7 @@ fn test_use_note_same_amount() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let create_note_input_1 = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: 0);
@@ -3256,10 +3133,7 @@ fn test_use_note_assertions() {
     let token = test.new_token();
     let token_addr = token.contract_address();
     user.set_viewing_key_e2e();
-    user
-        .open_channel_with_token_e2e(
-            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
     let create_note_input = user
         .new_enc_note_with_generated_salt(recipient: user, :token_addr, amount: 1, index: 0);
     user.cheat_create_enc_note_e2e(:create_note_input);
@@ -3385,10 +3259,7 @@ fn test_use_note_wrong_owner_addr() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     user_2.open_channel_e2e(recipient: user_1, index: 0);
     let create_note_input = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 1, index: 0);
@@ -3408,10 +3279,7 @@ fn test_use_note_wrong_owner_private_key() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
@@ -3431,10 +3299,7 @@ fn test_use_note_find_nullifier() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let amount = 1;
     let index = 0;
     let create_note_input = user_1
@@ -3480,10 +3345,7 @@ fn test_withdraw_different_targets() {
     let user_3 = test.new_user(); // Not registered.
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 0);
 
     // Withdraw note to self.
     let (random, actions) = user_1
@@ -3578,10 +3440,7 @@ fn test_withdraw_decrypt_user_addr() {
     user_1.set_viewing_key_e2e();
     let token = test.new_token();
     let token_addr = token.contract_address();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_1, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 0);
     // Initialize: deposit + create note.
     let amount = 100;
     user_1.deposit_and_create_note_e2e(:token, :amount);
@@ -3625,10 +3484,7 @@ fn test_create_open_note_decrypt_recipient_addr() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     // Create an open note.
     let depositor = test.mock_new_depositor();
     let create_note_input = user_1
@@ -4087,10 +3943,7 @@ fn test_execute_use_note_swap() {
     let token = test.new_token();
     let token_addr = token.contract_address();
     user.set_viewing_key_e2e();
-    user
-        .open_channel_with_token_e2e(
-            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
     let amount = 100;
     let create_note_input = user
         .new_enc_note_with_generated_salt(recipient: user, :token_addr, :amount, index: 0);
@@ -4243,10 +4096,7 @@ fn test_execute_deposit_swap() {
     let token = test.new_token();
     let token_addr = token.contract_address();
     user.set_viewing_key_e2e();
-    user
-        .open_channel_with_token_e2e(
-            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
     let token_out = test.new_token();
     let token_out_addr = token_out.contract_address();
     user.open_subchannel_e2e(recipient: user, token_addr: token_out_addr, index: 1);
@@ -4467,10 +4317,7 @@ fn test_internal_actions() {
     // user_1 opens channel to self with subchannel for out_token (for swap output).
     user_1
         .open_channel_with_token_e2e(
-            recipient: user_1,
-            token_addr: out_token_addr,
-            outgoing_channel_index: 1,
-            subchannel_index: 0,
+            recipient: user_1, token_addr: out_token_addr, outgoing_channel_index: 1,
         );
 
     let channel_key_swap = user_1.compute_channel_key(recipient: user_1);
@@ -5312,10 +5159,7 @@ fn test_execute_and_panic_balance_assertions() {
     let token_addr = test.mock_new_token();
     let amount = 100;
     user.set_viewing_key_e2e();
-    user
-        .open_channel_with_token_e2e(
-            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
     let create_note_input = user
         .new_enc_note_with_generated_salt(recipient: user, :token_addr, :amount, index: 0);
     user.cheat_create_enc_note_e2e(:create_note_input);
@@ -5768,10 +5612,7 @@ fn test_execute_create_open_note() {
     let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let index = 0;
     let random = user_1.get_random();
     let create_note_input = user_1
@@ -5839,10 +5680,7 @@ fn test_create_open_note_as_single_action() {
     let depositor = test.mock_new_depositor();
     let token_addr = test.mock_new_token();
     user.set_viewing_key_e2e();
-    user
-        .open_channel_with_token_e2e(
-            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
     let create_note_input = user
         .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0, :depositor);
 
@@ -5869,10 +5707,7 @@ fn test_create_open_and_enc_notes_same_tx() {
     let token_addr = test.mock_new_token();
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
 
     // Create 4 notes in order: open -> enc -> open -> enc.
     let open_0 = user_1
@@ -5931,14 +5766,8 @@ fn test_create_note_at_existing_note_id(initial_is_open: bool, colliding_is_open
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
+    user_2.open_channel_with_token_e2e(recipient: user_3, :token_addr, outgoing_channel_index: 0);
 
     // Create the possible create note inputs upfront.
     let open_note_input = user_1
@@ -6003,14 +5832,8 @@ fn test_deposit_to_open_note_twice() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_3.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
-    user_2
-        .open_channel_with_token_e2e(
-            recipient: user_3, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
+    user_2.open_channel_with_token_e2e(recipient: user_3, :token_addr, outgoing_channel_index: 0);
 
     // Create an open note.
     let create_note_input = user_1
@@ -6061,10 +5884,7 @@ fn test_use_deposited_open_note_twice_single_tx() {
     let amount = constants::DEFAULT_AMOUNT;
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
 
     // Create an open note.
     let index = 0;
@@ -6105,10 +5925,7 @@ fn test_swap_client_action() {
     // Open channel and subchannel for input token (for deposit).
     user
         .open_channel_with_token_e2e(
-            recipient: user,
-            token_addr: in_token_addr,
-            outgoing_channel_index: 0,
-            subchannel_index: 0,
+            recipient: user, token_addr: in_token_addr, outgoing_channel_index: 0,
         );
 
     // Open subchannel for output token (for open note).
@@ -6266,10 +6083,7 @@ fn test_swap_without_withdraw_fails() {
     // Open channel and subchannel for output token.
     user
         .open_channel_with_token_e2e(
-            recipient: user,
-            token_addr: out_token_addr,
-            outgoing_channel_index: 0,
-            subchannel_index: 0,
+            recipient: user, token_addr: out_token_addr, outgoing_channel_index: 0,
         );
 
     // Fund AMM with output tokens.
@@ -6333,10 +6147,7 @@ fn test_invoke_external_client_action_assertions() {
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
     let token_addr = test.mock_new_token();
-    user
-        .open_channel_with_token_e2e(
-            recipient: user, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
 
     // Catch ZERO_CONTRACT_ADDRESS.
     let input = InvokeExternalInput { contract_address: Zero::zero(), calldata: [].span() };
@@ -6383,10 +6194,7 @@ fn test_invoke_external_swap_deposit_errors() {
     // Open channel and subchannel for input token (for deposit).
     user
         .open_channel_with_token_e2e(
-            recipient: user,
-            token_addr: in_token_addr,
-            outgoing_channel_index: 0,
-            subchannel_index: 0,
+            recipient: user, token_addr: in_token_addr, outgoing_channel_index: 0,
         );
 
     // Open subchannel for output token (for open note).
@@ -6628,10 +6436,7 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
     user.set_viewing_key_e2e();
     user
         .open_channel_with_token_e2e(
-            recipient: user,
-            token_addr: in_token_addr,
-            outgoing_channel_index: 0,
-            subchannel_index: 0,
+            recipient: user, token_addr: in_token_addr, outgoing_channel_index: 0,
         );
     user.open_subchannel_e2e(recipient: user, token_addr: out_token_addr, index: 1);
 

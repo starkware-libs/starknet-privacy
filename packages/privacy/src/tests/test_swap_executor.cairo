@@ -30,7 +30,6 @@ fn test_privacy_invoke_basic(preexisting_balance: u128) {
             recipient: user_2,
             token_addr: output_token.contract_address(),
             outgoing_channel_index: 0,
-            subchannel_index: 0,
         );
 
     // Create an open note with swap_executor as depositor.
@@ -245,7 +244,6 @@ fn test_privacy_invoke_caller_not_privacy_contract() {
             recipient: user_2,
             token_addr: output_token.contract_address(),
             outgoing_channel_index: 0,
-            subchannel_index: 0,
         );
 
     // Create an open note with swap_executor as depositor.
