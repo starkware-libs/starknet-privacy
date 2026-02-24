@@ -289,7 +289,8 @@ mod tests {
     #[tokio::test]
     async fn test_exponential_probe_multiple_elements() {
         // Elements at 0..=4. Probes: offset 0→0 (hit), 1→1 (hit),
-        // 3→3 (hit), 7→7 (miss)
+        // 3→3 (hit), 7→7 (miss). Sentinel found → probe complete.
+        // Gap handling is done by probe_note_boundary, not here.
         let backend = mock_with_notes(Some(4));
         let budget = IoBudget::new(100);
         let result = exponential_probe(
@@ -305,8 +306,68 @@ mod tests {
         .unwrap();
 
         assert_eq!(result.last_found_index, Some(3));
+        assert_eq!(result.first_empty_index, Some(7));
         assert_eq!(result.cache.len(), 3);
-        assert!(result.probe_complete);
+        assert!(
+            result.probe_complete,
+            "sentinel found — probe finished its range"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_exponential_probe_gap_between_last_hit_and_sentinel() {
+        // Notes at 0..=2. Probe offsets [0, 1, 3, ...]:
+        //   0→hit, 1→hit, 3→miss (sentinel). Gap at index 2 is unprobed.
+        // probe_complete=true because the probe found a sentinel — gap handling
+        // is the caller's responsibility (probe_note_boundary).
+        let backend = mock_with_notes(Some(2));
+        let budget = IoBudget::new(100);
+        let result = exponential_probe(
+            &backend,
+            CK,
+            TK,
+            0,
+            None,
+            Some(DEFAULT_MAX_PROBE_OFFSET),
+            &budget,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.last_found_index, Some(1));
+        assert_eq!(result.first_empty_index, Some(3));
+        assert_eq!(result.cache.len(), 2, "probed indices 0 and 1");
+        assert!(
+            result.probe_complete,
+            "sentinel found — probe finished its range"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_exponential_probe_adjacent_sentinel_is_complete() {
+        // Notes at 0..=1. Probe offsets [0, 1, 3, ...]:
+        //   0→hit, 1→hit, 3→miss. last_found=1, sentinel=3. Gap exists.
+        // But with notes at 0 only: 0→hit, 1→miss. Adjacent → complete.
+        let backend = mock_with_notes(Some(0));
+        let budget = IoBudget::new(100);
+        let result = exponential_probe(
+            &backend,
+            CK,
+            TK,
+            0,
+            None,
+            Some(DEFAULT_MAX_PROBE_OFFSET),
+            &budget,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(result.last_found_index, Some(0));
+        assert_eq!(result.first_empty_index, Some(1));
+        assert!(
+            result.probe_complete,
+            "sentinel at 1 is adjacent to last_found at 0 — boundary is exact"
+        );
     }
 
     #[tokio::test]

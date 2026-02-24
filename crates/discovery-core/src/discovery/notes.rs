@@ -165,8 +165,8 @@ async fn probe_note_boundary<S: IViews>(
     let ExponentialProbeResult {
         cache,
         last_found_index,
+        first_empty_index,
         probe_complete,
-        ..
     } = exponential_probe(
         pool,
         channel_key,
@@ -181,7 +181,14 @@ async fn probe_note_boundary<S: IViews>(
     // Clears max_note_index when no notes found, so the caller skips the linear scan.
     cursor.max_note_index = last_found_index;
 
-    Ok((cache, !probe_complete))
+    // When the probe found a sentinel but skipped indices (gap between
+    // last_found and first_empty), force re-probing to find notes in the gap.
+    let has_gap = matches!(
+        (last_found_index, first_empty_index),
+        (Some(found), Some(empty)) if empty > found + 1
+    );
+
+    Ok((cache, !probe_complete || has_gap))
 }
 
 /// Linear scan of notes in `start_index..=end_index`.
@@ -462,6 +469,59 @@ mod tests {
                 .unwrap();
         assert_eq!(notes2.len(), 0);
         assert!(cursor.note_discovery_complete);
+    }
+
+    #[tokio::test]
+    async fn test_discover_notes_three_notes_across_probe_gap() {
+        // Regression: 3 notes at indices 0, 1, 2. Exponential probe offsets
+        // [0, 1, 3] hit at 0 and 1, miss at 3 — index 2 is in the gap.
+        // Before fix: probe_complete=true after first call, note 2 never found.
+        // After fix: pagination discovers all 3 notes across multiple calls.
+        use crate::privacy_pool::{hashes::compute_note_id, storage_slots};
+
+        let channel_key = Felt::from_hex_unchecked("0x12345");
+        let token = Felt::from_hex_unchecked("0x67890");
+        let zero_key = SecretFelt::new(Felt::ZERO);
+
+        let mut backend = MockBackend::empty();
+        for index in 0..=2u64 {
+            let note_id = compute_note_id(channel_key, token, index);
+            let slot = storage_slots::notes(note_id);
+            backend.insert(slot, Felt::ONE);
+        }
+
+        let mut cursor = SubchannelCursor::default();
+        let mut all_notes = Vec::new();
+
+        for round in 0..10 {
+            let budget = IoBudget::new(100);
+            let notes = discover_notes_paginated(
+                &backend,
+                channel_key,
+                token,
+                &mut cursor,
+                &zero_key,
+                &budget,
+            )
+            .await
+            .unwrap();
+            all_notes.extend(notes);
+            if cursor.note_discovery_complete {
+                break;
+            }
+            assert!(round < 9, "should complete within a few rounds");
+        }
+
+        assert!(cursor.note_discovery_complete);
+        assert_eq!(
+            all_notes.len(),
+            3,
+            "all 3 notes must be discovered across pagination rounds"
+        );
+        let indices: Vec<u64> = all_notes.iter().map(|n| n.index).collect();
+        assert!(indices.contains(&0));
+        assert!(indices.contains(&1));
+        assert!(indices.contains(&2));
     }
 
     #[tokio::test]
