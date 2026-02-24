@@ -13,7 +13,7 @@ use starknet_types_core::felt::Felt;
 
 use tracing::{debug, instrument, trace};
 
-use crate::discovery::last_note_index::find_last_note_index_paginated;
+use crate::discovery::last_note_index::find_last_note_index;
 use crate::discovery::outgoing_channels::{
     discover_outgoing_channels_paginated, precompute_channels, OutgoingChannel,
 };
@@ -134,6 +134,7 @@ pub async fn sync_outgoing_state<S: IViews>(
                 recipient_addr,
                 ch_cursor,
                 cursor_limits.max_subchannels,
+                cursor_limits.max_note_log_index,
                 budget,
             )
         })
@@ -185,6 +186,7 @@ async fn process_outgoing_channel<S: IViews>(
     recipient_addr: Felt,
     mut cursor: ChannelCursor,
     max_cursor_subchannels: usize,
+    max_note_log_index: u32,
     budget: &IoBudget,
 ) -> Result<ProcessChannelResult, DiscoveryError> {
     let channel_key = cursor.channel_key;
@@ -204,7 +206,14 @@ async fn process_outgoing_channel<S: IViews>(
         .subchannels
         .extract_if(|_, sc| !sc.note_discovery_complete)
         .map(|(token, sc_cursor)| {
-            process_outgoing_subchannel(pool, channel_key, token, sc_cursor, budget)
+            process_outgoing_subchannel(
+                pool,
+                channel_key,
+                token,
+                sc_cursor,
+                max_note_log_index,
+                budget,
+            )
         })
         .collect();
 
@@ -237,24 +246,32 @@ async fn process_outgoing_subchannel<S: IViews>(
     channel_key: Felt,
     token: Felt,
     mut cursor: SubchannelCursor,
+    max_note_log_index: u32,
     budget: &IoBudget,
 ) -> Result<ProcessSubchannelResult, DiscoveryError> {
     if cursor.note_discovery_complete {
         return Ok(ProcessSubchannelResult {
             token,
-            last_note_index: cursor.last_note_index,
+            last_note_index: cursor.last_existing_index(),
             cursor,
         });
     }
 
-    let (last_index, has_more) =
-        find_last_note_index_paginated(pool, channel_key, token, &mut cursor, budget).await?;
+    let (_cache, has_more) = find_last_note_index(
+        pool,
+        channel_key,
+        token,
+        &mut cursor,
+        max_note_log_index,
+        budget,
+    )
+    .await?;
 
     cursor.note_discovery_complete = !has_more;
 
     Ok(ProcessSubchannelResult {
         token,
-        last_note_index: last_index,
+        last_note_index: cursor.last_existing_index(),
         cursor,
     })
 }
@@ -275,7 +292,7 @@ mod tests {
         let viewing_key = SecretFelt::new(f.constants.alice_viewing_key);
 
         let cursor = DiscoveryCursor::default();
-        let budget = IoBudget::new(100);
+        let budget = IoBudget::new(200);
 
         let out = sync_outgoing_state(
             &backend,
@@ -285,6 +302,7 @@ mod tests {
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
             None,
@@ -354,6 +372,7 @@ mod tests {
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
             None,
@@ -380,7 +399,8 @@ mod tests {
 
         // Step 2: generous budget. Channel discovery skipped (cursor.channels
         // non-empty). Finishes subchannel + note discovery for both channels.
-        let budget = IoBudget::new(100);
+        // Needs budget for 2 concurrent boundary-finding operations (61 each).
+        let budget = IoBudget::new(200);
         let out2 = sync_outgoing_state(
             &backend,
             f.constants.alice_address,
@@ -389,6 +409,7 @@ mod tests {
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
             None,
@@ -426,8 +447,9 @@ mod tests {
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
-            &IoBudget::new(100),
+            &IoBudget::new(200),
             Some(&recipients),
         )
         .await
@@ -462,6 +484,7 @@ mod tests {
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &IoBudget::new(1000),
             None,
@@ -513,6 +536,7 @@ mod tests {
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &IoBudget::new(1000),
             None,
