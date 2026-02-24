@@ -454,6 +454,7 @@ pub(crate) fn validate_proof(actions: Span<ServerAction>) {
     assert(!proof_facts_span.is_empty(), errors::EMPTY_PROOF_FACTS);
     let proof_facts: ProofFacts = Serde::deserialize(ref proof_facts_span)
         .expect(errors::PROOF_FACTS_DESERIALIZE_ERROR);
+    assert(proof_facts_span.is_empty(), errors::INVALID_PROOF_FACTS);
     let ProofFacts {
         proof_version: _,
         program_variant,
