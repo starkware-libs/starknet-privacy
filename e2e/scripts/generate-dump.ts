@@ -67,6 +67,8 @@ const { callAndProof: bobReg } = await transfers.bob.build().register().execute(
 await devnet.executeOutside(bobReg);
 
 // Alice: deposit 100 STRK + transfer 50 to bob (representative scenario)
+// deposit(without recipient) puts 100 into the pool balance;
+// transfer sends 50 to bob; surplusTo sends the remaining 50 back to alice.
 console.log("[3/6] Building Alice deposit+transfer...");
 const { callAndProof } = await transfers.alice
   .build({
@@ -75,8 +77,9 @@ const { callAndProof } = await transfers.alice
     autoDiscover: { notes: "refresh", channels: "refresh" },
   })
   .with(env.strk)
-  .deposit({ amount: 100n, recipient: env.alice.address })
+  .deposit({ amount: 100n })
   .transfer({ recipient: env.bob.address, amount: 50n })
+  .surplusTo(env.alice.address)
   .execute();
 
 console.log("[4/6] Executing Alice outside tx...");

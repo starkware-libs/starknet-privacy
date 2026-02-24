@@ -185,6 +185,10 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     return 0n;
   }
 
+  get_proof_validity_blocks(): bigint | number {
+    return 450n;
+  }
+
   // ============ Helper Methods for Discovery ============
 
   /**
