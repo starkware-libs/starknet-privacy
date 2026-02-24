@@ -92,7 +92,7 @@ export type PrivateInvocationResult = {
 };
 
 export interface ViewingKeyProvider {
-  getViewingKey(): Promise<ViewingKey> | ViewingKey;
+  getViewingKey(): Promise<ViewingKey>;
 }
 
 export type ProofProviderConfig = {
