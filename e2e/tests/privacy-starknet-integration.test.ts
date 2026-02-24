@@ -86,7 +86,7 @@ describe("Privacy StarkNet integration", () => {
 
     // Deploy a fresh privacy pool via UDC v2
     const deploymentSalt = `0x${Date.now().toString(16)}`;
-    const constructorCalldata = [admin.address, COMPLIANCE_PUBLIC_KEY];
+    const constructorCalldata = [admin.address, COMPLIANCE_PUBLIC_KEY, "450"];
     console.log("[debug] deploying fresh privacy pool with salt:", deploymentSalt);
 
     const deployResult = await adminAccount.deployContract(

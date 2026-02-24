@@ -12,7 +12,7 @@ import type {
   SignerInterface,
   V3InvocationsSignerDetails,
 } from "starknet";
-import { CallData } from "starknet";
+import { CallData, hash } from "starknet";
 
 import { serializeClientActions } from "./serialization.js";
 import { PrivacyPoolABI } from "./abi.js";
@@ -53,6 +53,35 @@ export interface ProofInvocationFactoryInterface {
 }
 
 /**
+ * Build __execute__ calldata wrapping a single Call to execute_view.
+ * Layout: [array_len=1, to, selector, inner_calldata_len, ...inner_calldata]
+ */
+export function compileExecuteCalldata(
+  poolAddress: string,
+  executeViewCalldata: string[]
+): string[] {
+  const callDataCompiler = new CallData(PrivacyPoolABI);
+  return callDataCompiler.compile("__execute__", [
+    [
+      {
+        to: poolAddress,
+        selector: hash.getSelectorFromName("execute_view"),
+        calldata: executeViewCalldata,
+      },
+    ],
+  ]);
+}
+
+/**
+ * Extract inner execute_view calldata from __execute__'s Array<Call> calldata.
+ * Layout: [array_len=1, to, selector, inner_calldata_len, ...inner_calldata]
+ */
+export function extractExecuteViewCalldata(executeCalldata: string[]): string[] {
+  const innerCalldataLength = Number(BigInt(executeCalldata[3]));
+  return executeCalldata.slice(4, 4 + innerCalldataLength);
+}
+
+/**
  * Starknet implementation - serializes client actions to an invocation with signature.
  */
 export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
@@ -65,12 +94,14 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     const cairoActions = serializeClientActions(clientActions);
     const callDataCompiler = new CallData(PrivacyPoolABI);
     const userAddress = toBigInt(user.address);
-    const compiledCalldata = callDataCompiler.compile("__execute__", [
+    const poolAddressHex = toHex(poolAddress);
+
+    const executeViewCalldata = callDataCompiler.compile("execute_view", [
       userAddress,
       user.viewingKey,
       cairoActions,
     ]);
-    const poolAddressHex = toHex(poolAddress);
+    const compiledCalldata = compileExecuteCalldata(poolAddressHex, executeViewCalldata);
 
     // Sign the transaction using details from the proof provider
     const signature = await user.signer.signTransaction(

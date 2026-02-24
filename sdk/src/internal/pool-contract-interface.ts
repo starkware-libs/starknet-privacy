@@ -60,4 +60,5 @@ export interface PoolContractInterface {
   get_auditor_public_key(): BigNumberish | Promise<BigNumberish>;
   get_fee_amount(): bigint | number | Promise<bigint | number>;
   get_fee_collector(): BigNumberish | Promise<BigNumberish>;
+  get_proof_validity_blocks(): bigint | number | Promise<bigint | number>;
 }
