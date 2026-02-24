@@ -363,7 +363,7 @@ describe("IndexerDiscoveryProvider", () => {
         body: outgoingSyncResponse({
           cursor: {
             channel_discovery_complete: false,
-            total_n_channels: 5,
+            last_channel_index: 4,
           },
         }),
       });
