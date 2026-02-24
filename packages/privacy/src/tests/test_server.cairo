@@ -648,6 +648,18 @@ fn test_apply_actions_assertions() {
     let result = test.privacy.safe_apply_actions_without_cheat(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::PROOF_FACTS_DESERIALIZE_ERROR);
 
+    // Catch INVALID_PROOF_FACTS.
+    let mut serialized_proof_facts = array![];
+    proof_facts.serialize(ref serialized_proof_facts);
+    serialized_proof_facts.append(0x1);
+    cheat_proof_facts(
+        contract_address: test.privacy.address,
+        proof_facts: serialized_proof_facts.span(),
+        span: CheatSpan::TargetCalls(1),
+    );
+    let result = test.privacy.safe_apply_actions_without_cheat(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_PROOF_FACTS);
+
     // Catch INVALID_PROGRAM_VARIANT.
     let mut proof_facts_invalid_program_variant = proof_facts;
     proof_facts_invalid_program_variant.program_variant = 1;

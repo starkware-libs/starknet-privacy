@@ -47,6 +47,7 @@ pub const EXPECTED_ONE_CALL: felt252 = 'EXPECTED_ONE_CALL';
 pub const INVALID_CALL_TO: felt252 = 'INVALID_CALL_TO';
 pub const INVALID_CALL_SELECTOR: felt252 = 'INVALID_CALL_SELECTOR';
 pub const INVALID_CALLDATA: felt252 = 'INVALID_CALLDATA';
+pub const INVALID_PROOF_FACTS: felt252 = 'INVALID_PROOF_FACTS';
 
 pub(crate) mod internal_errors {
     pub const ZERO_NOTE_VALUE: felt252 = 'ZERO_NOTE_VALUE';
