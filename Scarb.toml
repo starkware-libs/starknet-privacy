@@ -15,6 +15,7 @@ starknet = "2.15.1"
 snforge_std = { version = "0.55.0+nightly-2026-02-20", registry = "https://scarbs.dev/" }
 assert_macros = "2.15.1"
 openzeppelin = "3.0.0"
+ekubo = { git = "https://github.com/EkuboProtocol/starknet-contracts", rev = "8b4de8b5701d10b101c06b786740bf45b6cf15cb" }
 starkware_utils = { git ="https://github.com/starkware-libs/starkware-starknet-utils", rev="0e12df09afe29f59a877a5b04801fedd8b31c50d" }
 starkware_utils_testing = { git="https://github.com/starkware-libs/starkware-starknet-utils", rev="0e12df09afe29f59a877a5b04801fedd8b31c50d" }
 

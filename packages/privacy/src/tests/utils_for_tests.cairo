@@ -2,6 +2,7 @@ use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::poseidon::poseidon_hash_span;
 use core::traits::Neg;
+use ekubo::types::keys::PoolKey;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
@@ -27,6 +28,11 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
+use privacy::swap_executor::ekubo::EkuboSwapExecutor::deploy_for_test as deploy_ekubo_swap_executor_for_test;
+use privacy::swap_executor::ekubo::{
+    IEkuboSwapExecutorDispatcher, IEkuboSwapExecutorDispatcherTrait,
+    IEkuboSwapExecutorSafeDispatcher, IEkuboSwapExecutorSafeDispatcherTrait,
+};
 use privacy::test_contracts::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::test_contracts::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
 use privacy::test_contracts::mock_swap_executor::{
@@ -34,6 +40,7 @@ use privacy::test_contracts::mock_swap_executor::{
     ISwapExecutorSafeDispatcherTrait,
 };
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
+use privacy::tests::mock_ekubo_amm::MockEkuboAMM::deploy_for_test as deploy_mock_ekubo_amm_for_test;
 use privacy::tests::mock_invoke_returns::MockEcho::deploy_for_test as deploy_mock_echo_for_test;
 use privacy::tests::mock_invoke_returns::MockReturnGarbage::deploy_for_test as deploy_mock_return_garbage_for_test;
 use privacy::tests::mock_invoke_returns::MockReturnTrailingGarbage::deploy_for_test as deploy_mock_return_trailing_garbage_for_test;
@@ -2208,6 +2215,129 @@ pub(crate) fn deploy_mock_return_trailing_garbage() -> ContractAddress {
     )
         .expect('TRAILING_GARBAGE_DEPLOY_FAIL');
     contract_address
+}
+
+/// Deploy a new mock Ekubo AMM (implements IRouter::swap for tests).
+pub(crate) fn deploy_mock_ekubo_amm() -> ContractAddress {
+    let class_hash = declare(contract: "MockEkuboAMM").unwrap_syscall().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_ekubo_amm_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('MockEkuboAMM deployment failed');
+    contract_address
+}
+
+/// Deploy a new stateless Ekubo swap executor.
+pub(crate) fn deploy_ekubo_swap_executor(
+    router: ContractAddress, privacy_address: ContractAddress,
+) -> EkuboSwapExecutorCfg {
+    let class_hash = declare(contract: "EkuboSwapExecutor")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_ekubo_swap_executor_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('EkuboSwapExecutor deploy failed');
+    EkuboSwapExecutorCfg { address: contract_address, router, privacy_address }
+}
+
+/// Build a PoolKey for the given token pair with default fee/tick_spacing and zero extension.
+/// Tokens are sorted so that token0 < token1 by address value, matching real Ekubo pool keys.
+pub(crate) fn pool_key_for_tokens(token_a: ContractAddress, token_b: ContractAddress) -> PoolKey {
+    let (token0, token1) = if token_a < token_b {
+        (token_a, token_b)
+    } else {
+        (token_b, token_a)
+    };
+    PoolKey { token0, token1, fee: 0, tick_spacing: 1, extension: Zero::zero() }
+}
+
+/// Config for calling the Ekubo swap executor in tests (address + router + privacy contract).
+#[derive(Copy, Drop)]
+pub(crate) struct EkuboSwapExecutorCfg {
+    pub address: ContractAddress,
+    pub router: ContractAddress,
+    pub privacy_address: ContractAddress,
+}
+
+#[generate_trait]
+pub(crate) impl EkuboSwapExecutorCfgImpl of EkuboSwapExecutorCfgTrait {
+    fn privacy_invoke(
+        self: @EkuboSwapExecutorCfg,
+        in_token: ContractAddress,
+        out_token: ContractAddress,
+        in_amount: u128,
+        note_id: felt252,
+        pool_key: ekubo::types::keys::PoolKey,
+        sqrt_ratio_limit: u256,
+        skip_ahead: u128,
+    ) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.privacy_address,
+        );
+        IEkuboSwapExecutorDispatcher { contract_address: *self.address }
+            .privacy_invoke(
+                router_addr: *self.router,
+                :in_token,
+                :out_token,
+                :in_amount,
+                :note_id,
+                :pool_key,
+                :sqrt_ratio_limit,
+                :skip_ahead,
+            );
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_privacy_invoke(
+        self: @EkuboSwapExecutorCfg,
+        router_addr: ContractAddress,
+        in_token: ContractAddress,
+        out_token: ContractAddress,
+        in_amount: u128,
+        note_id: felt252,
+        pool_key: ekubo::types::keys::PoolKey,
+        sqrt_ratio_limit: u256,
+        skip_ahead: u128,
+    ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
+        IEkuboSwapExecutorSafeDispatcher { contract_address: *self.address }
+            .privacy_invoke(
+                :router_addr,
+                :in_token,
+                :out_token,
+                :in_amount,
+                :note_id,
+                :pool_key,
+                :sqrt_ratio_limit,
+                :skip_ahead,
+            )
+    }
+}
+
+/// Build calldata for EkuboSwapExecutor::privacy_invoke.
+pub(crate) fn build_ekubo_swap_executor_calldata(
+    router_addr: ContractAddress,
+    in_token: ContractAddress,
+    out_token: ContractAddress,
+    in_amount: u128,
+    note_id: felt252,
+    pool_key: ekubo::types::keys::PoolKey,
+    sqrt_ratio_limit: u256,
+    skip_ahead: u128,
+) -> Array<felt252> {
+    let mut calldata: Array<felt252> = array![];
+    router_addr.serialize(ref calldata);
+    in_token.serialize(ref calldata);
+    out_token.serialize(ref calldata);
+    in_amount.serialize(ref calldata);
+    note_id.serialize(ref calldata);
+    pool_key.serialize(ref calldata);
+    sqrt_ratio_limit.serialize(ref calldata);
+    skip_ahead.serialize(ref calldata);
+    calldata
 }
 
 #[generate_trait]
