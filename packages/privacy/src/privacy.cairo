@@ -772,10 +772,7 @@ pub mod Privacy {
                         self._apply_write_once(:input);
                         has_replay_protection = true;
                     },
-                    ServerAction::Append(input) => {
-                        self._apply_append(:input);
-                        has_replay_protection = true;
-                    },
+                    ServerAction::Append(input) => self._apply_append(:input),
                     ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
                     ServerAction::TransferFrom(_) => {},
                     ServerAction::TransferTo(_) => {},
