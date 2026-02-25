@@ -1,4 +1,5 @@
 use core::num::traits::Zero;
+use openzeppelin::security::ReentrancyGuardComponent::Errors as ReentrancyGuardErrors;
 use privacy::actions::{
     AppendInput, InvokeInput, ReadAssertInput, ServerAction, TransferFromInput, TransferToInput,
 };
@@ -6,7 +7,7 @@ use privacy::objects::{EncOutgoingChannelInfo, Note};
 use privacy::tests::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
-    constants, deploy_mock_swap_executor, invoke_mock_swap_executor_input,
+    constants, deploy_mock_reentrancy, deploy_mock_swap_executor, invoke_mock_swap_executor_input,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{ProofFacts, compute_message_hash, open_note, to_write_once_action, unpack};
@@ -623,6 +624,15 @@ fn test_apply_actions_paused() {
     test.privacy.pause();
     let result = test.privacy.safe_apply_actions([].span());
     assert_panic_with_felt_error(:result, expected_error: PausableErrors::PAUSED);
+}
+
+#[test]
+fn test_apply_actions_reentrancy_locked() {
+    let mut test: Test = Default::default();
+    let reentrancy_mock = deploy_mock_reentrancy();
+    let invoke_input = InvokeInput { contract_address: reentrancy_mock, calldata: [].span() };
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: ReentrancyGuardErrors::REENTRANT_CALL);
 }
 
 #[test]
