@@ -217,8 +217,8 @@ pub mod Privacy {
             let mut server_actions: Array<ServerAction> = array![];
             let mut curr_phase = ClientActionTrait::ACCOUNT_PHASE;
             let mut token_balances: TokenBalances = Default::default();
-            // Used to make sure a storage action was included in the client actions.
-            let mut has_privacy_action = false;
+            // Used to ensure at least one client action provides replay protection (WriteOnce).
+            let mut has_replay_protection = false;
             for client_action in client_actions {
                 client_action.assert_and_advance_phase(ref :curr_phase);
                 let actions = match *client_action {
@@ -254,10 +254,10 @@ pub mod Privacy {
                         .withdraw(:user_addr, :input, ref :token_balances),
                     ClientAction::InvokeExternal(input) => self.invoke_external(:input),
                 };
-                self._client_apply_actions(actions: actions.span(), ref :has_privacy_action);
+                self._client_apply_actions(actions: actions.span(), ref :has_replay_protection);
                 server_actions.extend(actions);
             }
-            assert(has_privacy_action, errors::NO_PRIVACY_ACTIONS);
+            assert(has_replay_protection, errors::NO_REPLAY_PROTECTION);
             token_balances.squash().assert_valid();
 
             server_actions.span()
@@ -764,17 +764,17 @@ pub mod Privacy {
 
 
         fn _client_apply_actions(
-            ref self: ContractState, actions: Span<ServerAction>, ref has_privacy_action: bool,
+            ref self: ContractState, actions: Span<ServerAction>, ref has_replay_protection: bool,
         ) {
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => {
                         self._apply_write_once(:input);
-                        has_privacy_action = true;
+                        has_replay_protection = true;
                     },
                     ServerAction::Append(input) => {
                         self._apply_append(:input);
-                        has_privacy_action = true;
+                        has_replay_protection = true;
                     },
                     ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
                     ServerAction::TransferFrom(_) => {},
