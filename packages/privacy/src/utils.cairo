@@ -321,7 +321,7 @@ pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
     // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
     assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
     let tx_info = execution_info.tx_info;
-    assert(tx_info.version.try_into().unwrap() >= TX_V3, errors::INVALID_TX_VERSION);
+    assert(tx_info.version.try_into().unwrap() == TX_V3, errors::INVALID_TX_VERSION);
     // Ensure that the effective fee of the transaction is zero; this is a sanity check,
     // to prevent the execution of this code over Starknet.
     assert(tx_info.tip.is_zero(), errors::NON_ZERO_TIP);
