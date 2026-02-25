@@ -1,3 +1,4 @@
+use core::poseidon::poseidon_hash_span;
 /// Reference hash generator for TypeScript SDK compatibility testing.
 ///
 /// This test is ignored by default. Run explicitly with:
@@ -14,9 +15,8 @@ use privacy::hashes::{
 };
 use privacy::utils::constants::{VIRTUAL_SNOS, VIRTUAL_SNOS0};
 use privacy::utils::{
-    ProofFacts, compute_message_hash, decode_note_amount, derive_public_key, enc_note_packed_value,
-    encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
-    encrypt_subchannel_info, encrypt_user_addr,
+    ProofFacts, decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
+    encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
 };
 use snforge_std::map_entry_address;
 use starknet::ContractAddress;
@@ -300,6 +300,8 @@ fn generate_reference_storage_slots() {
 fn generate_reference_proof_facts() {
     // Known inputs
     let pool_address: felt252 = 0xABCDE;
+    let pool_class_hash: felt252 =
+        0x12345; // Reference value for fixture; discovery-core may use for slot derivation
     let base_block_number: u64 = 100;
 
     // Build a minimal set of server actions with known serialization.
@@ -315,10 +317,14 @@ fn generate_reference_proof_facts() {
     let mut serialized_actions = array![];
     actions.serialize(ref serialized_actions);
 
-    // Compute message hash using _compute_message_hash (includes payload_len)
-    let message_hash = compute_message_hash(
-        :actions, contract_address: pool_address.try_into().unwrap(),
-    );
+    // Compute message hash with fixed pool_class_hash so the reference matches the SDK
+    // (production compute_message_hash uses get_class_hash_at_syscall(contract_address))
+    let mut l1_message_data: Array<felt252> = array![pool_address, 0];
+    let mut payload = array![];
+    pool_class_hash.serialize(ref payload);
+    actions.serialize(ref payload);
+    payload.serialize(ref l1_message_data);
+    let message_hash = poseidon_hash_span(l1_message_data.span());
 
     // Build the full ProofFacts struct
     let proof_facts = ProofFacts {
@@ -340,6 +346,7 @@ fn generate_reference_proof_facts() {
 
     // Inputs
     println!("proofFacts.poolAddress: 0x{:x}", pool_address);
+    println!("proofFacts.poolClassHash: 0x{:x}", pool_class_hash);
     println!("proofFacts.baseBlockNumber: {}", base_block_number);
 
     // The serialized server actions (this is what proof.output contains in TS)

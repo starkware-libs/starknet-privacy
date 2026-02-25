@@ -46,6 +46,8 @@ export class CallMockProofProvider implements ProofProviderInterface {
       calldata: executeViewCalldata,
     });
 
+    const poolClassHash = await this.provider.getClassHashAt(invocation.contractAddress);
+
     // Build proof facts for on-chain validation when provider supports getBlock (e.g. e2e with RpcProvider).
     // Blockifier requires base_block_number to be at least STORED_BLOCK_HASH_BUFFER blocks behind current.
     // TODO: Use latest-verifiable.
@@ -57,6 +59,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     const baseBlock = await this.provider.getBlock(Number(baseBlockNumber));
     proofFacts = buildProofFacts(
       invocation.contractAddress,
+      poolClassHash,
       result,
       baseBlockNumber,
       baseBlock.block_hash ?? "0x0",
