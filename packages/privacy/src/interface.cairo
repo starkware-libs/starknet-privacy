@@ -24,7 +24,7 @@ pub trait IClient<T> {
     ///
     /// #### Preconditions
     /// - The caller address must be zero.
-    /// - The TX version must be >= 3.
+    /// - The TX version must be 3.
     /// - The effective fee of the transaction is zero (i.e. `tip` and `resource_bounds`).
     /// - `calls` must contain exactly one call to this contract with selector `execute_view`.
     /// - The single call's calldata must deserialize to `(user_addr, user_private_key,
@@ -377,7 +377,7 @@ pub trait IClient<T> {
     ///
     /// This function is called by the account (privacy) contract during transaction validation to
     /// check if the transaction can be executed. It validates that the execution info has zero
-    /// caller, tx version >= 3, zero tip, and zero resource prices, then returns
+    /// caller, tx version 3, zero tip, and zero resource prices, then returns
     /// [`VALIDATED`](starknet::VALIDATED).
     ///
     /// #### Parameters
@@ -391,7 +391,7 @@ pub trait IClient<T> {
     /// - [`NON_ZERO_CALLER`](privacy::errors::NON_ZERO_CALLER): Thrown if the caller address is not
     /// zero.
     /// - [`INVALID_TX_VERSION`](privacy::errors::INVALID_TX_VERSION): Thrown if the TX version is
-    /// not >= 3.
+    /// not 3.
     /// - [`NON_ZERO_TIP`](privacy::errors::NON_ZERO_TIP): Thrown if the transaction tip is not
     /// zero.
     /// - [`NON_ZERO_RESOURCE_PRICE`](privacy::errors::NON_ZERO_RESOURCE_PRICE): Thrown if the
