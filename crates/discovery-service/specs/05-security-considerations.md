@@ -62,7 +62,7 @@ The following request fields are validated by the service:
 - **block_ref:** If provided, used as-is for querying. No separate existence check — an invalid hash surfaces as an RPC error.
 - **cursor:** Structural validation via serde deserialization. Malformed JSON results in `INVALID_REQUEST`. **Note:** cursor HashMap sizes (`channels`, `subchannels`) are NOT validated — an attacker can submit arbitrarily large maps that spawn unbounded concurrent tasks. Size caps MUST be enforced before task spawning.
 - **recipient_address:** Accepted as a Felt value without format validation.
-- **viewing_key:** Deserialized as `SecretFelt` (transparent serde, zeroized on drop). Accepted without format validation.
+- **viewing_key:** Deserialized as `SecretFelt` (transparent serde, zeroized on drop). Validated against the registered public key: the service derives the public key from the viewing key via EC scalar multiplication and checks it against the on-chain registered public key for the request's address. Returns `INVALID_REQUEST` if mismatched. Skipped for unregistered addresses (zero public key).
 
 ## 5.5 Privacy Model
 

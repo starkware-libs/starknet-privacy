@@ -55,6 +55,9 @@ pub trait StorageBackend: Send + Sync {
 /// Consistent view of storage at a specific block.
 #[async_trait]
 pub trait StorageSnapshot: IViews {
+    /// Returns the contract address this snapshot is bound to.
+    fn contract_address(&self) -> Felt;
+
     /// Returns the block ID this snapshot is bound to.
     fn block_id(&self) -> BlockId;
 }
