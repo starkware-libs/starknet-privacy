@@ -21,8 +21,11 @@ use privacy::utils::constants::{
 };
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
-use starknet::syscalls::send_message_to_l1_syscall;
-use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
+use starknet::syscalls::{get_class_hash_at_syscall, send_message_to_l1_syscall};
+use starknet::{
+    ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED,
+    get_contract_address,
+};
 
 #[starknet::interface]
 pub(crate) trait IAccount<TState> {
@@ -353,9 +356,12 @@ pub(crate) fn assert_valid_signature(user_addr: ContractAddress, tx_info: Box<Tx
     assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
 }
 
+/// Sends server actions to L1. The payload is the serialized server actions followed by the
+/// contract's class hash, so the L1 handler can identify which contract sent the message.
 pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
     let mut payload = array![];
     server_actions.serialize(ref payload);
+    get_class_hash_at_syscall(get_contract_address()).unwrap_syscall().serialize(ref payload);
     send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
 }
 
@@ -452,6 +458,7 @@ pub(crate) impl ProofFactsDefaultImpl of Default<ProofFacts> {
 /// - `to_address`: zero.
 /// - `payload_len`: length of the payload.
 /// - `payload`: `Span<ServerAction>` passed as input to the server function (`apply_actions`).
+/// - `class_hash`: the class hash of the privacy contract.
 pub(crate) fn compute_message_hash(
     actions: Span<ServerAction>, contract_address: ContractAddress,
 ) -> felt252 {
@@ -459,5 +466,6 @@ pub(crate) fn compute_message_hash(
     let mut payload = array![];
     actions.serialize(ref payload);
     payload.serialize(ref l1_message_data);
+    get_class_hash_at_syscall(:contract_address).unwrap_syscall().serialize(ref l1_message_data);
     poseidon_hash_span(l1_message_data.span())
 }
