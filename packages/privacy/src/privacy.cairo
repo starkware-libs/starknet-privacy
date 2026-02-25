@@ -152,12 +152,13 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn __validate__(self: @ContractState, calls: Array<Call>) -> felt252 {
+            let execution_info = get_execution_info();
+            assert_valid_execution_info(:execution_info);
             VALIDATED
         }
 
         fn __execute__(ref self: ContractState, calls: Array<Call>) {
             let execution_info = get_execution_info();
-            assert_valid_execution_info(:execution_info);
             let (user_addr, user_private_key, client_actions) = extract_execute_view_inputs(
                 :calls, contract_address: execution_info.contract_address,
             );
