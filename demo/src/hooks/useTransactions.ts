@@ -17,6 +17,7 @@ export function useTransactions(
   provider: RpcProvider | undefined,
   transfers: PrivateTransfersInterface | undefined,
   activeAddress: string | undefined,
+  poolAddress: string,
   config: AppConfig,
   onSuccess: () => void,
 ) {
@@ -103,7 +104,7 @@ export function useTransactions(
           {
             contractAddress: config.tokenAddress,
             entrypoint: "approve",
-            calldata: [config.poolAddress, amount.toString(), "0"],
+            calldata: [poolAddress, amount.toString(), "0"],
           },
           { resourceBounds: ERC20_RESOURCE_BOUNDS },
         );

@@ -11,6 +11,9 @@ export type AppConfig = {
   rpcUrl: string;
   indexerUrl: string;
   poolAddress: string;
+  poolClassHash: string;
+  compliancePublicKey: string;
+  proofValidityBlocks: string;
   tokenAddress: string;
   feeTokenAddress: string;
   chainId: constants.StarknetChainId;
@@ -40,6 +43,9 @@ export function loadConfig(): AppConfig {
     rpcUrl: requireEnv("VITE_RPC_URL"),
     indexerUrl: requireEnv("VITE_INDEXER_URL"),
     poolAddress: requireEnv("VITE_POOL_ADDRESS"),
+    poolClassHash: requireEnv("VITE_POOL_CLASS_HASH"),
+    compliancePublicKey: requireEnv("VITE_COMPLIANCE_PUBLIC_KEY"),
+    proofValidityBlocks: (import.meta.env.VITE_PROOF_VALIDITY_BLOCKS as string) || "450",
     tokenAddress: requireEnv("VITE_TOKEN_ADDRESS"),
     feeTokenAddress: requireEnv("VITE_FEE_TOKEN_ADDRESS"),
     chainId: requireEnv("VITE_CHAIN_ID") as constants.StarknetChainId,

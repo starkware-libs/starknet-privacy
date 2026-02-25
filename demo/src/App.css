@@ -34,6 +34,7 @@ h3 {
   margin: 0 auto;
 }
 
+.pool-selector,
 .account-selector {
   display: flex;
   align-items: center;

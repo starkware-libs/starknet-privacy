@@ -65,17 +65,18 @@ export function usePrivateState(
   provider: RpcProvider | undefined,
   transfers: PrivateTransfersInterface | undefined,
   account: AccountConfig | undefined,
+  poolAddress: string,
   config: AppConfig,
 ) {
   const [state, setState] = useState<PrivateState>(EMPTY_STATE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset displayed state when the active account changes so stale
-  // data from the previous account is never shown.
+  // Reset displayed state when the active account or pool changes so stale
+  // data from the previous selection is never shown.
   useEffect(() => {
     setState(EMPTY_STATE);
-  }, [account]);
+  }, [account, poolAddress]);
 
   const refresh = useCallback(async () => {
     if (!provider || !transfers || !account) return;
@@ -83,7 +84,7 @@ export function usePrivateState(
     setError(null);
 
     try {
-      const indexer = new IndexerDiscoveryProvider(config.indexerUrl, config.poolAddress);
+      const indexer = new IndexerDiscoveryProvider(config.indexerUrl, poolAddress);
       const [tokenBalance, feeTokenBalance, { notes: notesMap }, channelsResult, requirement] =
         await Promise.all([
           getErc20Balance(provider, config.tokenAddress, account.address),
@@ -154,7 +155,7 @@ export function usePrivateState(
     } finally {
       setLoading(false);
     }
-  }, [provider, transfers, account, config]);
+  }, [provider, transfers, account, poolAddress, config]);
 
   return { state, loading, error, refresh };
 }

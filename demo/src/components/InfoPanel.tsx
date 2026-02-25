@@ -8,7 +8,7 @@ type Props = {
 };
 
 function formatAmount(value: bigint): string {
-  return value.toString();
+  return value.toLocaleString("en-US");
 }
 
 export function InfoPanel({ state, loading, error, onRefresh }: Props) {
