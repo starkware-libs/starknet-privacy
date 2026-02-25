@@ -100,6 +100,10 @@ pub mod Privacy {
         fee_collector: ContractAddress,
         /// The number of blocks that a proof is valid for.
         proof_validity_blocks: u64,
+        /// True only while `apply_actions` is running; used to prevent reentrant
+        /// `apply_actions` (e.g. via an Invoke action calling back into the contract).
+        /// Default (uninitialized) is false.
+        ReentrancyGuard_entered: bool,
     }
 
     #[event]
@@ -655,9 +659,12 @@ pub mod Privacy {
     pub impl ServerImpl of IServer<ContractState> {
         fn apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             self.pausable.assert_not_paused();
+            assert(!self.ReentrancyGuard_entered.read(), errors::REENTRANT_CALL);
+            self.ReentrancyGuard_entered.write(true);
             self.validate_proof(:actions);
             self.collect_fee();
             self._apply_actions(:actions);
+            self.ReentrancyGuard_entered.write(false);
         }
 
         fn deposit_to_open_note(

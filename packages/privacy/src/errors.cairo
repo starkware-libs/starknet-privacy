@@ -49,6 +49,7 @@ pub const INVALID_CALL_SELECTOR: felt252 = 'INVALID_CALL_SELECTOR';
 pub const INVALID_CALLDATA: felt252 = 'INVALID_CALLDATA';
 pub const INVALID_PROOF_FACTS: felt252 = 'INVALID_PROOF_FACTS';
 pub const ZERO_PROOF_VALIDITY_BLOCKS: felt252 = 'ZERO_PROOF_VALIDITY_BLOCKS';
+pub const REENTRANT_CALL: felt252 = 'ReentrancyGuard: reentrant call';
 
 pub(crate) mod internal_errors {
     pub const ZERO_NOTE_VALUE: felt252 = 'ZERO_NOTE_VALUE';
