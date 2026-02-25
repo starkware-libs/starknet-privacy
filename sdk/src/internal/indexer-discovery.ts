@@ -197,7 +197,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
         cursor: { channel_discovery_complete: false },
       };
       const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
-      return { timestamp: resp.block_ref, total: resp.cursor.total_n_channels };
+      return { timestamp: resp.block_ref, total: (resp.cursor.last_channel_index ?? -1) + 1 };
     }
 
     const cursorMap = params?.cursor?.channels;
