@@ -12,7 +12,8 @@ import type {
   SignerInterface,
   V3InvocationsSignerDetails,
 } from "starknet";
-import { CallData, hash } from "starknet";
+import type { constants } from "starknet";
+import { CallData, ETransactionVersion, hash, TransactionType } from "starknet";
 
 import { serializeClientActions } from "./serialization.js";
 import { PrivacyPoolABI } from "./abi.js";
@@ -24,6 +25,38 @@ import type {
 import { toBigInt } from "../utils/crypto.js";
 import { ClientAction } from "./client-actions.js";
 import { toHex } from "../utils/convert.js";
+
+/** Default L2 gas max amount for proof invocations */
+const DEFAULT_L2_GAS_MAX_AMOUNT = 10_000_000n;
+
+/** Hardcoded nonce for proof invocations (no chain fetch). */
+const PROOF_INVOCATION_NONCE = 0n;
+
+/**
+ * Build default proof invocation factory details for a given chain.
+ * Plain helper so providers only need to pass their chainId.
+ */
+export function getDefaultProofDetails(
+  chainId: constants.StarknetChainId
+): ProofInvocationFactoryDetails {
+  return {
+    versions: [ETransactionVersion.V3],
+    nonce: PROOF_INVOCATION_NONCE,
+    skipValidate: true,
+    resourceBounds: {
+      l1_gas: { max_amount: 1n, max_price_per_unit: 0n },
+      l2_gas: { max_amount: DEFAULT_L2_GAS_MAX_AMOUNT, max_price_per_unit: 0n },
+      l1_data_gas: { max_amount: 1n, max_price_per_unit: 0n },
+    },
+    tip: 0n,
+    paymasterData: [],
+    accountDeploymentData: [],
+    nonceDataAvailabilityMode: "L1",
+    feeDataAvailabilityMode: "L1",
+    version: ETransactionVersion.V3,
+    chainId,
+  };
+}
 
 /**
  * Minimal user info needed for creating a proof invocation.
@@ -104,25 +137,31 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     const compiledCalldata = compileExecuteCalldata(poolAddressHex, executeViewCalldata);
 
     // Sign the transaction using details from the proof provider
+    // signTransaction internally calls getExecuteCalldata which wraps the call
+    // into Array<Call> format — the same layout as compiledCalldata. So we pass
+    // the inner executeViewCalldata here, not the already-wrapped compiledCalldata.
     const signature = await user.signer.signTransaction(
       [
         {
           contractAddress: poolAddressHex,
-          entrypoint: "__execute__",
-          calldata: compiledCalldata,
+          entrypoint: "execute_view",
+          calldata: executeViewCalldata,
         },
       ],
       {
-        walletAddress: toHex(user.address),
+        walletAddress: poolAddressHex,
         cairoVersion: "1",
         ...details,
       } as V3InvocationsSignerDetails
     );
 
     return {
+      type: TransactionType.INVOKE,
       contractAddress: poolAddressHex,
       calldata: compiledCalldata,
-      signature: signature as string[],
+      signature,
+      nonce: details.nonce ?? PROOF_INVOCATION_NONCE,
+      ...details,
     };
   }
 
