@@ -13,7 +13,7 @@
  * 1. `program_variant == 'VIRTUAL_SNOS'`
  * 2. `starknet_os_output_version == 'VIRTUAL_SNOS0'`
  * 3. `base_block_number` within PROOF_VALIDITY_BLOCK_INTERVAL of current block
- * 4. `message_to_l1_hashes == [poseidon(pool_addr, 0, payload_len, ...serialized_server_actions)]`
+ * 4. `message_to_l1_hashes == [poseidon(pool_addr, 0, payload_len, ...serialized_server_actions, class_hash)]`
  */
 
 import { ec, hash } from "starknet";
@@ -53,17 +53,17 @@ function computeVirtualOsConfigHash(
 
 /**
  * Compute the message hash matching Cairo's _compute_message_hash:
- *   `hash([contract_address, 0, payload_len, ...serialized_actions])`
+ *   `hash([contract_address, 0, payload_len, ...serialized_actions, class_hash])`
  * where hash = poseidon_hash_span.
  */
-function computeMessageHash(poolAddress: BigNumberish, serverActionsCalldata: string[]): bigint {
-  const payloadLen = BigInt(serverActionsCalldata.length);
-  const feltValues = [
-    toBigInt(poolAddress),
-    0n,
-    payloadLen,
-    ...serverActionsCalldata.map(toBigInt),
-  ];
+function computeMessageHash(
+  poolAddress: BigNumberish,
+  serverActionsCalldata: string[],
+  classHash: BigNumberish
+): bigint {
+  const payload = [...serverActionsCalldata.map(toBigInt), toBigInt(classHash)];
+  const payloadLen = BigInt(payload.length);
+  const feltValues = [toBigInt(poolAddress), 0n, payloadLen, ...payload];
   return ec.starkCurve.poseidonHashMany(feltValues);
 }
 
@@ -79,16 +79,17 @@ function computeMessageHash(poolAddress: BigNumberish, serverActionsCalldata: st
  *   [5] base_block_hash: felt252        → blockHash
  *   [6] starknet_os_config_hash: felt252 → Pedersen(version, chain_id, strk_token)
  *   [7] message_to_l1_hashes length     → 1 (Span serialization)
- *   [8] message_to_l1_hashes[0]         → poseidon(pool_addr, 0, payload_len, ...actions)
+ *   [8] message_to_l1_hashes[0]         → poseidon(pool_addr, 0, payload_len, ...actions, class_hash)
  */
 export function buildProofFacts(
   poolAddress: BigNumberish,
   serverActionsCalldata: string[],
   blockNumber: bigint,
   blockHash: BigNumberish,
-  chainId: BigNumberish
+  chainId: BigNumberish,
+  classHash: BigNumberish
 ): string[] {
-  const messageHash = computeMessageHash(poolAddress, serverActionsCalldata);
+  const messageHash = computeMessageHash(poolAddress, serverActionsCalldata, classHash);
   const configHash = computeVirtualOsConfigHash(chainId, STRK_FEE_TOKEN_ADDRESS);
   return [
     `0x${PROOF_VERSION.toString(16)}`, // proof_version ('PROOF0')

@@ -25,7 +25,8 @@ describe("ProofFacts Compatibility with Cairo", () => {
       reference.serializedActions,
       BigInt(reference.baseBlockNumber),
       "0x0",
-      constants.StarknetChainId.SN_SEPOLIA
+      constants.StarknetChainId.SN_SEPOLIA,
+      reference.classHash
     );
 
     // The last element is the message hash (after the Span length prefix "0x1")
@@ -48,7 +49,8 @@ describe("ProofFacts Compatibility with Cairo", () => {
       reference.serializedActions,
       BigInt(reference.baseBlockNumber),
       "0x0",
-      constants.StarknetChainId.SN_SEPOLIA
+      constants.StarknetChainId.SN_SEPOLIA,
+      reference.classHash
     );
 
     // [6] is starknet_os_config_hash
@@ -61,7 +63,8 @@ describe("ProofFacts Compatibility with Cairo", () => {
       reference.serializedActions,
       BigInt(reference.baseBlockNumber),
       "0x0",
-      constants.StarknetChainId.SN_SEPOLIA
+      constants.StarknetChainId.SN_SEPOLIA,
+      reference.classHash
     );
 
     expect(proofFacts).toHaveLength(9);

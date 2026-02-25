@@ -19,7 +19,8 @@ use privacy::utils::{
     encrypt_subchannel_info, encrypt_user_addr,
 };
 use snforge_std::map_entry_address;
-use starknet::ContractAddress;
+use starknet::syscalls::get_class_hash_at_syscall;
+use starknet::{ContractAddress, SyscallResultTrait};
 
 // Test inputs - must match sdk/tests/fixtures/cairo-reference-data.json
 const SENDER: felt252 = 0x123;
@@ -339,7 +340,10 @@ fn generate_reference_proof_facts() {
     println!("=== PROOF FACTS ===");
 
     // Inputs
+    let contract_address: ContractAddress = pool_address.try_into().unwrap();
+    let class_hash: felt252 = get_class_hash_at_syscall(:contract_address).unwrap_syscall().into();
     println!("proofFacts.poolAddress: 0x{:x}", pool_address);
+    println!("proofFacts.classHash: 0x{:x}", class_hash);
     println!("proofFacts.baseBlockNumber: {}", base_block_number);
 
     // The serialized server actions (this is what proof.output contains in TS)

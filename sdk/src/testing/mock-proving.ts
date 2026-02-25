@@ -55,12 +55,14 @@ export class CallMockProofProvider implements ProofProviderInterface {
     const blocksBack = BigInt(10);
     const baseBlockNumber = currentBlockNumber > blocksBack ? currentBlockNumber - blocksBack : 1n;
     const baseBlock = await this.provider.getBlock(Number(baseBlockNumber));
+    const classHash = await this.provider.getClassHashAt(invocation.contractAddress);
     proofFacts = buildProofFacts(
       invocation.contractAddress,
       result,
       baseBlockNumber,
       baseBlock.block_hash ?? "0x0",
-      this.chainId
+      this.chainId,
+      classHash
     );
 
     // execute_view returns Span<ServerAction> which is serialized with its length prefix.
