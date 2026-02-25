@@ -56,12 +56,17 @@ function computeVirtualOsConfigHash(
  *   `hash([contract_address, 0, payload_len, ...serialized_actions])`
  * where hash = poseidon_hash_span.
  */
-function computeMessageHash(poolAddress: BigNumberish, serverActionsCalldata: string[]): bigint {
-  const payloadLen = BigInt(serverActionsCalldata.length);
+function computeMessageHash(
+  poolAddress: BigNumberish,
+  poolClassHash: BigNumberish,
+  serverActionsCalldata: string[]
+): bigint {
+  const payloadLen = BigInt(serverActionsCalldata.length + 1);
   const feltValues = [
     toBigInt(poolAddress),
     0n,
     payloadLen,
+    toBigInt(poolClassHash),
     ...serverActionsCalldata.map(toBigInt),
   ];
   return ec.starkCurve.poseidonHashMany(feltValues);
@@ -83,12 +88,13 @@ function computeMessageHash(poolAddress: BigNumberish, serverActionsCalldata: st
  */
 export function buildProofFacts(
   poolAddress: BigNumberish,
+  poolClassHash: BigNumberish,
   serverActionsCalldata: string[],
   blockNumber: bigint,
   blockHash: BigNumberish,
   chainId: BigNumberish
 ): string[] {
-  const messageHash = computeMessageHash(poolAddress, serverActionsCalldata);
+  const messageHash = computeMessageHash(poolAddress, poolClassHash, serverActionsCalldata);
   const configHash = computeVirtualOsConfigHash(chainId, STRK_FEE_TOKEN_ADDRESS);
   return [
     `0x${PROOF_VERSION.toString(16)}`, // proof_version ('PROOF0')

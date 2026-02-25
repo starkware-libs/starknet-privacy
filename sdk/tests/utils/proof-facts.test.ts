@@ -22,6 +22,7 @@ describe("ProofFacts Compatibility with Cairo", () => {
   it("buildProofFacts computes correct message hash", () => {
     const proofFacts = buildProofFacts(
       reference.poolAddress,
+      reference.poolClassHash,
       reference.serializedActions,
       BigInt(reference.baseBlockNumber),
       "0x0",
@@ -45,6 +46,7 @@ describe("ProofFacts Compatibility with Cairo", () => {
 
     const proofFacts = buildProofFacts(
       reference.poolAddress,
+      reference.poolClassHash,
       reference.serializedActions,
       BigInt(reference.baseBlockNumber),
       "0x0",
@@ -58,6 +60,7 @@ describe("ProofFacts Compatibility with Cairo", () => {
   it("buildProofFacts produces correct layout", () => {
     const proofFacts = buildProofFacts(
       reference.poolAddress,
+      reference.poolClassHash,
       reference.serializedActions,
       BigInt(reference.baseBlockNumber),
       "0x0",

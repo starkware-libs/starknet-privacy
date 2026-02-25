@@ -1,34 +1,6 @@
 {
   "_comment": "Reference values from Cairo implementation. Regenerate with: npx tsx scripts/generate-cairo-refs.ts",
   "_ttl_days": 1,
-  "proofFacts": {
-    "poolAddress": "0xabcde",
-    "baseBlockNumber": 100,
-    "serializedActionsLength": 6,
-    "serializedActions": [
-      "0x1",
-      "0x0",
-      "0x111",
-      "0x2",
-      "0x222",
-      "0x333"
-    ],
-    "messageHash": "0x43c2c4bed5b9d57091a9911e102161896ec50ce6e265ba7fbd34a3d312bc55b",
-    "serializedLength": 9,
-    "serialized": [
-      "0x0",
-      "0x5649525455414c5f534e4f53",
-      "0x0",
-      "0x5649525455414c5f534e4f5330",
-      "0x64",
-      "0x0",
-      "0x0",
-      "0x1",
-      "0x43c2c4bed5b9d57091a9911e102161896ec50ce6e265ba7fbd34a3d312bc55b"
-    ],
-    "virtualSnos": "0x5649525455414c5f534e4f53",
-    "virtualSnos0": "0x5649525455414c5f534e4f5330"
-  },
   "inputs": {
     "sender": "0x123",
     "recipient": "0x456",
@@ -52,6 +24,35 @@
     "subchannelMarker": "0x777b17d81fbb126303906d8076aa8dadaec72a6a25a3e31b51946216edeed7c",
     "noteId": "0x6b098ad0b0b4b1881a77f962eb0650de748f24efcabd5a64ac941e9a05777e8",
     "nullifier": "0x42301c4c2b44b24d874ddfbeacfbbcfe8c54135a4673a390b4128152f3d8afb"
+  },
+  "proofFacts": {
+    "poolAddress": "0xabcde",
+    "poolClassHash": "0x12345",
+    "baseBlockNumber": 100,
+    "serializedActionsLength": 6,
+    "serializedActions": [
+      "0x1",
+      "0x0",
+      "0x111",
+      "0x2",
+      "0x222",
+      "0x333"
+    ],
+    "messageHash": "0x6ecbe1e6bce2468d4f9241154bb6c545aed378aa89a661e18f9f8af9a3add9e",
+    "serializedLength": 9,
+    "serialized": [
+      "0x0",
+      "0x5649525455414c5f534e4f53",
+      "0x0",
+      "0x5649525455414c5f534e4f5330",
+      "0x64",
+      "0x0",
+      "0x0",
+      "0x1",
+      "0x6ecbe1e6bce2468d4f9241154bb6c545aed378aa89a661e18f9f8af9a3add9e"
+    ],
+    "virtualSnos": "0x5649525455414c5f534e4f53",
+    "virtualSnos0": "0x5649525455414c5f534e4f5330"
   },
   "slots": {
     "auditorPublicKeyAddress": "0x18223681ac4182236a5f10794ec6fa3530a5cb1a18aff2005fbbed58772ec28",
