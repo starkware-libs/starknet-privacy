@@ -1,17 +1,20 @@
 use core::num::traits::Zero;
+use core::poseidon::poseidon_hash_span;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::hashes::hash;
 use privacy::tests::utils_for_tests::{
-    decrypt_channel_info, decrypt_enc_user_addr, decrypt_private_key, decrypt_subchannel_token,
+    Test, decrypt_channel_info, decrypt_enc_user_addr, decrypt_private_key,
+    decrypt_subchannel_token,
 };
 use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
-    _encrypt_note_amount, decode_note_amount, decrypt_note_amount, derive_public_key,
-    enc_note_packed_value, encrypt_channel_info, encrypt_private_key, encrypt_subchannel_info,
-    encrypt_user_addr, open_note, pack, to_write_once_action, unpack,
+    _encrypt_note_amount, compute_message_hash, decode_note_amount, decrypt_note_amount,
+    derive_public_key, enc_note_packed_value, encrypt_channel_info, encrypt_private_key,
+    encrypt_subchannel_info, encrypt_user_addr, open_note, pack, to_write_once_action, unpack,
 };
 use snforge_std::map_entry_address;
-use starknet::ContractAddress;
+use starknet::syscalls::get_class_hash_at_syscall;
+use starknet::{ClassHash, ContractAddress, SyscallResultTrait};
 use starkware_utils::constants::{MAX_U128, MAX_U32, TWO_POW_128};
 
 #[test]
@@ -226,4 +229,42 @@ fn test_to_write_once_action_felt() {
     assert_eq!(
         action, ServerAction::WriteOnce(WriteOnceInput { storage_address, value: [value].span() }),
     );
+}
+
+#[test]
+fn test_compute_message_hash_depends_on_class_hash() {
+    let test: Test = Default::default();
+    let contract_address = test.privacy.address;
+    let storage_address = map_entry_address(
+        map_selector: selector!("test_key"), keys: ['MSG_HASH_TEST'].span(),
+    );
+    let action = to_write_once_action(:storage_address, value: 'VALUE');
+    let actions = [action].span();
+
+    // Valid hash from the util (reads class hash from chain).
+    let hash_from_util = compute_message_hash(:actions, :contract_address);
+
+    // Build payload once (same as compute_message_hash).
+    let mut payload = array![];
+    actions.serialize(ref payload);
+
+    let real_class_hash = get_class_hash_at_syscall(:contract_address).unwrap_syscall();
+
+    // Manually build valid hash: same structure as compute_message_hash.
+    let mut l1_data_valid = array![contract_address.into(), Zero::zero()];
+    let mut real_payload = payload.clone();
+    real_class_hash.serialize(ref real_payload);
+    real_payload.serialize(ref l1_data_valid);
+    let hash_manual_valid = poseidon_hash_span(l1_data_valid.span());
+
+    // Manually build invalid hash: zero class hash instead of real.
+    let mut l1_data_invalid = array![contract_address.into(), Zero::zero()];
+    let mut invalid_payload = payload;
+    let zero_class_hash: ClassHash = Zero::zero();
+    zero_class_hash.serialize(ref invalid_payload);
+    invalid_payload.serialize(ref l1_data_invalid);
+    let hash_manual_invalid = poseidon_hash_span(l1_data_invalid.span());
+
+    assert_eq!(hash_from_util, hash_manual_valid);
+    assert_ne!(hash_from_util, hash_manual_invalid);
 }

@@ -2014,6 +2014,7 @@ fn _find_shared_x(ephemeral_pubkey: felt252, private_key: felt252) -> felt252 {
 
 fn deserialize_server_actions(message: @MessageToL1) -> Span<ServerAction> {
     let mut payload = message.payload.span();
+    let _ = payload.pop_front(); // Pop class hash.
     Serde::<Span<ServerAction>>::deserialize(ref payload).expect('Failed deserialize')
 }
 
