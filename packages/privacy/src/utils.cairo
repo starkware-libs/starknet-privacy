@@ -341,6 +341,7 @@ pub(crate) fn extract_execute_view_inputs(
         (ContractAddress, felt252, Span<ClientAction>),
     >::deserialize(ref :serialized)
         .expect(errors::INVALID_CALLDATA);
+    assert(serialized.is_empty(), errors::INVALID_CALLDATA);
     (user_addr, user_private_key, client_actions)
 }
 
