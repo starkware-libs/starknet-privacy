@@ -138,6 +138,8 @@ pub struct ValidationLimits {
     pub server_budget: usize,
     /// Maximum request body size in bytes.
     pub max_request_body_bytes: usize,
+    /// Maximum number of entries in the public key cache.
+    pub public_key_cache_capacity: u64,
 }
 
 impl Default for ValidationLimits {
@@ -147,6 +149,7 @@ impl Default for ValidationLimits {
             max_outgoing_recipients: 64,
             server_budget: 200,
             max_request_body_bytes: 102_400,
+            public_key_cache_capacity: 10_000,
         }
     }
 }

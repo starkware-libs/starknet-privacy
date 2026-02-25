@@ -19,7 +19,9 @@ use crate::api::types::{
     OutgoingSyncRequest, OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse,
     SyncRequestBase,
 };
-use crate::api::validators::{validate_block_ref, validate_cursor, validate_recipients};
+use crate::api::validators::{
+    validate_block_ref, validate_cursor, validate_recipients, validate_viewing_key,
+};
 use crate::api::AppState;
 use crate::chain_state::ChainState;
 use discovery_core::discovery::CursorLimits;
@@ -67,8 +69,12 @@ struct SyncContext<S> {
 
 /// Validates the shared request fields and builds the context needed by
 /// both incoming and outgoing sync handlers.
+///
+/// `user_address` is the address whose public key should match the viewing key
+/// (recipient for incoming, sender for outgoing).
 async fn prepare_sync_context<B>(
     base: &SyncRequestBase,
+    user_address: Felt,
     state: &AppState<B>,
 ) -> Result<SyncContext<B::Snapshot>, (StatusCode, ApiErrorResponse)>
 where
@@ -83,6 +89,15 @@ where
         .backend
         .snapshot(base.contract_address, Some(BlockId::Hash(block_ref)))
         .await;
+
+    validate_viewing_key(
+        &base.viewing_key,
+        user_address,
+        base.contract_address,
+        &snapshot,
+        &state.public_key_cache,
+    )
+    .await?;
 
     let budget = IoBudget::new(state.validation_limits.server_budget);
     let cursor_limits = state.validation_limits.cursor_limits;
@@ -119,7 +134,7 @@ where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
     B::Snapshot: Clone + Send + Sync + 'static,
 {
-    let context = prepare_sync_context(&request.base, state).await?;
+    let context = prepare_sync_context(&request.base, request.recipient_address, state).await?;
 
     debug!(
         recipient = %format!("{:#x}", request.recipient_address),
@@ -182,7 +197,7 @@ where
     if let Some(ref recipients) = request.recipients {
         validate_recipients(recipients, &state.validation_limits)?;
     }
-    let context = prepare_sync_context(&request.base, state).await?;
+    let context = prepare_sync_context(&request.base, request.sender_address, state).await?;
 
     debug!(
         sender = felt_hex(&request.sender_address),
@@ -255,6 +270,15 @@ where
             Some(BlockId::Hash(head.block_hash)),
         )
         .await;
+
+    validate_viewing_key(
+        &request.viewing_key,
+        request.sender_address,
+        request.contract_address,
+        &snapshot,
+        &state.public_key_cache,
+    )
+    .await?;
 
     debug!(
         sender = felt_hex(&request.sender_address),

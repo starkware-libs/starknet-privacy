@@ -4,12 +4,15 @@ use std::collections::HashSet;
 
 use axum::http::StatusCode;
 use discovery_core::discovery::DiscoveryCursor;
+use discovery_core::privacy_pool::views::IViews;
+use discovery_core::storage_backend::StorageError;
 use starknet_core::types::Felt;
 use tracing::warn;
 
 use crate::api::types::{error_codes, ApiErrorResponse};
 use crate::chain_state::{ChainState, ChainStateError};
 use crate::config::ValidationLimits;
+use crate::public_key_cache::PublicKeyCache;
 
 /// Validates block reference for sync endpoints.
 ///
@@ -170,6 +173,69 @@ pub fn validate_recipients(
         limits.max_outgoing_recipients,
         "recipients",
     )
+}
+
+/// Validates that the viewing key matches the public key registered on-chain for the given address.
+///
+/// Derives the public key from `viewing_key` via EC scalar multiplication and compares it against
+/// the on-chain registered public key. Skips validation if the user is not registered (zero public
+/// key). Returns `INVALID_REQUEST` on mismatch.
+pub async fn validate_viewing_key<S: IViews>(
+    viewing_key: &Felt,
+    user_address: Felt,
+    contract_address: Felt,
+    snapshot: &S,
+    cache: &PublicKeyCache,
+) -> Result<(), (StatusCode, ApiErrorResponse)> {
+    let derived_public_key = starknet_crypto::get_public_key(viewing_key);
+
+    let registered_public_key = if let Some(cached_key) = cache.get(contract_address, user_address)
+    {
+        cached_key
+    } else {
+        let fetched_key = snapshot
+            .get_public_key(user_address)
+            .await
+            .map_err(|storage_error| match storage_error {
+                StorageError::ContractNotFound => (
+                    StatusCode::NOT_FOUND,
+                    ApiErrorResponse::new(
+                        error_codes::CONTRACT_NOT_FOUND,
+                        "Contract not found at the configured address",
+                    ),
+                ),
+                other => {
+                    warn!("Storage error fetching public key: {}", other);
+                    (
+                        StatusCode::SERVICE_UNAVAILABLE,
+                        ApiErrorResponse::new(
+                            error_codes::RPC_UNAVAILABLE,
+                            "Upstream RPC is unavailable",
+                        ),
+                    )
+                }
+            })?;
+
+        cache.insert(contract_address, user_address, fetched_key);
+        fetched_key
+    };
+
+    // Skip validation for unregistered users (zero public key).
+    if registered_public_key == Felt::ZERO {
+        return Ok(());
+    }
+
+    if derived_public_key != registered_public_key {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::new(
+                error_codes::INVALID_REQUEST,
+                "viewing_key does not match the registered public key for the given address",
+            ),
+        ));
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -400,4 +466,101 @@ mod tests {
     }
 
     // RPC error handling is tested via integration tests with real devnet
+
+    mod viewing_key_validation {
+        use super::*;
+        use discovery_core::privacy_pool::storage_slots;
+        use discovery_core::storage_backend::MockBackend;
+
+        const TEST_VIEWING_KEY: Felt =
+            Felt::from_hex_unchecked("0x1234567890abcdef1234567890abcdef");
+        const CONTRACT_ADDRESS: Felt = Felt::from_hex_unchecked("0xc0ffee");
+        const USER_ADDRESS: Felt = Felt::from_hex_unchecked("0xface");
+
+        fn make_mock_with_public_key(public_key: Felt) -> MockBackend {
+            let mut mock = MockBackend::empty();
+            let slot = storage_slots::public_key(USER_ADDRESS);
+            mock.insert(slot, public_key);
+            mock
+        }
+
+        #[tokio::test]
+        async fn test_valid_viewing_key_passes() {
+            let expected_public_key = starknet_crypto::get_public_key(&TEST_VIEWING_KEY);
+            let mock = make_mock_with_public_key(expected_public_key);
+            let cache = PublicKeyCache::new(100);
+
+            let result = validate_viewing_key(
+                &TEST_VIEWING_KEY,
+                USER_ADDRESS,
+                CONTRACT_ADDRESS,
+                &mock,
+                &cache,
+            )
+            .await;
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_mismatched_viewing_key_returns_400() {
+            let wrong_key = Felt::from_hex_unchecked("0xdeadbeef");
+            // Register a public key that does NOT match wrong_key
+            let registered_public_key = starknet_crypto::get_public_key(&TEST_VIEWING_KEY);
+            let mock = make_mock_with_public_key(registered_public_key);
+            let cache = PublicKeyCache::new(100);
+
+            let result =
+                validate_viewing_key(&wrong_key, USER_ADDRESS, CONTRACT_ADDRESS, &mock, &cache)
+                    .await;
+            assert!(result.is_err());
+
+            let (status, error) = result.unwrap_err();
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(error.error.code, error_codes::INVALID_REQUEST);
+            assert!(error.error.message.contains("viewing_key does not match"));
+        }
+
+        #[tokio::test]
+        async fn test_unregistered_user_skips_validation() {
+            // MockBackend returns Felt::ZERO for missing slots, simulating unregistered user
+            let mock = MockBackend::empty();
+            let cache = PublicKeyCache::new(100);
+
+            let wrong_key = Felt::from_hex_unchecked("0xdeadbeef");
+            let result =
+                validate_viewing_key(&wrong_key, USER_ADDRESS, CONTRACT_ADDRESS, &mock, &cache)
+                    .await;
+            assert!(result.is_ok());
+        }
+
+        #[tokio::test]
+        async fn test_cache_hit_skips_storage_lookup() {
+            let expected_public_key = starknet_crypto::get_public_key(&TEST_VIEWING_KEY);
+
+            // Empty mock — no storage slots populated. If the code hits storage,
+            // it will get Felt::ZERO (unregistered) and skip validation — which would
+            // be wrong. Pre-populate cache so storage is never called.
+            let mock = MockBackend::empty();
+            let cache = PublicKeyCache::new(100);
+            cache.insert(CONTRACT_ADDRESS, USER_ADDRESS, expected_public_key);
+
+            let result = validate_viewing_key(
+                &TEST_VIEWING_KEY,
+                USER_ADDRESS,
+                CONTRACT_ADDRESS,
+                &mock,
+                &cache,
+            )
+            .await;
+            assert!(result.is_ok());
+
+            // Verify: a wrong key should fail even with empty storage, proving
+            // the cache was used (storage would return ZERO → skip validation).
+            let wrong_key = Felt::from_hex_unchecked("0xdeadbeef");
+            let result =
+                validate_viewing_key(&wrong_key, USER_ADDRESS, CONTRACT_ADDRESS, &mock, &cache)
+                    .await;
+            assert!(result.is_err());
+        }
+    }
 }
