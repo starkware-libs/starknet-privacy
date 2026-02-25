@@ -41,14 +41,6 @@ pub trait IClient<T> {
     /// in the input.
     ///
     /// #### Reverts
-    /// - [`NON_ZERO_CALLER`](privacy::errors::NON_ZERO_CALLER): Thrown if the caller address is not
-    /// zero.
-    /// - [`INVALID_TX_VERSION`](privacy::errors::INVALID_TX_VERSION): Thrown if the TX version is
-    /// not >= 3.
-    /// - [`NON_ZERO_TIP`](privacy::errors::NON_ZERO_TIP): Thrown if the transaction tip is not
-    /// zero.
-    /// - [`NON_ZERO_RESOURCE_PRICE`](privacy::errors::NON_ZERO_RESOURCE_PRICE): Thrown if the
-    /// transaction resource prices are not zero.
     /// - [`INVALID_SIGNATURE`](privacy::errors::INVALID_SIGNATURE): Thrown if the TX signature is
     /// invalid (The TX signature should be of `user_addr` who is executing the actions).
     /// - [`EXPECTED_ONE_CALL`](privacy::errors::EXPECTED_ONE_CALL): Thrown if `calls.len() != 1`.
@@ -381,10 +373,11 @@ pub trait IClient<T> {
         client_actions: Span<ClientAction>,
     ) -> Span<ServerAction>;
 
-    /// An empty implementation for the TX validation, always returns valid.
+    /// Validates execution context and returns valid.
     ///
     /// This function is called by the account (privacy) contract during transaction validation to
-    /// check if the transaction can be executed. It always returns
+    /// check if the transaction can be executed. It validates that the execution info has zero
+    /// caller, tx version >= 3, zero tip, and zero resource prices, then returns
     /// [`VALIDATED`](starknet::VALIDATED).
     ///
     /// #### Parameters
@@ -392,7 +385,17 @@ pub trait IClient<T> {
     /// framework.
     ///
     /// #### Returns
-    /// - (`felt252`): Always returns [`VALIDATED`](starknet::VALIDATED).
+    /// - (`felt252`): Returns [`VALIDATED`](starknet::VALIDATED) when execution info is valid.
+    ///
+    /// #### Reverts
+    /// - [`NON_ZERO_CALLER`](privacy::errors::NON_ZERO_CALLER): Thrown if the caller address is not
+    /// zero.
+    /// - [`INVALID_TX_VERSION`](privacy::errors::INVALID_TX_VERSION): Thrown if the TX version is
+    /// not >= 3.
+    /// - [`NON_ZERO_TIP`](privacy::errors::NON_ZERO_TIP): Thrown if the transaction tip is not
+    /// zero.
+    /// - [`NON_ZERO_RESOURCE_PRICE`](privacy::errors::NON_ZERO_RESOURCE_PRICE): Thrown if the
+    /// transaction resource prices are not zero.
     ///
     /// #### Notes
     /// - This function is part of the account contract interface and is called automatically during

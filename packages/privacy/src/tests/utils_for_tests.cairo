@@ -241,6 +241,16 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
+    fn safe_validate(
+        self: @User, client_actions: Span<ClientAction>,
+    ) -> Result<felt252, Array<felt252>> {
+        self
+            .privacy
+            .safe_validate(
+                user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
+            )
+    }
+
     fn execute_view(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
         self
             .privacy
@@ -1525,7 +1535,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
         let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
-        self.cheat_before_execute();
+        self.cheat_valid_execution_info();
         let mut spy = spy_messages_to_l1();
         self.client.__execute__(:calls);
         self.general_assert_spy_messages(ref :spy);
@@ -1540,7 +1550,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
         let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
-        self.cheat_before_execute();
+        self.cheat_valid_execution_info();
         self.safe_client.__execute__(:calls)
     }
 
@@ -1559,7 +1569,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn safe_execute_with_calls(
         self: @PrivacyCfg, calls: Array<Call>,
     ) -> Result<(), Array<felt252>> {
-        self.cheat_before_execute();
+        self.cheat_valid_execution_info();
         self.safe_client.__execute__(:calls)
     }
 
@@ -1583,6 +1593,17 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_client.execute_view(:user_addr, :user_private_key, :client_actions)
     }
 
+    #[feature("safe_dispatcher")]
+    fn safe_validate(
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
+    ) -> Result<felt252, Array<felt252>> {
+        let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+        self.safe_client.__validate__(:calls)
+    }
+
     fn validate(
         self: @PrivacyCfg,
         user_addr: ContractAddress,
@@ -1590,6 +1611,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         client_actions: Span<ClientAction>,
     ) -> felt252 {
         let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+        self.cheat_valid_execution_info();
         self.client.__validate__(:calls)
     }
 
@@ -1610,7 +1632,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         assert_eq!(*message.to_address, Zero::zero());
     }
 
-    fn cheat_before_execute(self: @PrivacyCfg) {
+    fn cheat_valid_execution_info(self: @PrivacyCfg) {
         self.cheat_zero_caller_address();
         self.cheat_zero_resource_bounds();
     }
