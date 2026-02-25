@@ -6,14 +6,12 @@
  */
 
 import type { constants, ETransactionVersion3, ProviderInterface } from "starknet";
-import { EDAMode, encode, ETransactionVersion, hash, num, stark, transaction } from "starknet";
-import type {
-  Proof,
-  ProofProviderInterface,
-  ProofInvocation,
-  ProofInvocationFactoryDetails,
-} from "../interfaces.js";
+import { EDAMode, encode, hash, num, stark } from "starknet";
+import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
+import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js";
+import { buildProofFacts } from "../utils/proof-facts.js";
 import { toBigInt } from "../utils/convert.js";
+import { extractExecuteViewCalldata } from "../internal/proof-invocation-factory.js";
 
 /** VALIDATED constant - 'VALID' encoded as short string felt252 */
 const VALIDATED = encode.utf8ToBigInt("VALID");
@@ -29,24 +27,8 @@ export class CallMockProofProvider implements ProofProviderInterface {
     private readonly chainId: constants.StarknetChainId
   ) {}
 
-  getDefaultDetails(): ProofInvocationFactoryDetails {
-    return {
-      versions: [ETransactionVersion.V3],
-      nonce: 0n,
-      skipValidate: true,
-      resourceBounds: {
-        l1_gas: { max_amount: 0n, max_price_per_unit: 0n },
-        l2_gas: { max_amount: 0n, max_price_per_unit: 0n },
-        l1_data_gas: { max_amount: 0n, max_price_per_unit: 0n },
-      },
-      tip: 0n,
-      paymasterData: [],
-      accountDeploymentData: [],
-      nonceDataAvailabilityMode: "L1",
-      feeDataAvailabilityMode: "L1",
-      version: ETransactionVersion.V3,
-      chainId: this.chainId,
-    };
+  getDefaultDetails() {
+    return getDefaultProofDetails(this.chainId);
   }
 
   async prove(invocation: ProofInvocation): Promise<Proof> {
@@ -54,15 +36,36 @@ export class CallMockProofProvider implements ProofProviderInterface {
     // execute_view skips this since view functions don't have tx_info.
     await this.validateSignature(invocation);
 
+    // __execute__ calldata is Array<Call> with one Call targeting execute_view.
+    // Layout: [1, to, selector, inner_len, ...inner_calldata]
+    const executeViewCalldata = extractExecuteViewCalldata(invocation.calldata as string[]);
+
     const result = await this.provider.callContract({
       contractAddress: invocation.contractAddress,
       entrypoint: "execute_view",
-      calldata: invocation.calldata!,
+      calldata: executeViewCalldata,
     });
+
+    // Build proof facts for on-chain validation when provider supports getBlock (e.g. e2e with RpcProvider).
+    // Blockifier requires base_block_number to be at least STORED_BLOCK_HASH_BUFFER blocks behind current.
+    // TODO: Use latest-verifiable.
+    let proofFacts: string[] = [];
+    const latestBlock = await this.provider.getBlock("latest");
+    const currentBlockNumber = BigInt(latestBlock.block_number);
+    const blocksBack = BigInt(10);
+    const baseBlockNumber = currentBlockNumber > blocksBack ? currentBlockNumber - blocksBack : 1n;
+    const baseBlock = await this.provider.getBlock(Number(baseBlockNumber));
+    proofFacts = buildProofFacts(
+      invocation.contractAddress,
+      result,
+      baseBlockNumber,
+      baseBlock.block_hash ?? "0x0",
+      this.chainId
+    );
 
     // execute_view returns Span<ServerAction> which is serialized with its length prefix.
     // apply_actions also expects Span<ServerAction> with the length prefix, so we pass it through as-is.
-    return { output: result, outputHash: undefined!, data: undefined! };
+    return { output: result, data: undefined!, proofFacts };
   }
 
   /**
@@ -76,27 +79,19 @@ export class CallMockProofProvider implements ProofProviderInterface {
       return;
     }
 
-    // Extract user address from calldata (first element in __execute__ calldata)
+    // First arg of execute_view calldata is user_addr.
     const calldata = invocation.calldata as string[];
-    const userAddress = num.toHex(calldata[0]);
+    const innerCalldata = extractExecuteViewCalldata(calldata);
+    const userAddress = num.toHex(innerCalldata[0]);
 
-    // Compute transaction hash using the same parameters as the signer
-    // The signer wraps the call in getExecuteCalldata format
+    // Compute transaction hash using the same parameters as the signer.
+    // invocation.calldata is already the __execute__ calldata (Array<Call> wrapping
+    // execute_view), so use it directly — no re-wrapping via getExecuteCalldata.
     const details = this.getDefaultDetails();
-    const executeCalldata = transaction.getExecuteCalldata(
-      [
-        {
-          contractAddress: invocation.contractAddress,
-          entrypoint: "__execute__",
-          calldata,
-        },
-      ],
-      "1" // cairoVersion
-    );
     const txHash = hash.calculateInvokeTransactionHash({
-      senderAddress: userAddress,
+      senderAddress: num.toHex(invocation.contractAddress),
       version: details.version as ETransactionVersion3,
-      compiledCalldata: executeCalldata,
+      compiledCalldata: calldata,
       chainId: this.chainId,
       nonce: details.nonce!,
       accountDeploymentData: details.accountDeploymentData!,

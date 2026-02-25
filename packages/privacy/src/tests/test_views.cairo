@@ -2,11 +2,11 @@ use core::num::traits::Zero;
 use privacy::objects::{EncOutgoingChannelInfo, EncSubchannelInfo};
 use privacy::privacy::Privacy;
 use privacy::tests::utils_for_tests::constants::{
-    DEFAULT_AMOUNT, DEFAULT_FEE_AMOUNT, DEFAULT_FEE_COLLECTOR,
+    DEFAULT_AMOUNT, DEFAULT_FEE_AMOUNT, DEFAULT_FEE_COLLECTOR, DEFAULT_PROOF_VALIDITY_BLOCKS,
 };
 use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
 use privacy::utils::constants::OPEN_NOTE_SALT;
-use privacy::utils::unpacking;
+use privacy::utils::unpack;
 use snforge_std::TokenTrait;
 use starkware_utils::components::replaceability::interface::{
     IReplaceableDispatcher, IReplaceableDispatcherTrait,
@@ -33,7 +33,9 @@ fn test_constructor() {
     // Test fee amount and collector.
     assert_eq!(test.privacy.get_fee_amount(), Zero::zero());
     assert_eq!(test.privacy.get_fee_collector(), Zero::zero());
-    // TODO: Verify constructor events (CompliancePublicKeySet).
+    // Test proof validity blocks.
+    assert_eq!(test.privacy.get_proof_validity_blocks(), DEFAULT_PROOF_VALIDITY_BLOCKS);
+    // TODO: Verify constructor events (CompliancePublicKeySet, ProofValidityBlocksSet).
 }
 
 #[test]
@@ -44,6 +46,19 @@ fn test_constructor_zero_auditor_public_key() {
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
         auditor_public_key: Zero::zero(),
+        proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
+    );
+}
+
+#[test]
+#[should_panic(expected: 'ZERO_PROOF_VALIDITY_BLOCKS')]
+fn test_constructor_zero_proof_validity_blocks() {
+    let mut state = Privacy::contract_state_for_testing();
+    Privacy::constructor(
+        ref state,
+        governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
+        auditor_public_key: 'AUDITOR_PUBLIC_KEY'.try_into().unwrap(),
+        proof_validity_blocks: Zero::zero(),
     );
 }
 
@@ -71,6 +86,15 @@ fn test_get_fee_collector() {
     let fee_collector = DEFAULT_FEE_COLLECTOR;
     test.privacy.set_fee_collector(:fee_collector);
     assert_eq!(test.privacy.get_fee_collector(), fee_collector);
+}
+
+#[test]
+fn test_get_proof_validity_blocks() {
+    let mut test: Test = Default::default();
+    assert_eq!(test.privacy.get_proof_validity_blocks(), DEFAULT_PROOF_VALIDITY_BLOCKS);
+    let proof_validity_blocks = DEFAULT_PROOF_VALIDITY_BLOCKS + 100;
+    test.privacy.set_proof_validity_blocks(:proof_validity_blocks);
+    assert_eq!(test.privacy.get_proof_validity_blocks(), proof_validity_blocks);
 }
 
 #[test]
@@ -218,10 +242,7 @@ fn test_get_note() {
     let token_addr = token.contract_address();
     let mut depositor = test.new_user();
     let amount = DEFAULT_AMOUNT;
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_addr, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
 
     // Create and verify encrypted note.
     let enc_note_input = user_1
@@ -244,7 +265,7 @@ fn test_get_note() {
     // Deposit to the existing open note and verify.
     depositor.fund_and_deposit_to_open_note(:token, note_id: open_note_id, :amount);
     let filled_note = test.privacy.get_note(note_id: open_note_id);
-    let (salt, stored_amount) = unpacking(packed_value: filled_note.packed_value);
+    let (salt, stored_amount) = unpack(packed_value: filled_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount);
     assert_eq!(filled_note.token, token_addr);

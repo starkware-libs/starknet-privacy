@@ -75,10 +75,17 @@ const DEVNET_RESOURCE_BOUNDS = {
   },
 };
 
+export interface DevnetConfig {
+  /** Number of predeployed user accounts (excludes admin). Default: 2 (alice, bob). */
+  userAccounts?: number;
+}
+
 export interface DevnetEnvironment {
   alice: Account;
   bob: Account;
   admin: Account;
+  /** Extra user accounts beyond alice and bob (index 0 = 3rd user, etc.) */
+  extraAccounts: Account[];
   strk: string;
   eth: string;
   privacy: PrivacyPoolContract;
@@ -133,11 +140,21 @@ export class Devnet {
   private provider?: RpcProvider;
   public setup?: DevnetEnvironment;
   private accountNonces = new AddressMap<number>(() => 0);
+  private config: Required<DevnetConfig>;
 
-  /** The RPC URL of the running devnet instance. */
+  constructor(config?: DevnetConfig) {
+    this.config = { userAccounts: Math.max(config?.userAccounts ?? 2, 2) };
+  }
+
+  /** HTTP RPC URL of the running devnet (e.g. `http://127.0.0.1:5050`). */
   get url(): string {
     if (!this.devnet) throw new Error("Devnet not initialized");
     return this.devnet.provider.url;
+  }
+
+  /** WebSocket URL of the running devnet (e.g. `ws://127.0.0.1:5050/ws`). */
+  get wsUrl(): string {
+    return this.url.replace(/^http/, "ws") + "/ws";
   }
 
   /**
@@ -154,7 +171,7 @@ export class Devnet {
       "--state-archive-capacity",
       "full", // Required for block hash computation (proof_facts validation)
       "--accounts",
-      "3", // 3 accounts (alice, bob, admin)
+      String(this.config.userAccounts + 1), // user accounts + admin
       "--l2-gas-price-fri",
       "1",
       "--data-gas-price-fri",
@@ -162,7 +179,7 @@ export class Devnet {
       "--gas-price-fri",
       "1",
       "--dump-on",
-      "request", // Enable devnet_dump RPC method
+      "request", // Enable devnet_dump RPC (no-op unless explicitly called)
     ];
 
     // Spawn a devnet instance on a random free port using the system-installed binary
@@ -200,49 +217,35 @@ export class Devnet {
       public_key: string;
     }>;
 
-    // Setup Alice (first account)
-    const aliceAccount = accounts[0];
-    const alicePrivateKeyBytes = new Uint8Array(
-      aliceAccount.private_key
+    // Create user accounts (alice, bob, and any extra)
+    const userAccounts: Account[] = [];
+    for (let i = 0; i < this.config.userAccounts; i++) {
+      const raw = accounts[i];
+      const keyBytes = new Uint8Array(
+        raw.private_key
+          .replace("0x", "")
+          .match(/.{1,2}/g)!
+          .map((byte) => parseInt(byte, 16))
+      );
+      userAccounts.push(
+        new Account({ provider: this.provider, address: raw.address, signer: keyBytes })
+      );
+    }
+    const [alice, bob] = userAccounts;
+
+    // Admin is always the last predeployed account
+    const adminRaw = accounts[this.config.userAccounts];
+    const adminKeyBytes = new Uint8Array(
+      adminRaw.private_key
         .replace("0x", "")
         .match(/.{1,2}/g)!
         .map((byte) => parseInt(byte, 16))
     );
-    const alice = new Account({
-      provider: this.provider,
-      address: aliceAccount.address,
-      signer: alicePrivateKeyBytes,
-    });
-
-    // Setup Bob (second account)
-    const bobAccount = accounts[1];
-    const bobPrivateKeyBytes = new Uint8Array(
-      bobAccount.private_key
-        .replace("0x", "")
-        .match(/.{1,2}/g)!
-        .map((byte) => parseInt(byte, 16))
-    );
-    const bob = new Account({
-      provider: this.provider,
-      address: bobAccount.address,
-      signer: bobPrivateKeyBytes,
-    });
-
-    // Setup Admin (third account)
-    const adminAccount = accounts[2];
-    const adminPrivateKeyBytes = new Uint8Array(
-      adminAccount.private_key
-        .replace("0x", "")
-        .match(/.{1,2}/g)!
-        .map((byte) => parseInt(byte, 16))
-    );
-
-    // Wrap admin account with devnet behavior (automatic nonce management)
     const admin = this.wrapAccount(
       new Account({
         provider: this.provider,
-        address: adminAccount.address,
-        signer: adminPrivateKeyBytes,
+        address: adminRaw.address,
+        signer: adminKeyBytes,
         cairoVersion: "1",
       })
     );
@@ -268,10 +271,20 @@ export class Devnet {
       });
     }
 
-    this.setup = { alice, bob, admin, strk, eth, privacy, provider: this.provider };
+    this.setup = {
+      alice,
+      bob,
+      admin,
+      extraAccounts: userAccounts.slice(2),
+      strk,
+      eth,
+      privacy,
+      provider: this.provider,
+    };
 
     debugLog("devnet", "initialize", () =>
       Object.entries(this.setup!)
+        .filter(([, value]) => value && typeof value === "object" && "address" in value)
         .map(([key, value]) => `${key}: ${value.address}`)
         .join("\n")
     );
@@ -353,13 +366,14 @@ export class Devnet {
     debugLog("devnet", "setup", "class hash:", classHash);
 
     // Deploy the contract
-    // Constructor params: governance_admin, auditor_public_key
+    // Constructor params: governance_admin, auditor_public_key, proof_validity_blocks
     const deployResponse = await deployer.deployContract(
       {
         classHash,
         constructorCalldata: [
           deployer.address, // governance_admin
           "0x1", // auditor_public_key (dummy value)
+          "450", // proof_validity_blocks (~15 min at 2s/block)
         ],
         salt: "0x0", // Deterministic salt for reproducible contract address
       },
@@ -404,7 +418,7 @@ export class Devnet {
     );
 
     const response = await this.setup.admin.executeFromOutside(outsideTransaction, {
-      proofFacts: callAndProof.proofFacts,
+      proofFacts: callAndProof.proof.proofFacts,
     });
     return this.provider!.waitForTransaction(response.transaction_hash);
   }
@@ -435,6 +449,8 @@ export interface DevnetTestEnv {
  * Configuration for createDevnetTestEnv.
  */
 export interface DevnetTestEnvConfig {
+  /** Devnet configuration (account count, etc.) */
+  devnet?: DevnetConfig;
   /** Options for discovery (rate limiting, etc.) */
   discoveryOptions?: DiscoveryOptions;
 }
@@ -457,14 +473,14 @@ export async function createDevnetTestEnv(
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
-      viewingKeyProvider: { getViewingKey: () => toBigInt("0xA11CE") },
+      viewingKeyProvider: { getViewingKey: async () => toBigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),
     bob: createPrivateTransfers({
       account: env.bob,
-      viewingKeyProvider: { getViewingKey: () => toBigInt("0xB0B") },
+      viewingKeyProvider: { getViewingKey: async () => toBigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,

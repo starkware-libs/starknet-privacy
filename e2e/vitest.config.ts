@@ -1,3 +1,4 @@
+import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -6,5 +7,6 @@ export default defineConfig({
     fileParallelism: false,
     hookTimeout: 180_000,
     testTimeout: 120_000,
+    env: loadEnv("", process.cwd(), ""),
   },
 });

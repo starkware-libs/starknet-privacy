@@ -14,7 +14,7 @@ use privacy::hashes::{
 };
 use privacy::utils::constants::{VIRTUAL_SNOS, VIRTUAL_SNOS0};
 use privacy::utils::{
-    ProofFacts, _compute_message_hash, decode_note_amount, derive_public_key, enc_note_packed_value,
+    ProofFacts, compute_message_hash, decode_note_amount, derive_public_key, enc_note_packed_value,
     encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
     encrypt_subchannel_info, encrypt_user_addr,
 };
@@ -316,7 +316,7 @@ fn generate_reference_proof_facts() {
     actions.serialize(ref serialized_actions);
 
     // Compute message hash using _compute_message_hash (includes payload_len)
-    let message_hash = _compute_message_hash(
+    let message_hash = compute_message_hash(
         :actions, contract_address: pool_address.try_into().unwrap(),
     );
 

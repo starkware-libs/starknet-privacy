@@ -37,6 +37,7 @@ import type { BigNumberish } from "starknet";
 import { generateRandom, generateRandom120 } from "../utils/crypto.js";
 import { debugLog } from "../utils/logging.js";
 import { toHex } from "../utils/convert.js";
+import { ReorgError } from "./indexer-discovery.js";
 
 export type CompileResult = {
   clientActions: ClientAction[];
@@ -88,6 +89,24 @@ export class ActionCompiler {
    * Compile actions by resolving contexts, updating the registry, and producing ClientAction[].
    */
   async compile(actions: Actions, options?: ExecuteOptions): Promise<CompileResult> {
+    try {
+      return await this.compileOnce(actions, options);
+    } catch (e) {
+      if (e instanceof ReorgError) {
+        debugLog("compiler", "compile", "reorg detected", e);
+        // Reorg detected: clear stale registry state and retry from scratch.
+        if (options?.registry) {
+          options.registry.notes.clear();
+          options.registry.channels.clear();
+          delete options.registry.cursor;
+        }
+        return await this.compileOnce(actions, options);
+      }
+      throw e;
+    }
+  }
+
+  private async compileOnce(actions: Actions, options?: ExecuteOptions): Promise<CompileResult> {
     const registry_ = options?.registry ?? createEmptyRegistry();
     const registry = options?.registryConst ? this.cloneRegistry(registry_) : registry_;
     const recipientsNeeded = this.getRecipientsNeeded(actions);

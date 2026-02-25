@@ -17,6 +17,34 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
+    "name": "core::array::Span::<core::felt252>",
+    "members": [
+      {
+        "name": "snapshot",
+        "type": "@core::array::Array::<core::felt252>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "core::starknet::account::Call",
+    "members": [
+      {
+        "name": "to",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "selector",
+        "type": "core::felt252"
+      },
+      {
+        "name": "calldata",
+        "type": "core::array::Span::<core::felt252>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
     "name": "privacy::actions::SetViewingKeyInput",
     "members": [
       {
@@ -197,16 +225,6 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "core::array::Span::<core::felt252>",
-    "members": [
-      {
-        "name": "snapshot",
-        "type": "@core::array::Array::<core::felt252>"
-      }
-    ]
-  },
-  {
-    "type": "struct",
     "name": "privacy::actions::InvokeExternalInput",
     "members": [
       {
@@ -305,7 +323,7 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "privacy::actions::AppendToVecInput",
+    "name": "privacy::actions::AppendInput",
     "members": [
       {
         "name": "recipient_addr",
@@ -516,8 +534,8 @@ export const PrivacyPoolABI = [
         "type": "privacy::actions::WriteOnceInput"
       },
       {
-        "name": "AppendToVec",
-        "type": "privacy::actions::AppendToVecInput"
+        "name": "Append",
+        "type": "privacy::actions::AppendInput"
       },
       {
         "name": "TransferFrom",
@@ -576,16 +594,8 @@ export const PrivacyPoolABI = [
         "name": "__execute__",
         "inputs": [
           {
-            "name": "user_addr",
-            "type": "core::starknet::contract_address::ContractAddress"
-          },
-          {
-            "name": "user_private_key",
-            "type": "core::felt252"
-          },
-          {
-            "name": "client_actions",
-            "type": "core::array::Span::<privacy::actions::ClientAction>"
+            "name": "calls",
+            "type": "core::array::Array::<core::starknet::account::Call>"
           }
         ],
         "outputs": [],
@@ -640,16 +650,8 @@ export const PrivacyPoolABI = [
         "name": "__validate__",
         "inputs": [
           {
-            "name": "user_addr",
-            "type": "core::starknet::contract_address::ContractAddress"
-          },
-          {
-            "name": "user_private_key",
-            "type": "core::felt252"
-          },
-          {
-            "name": "client_actions",
-            "type": "core::array::Span::<privacy::actions::ClientAction>"
+            "name": "calls",
+            "type": "core::array::Array::<core::starknet::account::Call>"
           }
         ],
         "outputs": [
@@ -969,6 +971,17 @@ export const PrivacyPoolABI = [
           }
         ],
         "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_proof_validity_blocks",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
+          }
+        ],
+        "state_mutability": "view"
       }
     ]
   },
@@ -995,15 +1008,35 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
-        "name": "set_fee",
+        "name": "set_fee_amount",
         "inputs": [
           {
             "name": "fee_amount",
             "type": "core::integer::u128"
-          },
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "set_fee_collector",
+        "inputs": [
           {
             "name": "fee_collector",
             "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "set_proof_validity_blocks",
+        "inputs": [
+          {
+            "name": "proof_validity_blocks",
+            "type": "core::integer::u64"
           }
         ],
         "outputs": [],
@@ -1637,6 +1670,10 @@ export const PrivacyPoolABI = [
       {
         "name": "auditor_public_key",
         "type": "core::felt252"
+      },
+      {
+        "name": "proof_validity_blocks",
+        "type": "core::integer::u64"
       }
     ]
   },
@@ -2480,17 +2517,36 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "event",
-    "name": "privacy::events::FeeSet",
+    "name": "privacy::events::FeeAmountSet",
     "kind": "struct",
     "members": [
       {
         "name": "fee_amount",
         "type": "core::integer::u128",
-        "kind": "data"
-      },
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "privacy::events::FeeCollectorSet",
+    "kind": "struct",
+    "members": [
       {
         "name": "fee_collector",
         "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "privacy::events::ProofValidityBlocksSet",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "proof_validity_blocks",
+        "type": "core::integer::u64",
         "kind": "key"
       }
     ]
@@ -2561,8 +2617,18 @@ export const PrivacyPoolABI = [
         "kind": "nested"
       },
       {
-        "name": "FeeSet",
-        "type": "privacy::events::FeeSet",
+        "name": "FeeAmountSet",
+        "type": "privacy::events::FeeAmountSet",
+        "kind": "nested"
+      },
+      {
+        "name": "FeeCollectorSet",
+        "type": "privacy::events::FeeCollectorSet",
+        "kind": "nested"
+      },
+      {
+        "name": "ProofValidityBlocksSet",
+        "type": "privacy::events::ProofValidityBlocksSet",
         "kind": "nested"
       }
     ]

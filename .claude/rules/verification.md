@@ -5,11 +5,17 @@
 - `cargo clippy` - lints (0 warnings required), including integration tests, for all targets
 - `cargo test` - all tests pass, for all targets
 
-**TypeScript verification checklist:**
-- `cd sdk && npm run format:check` - prettier formatting
-- `cd sdk && npm run lint:check` - eslint lints
-- `cd sdk && npm run build` - compiles
-- `cd sdk && npm run test:fast` - tests pass (excludes devnet/parallel-discovery)
+**SDK verification checklist (from `sdk/`):**
+- `npx prettier --check src/ tests/` - code formatting (must include `tests/` — husky pre-commit checks both)
+- `npx eslint src/ tests/` - lints (0 warnings required, must include `tests/`)
+- `npx tsc --noEmit` - type-check passes
+
+## E2E integration gate
+
+After finalizing any change to Rust crates or the TypeScript SDK, propose running E2E tests to the user. Before running them:
+1. Rebuild affected Rust binaries: `cargo build -p <crate>` (E2E spawns binaries from `target/debug/`)
+2. Rebuild the SDK: `cd sdk && npm run build` (E2E resolves `starknet-sdk` from built `.d.ts`/`.js`, not source)
+3. Run E2E: `cd e2e && npm test`
 
 ## Cross-layer consistency
 
@@ -32,4 +38,4 @@ After all verification passes (fmt, clippy, tests), ask the user if they want to
 
 ## E2E tests
 
-E2E tests (`cd e2e && npm test`) are slow. Run them only once, at the very end, after all edits across all layers are complete. Do not run them after each incremental change.
+E2E tests (`cd e2e && npm test`) are slow. Run them only once per finalized changeset, not after each incremental edit.

@@ -18,6 +18,9 @@ pub enum StorageError {
     /// Failed to convert value to u64.
     #[error("value is too large to convert to u64: {0}")]
     CastToU64Error(Felt),
+    /// The contract does not exist at the queried address/block.
+    #[error("contract not found")]
+    ContractNotFound,
     /// Backend-specific error.
     #[error("{0}")]
     Backend(#[source] Box<dyn std::error::Error + Send + Sync>),

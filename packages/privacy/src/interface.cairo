@@ -24,7 +24,7 @@ pub trait IClient<T> {
     ///
     /// #### Preconditions
     /// - The caller address must be zero.
-    /// - The TX version must be >= 3.
+    /// - The TX version must be 3.
     /// - The effective fee of the transaction is zero (i.e. `tip` and `resource_bounds`).
     /// - `calls` must contain exactly one call to this contract with selector `execute_view`.
     /// - The single call's calldata must deserialize to `(user_addr, user_private_key,
@@ -41,14 +41,6 @@ pub trait IClient<T> {
     /// in the input.
     ///
     /// #### Reverts
-    /// - [`NON_ZERO_CALLER`](privacy::errors::NON_ZERO_CALLER): Thrown if the caller address is not
-    /// zero.
-    /// - [`INVALID_TX_VERSION`](privacy::errors::INVALID_TX_VERSION): Thrown if the TX version is
-    /// not >= 3.
-    /// - [`NON_ZERO_TIP`](privacy::errors::NON_ZERO_TIP): Thrown if the transaction tip is not
-    /// zero.
-    /// - [`NON_ZERO_RESOURCE_PRICE`](privacy::errors::NON_ZERO_RESOURCE_PRICE): Thrown if the
-    /// transaction resource prices are not zero.
     /// - [`INVALID_SIGNATURE`](privacy::errors::INVALID_SIGNATURE): Thrown if the TX signature is
     /// invalid (The TX signature should be of `user_addr` who is executing the actions).
     /// - [`EXPECTED_ONE_CALL`](privacy::errors::EXPECTED_ONE_CALL): Thrown if `calls.len() != 1`.
@@ -117,8 +109,10 @@ pub trait IClient<T> {
     /// `user_private_key` is not in canonical form.
     /// - [`ACTIONS_OUT_OF_ORDER`](privacy::errors::ACTIONS_OUT_OF_ORDER): Thrown if
     /// `client_actions` is not ordered correctly.
-    /// - [`NO_PRIVACY_ACTIONS`](privacy::errors::NO_PRIVACY_ACTIONS): Thrown if `client_actions`
-    /// does not include any privacy-related actions.
+    /// - [`NO_REPLAY_PROTECTION`](privacy::errors::NO_REPLAY_PROTECTION): Thrown if
+    /// `client_actions`
+    /// does not include any action that provides replay protection (e.g. one that compiles to
+    /// WriteOnce).
     /// - [`FINAL_BALANCE_MUST_BE_ZERO`](privacy::errors::FINAL_BALANCE_MUST_BE_ZERO): Thrown if
     /// token balances are not zero after all actions are processed.
     ///
@@ -344,14 +338,13 @@ pub trait IClient<T> {
     /// contract.
     /// - `client_actions` must be ordered by phase: SetViewingKey, OpenChannel, OpenSubchannel,
     /// Deposit, UseNote, CreateEncNote/CreateOpenNote, Withdraw, InvokeExternal.
-    /// - At most one [`SetViewingKey`](privacy::actions::ClientAction::SetViewingKey) action and at
-    /// most one [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) action are
+    /// - At most one [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) action is
     /// allowed per transaction.
-    /// - At least one privacy-related action must be included
+    /// - At least one action that provides replay protection must be included
     /// ([`Deposit`](privacy::actions::ClientAction::Deposit),
     /// [`Withdraw`](privacy::actions::ClientAction::Withdraw), and
-    /// [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) are not
-    /// privacy-related).
+    /// [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) do not provide replay
+    /// protection).
     ///
     /// #### Events Emitted
     /// None
@@ -380,10 +373,11 @@ pub trait IClient<T> {
         client_actions: Span<ClientAction>,
     ) -> Span<ServerAction>;
 
-    /// An empty implementation for the TX validation, always returns valid.
+    /// Validates execution context and returns valid.
     ///
     /// This function is called by the account (privacy) contract during transaction validation to
-    /// check if the transaction can be executed. It always returns
+    /// check if the transaction can be executed. It validates that the execution info has zero
+    /// caller, tx version 3, zero tip, and zero resource prices, then returns
     /// [`VALIDATED`](starknet::VALIDATED).
     ///
     /// #### Parameters
@@ -391,7 +385,17 @@ pub trait IClient<T> {
     /// framework.
     ///
     /// #### Returns
-    /// - (`felt252`): Always returns [`VALIDATED`](starknet::VALIDATED).
+    /// - (`felt252`): Returns [`VALIDATED`](starknet::VALIDATED) when execution info is valid.
+    ///
+    /// #### Reverts
+    /// - [`NON_ZERO_CALLER`](privacy::errors::NON_ZERO_CALLER): Thrown if the caller address is not
+    /// zero.
+    /// - [`INVALID_TX_VERSION`](privacy::errors::INVALID_TX_VERSION): Thrown if the TX version is
+    /// not 3.
+    /// - [`NON_ZERO_TIP`](privacy::errors::NON_ZERO_TIP): Thrown if the transaction tip is not
+    /// zero.
+    /// - [`NON_ZERO_RESOURCE_PRICE`](privacy::errors::NON_ZERO_RESOURCE_PRICE): Thrown if the
+    /// transaction resource prices are not zero.
     ///
     /// #### Notes
     /// - This function is part of the account contract interface and is called automatically during
@@ -706,6 +710,15 @@ pub trait IViews<T> {
     /// #### Returns
     /// - (`ContractAddress`): The fee collector address.
     fn get_fee_collector(self: @T) -> ContractAddress;
+
+    /// Returns the number of blocks that a proof is valid for.
+    ///
+    /// #### Parameters
+    /// None
+    ///
+    /// #### Returns
+    /// - (`u64`): The number of blocks that a proof is valid for.
+    fn get_proof_validity_blocks(self: @T) -> u64;
 }
 
 #[starknet::interface]
@@ -777,4 +790,27 @@ pub trait IAdmin<T> {
     /// #### Access Control
     /// - Only app governor.
     fn set_fee_collector(ref self: T, fee_collector: ContractAddress);
+
+    /// Sets the number of blocks that a proof is valid for.
+    ///
+    /// #### Parameters
+    /// - `proof_validity_blocks` (`u64`): The number of blocks that a proof is valid for.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Preconditions
+    /// - The number of blocks must be greater than 0.
+    ///
+    /// #### Events Emitted
+    /// - [`ProofValidityBlockIntervalSet`](privacy::events::ProofValidityBlockIntervalSet): Emitted
+    /// with the new proof validity block interval.
+    ///
+    /// #### Reverts
+    /// - [`ZERO_PROOF_VALIDITY_BLOCKS`](privacy::errors::ZERO_PROOF_VALIDITY_BLOCKS):
+    /// Thrown if `proof_validity_blocks` is zero.
+    ///
+    /// #### Access Control
+    /// - Only app governor.
+    fn set_proof_validity_blocks(ref self: T, proof_validity_blocks: u64);
 }

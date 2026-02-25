@@ -21,15 +21,16 @@ pub mod Privacy {
         EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
         TokenBalances, TokenBalancesTrait,
     };
-    use privacy::utils::constants::{INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS};
+    use privacy::utils::constants::{
+        INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
+    };
     use privacy::utils::{
-        StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
-        decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
-        encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_execute_view_inputs,
-        extract_server_actions_from_execute_and_panic, is_canonical_key, open_note, packing,
-        panic_with_server_actions, send_message_to_server, to_write_once_action, unpacking,
-        validate_proof,
+        ProofFacts, StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
+        compute_message_hash, decode_note_amount, derive_public_key, enc_note_packed_value,
+        encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
+        encrypt_subchannel_info, encrypt_user_addr, extract_execute_view_inputs,
+        extract_server_actions_from_execute_and_panic, is_canonical_key, open_note, pack,
+        panic_with_server_actions, send_message_to_server, to_write_once_action, unpack,
     };
     use privacy::{errors, events};
     use starknet::account::Call;
@@ -40,7 +41,10 @@ pub mod Privacy {
     use starknet::storage_access::{
         StorageBaseAddress, storage_address_from_base_and_offset, storage_base_address_from_felt252,
     };
-    use starknet::syscalls::{call_contract_syscall, storage_read_syscall, storage_write_syscall};
+    use starknet::syscalls::{
+        call_contract_syscall, get_execution_info_v3_syscall, storage_read_syscall,
+        storage_write_syscall,
+    };
     use starknet::{
         ContractAddress, SyscallResultTrait, VALIDATED, get_caller_address, get_contract_address,
         get_execution_info,
@@ -94,6 +98,8 @@ pub mod Privacy {
         fee_amount: u128,
         /// Address that receives the fee.
         fee_collector: ContractAddress,
+        /// The number of blocks that a proof is valid for.
+        proof_validity_blocks: u64,
     }
 
     #[event]
@@ -118,15 +124,20 @@ pub mod Privacy {
         NoteUsed: events::NoteUsed,
         FeeAmountSet: events::FeeAmountSet,
         FeeCollectorSet: events::FeeCollectorSet,
+        ProofValidityBlocksSet: events::ProofValidityBlocksSet,
     }
 
     #[constructor]
     pub(crate) fn constructor(
-        ref self: ContractState, governance_admin: ContractAddress, auditor_public_key: felt252,
+        ref self: ContractState,
+        governance_admin: ContractAddress,
+        auditor_public_key: felt252,
+        proof_validity_blocks: u64,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(upgrade_delay: Zero::zero());
         self._set_auditor_public_key(:auditor_public_key);
+        self._set_proof_validity_blocks(:proof_validity_blocks);
     }
 
     #[abi(embed_v0)]
@@ -141,12 +152,13 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn __validate__(self: @ContractState, calls: Array<Call>) -> felt252 {
+            let execution_info = get_execution_info();
+            assert_valid_execution_info(:execution_info);
             VALIDATED
         }
 
         fn __execute__(ref self: ContractState, calls: Array<Call>) {
             let execution_info = get_execution_info();
-            assert_valid_execution_info(:execution_info);
             let (user_addr, user_private_key, client_actions) = extract_execute_view_inputs(
                 :calls, contract_address: execution_info.contract_address,
             );
@@ -206,70 +218,47 @@ pub mod Privacy {
             let mut server_actions: Array<ServerAction> = array![];
             let mut curr_phase = ClientActionTrait::ACCOUNT_PHASE;
             let mut token_balances: TokenBalances = Default::default();
-            // Used to make sure a storage action was included in the client actions.
-            let mut has_privacy_action = false;
+            // Used to ensure at least one client action provides replay protection (WriteOnce).
+            let mut has_replay_protection = false;
             for client_action in client_actions {
-                curr_phase = client_action.assert_phase_and_get_next(:curr_phase);
-                let (actions, should_execute) = match *client_action {
-                    ClientAction::SetViewingKey(input) => (
-                        self.set_viewing_key(:user_addr, :user_private_key, :input), true,
-                    ),
-                    ClientAction::OpenChannel(input) => (
-                        self
-                            .open_channel(
-                                sender_addr: user_addr,
-                                sender_private_key: user_private_key,
-                                :input,
-                            ),
-                        true,
-                    ),
-                    ClientAction::OpenSubchannel(input) => (
-                        self.open_subchannel(sender_addr: user_addr, :input), true,
-                    ),
-                    ClientAction::Deposit(input) => (
-                        self.deposit(:user_addr, :input, ref :token_balances), false,
-                    ),
-                    ClientAction::CreateEncNote(input) => (
-                        self
-                            .create_enc_note(
-                                sender_addr: user_addr,
-                                sender_private_key: user_private_key,
-                                :input,
-                                ref :token_balances,
-                            ),
-                        true,
-                    ),
-                    ClientAction::CreateOpenNote(input) => (
-                        self
-                            .create_open_note(
-                                sender_addr: user_addr,
-                                sender_private_key: user_private_key,
-                                :input,
-                            ),
-                        true,
-                    ),
-                    ClientAction::UseNote(input) => (
-                        self
-                            .use_note(
-                                owner_addr: user_addr,
-                                owner_private_key: user_private_key,
-                                :input,
-                                ref :token_balances,
-                            ),
-                        true,
-                    ),
-                    ClientAction::Withdraw(input) => (
-                        self.withdraw(:user_addr, :input, ref :token_balances), false,
-                    ),
-                    ClientAction::InvokeExternal(input) => (self.invoke_external(:input), false),
+                client_action.assert_and_advance_phase(ref :curr_phase);
+                let actions = match *client_action {
+                    ClientAction::SetViewingKey(input) => self
+                        .set_viewing_key(:user_addr, :user_private_key, :input),
+                    ClientAction::OpenChannel(input) => self
+                        .open_channel(
+                            sender_addr: user_addr, sender_private_key: user_private_key, :input,
+                        ),
+                    ClientAction::OpenSubchannel(input) => self
+                        .open_subchannel(sender_addr: user_addr, :input),
+                    ClientAction::Deposit(input) => self
+                        .deposit(:user_addr, :input, ref :token_balances),
+                    ClientAction::CreateEncNote(input) => self
+                        .create_enc_note(
+                            sender_addr: user_addr,
+                            sender_private_key: user_private_key,
+                            :input,
+                            ref :token_balances,
+                        ),
+                    ClientAction::CreateOpenNote(input) => self
+                        .create_open_note(
+                            sender_addr: user_addr, sender_private_key: user_private_key, :input,
+                        ),
+                    ClientAction::UseNote(input) => self
+                        .use_note(
+                            owner_addr: user_addr,
+                            owner_private_key: user_private_key,
+                            :input,
+                            ref :token_balances,
+                        ),
+                    ClientAction::Withdraw(input) => self
+                        .withdraw(:user_addr, :input, ref :token_balances),
+                    ClientAction::InvokeExternal(input) => self.invoke_external(:input),
                 };
-                if should_execute {
-                    has_privacy_action = true;
-                    self._apply_actions(actions.span());
-                }
+                self._client_apply_actions(actions: actions.span(), ref :has_replay_protection);
                 server_actions.extend(actions);
             }
-            assert(has_privacy_action, errors::NO_PRIVACY_ACTIONS);
+            assert(has_replay_protection, errors::NO_REPLAY_PROTECTION);
             token_balances.squash().assert_valid();
 
             server_actions.span()
@@ -289,7 +278,6 @@ pub mod Privacy {
 
             // Derive the public key from the private key.
             let user_public_key = derive_public_key(private_key: user_private_key);
-            assert(user_public_key.is_non_zero(), internal_errors::ZERO_DERIVED_PUBLIC_KEY);
 
             // Encrypt the private key for the auditor.
             let enc_private_key = encrypt_private_key(
@@ -667,7 +655,7 @@ pub mod Privacy {
     pub impl ServerImpl of IServer<ContractState> {
         fn apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             self.pausable.assert_not_paused();
-            validate_proof(:actions);
+            self.validate_proof(:actions);
             self.collect_fee();
             self._apply_actions(:actions);
         }
@@ -685,7 +673,7 @@ pub mod Privacy {
             let Note { packed_value, token: note_token, depositor } = note_entry.read();
             assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
-            let (salt, current_amount) = unpacking(:packed_value);
+            let (salt, current_amount) = unpack(:packed_value);
             assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
             assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
             assert(token == note_token, errors::TOKEN_MISMATCH);
@@ -697,7 +685,7 @@ pub mod Privacy {
                 );
 
             // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
-            let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
+            let new_packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
             assert(new_packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
             note_entry.packed_value.write(new_packed_value);
 
@@ -707,6 +695,43 @@ pub mod Privacy {
 
     #[generate_trait]
     pub impl ServerInternalImpl of ServerInternalTrait {
+        fn validate_proof(self: @ContractState, actions: Span<ServerAction>) {
+            let execution_info = get_execution_info_v3_syscall().unwrap_syscall();
+            let contract_address = execution_info.contract_address;
+            let mut proof_facts_span = execution_info.tx_info.proof_facts;
+            assert(!proof_facts_span.is_empty(), errors::EMPTY_PROOF_FACTS);
+            let proof_facts: ProofFacts = Serde::deserialize(ref proof_facts_span)
+                .expect(errors::PROOF_FACTS_DESERIALIZE_ERROR);
+            assert(proof_facts_span.is_empty(), errors::INVALID_PROOF_FACTS);
+            let ProofFacts {
+                proof_version: _,
+                program_variant,
+                virtual_program_hash: _,
+                starknet_os_output_version,
+                base_block_number,
+                base_block_hash: _,
+                starknet_os_config_hash: _,
+                message_to_l1_hashes,
+            } = proof_facts;
+
+            // Assert program variant and output version are correct.
+            assert(program_variant == VIRTUAL_SNOS, errors::INVALID_PROGRAM_VARIANT);
+            assert(starknet_os_output_version == VIRTUAL_SNOS0, errors::INVALID_OS_OUTPUT_VERSION);
+
+            // Assert base block number is recent.
+            let current_block_number = execution_info.block_info.block_number;
+            assert(base_block_number < current_block_number, errors::INVALID_BASE_BLOCK_NUMBER);
+            assert(
+                current_block_number <= base_block_number + self.proof_validity_blocks.read(),
+                errors::PROOF_EXPIRED,
+            );
+
+            // Assert that the message hash is included in the L1 messages,
+            // meaning the proof is valid for this transaction.
+            let message_hash = compute_message_hash(:actions, :contract_address);
+            assert(message_to_l1_hashes == [message_hash].span(), errors::INVALID_PROOF_MSG);
+        }
+
         fn collect_fee(ref self: ContractState) {
             let fee_amount = self.fee_amount.read();
             if fee_amount.is_non_zero() {
@@ -738,6 +763,30 @@ pub mod Privacy {
             };
         }
 
+
+        fn _client_apply_actions(
+            ref self: ContractState, actions: Span<ServerAction>, ref has_replay_protection: bool,
+        ) {
+            for action in actions {
+                match *action {
+                    ServerAction::WriteOnce(input) => {
+                        self._apply_write_once(:input);
+                        has_replay_protection = true;
+                    },
+                    ServerAction::Append(input) => self._apply_append(:input),
+                    ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
+                    ServerAction::TransferFrom(_) => {},
+                    ServerAction::TransferTo(_) => {},
+                    ServerAction::Invoke(_) => {},
+                    ServerAction::EmitViewingKeySet(_) => {},
+                    ServerAction::EmitWithdrawal(_) => {},
+                    ServerAction::EmitDeposit(_) => {},
+                    ServerAction::EmitOpenNoteCreated(_) => {},
+                    ServerAction::EmitNoteUsed(_) => {},
+                }
+            }
+        }
+
         fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
             let WriteOnceInput { storage_address, value } = input;
             let base: StorageBaseAddress = storage_base_address_from_felt252(addr: storage_address);
@@ -749,7 +798,6 @@ pub mod Privacy {
                     errors::NON_ZERO_VALUE,
                 );
                 storage_write_syscall(address_domain: 0, :address, value: *felt).unwrap_syscall();
-
                 offset += 1;
             }
         }
@@ -847,6 +895,10 @@ pub mod Privacy {
         fn get_fee_collector(self: @ContractState) -> ContractAddress {
             self.fee_collector.read()
         }
+
+        fn get_proof_validity_blocks(self: @ContractState) -> u64 {
+            self.proof_validity_blocks.read()
+        }
     }
 
     #[abi(embed_v0)]
@@ -870,12 +922,17 @@ pub mod Privacy {
         fn set_fee_collector(ref self: ContractState, fee_collector: ContractAddress) {
             // TODO: Change to real role.
             self.roles.only_app_governor();
-            let fee_amount = self.fee_amount.read();
-            if fee_amount.is_non_zero() {
+            if self.fee_amount.read().is_non_zero() {
                 assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
             }
             self.fee_collector.write(fee_collector);
             self.emit(events::FeeCollectorSet { fee_collector });
+        }
+
+        fn set_proof_validity_blocks(ref self: ContractState, proof_validity_blocks: u64) {
+            // TODO: Change to real role.
+            self.roles.only_app_governor();
+            self._set_proof_validity_blocks(:proof_validity_blocks);
         }
     }
 
@@ -885,6 +942,12 @@ pub mod Privacy {
             assert(auditor_public_key.is_non_zero(), errors::ZERO_AUDITOR_PUBLIC_KEY);
             self.auditor_public_key.write(auditor_public_key);
             self.emit(events::AuditorPublicKeySet { auditor_public_key });
+        }
+
+        fn _set_proof_validity_blocks(ref self: ContractState, proof_validity_blocks: u64) {
+            assert(proof_validity_blocks.is_non_zero(), errors::ZERO_PROOF_VALIDITY_BLOCKS);
+            self.proof_validity_blocks.write(proof_validity_blocks);
+            self.emit(events::ProofValidityBlocksSet { proof_validity_blocks });
         }
     }
 }

@@ -16,7 +16,7 @@ jobs:
       - name: Install starknet-foundry via asdf
         uses: asdf-vm/actions/install@v3
         with:
-          tool_versions: starknet-foundry nightly-2026-02-03
+          tool_versions: starknet-foundry nightly-2026-02-20
 
       - name: Run tests
         run: scarb test -w
