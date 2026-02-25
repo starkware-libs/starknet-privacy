@@ -152,8 +152,7 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn __validate__(self: @ContractState, calls: Array<Call>) -> felt252 {
-            let execution_info = get_execution_info();
-            assert_valid_execution_info(:execution_info);
+            assert_valid_execution_info();
             VALIDATED
         }
 
