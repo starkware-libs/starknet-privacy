@@ -25,7 +25,7 @@ pub mod Privacy {
         INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
     };
     use privacy::utils::{
-        ProofFacts, StoragePathIntoFelt, assert_valid_execution_info, assert_valid_signature,
+        ProofFacts, address_to_felt252, assert_valid_execution_info, assert_valid_signature,
         compute_message_hash, decode_note_amount, derive_public_key, enc_note_packed_value,
         encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
         encrypt_subchannel_info, encrypt_user_addr, extract_execute_view_inputs,
@@ -287,11 +287,13 @@ pub mod Privacy {
 
             array![
                 to_write_once_action(
-                    storage_address: self.public_key.entry(user_addr).into(),
+                    storage_address: address_to_felt252(path: self.public_key.entry(user_addr)),
                     value: user_public_key,
                 ),
                 to_write_once_action(
-                    storage_address: self.enc_private_key.entry(user_addr).into(),
+                    storage_address: address_to_felt252(
+                        path: self.enc_private_key.entry(user_addr),
+                    ),
                     value: enc_private_key,
                 ),
                 ServerAction::EmitViewingKeySet(
@@ -360,16 +362,23 @@ pub mod Privacy {
             array![
                 ServerAction::ReadAssert(
                     ReadAssertInput {
-                        storage_address: self.public_key.entry(recipient_addr).into(),
+                        storage_address: address_to_felt252(
+                            path: self.public_key.entry(recipient_addr),
+                        ),
                         value: recipient_public_key,
                     },
                 ),
                 ServerAction::Append(AppendInput { recipient_addr, enc_channel_info }),
                 to_write_once_action(
-                    storage_address: self.channel_exists.entry(channel_marker).into(), value: true,
+                    storage_address: address_to_felt252(
+                        path: self.channel_exists.entry(channel_marker),
+                    ),
+                    value: true,
                 ),
                 to_write_once_action(
-                    storage_address: self.outgoing_channels.entry(outgoing_channel_id).into(),
+                    storage_address: address_to_felt252(
+                        path: self.outgoing_channels.entry(outgoing_channel_id),
+                    ),
                     value: enc_outgoing_channel_info,
                 ),
             ]
@@ -412,11 +421,15 @@ pub mod Privacy {
 
             array![
                 to_write_once_action(
-                    storage_address: self.subchannel_tokens.entry(subchannel_id).into(),
+                    storage_address: address_to_felt252(
+                        path: self.subchannel_tokens.entry(subchannel_id),
+                    ),
                     value: enc_subchannel_info,
                 ),
                 to_write_once_action(
-                    storage_address: self.subchannel_exists.entry(subchannel_marker).into(),
+                    storage_address: address_to_felt252(
+                        path: self.subchannel_exists.entry(subchannel_marker),
+                    ),
                     value: true,
                 ),
             ]
@@ -522,7 +535,8 @@ pub mod Privacy {
 
             array![
                 to_write_once_action(
-                    storage_address: self.nullifiers.entry(nullifier).into(), value: true,
+                    storage_address: address_to_felt252(path: self.nullifiers.entry(nullifier)),
+                    value: true,
                 ),
                 ServerAction::EmitNoteUsed(events::NoteUsed { nullifier }),
             ]
@@ -645,7 +659,7 @@ pub mod Privacy {
             // Compute note id and assert it is non-zero.
             let note_id = compute_note_id(:channel_key, :token, :index);
 
-            let storage_address = self.notes.entry(note_id).into();
+            let storage_address = address_to_felt252(path: self.notes.entry(note_id));
             (channel_key, storage_address, note_id)
         }
     }

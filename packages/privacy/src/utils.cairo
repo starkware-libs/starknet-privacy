@@ -288,12 +288,11 @@ pub(crate) fn decode_note_amount(
     }
 }
 
-pub(crate) impl StoragePathIntoFelt<
-    T, +StorageAsPointer<StoragePath<T>>,
-> of Into<StoragePath<T>, felt252> {
-    fn into(self: StoragePath<T>) -> felt252 {
-        self.as_ptr().__storage_pointer_address__.into()
-    }
+/// Converts a storage path to its felt252 address.
+pub(crate) fn address_to_felt252<T, +StorageAsPointer<StoragePath<T>>>(
+    path: StoragePath<T>,
+) -> felt252 {
+    path.as_ptr().__storage_pointer_address__.into()
 }
 
 /// Packs two u128 values into a single felt252 value.
