@@ -14,6 +14,8 @@
 
 This avoids persistent sensitive material in infrastructure.
 
+Public keys fetched from the contract are cached in a lock-free concurrent cache (moka, default 10K entries) to avoid redundant RPC calls. Keyed by `(contract_address, user_address)`. Public keys are immutable once registered, so cache entries never go stale. Zero (unregistered) values are not cached.
+
 ## 12.2 Persistent Key Storage is an Option, but Not Recommended
 
 Persistent key storage introduces disadvantages:

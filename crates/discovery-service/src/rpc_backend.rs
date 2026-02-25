@@ -229,6 +229,10 @@ impl ChainState for RpcBackend {
 
 #[async_trait]
 impl StorageSnapshot for RpcSnapshot {
+    fn contract_address(&self) -> Felt {
+        self.contract_address
+    }
+
     fn block_id(&self) -> BlockId {
         self.block_id
     }
