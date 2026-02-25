@@ -4393,6 +4393,17 @@ fn test_execute_assertions() {
     let result = test.privacy.safe_execute_with_calls(calls: array![invalid_call]);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLDATA);
 
+    // Catch INVALID_CALLDATA (trailing data after valid serialization).
+    let mut calldata_with_trailing = array![];
+    user.address.serialize(ref calldata_with_trailing);
+    user.private_key.serialize(ref calldata_with_trailing);
+    let empty_actions: Span<ClientAction> = [].span();
+    empty_actions.serialize(ref calldata_with_trailing);
+    calldata_with_trailing.append(1);
+    let invalid_call = Call { calldata: calldata_with_trailing.span(), ..valid_call };
+    let result = test.privacy.safe_execute_with_calls(calls: array![invalid_call]);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CALLDATA);
+
     // Catch INVALID_SIGNATURE.
     let mut user_invalid = test.new_user_with_is_valid(is_valid: false);
     let result = user_invalid
