@@ -470,6 +470,9 @@ pub trait IServer<T> {
     /// #### Reverts
     /// **Context validation (before applying actions):**
     /// - Thrown if the contract is paused (from Pausable component).
+    /// - [`REENTRANT_CALL`](privacy::errors::REENTRANT_CALL): Thrown if this call is
+    ///   reentrant (e.g. an Invoke action called a contract that attempted to call
+    ///   `apply_actions` again). Reentrant `apply_actions` is not allowed.
     /// - [`PROOF_FACTS_DESERIALIZE_ERROR`](privacy::errors::PROOF_FACTS_DESERIALIZE_ERROR): Thrown
     /// if `proof_facts` in the TX info cannot be deserialized.
     /// - [`INVALID_PROGRAM_VARIANT`](privacy::errors::INVALID_PROGRAM_VARIANT): Thrown if the proof
@@ -509,6 +512,8 @@ pub trait IServer<T> {
     /// [`get_fee_amount`](privacy::interface::IFees::get_fee_amount) is non-zero.
     /// - All actions are applied sequentially in the order they appear in the span.
     /// - If any action fails, the entire transaction reverts and no state changes are applied.
+    /// - Reentrant calls to `apply_actions` (e.g. from a contract invoked via an Invoke action)
+    ///   are rejected with [`REENTRANT_CALL`](privacy::errors::REENTRANT_CALL).
     fn apply_actions(ref self: T, actions: Span<ServerAction>);
 
     /// Deposits funds to an existing open note.
