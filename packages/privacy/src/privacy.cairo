@@ -924,8 +924,7 @@ pub mod Privacy {
         fn set_fee_collector(ref self: ContractState, fee_collector: ContractAddress) {
             // TODO: Change to real role.
             self.roles.only_app_governor();
-            let fee_amount = self.fee_amount.read();
-            if fee_amount.is_non_zero() {
+            if self.fee_amount.read().is_non_zero() {
                 assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
             }
             self.fee_collector.write(fee_collector);
