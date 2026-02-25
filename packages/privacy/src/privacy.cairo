@@ -164,7 +164,9 @@ pub mod Privacy {
             );
             let server_actions = self.execute_view(:user_addr, :user_private_key, :client_actions);
             assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
-            send_message_to_server(:server_actions);
+            send_message_to_server(
+                :server_actions, contract_address: execution_info.contract_address,
+            );
         }
 
         fn execute_view(

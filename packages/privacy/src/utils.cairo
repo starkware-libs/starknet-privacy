@@ -22,10 +22,7 @@ use privacy::utils::constants::{
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{get_class_hash_at_syscall, send_message_to_l1_syscall};
-use starknet::{
-    ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED,
-    get_contract_address,
-};
+use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
 
 #[starknet::interface]
 pub(crate) trait IAccount<TState> {
@@ -357,11 +354,14 @@ pub(crate) fn assert_valid_signature(user_addr: ContractAddress, tx_info: Box<Tx
     assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
 }
 
-/// Sends server actions to L1. The payload is the serialized server actions followed by the
-/// contract's class hash, so the L1 handler can identify which contract sent the message.
-pub(crate) fn send_message_to_server(server_actions: Span<ServerAction>) {
+/// Sends server actions to L1.
+/// The payload contains [contract_class_hash, serialized_server_actions].
+pub(crate) fn send_message_to_server(
+    server_actions: Span<ServerAction>, contract_address: ContractAddress,
+) {
     let mut payload = array![];
-    get_class_hash_at_syscall(get_contract_address()).unwrap_syscall().serialize(ref payload);
+    let class_hash = get_class_hash_at_syscall(contract_address).unwrap_syscall();
+    class_hash.serialize(ref payload);
     server_actions.serialize(ref payload);
     send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
 }
@@ -458,15 +458,18 @@ pub(crate) impl ProofFactsDefaultImpl of Default<ProofFacts> {
 /// - `from_address`: the privacy (self) contract address.
 /// - `to_address`: zero.
 /// - `payload_len`: length of the payload.
-/// - `payload`: server actions (as passed to `apply_actions`) followed by the class hash of the
-/// privacy contract.
+/// - `payload`: [contract_class_hash, serialized_server_actions] (server actions as passed to
+/// `apply_actions`).
 pub(crate) fn compute_message_hash(
     actions: Span<ServerAction>, contract_address: ContractAddress,
 ) -> felt252 {
-    let mut l1_message_data: Array<felt252> = array![contract_address.into(), Zero::zero()];
+    let mut l1_message_data: Array<felt252> = array![
+        contract_address.into(), Zero::zero(),
+    ]; // from address, to address.
     let mut payload = array![];
+    let class_hash = get_class_hash_at_syscall(:contract_address).unwrap_syscall();
+    class_hash.serialize(ref payload);
     actions.serialize(ref payload);
-    get_class_hash_at_syscall(:contract_address).unwrap_syscall().serialize(ref payload);
     payload.serialize(ref l1_message_data);
     poseidon_hash_span(l1_message_data.span())
 }

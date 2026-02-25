@@ -1,4 +1,5 @@
 use core::num::traits::Zero;
+use core::poseidon::poseidon_hash_span;
 use privacy::actions::{
     AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
     InvokeExternalInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
@@ -14,13 +15,13 @@ use privacy::tests::utils_for_tests::{
 };
 use privacy::utils::constants::{OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
-    decode_note_amount, encrypt_channel_info, encrypt_user_addr, is_canonical_key,
-    to_write_once_action, unpack,
+    compute_message_hash, decode_note_amount, encrypt_channel_info, encrypt_user_addr,
+    is_canonical_key, to_write_once_action, unpack,
 };
 use privacy::{errors, events};
 use snforge_std::{
-    CheatSpan, EventSpyTrait, EventsFilterTrait, TokenTrait, cheat_tip, cheat_transaction_version,
-    map_entry_address, spy_events,
+    CheatSpan, EventSpyTrait, EventsFilterTrait, MessageToL1SpyTrait, TokenTrait, cheat_tip,
+    cheat_transaction_version, get_class_hash, map_entry_address, spy_events, spy_messages_to_l1,
 };
 use starknet::account::Call;
 use starknet::{ContractAddress, VALIDATED};
@@ -6607,4 +6608,40 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
     );
+}
+
+// TODO: move to common tests.
+#[test]
+fn test_send_message_to_server() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+    let mut spy = spy_messages_to_l1();
+    let contract_address = test.privacy.address;
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random })].span();
+    test
+        .privacy
+        .execute_without_return(
+            user_addr: user.address, user_private_key: user.private_key, :client_actions,
+        );
+    assert_eq!(spy.get_messages().messages.len(), 1);
+    let (from, message) = spy.get_messages().messages.at(0);
+    assert_eq!(*from, contract_address);
+    assert_eq!(*message.to_address, Zero::zero());
+    let mut payload = (*message.payload).span();
+    let class_hash = *payload.pop_front().unwrap();
+    assert_eq!(class_hash.try_into().unwrap(), get_class_hash(:contract_address));
+    let server_actions = Serde::<Span<ServerAction>>::deserialize(ref payload)
+        .expect('Failed deserialize');
+    let expected_server_actions = test
+        .privacy
+        .execute_view(user_addr: user.address, user_private_key: user.private_key, :client_actions);
+    assert_eq!(server_actions, expected_server_actions);
+    assert!(payload.is_empty());
+    // Assert message hash.
+    let expected_message_hash = compute_message_hash(actions: server_actions, :contract_address);
+    let mut message_data: Array<felt252> = array![contract_address.into()]; // from address.
+    (*message).serialize(ref message_data);
+    let message_hash = poseidon_hash_span(message_data.span());
+    assert_eq!(expected_message_hash, message_hash);
 }
