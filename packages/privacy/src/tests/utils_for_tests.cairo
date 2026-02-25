@@ -1541,6 +1541,16 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         spy_messages_to_server_actions(ref :spy)
     }
 
+    fn execute_without_return(
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
+    ) {
+        let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+        self.client.__execute__(:calls);
+    }
+
     #[feature("safe_dispatcher")]
     fn safe_execute(
         self: @PrivacyCfg,
