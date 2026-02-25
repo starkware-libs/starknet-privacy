@@ -418,9 +418,8 @@ describe("Private Transfers Integration", () => {
         .with(env.bee)
           .transfer({ recipient: env.alice.address, amount: Open, depositor: swapHelper.address })
         .done()
-        .call({
+        .invoke({
           contractAddress: toHex(swapHelper.address),
-          entrypoint: "swap",
           calldata: [ace, bee, 10n, POOL_ADDRESS, beeNoteId],
         })
         .execute()

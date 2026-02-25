@@ -51,7 +51,7 @@ export class MockSwapHelper implements MockContract {
     private contracts: MockContracts
   ) {}
 
-  swap(
+  privacy_invoke(
     fromToken: StarknetAddress,
     toToken: StarknetAddress,
     amount: Amount,
@@ -94,7 +94,7 @@ export class MockContracts {
 
   /**
    * Execute a call on a contract.
-   * This is a helper for executing arbitrary calls, e.g. from FollowupCall actions.
+   * This is a helper for executing arbitrary calls, e.g. from InvokeExternal actions.
    * It attempts to find the method on the mock contract instance and invoke it.
    */
   call(contractAddress: StarknetAddress, method: string, args: unknown[] = []): unknown {
