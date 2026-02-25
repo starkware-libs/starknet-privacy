@@ -114,8 +114,8 @@ fn _compute_shared_x(ephemeral_secret: felt252, public_key: felt252) -> (felt252
 /// Assumes all the inputs (except `index`) are not zero.
 ///
 /// `enc_outgoing_channel_info = (salt, enc_recipient_addr)`.
-/// `enc_recipient_addr = h(ENC_RECIPIENT_ADDR_TAG, sender_addr, sender_private_key, index, salt) +
-/// recipient_addr`
+/// `enc_recipient_addr = h(ENC_RECIPIENT_ADDR_TAG, sender_addr, sender_private_key, index, 0, salt)
+/// + recipient_addr`
 pub(crate) fn encrypt_outgoing_channel_info(
     sender_addr: ContractAddress,
     sender_private_key: felt252,
