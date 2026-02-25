@@ -4127,7 +4127,7 @@ fn test_execute_deposit_swap() {
     ]
         .span();
     let result = user.safe_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 }
 
 #[test]
@@ -4442,13 +4442,13 @@ fn test_execute_and_panic_assertions() {
     let result = user_private_key_not_canonical.safe_execute_view(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
-    // Catch NO_PRIVACY_ACTIONS.
+    // Catch NO_REPLAY_PROTECTION.
     let result = user.safe_execute(client_actions: [].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_execute_and_panic(client_actions: [].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_execute_view(client_actions: [].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Catch ACTIONS_OUT_OF_ORDER. (just one sanity example, the other cases are tested in
     // test_actions_out_of_order).
@@ -5502,7 +5502,7 @@ fn test_client_transfers_dont_execute() {
 }
 
 #[test]
-fn test_no_privacy_actions() {
+fn test_no_replay_protection() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
     let token = test.new_token();
@@ -5515,16 +5515,16 @@ fn test_no_privacy_actions() {
 
     // Empty client actions.
     let result = user.safe_execute(client_actions: [].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Deposit only.
     let deposit_action = ClientAction::Deposit(DepositInput { token: token_addr, amount });
     let result = user.safe_execute(client_actions: [deposit_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_execute_and_panic(client_actions: [deposit_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_execute_view(client_actions: [deposit_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Withdraw only.
     let withdraw_action = ClientAction::Withdraw(
@@ -5562,29 +5562,29 @@ fn test_no_privacy_actions() {
     );
     // InvokeExternal alone has should_execute=false, so no privacy actions.
     let result = user.safe_execute(client_actions: [invoke_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_execute_and_panic(client_actions: [invoke_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_execute_view(client_actions: [invoke_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Deposit and Withdraw.
     let result = user.safe_execute(client_actions: [deposit_action, withdraw_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user
         .safe_execute_and_panic(client_actions: [deposit_action, withdraw_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_execute_view(client_actions: [deposit_action, withdraw_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Deposit and InvokeExternal.
     let result = user.safe_execute(client_actions: [deposit_action, invoke_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user
         .safe_execute_and_panic(client_actions: [deposit_action, invoke_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_execute_view(client_actions: [deposit_action, invoke_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Deposit, Withdraw, InvokeExternal.
     let deposit_action = ClientAction::Deposit(
@@ -5592,15 +5592,15 @@ fn test_no_privacy_actions() {
     );
     let result = user
         .safe_execute(client_actions: [deposit_action, withdraw_action, invoke_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user
         .safe_execute_and_panic(
             client_actions: [deposit_action, withdraw_action, invoke_action].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user
         .safe_execute_view(client_actions: [deposit_action, withdraw_action, invoke_action].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 }
 
 #[test]
@@ -6166,11 +6166,11 @@ fn test_invoke_external_client_action_assertions() {
     };
     let client_actions = [ClientAction::InvokeExternal(valid_input)].span();
     let result = user.safe_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_execute_and_panic(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_execute_view(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::NO_PRIVACY_ACTIONS);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 }
 
 #[test]

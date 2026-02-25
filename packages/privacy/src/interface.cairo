@@ -117,8 +117,10 @@ pub trait IClient<T> {
     /// `user_private_key` is not in canonical form.
     /// - [`ACTIONS_OUT_OF_ORDER`](privacy::errors::ACTIONS_OUT_OF_ORDER): Thrown if
     /// `client_actions` is not ordered correctly.
-    /// - [`NO_PRIVACY_ACTIONS`](privacy::errors::NO_PRIVACY_ACTIONS): Thrown if `client_actions`
-    /// does not include any privacy-related actions.
+    /// - [`NO_REPLAY_PROTECTION`](privacy::errors::NO_REPLAY_PROTECTION): Thrown if
+    /// `client_actions`
+    /// does not include any action that provides replay protection (e.g. one that compiles to
+    /// WriteOnce).
     /// - [`FINAL_BALANCE_MUST_BE_ZERO`](privacy::errors::FINAL_BALANCE_MUST_BE_ZERO): Thrown if
     /// token balances are not zero after all actions are processed.
     ///
@@ -346,11 +348,11 @@ pub trait IClient<T> {
     /// Deposit, UseNote, CreateEncNote/CreateOpenNote, Withdraw, InvokeExternal.
     /// - At most one [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) action is
     /// allowed per transaction.
-    /// - At least one privacy-related action must be included
+    /// - At least one action that provides replay protection must be included
     /// ([`Deposit`](privacy::actions::ClientAction::Deposit),
     /// [`Withdraw`](privacy::actions::ClientAction::Withdraw), and
-    /// [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) are not
-    /// privacy-related).
+    /// [`InvokeExternal`](privacy::actions::ClientAction::InvokeExternal) do not provide replay
+    /// protection).
     ///
     /// #### Events Emitted
     /// None
