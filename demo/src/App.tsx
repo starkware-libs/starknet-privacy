@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatChainId, truncateAddress } from "./format.ts";
+import { formatChainId } from "./format.ts";
 import { loadConfig } from "./config.ts";
 import { createProvider, createAccount, createTransfers } from "./starknet.ts";
 import { useAccounts } from "./hooks/useAccounts.ts";
@@ -19,15 +19,24 @@ import "./App.css";
 const config = loadConfig();
 
 export function App() {
+  const [classHash, setClassHash] = useState(config.poolClassHash);
+  const [editingClassHash, setEditingClassHash] = useState(false);
+  const [classHashDraft, setClassHashDraft] = useState("");
+
   const { accounts, activeIndex, activeAccount, setActiveIndex } =
     useAccounts(config.accounts);
 
   const provider = useMemo(() => createProvider(config.rpcUrl), []);
 
   const { pools, activePool, selectPool, addPool, loading: poolsLoading } =
-    usePoolSelector(provider, config.poolAddress, config.poolClassHash);
+    usePoolSelector(provider, config.poolAddress, classHash);
 
-  const { deploying, deployError, deploy } = useDeployPool(provider, config);
+  const configWithClassHash = useMemo(
+    () => ({ ...config, poolClassHash: classHash }),
+    [classHash],
+  );
+
+  const { deploying, deployError, deploy } = useDeployPool(provider, configWithClassHash);
 
   const handleDeploy = useCallback(async () => {
     try {
@@ -84,7 +93,43 @@ export function App() {
     <div className="app">
       <h1>Privacy Pool Explorer</h1>
       <div className="subtitle">
-        Chain: <code>{formatChainId(config.chainId)}</code> | Pool class: <code>{truncateAddress(config.poolClassHash)}</code>
+        Chain: <code>{formatChainId(config.chainId)}</code> | Pool class:{" "}
+        {editingClassHash ? (
+          <span className="class-hash-edit">
+            <input
+              value={classHashDraft}
+              onChange={(event) => setClassHashDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  setClassHash(classHashDraft);
+                  setEditingClassHash(false);
+                }
+                if (event.key === "Escape") {
+                  setEditingClassHash(false);
+                }
+              }}
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                setClassHash(classHashDraft);
+                setEditingClassHash(false);
+              }}
+            >
+              Apply
+            </button>
+          </span>
+        ) : (
+          <code
+            onDoubleClick={() => {
+              setClassHashDraft(classHash);
+              setEditingClassHash(true);
+            }}
+            title="Double-click to edit"
+          >
+            {classHash}
+          </code>
+        )}
       </div>
       <PoolSelector
         pools={pools}

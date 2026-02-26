@@ -225,6 +225,26 @@ input[type="number"] {
 .subtitle code {
   color: #c9d1d9;
   font-size: 11px;
+  cursor: default;
+  word-break: break-all;
+}
+
+.class-hash-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.class-hash-edit input {
+  width: 520px;
+  font-size: 11px;
+  padding: 2px 6px;
+}
+
+.class-hash-edit button {
+  font-size: 11px;
+  padding: 2px 8px;
+  white-space: nowrap;
 }
 
 .chip {
