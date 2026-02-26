@@ -2,8 +2,8 @@ use core::num::traits::Zero;
 use core::poseidon::poseidon_hash_span;
 use privacy::actions::{
     AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    InvokeExternalInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
-    SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+    InvokeExternalInput, OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput,
+    TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
 use privacy::objects::{EncSubchannelInfo, EncUserAddr};
@@ -759,9 +759,6 @@ fn test_open_channel() {
         sender_addr: user_1.address,
     );
     let expected_channel_marker = user_1.compute_channel_marker(recipient: user_2);
-    let public_key_storage_path = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
-    );
     let channel_exists_storage_path = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_marker].span(),
     );
@@ -772,9 +769,6 @@ fn test_open_channel() {
     let expected_enc_outgoing_channel_info = user_1
         .compute_enc_outgoing_channel_info(recipient: user_2, index: 0, :salt);
     let expected_actions = [
-        ServerAction::ReadAssert(
-            ReadAssertInput { storage_address: public_key_storage_path, value: user_2.public_key },
-        ),
         ServerAction::Append(
             AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
@@ -807,9 +801,6 @@ fn test_open_channel_self_channel() {
         sender_addr: user.address,
     );
     let expected_channel_marker = user.compute_channel_marker(recipient: user);
-    let public_key_storage_path = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
-    );
     let channel_exists_storage_path = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_marker].span(),
     );
@@ -820,9 +811,6 @@ fn test_open_channel_self_channel() {
     let expected_enc_outgoing_channel_info = user
         .compute_enc_outgoing_channel_info(recipient: user, index: 0, :salt);
     let expected_actions = [
-        ServerAction::ReadAssert(
-            ReadAssertInput { storage_address: public_key_storage_path, value: user.public_key },
-        ),
         ServerAction::Append(
             AppendInput {
                 recipient_addr: user.address, enc_channel_info: expected_enc_channel_info,
@@ -882,20 +870,6 @@ fn test_open_channel_assertions() {
     let result = user_1
         .safe_open_channel_execute_view(recipient: user_zero_addr, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
-
-    // Catch ZERO_RECIPIENT_PUBLIC_KEY.
-    let mut user_zero_public_key = user_2;
-    user_zero_public_key.public_key = Zero::zero();
-    let result = user_1.safe_open_channel(recipient: user_zero_public_key, :index, :random, :salt);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
-    let result = user_1
-        .safe_open_channel_execute_and_panic(
-            recipient: user_zero_public_key, :index, :random, :salt,
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
-    let result = user_1
-        .safe_open_channel_execute_view(recipient: user_zero_public_key, :index, :random, :salt);
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
 
     // Catch ZERO_RANDOM.
     let result = user_1.safe_open_channel(recipient: user_2, :index, random: Zero::zero(), :salt);
@@ -959,7 +933,17 @@ fn test_open_channel_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
     user_1.private_key = user_1_private_key;
 
+    // Catch RECIPIENT_NOT_REGISTERED.
+    let result = user_1.safe_open_channel(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
+    let result = user_1
+        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
+    let result = user_1.safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
+    assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
+
     // Catch INDEX_NOT_SEQUENTIAL.
+    user_2.set_viewing_key_e2e();
     let result = user_1.safe_open_channel(recipient: user_2, index: 1, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user_1
@@ -968,25 +952,7 @@ fn test_open_channel_assertions() {
     let result = user_1.safe_open_channel_execute_view(recipient: user_2, index: 1, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
 
-    // Catch VALUE_MISMATCH (recipient public key mismatch).
-    let mut user_2_wrong_public_key = user_2;
-    user_2_wrong_public_key.public_key = Neg::neg(user_2.public_key);
-    let result = user_1
-        .safe_open_channel(recipient: user_2_wrong_public_key, index: 0, :random, :salt);
-    assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
-    let result = user_1
-        .safe_open_channel_execute_and_panic(
-            recipient: user_2_wrong_public_key, index: 0, :random, :salt,
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
-    let result = user_1
-        .safe_open_channel_execute_view(
-            recipient: user_2_wrong_public_key, index: 0, :random, :salt,
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
-
     // Catch NON_ZERO_VALUE (channel already exists).
-    user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
     let result = user_1.safe_open_channel(recipient: user_2, index: 1, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
@@ -1061,12 +1027,6 @@ fn test_open_channel_multiple_channels_same_sender() {
         expected_enc_outgoing_channel_info_1.enc_recipient_addr,
         expected_enc_outgoing_channel_info_2.enc_recipient_addr,
     );
-    let public_key_storage_path_1 = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
-    );
-    let public_key_storage_path_2 = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user_3.address.into()].span(),
-    );
     let channel_exists_storage_path_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_marker_1].span(),
     );
@@ -1080,11 +1040,6 @@ fn test_open_channel_multiple_channels_same_sender() {
         map_selector: selector!("outgoing_channels"), keys: [expected_outgoing_channel_id_2].span(),
     );
     let expected_actions_1 = [
-        ServerAction::ReadAssert(
-            ReadAssertInput {
-                storage_address: public_key_storage_path_1, value: user_2.public_key,
-            },
-        ),
         ServerAction::Append(
             AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info_1,
@@ -1098,11 +1053,6 @@ fn test_open_channel_multiple_channels_same_sender() {
     ]
         .span();
     let expected_actions_2 = [
-        ServerAction::ReadAssert(
-            ReadAssertInput {
-                storage_address: public_key_storage_path_2, value: user_3.public_key,
-            },
-        ),
         ServerAction::Append(
             AppendInput {
                 recipient_addr: user_3.address, enc_channel_info: expected_enc_channel_info_2,
@@ -1162,12 +1112,6 @@ fn test_open_channel_multiple_channels_same_recipient() {
     let expected_channel_marker_1 = user_2.compute_channel_marker(recipient: user_1);
     let expected_channel_marker_2 = user_3.compute_channel_marker(recipient: user_1);
     assert_ne!(expected_channel_marker_1, expected_channel_marker_2);
-    let public_key_storage_path_1 = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
-    );
-    let public_key_storage_path_2 = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user_1.address.into()].span(),
-    );
     let channel_exists_storage_path_1 = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_marker_1].span(),
     );
@@ -1194,11 +1138,6 @@ fn test_open_channel_multiple_channels_same_recipient() {
         map_selector: selector!("outgoing_channels"), keys: [expected_outgoing_channel_id_2].span(),
     );
     let expected_actions_1 = [
-        ServerAction::ReadAssert(
-            ReadAssertInput {
-                storage_address: public_key_storage_path_1, value: user_1.public_key,
-            },
-        ),
         ServerAction::Append(
             AppendInput {
                 recipient_addr: user_1.address, enc_channel_info: expected_enc_channel_info_1,
@@ -1212,11 +1151,6 @@ fn test_open_channel_multiple_channels_same_recipient() {
     ]
         .span();
     let expected_actions_2 = [
-        ServerAction::ReadAssert(
-            ReadAssertInput {
-                storage_address: public_key_storage_path_2, value: user_1.public_key,
-            },
-        ),
         ServerAction::Append(
             AppendInput {
                 recipient_addr: user_1.address, enc_channel_info: expected_enc_channel_info_2,
@@ -3604,13 +3538,7 @@ fn test_execute_open_channel() {
     let salt = user_1.get_salt().into();
     let client_actions = [
         ClientAction::OpenChannel(
-            OpenChannelInput {
-                recipient_addr: user_2.address,
-                recipient_public_key: user_2.public_key,
-                index: 0,
-                random,
-                salt,
-            },
+            OpenChannelInput { recipient_addr: user_2.address, index: 0, random, salt },
         )
     ]
         .span();
@@ -3626,9 +3554,6 @@ fn test_execute_open_channel() {
     let expected_outgoing_channel_id = user_1.compute_outgoing_channel_id(index: 0);
     let expected_enc_outgoing_channel_info = user_1
         .compute_enc_outgoing_channel_info(recipient: user_2, index: 0, :salt);
-    let recipient_public_key_storage_path = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
-    );
     let channel_exists_storage_path = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_marker].span(),
     );
@@ -3636,11 +3561,6 @@ fn test_execute_open_channel() {
         map_selector: selector!("outgoing_channels"), keys: [expected_outgoing_channel_id].span(),
     );
     let expected_actions = [
-        ServerAction::ReadAssert(
-            ReadAssertInput {
-                storage_address: recipient_public_key_storage_path, value: user_2.public_key,
-            },
-        ),
         ServerAction::Append(
             AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
@@ -4174,9 +4094,6 @@ fn test_internal_actions() {
         sender_addr: user_1.address,
     );
     let expected_channel_marker = user_1.compute_channel_marker(recipient: user_2);
-    let public_key_storage_path = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user_2.address.into()].span(),
-    );
     let channel_exists_storage_path = map_entry_address(
         map_selector: selector!("channel_exists"), keys: [expected_channel_marker].span(),
     );
@@ -4187,9 +4104,6 @@ fn test_internal_actions() {
     let expected_enc_outgoing_channel_info = user_1
         .compute_enc_outgoing_channel_info(recipient: user_2, index: 0, salt: salt_channel);
     let expected_actions = [
-        ServerAction::ReadAssert(
-            ReadAssertInput { storage_address: public_key_storage_path, value: user_2.public_key },
-        ),
         ServerAction::Append(
             AppendInput {
                 recipient_addr: user_2.address, enc_channel_info: expected_enc_channel_info,
@@ -4519,13 +4433,7 @@ fn test_actions_out_of_order() {
     let salt = user.get_salt().into();
     let client_actions = [
         ClientAction::OpenChannel(
-            OpenChannelInput {
-                recipient_addr: user.address,
-                recipient_public_key: user.public_key,
-                index: 0,
-                random,
-                salt,
-            },
+            OpenChannelInput { recipient_addr: user.address, index: 0, random, salt },
         ),
         ClientAction::SetViewingKey(SetViewingKeyInput { random }),
     ]
@@ -4575,13 +4483,7 @@ fn test_actions_out_of_order() {
             },
         ),
         ClientAction::OpenChannel(
-            OpenChannelInput {
-                recipient_addr: user.address,
-                recipient_public_key: user.public_key,
-                index: 0,
-                random,
-                salt,
-            },
+            OpenChannelInput { recipient_addr: user.address, index: 0, random, salt },
         ),
     ]
         .span();
@@ -4609,13 +4511,7 @@ fn test_actions_out_of_order() {
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::OpenChannel(
-            OpenChannelInput {
-                recipient_addr: user.address,
-                recipient_public_key: user.public_key,
-                index: 0,
-                random,
-                salt,
-            },
+            OpenChannelInput { recipient_addr: user.address, index: 0, random, salt },
         ),
     ]
         .span();
@@ -4667,13 +4563,7 @@ fn test_actions_out_of_order() {
     let client_actions = [
         ClientAction::UseNote(note_1_path),
         ClientAction::OpenChannel(
-            OpenChannelInput {
-                recipient_addr: user.address,
-                recipient_public_key: user.public_key,
-                index: 0,
-                random,
-                salt,
-            },
+            OpenChannelInput { recipient_addr: user.address, index: 0, random, salt },
         ),
     ]
         .span();
@@ -4738,13 +4628,7 @@ fn test_actions_out_of_order() {
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::CreateEncNote(create_note_input_2),
         ClientAction::OpenChannel(
-            OpenChannelInput {
-                recipient_addr: user.address,
-                recipient_public_key: user.public_key,
-                index: 0,
-                random,
-                salt,
-            },
+            OpenChannelInput { recipient_addr: user.address, index: 0, random, salt },
         ),
     ]
         .span();
@@ -4826,13 +4710,7 @@ fn test_actions_out_of_order() {
     let client_actions = [
         ClientAction::CreateOpenNote(open_note),
         ClientAction::OpenChannel(
-            OpenChannelInput {
-                recipient_addr: user.address,
-                recipient_public_key: user.public_key,
-                index: 0,
-                random,
-                salt,
-            },
+            OpenChannelInput { recipient_addr: user.address, index: 0, random, salt },
         ),
     ]
         .span();
@@ -4913,13 +4791,7 @@ fn test_actions_out_of_order() {
             WithdrawInput { to_addr: user.address, token: token_addr, amount, random },
         ),
         ClientAction::OpenChannel(
-            OpenChannelInput {
-                recipient_addr: user.address,
-                recipient_public_key: user.public_key,
-                index: 0,
-                random,
-                salt,
-            },
+            OpenChannelInput { recipient_addr: user.address, index: 0, random, salt },
         ),
     ]
         .span();
@@ -5046,13 +4918,7 @@ fn test_actions_out_of_order() {
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
         ClientAction::InvokeExternal(invoke_external_input),
         ClientAction::OpenChannel(
-            OpenChannelInput {
-                recipient_addr: user.address,
-                recipient_public_key: user.public_key,
-                index: 0,
-                random,
-                salt,
-            },
+            OpenChannelInput { recipient_addr: user.address, index: 0, random, salt },
         ),
     ]
         .span();
@@ -5251,9 +5117,7 @@ fn test_client_apply_writes() {
     // Test SetViewingKey, OpenChannel, OpenSubchannel writes.
     let set_viewing_key = ClientAction::SetViewingKey(SetViewingKeyInput { random: random.into() });
     let open_channel = ClientAction::OpenChannel(
-        OpenChannelInput {
-            recipient_addr, recipient_public_key, index, random: random.into(), salt: salt.into(),
-        },
+        OpenChannelInput { recipient_addr, index, random: random.into(), salt: salt.into() },
     );
     let open_subchannel = ClientAction::OpenSubchannel(
         OpenSubchannelInput {
@@ -5318,9 +5182,6 @@ fn test_client_apply_writes() {
         to_write_once_action(storage_address: enc_private_key_storage_path, value: enc_private_key),
         ServerAction::EmitViewingKeySet(expected_event_viewing_key_set),
         // Open channel.
-        ServerAction::ReadAssert(
-            ReadAssertInput { storage_address: public_key_storage_path, value: public_key },
-        ),
         ServerAction::Append(AppendInput { recipient_addr: address, enc_channel_info }),
         to_write_once_action(storage_address: channel_exists_storage_path, value: true),
         to_write_once_action(

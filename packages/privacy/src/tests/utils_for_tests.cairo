@@ -382,13 +382,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn open_channel(
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Span<ServerAction> {
-        let input = OpenChannelInput {
-            recipient_addr: recipient.address,
-            recipient_public_key: recipient.public_key,
-            index,
-            random,
-            salt,
-        };
+        let input = OpenChannelInput { recipient_addr: recipient.address, index, random, salt };
         self.execute(client_actions: [ClientAction::OpenChannel(input)].span())
     }
 
@@ -400,11 +394,7 @@ pub(crate) impl UserImpl of UserTrait {
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 let input = OpenChannelInput {
-                    recipient_addr: recipient.address,
-                    recipient_public_key: recipient.public_key,
-                    index,
-                    random,
-                    salt,
+                    recipient_addr: recipient.address, index, random, salt,
                 };
                 state
                     .open_channel(
@@ -418,13 +408,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn safe_open_channel(
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Result<(), Array<felt252>> {
-        let input = OpenChannelInput {
-            recipient_addr: recipient.address,
-            recipient_public_key: recipient.public_key,
-            index,
-            random,
-            salt,
-        };
+        let input = OpenChannelInput { recipient_addr: recipient.address, index, random, salt };
         self.safe_execute(client_actions: [ClientAction::OpenChannel(input)].span())
     }
 
@@ -432,13 +416,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn safe_open_channel_execute_and_panic(
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Result<(), Array<felt252>> {
-        let input = OpenChannelInput {
-            recipient_addr: recipient.address,
-            recipient_public_key: recipient.public_key,
-            index,
-            random,
-            salt,
-        };
+        let input = OpenChannelInput { recipient_addr: recipient.address, index, random, salt };
         self.safe_execute_and_panic(client_actions: [ClientAction::OpenChannel(input)].span())
     }
 
@@ -446,13 +424,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn safe_open_channel_execute_view(
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
-        let input = OpenChannelInput {
-            recipient_addr: recipient.address,
-            recipient_public_key: recipient.public_key,
-            index,
-            random,
-            salt,
-        };
+        let input = OpenChannelInput { recipient_addr: recipient.address, index, random, salt };
         self.safe_execute_view(client_actions: [ClientAction::OpenChannel(input)].span())
     }
 
