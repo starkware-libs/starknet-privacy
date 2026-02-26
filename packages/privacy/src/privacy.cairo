@@ -678,6 +678,29 @@ pub mod Privacy {
             let storage_address = storage_path_to_felt252(path: self.notes.entry(note_id));
             (channel_key, storage_address, note_id)
         }
+
+        fn _client_apply_actions(
+            ref self: ContractState, actions: Span<ServerAction>, ref has_replay_protection: bool,
+        ) {
+            for action in actions {
+                match *action {
+                    ServerAction::WriteOnce(input) => {
+                        self._apply_write_once(:input);
+                        has_replay_protection = true;
+                    },
+                    ServerAction::Append(input) => self._apply_append(:input),
+                    ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
+                    ServerAction::TransferFrom(_) => {},
+                    ServerAction::TransferTo(_) => {},
+                    ServerAction::Invoke(_) => {},
+                    ServerAction::EmitViewingKeySet(_) => {},
+                    ServerAction::EmitWithdrawal(_) => {},
+                    ServerAction::EmitDeposit(_) => {},
+                    ServerAction::EmitOpenNoteCreated(_) => {},
+                    ServerAction::EmitNoteUsed(_) => {},
+                }
+            }
+        }
     }
 
     #[abi(embed_v0)]
@@ -792,30 +815,6 @@ pub mod Privacy {
                     ServerAction::EmitNoteUsed(event) => self.emit(event),
                 };
             };
-        }
-
-
-        fn _client_apply_actions(
-            ref self: ContractState, actions: Span<ServerAction>, ref has_replay_protection: bool,
-        ) {
-            for action in actions {
-                match *action {
-                    ServerAction::WriteOnce(input) => {
-                        self._apply_write_once(:input);
-                        has_replay_protection = true;
-                    },
-                    ServerAction::Append(input) => self._apply_append(:input),
-                    ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
-                    ServerAction::TransferFrom(_) => {},
-                    ServerAction::TransferTo(_) => {},
-                    ServerAction::Invoke(_) => {},
-                    ServerAction::EmitViewingKeySet(_) => {},
-                    ServerAction::EmitWithdrawal(_) => {},
-                    ServerAction::EmitDeposit(_) => {},
-                    ServerAction::EmitOpenNoteCreated(_) => {},
-                    ServerAction::EmitNoteUsed(_) => {},
-                }
-            }
         }
 
         fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
