@@ -22,11 +22,11 @@ pub mod Privacy {
         TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::constants::{
-        INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, TX_V3, VIRTUAL_SNOS, VIRTUAL_SNOS0,
+        INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
     };
     use privacy::utils::{
-        ProofFacts, assert_valid_signature, compute_message_hash, decode_note_amount,
-        derive_public_key, enc_note_packed_value, encrypt_channel_info,
+        ProofFacts, assert_valid_signature, assert_valid_tx_version, compute_message_hash,
+        decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
         encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
         encrypt_user_addr, extract_compile_actions_inputs,
         extract_server_actions_from_compile_and_panic, is_canonical_key, open_note, pack,
@@ -163,7 +163,7 @@ pub mod Privacy {
         fn __validate__(self: @ContractState, calls: Array<Call>) -> felt252 {
             let tx_info = get_tx_info();
             // Ensure that the effective fee of the transaction is zero.
-            assert(tx_info.version.try_into().unwrap() == TX_V3, errors::INVALID_TX_VERSION);
+            assert_valid_tx_version(tx_version: tx_info.version);
             assert(tx_info.tip.is_zero(), errors::NON_ZERO_TIP);
             for resource_bounds in tx_info.resource_bounds {
                 assert(
@@ -179,7 +179,7 @@ pub mod Privacy {
             // Ensure that the current call is the first of the transaction,
             // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
             assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
-            assert(tx_info.version.try_into().unwrap() == TX_V3, errors::INVALID_TX_VERSION);
+            assert_valid_tx_version(tx_version: tx_info.version);
 
             let (user_addr, user_private_key, client_actions) = extract_compile_actions_inputs(
                 :calls, contract_address: execution_info.contract_address,
