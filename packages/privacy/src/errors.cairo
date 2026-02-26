@@ -59,4 +59,5 @@ pub(crate) mod internal_errors {
     pub const UNEXPECTED_ZERO_SALT: felt252 = 'UNEXPECTED_ZERO_SALT';
     pub const ZERO_EPHEMERAL_PUBLIC: felt252 = 'ZERO_EPHEMERAL_PUBLIC';
     pub const ZERO_SHARED: felt252 = 'ZERO_SHARED';
+    pub const UNEXPECTED_ZERO_VALUE: felt252 = 'UNEXPECTED_ZERO_VALUE';
 }

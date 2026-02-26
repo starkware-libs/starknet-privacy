@@ -811,6 +811,7 @@ pub mod Privacy {
             let WriteOnceInput { storage_address, value } = input;
             let base: StorageBaseAddress = storage_base_address_from_felt252(addr: storage_address);
             let mut offset = 0;
+            assert(value[0].is_non_zero(), internal_errors::UNEXPECTED_ZERO_VALUE);
             for felt in value {
                 let address = storage_address_from_base_and_offset(:base, :offset);
                 assert(

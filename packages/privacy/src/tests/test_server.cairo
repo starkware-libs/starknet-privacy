@@ -2,6 +2,7 @@ use core::num::traits::Zero;
 use privacy::actions::{
     AppendInput, InvokeInput, ReadAssertInput, ServerAction, TransferFromInput, TransferToInput,
 };
+use privacy::errors::internal_errors;
 use privacy::objects::{EncOutgoingChannelInfo, Note};
 use privacy::tests::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
@@ -169,6 +170,15 @@ fn test_apply_write_once_assertions() {
     assert!(test.privacy.nullifier_exists(:nullifier));
     let result = test.privacy.safe_apply_actions(actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+
+    // Catch UNEXPECTED_ZERO_VALUE.
+    let storage_address = map_entry_address(
+        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
+    );
+    let value: felt252 = Zero::zero();
+    let actions: Array<ServerAction> = array![to_write_once_action(:storage_address, :value)];
+    let result = test.privacy.safe_apply_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: internal_errors::UNEXPECTED_ZERO_VALUE);
 }
 
 #[test]
@@ -255,9 +265,8 @@ fn test_apply_write_once_outgoing_channel() {
     let user = test.new_user();
     let outgoing_channel_id = user.compute_outgoing_channel_id(index: 0);
     let enc_outgoing_channel_info = user
-        .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: Zero::zero());
+        .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: 1);
     assert!(outgoing_channel_id.is_non_zero());
-    assert!(enc_outgoing_channel_info.enc_recipient_addr.is_non_zero());
 
     // Verify outgoing channel info is zero before writing.
     assert_eq!(
@@ -283,9 +292,8 @@ fn test_apply_write_once_outgoing_channel_assertions() {
     let user = test.new_user();
     let outgoing_channel_id = user.compute_outgoing_channel_id(index: 0);
     let enc_outgoing_channel_info = user
-        .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: Zero::zero());
+        .compute_enc_outgoing_channel_info(recipient: user, index: 0, salt: 1);
     assert!(outgoing_channel_id.is_non_zero());
-    assert!(enc_outgoing_channel_info.enc_recipient_addr.is_non_zero());
 
     // Catch NON_ZERO_VALUE.
     let storage_address = map_entry_address(
