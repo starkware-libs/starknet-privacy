@@ -3,7 +3,6 @@ pub mod Privacy {
     use core::iter::Extend;
     use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
-    use openzeppelin::interfaces::token::erc20::IERC20Dispatcher;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::security::ReentrancyGuardComponent;
     use privacy::actions::{
@@ -56,7 +55,7 @@ pub mod Privacy {
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternalTrait;
-    use starkware_utils::erc20::erc20_utils::CheckedIERC20DispatcherTrait;
+    use starkware_utils::erc20::erc20_utils::{checked_transfer, checked_transfer_from};
 
     component!(path: PausableComponent, storage: pausable, event: PausableEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
@@ -710,10 +709,12 @@ pub mod Privacy {
             assert(token == note_token, errors::TOKEN_MISMATCH);
             assert(get_caller_address() == depositor, errors::CALLER_NOT_DEPOSITOR);
 
-            IERC20Dispatcher { contract_address: token }
-                .checked_transfer_from(
-                    sender: depositor, recipient: get_contract_address(), amount: amount.into(),
-                );
+            checked_transfer_from(
+                token_address: token,
+                sender: depositor,
+                recipient: get_contract_address(),
+                amount: amount.into(),
+            );
 
             // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
             let new_packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
@@ -767,12 +768,12 @@ pub mod Privacy {
             let fee_amount = self.fee_amount.read();
             if fee_amount.is_non_zero() {
                 let fee_collector = self.fee_collector.read();
-                IERC20Dispatcher { contract_address: STRK_TOKEN_ADDRESS }
-                    .checked_transfer_from(
-                        sender: get_caller_address(),
-                        recipient: fee_collector,
-                        amount: fee_amount.into(),
-                    );
+                checked_transfer_from(
+                    token_address: STRK_TOKEN_ADDRESS,
+                    sender: get_caller_address(),
+                    recipient: fee_collector,
+                    amount: fee_amount.into(),
+                );
             }
         }
 
@@ -842,17 +843,18 @@ pub mod Privacy {
 
         fn _apply_transfer_from(ref self: ContractState, input: TransferFromInput) {
             let TransferFromInput { from_addr, token, amount } = input;
-            IERC20Dispatcher { contract_address: token }
-                .checked_transfer_from(
-                    sender: from_addr, recipient: get_contract_address(), amount: amount.into(),
-                )
+            checked_transfer_from(
+                token_address: token,
+                sender: from_addr,
+                recipient: get_contract_address(),
+                amount: amount.into(),
+            );
         }
 
         fn _apply_transfer_to(ref self: ContractState, input: TransferToInput) {
             let TransferToInput { to_addr, token, amount } = input;
             // Note: This function should NOT panic as the contract should have the balance.
-            IERC20Dispatcher { contract_address: token }
-                .checked_transfer(recipient: to_addr, amount: amount.into())
+            checked_transfer(token_address: token, recipient: to_addr, amount: amount.into());
         }
 
         fn _apply_read_assert(ref self: ContractState, input: ReadAssertInput) {
