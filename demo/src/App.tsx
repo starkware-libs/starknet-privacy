@@ -52,6 +52,7 @@ export function App() {
     provider,
     transfers,
     activeAccount,
+    accounts,
     activePool.address,
     config,
   );
@@ -126,6 +127,7 @@ export function App() {
           {activeView === "actions" ? (
             <ActionPanel
               pending={status.pending}
+              activeAddress={activeAccount!.address}
               otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
               onRegister={register}
               onMint={mint}
@@ -143,6 +145,12 @@ export function App() {
           )}
         </div>
       </div>
+      <footer className="app-footer">
+        Built by Starkware &middot; Docs{" "}
+        <a href="https://github.com/starkware-libs/starknet-privacy" target="_blank" rel="noreferrer">
+          github.com/starkware-libs/starknet-privacy
+        </a>
+      </footer>
     </div>
   );
 }
