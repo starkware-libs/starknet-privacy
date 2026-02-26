@@ -48,7 +48,7 @@ pub mod Privacy {
     };
     use starknet::{
         ContractAddress, SyscallResultTrait, VALIDATED, get_caller_address, get_contract_address,
-        get_execution_info,
+        get_execution_info, get_tx_info,
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -153,12 +153,21 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn __validate__(self: @ContractState, calls: Array<Call>) -> felt252 {
-            assert_valid_execution_info();
+            let tx_info = get_tx_info();
+            // Ensure that the effective fee of the transaction is zero; this is a sanity check,
+            // to prevent the execution of this code over Starknet.
+            assert(tx_info.tip.is_zero(), errors::NON_ZERO_TIP);
+            for resource_bounds in tx_info.resource_bounds {
+                assert(
+                    resource_bounds.max_price_per_unit.is_zero(), errors::NON_ZERO_RESOURCE_PRICE,
+                );
+            }
             VALIDATED
         }
 
         fn __execute__(ref self: ContractState, calls: Array<Call>) {
             let execution_info = get_execution_info();
+            assert_valid_execution_info(:execution_info);
             let (user_addr, user_private_key, client_actions) = extract_execute_view_inputs(
                 :calls, contract_address: execution_info.contract_address,
             );
