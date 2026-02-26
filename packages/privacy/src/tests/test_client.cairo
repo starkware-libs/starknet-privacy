@@ -13,7 +13,9 @@ use privacy::tests::utils_for_tests::{
     InvokeExternalInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
 };
-use privacy::utils::constants::{OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120};
+use privacy::utils::constants::{
+    ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
+};
 use privacy::utils::{
     compute_message_hash, decode_note_amount, encrypt_channel_info, encrypt_user_addr,
     is_canonical_key, to_write_once_action, unpack,
@@ -4265,6 +4267,24 @@ fn test_validate_assertions() {
     user.privacy.cheat_zero_caller_address();
     let result = user.safe_validate(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_RESOURCE_PRICE);
+}
+
+#[test]
+fn test_execute_accepts_estimation_tx_version() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random })].span();
+    cheat_transaction_version(
+        contract_address: test.privacy.address,
+        version: ESTIMATION_BASE_TX_VERSION + TX_V3,
+        span: CheatSpan::TargetCalls(1),
+    );
+    let server_actions = test
+        .privacy
+        .execute(user_addr: user.address, user_private_key: user.private_key, :client_actions);
+    let expected_server_actions = user.set_viewing_key(:random);
+    assert_eq!(server_actions, expected_server_actions);
 }
 
 #[test]
