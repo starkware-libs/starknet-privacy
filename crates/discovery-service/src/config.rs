@@ -55,7 +55,7 @@ impl Default for RpcConfig {
             connect_timeout: Duration::from_secs(30),
             request_timeout: Duration::from_secs(60),
             max_idle_per_host: 10,
-            max_batch_size: 50,
+            max_batch_size: 100,
         }
     }
 }
@@ -157,7 +157,7 @@ impl Default for ValidationLimits {
         Self {
             cursor_limits: CursorLimits::default(),
             max_outgoing_recipients: 64,
-            server_budget: 200,
+            server_budget: 10_000,
             max_request_body_bytes: 102_400,
             public_key_cache_capacity: 10_000,
         }
