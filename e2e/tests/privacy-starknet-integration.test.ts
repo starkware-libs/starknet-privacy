@@ -140,7 +140,6 @@ describe("Privacy StarkNet integration", () => {
       viewingKeyProvider: { getViewingKey: async () => BigInt(alice.viewingKey) },
       provingProvider: new ProvingServiceProofProvider(
         PROVING_SERVICE_URL,
-        provider,
         CHAIN_ID,
       ),
       discoveryProvider: discovery,
