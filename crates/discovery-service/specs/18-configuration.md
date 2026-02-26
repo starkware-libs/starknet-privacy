@@ -51,7 +51,7 @@ level = "info"
 max_cursor_channels = 256
 max_cursor_subchannels_per_channel = 64
 max_outgoing_recipients = 64
-server_budget = 100
+server_budget = 10000
 max_request_body_bytes = 102400
 batch_budget = 16
 ```
@@ -68,7 +68,7 @@ These env vars override the corresponding config file values at runtime:
 | `WS_URL` | `indexer.ws_url` | `ws://127.0.0.1:5050/ws` |
 | `API_HOST` | `api.host` | `127.0.0.1:8080` |
 | `RUST_LOG` | `logging.level` | `info` |
-| `SERVER_BUDGET` | `limits.server_budget` | `100` |
+| `SERVER_BUDGET` | `limits.server_budget` | `10000` |
 | `BATCH_BUDGET` | `limits.batch_budget` | `16` |
 
 RPC pool settings, indexer timeouts, and validation limits (except server/batch budget) have no env var — configurable only via file.
