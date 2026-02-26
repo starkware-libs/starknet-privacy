@@ -8,8 +8,8 @@ pub mod Privacy {
     use privacy::actions::{
         AppendInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
         DepositInput, InputValidation, InvokeExternalInput, InvokeInput, OpenChannelInput,
-        OpenSubchannelInput, ReadAssertInput, ServerAction, SetViewingKeyInput, TransferFromInput,
-        TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
+        OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
+        UseNoteInput, WithdrawInput, WriteOnceInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -36,8 +36,8 @@ pub mod Privacy {
     use privacy::{errors, events};
     use starknet::account::Call;
     use starknet::storage::{
-        Map, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
-        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
+        Map, MutableVecTrait, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
+        StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::storage_access::{
         StorageBaseAddress, storage_address_from_base_and_offset, storage_base_address_from_felt252,
@@ -319,9 +319,7 @@ pub mod Privacy {
             input: OpenChannelInput,
         ) -> Array<ServerAction> {
             input.assert_valid();
-            let OpenChannelInput {
-                recipient_addr, recipient_public_key, index, random, salt,
-            } = input;
+            let OpenChannelInput { recipient_addr, index, random, salt } = input;
 
             // Assert sender is registered with the given private key.
             let sender_public_key = self.public_key.read(sender_addr);
@@ -330,6 +328,10 @@ pub mod Privacy {
                 sender_public_key == derive_public_key(private_key: sender_private_key),
                 errors::SENDER_NOT_AUTHENTICATED,
             );
+
+            // Assert recipient is registered.
+            let recipient_public_key = self.public_key.read(recipient_addr);
+            assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
 
             // Assert index is sequential, i.e. the previous channel exists.
             assert(
@@ -365,14 +367,6 @@ pub mod Privacy {
             );
 
             array![
-                ServerAction::ReadAssert(
-                    ReadAssertInput {
-                        storage_address: storage_path_to_felt252(
-                            path: self.public_key.entry(recipient_addr),
-                        ),
-                        value: recipient_public_key,
-                    },
-                ),
                 ServerAction::Append(AppendInput { recipient_addr, enc_channel_info }),
                 to_write_once_action(
                     storage_address: storage_path_to_felt252(
@@ -772,7 +766,6 @@ pub mod Privacy {
                     ServerAction::Append(input) => self._apply_append(:input),
                     ServerAction::TransferFrom(input) => self._apply_transfer_from(:input),
                     ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
-                    ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
                     ServerAction::Invoke(input) => self._apply_invoke(:input),
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
@@ -794,7 +787,6 @@ pub mod Privacy {
                         has_replay_protection = true;
                     },
                     ServerAction::Append(input) => self._apply_append(:input),
-                    ServerAction::ReadAssert(input) => self._apply_read_assert(:input),
                     ServerAction::TransferFrom(_) => {},
                     ServerAction::TransferTo(_) => {},
                     ServerAction::Invoke(_) => {},
@@ -840,13 +832,6 @@ pub mod Privacy {
             // Note: This function should NOT panic as the contract should have the balance.
             IERC20Dispatcher { contract_address: token }
                 .checked_transfer(recipient: to_addr, amount: amount.into())
-        }
-
-        fn _apply_read_assert(ref self: ContractState, input: ReadAssertInput) {
-            let ReadAssertInput { storage_address, value } = input;
-            let target = StorageBase::<felt252> { __base_address__: storage_address };
-            let current_value = target.read();
-            assert(current_value == value, errors::VALUE_MISMATCH);
         }
 
         fn _apply_invoke(ref self: ContractState, input: InvokeInput) {

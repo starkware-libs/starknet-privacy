@@ -373,20 +373,6 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "privacy::actions::ReadAssertInput",
-    "members": [
-      {
-        "name": "storage_address",
-        "type": "core::felt252"
-      },
-      {
-        "name": "value",
-        "type": "core::felt252"
-      }
-    ]
-  },
-  {
-    "type": "struct",
     "name": "privacy::objects::EncPrivateKey",
     "members": [
       {
@@ -544,10 +530,6 @@ export const PrivacyPoolABI = [
       {
         "name": "TransferTo",
         "type": "privacy::actions::TransferToInput"
-      },
-      {
-        "name": "ReadAssert",
-        "type": "privacy::actions::ReadAssertInput"
       },
       {
         "name": "EmitViewingKeySet",
