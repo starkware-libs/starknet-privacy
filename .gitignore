@@ -86,3 +86,6 @@ __pycache__
 
 # e2e predeployed accounts (legacy, replaced by .env ACCOUNTS var)
 accounts.json
+
+# e2e load test output
+e2e/results/

@@ -6,7 +6,9 @@
   "scripts": {
     "test": "vitest run",
     "test:e2e": "vitest run",
+    "batch-operations": "tsx --env-file=.env scripts/batch-operations.ts",
     "declare-class": "tsx --env-file=.env scripts/declare-class.ts",
+    "load-test-discovery": "tsx --env-file=.env scripts/load-test-discovery.ts",
     "generate-dump": "tsx scripts/generate-dump.ts",
     "lint": "eslint src tests scripts --fix",
     "lint:check": "eslint src tests scripts",

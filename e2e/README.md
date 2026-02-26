@@ -41,6 +41,10 @@ fake cursor with an invalid block ID, triggering an HTTP 409 (BLOCK_REORGED)
 from the indexer. The SDK should clear the registry and retry from scratch
 without surfacing the error to the caller.
 
+## Scripts
+
+See [`scripts/README.md`](scripts/README.md) for load testing and batch operation scripts.
+
 ## Linting
 
 ```bash
