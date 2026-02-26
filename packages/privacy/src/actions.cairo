@@ -335,15 +335,6 @@ pub struct TransferToInput {
     pub amount: u128,
 }
 
-/// Input for the `ReadAssert` action.
-#[derive(Serde, Copy, Drop, PartialEq, Debug)]
-pub struct ReadAssertInput {
-    /// The storage address to read and assert.
-    pub storage_address: felt252,
-    /// The expected value.
-    pub value: felt252,
-}
-
 /// Input for the `Invoke` server action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct InvokeInput {
@@ -364,8 +355,6 @@ pub enum ServerAction {
     TransferFrom: TransferFromInput,
     /// Transfer tokens from the contract to a recipient (ERC20 transfer).
     TransferTo: TransferToInput,
-    /// Read and assert that a storage value is equal to a given value.
-    ReadAssert: ReadAssertInput,
     /// Emit [`ViewingKeySet`](privacy::events::ViewingKeySet) event.
     EmitViewingKeySet: events::ViewingKeySet,
     /// Emit [`Withdrawal`](privacy::events::Withdrawal) event.

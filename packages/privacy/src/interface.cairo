@@ -132,6 +132,10 @@ pub trait IClient<T> {
     /// not registered with a viewing key.
     /// - [`SENDER_NOT_AUTHENTICATED`](privacy::errors::SENDER_NOT_AUTHENTICATED): Thrown if the
     /// sender's public key does not match the derived public key from the private key.
+    /// - [`RECIPIENT_NOT_REGISTERED`](privacy::errors::RECIPIENT_NOT_REGISTERED): Thrown if the
+    /// recipient is not registered with a public key.
+    /// - [`WRONG_RECIPIENT_PUBLIC_KEY`](privacy::errors::WRONG_RECIPIENT_PUBLIC_KEY): Thrown if the
+    /// recipient's public key does not match the registered public key.
     /// - [`INDEX_NOT_SEQUENTIAL`](privacy::errors::INDEX_NOT_SEQUENTIAL): Thrown if the channel
     /// index is not sequential (i.e. the previous channel does not exist).
     /// - [`VALUE_MISMATCH`](privacy::errors::VALUE_MISMATCH): Thrown if the recipient's public key
@@ -282,8 +286,6 @@ pub trait IClient<T> {
     /// [`ViewingKeySet`](privacy::events::ViewingKeySet) event.
     ///
     /// **For [`OpenChannel`](privacy::actions::ClientAction::OpenChannel) action:**
-    /// - [`ReadAssert`](privacy::actions::ServerAction::ReadAssert): Verifies that the
-    /// recipient's public key in storage matches the provided public key.
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the channel existence
     /// flag to storage.
     /// - [`Append`](privacy::actions::ServerAction::Append): Appends the encrypted
@@ -424,8 +426,6 @@ pub trait IServer<T> {
     ///   user to the contract via ERC20 `transfer_from`.
     ///   - [`TransferTo`](privacy::actions::ServerAction::TransferTo): Transfer tokens from the
     ///   contract to a recipient via ERC20 `transfer`.
-    ///   - [`ReadAssert`](privacy::actions::ServerAction::ReadAssert): Read and assert that a
-    ///   storage value is equal to a given value.
     ///   - [`EmitViewingKeySet`](privacy::actions::ServerAction::EmitViewingKeySet): Emit a
     ///   [`ViewingKeySet`](privacy::events::ViewingKeySet) event.
     ///   - [`EmitWithdrawal`](privacy::actions::ServerAction::EmitWithdrawal): Emit a
@@ -448,8 +448,6 @@ pub trait IServer<T> {
     /// - `proof_facts` in the TX info must be valid for the given `actions` (see Reverts).
     /// - For [`WriteOnce`](privacy::actions::ServerAction::WriteOnce) actions, the storage location
     /// must be empty (zero) before writing.
-    /// - For [`ReadAssert`](privacy::actions::ServerAction::ReadAssert) actions, the storage
-    /// value must match the expected value.
     /// - For [`TransferFrom`](privacy::actions::ServerAction::TransferFrom) actions, the sender
     /// must have sufficient token balance and allowance.
     ///
@@ -487,10 +485,6 @@ pub trait IServer<T> {
     /// **Errors for [`WriteOnce`](privacy::actions::ServerAction::WriteOnce) action:**
     /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the value at the specified
     /// storage path already exists (is not zero).
-    ///
-    /// **Errors for [`ReadAssert`](privacy::actions::ServerAction::ReadAssert) action:**
-    /// - [`VALUE_MISMATCH`](privacy::errors::VALUE_MISMATCH): Thrown if the storage value does not
-    /// match the expected value.
     ///
     /// **Errors for [`TransferFrom`](privacy::actions::ServerAction::TransferFrom) action:**
     /// - `INSUFFICIENT_BALANCE`: Thrown if the sender has insufficient token balance (from ERC20

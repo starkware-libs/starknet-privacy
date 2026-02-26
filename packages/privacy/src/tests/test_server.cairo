@@ -1,7 +1,5 @@
 use core::num::traits::Zero;
-use privacy::actions::{
-    AppendInput, InvokeInput, ReadAssertInput, ServerAction, TransferFromInput, TransferToInput,
-};
+use privacy::actions::{AppendInput, InvokeInput, ServerAction, TransferFromInput, TransferToInput};
 use privacy::objects::{EncOutgoingChannelInfo, Note};
 use privacy::tests::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
@@ -473,47 +471,6 @@ fn test_apply_transfer_to_assertions() {
     assert_lt!(token.balance_of(address: test.privacy.address), amount.into());
     let result = test.privacy.safe_apply_actions(actions.span());
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
-}
-
-#[test]
-fn test_apply_read_assert() {
-    let mut test: Test = Default::default();
-    let user = test.new_user();
-
-    // Write initial value.
-    let storage_address = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
-    );
-    let actions = array![to_write_once_action(:storage_address, value: user.public_key)].span();
-    test.privacy.apply_actions(actions);
-
-    // Verify value by loading from storage.
-    assert_eq!(user.get_public_key(), user.public_key);
-
-    // Verify value by action.
-    let actions = array![
-        ServerAction::ReadAssert(ReadAssertInput { storage_address, value: user.public_key }),
-    ];
-    test.privacy.apply_actions(actions.span());
-}
-
-#[test]
-fn test_apply_read_assert_assertions() {
-    let mut test: Test = Default::default();
-    let user = test.new_user();
-    let storage_path_felt = map_entry_address(
-        map_selector: selector!("public_key"), keys: [user.address.into()].span(),
-    );
-
-    // Catch VALUE_MISMATCH.
-    assert_ne!(user.get_public_key(), user.public_key);
-    let actions = array![
-        ServerAction::ReadAssert(
-            ReadAssertInput { storage_address: storage_path_felt, value: user.public_key },
-        ),
-    ];
-    let result = test.privacy.safe_apply_actions(actions.span());
-    assert_panic_with_felt_error(:result, expected_error: errors::VALUE_MISMATCH);
 }
 
 #[test]
