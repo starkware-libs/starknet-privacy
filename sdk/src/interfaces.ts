@@ -97,11 +97,27 @@ export interface ViewingKeyProvider {
   getViewingKey(): Promise<ViewingKey>;
 }
 
+/**
+ * Config for creating a production proving provider (ProvingServiceProofProvider).
+ * Use this when you want the factory to instantiate the prover from a URL instead of passing an instance.
+ */
 export type ProofProviderConfig = {
+  /** Base URL of the proving service (e.g. https://prover.example.com:3000). */
   url: string;
+  /** Chain ID used for proof invocation details (e.g. SN_MAIN, SN_SEPOLIA). */
+  chainId: constants.StarknetChainId;
+  /** Request timeout in ms. Default 30_000. */
+  requestTimeoutMs?: number;
+  /** Default block identifier for proving when not provided in execute options. Default "latest". */
+  blockIdentifier?: ProvingBlockId;
 };
 
+/**
+ * Config for creating a production discovery provider (IndexerDiscoveryProvider).
+ * Use this when you want the factory to instantiate discovery from a URL instead of passing an instance.
+ */
 export type DiscoveryProviderConfig = {
+  /** Base URL of the discovery/indexer API. */
   url: string;
 };
 
