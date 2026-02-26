@@ -16,8 +16,8 @@ use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
 };
 use privacy::utils::constants::{
-    ENTRYPOINT_FAILED, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120,
-    TX_V3,
+    ENTRYPOINT_FAILED, ESTIMATION_BASE_TX_VERSION, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE,
+    OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
 };
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
@@ -43,7 +43,8 @@ pub mod constants {
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
-    pub const TX_V3: u64 = 3;
+    pub const TX_V3: felt252 = 3;
+    pub const ESTIMATION_BASE_TX_VERSION: felt252 = 0x100000000000000000000000000000000;
     /// The packed value for open notes: `pack(salt = OPEN_NOTE_SALT = 1, amount = 0)`.
     pub const OPEN_NOTE_PACKED_VALUE: felt252 = u256 { high: OPEN_NOTE_SALT, low: Zero::zero() }
         .try_into()
@@ -317,7 +318,11 @@ pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
     // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
     assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
     let tx_info = execution_info.tx_info;
-    assert(tx_info.version.try_into().unwrap() == TX_V3, errors::INVALID_TX_VERSION);
+    let version = tx_info.version;
+    assert(
+        version == TX_V3 || version == ESTIMATION_BASE_TX_VERSION + TX_V3,
+        errors::INVALID_TX_VERSION,
+    );
 }
 
 /// Asserts that the calls are valid and deserializes the calldata.
