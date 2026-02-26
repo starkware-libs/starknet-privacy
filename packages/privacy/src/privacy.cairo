@@ -809,6 +809,8 @@ pub mod Privacy {
 
         fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
             let WriteOnceInput { storage_address, value } = input;
+            assert(!value.is_empty(), internal_errors::UNEXPECTED_EMPTY_VALUE);
+            assert(value[0].is_non_zero(), internal_errors::UNEXPECTED_ZERO_VALUE);
             let base: StorageBaseAddress = storage_base_address_from_felt252(addr: storage_address);
             let mut offset = 0;
             for felt in value {
