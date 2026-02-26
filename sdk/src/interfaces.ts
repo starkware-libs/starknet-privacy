@@ -246,6 +246,13 @@ export function createEmptyRegistry(): PrivateRegistry {
 }
 
 /**
+ * Block reference for proving. Passed as block_id to the proving service.
+ * Server currently supports: "latest" | { block_number: N } | { block_hash: "0x..." }.
+ */
+// TODO: Add latest-verifiable to the proving service.
+export type ProvingBlockId = BlockIdentifier;
+
+/**
  * Options for building and executing private transfers.
  */
 export type ExecuteOptions = {
@@ -262,7 +269,7 @@ export type ExecuteOptions = {
   /** If true, registry is not mutated; a new one is returned instead */
   registryConst?: boolean;
   /** If defined, use the given block id for proving */
-  provingBlockId?: BlockIdentifier;
+  provingBlockId?: ProvingBlockId;
 };
 
 export type Warning = {
@@ -571,8 +578,8 @@ export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
 export interface ProofProviderInterface {
   /** Get the default factory details for creating proof invocations. */
   getDefaultDetails(): ProofInvocationFactoryDetails;
-  /** Prove the given invocation against the given block id. If no block id is provided, the latest block is used. */
-  prove(invocation: ProofInvocation, blockId?: BlockIdentifier): Promise<Proof>;
+  /** Prove the given invocation against the given block id. If no block id is provided, use the default block identifier defined in the provider. */
+  prove(invocation: ProofInvocation, blockIdentifier?: ProvingBlockId): Promise<Proof>;
 }
 
 export interface DiscoveryProviderInterface {
