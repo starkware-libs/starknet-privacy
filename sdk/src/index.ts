@@ -9,9 +9,6 @@ export type {
 } from "./internal/proving-service.js";
 export type { BlockIdentifier } from "starknet";
 export { ProvingServiceProofProvider } from "./internal/proving-service-provider.js";
-export type {
-  ProvingBlockId,
-  ProvingServiceProofProviderOptions,
-} from "./internal/proving-service-provider.js";
+export type { ProvingServiceProofProviderOptions } from "./internal/proving-service-provider.js";
 export type { RateLimitOptions } from "./utils/rate-limiter.js";
 export type { DiscoveryOptions } from "./internal/contract-discovery.js";
