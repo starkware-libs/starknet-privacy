@@ -5,6 +5,7 @@ pub mod Privacy {
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::token::erc20::IERC20Dispatcher;
     use openzeppelin::introspection::src5::SRC5Component;
+    use openzeppelin::security::ReentrancyGuardComponent;
     use privacy::actions::{
         AppendInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
         DepositInput, InputValidation, InvokeExternalInput, InvokeInput, OpenChannelInput,
@@ -62,6 +63,9 @@ pub mod Privacy {
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
+    component!(
+        path: ReentrancyGuardComponent, storage: reentrancyguard, event: ReentrancyGuardEvent,
+    );
 
     #[storage]
     struct Storage {
@@ -75,6 +79,8 @@ pub mod Privacy {
         accesscontrol: AccessControlComponent::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
+        #[substorage(v0)]
+        reentrancyguard: ReentrancyGuardComponent::Storage,
         /// Map of recipient_addr to a list of their encrypted channels.
         recipient_channels: Map<ContractAddress, Vec<EncChannelInfo>>,
         /// Map of outgoing-channel ids to their encrypted recipient addresses.
@@ -116,6 +122,8 @@ pub mod Privacy {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
+        #[flat]
+        ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
         ViewingKeySet: events::ViewingKeySet,
         Withdrawal: events::Withdrawal,
         Deposit: events::Deposit,
@@ -144,6 +152,7 @@ pub mod Privacy {
     #[abi(embed_v0)]
     impl PausableImpl = PausableComponent::PausableImpl<ContractState>;
     impl PausableInternalImpl = PausableComponent::InternalImpl<ContractState>;
+    impl ReentrancyGuardInternalImpl = ReentrancyGuardComponent::InternalImpl<ContractState>;
     #[abi(embed_v0)]
     impl ReplaceabilityImpl =
         ReplaceabilityComponent::ReplaceabilityImpl<ContractState>;
@@ -674,10 +683,12 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
         fn apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
+            self.reentrancyguard.start();
             self.pausable.assert_not_paused();
             self.validate_proof(:actions);
             self.collect_fee();
             self._apply_actions(:actions);
+            self.reentrancyguard.end();
         }
 
         fn deposit_to_open_note(

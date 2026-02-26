@@ -27,6 +27,7 @@ use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
 use privacy::tests::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
+use privacy::tests::mock_reentrancy::MockReentrancy::deploy_for_test as deploy_mock_reentrancy_for_test;
 use privacy::tests::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
 use privacy::tests::mock_swap_executor::{
     ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait, ISwapExecutorSafeDispatcher,
@@ -1876,6 +1877,21 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
         class_hash: *contract_class_hash, :deployment_params, :is_valid,
     )
         .expect('MockAccount deployment failed');
+    contract_address
+}
+
+/// Deploy the reentrancy mock (attempts to call apply_actions on the privacy contract when
+/// invoked).
+pub(crate) fn deploy_mock_reentrancy() -> ContractAddress {
+    let class_hash = declare(contract: "MockReentrancy")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_reentrancy_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('MockReentrancy deploy failed');
     contract_address
 }
 
