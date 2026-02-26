@@ -34,15 +34,53 @@ h3 {
   margin: 0 auto;
 }
 
-.pool-selector {
-  display: flex;
+.pool-selector-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 8px;
   align-items: center;
-  gap: 8px;
+  margin-top: 12px;
   margin-bottom: 12px;
-  padding: 8px;
+  padding: 12px 12px 8px;
   background: #161b22;
   border: 1px solid #30363d;
   border-radius: 4px;
+}
+
+.pool-selector-label {
+  color: #8b949e;
+  white-space: nowrap;
+}
+
+.pool-selector-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pool-selector-value code {
+  color: #c9d1d9;
+  font-size: 13px;
+  padding-left: 12px;
+}
+
+.pool-selector-value input {
+  width: 540px;
+}
+
+.pool-selector-value > button {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.copy-button {
+  background: #21262d;
+  border-color: #30363d;
+  color: #8b949e;
+}
+
+.copy-button:hover:not(:disabled) {
+  background: #30363d;
 }
 
 .account-selector {
@@ -50,7 +88,7 @@ h3 {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
-  padding: 8px;
+  padding: 8px 12px;
   background: #161b22;
   border: 1px solid #30363d;
   border-radius: 4px;
@@ -183,6 +221,9 @@ input[type="number"] {
 
 .action-form button {
   margin-top: 4px;
+  font-size: 12px;
+  padding: 3px 9px;
+  margin-left: 6px;
 }
 
 .status-bar {
@@ -225,7 +266,10 @@ input[type="number"] {
 .subtitle code {
   color: #c9d1d9;
   font-size: 11px;
+  cursor: default;
+  word-break: break-all;
 }
+
 
 .chip {
   display: inline-block;
