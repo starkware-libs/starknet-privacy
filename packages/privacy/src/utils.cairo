@@ -17,12 +17,11 @@ use privacy::objects::{
 };
 use privacy::utils::constants::{
     ENTRYPOINT_FAILED, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120,
-    TX_V3,
 };
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{get_class_hash_at_syscall, send_message_to_l1_syscall};
-use starknet::{ContractAddress, Store, SyscallResultTrait, TxInfo, VALIDATED, get_execution_info};
+use starknet::{ContractAddress, Store, SyscallResultTrait, TxInfo, VALIDATED};
 
 #[starknet::interface]
 pub(crate) trait IAccount<TState> {
@@ -310,21 +309,6 @@ pub(crate) fn unpack(packed_value: felt252) -> (u128, u128) {
     // Sanity check that value_1 (high bits) is 120 bits.
     assert(high < TWO_POW_120, internal_errors::UNPACK1_OUT_OF_BOUNDS);
     (high, low)
-}
-
-pub(crate) fn assert_valid_execution_info() {
-    let execution_info = get_execution_info();
-    // Ensure that the current call is the first of the transaction,
-    // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
-    assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
-    let tx_info = execution_info.tx_info;
-    assert(tx_info.version.try_into().unwrap() == TX_V3, errors::INVALID_TX_VERSION);
-    // Ensure that the effective fee of the transaction is zero; this is a sanity check,
-    // to prevent the execution of this code over Starknet.
-    assert(tx_info.tip.is_zero(), errors::NON_ZERO_TIP);
-    for resource_bounds in tx_info.resource_bounds {
-        assert(resource_bounds.max_price_per_unit.is_zero(), errors::NON_ZERO_RESOURCE_PRICE);
-    }
 }
 
 /// Asserts that the calls are valid and deserializes the calldata.
