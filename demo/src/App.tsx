@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatChainId, truncateAddress } from "./format.ts";
 import { loadConfig } from "./config.ts";
 import { createProvider, createAccount, createTransfers } from "./starknet.ts";
@@ -11,13 +11,15 @@ import { AccountSelector } from "./components/AccountSelector.tsx";
 import { PoolSelector } from "./components/PoolSelector.tsx";
 import { InfoPanel } from "./components/InfoPanel.tsx";
 import { ActionPanel } from "./components/ActionPanel.tsx";
+import { TransactionBuilder } from "./components/TransactionBuilder.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
+import { useTransactionBuilder } from "./hooks/useTransactionBuilder.ts";
 import "./App.css";
 
 const config = loadConfig();
 
 export function App() {
-  const { accounts, activeIndex, activeAccount, setActiveIndex, addAccount } =
+  const { accounts, activeIndex, activeAccount, setActiveIndex } =
     useAccounts(config.accounts);
 
   const provider = useMemo(() => createProvider(config.rpcUrl), []);
@@ -58,7 +60,7 @@ export function App() {
     refresh();
   }, [refresh]);
 
-  const { status, mint, deposit, withdraw, transfer } = useTransactions(
+  const { status, register, mint, deposit, withdraw, transfer } = useTransactions(
     provider,
     transfers,
     activeAccount?.address,
@@ -66,6 +68,17 @@ export function App() {
     config,
     refresh,
   );
+
+  const { status: builderStatus, executeBatch } = useTransactionBuilder(
+    provider,
+    transfers,
+    activeAccount?.address,
+    activePool.address,
+    config,
+    refresh,
+  );
+
+  const [activeView, setActiveView] = useState<"actions" | "builder">("actions");
 
   return (
     <div className="app">
@@ -86,9 +99,8 @@ export function App() {
         accounts={accounts}
         activeIndex={activeIndex}
         onSelect={setActiveIndex}
-        onAdd={addAccount}
       />
-      <StatusBar status={status} />
+      <StatusBar status={activeView === "actions" ? status : builderStatus} />
       <div className="main-layout">
         <InfoPanel
           state={state}
@@ -96,14 +108,40 @@ export function App() {
           error={error}
           onRefresh={refresh}
         />
-        <ActionPanel
-          pending={status.pending}
-          otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
-          onMint={mint}
-          onDeposit={deposit}
-          onWithdraw={withdraw}
-          onTransfer={transfer}
-        />
+        <div className="action-panel">
+          <div className="view-toggle">
+            <button
+              className={activeView === "actions" ? "active" : ""}
+              onClick={() => setActiveView("actions")}
+            >
+              Actions
+            </button>
+            <button
+              className={activeView === "builder" ? "active" : ""}
+              onClick={() => setActiveView("builder")}
+            >
+              Builder
+            </button>
+          </div>
+          {activeView === "actions" ? (
+            <ActionPanel
+              pending={status.pending}
+              otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
+              onRegister={register}
+              onMint={mint}
+              onDeposit={deposit}
+              onWithdraw={withdraw}
+              onTransfer={transfer}
+            />
+          ) : (
+            <TransactionBuilder
+              pending={builderStatus.pending}
+              activeAddress={activeAccount!.address}
+              otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
+              onExecute={executeBatch}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

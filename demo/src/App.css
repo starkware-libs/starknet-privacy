@@ -34,7 +34,17 @@ h3 {
   margin: 0 auto;
 }
 
-.pool-selector,
+.pool-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+}
+
 .account-selector {
   display: flex;
   align-items: center;
@@ -46,6 +56,38 @@ h3 {
   border-radius: 4px;
 }
 
+.account-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.account-tab {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 4px 12px;
+  color: #8b949e;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.account-tab.active {
+  background: #238636;
+  border-color: #2ea043;
+  color: #fff;
+}
+
+.account-tab:hover:not(.active) {
+  background: #30363d;
+}
+
+.account-tab-address {
+  font-size: 11px;
+  margin-left: 4px;
+  color: inherit;
+  opacity: 0.7;
+}
+
 select {
   background: #0d1117;
   color: #c9d1d9;
@@ -54,12 +96,6 @@ select {
   padding: 4px 8px;
   font-family: inherit;
   font-size: 13px;
-}
-
-.add-account-form {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
 }
 
 .main-layout {
@@ -210,4 +246,75 @@ input[type="number"] {
 .chip-no {
   background: #3d1a1a;
   color: #f85149;
+}
+
+.view-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.view-toggle button {
+  flex: 1;
+  background: #21262d;
+  border-color: #30363d;
+  color: #8b949e;
+}
+
+.view-toggle button.active {
+  background: #238636;
+  border-color: #2ea043;
+  color: #fff;
+}
+
+.builder-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 4px 0;
+}
+
+.builder-checkbox input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.builder-add {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #21262d;
+}
+
+.builder-add select,
+.builder-add input {
+  width: 100%;
+}
+
+.builder-operation {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid #21262d;
+  font-size: 12px;
+}
+
+.builder-operation span:nth-child(2) {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.builder-operation .remove-button {
+  background: #3d1a1a;
+  border-color: #f85149;
+  color: #f85149;
+  padding: 1px 6px;
+  font-size: 11px;
+  min-width: auto;
 }
