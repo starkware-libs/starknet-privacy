@@ -22,7 +22,7 @@ use privacy::utils::constants::{
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{get_class_hash_at_syscall, send_message_to_l1_syscall};
-use starknet::{ContractAddress, Store, SyscallResultTrait, TxInfo, VALIDATED, get_execution_info};
+use starknet::{ContractAddress, ExecutionInfo, Store, SyscallResultTrait, TxInfo, VALIDATED};
 
 #[starknet::interface]
 pub(crate) trait IAccount<TState> {
@@ -312,8 +312,7 @@ pub(crate) fn unpack(packed_value: felt252) -> (u128, u128) {
     (high, low)
 }
 
-pub(crate) fn assert_valid_execution_info() {
-    let execution_info = get_execution_info();
+pub(crate) fn assert_valid_execution_info(execution_info: Box<ExecutionInfo>) {
     // Ensure that the current call is the first of the transaction,
     // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
     assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);

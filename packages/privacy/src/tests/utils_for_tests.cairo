@@ -1535,6 +1535,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
         let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+        self.cheat_valid_execution_info();
         let mut spy = spy_messages_to_l1();
         self.client.__execute__(:calls);
         self.general_assert_spy_messages(ref :spy);
@@ -1548,6 +1549,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         client_actions: Span<ClientAction>,
     ) {
         let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+        self.cheat_valid_execution_info();
         self.client.__execute__(:calls);
     }
 
@@ -1559,6 +1561,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
         let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+        self.cheat_valid_execution_info();
         self.safe_client.__execute__(:calls)
     }
 
@@ -1577,6 +1580,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn safe_execute_with_calls(
         self: @PrivacyCfg, calls: Array<Call>,
     ) -> Result<(), Array<felt252>> {
+        self.cheat_valid_execution_info();
         self.safe_client.__execute__(:calls)
     }
 

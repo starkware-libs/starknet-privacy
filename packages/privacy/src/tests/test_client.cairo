@@ -4372,6 +4372,31 @@ fn test_execute_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
+    // Catch NON_ZERO_CALLER.
+    let result = user.safe_execute_without_cheat(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_CALLER);
+
+    // Catch INVALID_TX_VERSION.
+    user.privacy.cheat_zero_caller_address();
+    cheat_transaction_version(
+        contract_address: user.privacy.address,
+        version: Zero::zero(),
+        span: CheatSpan::TargetCalls(1),
+    );
+    let result = user.safe_execute_without_cheat(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_TX_VERSION);
+
+    // Catch NOV_ZERO_TIP.
+    user.privacy.cheat_zero_caller_address();
+    cheat_tip(contract_address: user.privacy.address, tip: 1, span: CheatSpan::TargetCalls(1));
+    let result = user.safe_execute_without_cheat(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_TIP);
+
+    // Catch NON_ZERO_RESOURCE_PRICE.
+    user.privacy.cheat_zero_caller_address();
+    let result = user.safe_execute_without_cheat(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_RESOURCE_PRICE);
+
     // Catch EXPECTED_ONE_CALL (zero calls).
     let result = test.privacy.safe_execute_with_calls(calls: array![]);
     assert_panic_with_felt_error(:result, expected_error: errors::EXPECTED_ONE_CALL);

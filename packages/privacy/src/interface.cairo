@@ -41,6 +41,14 @@ pub trait IClient<T> {
     /// in the input.
     ///
     /// #### Reverts
+    /// - [`NON_ZERO_CALLER`](privacy::errors::NON_ZERO_CALLER): Thrown if the caller address is not
+    /// zero.
+    /// - [`INVALID_TX_VERSION`](privacy::errors::INVALID_TX_VERSION): Thrown if the TX version is
+    /// not >= 3.
+    /// - [`NON_ZERO_TIP`](privacy::errors::NON_ZERO_TIP): Thrown if the transaction tip is not
+    /// zero.
+    /// - [`NON_ZERO_RESOURCE_PRICE`](privacy::errors::NON_ZERO_RESOURCE_PRICE): Thrown if the
+    /// transaction resource prices are not zero.
     /// - [`INVALID_SIGNATURE`](privacy::errors::INVALID_SIGNATURE): Thrown if the TX signature is
     /// invalid (The TX signature should be of `user_addr` who is executing the actions).
     /// - [`EXPECTED_ONE_CALL`](privacy::errors::EXPECTED_ONE_CALL): Thrown if `calls.len() != 1`.
