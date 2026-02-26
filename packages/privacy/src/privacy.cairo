@@ -23,7 +23,8 @@ pub mod Privacy {
         TokenBalances, TokenBalancesTrait,
     };
     use privacy::utils::constants::{
-        INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, TX_V3, VIRTUAL_SNOS, VIRTUAL_SNOS0,
+        ESTIMATION_BASE_TX_VERSION, INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, TX_V3,
+        VIRTUAL_SNOS, VIRTUAL_SNOS0,
     };
     use privacy::utils::{
         ProofFacts, assert_valid_signature, compute_message_hash, decode_note_amount,
@@ -179,7 +180,11 @@ pub mod Privacy {
             // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
             assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
             let tx_info = execution_info.tx_info;
-            assert(tx_info.version.try_into().unwrap() == TX_V3, errors::INVALID_TX_VERSION);
+            let tx_version = tx_info.version;
+            assert(
+                tx_version == TX_V3 || tx_version == ESTIMATION_BASE_TX_VERSION + TX_V3,
+                errors::INVALID_TX_VERSION,
+            );
 
             let (user_addr, user_private_key, client_actions) = extract_execute_view_inputs(
                 :calls, contract_address: execution_info.contract_address,

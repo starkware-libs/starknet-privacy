@@ -32,6 +32,7 @@ pub mod constants {
     use core::ec::stark_curve::ORDER;
     use core::num::traits::{Pow, Zero};
     use starknet::ContractAddress;
+    use starkware_utils::constants::TWO_POW_128;
 
     /// The salt value in the [`Note`](privacy::objects::Note) (packed with the amount in
     /// `packed_value`) identifies which type of note it is;
@@ -42,7 +43,8 @@ pub mod constants {
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
-    pub const TX_V3: u64 = 3;
+    pub const TX_V3: felt252 = 3;
+    pub const ESTIMATION_BASE_TX_VERSION: felt252 = TWO_POW_128.try_into().unwrap();
     /// The packed value for open notes: `pack(salt = OPEN_NOTE_SALT = 1, amount = 0)`.
     pub const OPEN_NOTE_PACKED_VALUE: felt252 = u256 { high: OPEN_NOTE_SALT, low: Zero::zero() }
         .try_into()
