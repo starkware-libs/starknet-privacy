@@ -36,6 +36,12 @@ After all verification passes (fmt, clippy, tests), ask the user if they want to
 6. Execute the agreed simplifications
 7. Re-run verification to confirm nothing broke
 
+## E2E scripts verification checklist (from repo root)
+
+- `npx prettier --check e2e/scripts/` - code formatting
+- `cd e2e && npx eslint scripts/` - lints (0 warnings required)
+- Do **not** run `tsc --noEmit` in `e2e/` — pre-existing type gaps in scripts cause false failures
+
 ## E2E tests
 
 E2E tests (`cd e2e && npm test`) are slow. Run them only once per finalized changeset, not after each incremental edit.
