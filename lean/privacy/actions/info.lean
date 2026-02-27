@@ -89,10 +89,10 @@ def open_channel_info
   simp only [Bool.decide_and, decide_not, Bool.decide_or, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
     Bool.not_true, decide_eq_false_iff_not, Bool.or_eq_true, decide_eq_true_eq] at success₀
 
-  let ⟨bob_registered, alice_registered, kalice_valid, r_ne_zero, prev_outgoing_exists⟩ := success₀
+  let ⟨bob_registered, alice_registered, kalice_valid, r_ne_zero, prev_outgoing_exists, h_Kbob⟩ := success₀
 
   simp [ServerAction.run_all, open_channel, ServerAction.run, List.foldl_cons, List.foldl_nil, write_ne] at success₁
-  have ⟨⟨⟨h_Kbob, channel_didnt_exist⟩, outgoing_channel_didnt_exist⟩, _⟩ := success₁
+  have ⟨⟨channel_didnt_exist, outgoing_channel_didnt_exist⟩, _⟩ := success₁
 
   exact {
     m' := m'
