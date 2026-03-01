@@ -231,17 +231,6 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
-    #[feature("safe_dispatcher")]
-    fn safe_execute_without_cheat(
-        self: @User, client_actions: Span<ClientAction>,
-    ) -> Result<(), Array<felt252>> {
-        self
-            .privacy
-            .safe_execute_without_cheats(
-                user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
-            )
-    }
-
     fn safe_validate(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<felt252, Array<felt252>> {
@@ -1526,17 +1515,6 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_execute(
-        self: @PrivacyCfg,
-        user_addr: ContractAddress,
-        user_private_key: felt252,
-        client_actions: Span<ClientAction>,
-    ) -> Result<(), Array<felt252>> {
-        let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
-        self.safe_client.__execute__(:calls)
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_execute_without_cheats(
         self: @PrivacyCfg,
         user_addr: ContractAddress,
         user_private_key: felt252,
