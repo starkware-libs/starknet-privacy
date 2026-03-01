@@ -201,7 +201,7 @@ theorem open_channel_immutable
   dsimp only [run_action₀, open_channel] at *
   rw [decide_eq_true_iff] at success
 
-  have ⟨h₀, h₁, h₂, h₃, h₄⟩ := success
+  have ⟨h₀, h₁, h₂, h₃, h₄, h₅⟩ := success
 
   dsimp only [immutable_fn, mem_cell_fn] at imm₀ imm₁
 
@@ -210,6 +210,7 @@ theorem open_channel_immutable
   · simp only [imm₀ [inp.addralice] (by
       rw [h₁]; exact crypto.zero_not_public_key ⟨inp.kalice, h₂⟩
     )]
+    simp only [imm₀ [inp.addrbob] (by rw [h₅]; exact h₀)]
 
     cases h₄
     case inl h₄ => simp [h₄]

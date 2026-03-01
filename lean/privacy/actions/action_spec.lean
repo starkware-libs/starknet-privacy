@@ -22,7 +22,10 @@ def register (crypto: Crypto) (inp: RegisterInput) (_: Memory) : List ServerActi
 --------------------
 
 structure OpenChannelInput where
-  (addralice kalice addrbob Kbob: ℕ)
+  (addralice kalice addrbob: ℕ)
+  -- `Kbob` is not really an input since it can be computed from the memory and the other inputs.
+  -- It is included here for convenience.
+  (Kbob: ℕ)
   -- Outgoing channel index and random blinding value.
   (q r: ℕ)
 
@@ -47,13 +50,13 @@ abbrev OpenChannelInput.enc_addrbob (crypto: Crypto) (inp: OpenChannelInput) : �
 def open_channel (crypto: Crypto) (inp: OpenChannelInput) (m: Memory) : List ServerAction × Bool :=
   let alice_registered := m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
   let prev_outgoing_exists := inp.q = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
+  let h_Kbob := m .PublicKeys [inp.addrbob] = inp.Kbob
   ([
-    .ReadAssert .PublicKeys [inp.addrbob] inp.Kbob,
     .Append .ChannelsJ .Channels [inp.addrbob] (inp.enc crypto) (by simp),
     .WriteOnce .ChannelMarkers [inp.channel_marker crypto] 1,
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 0] inp.r,
     .WriteOnce .OutgoingChannels [inp.outgoing_channel_id crypto, 1] (inp.enc_addrbob crypto),
-  ], inp.Kbob ≠ 0 ∧ alice_registered ∧ inp.kalice ∈ crypto.PrivateKeys ∧ inp.r ≠ 0 ∧ prev_outgoing_exists)
+  ], inp.Kbob ≠ 0 ∧ alice_registered ∧ inp.kalice ∈ crypto.PrivateKeys ∧ inp.r ≠ 0 ∧ prev_outgoing_exists ∧ h_Kbob)
 
 -----------------------
 -- Open Subchannel --
