@@ -27,7 +27,7 @@
     "dist"
   ],
   "scripts": {
-    "scarb:build": "cd .. && scarb cache clean && scarb build",
+    "scarb:build": "cd .. && scarb cache clean && scarb build --features test_contracts",
     "generate:abi": "npx tsx scripts/generate-abi.ts",
     "generate:client-actions": "npx tsx scripts/generate-client-actions.ts",
     "generate:cairo-hashes": "npx tsx scripts/generate-hashes.ts && prettier --write src/utils/hashes.ts",

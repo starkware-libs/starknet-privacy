@@ -179,8 +179,26 @@ export type SurplusAction = {
   withdraw?: boolean;
 };
 
+export type InvokeOpenNote = {
+  noteId: NoteId;
+  token: StarknetAddressBigint;
+  depositor: StarknetAddressBigint;
+};
+
+export type InvokeWithdrawal = {
+  recipient: StarknetAddressBigint;
+  token: StarknetAddressBigint;
+  amount: Amount;
+};
+
+export type InvokeCalldataBuilderArgs = {
+  openNotes: InvokeOpenNote[];
+  withdrawals: InvokeWithdrawal[];
+  poolAddress: StarknetAddressBigint;
+};
+
 export type InvokeAction = {
-  callDetails: CallDetails;
+  callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails;
 };
 
 /** Actions - context comes from registry */
@@ -330,13 +348,12 @@ export interface SimplePrivateTransfersInterface {
 
   /**
    * will withdraw to the contract in `helperCall` and then deposit to the privacy pool in `toToken`
-   * Note: a noteid will be added to the helper calldata
    */
   swap(
     fromToken: StarknetAddress,
     fromAmount: Amount,
     toToken: StarknetAddress,
-    helperCall: Call
+    executor: StarknetAddress
   ): Promise<ExecuteResult>;
 }
 
@@ -539,7 +556,10 @@ export interface TokenOperationsBuilder {
  *     .withdraw({ recipient: swapHelper, amount: 10n }))
  *   .with(BTC, t => t
  *     .deposit(open)) // semi-transparent note for swap result
- *   .invoke({ contractAddress: swapHelper, entrypoint: "swap", calldata: [...] })
+ *   .invoke(({ openNotes, withdrawals, poolAddress }) => ({
+ *       contractAddress: swapHelper,
+ *       calldata: [...]
+ *   }))
  *   .execute();
  * ```
  */
@@ -551,7 +571,7 @@ export interface PrivateTransfersBuilder {
   setup(recipient: StarknetAddress): this;
 
   /** Add a call to `privacy_invoke` entrypoint that will run on starknet after the private operations are executed */
-  invoke(callDetails: CallDetails): this;
+  invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this;
 
   /**
    * Set the default recipient for any surplus across all tokens.

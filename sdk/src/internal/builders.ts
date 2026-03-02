@@ -25,13 +25,14 @@ import {
   type SurplusAction,
   type InvokeAction,
   type Amount,
+  type InvokeCalldataBuilderArgs,
   Open,
   PrivateTransfersInterface,
 } from "../interfaces.js";
-import type { CallDetails } from "starknet";
 import { AddressMap, toBigInt } from "../utils/index.js";
 import { debugLog } from "../utils/logging.js";
 import { isOpenNote } from "../utils/validation.js";
+import type { CallDetails } from "starknet";
 
 // ============ Token Operations Builder ============
 
@@ -180,11 +181,13 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     return this;
   }
 
-  invoke(callDetails: CallDetails): this {
+  invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this {
     if (this.invokeExternal !== undefined) {
       throw new Error("At most one .invoke() per transaction; already set.");
     }
-    this.invokeExternal = { callDetails: callDetails };
+    this.invokeExternal = {
+      callBuilder,
+    };
     return this;
   }
 

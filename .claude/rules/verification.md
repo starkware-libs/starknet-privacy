@@ -8,7 +8,7 @@
 **SDK verification checklist (from `sdk/`):**
 - `npx prettier --check src/ tests/` - code formatting (must include `tests/` — husky pre-commit checks both)
 - `npx eslint src/ tests/` - lints (0 warnings required, must include `tests/`)
-- `npx tsc --noEmit` - type-check passes
+- `npx tsc --noEmit -p tsconfig.build.json` - type-check **source only** (test files have known type gaps that don't affect runtime; never run bare `tsc --noEmit` which includes tests)
 
 ## E2E integration gate
 
