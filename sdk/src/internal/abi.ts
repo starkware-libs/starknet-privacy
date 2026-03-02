@@ -62,10 +62,6 @@ export const PrivacyPoolABI = [
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
-        "name": "recipient_public_key",
-        "type": "core::felt252"
-      },
-      {
         "name": "index",
         "type": "core::integer::u32"
       },
@@ -2350,6 +2346,12 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "event",
+    "name": "openzeppelin_security::reentrancyguard::ReentrancyGuardComponent::Event",
+    "kind": "enum",
+    "variants": []
+  },
+  {
+    "type": "event",
     "name": "privacy::events::ViewingKeySet",
     "kind": "struct",
     "members": [
@@ -2561,6 +2563,11 @@ export const PrivacyPoolABI = [
       {
         "name": "SRC5Event",
         "type": "openzeppelin_introspection::src5::SRC5Component::Event",
+        "kind": "flat"
+      },
+      {
+        "name": "ReentrancyGuardEvent",
+        "type": "openzeppelin_security::reentrancyguard::ReentrancyGuardComponent::Event",
         "kind": "flat"
       },
       {
