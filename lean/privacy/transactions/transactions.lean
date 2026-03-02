@@ -104,9 +104,9 @@ abbrev Transaction₀.sum_withdraw_amounts (tx: Transaction₀) (token: ℕ) : �
 structure Transaction extends TimedTransaction where
   owner: ℕ
   h_owner: ∀ action ∈ actions, action.check_owner owner
-  h_balance: ∀ token, toTransaction₀.sum_create_note_amounts token =
+  h_balance: ∀ token, toTransaction₀.sum_create_note_amounts token +
+    toTransaction₀.sum_withdraw_amounts token =
     toTransaction₀.sum_use_note_amounts token
-    -- TODO: Add toTransaction₀.sum_withdraw_amounts token.
 
 structure SuccessfulTransactions (crypto: Crypto) where
   txs: List Transaction
