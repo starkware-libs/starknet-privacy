@@ -41,6 +41,12 @@ serde_json = "1.0"
 thiserror = "2"
 backoff = { version = "0.4", features = ["tokio"] }
 
+# Crypto
+starknet-crypto = "0.8"
+
+# Cache
+moka = { version = "0.12", features = ["sync"] }
+
 # Configuration
 toml = "0.8"
 regex = "1"
