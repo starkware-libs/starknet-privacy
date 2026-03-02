@@ -60,7 +60,7 @@ pub async fn preflight_check<S: IViews>(
 
     // 3. Check channel existence
     let channel_key = compute_channel_key(sender_addr, decryption_key, recipient, recipient_pk);
-    let channel_marker = compute_channel_marker(channel_key, sender_addr, recipient, recipient_pk);
+    let channel_marker = compute_channel_marker(&channel_key, sender_addr, recipient, recipient_pk);
     let channel_exists = pool.channel_exists(channel_marker).await?;
     if !channel_exists {
         return Ok(PreflightCheckResult {
@@ -71,7 +71,7 @@ pub async fn preflight_check<S: IViews>(
     }
 
     // 4. Check subchannel existence
-    let subchannel_marker = compute_subchannel_marker(channel_key, recipient, recipient_pk, token);
+    let subchannel_marker = compute_subchannel_marker(&channel_key, recipient, recipient_pk, token);
     let subchannel_exists = pool.subchannel_exists(subchannel_marker).await?;
 
     debug!(
@@ -102,11 +102,11 @@ mod tests {
         let backend = MockBackend::new(fixture.slots);
         let c = &fixture.constants;
 
-        let decryption_key = SecretFelt::new(c.alice_viewing_key);
+        let decryption_key = &c.alice_viewing_key;
         let result = preflight_check(
             &backend,
             c.alice_address,
-            &decryption_key,
+            decryption_key,
             c.bob_address,
             c.strk_token,
         )
@@ -124,12 +124,12 @@ mod tests {
         let backend = MockBackend::new(fixture.slots);
         let c = &fixture.constants;
 
-        let decryption_key = SecretFelt::new(c.alice_viewing_key);
+        let decryption_key = &c.alice_viewing_key;
         let unknown = Felt::from_hex_unchecked("0xdead");
         let result = preflight_check(
             &backend,
             c.alice_address,
-            &decryption_key,
+            decryption_key,
             unknown,
             c.strk_token,
         )

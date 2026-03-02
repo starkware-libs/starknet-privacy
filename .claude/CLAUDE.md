@@ -16,7 +16,7 @@ Keep the scope for the current task small enough to target ~100-200 lines of cod
 
 ## Specs
 
-Discovery service specs live in `.claude/specs/discovery-service/`.
+Discovery service specs live in `crates/discovery-service/specs/`.
 
 The **source of truth** for privacy pool contract interface and semantics (encryption, hashing, etc.) is the Cairo code.
 
