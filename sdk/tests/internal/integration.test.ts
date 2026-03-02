@@ -7,8 +7,7 @@ import {
   POOL_ADDRESS,
 } from "../helpers/test-fixtures.js";
 import { Open } from "../../src/interfaces.js";
-import { debugHint, derivePublicKey, isDebugEnabled, toBigInt } from "../../src/utils/index.js";
-import { compute_channel_key, compute_note_id } from "../../src/utils/hashes.js";
+import { debugHint, isDebugEnabled, toBigInt } from "../../src/utils/index.js";
 import { debugLog } from "../../src/utils/logging.js";
 import { toHex } from "../../src/utils/convert.js";
 import { MockSwapHelper } from "../../src/testing/contracts.js";
@@ -396,16 +395,8 @@ describe("Private Transfers Integration", () => {
     const ace = toBigInt(env.ace);
     const bee = toBigInt(env.bee);
 
-    const swapHelper = new MockSwapHelper(SWAP_HELPER_ADDRESS, env.contracts);
+    const swapHelper = new MockSwapHelper(SWAP_HELPER_ADDRESS, env.contracts, POOL_ADDRESS);
     env.contracts.register(swapHelper);
-
-    const key = compute_channel_key(
-      env.alice.address,
-      env.alice.privateKey,
-      env.alice.address,
-      derivePublicKey(env.alice.privateKey)
-    );
-    const beeNoteId = compute_note_id(key, bee, 0);
 
     // 1. Setup self-channel and deposit ACE (autoSetup handles token subchannel setup)
     // prettier-ignore
@@ -418,9 +409,14 @@ describe("Private Transfers Integration", () => {
         .with(env.bee)
           .transfer({ recipient: env.alice.address, amount: Open, depositor: swapHelper.address })
         .done()
-        .invoke({
-          contractAddress: toHex(swapHelper.address),
-          calldata: [ace, bee, 10n, POOL_ADDRESS, beeNoteId],
+        .invoke(({ openNotes }) => {
+          expect(openNotes.length).toBe(1);
+          expect(openNotes[0].token).toBe(bee);
+          expect(openNotes[0].depositor).toBe(toBigInt(swapHelper.address));
+          return {
+            contractAddress: toHex(swapHelper.address),
+            calldata: [ace, bee, 10n, openNotes[0].noteId],
+          };
         })
         .execute()
     );
