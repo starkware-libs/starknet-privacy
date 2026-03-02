@@ -291,7 +291,6 @@ export class ActionCompiler {
           type: "OpenChannel",
           input: {
             recipient_addr: action.recipient,
-            recipient_public_key: channel.publicKey as bigint,
             index: pool.getNextChannelIndex(),
             random: generateRandom(),
             salt: generateRandom(),

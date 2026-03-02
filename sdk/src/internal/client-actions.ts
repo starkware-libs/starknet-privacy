@@ -12,7 +12,6 @@ export type SetViewingKeyInput = {
 
 export type OpenChannelInput = {
   recipient_addr: StarknetAddressBigint;
-  recipient_public_key: bigint;
   index: number;
   random: bigint;
   salt: bigint;
@@ -69,7 +68,7 @@ export type InvokeExternalInput = {
 };
 
 /**
- * Union of all client actions (from ABI, including InvokeExternal).
+ * Union of all client actions.
  */
 export type ClientAction =
   | { type: "SetViewingKey"; input: SetViewingKeyInput }

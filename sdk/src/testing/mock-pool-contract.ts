@@ -480,17 +480,23 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       case "SetViewingKey":
         return [this.register(sender, privateKey, action.input.random)];
 
-      case "OpenChannel":
+      case "OpenChannel": {
+        const recipientPublicKey = this.publicKeys.get(action.input.recipient_addr);
+        assert(
+          recipientPublicKey !== undefined,
+          () => `Recipient ${toHex(action.input.recipient_addr)} not registered — no public key`
+        );
         return [
           this.setChannel(
             sender,
             privateKey,
             action.input.recipient_addr,
-            action.input.recipient_public_key,
+            recipientPublicKey,
             action.input.index,
             action.input.random
           ),
         ];
+      }
 
       case "OpenSubchannel":
         return [
