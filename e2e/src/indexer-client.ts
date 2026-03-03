@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "child_process";
-import { createInterface } from "readline";
+import { createInterface, type Interface } from "readline";
 import { createServer } from "net";
 import { createWriteStream, type WriteStream } from "fs";
 import path from "path";
@@ -35,6 +35,7 @@ export class IndexerClient {
   private waiters: Array<{ pattern: string; resolve: (line: string) => void }> = [];
   private _apiPort: number;
   private logStream?: WriteStream;
+  private rl?: Interface;
 
   private constructor(child: ChildProcess, apiPort: number, logFile?: string) {
     this.child = child;
@@ -43,8 +44,12 @@ export class IndexerClient {
       this.logStream = createWriteStream(logFile, { flags: "w" });
     }
 
-    const rl = createInterface({ input: child.stderr! });
-    rl.on("line", (line) => {
+    child.on("error", () => {});
+    child.stderr!.on("error", () => {});
+
+    this.rl = createInterface({ input: child.stderr! });
+    this.rl.on("error", () => {});
+    this.rl.on("line", (line) => {
       this.lines.push(line);
       this.logStream?.write(line + "\n");
       for (let i = this.waiters.length - 1; i >= 0; i--) {
@@ -138,8 +143,13 @@ export class IndexerClient {
 
   async shutdown(): Promise<void> {
     this.logStream?.end();
+    this.rl?.close();
+    this.rl = undefined;
 
-    if (!this.child.pid || this.child.exitCode !== null) return;
+    if (!this.child.pid || this.child.exitCode !== null) {
+      this.child.stderr?.destroy();
+      return;
+    }
 
     const exitPromise = new Promise<void>((resolve) => {
       this.child.on("exit", () => resolve());
@@ -153,5 +163,6 @@ export class IndexerClient {
 
     await exitPromise;
     clearTimeout(timer);
+    this.child.stderr?.destroy();
   }
 }

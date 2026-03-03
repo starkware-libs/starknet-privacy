@@ -4,7 +4,6 @@ Cairo contracts used by E2E integration and devnet tests for Vesu lending flows.
 
 ## Contents
 
-- **MockAsset** — minimal ERC-20 with unrestricted `mint()`, used as test USD/BTC tokens
 - **MockPragmaOracle** / **MockPragmaSummary** — mock oracle contracts for deterministic price feeds
 - **External contracts** (built via `build-external-contracts`): Vesu V2 Pool, PoolFactory, VToken, Oracle
 
@@ -13,7 +12,7 @@ Cairo contracts used by E2E integration and devnet tests for Vesu lending flows.
 Requires **Scarb 2.11.4** (pinned in `.tool-versions`) due to the `vesu` dependency pulling `alexandria` which is incompatible with newer Scarb versions.
 
 ```bash
-cd e2e/vesu-contracts && asdf exec scarb build
+cd e2e/contracts/vesu && asdf exec scarb build
 ```
 
 Or from the e2e directory:
