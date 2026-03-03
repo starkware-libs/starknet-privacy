@@ -169,7 +169,7 @@ describe("Privacy StarkNet integration", () => {
     log("estimating mint fee...");
     const mintCall = {
       contractAddress: TOKEN,
-      entrypoint: "permissionedMint",
+      entrypoint: "mint",
       calldata: [alice.address, "100", "0"],
     };
     const mintFee = await adminAccount.estimateInvokeFee(mintCall);

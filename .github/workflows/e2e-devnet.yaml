@@ -55,21 +55,30 @@ jobs:
           universal-sierra-compiler-version: "v2.8.0-rc.0"
 
       # Build Cairo contracts (both profiles: release for e2e harness, dev for SDK devnet helper)
+      # All workspace packages + ekubo-contracts + test-token use Scarb 2.17.0-rc.4
       - name: Build contracts
         run: |
           scarb --profile release build -p privacy
-          scarb build -p privacy -p vesu_lending_helper
+          scarb build -p privacy -p vesu_lending_helper -p ekubo_swap_helper
         # TODO: remove SCARB_IGNORE_CAIRO_VERSION once openzeppelin upgrades to Cairo >=2.17
+        env:
+          SCARB_IGNORE_CAIRO_VERSION: "true"
+      - name: Build ekubo contracts
+        run: cd e2e/contracts/ekubo && scarb build
+        env:
+          SCARB_IGNORE_CAIRO_VERSION: "true"
+      - name: Build test token
+        run: cd e2e/contracts/test-token && scarb build
         env:
           SCARB_IGNORE_CAIRO_VERSION: "true"
 
       # Vesu contracts require Scarb 2.11.4 (alexandria dep incompatible with newer Scarb)
-      - name: Install Scarb 2.11.4 for vesu-contracts
+      - name: Install Scarb 2.11.4 for vesu contracts
         uses: software-mansion/setup-scarb@v1
         with:
           scarb-version: "2.11.4"
-      - name: Build vesu-contracts
-        run: cd e2e/vesu-contracts && scarb build
+      - name: Build vesu contracts
+        run: cd e2e/contracts/vesu && scarb build
 
       # Build discovery service (release — e2e spawns from target/release/)
       - name: Build discovery service

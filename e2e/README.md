@@ -34,6 +34,7 @@ transactions, producing ~94 notes (~38 spent). The volume forces multi-page
 pagination (SERVER_BUDGET=100, COST_NOTE=2).
 
 Verifies:
+
 - Alice discovers notes from multiple senders across both tokens
 - Alice discovers outgoing channels to all 9 users (plus self)
 - Every user discovers their own notes
@@ -64,7 +65,7 @@ and a `.env` file with account credentials.
 
 ## Scripts
 
-See [`scripts/README.md`](scripts/README.md) for load testing and batch operation scripts.
+See [`scripts/README.md`](scripts/README.md) for deployment and load testing scripts.
 
 ## Linting
 
@@ -82,6 +83,7 @@ npm run generate-dump
 ```
 
 This writes fixtures directly to:
+
 - `crates/discovery-core/tests/fixtures/devnet-state.json` -- contract storage slots
 - `crates/discovery-service/tests/fixtures/devnet-dump.json.gz` -- full devnet state
 - `crates/discovery-service/tests/fixtures/devnet-dump.metadata.json` -- timestamp + addresses
@@ -120,8 +122,21 @@ The admin account must have `"admin": true`:
 
 ```json
 [
-  {"name": "admin", "address": "0x...", "privateKey": "0x...", "viewingKey": "0x0", "salt": "0x...", "admin": true},
-  {"name": "alice", "address": "0x...", "privateKey": "0x...", "viewingKey": "0x...", "salt": "0x..."}
+  {
+    "name": "admin",
+    "address": "0x...",
+    "privateKey": "0x...",
+    "viewingKey": "0x0",
+    "salt": "0x...",
+    "admin": true
+  },
+  {
+    "name": "alice",
+    "address": "0x...",
+    "privateKey": "0x...",
+    "viewingKey": "0x...",
+    "salt": "0x..."
+  }
 ]
 ```
 
@@ -131,3 +146,56 @@ the privacy account.
 ```bash
 npx vitest run tests/integration/privacy-starknet-integration.test.ts
 ```
+
+## Testnet deployment: Vesu lending
+
+Deploy test tokens (USD, BTC), Vesu PoolFactory, mock oracles, lending pool with
+USD/BTC pairs, initial liquidity, and VesuLendingHelper:
+
+```bash
+# 1. Build contract artifacts
+cd e2e/contracts/test-token && scarb build
+cd e2e/contracts/vesu      && scarb build
+scarb build   # VesuLendingHelper (from repo root)
+
+# 2. Deploy (from e2e/)
+npm run deploy-vesu
+```
+
+Output addresses are written to `.env.deployed`. All deployments are idempotent.
+
+Verify the deployment with a deposit + redeem roundtrip:
+
+```bash
+npm run test-lending
+```
+
+## Testnet deployment: Ekubo swap
+
+Deploy Ekubo Core, Router, Positions with a seeded BTC/USD liquidity pool, and
+the EkuboSwapHelper executor. Reuses tokens from `.env.deployed` (run deploy-vesu first):
+
+```bash
+# 1. Build contract artifacts
+cd e2e/contracts/ekubo && scarb build
+scarb build   # EkuboSwapHelper (from repo root)
+
+# 2. Deploy (from e2e/)
+npm run deploy-ekubo
+```
+
+Output addresses are appended to `.env.deployed`. All deployments are idempotent.
+The pool seed phase always runs, enabling liquidity top-ups.
+
+Verify the deployment with a BTC→USD swap:
+
+```bash
+npm run test-swap
+```
+
+## Populating pool state
+
+To create a large number of notes for load testing, use the demo app transaction
+builder to submit batched deposit + transfer transactions against a deployed
+privacy pool. This provides a UI-driven workflow for constructing complex
+multi-token transactions without scripting.
