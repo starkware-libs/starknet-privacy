@@ -99,3 +99,13 @@ pub struct Note {
     pub depositor: ContractAddress,
 }
 
+/// Input for depositing to an open note (returned by invoked contract).
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct OpenNoteDeposit {
+    /// The identifier of the open note to deposit to.
+    pub note_id: felt252,
+    /// The ERC20 token contract to deposit.
+    pub token: ContractAddress,
+    /// The amount of tokens to deposit.
+    pub amount: u128,
+}

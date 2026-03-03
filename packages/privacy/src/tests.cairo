@@ -1,5 +1,6 @@
 pub mod generate_reference_data;
 pub mod mock_account;
+pub mod mock_invoke_returns;
 pub mod mock_reentrancy;
 pub mod test_admin;
 pub mod test_client;
