@@ -7,9 +7,9 @@ pub mod Privacy {
     use openzeppelin::security::ReentrancyGuardComponent;
     use privacy::actions::{
         AppendInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
-        DepositInput, InputValidation, InvokeExternalInput, InvokeInput, OpenChannelInput,
-        OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
-        UseNoteInput, WithdrawInput, WriteOnceInput,
+        DepositInput, DepositToOpenNoteInput, InputValidation, InvokeExternalInput, InvokeInput,
+        OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
+        TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
@@ -720,40 +720,6 @@ pub mod Privacy {
             self._apply_actions(:actions);
             self.reentrancyguard.end();
         }
-
-        fn deposit_to_open_note(
-            ref self: ContractState, note_id: felt252, token: ContractAddress, amount: u128,
-        ) {
-            self.pausable.assert_not_paused();
-            // Validate inputs.
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-
-            // Read the Note from storage and assert it exists.
-            let note_entry = self.notes.entry(note_id);
-            let Note { packed_value, token: note_token, depositor } = note_entry.read();
-            assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
-
-            let (salt, current_amount) = unpack(:packed_value);
-            assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
-            assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
-            assert(token == note_token, errors::TOKEN_MISMATCH);
-            assert(get_caller_address() == depositor, errors::CALLER_NOT_DEPOSITOR);
-
-            checked_transfer_from(
-                token_address: token,
-                sender: depositor,
-                recipient: get_contract_address(),
-                amount: amount.into(),
-            );
-
-            // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
-            let new_packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
-            assert(new_packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
-            note_entry.packed_value.write(new_packed_value);
-
-            self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
-        }
     }
 
     #[generate_trait]
@@ -809,20 +775,29 @@ pub mod Privacy {
         }
 
         fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
+            // TODO: Assert each note opened is filled by the end of this function.
+            // TODO: Consider refactoring to "FollowUpActions" / "PostActions" enum.
+            let mut open_note_deposits = array![];
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => self._apply_write_once(:input),
                     ServerAction::Append(input) => self._apply_append(:input),
                     ServerAction::TransferFrom(input) => self._apply_transfer_from(:input),
                     ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
-                    ServerAction::Invoke(input) => self._apply_invoke(:input),
+                    ServerAction::Invoke(input) => open_note_deposits
+                        .extend(self._apply_invoke(input)),
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
+                    // TODO: Consider removing this event.
                     ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
                     ServerAction::EmitNoteUsed(event) => self.emit(event),
                 };
-            };
+            }
+
+            for input in open_note_deposits {
+                self.deposit_to_open_note(:input);
+            }
         }
 
         fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
@@ -863,12 +838,48 @@ pub mod Privacy {
             checked_transfer(token_address: token, recipient: to_addr, amount: amount.into());
         }
 
-        fn _apply_invoke(ref self: ContractState, input: InvokeInput) {
+        fn _apply_invoke(
+            ref self: ContractState, input: InvokeInput,
+        ) -> Span<DepositToOpenNoteInput> {
             let InvokeInput { contract_address, calldata } = input;
-            call_contract_syscall(
+            let mut return_data = call_contract_syscall(
                 address: contract_address, entry_point_selector: INVOKE_SELECTOR, :calldata,
             )
                 .unwrap_syscall();
+
+            let deposits: Span<DepositToOpenNoteInput> = Serde::deserialize(ref return_data)
+                .expect(errors::INVOKE_RETURN_DESERIALIZE_ERROR);
+            assert(return_data.is_empty(), errors::INVOKE_RETURN_EXTRA_DATA);
+            deposits
+        }
+
+        /// Applies a single deposit to an open note. Caller is not checked; depositor is taken
+        /// from the note. Used when applying the span returned by an Invoke.
+        fn deposit_to_open_note(ref self: ContractState, input: @DepositToOpenNoteInput) {
+            input.assert_valid();
+            let DepositToOpenNoteInput { note_id, token, amount } = *input;
+
+            let note_entry = self.notes.entry(note_id);
+            let Note { packed_value, token: note_token, depositor } = note_entry.read();
+            assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
+
+            let (salt, current_amount) = unpack(:packed_value);
+            assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
+            assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
+            assert(token == note_token, errors::TOKEN_MISMATCH);
+
+            checked_transfer_from(
+                token_address: token,
+                sender: depositor,
+                recipient: get_contract_address(),
+                amount: amount.into(),
+            );
+
+            let new_packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
+            assert(new_packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
+            note_entry.packed_value.write(new_packed_value);
+
+            self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
         }
     }
 
