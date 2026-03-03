@@ -64,6 +64,7 @@
 6. Open note round trip: Depositor creates open note for User A -> deposits -> User A transfers to User B -> User B creates open note back to User A with same depositor -> depositor funds again -> User A withdraws.
 7. Create an open note and deposit to it in the same TX.
 8. Create an open note and deposit to a different one in the same TX.
+9. Fill multiple open notes in the same invoke action.
 
 ## Use note
 2. Try to use same note twice in one transfer.
