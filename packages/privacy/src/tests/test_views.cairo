@@ -240,7 +240,6 @@ fn test_get_note() {
     user_2.set_viewing_key_e2e();
     let token = test.new_token();
     let token_addr = token.contract_address();
-    let mut depositor = test.new_user();
     let amount = DEFAULT_AMOUNT;
     user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
 
@@ -253,23 +252,24 @@ fn test_get_note() {
     assert_eq!(test.privacy.get_note(note_id: enc_note_id), expected_enc_note);
 
     // Create and verify empty open note.
+    let depositor = test.privacy.echo_executor;
     let open_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, :token_addr, index: 1, depositor: depositor.address,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 1, :depositor);
     user_1.cheat_create_open_note_e2e(create_note_input: open_note_input);
     let (open_note_id, expected_open_note) = user_1
         .compute_open_note(create_note_input: open_note_input);
     assert_eq!(test.privacy.get_note(note_id: open_note_id), expected_open_note);
 
     // Deposit to the existing open note and verify.
-    depositor.fund_and_deposit_to_open_note(:token, note_id: open_note_id, :amount);
+    test
+        .privacy
+        .fund_and_cheat_invoke_echo(executor: depositor, :token, note_id: open_note_id, :amount);
     let filled_note = test.privacy.get_note(note_id: open_note_id);
     let (salt, stored_amount) = unpack(packed_value: filled_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount);
     assert_eq!(filled_note.token, token_addr);
-    assert_eq!(filled_note.depositor, depositor.address);
+    assert_eq!(filled_note.depositor, depositor);
 }
 
 #[test]

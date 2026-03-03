@@ -5,10 +5,11 @@ use privacy::actions::{
 };
 use privacy::errors::internal_errors;
 use privacy::helpers::mock_swap_executor::errors as mock_swap_executor_errors;
-use privacy::objects::{EncOutgoingChannelInfo, Note};
+use privacy::objects::{EncOutgoingChannelInfo, Note, OpenNoteDeposit};
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
-    constants, deploy_mock_reentrancy, deploy_mock_swap_executor, invoke_mock_swap_executor_input,
+    constants, deploy_mock_echo_with_salt, deploy_mock_reentrancy, deploy_mock_return_garbage,
+    deploy_mock_return_trailing_garbage, deploy_mock_swap_executor, invoke_mock_swap_executor_input,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{ProofFacts, compute_message_hash, open_note, to_write_once_action, unpack};
@@ -734,16 +735,6 @@ fn test_apply_actions_proof_facts_cheat() {
 }
 
 #[test]
-fn test_deposit_to_open_note_paused() {
-    let mut test: Test = Default::default();
-    let depositor = test.new_user();
-    let token_addr = test.mock_new_token();
-    test.privacy.pause();
-    let result = depositor.safe_deposit_to_open_note(note_id: 1, :token_addr, amount: 1);
-    assert_panic_with_felt_error(:result, expected_error: PausableErrors::PAUSED);
-}
-
-#[test]
 fn test_apply_write_once_open_note() {
     // Test that server correctly writes all open note fields.
     let mut test: Test = Default::default();
@@ -802,16 +793,17 @@ fn test_apply_write_once_open_note_assertions() {
 fn test_deposit_to_open_note() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let mut depositor = test.new_user();
+    let mut user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
     let token_addr = token.contract_address();
+    let echo_executor_addr = test.privacy.echo_executor;
 
     // Create an open note.
-    let create_note_input = depositor
+    let create_note_input = user
         .new_open_note_with_generated_random(
-            recipient: depositor, :token_addr, index: 0, depositor: depositor.address,
+            recipient: user, :token_addr, index: 0, depositor: echo_executor_addr,
         );
-    let (note_id, open_note) = depositor.compute_open_note(:create_note_input);
+    let (note_id, open_note) = user.compute_open_note(:create_note_input);
 
     // Write the open note to storage.
     test.privacy.cheat_create_note(:note_id, note: open_note);
@@ -820,19 +812,19 @@ fn test_deposit_to_open_note() {
     let stored_note = test.privacy.get_note(:note_id);
     assert_eq!(stored_note, open_note);
 
-    // Set up depositor with token balance and approval.
-    depositor.increase_token_balance(:token, :amount);
-    depositor.approve(:token, amount: amount.into());
+    // Set up echo executor with token balance and approval.
+    token.supply(address: echo_executor_addr, :amount);
+    token.approve(owner: echo_executor_addr, spender: test.privacy.address, amount: amount.into());
 
     // Verify balances before deposit.
-    assert_eq!(token.balance_of(address: depositor.address), amount.into());
+    assert_eq!(token.balance_of(address: echo_executor_addr), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 
     // Spy on events before executing.
     let mut spy = spy_events();
 
-    // Execute deposit_to_open_note (caller must be the depositor).
-    depositor.deposit_to_open_note(:note_id, :token_addr, :amount);
+    // Execute cheat_invoke_echo via the echo executor.
+    test.privacy.cheat_invoke_echo(:note_id, :token_addr, :amount);
 
     // Verify note packed_value updated with OPEN_NOTE_SALT and amount.
     let filled_note = test.privacy.get_note(:note_id);
@@ -840,15 +832,15 @@ fn test_deposit_to_open_note() {
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount);
     assert_eq!(filled_note.token, token_addr);
-    assert_eq!(filled_note.depositor, depositor.address);
+    assert_eq!(filled_note.depositor, echo_executor_addr);
 
     // Verify tokens transferred.
-    assert_eq!(token.balance_of(address: depositor.address), Zero::zero());
+    assert_eq!(token.balance_of(address: echo_executor_addr), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 
     // Verify OpenNoteDeposited event emitted.
     let expected_event = events::OpenNoteDeposited {
-        depositor: depositor.address, token: token_addr, note_id, amount,
+        depositor: echo_executor_addr, token: token_addr, note_id, amount,
     };
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(emitted_events.len(), 1);
@@ -865,77 +857,78 @@ fn test_deposit_to_open_note_assertions() {
     let mut test: Test = Default::default();
     let token = test.new_token();
     let mut user = test.new_user();
-    let depositor = test.new_user();
-    let other_depositor = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
     let token_addr = token.contract_address();
+    let echo_executor_addr = test.privacy.echo_executor;
 
-    // Setup: depositor has balance and approval.
-    depositor.increase_token_balance(:token, :amount);
-    depositor.approve(:token, amount: amount.into());
+    // Setup: echo executor has balance and approval.
+    token.supply(address: echo_executor_addr, :amount);
+    token.approve(owner: echo_executor_addr, spender: test.privacy.address, amount: amount.into());
 
     // Catch ZERO_TOKEN - Try to deposit with zero token.
-    let result = depositor.safe_deposit_to_open_note(note_id: 1, token_addr: Zero::zero(), :amount);
+    let result = test.privacy.safe_cheat_invoke_echo(note_id: 1, token_addr: Zero::zero(), :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT - Try to deposit with zero amount.
     let (some_note_id, _) = test.mock_new_note(:amount);
-    let result = depositor.safe_deposit_to_open_note(note_id: some_note_id, :token_addr, amount: 0);
+    let result = test.privacy.safe_cheat_invoke_echo(note_id: some_note_id, :token_addr, amount: 0);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch NOTE_NOT_FOUND - Try to deposit to a note that doesn't exist.
     let (nonexistent_note_id, _) = test.mock_new_note(:amount);
-    // Note: mock_new_note returns a note_id but does NOT write it to storage.
-    let result = depositor
-        .safe_deposit_to_open_note(note_id: nonexistent_note_id, :token_addr, :amount);
+    let result = test
+        .privacy
+        .safe_cheat_invoke_echo(note_id: nonexistent_note_id, :token_addr, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     // Catch NOTE_NOT_OPEN - Write an encrypted note (salt >= 2), try to deposit to it.
     let create_note_input = user
         .new_enc_note_with_generated_salt(recipient: user, :token_addr, :amount, index: 0);
     let (note_id_enc, enc_note) = user.compute_enc_note(:create_note_input);
-    // Write just the packed_value (encrypted note has zero token and depositor).
     test.privacy.cheat_create_note(note_id: note_id_enc, note: enc_note);
 
-    let result = depositor.safe_deposit_to_open_note(note_id: note_id_enc, :token_addr, :amount);
+    let result = test.privacy.safe_cheat_invoke_echo(note_id: note_id_enc, :token_addr, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
 
     // Catch NOTE_ALREADY_DEPOSITED - Deposit to an open note, then try to deposit again.
     let (note_id_filled, _) = test.mock_new_note(:amount);
-    let note = open_note(token: token_addr, depositor: depositor.address);
+    let note = open_note(token: token_addr, depositor: echo_executor_addr);
     test.privacy.cheat_create_note(note_id: note_id_filled, :note);
 
-    // Deposit to the open note first time.
-    depositor.deposit_to_open_note(note_id: note_id_filled, :token_addr, :amount);
+    test.privacy.cheat_invoke_echo(note_id: note_id_filled, :token_addr, :amount);
 
-    // Now try to deposit again - should fail with NOTE_ALREADY_DEPOSITED.
-    // Need to add more balance and approval for second attempt.
-    depositor.increase_token_balance(:token, :amount);
-    depositor.approve(:token, amount: amount.into());
+    token.supply(address: echo_executor_addr, :amount);
+    token.approve(owner: echo_executor_addr, spender: test.privacy.address, amount: amount.into());
 
-    let result = depositor.safe_deposit_to_open_note(note_id: note_id_filled, :token_addr, :amount);
+    let result = test.privacy.safe_cheat_invoke_echo(note_id: note_id_filled, :token_addr, :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
     // Catch TOKEN_MISMATCH.
     let (note_id, _) = test.mock_new_note(:amount);
-    let note = open_note(token: token_addr, depositor: depositor.address);
+    let note = open_note(token: token_addr, depositor: echo_executor_addr);
     test.privacy.cheat_create_note(:note_id, :note);
-    let result = depositor
-        .safe_deposit_to_open_note(:note_id, token_addr: test.mock_new_token(), :amount);
+    let result = test
+        .privacy
+        .safe_cheat_invoke_echo(:note_id, token_addr: test.mock_new_token(), :amount);
     assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_MISMATCH);
 
-    // Catch CALLER_NOT_DEPOSITOR - Create open note with depositor A, caller is depositor B.
-    let (note_id_mismatch, _) = test.mock_new_note(:amount);
-    let open_note_a = open_note(token: token_addr, depositor: depositor.address);
-    test.privacy.cheat_create_note(note_id: note_id_mismatch, note: open_note_a);
-
-    // Try to deposit with other_depositor as caller instead of depositor.
-    other_depositor.increase_token_balance(:token, :amount);
-    other_depositor.approve(:token, amount: amount.into());
-
-    let result = other_depositor
-        .safe_deposit_to_open_note(note_id: note_id_mismatch, :token_addr, :amount);
-    assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
+    // Catch DEPOSITOR_MISMATCH - Create note with echo executor, try depositing through a different
+    // executor.
+    let wrong_echo_executor = deploy_mock_echo_with_salt(salt: 1);
+    let (note_id, _) = test.mock_new_note(:amount);
+    let note = open_note(token: token_addr, depositor: echo_executor_addr);
+    test.privacy.cheat_create_note(:note_id, :note);
+    token.supply(address: wrong_echo_executor, :amount);
+    token.approve(owner: wrong_echo_executor, spender: test.privacy.address, amount: amount.into());
+    let deposit = OpenNoteDeposit { note_id, token: token_addr, amount };
+    let mut calldata: Array<felt252> = array![];
+    [deposit].span().serialize(ref calldata);
+    let invoke_input = InvokeInput {
+        contract_address: wrong_echo_executor, calldata: calldata.span(),
+    };
+    let actions = [ServerAction::Invoke(invoke_input)].span();
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::DEPOSITOR_MISMATCH);
 }
 
 #[test]
@@ -943,28 +936,26 @@ fn test_deposit_to_open_note_transfer_assertions() {
     let mut test: Test = Default::default();
     let token = test.new_token();
     let mut user = test.new_user();
-    let depositor = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
     let token_addr = token.contract_address();
+    let echo_executor_addr = test.privacy.echo_executor;
 
     // Create an open note.
     let create_note_input = user
         .new_open_note_with_generated_random(
-            recipient: user, :token_addr, index: 0, depositor: depositor.address,
+            recipient: user, :token_addr, index: 0, depositor: echo_executor_addr,
         );
     let (note_id, open_note) = user.compute_open_note(:create_note_input);
     test.privacy.cheat_create_note(:note_id, note: open_note);
 
-    // Test 1: INSUFFICIENT_BALANCE - Depositor has no tokens.
-    let result = depositor.safe_deposit_to_open_note(:note_id, :token_addr, :amount);
+    // Test 1: INSUFFICIENT_BALANCE - Echo executor has no tokens.
+    let result = test.privacy.safe_cheat_invoke_echo(:note_id, :token_addr, :amount);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 
-    // Test 2: INSUFFICIENT_ALLOWANCE - Depositor has tokens but no approval.
-    // Reuse the same note since Test 1 failed and didn't modify the note state.
-    depositor.increase_token_balance(:token, :amount);
-    // Note: NOT calling approve here.
+    // Test 2: INSUFFICIENT_ALLOWANCE - Echo executor has tokens but no approval.
+    token.supply(address: echo_executor_addr, :amount);
 
-    let result = depositor.safe_deposit_to_open_note(:note_id, :token_addr, :amount);
+    let result = test.privacy.safe_cheat_invoke_echo(:note_id, :token_addr, :amount);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
 }
 
@@ -1079,6 +1070,28 @@ fn test_apply_invoke_missing_selector() {
     let invoke_input = InvokeInput { contract_address: test.privacy.address, calldata: [].span() };
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: 'ENTRYPOINT_NOT_FOUND');
+}
+
+#[test]
+fn test_apply_invoke_return_deserialize_error() {
+    let mut test: Test = Default::default();
+    let mock_return_garbage_addr = deploy_mock_return_garbage();
+    let invoke_input = InvokeInput {
+        contract_address: mock_return_garbage_addr, calldata: [].span(),
+    };
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_INVOKE_RETURN_DATA);
+}
+
+#[test]
+fn test_apply_invoke_return_extra_data() {
+    let mut test: Test = Default::default();
+    let mock_return_trailing_garbage_addr = deploy_mock_return_trailing_garbage();
+    let invoke_input = InvokeInput {
+        contract_address: mock_return_trailing_garbage_addr, calldata: [].span(),
+    };
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_INVOKE_RETURN_DATA);
 }
 
 #[test]
@@ -1373,7 +1386,7 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     assert_eq!(output_token.balance_of(address: executor_addr), Zero::zero());
     assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 3).into());
 
-    // Catch CALLER_NOT_DEPOSITOR
+    // Catch DEPOSITOR_MISMATCH
     let wrong_depositor: ContractAddress = 'WRONG_DEPOSITOR'.try_into().unwrap();
     let create_note_input = user
         .new_open_note_with_generated_random(
@@ -1390,7 +1403,7 @@ fn test_apply_swap_with_executor_deposit_assertions() {
         note_id: note_id_mismatch,
     );
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
+    assert_panic_with_felt_error(:result, expected_error: errors::DEPOSITOR_MISMATCH);
     // Balances unchanged (revert).
     assert_eq!(input_token.balance_of(address: privacy_address), Zero::zero());
     assert_eq!(input_token.balance_of(address: executor_addr), (swap_amount * 3).into());
