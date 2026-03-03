@@ -11,6 +11,7 @@ import {
   type OpenChannelAction,
   type OpenTokenChannelAction,
   type PrivateTransfersBuilder,
+  type ProofInvocationResult,
   type Actions,
   type SetViewingKeyAction,
   type StarknetAddress,
@@ -139,6 +140,10 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
   async execute(options?: ExecuteOptions): Promise<ExecuteResult> {
     return this.parentBuilder.execute(options);
   }
+
+  async createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult> {
+    return this.parentBuilder.createProofInvocation(options);
+  }
 }
 
 // ============ Private Transfers Builder ============
@@ -202,9 +207,10 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     return tokenBuilder;
   }
 
-  async execute(options?: ExecuteOptions): Promise<ExecuteResult> {
-    debugLog("builder", "PrivateTransfersBuilderImpl.execute called");
-    // Merge build-time options with execute-time options
+  private collectActionsAndOptions(options?: ExecuteOptions): {
+    actions: Actions;
+    mergedOptions: ExecuteOptions;
+  } {
     const mergedOptions: ExecuteOptions = {
       ...this.buildOptions,
       ...options,
@@ -214,8 +220,6 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
       },
     };
 
-    // Collect raw actions from token builders
-    // Context resolution will happen in PrivateTransfers.execute via ActionCompiler
     const openTokenChannels: OpenTokenChannelAction[] = [];
     const deposits: DepositAction[] = [];
     const useNotes: UseNoteAction[] = [];
@@ -229,30 +233,17 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
         deposits: tokenBuilder.deposits.length,
       });
       openTokenChannels.push(...tokenBuilder.openTokenChannels);
-
-      // Deposits
       deposits.push(...tokenBuilder.deposits);
-
-      // Use notes
       useNotes.push(...tokenBuilder.useNotes);
-
-      // Create notes
       createNotes.push(...tokenBuilder.createNotes);
-
-      // Withdraws
       withdraws.push(...tokenBuilder.withdraws);
 
-      // Handle surplus - calculate and add CreateNoteAction if needed
       const surplusToAction = tokenBuilder.surplusAction ?? this.defaultSurplusAction;
       if (surplusToAction) {
-        surpluses.push({
-          ...surplusToAction,
-          token: token,
-        });
+        surpluses.push({ ...surplusToAction, token });
       }
     }
 
-    // Build raw actions (no context - ActionCompiler will resolve)
     const actions: Actions = {
       setViewingKey: this.setViewingKey,
       openChannels: this.openChannels,
@@ -265,7 +256,18 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
       invoke: this.invokeExternal,
     };
 
-    // Execute via PrivateTransfers - ActionCompiler will resolve contexts
+    return { actions, mergedOptions };
+  }
+
+  async execute(options?: ExecuteOptions): Promise<ExecuteResult> {
+    debugLog("builder", "PrivateTransfersBuilderImpl.execute called");
+    const { actions, mergedOptions } = this.collectActionsAndOptions(options);
     return this.transfers.execute(actions, mergedOptions);
+  }
+
+  async createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult> {
+    debugLog("builder", "PrivateTransfersBuilderImpl.createProofInvocation called");
+    const { actions, mergedOptions } = this.collectActionsAndOptions(options);
+    return this.transfers.createProofInvocation(actions, mergedOptions);
   }
 }
