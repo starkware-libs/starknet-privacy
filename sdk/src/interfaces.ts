@@ -1,5 +1,4 @@
 import type {
-  AccountInvocationItem,
   AccountInvocationsFactoryDetails,
   AllowArray,
   BigNumberish,
@@ -8,7 +7,6 @@ import type {
   Call,
   CallDetails,
   constants,
-  TransactionType,
 } from "starknet";
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
@@ -56,6 +54,7 @@ export type StarknetAddressBigint = bigint;
 // Import and re-export from internal channel
 import { Witness, Channel } from "./internal/channel.js";
 import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./internal/channel.js";
+import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-010";
 export { Witness, Channel };
 export type { NotesCursor as DiscoveryCursor };
 
@@ -291,6 +290,12 @@ export type ExecuteResult = {
   warnings: Warning[];
 };
 
+export type ProofInvocationResult = {
+  invocation: ProofInvocation;
+  registry: PrivateRegistry;
+  warnings: Warning[];
+};
+
 /**
  * Simple interface for simple private transfer scenarios
  */
@@ -397,6 +402,11 @@ export interface PrivateTransfersInterface {
    */
   execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult>;
 
+  /**
+   * Return the transaction to be proven so it can be sent independently to the prover
+   */
+  createProofInvocation(actions: Actions, options?: ExecuteOptions): Promise<ProofInvocationResult>;
+
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
 }
@@ -462,6 +472,9 @@ export interface TokenOperationsBuilder {
 
   /** Execute all queued operations */
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /** Build proof invocation without executing */
+  createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult>;
 }
 
 /**
@@ -554,13 +567,13 @@ export interface PrivateTransfersBuilder {
 
   /** Execute all queued operations and return the results */
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /** Build proof invocation without executing */
+  createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult>;
 }
 
 /** INVOKE branch of AccountInvocationItem; used for proof invocations and buildTransaction. */
-export type ProofInvocation = Extract<
-  AccountInvocationItem,
-  { type: typeof TransactionType.INVOKE }
->;
+export type ProofInvocation = INVOKE_TXN_V3;
 
 /**
  * Factory details for creating proof invocations.

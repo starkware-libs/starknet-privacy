@@ -13,7 +13,7 @@ import type {
   V3InvocationsSignerDetails,
 } from "starknet";
 import type { constants } from "starknet";
-import { CallData, ETransactionVersion, hash, TransactionType } from "starknet";
+import { CallData, ETransactionVersion, hash, RpcChannel, TransactionType } from "starknet";
 
 import { serializeClientActions } from "./serialization.js";
 import { PrivacyPoolABI } from "./abi.js";
@@ -155,14 +155,14 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
       } as V3InvocationsSignerDetails
     );
 
-    return {
+    return RpcChannel.prototype.buildTransaction({
       type: TransactionType.INVOKE,
       contractAddress: poolAddressHex,
       calldata: compiledCalldata,
       signature,
       nonce: details.nonce ?? PROOF_INVOCATION_NONCE,
       ...details,
-    };
+    });
   }
 
   parseOutput(output: string[]): CallResult {
