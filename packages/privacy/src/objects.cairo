@@ -1,5 +1,6 @@
 use core::dict::{Felt252Dict, Felt252DictEntryTrait, SquashedFelt252Dict, SquashedFelt252DictTrait};
 use core::num::traits::Zero;
+use privacy::actions::InputValidation;
 use privacy::errors;
 use starknet::ContractAddress;
 
@@ -94,8 +95,31 @@ pub struct Note {
     /// `(h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt) + amount) % 2^128`.
     pub packed_value: felt252,
     /// The token address of the note (zero for encrypted notes).
+    // TODO: Consider removing. Open notes are filled in the same tx they were created, so the
+    // creator can enforce using the correct token.
     pub token: ContractAddress,
     /// The address of the contract permitted to deposit into the note (zero for encrypted notes).
     pub depositor: ContractAddress,
 }
 
+/// Input for depositing to an open note (returned by invoked contract).
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct DepositToOpenNoteInput {
+    /// The identifier of the open note to deposit to.
+    pub note_id: felt252,
+    /// The address of the contract permitted to deposit into the note.
+    pub depositor: ContractAddress,
+    /// The ERC20 token contract to deposit.
+    pub token: ContractAddress,
+    /// The amount of tokens to deposit.
+    pub amount: u128,
+}
+
+pub(crate) impl DepositToOpenNoteInputValid of InputValidation<DepositToOpenNoteInput> {
+    fn assert_valid(self: DepositToOpenNoteInput) {
+        let DepositToOpenNoteInput { note_id: _, depositor, token, amount } = self;
+        assert(depositor.is_non_zero(), errors::ZERO_DEPOSITOR);
+        assert(token.is_non_zero(), errors::ZERO_TOKEN);
+        assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+    }
+}

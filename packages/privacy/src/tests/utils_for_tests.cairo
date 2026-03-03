@@ -27,12 +27,15 @@ use privacy::mock_swap_executor::{
     ISwapExecutorSafeDispatcherTrait,
 };
 use privacy::objects::{
-    EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
-    TokenBalances, TokenBalancesTrait,
+    DepositToOpenNoteInput, EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey,
+    EncSubchannelInfo, EncUserAddr, Note, TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
+use privacy::tests::mock_invoke_returns::MockEcho::deploy_for_test as deploy_mock_echo_for_test;
+use privacy::tests::mock_invoke_returns::MockReturnGarbage::deploy_for_test as deploy_mock_return_garbage_for_test;
+use privacy::tests::mock_invoke_returns::MockReturnTrailingGarbage::deploy_for_test as deploy_mock_return_trailing_garbage_for_test;
 use privacy::tests::mock_reentrancy::MockReentrancy::deploy_for_test as deploy_mock_reentrancy_for_test;
 use privacy::tests::utils_for_tests::constants::DEFAULT_PROOF_VALIDITY_BLOCKS;
 use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
@@ -182,6 +185,7 @@ pub(crate) struct PrivacyCfg {
     safe_admin: IAdminSafeDispatcher,
     pub strk_token: Token,
     pub swap_executor: SwapExecutorCfg,
+    pub echo_executor: ContractAddress,
     pub mock_amm: ContractAddress,
 }
 
@@ -1105,33 +1109,29 @@ pub(crate) impl UserImpl of UserTrait {
         token.approve(owner: *self.address, spender: *self.privacy.address, :amount);
     }
 
-    /// Execute deposit_to_open_note as this user (caller).
+    /// Execute _deposit_to_open_note via the echo executor (Invoke path).
     /// Assumes the user already has sufficient token balance and approval.
-    fn deposit_to_open_note(
+    fn _deposit_to_open_note(
         self: @User, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) {
-        cheat_caller_address_once(
-            contract_address: *self.privacy.address, caller_address: *self.address,
-        );
-        self.privacy.deposit_to_open_note(:note_id, :token_addr, :amount);
+        let depositor = *self.address;
+        self.privacy._deposit_to_open_note(:note_id, :depositor, :token_addr, :amount);
     }
 
-    /// Safe version of `deposit_to_open_note` that returns a Result.
+    /// Safe version of `_deposit_to_open_note` that returns a Result.
     /// Assumes the user already has sufficient token balance and approval.
     fn safe_deposit_to_open_note(
         self: @User, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) -> Result<(), Array<felt252>> {
-        cheat_caller_address_once(
-            contract_address: *self.privacy.address, caller_address: *self.address,
-        );
-        self.privacy.safe_deposit_to_open_note(:note_id, :token_addr, :amount)
+        let depositor = *self.address;
+        self.privacy.safe_deposit_to_open_note(:note_id, :depositor, :token_addr, :amount)
     }
 
     /// Fund the user, approve, and deposit to an open note.
     fn fund_and_deposit_to_open_note(self: @User, token: Token, note_id: felt252, amount: u128) {
         self.increase_token_balance(:token, :amount);
         self.approve(:token, amount: amount.into());
-        self.deposit_to_open_note(:note_id, token_addr: token.contract_address(), :amount);
+        self._deposit_to_open_note(:note_id, token_addr: token.contract_address(), :amount);
     }
 
     /// Cheat deposit in the server side (no client side).
@@ -1477,17 +1477,44 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_server.apply_actions(:actions)
     }
 
-    fn deposit_to_open_note(
-        self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
+    fn _deposit_to_open_note(
+        self: @PrivacyCfg,
+        note_id: felt252,
+        depositor: ContractAddress,
+        token_addr: ContractAddress,
+        amount: u128,
     ) {
-        self.server.deposit_to_open_note(:note_id, token: token_addr, :amount);
+        let actions = self
+            ._deposit_to_open_note_actions(:note_id, :depositor, :token_addr, :amount);
+        self.apply_actions(:actions);
     }
 
-    #[feature("safe_dispatcher")]
     fn safe_deposit_to_open_note(
-        self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
+        self: @PrivacyCfg,
+        note_id: felt252,
+        depositor: ContractAddress,
+        token_addr: ContractAddress,
+        amount: u128,
     ) -> Result<(), Array<felt252>> {
-        self.safe_server.deposit_to_open_note(:note_id, token: token_addr, :amount)
+        let actions = self
+            ._deposit_to_open_note_actions(:note_id, :depositor, :token_addr, :amount);
+        self.safe_apply_actions(:actions)
+    }
+
+    fn _deposit_to_open_note_actions(
+        self: @PrivacyCfg,
+        note_id: felt252,
+        depositor: ContractAddress,
+        token_addr: ContractAddress,
+        amount: u128,
+    ) -> Span<ServerAction> {
+        let deposit = DepositToOpenNoteInput { note_id, depositor, token: token_addr, amount };
+        let mut calldata: Array<felt252> = array![];
+        [deposit].span().serialize(ref calldata);
+        let invoke_input = InvokeInput {
+            contract_address: *self.echo_executor, calldata: calldata.span(),
+        };
+        [ServerAction::Invoke(invoke_input)].span()
     }
 
     fn pause(self: @PrivacyCfg) {
@@ -1827,6 +1854,7 @@ fn deploy_privacy(
     let swap_executor = deploy_mock_swap_executor(
         amm_address: mock_amm, selector: selector!("swap"),
     );
+    let echo_executor = _deploy_mock_echo();
     PrivacyCfg {
         address: contract_address,
         roles,
@@ -1842,6 +1870,7 @@ fn deploy_privacy(
         swap_executor: SwapExecutorCfg {
             address: swap_executor, privacy_address: contract_address,
         },
+        echo_executor,
         mock_amm,
     }
 }
@@ -1917,6 +1946,41 @@ fn deploy_mock_amm() -> ContractAddress {
     contract_address
 }
 
+fn _deploy_mock_echo() -> ContractAddress {
+    let class_hash = declare(contract: "MockEcho").unwrap_syscall().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_echo_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('ECHO_DEPLOY_FAIL');
+    contract_address
+}
+
+pub(crate) fn deploy_mock_return_garbage() -> ContractAddress {
+    let class_hash = declare(contract: "MockReturnGarbage")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_return_garbage_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('MOCK_RETURN_GARBAGE_DEPLOY_FAIL');
+    contract_address
+}
+
+pub(crate) fn deploy_mock_return_trailing_garbage() -> ContractAddress {
+    let class_hash = declare(contract: "MockReturnTrailingGarbage")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_return_trailing_garbage_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('TRAILING_GARBAGE_DEPLOY_FAIL');
+    contract_address
+}
 
 #[generate_trait]
 pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
@@ -1941,7 +2005,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         out_token: ContractAddress,
         in_amount: u128,
         note_id: felt252,
-    ) -> Result<(), Array<felt252>> {
+    ) -> Result<Span<DepositToOpenNoteInput>, Array<felt252>> {
         ISwapExecutorSafeDispatcher { contract_address: *self.address }
             .privacy_invoke(:in_token, :out_token, :in_amount, :note_id)
     }
