@@ -111,3 +111,76 @@ The test uses `admin` as the minter (OZ account) and `alice` as the privacy acco
 ```bash
 npx vitest run tests/privacy-starknet-integration.test.ts
 ```
+
+## Ekubo Swap integration (`tests/swap-ekubo-integration.test.ts`)
+
+Runs the deposit + swap + discovery flow against integration Sepolia using:
+- freshly deployed privacy pool (per test run),
+- Ekubo Core + Router + Positions + privacy EkuboSwapExecutor deployed via scripts.
+
+### One-time setup
+
+```bash
+# 1. Build Ekubo contract artifacts
+cd e2e/ekubo-contracts && scarb build
+
+# 2. Build privacy contract artifacts (from repo root)
+scarb build
+
+# 3. Declare + deploy + seed Ekubo infra (Core, Router, Positions)
+cd e2e && npm run setup-ekubo
+
+# 4. Declare + deploy EkuboSwapExecutor
+cd e2e && npm run setup-executor
+```
+
+Copy printed addresses into `.env`:
+- `EKUBO_CORE_ADDRESS`
+- `EKUBO_ROUTER_ADDRESS`
+- `EKUBO_POSITIONS_ADDRESS`
+- `EXECUTOR_ADDRESS`
+
+All scripts are idempotent — re-running skips already-deployed contracts.
+`setup-ekubo` always runs the seed phase, enabling liquidity top-ups.
+
+### Required env for Ekubo test
+
+- `FEE_TOKEN_ADDRESS`
+- `EXECUTOR_ADDRESS`
+- `EKUBO_POOL_TOKEN0`, `EKUBO_POOL_TOKEN1`, `EKUBO_POOL_FEE`, `EKUBO_TICK_SPACING`, `EKUBO_EXTENSION`
+- `EKUBO_SQRT_RATIO_LIMIT`, `EKUBO_SKIP_AHEAD`
+- `EKUBO_POOL_INITIAL_TICK`, `EKUBO_SEED_AMOUNT0`, `EKUBO_SEED_AMOUNT1`
+- `EKUBO_POSITION_LOWER_BOUND`, `EKUBO_POSITION_UPPER_BOUND`
+
+### Run
+
+```bash
+npx vitest run tests/swap-ekubo-integration.test.ts
+```
+
+## Inspecting Ekubo contract sources
+
+Scarb caches git dependencies locally. To browse the Ekubo contract source code
+(Router, Core, Positions, etc.) for the pinned revision:
+
+```bash
+# Find the cache directory
+scarb cache path
+# → e.g. /Users/<you>/Library/Caches/com.swmansion.scarb  (macOS)
+#        ~/.cache/com.swmansion.scarb                       (Linux)
+
+# Ekubo sources are under registry/git/checkouts/
+ls "$(scarb cache path)/registry/git/checkouts/starknet-contracts-"*/
+
+# The subdirectory is named after the pinned rev (first 7 chars of the commit hash).
+# For example, if Scarb.toml pins rev "8b4de8b...", look in:
+ls "$(scarb cache path)/registry/git/checkouts/starknet-contracts-*/8b4de8b/src/"
+```
+
+Key files:
+- `src/router.cairo` — Router swap/multihop_swap logic, callback-based settlement
+- `src/components/clear.cairo` — `clear()` / `clear_minimum()` entrypoints
+- `src/components/util.cairo` — `handle_delta()` (withdraw/pay settlement with Core)
+- `src/interfaces/router.cairo` — `RouteNode`, `TokenAmount`, `Swap` struct definitions
+- `src/interfaces/erc20.cairo` — ERC-20 interface Ekubo uses (camelCase: `balanceOf`, `transferFrom`)
+- `src/math/ticks.cairo` — `MIN_SQRT_RATIO`, `MAX_SQRT_RATIO` constants

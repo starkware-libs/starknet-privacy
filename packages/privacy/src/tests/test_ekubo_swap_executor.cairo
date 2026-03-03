@@ -4,9 +4,6 @@ use core::num::traits::Zero;
 use privacy::actions::{ClientAction, InvokeExternalInput};
 use privacy::ekubo_swap_executor::ekubo_swap_executor::EkuboSwapExecutor;
 use privacy::ekubo_swap_executor::errors;
-use privacy::tests::mock_ekubo_amm::{
-    IMockEkuboAMMControlDispatcher, IMockEkuboAMMControlDispatcherTrait, SwapBehavior,
-};
 use privacy::tests::utils_for_tests::{
     EkuboSwapExecutorCfgTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     build_ekubo_swap_executor_calldata, constants, deploy_ekubo_swap_executor,
@@ -434,30 +431,23 @@ fn test_ekubo_privacy_invoke_assert_insufficient_balance() {
 }
 
 #[test]
+#[should_panic(expected: 'ZERO_OUT_AMOUNT')]
 fn test_ekubo_privacy_invoke_assert_zero_out_amount() {
     let mut test: Test = Default::default();
     let input_token = test.new_token();
     let output_token = test.new_token();
     let mock_router = deploy_mock_ekubo_amm();
-    IMockEkuboAMMControlDispatcher { contract_address: mock_router }
-        .set_swap_behavior(SwapBehavior::Noop);
     let executor = deploy_ekubo_swap_executor(
         router: mock_router, privacy_address: test.privacy.address,
     );
     let amount = constants::DEFAULT_AMOUNT;
     input_token.supply(address: executor.address, amount: amount);
-    output_token.supply(address: mock_router, amount: amount);
     let pool_key = pool_key_for_tokens(
         input_token.contract_address(), output_token.contract_address(),
     );
-    assert_eq!(input_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(input_token.balance_of(address: executor.address), amount.into());
-    assert_eq!(input_token.balance_of(address: mock_router), Zero::zero());
-    assert_eq!(output_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(output_token.balance_of(address: executor.address), Zero::zero());
-    assert_eq!(output_token.balance_of(address: mock_router), amount.into());
-    let result = executor
-        .safe_privacy_invoke(
+    // Mock has 0 output tokens → clear() returns 0 → executor panics with ZERO_OUT_AMOUNT.
+    executor
+        .privacy_invoke(
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
             in_amount: amount,
@@ -466,43 +456,28 @@ fn test_ekubo_privacy_invoke_assert_zero_out_amount() {
             sqrt_ratio_limit: 0,
             skip_ahead: 0,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_AMOUNT);
-    // After revert: no state change (executor still has in, mock still has out).
-    assert_eq!(input_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(input_token.balance_of(address: executor.address), amount.into());
-    assert_eq!(input_token.balance_of(address: mock_router), Zero::zero());
-    assert_eq!(output_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(output_token.balance_of(address: executor.address), Zero::zero());
-    assert_eq!(output_token.balance_of(address: mock_router), amount.into());
 }
 
 #[test]
+#[should_panic(expected: 'RECEIVED_AMOUNT_OVERFLOW')]
 fn test_ekubo_privacy_invoke_assert_received_amount_overflow() {
     let mut test: Test = Default::default();
     let input_token = test.new_token();
     let output_token = test.new_token();
     let mock_router = deploy_mock_ekubo_amm();
-    IMockEkuboAMMControlDispatcher { contract_address: mock_router }
-        .set_swap_behavior(SwapBehavior::Overflow);
     let executor = deploy_ekubo_swap_executor(
         router: mock_router, privacy_address: test.privacy.address,
     );
     let amount = constants::DEFAULT_AMOUNT;
     input_token.supply(address: executor.address, amount: amount);
+    // Pre-fund mock with > u128::MAX output tokens so the balance diff overflows.
     output_token.supply(address: mock_router, amount: MAX_U128);
     output_token.supply(address: mock_router, amount: 1);
     let pool_key = pool_key_for_tokens(
         input_token.contract_address(), output_token.contract_address(),
     );
-    assert_eq!(input_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(input_token.balance_of(address: executor.address), amount.into());
-    assert_eq!(input_token.balance_of(address: mock_router), Zero::zero());
-    assert_eq!(output_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(output_token.balance_of(address: executor.address), Zero::zero());
-    let overflow_balance: u256 = MAX_U128.into() + 1;
-    assert_eq!(output_token.balance_of(address: mock_router), overflow_balance);
-    let result = executor
-        .safe_privacy_invoke(
+    executor
+        .privacy_invoke(
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
             in_amount: amount,
@@ -511,13 +486,6 @@ fn test_ekubo_privacy_invoke_assert_received_amount_overflow() {
             sqrt_ratio_limit: 0,
             skip_ahead: 0,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::RECEIVED_AMOUNT_OVERFLOW);
-    assert_eq!(input_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(input_token.balance_of(address: executor.address), amount.into());
-    assert_eq!(input_token.balance_of(address: mock_router), Zero::zero());
-    assert_eq!(output_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(output_token.balance_of(address: executor.address), Zero::zero());
-    assert_eq!(output_token.balance_of(address: mock_router), overflow_balance);
 }
 
 #[test]

@@ -64,7 +64,9 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
     const poolMessage = result.l2_to_l1_messages?.find(
       (m) => m.from_address?.toLowerCase() === poolAddressHex.toLowerCase()
     );
-    const output = poolMessage?.payload ?? [];
+    // Payload format: [class_hash, ...serialized_server_actions].
+    // Strip the class_hash prefix — apply_actions expects only Span<ServerAction>.
+    const output = poolMessage?.payload?.slice(1) ?? [];
 
     const proofFacts = result.proof_facts ?? [];
 

@@ -9,6 +9,8 @@
 #[starknet::contract]
 pub mod EkuboSwapExecutor {
     use core::num::traits::Zero;
+    use ekubo::components::clear::{IClearDispatcher, IClearDispatcherTrait};
+    use ekubo::interfaces::erc20::IERC20Dispatcher as EkuboIERC20Dispatcher;
     use ekubo::interfaces::router::{
         IRouterDispatcher, IRouterDispatcherTrait, RouteNode, TokenAmount,
     };
@@ -77,6 +79,8 @@ pub mod EkuboSwapExecutor {
 
             let router = IRouterDispatcher { contract_address: router_addr };
             router.swap(:node, :token_amount);
+            IClearDispatcher { contract_address: router_addr }
+                .clear(token: EkuboIERC20Dispatcher { contract_address: out_token });
 
             let balance_after = out_erc20.balance_of(account: self_addr);
             let out_amount: u128 = (balance_after - balance_before)
