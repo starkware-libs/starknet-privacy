@@ -94,8 +94,20 @@ pub struct Note {
     /// `(h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt) + amount) % 2^128`.
     pub packed_value: felt252,
     /// The token address of the note (zero for encrypted notes).
+    // TODO: Consider removing. Open notes are filled in the same tx they were created, so the
+    // creator can enforce using the correct token.
     pub token: ContractAddress,
     /// The address of the contract permitted to deposit into the note (zero for encrypted notes).
     pub depositor: ContractAddress,
 }
 
+/// Input for depositing to an open note (returned by invoked contract).
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct OpenNoteDeposit {
+    /// The identifier of the open note to deposit to.
+    pub note_id: felt252,
+    /// The ERC20 token contract to deposit.
+    pub token: ContractAddress,
+    /// The amount of tokens to deposit.
+    pub amount: u128,
+}
