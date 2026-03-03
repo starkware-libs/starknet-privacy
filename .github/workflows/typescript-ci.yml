@@ -44,6 +44,11 @@ jobs:
       - name: Regenerate Cairo contract artifacts
         run: npm run generate
 
+      - name: Fetch proving API spec
+        env:
+          SEQUENCER_SPEC_REF: "avi/privacy/add-rpc-spec"
+        run: npm run fetch:proving-spec
+
       - name: Run tests
         run: npm run test:fast
 
