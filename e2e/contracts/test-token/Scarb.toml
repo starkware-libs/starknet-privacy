@@ -1,0 +1,12 @@
+[package]
+name = "test_token"
+version = "0.1.0"
+edition = "2024_07"
+
+[dependencies]
+starknet = "2.17.0-rc.4"
+openzeppelin_token = "3.0.0"
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
