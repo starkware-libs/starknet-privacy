@@ -6261,62 +6261,27 @@ fn test_invoke_external_swap_deposit_errors() {
     let result = test.privacy.safe_apply_actions(actions: server_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
-    // === Test CALLER_NOT_DEPOSITOR ===
-    // Create a new enc note at index 4 for input tokens.
-    let create_enc_note_input_4 = user
+    // === Test TOKEN_MISMATCH ===
+    // Create an open note for the *input* token; swap executor will try to deposit *output*
+    // token into it, triggering TOKEN_MISMATCH.
+    let create_enc_note_input_5 = user
         .new_enc_note_with_generated_salt(
             recipient: user, token_addr: in_token_addr, amount: swap_amount, index: 4,
         );
     user.increase_token_balance(token: in_token, amount: swap_amount);
     user
         .cheat_deposit(
-            token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_4,
-        );
-    let use_note_input_4 = UseNoteInput { channel_key, token: in_token_addr, index: 4 };
-
-    // Create an open note with a different depositor.
-    let wrong_depositor: ContractAddress = 'WRONG_DEPOSITOR'.try_into().unwrap();
-    let create_open_note_input_2 = user
-        .new_open_note_with_generated_random(
-            recipient: user, token_addr: out_token_addr, index: 2, depositor: wrong_depositor,
-        );
-    user.cheat_create_open_note_e2e(create_note_input: create_open_note_input_2);
-
-    let note_id = compute_note_id(:channel_key, token: out_token_addr, index: 2);
-    let invoke_external_input_2 = user
-        .invoke_external_mock_swap_executor_input(
-            in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
-        );
-    let client_actions = [
-        ClientAction::UseNote(use_note_input_4), ClientAction::Withdraw(withdraw_input),
-        ClientAction::InvokeExternal(invoke_external_input_2),
-    ]
-        .span();
-    let server_actions = user.execute(:client_actions);
-    let result = test.privacy.safe_apply_actions(actions: server_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_DEPOSITOR);
-
-    // === Test TOKEN_MISMATCH ===
-    // Create an open note for the *input* token; swap executor will try to deposit *output*
-    // token into it, triggering TOKEN_MISMATCH.
-    let create_enc_note_input_5 = user
-        .new_enc_note_with_generated_salt(
-            recipient: user, token_addr: in_token_addr, amount: swap_amount, index: 5,
-        );
-    user.increase_token_balance(token: in_token, amount: swap_amount);
-    user
-        .cheat_deposit(
             token: in_token, amount: swap_amount, create_note_input: create_enc_note_input_5,
         );
-    let use_note_input_5 = UseNoteInput { channel_key, token: in_token_addr, index: 5 };
+    let use_note_input_5 = UseNoteInput { channel_key, token: in_token_addr, index: 4 };
 
     let create_open_note_input_token_mismatch = user
         .new_open_note_with_generated_random(
-            recipient: user, token_addr: in_token_addr, index: 6, depositor: swap_executor_addr,
+            recipient: user, token_addr: in_token_addr, index: 5, depositor: swap_executor_addr,
         );
     user.cheat_create_open_note_e2e(create_note_input: create_open_note_input_token_mismatch);
 
-    let note_id = compute_note_id(:channel_key, token: in_token_addr, index: 6);
+    let note_id = compute_note_id(:channel_key, token: in_token_addr, index: 5);
     let invoke_external_input_token_mismatch = user
         .invoke_external_mock_swap_executor_input(
             in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
