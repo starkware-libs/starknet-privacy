@@ -1,3 +1,4 @@
+use privacy::objects::OpenNoteDeposit;
 use starknet::ContractAddress;
 
 #[starknet::interface]
@@ -14,7 +15,7 @@ pub trait ISwapExecutor<T> {
     /// - `note_id` (`felt252`) - The identifier of the open note to deposit the output to.
     ///
     /// #### Returns
-    /// None
+    /// A span of `OpenNoteDeposit` for the privacy contract to apply.
     ///
     /// #### Preconditions
     /// - The swap executor must have sufficient input token balance.
@@ -25,14 +26,14 @@ pub trait ISwapExecutor<T> {
     /// 1. Approves swap contract to spend `in_amount` of in tokens.
     /// 2. Records output token balance, executes the swap, calculates received amount.
     /// 3. Approves the caller (privacy contract) to transfer the received output funds.
-    /// 4. Calls `deposit_to_open_note` on the caller with `note_id` and the received amount.
+    /// 4. Returns a span of `OpenNoteDeposit` for the privacy contract to apply.
     fn privacy_invoke(
         ref self: T,
         in_token: ContractAddress,
         out_token: ContractAddress,
         in_amount: u128,
         note_id: felt252,
-    );
+    ) -> Span<OpenNoteDeposit>;
 }
 
 pub mod errors {
@@ -51,7 +52,7 @@ pub mod errors {
 pub mod MockSwapExecutor {
     use core::num::traits::Zero;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use privacy::interface::{IServerDispatcher, IServerDispatcherTrait};
+    use privacy::objects::OpenNoteDeposit;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::syscalls::call_contract_syscall;
     use starknet::{ContractAddress, SyscallResultTrait, get_caller_address, get_contract_address};
@@ -79,7 +80,7 @@ pub mod MockSwapExecutor {
             out_token: ContractAddress,
             in_amount: u128,
             note_id: felt252,
-        ) {
+        ) -> Span<OpenNoteDeposit> {
             assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
             assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
             assert(in_amount.is_non_zero(), errors::ZERO_IN_AMOUNT);
@@ -119,9 +120,8 @@ pub mod MockSwapExecutor {
             // Approve caller (privacy contract) to transfer received output funds.
             out_erc20.approve(spender: privacy_addr, amount: out_amount.into());
 
-            // Deposit to the open note on the privacy contract.
-            IServerDispatcher { contract_address: privacy_addr }
-                .deposit_to_open_note(:note_id, token: out_token, amount: out_amount);
+            // Return the open note deposit struct.
+            [OpenNoteDeposit { note_id, token: out_token, amount: out_amount }].span()
         }
     }
 }

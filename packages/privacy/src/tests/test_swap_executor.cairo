@@ -1,4 +1,5 @@
 use core::num::traits::Zero;
+use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::mock_swap_executor::errors;
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, SwapExecutorCfg, SwapExecutorCfgTrait, Test, TestTrait, UserTrait, constants,
@@ -81,18 +82,21 @@ fn test_privacy_invoke_basic(preexisting_balance: u128) {
     );
     assert_eq!(input_token.balance_of(address: test.privacy.address), 0);
     assert_eq!(input_token.balance_of(address: test.privacy.mock_amm), swap_amount.into());
-    // Output tokens should now be in the privacy contract (deposited to open note).
-    assert_eq!(output_token.balance_of(address: test.privacy.swap_executor.address), 0);
-    assert_eq!(output_token.balance_of(address: test.privacy.address), swap_amount.into());
+    // Output tokens should now be in the swap executor (with allowance to the privacy contract).
+    assert_eq!(
+        output_token.balance_of(address: test.privacy.swap_executor.address), swap_amount.into(),
+    );
+    assert_eq!(output_token.balance_of(address: test.privacy.address), 0);
     assert_eq!(output_token.balance_of(address: test.privacy.mock_amm), 0);
-
-    // Verify the open note was deposited.
-    let stored_note = test.privacy.get_note(:note_id);
-    let (salt, stored_amount) = unpack(packed_value: stored_note.packed_value);
-    assert_eq!(salt, OPEN_NOTE_SALT);
-    assert_eq!(stored_amount, swap_amount);
-    assert_eq!(stored_note.token, output_token.contract_address());
-    assert_eq!(stored_note.depositor, test.privacy.swap_executor.address);
+    let output_token_dispatcher = IERC20Dispatcher {
+        contract_address: output_token.contract_address(),
+    };
+    // TODO: Add allowance to token helper trait.
+    assert_eq!(
+        output_token_dispatcher
+            .allowance(owner: test.privacy.swap_executor.address, spender: test.privacy.address),
+        swap_amount.into(),
+    );
 }
 
 #[test]
@@ -272,18 +276,15 @@ fn test_privacy_invoke_caller_not_privacy_contract() {
     // Execute swap WITHOUT setting caller to privacy contract.
     // The default caller (test_address) doesn't implement IServer, so deposit_to_open_note will
     // fail.
-    let result = test
+    test
         .privacy
         .swap_executor
-        .safe_privacy_invoke(
+        .privacy_invoke(
             in_token: input_token.contract_address(),
             out_token: output_token.contract_address(),
             in_amount: swap_amount,
             :note_id,
         );
-
-    // The call fails because the caller doesn't have deposit_to_open_note in its ABI.
-    assert_panic_with_felt_error(:result, expected_error: 'ENTRYPOINT_NOT_FOUND');
 
     // Verify the note was NOT deposited (amount should still be 0).
     let note_after = test.privacy.get_note(:note_id);
