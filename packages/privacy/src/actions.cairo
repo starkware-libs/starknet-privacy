@@ -205,6 +205,25 @@ pub(crate) impl WithdrawInputValid of InputValidation<WithdrawInput> {
     }
 }
 
+/// Input for depositing to an open note (returned by invoked contract or used internally).
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct DepositToOpenNoteInput {
+    /// The identifier of the open note to deposit to.
+    pub note_id: felt252,
+    /// The ERC20 token contract to deposit.
+    pub token: ContractAddress,
+    /// The amount of tokens to deposit.
+    pub amount: u128,
+}
+
+pub(crate) impl DepositToOpenNoteInputValid of InputValidation<DepositToOpenNoteInput> {
+    fn assert_valid(self: DepositToOpenNoteInput) {
+        let DepositToOpenNoteInput { note_id: _, token, amount } = self;
+        assert(token.is_non_zero(), errors::ZERO_TOKEN);
+        assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+    }
+}
+
 /// Input for the `InvokeExternal` client action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct InvokeExternalInput {

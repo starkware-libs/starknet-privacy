@@ -4,8 +4,9 @@ use core::poseidon::poseidon_hash_span;
 use core::traits::Neg;
 use privacy::actions::{
     AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput, ServerAction,
-    SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+    DepositToOpenNoteInput, InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput,
+    ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput,
+    WithdrawInput,
 };
 use privacy::events;
 use privacy::hashes::{
@@ -28,6 +29,7 @@ use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
 use privacy::tests::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
+use privacy::tests::mock_passthrough_executor::MockPassthroughExecutor::deploy_for_test as deploy_mock_passthrough_executor_for_test;
 use privacy::tests::mock_reentrancy::MockReentrancy::deploy_for_test as deploy_mock_reentrancy_for_test;
 use privacy::tests::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
 use privacy::tests::mock_swap_executor::{
@@ -182,6 +184,7 @@ pub(crate) struct PrivacyCfg {
     safe_admin: IAdminSafeDispatcher,
     pub strk_token: Token,
     pub swap_executor: SwapExecutorCfg,
+    pub passthrough_executor: ContractAddress,
     pub mock_amm: ContractAddress,
 }
 
@@ -1105,14 +1108,11 @@ pub(crate) impl UserImpl of UserTrait {
         token.approve(owner: *self.address, spender: *self.privacy.address, :amount);
     }
 
-    /// Execute deposit_to_open_note as this user (caller).
+    /// Execute deposit_to_open_note via the passthrough executor (Invoke path).
     /// Assumes the user already has sufficient token balance and approval.
     fn deposit_to_open_note(
         self: @User, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) {
-        cheat_caller_address_once(
-            contract_address: *self.privacy.address, caller_address: *self.address,
-        );
         self.privacy.deposit_to_open_note(:note_id, :token_addr, :amount);
     }
 
@@ -1121,9 +1121,6 @@ pub(crate) impl UserImpl of UserTrait {
     fn safe_deposit_to_open_note(
         self: @User, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) -> Result<(), Array<felt252>> {
-        cheat_caller_address_once(
-            contract_address: *self.privacy.address, caller_address: *self.address,
-        );
         self.privacy.safe_deposit_to_open_note(:note_id, :token_addr, :amount)
     }
 
@@ -1480,15 +1477,28 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn deposit_to_open_note(
         self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) {
-        self.server.deposit_to_open_note(:note_id, token: token_addr, :amount);
+        let actions = self._deposit_to_open_note_actions(:note_id, :token_addr, :amount);
+        self.apply_actions(:actions);
     }
 
-    #[feature("safe_dispatcher")]
     fn safe_deposit_to_open_note(
         self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) -> Result<(), Array<felt252>> {
-        self.safe_server.deposit_to_open_note(:note_id, token: token_addr, :amount)
+        let actions = self._deposit_to_open_note_actions(:note_id, :token_addr, :amount);
+        self.safe_apply_actions(:actions)
     }
+    fn _deposit_to_open_note_actions(
+        self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
+    ) -> Span<ServerAction> {
+        let deposit = DepositToOpenNoteInput { note_id, token: token_addr, amount };
+        let mut calldata: Array<felt252> = array![];
+        [deposit].span().serialize(ref calldata);
+        let invoke_input = InvokeInput {
+            contract_address: *self.passthrough_executor, calldata: calldata.span(),
+        };
+        [ServerAction::Invoke(invoke_input)].span()
+    }
+
 
     fn pause(self: @PrivacyCfg) {
         cheat_caller_address_once(
@@ -1827,6 +1837,7 @@ fn deploy_privacy(
     let swap_executor = deploy_mock_swap_executor(
         amm_address: mock_amm, selector: selector!("swap"),
     );
+    let passthrough_executor = _deploy_mock_passthrough_executor();
     PrivacyCfg {
         address: contract_address,
         roles,
@@ -1842,6 +1853,7 @@ fn deploy_privacy(
         swap_executor: SwapExecutorCfg {
             address: swap_executor, privacy_address: contract_address,
         },
+        passthrough_executor,
         mock_amm,
     }
 }
@@ -1917,6 +1929,19 @@ fn deploy_mock_amm() -> ContractAddress {
     contract_address
 }
 
+fn _deploy_mock_passthrough_executor() -> ContractAddress {
+    let class_hash = declare(contract: "MockPassthroughExecutor")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_passthrough_executor_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('PASSTHROUGH_DEPLOY_FAIL');
+    contract_address
+}
+
 
 #[generate_trait]
 pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
@@ -1941,7 +1966,7 @@ pub(crate) impl SwapExecutorCfgImpl of SwapExecutorCfgTrait {
         out_token: ContractAddress,
         in_amount: u128,
         note_id: felt252,
-    ) -> Result<(), Array<felt252>> {
+    ) -> Result<Span<DepositToOpenNoteInput>, Array<felt252>> {
         ISwapExecutorSafeDispatcher { contract_address: *self.address }
             .privacy_invoke(:in_token, :out_token, :in_amount, :note_id)
     }
