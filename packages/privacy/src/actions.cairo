@@ -221,8 +221,6 @@ pub(crate) impl InvokeExternalInputValid of InputValidation<InvokeExternalInput>
     }
 }
 
-// TODO: Gets a single random and generate from it new randoms for each action that needs a random.
-// TODO: Consider all randoms to be u128/120 bits.
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ClientAction {
