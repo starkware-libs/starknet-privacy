@@ -86,7 +86,7 @@ export interface ProofInvocationFactoryInterface {
 }
 
 /**
- * Build __execute__ calldata wrapping a single Call to execute_view.
+ * Build __execute__ calldata wrapping a single Call to compile_actions.
  * Layout: [array_len=1, to, selector, inner_calldata_len, ...inner_calldata]
  */
 export function compileExecuteCalldata(
@@ -98,7 +98,7 @@ export function compileExecuteCalldata(
     [
       {
         to: poolAddress,
-        selector: hash.getSelectorFromName("execute_view"),
+        selector: hash.getSelectorFromName("compile_actions"),
         calldata: executeViewCalldata,
       },
     ],
@@ -106,7 +106,7 @@ export function compileExecuteCalldata(
 }
 
 /**
- * Extract inner execute_view calldata from __execute__'s Array<Call> calldata.
+ * Extract inner compile_actions calldata from __execute__'s Array<Call> calldata.
  * Layout: [array_len=1, to, selector, inner_calldata_len, ...inner_calldata]
  */
 export function extractExecuteViewCalldata(executeCalldata: string[]): string[] {
@@ -129,7 +129,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     const userAddress = toBigInt(user.address);
     const poolAddressHex = toHex(poolAddress);
 
-    const executeViewCalldata = callDataCompiler.compile("execute_view", [
+    const executeViewCalldata = callDataCompiler.compile("compile_actions", [
       userAddress,
       user.viewingKey,
       cairoActions,
@@ -144,7 +144,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
       [
         {
           contractAddress: poolAddressHex,
-          entrypoint: "execute_view",
+          entrypoint: "compile_actions",
           calldata: executeViewCalldata,
         },
       ],
