@@ -26,9 +26,10 @@ export function createTransfers(
   provider: RpcProvider,
   account: Account,
   accountConfig: AccountConfig,
+  poolAddress: string,
   config: AppConfig,
 ): PrivateTransfersInterface {
-  const discovery = new IndexerDiscoveryProvider(config.indexerUrl, config.poolAddress);
+  const discovery = new IndexerDiscoveryProvider(config.indexerUrl, poolAddress);
   const provingProvider = config.provingServiceUrl
     ? new ProvingServiceProofProvider(
         config.provingServiceUrl,
@@ -40,7 +41,7 @@ export function createTransfers(
     viewingKeyProvider: { getViewingKey: async () => BigInt(accountConfig.viewingKey) },
     provingProvider,
     discoveryProvider: discovery,
-    poolContractAddress: config.poolAddress,
+    poolContractAddress: poolAddress,
   });
 }
 
@@ -69,7 +70,13 @@ export const ERC20_RESOURCE_BOUNDS = {
 };
 
 export const POOL_RESOURCE_BOUNDS = {
-  l2_gas: { max_amount: 2_000_000_000n, max_price_per_unit: L2_GAS_PRICE },
+  l2_gas: { max_amount: 100_000_000n, max_price_per_unit: L2_GAS_PRICE },
   l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
   l1_data_gas: { max_amount: 5_000n, max_price_per_unit: L1_DATA_GAS_PRICE },
+};
+
+export const DEPLOY_RESOURCE_BOUNDS = {
+  l2_gas: { max_amount: 4_000_000n, max_price_per_unit: L2_GAS_PRICE },
+  l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
+  l1_data_gas: { max_amount: 3_500n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };

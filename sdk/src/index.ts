@@ -12,3 +12,5 @@ export { ProvingServiceProofProvider } from "./internal/proving-service-provider
 export type { ProvingServiceProofProviderOptions } from "./internal/proving-service-provider.js";
 export type { RateLimitOptions } from "./utils/rate-limiter.js";
 export type { DiscoveryOptions } from "./internal/contract-discovery.js";
+export { IndexerDiscoveryProvider } from "./internal/indexer-discovery.js";
+export type { DiscoveryHealthResponse } from "./internal/indexer-discovery.js";

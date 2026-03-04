@@ -71,7 +71,7 @@
   "license": "ISC",
   "dependencies": {
     "@starknet-io/starknet-types-09": "npm:@starknet-io/types-js@~0.9.1",
-    "starknet": "github:starkware-industries/starknet.js#375736f96cf928b1555407767d96a7751b546808",
+    "starknet": "github:starkware-libs/starknet.js#375736f96cf928b1555407767d96a7751b546808",
     "starknet-devnet": "^0.7.2"
   },
   "devDependencies": {

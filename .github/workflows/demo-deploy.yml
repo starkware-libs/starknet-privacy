@@ -36,8 +36,8 @@ jobs:
           # Generate vercel.json with rewrites to proxy HTTP backends through
           # the Vercel deployment, avoiding mixed HTTP/HTTPS content errors.
           eval "$(grep '^BACKEND_' ".vercel/.env.preview.local")"
-          printf '{"installCommand":"echo skipped","outputDirectory":"dist","rewrites":[{"source":"/api/rpc/:path*","destination":"%s/rpc/:path*"},{"source":"/api/indexer/:path*","destination":"%s/:path*"},{"source":"/api/prover/:path*","destination":"%s/:path*"}]}\n' \
-            "$BACKEND_RPC_URL" "$BACKEND_INDEXER_URL" "$BACKEND_PROVER_URL" > vercel.json
+          printf '{"installCommand":"echo skipped","outputDirectory":"dist","rewrites":[{"source":"/api/rpc/:path*","destination":"%s/rpc/:path*"},{"source":"/api/indexer/:path*","destination":"%s/:path*"},{"source":"/api/prover/:path*","destination":"%s/:path*"},{"source":"/api/gateway/:path*","destination":"%s/:path*"}]}\n' \
+            "$BACKEND_RPC_URL" "$BACKEND_INDEXER_URL" "$BACKEND_PROVER_URL" "$BACKEND_GATEWAY_URL" > vercel.json
 
           npx vercel build
         env:
