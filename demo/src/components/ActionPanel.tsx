@@ -3,7 +3,9 @@ import type { AccountConfig } from "../config.ts";
 
 type Props = {
   pending: boolean;
+  activeAddress: string;
   otherAccounts: AccountConfig[];
+  onRegister: () => void;
   onMint: (amount: bigint) => void;
   onDeposit: (amount: bigint) => void;
   onWithdraw: (amount: bigint) => void;
@@ -12,7 +14,9 @@ type Props = {
 
 export function ActionPanel({
   pending,
+  activeAddress,
   otherAccounts,
+  onRegister,
   onMint,
   onDeposit,
   onWithdraw,
@@ -46,11 +50,11 @@ export function ActionPanel({
   }
 
   return (
-    <div className="action-panel">
+    <>
       <h2>Actions</h2>
 
       <form onSubmit={handleMint} className="action-form">
-        <h3>Mint (admin)</h3>
+        <h3>Mint tokens (transparent)</h3>
         <input
           type="number"
           value={mintAmount}
@@ -63,8 +67,15 @@ export function ActionPanel({
         </button>
       </form>
 
+      <div className="action-form">
+        <h3>Register in the pool</h3>
+        <button type="button" disabled={pending} onClick={onRegister}>
+          Register
+        </button>
+      </div>
+
       <form onSubmit={handleDeposit} className="action-form">
-        <h3>Deposit</h3>
+        <h3>Deposit to self (auto setup)</h3>
         <input
           type="number"
           value={depositAmount}
@@ -78,7 +89,7 @@ export function ActionPanel({
       </form>
 
       <form onSubmit={handleWithdraw} className="action-form">
-        <h3>Withdraw</h3>
+        <h3>Withdraw to self</h3>
         <input
           type="number"
           value={withdrawAmount}
@@ -92,12 +103,15 @@ export function ActionPanel({
       </form>
 
       <form onSubmit={handleTransfer} className="action-form">
-        <h3>Transfer</h3>
+        <h3>Transfer to someone (or sweep)</h3>
         <select
           value={transferRecipient}
           onChange={(event) => setTransferRecipient(event.target.value)}
         >
           <option value="">Select recipient...</option>
+          <option value={activeAddress}>
+            Self ({activeAddress.slice(0, 10)}...)
+          </option>
           {otherAccounts.map((account) => (
             <option key={account.address} value={account.address}>
               {account.name} ({account.address.slice(0, 10)}...)
@@ -127,6 +141,6 @@ export function ActionPanel({
           Transfer
         </button>
       </form>
-    </div>
+    </>
   );
 }

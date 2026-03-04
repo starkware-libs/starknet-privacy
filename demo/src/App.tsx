@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo } from "react";
-import { formatChainId, truncateAddress } from "./format.ts";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatChainId } from "./format.ts";
 import { loadConfig } from "./config.ts";
 import { createProvider, createAccount, createTransfers } from "./starknet.ts";
 import { useAccounts } from "./hooks/useAccounts.ts";
@@ -11,21 +11,32 @@ import { AccountSelector } from "./components/AccountSelector.tsx";
 import { PoolSelector } from "./components/PoolSelector.tsx";
 import { InfoPanel } from "./components/InfoPanel.tsx";
 import { ActionPanel } from "./components/ActionPanel.tsx";
+import { TransactionBuilder } from "./components/TransactionBuilder.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
+import { ServiceHealthBar } from "./components/ServiceHealthBar.tsx";
+import { useTransactionBuilder } from "./hooks/useTransactionBuilder.ts";
+import { useServiceHealth } from "./hooks/useServiceHealth.ts";
 import "./App.css";
 
 const config = loadConfig();
 
 export function App() {
-  const { accounts, activeIndex, activeAccount, setActiveIndex, addAccount } =
+  const [classHash, setClassHash] = useState(config.poolClassHash);
+
+  const { accounts, activeIndex, activeAccount, setActiveIndex } =
     useAccounts(config.accounts);
 
   const provider = useMemo(() => createProvider(config.rpcUrl), []);
 
   const { pools, activePool, selectPool, addPool, loading: poolsLoading } =
-    usePoolSelector(provider, config.poolAddress, config.poolClassHash);
+    usePoolSelector(provider, config.poolAddress, classHash);
 
-  const { deploying, deployError, deploy } = useDeployPool(provider, config);
+  const configWithClassHash = useMemo(
+    () => ({ ...config, poolClassHash: classHash }),
+    [classHash],
+  );
+
+  const { deploying, deployError, deploy } = useDeployPool(provider, configWithClassHash);
 
   const handleDeploy = useCallback(async () => {
     try {
@@ -50,6 +61,7 @@ export function App() {
     provider,
     transfers,
     activeAccount,
+    accounts,
     activePool.address,
     config,
   );
@@ -58,7 +70,7 @@ export function App() {
     refresh();
   }, [refresh]);
 
-  const { status, mint, deposit, withdraw, transfer } = useTransactions(
+  const { status, register, mint, deposit, withdraw, transfer } = useTransactions(
     provider,
     transfers,
     activeAccount?.address,
@@ -67,11 +79,25 @@ export function App() {
     refresh,
   );
 
+  const { status: builderStatus, executeBatch } = useTransactionBuilder(
+    provider,
+    transfers,
+    activeAccount?.address,
+    activePool.address,
+    config,
+    refresh,
+  );
+
+  const serviceHealth = useServiceHealth(provider, config);
+
+  const [activeView, setActiveView] = useState<"actions" | "builder">("actions");
+
   return (
     <div className="app">
       <h1>Privacy Pool Explorer</h1>
       <div className="subtitle">
-        Chain: <code>{formatChainId(config.chainId)}</code> | Pool class: <code>{truncateAddress(config.poolClassHash)}</code>
+        Chain: <code>{formatChainId(config.chainId)}</code>
+        <ServiceHealthBar health={serviceHealth} />
       </div>
       <PoolSelector
         pools={pools}
@@ -79,16 +105,17 @@ export function App() {
         loading={poolsLoading}
         deploying={deploying}
         deployError={deployError}
+        classHash={classHash}
         onSelect={selectPool}
         onDeploy={handleDeploy}
+        onClassHashChange={setClassHash}
       />
       <AccountSelector
         accounts={accounts}
         activeIndex={activeIndex}
         onSelect={setActiveIndex}
-        onAdd={addAccount}
       />
-      <StatusBar status={status} />
+      <StatusBar status={activeView === "actions" ? status : builderStatus} />
       <div className="main-layout">
         <InfoPanel
           state={state}
@@ -96,15 +123,48 @@ export function App() {
           error={error}
           onRefresh={refresh}
         />
-        <ActionPanel
-          pending={status.pending}
-          otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
-          onMint={mint}
-          onDeposit={deposit}
-          onWithdraw={withdraw}
-          onTransfer={transfer}
-        />
+        <div className="action-panel">
+          <div className="view-toggle">
+            <button
+              className={activeView === "actions" ? "active" : ""}
+              onClick={() => setActiveView("actions")}
+            >
+              Actions
+            </button>
+            <button
+              className={activeView === "builder" ? "active" : ""}
+              onClick={() => setActiveView("builder")}
+            >
+              Builder
+            </button>
+          </div>
+          {activeView === "actions" ? (
+            <ActionPanel
+              pending={status.pending}
+              activeAddress={activeAccount!.address}
+              otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
+              onRegister={register}
+              onMint={mint}
+              onDeposit={deposit}
+              onWithdraw={withdraw}
+              onTransfer={transfer}
+            />
+          ) : (
+            <TransactionBuilder
+              pending={builderStatus.pending}
+              activeAddress={activeAccount!.address}
+              otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
+              onExecute={executeBatch}
+            />
+          )}
+        </div>
       </div>
+      <footer className="app-footer">
+        Built by Starkware &middot; Docs{" "}
+        <a href="https://github.com/starkware-libs/starknet-privacy" target="_blank" rel="noreferrer">
+          github.com/starkware-libs/starknet-privacy
+        </a>
+      </footer>
     </div>
   );
 }

@@ -70,6 +70,42 @@ export function useTransactions(
     [onSuccess],
   );
 
+  const register = useCallback(
+    () =>
+      execute("Register", async () => {
+        if (!userAccount || !transfers || !provider)
+          throw new Error("Not ready");
+
+        console.log("[Register] registering account in privacy pool...");
+
+        const provingBlockId = await provider.getBlockNumber() - 10;
+        const { callAndProof } = await transfers
+          .build()
+          .register()
+          .execute({ provingBlockId });
+        console.log("[Register] callAndProof built, submitting tx...");
+
+        const executeTx = await userAccount.execute(callAndProof.call, {
+          resourceBounds: POOL_RESOURCE_BOUNDS,
+          ...(callAndProof.proof.proofFacts?.length
+            ? {
+                proofFacts: callAndProof.proof.proofFacts,
+                proof: callAndProof.proof.data,
+              }
+            : {}),
+        });
+        console.log(`[Register] tx: ${executeTx.transaction_hash}`);
+        const receipt = await provider.waitForTransaction(
+          executeTx.transaction_hash,
+        );
+        if (!receipt.isSuccess()) {
+          throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
+        }
+        return executeTx.transaction_hash;
+      }),
+    [userAccount, transfers, provider, execute],
+  );
+
   const mint = useCallback(
     (amount: bigint) =>
       execute("Mint", async () => {
@@ -231,5 +267,5 @@ export function useTransactions(
     [userAccount, transfers, provider, activeAddress, config, execute],
   );
 
-  return { status, mint, deposit, withdraw, transfer };
+  return { status, register, mint, deposit, withdraw, transfer };
 }

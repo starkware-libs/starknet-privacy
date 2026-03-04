@@ -9,10 +9,11 @@ import { getErc20Balance } from "../starknet.ts";
 
 export type NoteDisplay = {
   id: string;
+  rawId: bigint;
   amount: bigint;
   token: string;
   sender: string;
-  isSelfSender: boolean;
+  senderName: string | null;
   channelKey: string;
   nonce: number;
   open: boolean;
@@ -20,11 +21,19 @@ export type NoteDisplay = {
 
 export type ChannelDisplay = {
   recipient: string;
-  isSelf: boolean;
+  recipientName: string | null;
   publicKey: string;
   channelKey: string;
   noteNonce: number;
   tokens: Array<{ tokenAddress: string }>;
+};
+
+export type ChannelGroup = {
+  channelKey: string;
+  sender: string;
+  senderName: string | null;
+  token: string;
+  notes: NoteDisplay[];
 };
 
 export type PrivateState = {
@@ -33,6 +42,7 @@ export type PrivateState = {
   feeTokenBalance: bigint;
   privateBalance: bigint;
   notes: NoteDisplay[];
+  channelGroups: ChannelGroup[];
   channels: ChannelDisplay[];
 };
 
@@ -42,6 +52,7 @@ const EMPTY_STATE: PrivateState = {
   feeTokenBalance: 0n,
   privateBalance: 0n,
   notes: [],
+  channelGroups: [],
   channels: [],
 };
 
@@ -65,6 +76,7 @@ export function usePrivateState(
   provider: RpcProvider | undefined,
   transfers: PrivateTransfersInterface | undefined,
   account: AccountConfig | undefined,
+  allAccounts: AccountConfig[],
   poolAddress: string,
   config: AppConfig,
 ) {
@@ -110,18 +122,24 @@ export function usePrivateState(
         0n,
       );
 
-      const ownerAddress = BigInt(account.address);
+      const nameByAddress = new Map<bigint, string>();
+      for (const acc of allAccounts) {
+        const accAddress = BigInt(acc.address);
+        nameByAddress.set(accAddress, accAddress === BigInt(account.address) ? "self" : acc.name.toLowerCase());
+      }
 
       const tokenAddressBigInt = BigInt(config.tokenAddress);
       const notes: NoteDisplay[] = tokenNotes.map((note: Note) => {
         const witness = readWitness(note.witness);
         const senderBigInt = toBigInt(note.sender);
+        const noteIdBigInt = toBigInt(note.id);
         return {
-          id: formatBigInt(toBigInt(note.id)),
+          id: formatBigInt(noteIdBigInt),
+          rawId: noteIdBigInt,
           amount: note.amount,
           token: truncateAddress(tokenAddressBigInt.toString(16)),
           sender: truncateAddress(senderBigInt.toString(16)),
-          isSelfSender: senderBigInt === ownerAddress,
+          senderName: nameByAddress.get(senderBigInt) ?? null,
           channelKey: formatBigInt(witness.channelKey),
           nonce: witness.nonce,
           open: note.open ?? false,
@@ -138,10 +156,9 @@ export function usePrivateState(
           });
           noteNonce = Math.max(noteNonce, tokenChannel.noteNonce);
         }
-        const isSelf = recipient === ownerAddress;
         channels.push({
           recipient: truncateAddress(recipient.toString(16)),
-          isSelf,
+          recipientName: nameByAddress.get(recipient) ?? null,
           publicKey: formatBigInt(internal.publicKey),
           channelKey: internal.key ? formatBigInt(internal.key) : "N/A",
           noteNonce,
@@ -149,13 +166,37 @@ export function usePrivateState(
         });
       }
 
-      setState({ isRegistered, tokenBalance, feeTokenBalance, privateBalance, notes, channels });
+      const groupsByKey = new Map<string, NoteDisplay[]>();
+      for (const note of notes) {
+        const existing = groupsByKey.get(note.channelKey);
+        if (existing) {
+          existing.push(note);
+        } else {
+          groupsByKey.set(note.channelKey, [note]);
+        }
+      }
+
+      const channelGroups: ChannelGroup[] = [];
+      for (const [channelKey, groupNotes] of groupsByKey) {
+        groupNotes.sort((a, b) => b.nonce - a.nonce);
+        const firstNote = groupNotes[0];
+        channelGroups.push({
+          channelKey,
+          sender: firstNote.sender,
+          senderName: firstNote.senderName,
+          token: firstNote.token,
+          notes: groupNotes,
+        });
+      }
+      channelGroups.sort((a, b) => b.notes[0].nonce - a.notes[0].nonce);
+
+      setState({ isRegistered, tokenBalance, feeTokenBalance, privateBalance, notes, channelGroups, channels });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setLoading(false);
     }
-  }, [provider, transfers, account, poolAddress, config]);
+  }, [provider, transfers, account, allAccounts, poolAddress, config]);
 
   return { state, loading, error, refresh };
 }

@@ -22,6 +22,8 @@ export type AppConfig = {
   accounts: AccountConfig[];
   /** Proving service URL. If set, uses real prover; otherwise mock. */
   provingServiceUrl?: string;
+  gatewayUrl?: string;
+  feederGatewayUrl?: string;
 };
 
 function requireEnv(key: string): string {
@@ -55,5 +57,7 @@ export function loadConfig(): AppConfig {
     provingServiceUrl: import.meta.env.VITE_PROVING_SERVICE_URL as
       | string
       | undefined,
+    gatewayUrl: import.meta.env.VITE_GATEWAY_URL as string | undefined,
+    feederGatewayUrl: import.meta.env.VITE_FEEDER_GATEWAY_URL as string | undefined,
   };
 }
