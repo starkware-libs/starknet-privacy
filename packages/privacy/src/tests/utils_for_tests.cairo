@@ -1,5 +1,6 @@
 use core::ec::EcPointTrait;
 use core::num::traits::Zero;
+use core::poseidon::poseidon_hash_span;
 use core::traits::Neg;
 use privacy::actions::{
     AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
@@ -48,7 +49,7 @@ use snforge_std::{
 use starknet::account::Call;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
-use starknet::{ContractAddress, ResourcesBounds, SyscallResultTrait};
+use starknet::{ContractAddress, ResourcesBounds, SyscallResultTrait, VALIDATED};
 use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
@@ -1736,6 +1737,27 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             },
         ]
     }
+
+    fn execute_actions_e2e(
+        self: @PrivacyCfg,
+        user_addr: ContractAddress,
+        user_private_key: felt252,
+        client_actions: Span<ClientAction>,
+    ) {
+        let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+        let mut spy = spy_messages_to_l1();
+        self.cheat_valid_execution_info();
+        assert!(self.client.__validate__(calls: calls.clone()) == VALIDATED);
+        self.client.__execute__(:calls);
+        assert_eq!(spy.get_messages().messages.len(), 1);
+        let (from, message) = spy.get_messages().messages.at(0);
+        let server_actions = deserialize_server_actions(:message);
+        let message_hash = compute_hash_from_message(:from, :message);
+        let mut proof_facts: ProofFacts = Default::default();
+        proof_facts.message_to_l1_hashes = [message_hash].span();
+        self._cheat_proof_facts(:proof_facts);
+        self.server.apply_actions(actions: server_actions);
+    }
 }
 
 impl DefaultTestImpl of Default<Test> {
@@ -2018,4 +2040,11 @@ fn deserialize_server_actions(message: @MessageToL1) -> Span<ServerAction> {
 pub(crate) fn spy_messages_to_server_actions(ref spy: MessageToL1Spy) -> Span<ServerAction> {
     let (_from, message) = spy.get_messages().messages.at(0);
     deserialize_server_actions(:message)
+}
+
+fn compute_hash_from_message(from: @ContractAddress, message: @MessageToL1) -> felt252 {
+    let mut l1_message_data: Array<felt252> = array![];
+    from.serialize(ref l1_message_data);
+    message.serialize(ref l1_message_data);
+    poseidon_hash_span(l1_message_data.span())
 }

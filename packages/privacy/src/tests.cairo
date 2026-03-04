@@ -5,6 +5,7 @@ pub mod mock_reentrancy;
 pub mod mock_swap_executor;
 pub mod test_admin;
 pub mod test_client;
+pub mod test_e2e;
 pub mod test_hashes;
 pub mod test_objects;
 pub mod test_server;
