@@ -10,7 +10,10 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi, beforeAll, afterEach } from "vitest";
 import { Ajv } from "ajv";
-import { ProvingService } from "../../src/internal/proving-service.js";
+import {
+  ProvingService,
+  type MessageToL1,
+} from "../../src/internal/proving-service.js";
 
 const PROVER_URL = "https://prover.test";
 
@@ -287,6 +290,168 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       expect(spec).not.toBeNull();
       const validate = compileSchemaForRef(spec!, "components/schemas/RPC_TRANSACTION");
       expect(validate(MINIMAL_INVOKE_TX)).toBe(true);
+    });
+  });
+
+  describe("response shape (unhappy) — ProvingService rejects invalid result", () => {
+    it("proveTransaction throws when l2_to_l1_messages item has missing required field (payload)", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          ...DEFAULT_PROVE_RESULT,
+          l2_to_l1_messages: [
+            { from_address: "0x123", to_address: "0xdead" } as MessageToL1,
+          ],
+        })
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(
+        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
+      ).rejects.toThrow(/invalid result/);
+    });
+
+    it("proveTransaction throws when l2_to_l1_messages item has missing from_address", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          ...DEFAULT_PROVE_RESULT,
+          l2_to_l1_messages: [
+            { to_address: "0xdead", payload: ["0x1"] } as MessageToL1,
+          ],
+        })
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(
+        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
+      ).rejects.toThrow(/invalid result/);
+    });
+
+    it("proveTransaction throws when l2_to_l1_messages item has payload not an array", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          ...DEFAULT_PROVE_RESULT,
+          l2_to_l1_messages: [
+            {
+              from_address: "0x123",
+              to_address: "0xdead",
+              payload: "not-an-array" as unknown as string[],
+            },
+          ],
+        })
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(
+        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
+      ).rejects.toThrow(/invalid result/);
+    });
+
+    it("proveTransaction throws when proof is empty string", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          proof: "",
+          proof_facts: [],
+          l2_to_l1_messages: [],
+        })
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(
+        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
+      ).rejects.toThrow(/invalid result/);
+    });
+
+    it("proveTransaction throws when proof is missing", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          proof_facts: [],
+          l2_to_l1_messages: [],
+        } as unknown as typeof DEFAULT_PROVE_RESULT)
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(
+        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
+      ).rejects.toThrow(/invalid result/);
+    });
+
+    it("proveTransaction throws when proof_facts is not an array", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          proof: "YQ==",
+          proof_facts: "not-array" as unknown as string[],
+          l2_to_l1_messages: [],
+        })
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(
+        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
+      ).rejects.toThrow(/invalid result/);
+    });
+
+    it("proveTransaction throws when l2_to_l1_messages is not an array", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          proof: "YQ==",
+          proof_facts: [],
+          l2_to_l1_messages: null as unknown as MessageToL1[],
+        })
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(
+        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
+      ).rejects.toThrow(/invalid result/);
+    });
+  });
+
+  describe("getSpecVersion / proveTransaction — RPC and HTTP unhappy", () => {
+    it("proveTransaction throws when response is JSON-RPC error (e.g. block not found)", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              error: { code: 24, message: "Block not found" },
+            })
+          ),
+      } as Response);
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(
+        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
+      ).rejects.toThrow(/Proving service error \(code 24\)/);
+    });
+
+    it("proveTransaction throws when response has no result", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () =>
+          Promise.resolve(JSON.stringify({ jsonrpc: "2.0", id: 1 })),
+      } as Response);
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(
+        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
+      ).rejects.toThrow(/Proving service returned no result/);
+    });
+
+    it("proveTransaction throws when HTTP status is not ok", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: false,
+        status: 503,
+        text: () => Promise.resolve("Service Unavailable"),
+      } as Response);
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(
+        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
+      ).rejects.toThrow(/Proving service HTTP 503/);
     });
   });
 
