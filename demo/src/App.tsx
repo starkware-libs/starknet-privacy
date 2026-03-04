@@ -13,7 +13,9 @@ import { InfoPanel } from "./components/InfoPanel.tsx";
 import { ActionPanel } from "./components/ActionPanel.tsx";
 import { TransactionBuilder } from "./components/TransactionBuilder.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
+import { ServiceHealthBar } from "./components/ServiceHealthBar.tsx";
 import { useTransactionBuilder } from "./hooks/useTransactionBuilder.ts";
+import { useServiceHealth } from "./hooks/useServiceHealth.ts";
 import "./App.css";
 
 const config = loadConfig();
@@ -79,6 +81,8 @@ export function App() {
     refresh,
   );
 
+  const serviceHealth = useServiceHealth(provider, config);
+
   const [activeView, setActiveView] = useState<"actions" | "builder">("actions");
 
   return (
@@ -86,6 +90,7 @@ export function App() {
       <h1>Privacy Pool Explorer</h1>
       <div className="subtitle">
         Chain: <code>{formatChainId(config.chainId)}</code> | Pool class: <code>{truncateAddress(config.poolClassHash)}</code>
+        <ServiceHealthBar health={serviceHealth} />
       </div>
       <PoolSelector
         pools={pools}

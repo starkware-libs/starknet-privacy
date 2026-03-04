@@ -380,6 +380,35 @@ input[type="number"] {
   padding: 2px 8px;
 }
 
+.service-health-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 8px;
+}
+
+.health-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.health-label {
+  color: #c9d1d9;
+}
+
+.health-detail {
+  color: #8b949e;
+  font-size: 11px;
+}
+
 .app-footer {
   text-align: center;
   color: #8b949e;
