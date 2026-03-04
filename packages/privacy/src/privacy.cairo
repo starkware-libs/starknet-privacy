@@ -28,8 +28,8 @@ pub mod Privacy {
         ProofFacts, assert_valid_execution_info, assert_valid_signature, compute_message_hash,
         decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
         encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_execute_view_inputs,
-        extract_server_actions_from_execute_and_panic, is_canonical_key, open_note, pack,
+        encrypt_user_addr, extract_compile_actions_inputs,
+        extract_server_actions_from_compile_and_panic, is_canonical_key, open_note, pack,
         panic_with_server_actions, send_message_to_server, storage_path_to_felt252,
         to_write_once_action, unpack,
     };
@@ -167,17 +167,18 @@ pub mod Privacy {
 
         fn __execute__(ref self: ContractState, calls: Array<Call>) {
             let execution_info = get_execution_info();
-            let (user_addr, user_private_key, client_actions) = extract_execute_view_inputs(
+            let (user_addr, user_private_key, client_actions) = extract_compile_actions_inputs(
                 :calls, contract_address: execution_info.contract_address,
             );
-            let server_actions = self.execute_view(:user_addr, :user_private_key, :client_actions);
+            let server_actions = self
+                .compile_actions(:user_addr, :user_private_key, :client_actions);
             assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
             send_message_to_server(
                 :server_actions, contract_address: execution_info.contract_address,
             );
         }
 
-        fn execute_view(
+        fn compile_actions(
             self: @ContractState,
             user_addr: ContractAddress,
             user_private_key: felt252,
@@ -189,16 +190,16 @@ pub mod Privacy {
             client_actions.serialize(ref calldata);
             let syscall_result = call_contract_syscall(
                 address: get_contract_address(),
-                entry_point_selector: selector!("execute_and_panic"),
+                entry_point_selector: selector!("compile_and_panic"),
                 calldata: calldata.span(),
             );
 
-            extract_server_actions_from_execute_and_panic(:syscall_result)
+            extract_server_actions_from_compile_and_panic(:syscall_result)
         }
 
         /// Panics directly for internal errors; external calls should be wrapped via syscall
         /// to prevent injection of `OK_WRAPPER` into the panic data.
-        fn execute_and_panic(
+        fn compile_and_panic(
             ref self: ContractState,
             user_addr: ContractAddress,
             user_private_key: felt252,

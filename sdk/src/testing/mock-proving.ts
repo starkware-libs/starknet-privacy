@@ -33,16 +33,16 @@ export class CallMockProofProvider implements ProofProviderInterface {
 
   async prove(invocation: ProofInvocation): Promise<Proof> {
     // Validate signature similar to how __execute__ does in the contract.
-    // execute_view skips this since view functions don't have tx_info.
+    // compile_actions skips this since view functions don't have tx_info.
     await this.validateSignature(invocation);
 
-    // __execute__ calldata is Array<Call> with one Call targeting execute_view.
+    // __execute__ calldata is Array<Call> with one Call targeting compile_actions.
     // Layout: [1, to, selector, inner_len, ...inner_calldata]
     const executeViewCalldata = extractExecuteViewCalldata(invocation.calldata as string[]);
 
     const result = await this.provider.callContract({
       contractAddress: invocation.sender_address,
-      entrypoint: "execute_view",
+      entrypoint: "compile_actions",
       calldata: executeViewCalldata,
     });
 
@@ -66,14 +66,14 @@ export class CallMockProofProvider implements ProofProviderInterface {
       this.chainId
     );
 
-    // execute_view returns Span<ServerAction> which is serialized with its length prefix.
+    // compile_actions returns Span<ServerAction> which is serialized with its length prefix.
     // apply_actions also expects Span<ServerAction> with the length prefix, so we pass it through as-is.
     return { output: result, data: undefined!, proofFacts };
   }
 
   /**
    * Validates the signature by calling is_valid_signature on the user's account.
-   * This mirrors what the contract's __execute__ does after execute_view.
+   * This mirrors what the contract's __execute__ does after compile_actions.
    */
   private async validateSignature(invocation: ProofInvocation): Promise<void> {
     const signatureArray = invocation.signature ? stark.formatSignature(invocation.signature) : [];
@@ -82,14 +82,14 @@ export class CallMockProofProvider implements ProofProviderInterface {
       return;
     }
 
-    // First arg of execute_view calldata is user_addr.
+    // First arg of compile_actions calldata is user_addr.
     const calldata = invocation.calldata as string[];
     const innerCalldata = extractExecuteViewCalldata(calldata);
     const userAddress = num.toHex(innerCalldata[0]);
 
     // Compute transaction hash using the same parameters as the signer.
     // invocation.calldata is already the __execute__ calldata (Array<Call> wrapping
-    // execute_view), so use it directly — no re-wrapping via getExecuteCalldata.
+    // compile_actions), so use it directly — no re-wrapping via getExecuteCalldata.
     const details = this.getDefaultDetails();
     const txHash = hash.calculateInvokeTransactionHash({
       senderAddress: num.toHex(invocation.sender_address),
