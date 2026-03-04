@@ -32,7 +32,21 @@ export interface MessageToL1 {
   payload: string[];
 }
 
-/** Check result: proof non-empty, proof_facts and l2_to_l1_messages are arrays. */
+/**
+ * Type guard for MessageToL1 (MSG_TO_L1 shape): object with string from_address,
+ * string to_address, and array payload.
+ */
+function isMessageToL1(value: unknown): value is MessageToL1 {
+  if (value === null || typeof value !== "object") return false;
+  const m = value as Record<string, unknown>;
+  return (
+    typeof m.from_address === "string" &&
+    typeof m.to_address === "string" &&
+    Array.isArray(m.payload)
+  );
+}
+
+/** Check result: proof non-empty, proof_facts and l2_to_l1_messages are arrays; each message has MSG_TO_L1 shape. */
 function isProveTransactionResult(value: unknown): value is ProveTransactionResult {
   if (value === null || typeof value !== "object") {
     return false;
@@ -40,7 +54,13 @@ function isProveTransactionResult(value: unknown): value is ProveTransactionResu
   const r = value as Record<string, unknown>;
   const proof = r.proof;
   const proofOk = typeof proof === "string" && proof.length > 0;
-  return proofOk && Array.isArray(r.proof_facts) && Array.isArray(r.l2_to_l1_messages);
+  const messages = r.l2_to_l1_messages;
+  return (
+    proofOk &&
+    Array.isArray(r.proof_facts) &&
+    Array.isArray(messages) &&
+    (messages as unknown[]).every(isMessageToL1)
+  );
 }
 
 export class ProvingService {
