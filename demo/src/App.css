@@ -34,15 +34,53 @@ h3 {
   margin: 0 auto;
 }
 
-.pool-selector {
-  display: flex;
+.pool-selector-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 8px;
   align-items: center;
-  gap: 8px;
+  margin-top: 12px;
   margin-bottom: 12px;
-  padding: 8px;
+  padding: 12px 12px 8px;
   background: #161b22;
   border: 1px solid #30363d;
   border-radius: 4px;
+}
+
+.pool-selector-label {
+  color: #8b949e;
+  white-space: nowrap;
+}
+
+.pool-selector-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pool-selector-value code {
+  color: #c9d1d9;
+  font-size: 13px;
+  padding-left: 12px;
+}
+
+.pool-selector-value input {
+  width: 540px;
+}
+
+.pool-selector-value > button {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.copy-button {
+  background: #21262d;
+  border-color: #30363d;
+  color: #8b949e;
+}
+
+.copy-button:hover:not(:disabled) {
+  background: #30363d;
 }
 
 .account-selector {
@@ -50,7 +88,7 @@ h3 {
   align-items: center;
   gap: 8px;
   margin-bottom: 12px;
-  padding: 8px;
+  padding: 8px 12px;
   background: #161b22;
   border: 1px solid #30363d;
   border-radius: 4px;
@@ -183,6 +221,9 @@ input[type="number"] {
 
 .action-form button {
   margin-top: 4px;
+  font-size: 12px;
+  padding: 3px 9px;
+  margin-left: 6px;
 }
 
 .status-bar {
@@ -225,7 +266,10 @@ input[type="number"] {
 .subtitle code {
   color: #c9d1d9;
   font-size: 11px;
+  cursor: default;
+  word-break: break-all;
 }
+
 
 .chip {
   display: inline-block;
@@ -317,4 +361,112 @@ input[type="number"] {
   padding: 1px 6px;
   font-size: 11px;
   min-width: auto;
+}
+
+.balances,
+.notes-section,
+.channels-section {
+  margin-top: 16px;
+}
+
+.notes-section h3 {
+  margin-bottom: 12px;
+}
+
+.channel-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+}
+
+.channel-card:last-child {
+  margin-bottom: 0;
+}
+
+.channel-card-header {
+  font-size: 12px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #21262d;
+  line-height: 1.6;
+}
+
+.channel-card-label {
+  color: #8b949e;
+}
+
+.channel-card-value {
+  color: #c9d1d9;
+}
+
+.channel-card-sep {
+  color: #30363d;
+  margin: 0 6px;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.pagination span {
+  color: #8b949e;
+  font-size: 12px;
+}
+
+.pagination button {
+  font-size: 11px;
+  padding: 2px 8px;
+}
+
+.service-health-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 8px;
+}
+
+.health-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.health-label {
+  color: #c9d1d9;
+}
+
+.health-detail {
+  color: #8b949e;
+  font-size: 11px;
+}
+
+.app-footer {
+  text-align: center;
+  color: #8b949e;
+  font-size: 12px;
+  padding: 24px 0 12px;
+  border-top: 1px solid #30363d;
+  margin-top: 24px;
+}
+
+.app-footer a {
+  color: #58a6ff;
+  text-decoration: none;
+}
+
+.app-footer a:hover {
+  text-decoration: underline;
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { formatChainId, truncateAddress } from "./format.ts";
+import { formatChainId } from "./format.ts";
 import { loadConfig } from "./config.ts";
 import { createProvider, createAccount, createTransfers } from "./starknet.ts";
 import { useAccounts } from "./hooks/useAccounts.ts";
@@ -13,21 +13,30 @@ import { InfoPanel } from "./components/InfoPanel.tsx";
 import { ActionPanel } from "./components/ActionPanel.tsx";
 import { TransactionBuilder } from "./components/TransactionBuilder.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
+import { ServiceHealthBar } from "./components/ServiceHealthBar.tsx";
 import { useTransactionBuilder } from "./hooks/useTransactionBuilder.ts";
+import { useServiceHealth } from "./hooks/useServiceHealth.ts";
 import "./App.css";
 
 const config = loadConfig();
 
 export function App() {
+  const [classHash, setClassHash] = useState(config.poolClassHash);
+
   const { accounts, activeIndex, activeAccount, setActiveIndex } =
     useAccounts(config.accounts);
 
   const provider = useMemo(() => createProvider(config.rpcUrl), []);
 
   const { pools, activePool, selectPool, addPool, loading: poolsLoading } =
-    usePoolSelector(provider, config.poolAddress, config.poolClassHash);
+    usePoolSelector(provider, config.poolAddress, classHash);
 
-  const { deploying, deployError, deploy } = useDeployPool(provider, config);
+  const configWithClassHash = useMemo(
+    () => ({ ...config, poolClassHash: classHash }),
+    [classHash],
+  );
+
+  const { deploying, deployError, deploy } = useDeployPool(provider, configWithClassHash);
 
   const handleDeploy = useCallback(async () => {
     try {
@@ -52,6 +61,7 @@ export function App() {
     provider,
     transfers,
     activeAccount,
+    accounts,
     activePool.address,
     config,
   );
@@ -78,13 +88,16 @@ export function App() {
     refresh,
   );
 
+  const serviceHealth = useServiceHealth(provider, config);
+
   const [activeView, setActiveView] = useState<"actions" | "builder">("actions");
 
   return (
     <div className="app">
       <h1>Privacy Pool Explorer</h1>
       <div className="subtitle">
-        Chain: <code>{formatChainId(config.chainId)}</code> | Pool class: <code>{truncateAddress(config.poolClassHash)}</code>
+        Chain: <code>{formatChainId(config.chainId)}</code>
+        <ServiceHealthBar health={serviceHealth} />
       </div>
       <PoolSelector
         pools={pools}
@@ -92,8 +105,10 @@ export function App() {
         loading={poolsLoading}
         deploying={deploying}
         deployError={deployError}
+        classHash={classHash}
         onSelect={selectPool}
         onDeploy={handleDeploy}
+        onClassHashChange={setClassHash}
       />
       <AccountSelector
         accounts={accounts}
@@ -126,6 +141,7 @@ export function App() {
           {activeView === "actions" ? (
             <ActionPanel
               pending={status.pending}
+              activeAddress={activeAccount!.address}
               otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
               onRegister={register}
               onMint={mint}
@@ -143,6 +159,12 @@ export function App() {
           )}
         </div>
       </div>
+      <footer className="app-footer">
+        Built by Starkware &middot; Docs{" "}
+        <a href="https://github.com/starkware-libs/starknet-privacy" target="_blank" rel="noreferrer">
+          github.com/starkware-libs/starknet-privacy
+        </a>
+      </footer>
     </div>
   );
 }
