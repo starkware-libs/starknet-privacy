@@ -41,12 +41,12 @@ export class CallMockProofProvider implements ProofProviderInterface {
     const executeViewCalldata = extractExecuteViewCalldata(invocation.calldata as string[]);
 
     const result = await this.provider.callContract({
-      contractAddress: invocation.contractAddress,
+      contractAddress: invocation.sender_address,
       entrypoint: "execute_view",
       calldata: executeViewCalldata,
     });
 
-    const poolClassHash = await this.provider.getClassHashAt(invocation.contractAddress);
+    const poolClassHash = await this.provider.getClassHashAt(invocation.sender_address);
 
     // Build proof facts for on-chain validation when provider supports getBlock (e.g. e2e with RpcProvider).
     // Blockifier requires base_block_number to be at least STORED_BLOCK_HASH_BUFFER blocks behind current.
@@ -58,7 +58,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     const baseBlockNumber = currentBlockNumber > blocksBack ? currentBlockNumber - blocksBack : 1n;
     const baseBlock = await this.provider.getBlock(Number(baseBlockNumber));
     proofFacts = buildProofFacts(
-      invocation.contractAddress,
+      invocation.sender_address,
       poolClassHash,
       result,
       baseBlockNumber,
@@ -92,7 +92,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     // execute_view), so use it directly — no re-wrapping via getExecuteCalldata.
     const details = this.getDefaultDetails();
     const txHash = hash.calculateInvokeTransactionHash({
-      senderAddress: num.toHex(invocation.contractAddress),
+      senderAddress: num.toHex(invocation.sender_address),
       version: details.version as ETransactionVersion3,
       compiledCalldata: calldata,
       chainId: this.chainId,
