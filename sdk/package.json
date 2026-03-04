@@ -50,6 +50,7 @@
     "check:fast": "npm run build && npm run lint:check && npm run format:check && npm run test:fast",
     "clean": "rm -rf dist",
     "decode-error": "npx tsx scripts/decode-error.ts",
+    "fetch:proving-spec": "npx tsx scripts/fetch-proving-api-spec.ts",
     "prepare": "cd .. && git config core.hooksPath .husky || true"
   },
   "lint-staged": {
@@ -81,6 +82,7 @@
     "@vitest/browser": "^4.0.17",
     "@vitest/browser-playwright": "^4.0.17",
     "@vitest/coverage-v8": "^4.0.17",
+    "ajv": "^8.18.0",
     "esbuild": "^0.27.2",
     "eslint": "^9.39.2",
     "husky": "^9.1.7",
