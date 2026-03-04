@@ -210,23 +210,23 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_execute_and_panic(
+    fn safe_compile_and_panic(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
         self
             .privacy
-            .safe_execute_and_panic(
+            .safe_compile_and_panic(
                 user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
             )
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_execute_view(
+    fn safe_compile_actions(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self
             .privacy
-            .safe_execute_view(
+            .safe_compile_actions(
                 user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
             )
     }
@@ -241,18 +241,18 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
-    fn execute_view(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
+    fn compile_actions(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
         self
             .privacy
-            .execute_view(
+            .compile_actions(
                 user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
             )
     }
 
-    fn execute_and_panic(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
+    fn compile_and_panic(self: @User, client_actions: Span<ClientAction>) -> Span<ServerAction> {
         let result = self
             .privacy
-            .safe_execute_and_panic(
+            .safe_compile_and_panic(
                 user_addr: *self.address, user_private_key: *self.private_key, :client_actions,
             );
         assert!(result.is_err());
@@ -402,19 +402,19 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_open_channel_execute_and_panic(
+    fn safe_open_channel_compile_and_panic(
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Result<(), Array<felt252>> {
         let input = OpenChannelInput { recipient_addr: recipient.address, index, random, salt };
-        self.safe_execute_and_panic(client_actions: [ClientAction::OpenChannel(input)].span())
+        self.safe_compile_and_panic(client_actions: [ClientAction::OpenChannel(input)].span())
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_open_channel_execute_view(
+    fn safe_open_channel_compile_actions(
         self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         let input = OpenChannelInput { recipient_addr: recipient.address, index, random, salt };
-        self.safe_execute_view(client_actions: [ClientAction::OpenChannel(input)].span())
+        self.safe_compile_actions(client_actions: [ClientAction::OpenChannel(input)].span())
     }
 
     /// Returns (random, salt, output) where output is the output of `open_channel`.
@@ -488,7 +488,7 @@ pub(crate) impl UserImpl of UserTrait {
         self.safe_execute(client_actions: [ClientAction::OpenSubchannel(input),].span())
     }
 
-    fn safe_open_subchannel_execute_and_panic(
+    fn safe_open_subchannel_compile_and_panic(
         self: @User, recipient: User, token_addr: ContractAddress, index: usize, salt: felt252,
     ) -> Result<(), Array<felt252>> {
         let channel_key = self.compute_channel_key(:recipient);
@@ -500,10 +500,10 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_addr,
             salt,
         };
-        self.safe_execute_and_panic(client_actions: [ClientAction::OpenSubchannel(input),].span())
+        self.safe_compile_and_panic(client_actions: [ClientAction::OpenSubchannel(input),].span())
     }
 
-    fn safe_open_subchannel_execute_view(
+    fn safe_open_subchannel_compile_actions(
         self: @User, recipient: User, token_addr: ContractAddress, index: usize, salt: felt252,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         let channel_key = self.compute_channel_key(:recipient);
@@ -515,7 +515,7 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_addr,
             salt,
         };
-        self.safe_execute_view(client_actions: [ClientAction::OpenSubchannel(input),].span())
+        self.safe_compile_actions(client_actions: [ClientAction::OpenSubchannel(input),].span())
     }
 
     fn safe_open_subchannel_with_channel_key(
@@ -538,7 +538,7 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_open_subchannel_with_channel_key_execute_and_panic(
+    fn safe_open_subchannel_with_channel_key_compile_and_panic(
         self: @User,
         recipient: User,
         token_addr: ContractAddress,
@@ -554,11 +554,11 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_addr,
             salt,
         };
-        self.safe_execute_and_panic(client_actions: [ClientAction::OpenSubchannel(input),].span())
+        self.safe_compile_and_panic(client_actions: [ClientAction::OpenSubchannel(input),].span())
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_open_subchannel_with_channel_key_execute_view(
+    fn safe_open_subchannel_with_channel_key_compile_actions(
         self: @User,
         recipient: User,
         token_addr: ContractAddress,
@@ -574,7 +574,7 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_addr,
             salt,
         };
-        self.safe_execute_view(client_actions: [ClientAction::OpenSubchannel(input),].span())
+        self.safe_compile_actions(client_actions: [ClientAction::OpenSubchannel(input),].span())
     }
 
     /// Returns (salt, output) where output is the output of `open_subchannel`.
@@ -637,17 +637,17 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_create_enc_note_execute_and_panic(
+    fn safe_create_enc_note_compile_and_panic(
         self: @User, create_note_input: CreateEncNoteInput,
     ) -> Result<(), Array<felt252>> {
-        self.safe_execute_and_panic([ClientAction::CreateEncNote(create_note_input)].span())
+        self.safe_compile_and_panic([ClientAction::CreateEncNote(create_note_input)].span())
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_create_enc_note_execute_view(
+    fn safe_create_enc_note_compile_actions(
         self: @User, create_note_input: CreateEncNoteInput,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.safe_execute_view([ClientAction::CreateEncNote(create_note_input)].span())
+        self.safe_compile_actions([ClientAction::CreateEncNote(create_note_input)].span())
     }
 
     fn internal_create_enc_note(
@@ -686,16 +686,16 @@ pub(crate) impl UserImpl of UserTrait {
         self.safe_execute([ClientAction::CreateOpenNote(create_note_input)].span())
     }
 
-    fn safe_create_open_note_execute_and_panic(
+    fn safe_create_open_note_compile_and_panic(
         self: @User, create_note_input: CreateOpenNoteInput,
     ) -> Result<(), Array<felt252>> {
-        self.safe_execute_and_panic([ClientAction::CreateOpenNote(create_note_input)].span())
+        self.safe_compile_and_panic([ClientAction::CreateOpenNote(create_note_input)].span())
     }
 
-    fn safe_create_open_note_execute_view(
+    fn safe_create_open_note_compile_actions(
         self: @User, create_note_input: CreateOpenNoteInput,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.safe_execute_view([ClientAction::CreateOpenNote(create_note_input)].span())
+        self.safe_compile_actions([ClientAction::CreateOpenNote(create_note_input)].span())
     }
 
     fn internal_create_open_note(
@@ -843,17 +843,17 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_use_note_execute_and_panic(
+    fn safe_use_note_compile_and_panic(
         self: @User, note: UseNoteInput,
     ) -> Result<(), Array<felt252>> {
-        self.safe_execute_and_panic(client_actions: [ClientAction::UseNote(note)].span())
+        self.safe_compile_and_panic(client_actions: [ClientAction::UseNote(note)].span())
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_use_note_execute_view(
+    fn safe_use_note_compile_actions(
         self: @User, note: UseNoteInput,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.safe_execute_view(client_actions: [ClientAction::UseNote(note)].span())
+        self.safe_compile_actions(client_actions: [ClientAction::UseNote(note)].span())
     }
 
     fn internal_use_note(self: @User, note: UseNoteInput) -> Span<ServerAction> {
@@ -1047,19 +1047,19 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_set_viewing_key_execute_and_panic(
+    fn safe_set_viewing_key_compile_and_panic(
         self: @User, random: felt252,
     ) -> Result<(), Array<felt252>> {
         let input = SetViewingKeyInput { random };
-        self.safe_execute_and_panic(client_actions: [ClientAction::SetViewingKey(input)].span())
+        self.safe_compile_and_panic(client_actions: [ClientAction::SetViewingKey(input)].span())
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_set_viewing_key_execute_view(
+    fn safe_set_viewing_key_compile_actions(
         self: @User, random: felt252,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
         self
-            .safe_execute_view(
+            .safe_compile_actions(
                 client_actions: [ClientAction::SetViewingKey(SetViewingKeyInput { random })].span(),
             )
     }
@@ -1532,23 +1532,23 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_execute_and_panic(
+    fn safe_compile_and_panic(
         self: @PrivacyCfg,
         user_addr: ContractAddress,
         user_private_key: felt252,
         client_actions: Span<ClientAction>,
     ) -> Result<(), Array<felt252>> {
-        self.safe_client.execute_and_panic(:user_addr, :user_private_key, :client_actions)
+        self.safe_client.compile_and_panic(:user_addr, :user_private_key, :client_actions)
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_execute_view(
+    fn safe_compile_actions(
         self: @PrivacyCfg,
         user_addr: ContractAddress,
         user_private_key: felt252,
         client_actions: Span<ClientAction>,
     ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.safe_client.execute_view(:user_addr, :user_private_key, :client_actions)
+        self.safe_client.compile_actions(:user_addr, :user_private_key, :client_actions)
     }
 
     #[feature("safe_dispatcher")]
@@ -1573,13 +1573,13 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.client.__validate__(:calls)
     }
 
-    fn execute_view(
+    fn compile_actions(
         self: @PrivacyCfg,
         user_addr: ContractAddress,
         user_private_key: felt252,
         client_actions: Span<ClientAction>,
     ) -> Span<ServerAction> {
-        self.client.execute_view(:user_addr, :user_private_key, :client_actions)
+        self.client.compile_actions(:user_addr, :user_private_key, :client_actions)
     }
 
     /// Asserts the message from the spy is valid.
@@ -1730,7 +1730,9 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         client_actions.serialize(ref calldata);
         array![
             Call {
-                to: *self.address, selector: selector!("execute_view"), calldata: calldata.span(),
+                to: *self.address,
+                selector: selector!("compile_actions"),
+                calldata: calldata.span(),
             },
         ]
     }

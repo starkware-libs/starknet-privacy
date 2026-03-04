@@ -3,7 +3,7 @@
  *
  * This class provides:
  * 1. View methods with bigint params (matching Cairo contract felts)
- * 2. execute_view() returns MockServerAction[] for state mutations
+ * 2. compile_actions() returns MockServerAction[] for state mutations
  * 3. apply_actions() applies the mutations
  * 4. snapshot()/restore() for validation pattern
  */
@@ -271,7 +271,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
    *
    * Validates token totals if validateBalances is true.
    */
-  execute_view(
+  compile_actions(
     sender: StarknetAddressBigint,
     privateKey: bigint,
     clientActions: ClientAction[]
@@ -325,7 +325,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     privateKey: bigint,
     ...clientActions: ClientAction[]
   ): string[] {
-    const actions = this.execute_view(sender, privateKey, clientActions);
+    const actions = this.compile_actions(sender, privateKey, clientActions);
     this.serverActions = actions;
     return this.serverActions.map((action) => action.type);
   }

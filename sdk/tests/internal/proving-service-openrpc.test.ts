@@ -65,15 +65,8 @@ async function loadProvingApiSpec(): Promise<ProvingApiOpenRPCSpec | null> {
   }
 }
 
-const SDK_PROVING_METHODS = [
-  "starknet_specVersion",
-  "starknet_proveTransaction",
-] as const;
-const PROVE_TRANSACTION_RESULT_KEYS = [
-  "proof",
-  "proof_facts",
-  "l2_to_l1_messages",
-] as const;
+const SDK_PROVING_METHODS = ["starknet_specVersion", "starknet_proveTransaction"] as const;
+const PROVE_TRANSACTION_RESULT_KEYS = ["proof", "proof_facts", "l2_to_l1_messages"] as const;
 const MSG_TO_L1_KEYS = ["from_address", "to_address", "payload"] as const;
 const SPEC_PARAM_COUNTS: Array<[string, number]> = [
   ["starknet_specVersion", 0],
@@ -127,10 +120,7 @@ function mockSpecVersionResponse(version = "0.10.0"): Response {
   return {
     ok: true,
     status: 200,
-    text: () =>
-      Promise.resolve(
-        JSON.stringify({ jsonrpc: "2.0", id: 1, result: version })
-      ),
+    text: () => Promise.resolve(JSON.stringify({ jsonrpc: "2.0", id: 1, result: version })),
   } as Response;
 }
 
@@ -140,16 +130,11 @@ function mockProveTransactionResponse(
   return {
     ok: true,
     status: 200,
-    text: () =>
-      Promise.resolve(
-        JSON.stringify({ jsonrpc: "2.0", id: 1, result })
-      ),
+    text: () => Promise.resolve(JSON.stringify({ jsonrpc: "2.0", id: 1, result })),
   } as Response;
 }
 
-function getRequestBody<T = Record<string, unknown>>(
-  mockFetch: ReturnType<typeof vi.fn>
-): T {
+function getRequestBody<T = Record<string, unknown>>(mockFetch: ReturnType<typeof vi.fn>): T {
   const init = mockFetch.mock.calls[0][1] as RequestInit;
   return JSON.parse(init.body as string) as T;
 }
@@ -214,9 +199,7 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
 
   describe("request shape (ProvingService.send)", () => {
     it("getSpecVersion sends method starknet_specVersion and params []", async () => {
-      const fetchSpy = vi
-        .spyOn(globalThis, "fetch")
-        .mockResolvedValue(mockSpecVersionResponse());
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(mockSpecVersionResponse());
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
       await service.getSpecVersion();
@@ -260,7 +243,7 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       expect(body.params.block_id).toEqual({ block_number: 42 });
     });
 
-    it("proveTransaction with pending sends block_id as \"pending\"", async () => {
+    it('proveTransaction with pending sends block_id as "pending"', async () => {
       const fetchSpy = vi
         .spyOn(globalThis, "fetch")
         .mockResolvedValue(mockProveTransactionResponse());
@@ -279,9 +262,7 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
       await service.proveTransaction(
-        { block_hash: "0xabc" } as unknown as Parameters<
-          ProvingService["proveTransaction"]
-        >[0],
+        { block_hash: "0xabc" } as unknown as Parameters<ProvingService["proveTransaction"]>[0],
         MINIMAL_INVOKE_TX
       );
 
@@ -307,10 +288,7 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
   describe("serialized rpc_transaction matches schema", () => {
     it("RPC_TRANSACTION schema validates minimal invoke tx (mirrors sequencer serialized_rpc_transaction_matches_schema)", () => {
       expect(spec).not.toBeNull();
-      const validate = compileSchemaForRef(
-        spec!,
-        "components/schemas/RPC_TRANSACTION"
-      );
+      const validate = compileSchemaForRef(spec!, "components/schemas/RPC_TRANSACTION");
       expect(validate(MINIMAL_INVOKE_TX)).toBe(true);
     });
   });
@@ -504,10 +482,7 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
           },
         ],
       };
-      const validate = compileSchemaForRef(
-        spec!,
-        "components/schemas/PROVE_TRANSACTION_RESULT"
-      );
+      const validate = compileSchemaForRef(spec!, "components/schemas/PROVE_TRANSACTION_RESULT");
       expect(validate(sampleResult)).toBe(true);
     });
   });
@@ -535,9 +510,7 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
           },
         ],
       };
-      vi.spyOn(globalThis, "fetch").mockResolvedValue(
-        mockProveTransactionResponse(mockResult)
-      );
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(mockProveTransactionResponse(mockResult));
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
       const result = await service.proveTransaction("latest", MINIMAL_INVOKE_TX);
@@ -570,8 +543,7 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       const result = await service.proveTransaction("latest", MINIMAL_INVOKE_TX);
 
       expect(result.l2_to_l1_messages.length).toBe(1);
-      const msgKeys =
-        spec!.components?.schemas?.["MSG_TO_L1"]?.required ?? MSG_TO_L1_KEYS;
+      const msgKeys = spec!.components?.schemas?.["MSG_TO_L1"]?.required ?? MSG_TO_L1_KEYS;
       for (const key of msgKeys) {
         expect(result.l2_to_l1_messages[0]).toHaveProperty(key);
       }

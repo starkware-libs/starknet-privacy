@@ -581,7 +581,7 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
-        "name": "execute_and_panic",
+        "name": "compile_and_panic",
         "inputs": [
           {
             "name": "user_addr",
@@ -601,7 +601,7 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
-        "name": "execute_view",
+        "name": "compile_actions",
         "inputs": [
           {
             "name": "user_addr",

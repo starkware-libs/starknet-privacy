@@ -16,7 +16,7 @@ pub trait IClient<T> {
     ///
     /// #### Parameters
     /// - `calls` (`Array<`[`Call`](starknet::account::Call)`>`): Must contain exactly one call
-    /// targeting this contract with selector `execute_view` and calldata serializing to
+    /// targeting this contract with selector `compile_actions` and calldata serializing to
     /// `(user_addr, user_private_key, client_actions)`.
     ///
     /// #### Returns
@@ -26,10 +26,10 @@ pub trait IClient<T> {
     /// - The caller address must be zero.
     /// - The TX version must be 3.
     /// - The effective fee of the transaction is zero (i.e. `tip` and `resource_bounds`).
-    /// - `calls` must contain exactly one call to this contract with selector `execute_view`.
+    /// - `calls` must contain exactly one call to this contract with selector `compile_actions`.
     /// - The single call's calldata must deserialize to `(user_addr, user_private_key,
     /// client_actions)` where `client_actions` are valid sequential actions on the current state,
-    /// see [`execute_view`](privacy::interface::IClient::execute_view) for more details.
+    /// see [`compile_actions`](privacy::interface::IClient::compile_actions) for more details.
     /// - The TX signature must be valid for `user_addr`.
     ///
     /// #### Events Emitted
@@ -47,10 +47,10 @@ pub trait IClient<T> {
     /// - [`INVALID_CALL_TO`](privacy::errors::INVALID_CALL_TO): Thrown if the call's `to` is not
     /// this contract.
     /// - [`INVALID_CALL_SELECTOR`](privacy::errors::INVALID_CALL_SELECTOR): Thrown if the call's
-    /// selector is not `selector!("execute_view")`.
+    /// selector is not `selector!("compile_actions")`.
     /// - [`INVALID_CALLDATA`](privacy::errors::INVALID_CALLDATA): Thrown if the call's calldata
     /// does not deserialize to `(ContractAddress, felt252, Span<ClientAction>)`.
-    /// - See [`execute_and_panic`](privacy::interface::IClient::execute_and_panic) for errors that
+    /// - See [`compile_and_panic`](privacy::interface::IClient::compile_and_panic) for errors that
     /// occur during client action processing.
     ///
     /// #### Access Control
@@ -58,9 +58,9 @@ pub trait IClient<T> {
     ///
     /// #### Notes
     /// - This function parses the single call and internally calls
-    /// [`execute_view`](privacy::interface::IClient::execute_view) to compile the client actions
-    /// into server actions.
-    /// - See [`execute_view`](privacy::interface::IClient::execute_view) Returns section for
+    /// [`compile_actions`](privacy::interface::IClient::compile_actions) to compile the client
+    /// actions into server actions.
+    /// - See [`compile_actions`](privacy::interface::IClient::compile_actions) Returns section for
     /// details on which server actions each client action produces.
     /// - This function does not change the state of the contract.
     fn __execute__(ref self: T, calls: Array<Call>);
@@ -70,14 +70,15 @@ pub trait IClient<T> {
     /// This function processes client actions and always panics with either the
     /// serialized server actions (wrapped with
     /// [`OK_WRAPPER`](privacy::utils::constants::OK_WRAPPER)) or an error. It is called by
-    /// [`execute_view`](privacy::interface::IClient::execute_view) via syscall to capture the
+    /// [`compile_actions`](privacy::interface::IClient::compile_actions) via syscall to capture the
     /// result.
     ///
     /// #### Parameters
     /// - `user_addr` (`ContractAddress`): The address of the user executing the actions.
     /// - `user_private_key` (`felt252`): The private key of the user executing the actions.
     /// - `client_actions` (`Span<`[`ClientAction`](privacy::actions::ClientAction)`>`): The list of
-    /// client actions to compile. See [`execute_view`](privacy::interface::IClient::execute_view)
+    /// client actions to compile. See
+    /// [`compile_actions`](privacy::interface::IClient::compile_actions)
     /// for the action list; [`__execute__`](privacy::interface::IClient::__execute__) receives
     /// these inputs via a single call's calldata.
     ///
@@ -90,8 +91,8 @@ pub trait IClient<T> {
     /// - `user_private_key` must not be zero and must be canonical.
     /// - `client_actions` must be valid sequential actions to execute on the current state of the
     /// contract.
-    /// - See [`execute_view`](privacy::interface::IClient::execute_view) for additional constraints
-    /// on `client_actions`.
+    /// - See [`compile_actions`](privacy::interface::IClient::compile_actions) for additional
+    /// constraints on `client_actions`.
     ///
     /// #### Events Emitted
     /// None
@@ -226,7 +227,7 @@ pub trait IClient<T> {
     /// with [`OK_WRAPPER`](privacy::utils::constants::OK_WRAPPER). On error, it panics with the
     /// error.
     /// - This function ensures that the contract state cannot be modified by client's functions.
-    fn execute_and_panic(
+    fn compile_and_panic(
         ref self: T,
         user_addr: ContractAddress,
         user_private_key: felt252,
@@ -237,7 +238,7 @@ pub trait IClient<T> {
     ///
     /// This function processes a span of [`ClientAction`](privacy::actions::ClientAction) and
     /// compiles each action into corresponding [`ServerAction`](privacy::actions::ServerAction)s.
-    /// It internally calls [`execute_and_panic`](privacy::interface::IClient::execute_and_panic)
+    /// It internally calls [`compile_and_panic`](privacy::interface::IClient::compile_and_panic)
     /// via syscall to capture the result. Unlike
     /// [`__execute__`](privacy::interface::IClient::__execute__), this function does not send
     /// messages to L1 and does not validate execution context (caller address, TX version, fees).
@@ -351,7 +352,7 @@ pub trait IClient<T> {
     /// None
     ///
     /// #### Reverts
-    /// See [`execute_and_panic`](privacy::interface::IClient::execute_and_panic) for the complete
+    /// See [`compile_and_panic`](privacy::interface::IClient::compile_and_panic) for the complete
     /// list of errors.
     ///
     /// #### Access Control
@@ -361,10 +362,10 @@ pub trait IClient<T> {
     /// - This function is called by [`__execute__`](privacy::interface::IClient::__execute__) to
     /// compile client actions before sending to L1.
     /// - The function internally calls
-    /// [`execute_and_panic`](privacy::interface::IClient::execute_and_panic) via syscall to capture
+    /// [`compile_and_panic`](privacy::interface::IClient::compile_and_panic) via syscall to capture
     /// the result.
     /// - This is a view function which never changes the state.
-    fn execute_view(
+    fn compile_actions(
         self: @T,
         user_addr: ContractAddress,
         user_private_key: felt252,

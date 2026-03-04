@@ -328,14 +328,14 @@ pub(crate) fn assert_valid_execution_info() {
 }
 
 /// Asserts that the calls are valid and deserializes the calldata.
-/// Returns the input for `execute_view` function: (user_addr, user_private_key, client_actions).
-pub(crate) fn extract_execute_view_inputs(
+/// Returns the input for `compile_actions` function: (user_addr, user_private_key, client_actions).
+pub(crate) fn extract_compile_actions_inputs(
     calls: Array<Call>, contract_address: ContractAddress,
 ) -> (ContractAddress, felt252, Span<ClientAction>) {
     assert(calls.len() == 1, errors::EXPECTED_ONE_CALL);
     let call = calls[0];
     assert(*call.to == contract_address, errors::INVALID_CALL_TO);
-    assert(*call.selector == selector!("execute_view"), errors::INVALID_CALL_SELECTOR);
+    assert(*call.selector == selector!("compile_actions"), errors::INVALID_CALL_SELECTOR);
     let mut serialized = *call.calldata;
     let (user_addr, user_private_key, client_actions) = Serde::<
         (ContractAddress, felt252, Span<ClientAction>),
@@ -366,9 +366,9 @@ pub(crate) fn send_message_to_server(
     send_message_to_l1_syscall(to_address: Zero::zero(), payload: payload.span()).unwrap_syscall();
 }
 
-/// Gets the result from `execute_and_panic` and returns the server actions on success.
+/// Gets the result from `compile_and_panic` and returns the server actions on success.
 /// Panics on failure with the result's panic data.
-pub(crate) fn extract_server_actions_from_execute_and_panic(
+pub(crate) fn extract_server_actions_from_compile_and_panic(
     syscall_result: Result<Span<felt252>, Array<felt252>>,
 ) -> Span<ServerAction> {
     let origin_panic_data = syscall_result.expect_err(internal_errors::EXPECTED_PANIC).span();
