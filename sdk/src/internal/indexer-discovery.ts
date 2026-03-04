@@ -32,7 +32,7 @@ export class ReorgError extends Error {
 type ApiSubchannelCursor = {
   note_discovery_complete?: boolean;
   last_note_index?: number;
-  max_note_index?: number;
+  total_n_notes?: number;
 };
 
 type ApiChannelCursor = {
@@ -224,7 +224,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
         cursor: { channel_discovery_complete: false },
       };
       const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
-      return { timestamp: resp.block_ref, total: (resp.cursor.last_channel_index ?? -1) + 1 };
+      return { timestamp: resp.block_ref, total: resp.cursor.total_n_channels! };
     }
 
     const cursorMap = params?.cursor?.channels;
@@ -379,14 +379,20 @@ function isApiCursorComplete(cursor: ApiDiscoveryCursor): boolean {
 /** Builds `Record<string, ApiSubchannelCursor>` from token→noteIndex pairs, optionally filtered. */
 export function buildSubchannelCursors(
   noteIndexes: Iterable<[StarknetAddressBigint, number]>,
-  tokenFilter: Set<bigint> | null
+  tokenFilter: Set<bigint> | null,
+  totalNoteCounts?: AddressMap<number>
 ): Record<string, ApiSubchannelCursor> {
   const subchannels: Record<string, ApiSubchannelCursor> = {};
   for (const [token, noteIndex] of noteIndexes) {
     if (tokenFilter && !tokenFilter.has(toBigInt(token))) continue;
-    subchannels[toHex(token)] = {
+    const cursor: ApiSubchannelCursor = {
       last_note_index: noteIndex > 0 ? noteIndex - 1 : undefined,
     };
+    const noteCount = totalNoteCounts?.get(toBigInt(token));
+    if (noteCount != null) {
+      cursor.total_n_notes = noteCount;
+    }
+    subchannels[toHex(token)] = cursor;
   }
   return subchannels;
 }
@@ -403,7 +409,7 @@ export function notesCursorToApiCursor(
     channels: {},
   };
   for (const [sender, icc] of cursor.incomingChannels) {
-    const subchannels = buildSubchannelCursors(icc.noteIndexes, tokenFilter);
+    const subchannels = buildSubchannelCursors(icc.noteIndexes, tokenFilter, icc.totalNoteCounts);
     apiCursor.channels![toHex(sender)] = {
       channel_key: toHex(icc.channelKey),
       subchannel_discovery_complete:
@@ -425,15 +431,20 @@ export function apiCursorToNotesCursor(
     for (const [senderHex, ch] of Object.entries(apiCursor.channels)) {
       const channelKey = ch.channel_key ? BigInt(ch.channel_key) : 0n;
       const noteIndexes = new AddressMap<number>();
+      const totalNoteCounts = new AddressMap<number>();
       if (ch.subchannels) {
         for (const [tokenHex, sc] of Object.entries(ch.subchannels)) {
           noteIndexes.set(BigInt(tokenHex), (sc.last_note_index ?? -1) + 1);
+          if (sc.total_n_notes != null) {
+            totalNoteCounts.set(BigInt(tokenHex), sc.total_n_notes);
+          }
         }
       }
       incomingChannels.set(BigInt(senderHex), {
         channelKey,
         subchannelIdIndex: (ch.last_subchannel_index ?? -1) + 1,
         noteIndexes,
+        totalNoteCounts,
       });
     }
   }

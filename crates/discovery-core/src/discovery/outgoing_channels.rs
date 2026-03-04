@@ -139,6 +139,7 @@ pub async fn discover_outgoing_channels_paginated<S: IViews>(
     // Stop discovering once sentinel is found.
     if !result.has_more {
         cursor.channel_discovery_complete = true;
+        cursor.total_n_channels = Some(cursor.last_channel_index.map_or(0, |i| i + 1));
     }
 
     Ok(result.channels)
@@ -349,6 +350,7 @@ mod tests {
         assert_eq!(channels.len(), 2);
         assert_eq!(cursor.last_channel_index, Some(1));
         assert!(cursor.channel_discovery_complete, "discovery complete");
+        assert_eq!(cursor.total_n_channels, Some(2));
 
         // Second call should return empty (already complete)
         let channels2 = discover_outgoing_channels_paginated(
@@ -394,6 +396,7 @@ mod tests {
             !cursor.channel_discovery_complete,
             "discovery not complete yet"
         );
+        assert_eq!(cursor.total_n_channels, None);
 
         // Resume with more budget
         let budget = IoBudget::new(100);
@@ -412,6 +415,7 @@ mod tests {
         assert_eq!(channels2.len(), 1, "second channel discovered");
         assert_eq!(cursor.last_channel_index, Some(1));
         assert!(cursor.channel_discovery_complete, "discovery complete");
+        assert_eq!(cursor.total_n_channels, Some(2));
     }
 
     #[tokio::test]
@@ -484,6 +488,7 @@ mod tests {
             !cursor.channel_discovery_complete,
             "should NOT mark complete when cursor is full"
         );
+        assert_eq!(cursor.total_n_channels, None);
     }
 
     #[tokio::test]
@@ -513,5 +518,31 @@ mod tests {
         assert_eq!(channels.len(), 1, "discovers up to 1 new channel");
         // cursor now has 2 entries: the pre-filled one + the newly discovered one
         assert_eq!(cursor.channels.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_paginated_zero_channels_sets_total() {
+        let backend = MockBackend::empty();
+        let sender_addr = Felt::from_hex_unchecked("0x12345");
+        let viewing_key = SecretFelt::new(Felt::from_hex_unchecked("0x67890"));
+        let mut cursor = DiscoveryCursor::default();
+        let budget = IoBudget::new(100);
+
+        let channels = discover_outgoing_channels_paginated(
+            &backend,
+            sender_addr,
+            &viewing_key,
+            &mut cursor,
+            usize::MAX,
+            &budget,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert!(channels.is_empty());
+        assert!(cursor.channel_discovery_complete);
+        assert_eq!(cursor.total_n_channels, Some(0));
+        assert_eq!(cursor.last_channel_index, None);
     }
 }
