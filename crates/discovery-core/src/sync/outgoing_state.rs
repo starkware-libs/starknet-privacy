@@ -13,7 +13,7 @@ use starknet_types_core::felt::Felt;
 
 use tracing::{debug, instrument, trace};
 
-use crate::discovery::last_note_index::find_last_note_index_paginated;
+use crate::discovery::last_note_index::find_last_note_index;
 use crate::discovery::outgoing_channels::{
     discover_outgoing_channels_paginated, precompute_channels, OutgoingChannel,
 };
@@ -134,6 +134,7 @@ pub async fn sync_outgoing_state<S: IViews>(
                 recipient_addr,
                 ch_cursor,
                 cursor_limits.max_subchannels,
+                cursor_limits.max_note_log_index,
                 budget,
             )
         })
@@ -185,13 +186,14 @@ async fn process_outgoing_channel<S: IViews>(
     recipient_addr: Felt,
     mut cursor: ChannelCursor,
     max_cursor_subchannels: usize,
+    max_note_log_index: u32,
     budget: &IoBudget,
 ) -> Result<ProcessChannelResult, DiscoveryError> {
-    let channel_key = cursor.channel_key;
+    let channel_key = cursor.channel_key.clone();
 
     discover_subchannels_paginated(
         pool,
-        channel_key,
+        &channel_key,
         &mut cursor,
         max_cursor_subchannels,
         budget,
@@ -204,7 +206,14 @@ async fn process_outgoing_channel<S: IViews>(
         .subchannels
         .extract_if(|_, sc| !sc.note_discovery_complete)
         .map(|(token, sc_cursor)| {
-            process_outgoing_subchannel(pool, channel_key, token, sc_cursor, budget)
+            process_outgoing_subchannel(
+                pool,
+                &channel_key,
+                token,
+                sc_cursor,
+                max_note_log_index,
+                budget,
+            )
         })
         .collect();
 
@@ -234,27 +243,35 @@ async fn process_outgoing_channel<S: IViews>(
 #[instrument(skip_all, fields(token = felt_hex(&token)))]
 async fn process_outgoing_subchannel<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     mut cursor: SubchannelCursor,
+    max_note_log_index: u32,
     budget: &IoBudget,
 ) -> Result<ProcessSubchannelResult, DiscoveryError> {
     if cursor.note_discovery_complete {
         return Ok(ProcessSubchannelResult {
             token,
-            last_note_index: cursor.last_note_index,
+            last_note_index: cursor.last_existing_index(),
             cursor,
         });
     }
 
-    let (last_index, has_more) =
-        find_last_note_index_paginated(pool, channel_key, token, &mut cursor, budget).await?;
+    let (_cache, has_more) = find_last_note_index(
+        pool,
+        channel_key,
+        token,
+        &mut cursor,
+        max_note_log_index,
+        budget,
+    )
+    .await?;
 
     cursor.note_discovery_complete = !has_more;
 
     Ok(ProcessSubchannelResult {
         token,
-        last_note_index: last_index,
+        last_note_index: cursor.last_existing_index(),
         cursor,
     })
 }
@@ -272,19 +289,20 @@ mod tests {
     async fn test_sync_outgoing_state_full_discovery() {
         let f = load_devnet_fixture();
         let backend = MockBackend::new(f.slots);
-        let viewing_key = SecretFelt::new(f.constants.alice_viewing_key);
+        let viewing_key = &f.constants.alice_viewing_key;
 
         let cursor = DiscoveryCursor::default();
-        let budget = IoBudget::new(100);
+        let budget = IoBudget::new(200);
 
         let out = sync_outgoing_state(
             &backend,
             f.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             cursor,
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
             None,
@@ -309,14 +327,14 @@ mod tests {
             .iter()
             .find(|c| c.recipient_addr == f.constants.alice_address)
             .expect("Alice self-channel");
-        assert_ne!(alice_ch.channel_key, Felt::ZERO);
+        assert_ne!(*alice_ch.channel_key, Felt::ZERO);
 
         let bob_ch = out
             .channels
             .iter()
             .find(|c| c.recipient_addr == f.constants.bob_address)
             .expect("Bob channel");
-        assert_ne!(bob_ch.channel_key, Felt::ZERO);
+        assert_ne!(*bob_ch.channel_key, Felt::ZERO);
 
         // Verify subchannel info
         for sc in &out.subchannels {
@@ -339,7 +357,7 @@ mod tests {
     async fn test_sync_outgoing_state_pagination() {
         let f = load_devnet_fixture();
         let backend = MockBackend::new(f.slots);
-        let viewing_key = SecretFelt::new(f.constants.alice_viewing_key);
+        let viewing_key = &f.constants.alice_viewing_key;
 
         // Step 1: budget = 3 × COST_OUTGOING_CHANNEL_INFO = 9
         // Discovers 2 channels + sentinel. No budget left for subchannels.
@@ -349,11 +367,12 @@ mod tests {
         let out = sync_outgoing_state(
             &backend,
             f.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             cursor,
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
             None,
@@ -380,15 +399,17 @@ mod tests {
 
         // Step 2: generous budget. Channel discovery skipped (cursor.channels
         // non-empty). Finishes subchannel + note discovery for both channels.
-        let budget = IoBudget::new(100);
+        // Needs budget for 2 concurrent boundary-finding operations (61 each).
+        let budget = IoBudget::new(200);
         let out2 = sync_outgoing_state(
             &backend,
             f.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             out.cursor,
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
             None,
@@ -414,20 +435,21 @@ mod tests {
     async fn test_sync_outgoing_state_recipients_filter() {
         let f = load_devnet_fixture();
         let backend = MockBackend::new(f.slots);
-        let viewing_key = SecretFelt::new(f.constants.alice_viewing_key);
+        let viewing_key = &f.constants.alice_viewing_key;
 
         let recipients = HashSet::from([f.constants.bob_address]);
 
         let out = sync_outgoing_state(
             &backend,
             f.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             DiscoveryCursor::default(),
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
-            &IoBudget::new(100),
+            &IoBudget::new(200),
             Some(&recipients),
         )
         .await
@@ -451,17 +473,18 @@ mod tests {
 
         let f = load_devnet_fixture();
         let backend = MockBackend::new(f.slots);
-        let viewing_key = SecretFelt::new(f.constants.alice_viewing_key);
+        let viewing_key = &f.constants.alice_viewing_key;
 
         // First, do a full discovery to get real channel keys.
         let full = sync_outgoing_state(
             &backend,
             f.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             DiscoveryCursor::default(),
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &IoBudget::new(1000),
             None,
@@ -485,7 +508,8 @@ mod tests {
             .channels
             .get(&f.constants.bob_address)
             .unwrap()
-            .channel_key;
+            .channel_key
+            .clone();
         let bob_incomplete = ChannelCursor {
             channel_key: bob_key,
             subchannel_discovery_complete: false,
@@ -508,11 +532,12 @@ mod tests {
         let out = sync_outgoing_state(
             &backend,
             f.constants.alice_address,
-            &viewing_key,
+            viewing_key,
             cursor,
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &IoBudget::new(1000),
             None,

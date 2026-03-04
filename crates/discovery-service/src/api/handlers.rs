@@ -13,14 +13,15 @@ use starknet_core::types::{BlockId, Felt};
 use tracing::debug;
 
 use discovery_core::privacy_pool::felt_hex;
-use discovery_core::privacy_pool::types::SecretFelt;
 
 use crate::api::types::{
     error_codes, ApiErrorResponse, HealthResponse, IncomingSyncRequest, IncomingSyncResponse,
     OutgoingSyncRequest, OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse,
     SyncRequestBase,
 };
-use crate::api::validators::{validate_block_ref, validate_cursor, validate_recipients};
+use crate::api::validators::{
+    validate_block_ref, validate_cursor, validate_recipients, validate_viewing_key,
+};
 use crate::api::AppState;
 use crate::chain_state::ChainState;
 use discovery_core::discovery::CursorLimits;
@@ -61,7 +62,6 @@ where
 /// Validated and resolved shared context for sync handlers.
 struct SyncContext<S> {
     block_ref: Felt,
-    viewing_key: SecretFelt,
     snapshot: S,
     budget: IoBudget,
     cursor_limits: CursorLimits,
@@ -69,8 +69,12 @@ struct SyncContext<S> {
 
 /// Validates the shared request fields and builds the context needed by
 /// both incoming and outgoing sync handlers.
+///
+/// `user_address` is the address whose public key should match the viewing key
+/// (recipient for incoming, sender for outgoing).
 async fn prepare_sync_context<B>(
     base: &SyncRequestBase,
+    user_address: Felt,
     state: &AppState<B>,
 ) -> Result<SyncContext<B::Snapshot>, (StatusCode, ApiErrorResponse)>
 where
@@ -80,19 +84,25 @@ where
     validate_cursor(&base.cursor, &state.validation_limits)?;
     let block_ref =
         validate_block_ref(base.last_known_block, base.block_ref, &state.backend).await?;
-    let viewing_key = SecretFelt::new(base.viewing_key);
 
     let snapshot = state
         .backend
         .snapshot(base.contract_address, Some(BlockId::Hash(block_ref)))
         .await;
 
+    validate_viewing_key(
+        &base.viewing_key,
+        user_address,
+        &snapshot,
+        &state.public_key_cache,
+    )
+    .await?;
+
     let budget = IoBudget::new(state.validation_limits.server_budget);
     let cursor_limits = state.validation_limits.cursor_limits;
 
     Ok(SyncContext {
         block_ref,
-        viewing_key,
         snapshot,
         budget,
         cursor_limits,
@@ -123,7 +133,7 @@ where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
     B::Snapshot: Clone + Send + Sync + 'static,
 {
-    let context = prepare_sync_context(&request.base, state).await?;
+    let context = prepare_sync_context(&request.base, request.recipient_address, state).await?;
 
     debug!(
         recipient = %format!("{:#x}", request.recipient_address),
@@ -134,7 +144,7 @@ where
     let discovery_output = discovery_core::sync::incoming_state::sync_incoming_state(
         &context.snapshot,
         request.recipient_address,
-        &context.viewing_key,
+        &request.base.viewing_key,
         request.base.cursor,
         context.cursor_limits,
         &context.budget,
@@ -186,7 +196,7 @@ where
     if let Some(ref recipients) = request.recipients {
         validate_recipients(recipients, &state.validation_limits)?;
     }
-    let context = prepare_sync_context(&request.base, state).await?;
+    let context = prepare_sync_context(&request.base, request.sender_address, state).await?;
 
     debug!(
         sender = felt_hex(&request.sender_address),
@@ -198,7 +208,7 @@ where
     let discovery_output = discovery_core::sync::outgoing_state::sync_outgoing_state(
         &context.snapshot,
         request.sender_address,
-        &context.viewing_key,
+        &request.base.viewing_key,
         request.base.cursor,
         context.cursor_limits,
         &context.budget,
@@ -260,7 +270,13 @@ where
         )
         .await;
 
-    let viewing_key = SecretFelt::new(request.viewing_key);
+    validate_viewing_key(
+        &request.viewing_key,
+        request.sender_address,
+        &snapshot,
+        &state.public_key_cache,
+    )
+    .await?;
 
     debug!(
         sender = felt_hex(&request.sender_address),
@@ -273,7 +289,7 @@ where
     let result = discovery_core::sync::preflight_check::preflight_check(
         &snapshot,
         request.sender_address,
-        &viewing_key,
+        &request.viewing_key,
         request.recipient,
         request.token,
     )

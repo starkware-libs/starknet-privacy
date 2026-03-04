@@ -65,9 +65,6 @@ struct ProcessSubchannelResult {
 /// channels are marked via completion flags but never pruned from the cursor.
 ///
 /// Channel and subchannel processing is concurrent via [`FuturesUnordered`].
-// TODO: Handle open notes — notes with salt==OPEN_NOTE_SALT(1) have plaintext
-//       amounts, non-zero token and depositor fields (see Cairo objects.cairo
-//       Note struct)
 #[instrument(skip_all, fields(recipient = felt_hex(&recipient)))]
 pub async fn sync_incoming_state<S: IViews>(
     pool: &S,
@@ -127,6 +124,7 @@ pub async fn sync_incoming_state<S: IViews>(
                 ch_cursor,
                 viewing_key,
                 cursor_limits.max_subchannels,
+                cursor_limits.max_note_log_index,
                 budget,
             )
         })
@@ -169,13 +167,14 @@ async fn process_channel<S: IViews>(
     mut cursor: ChannelCursor,
     viewing_key: &SecretFelt,
     max_cursor_subchannels: usize,
+    max_note_log_index: u32,
     budget: &IoBudget,
 ) -> Result<ProcessChannelResult, DiscoveryError> {
-    let channel_key = cursor.channel_key;
+    let channel_key = cursor.channel_key.clone();
 
     discover_subchannels_paginated(
         pool,
-        channel_key,
+        &channel_key,
         &mut cursor,
         max_cursor_subchannels,
         budget,
@@ -188,7 +187,15 @@ async fn process_channel<S: IViews>(
         .subchannels
         .extract_if(|_, sc| !sc.note_discovery_complete)
         .map(|(token, sc_cursor)| {
-            process_subchannel(pool, channel_key, token, sc_cursor, viewing_key, budget)
+            process_subchannel(
+                pool,
+                &channel_key,
+                token,
+                sc_cursor,
+                viewing_key,
+                max_note_log_index,
+                budget,
+            )
         })
         .collect();
 
@@ -225,10 +232,11 @@ async fn process_channel<S: IViews>(
 #[instrument(skip_all, fields(token = felt_hex(&token)))]
 async fn process_subchannel<S: IViews>(
     pool: &S,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     mut cursor: SubchannelCursor,
     viewing_key: &SecretFelt,
+    max_note_log_index: u32,
     budget: &IoBudget,
 ) -> Result<ProcessSubchannelResult, DiscoveryError> {
     if cursor.note_discovery_complete {
@@ -239,9 +247,16 @@ async fn process_subchannel<S: IViews>(
         });
     }
 
-    let notes =
-        discover_notes_paginated(pool, channel_key, token, &mut cursor, viewing_key, budget)
-            .await?;
+    let notes = discover_notes_paginated(
+        pool,
+        channel_key,
+        token,
+        &mut cursor,
+        viewing_key,
+        max_note_log_index,
+        budget,
+    )
+    .await?;
 
     Ok(ProcessSubchannelResult {
         token,
@@ -253,9 +268,8 @@ async fn process_subchannel<S: IViews>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::discovery::{
-        COST_CHANNEL_INFO, COST_NOTE, COST_NOTE_PROBING, COST_NUM_CHANNELS, COST_SUBCHANNEL_INFO,
-    };
+    use crate::discovery::last_note_index::boundary_budget;
+    use crate::discovery::{COST_CHANNEL_INFO, COST_NUM_CHANNELS, COST_SUBCHANNEL_INFO};
     use crate::storage_backend::MockBackend;
     use crate::test_fixtures::load_devnet_fixture;
 
@@ -273,13 +287,13 @@ mod tests {
     /// | 2    | 3      | Channel 0 discovered                              |
     /// | 3    | 2      | Subchannel 0 (STRK) discovered                    |
     /// | 4    | 2      | Subchannel sentinel → total cached                |
-    /// | 5    | 4+     | Subchannels skipped + batched note scan → all done |
+    /// | 5    | 61     | Atomic boundary finding + note scan → all done    |
     #[tokio::test]
     async fn test_sync_incoming_state_step_by_step_pagination() {
         let f = load_devnet_fixture();
         let backend = MockBackend::new(f.slots);
         let recipient = f.constants.bob_address;
-        let viewing_key = SecretFelt::new(f.constants.bob_viewing_key);
+        let viewing_key = &f.constants.bob_viewing_key;
 
         // Step 1: budget = COST_NUM_CHANNELS (1)
         // Fetches total_n_channels = 1. No budget left for channel discovery.
@@ -288,11 +302,12 @@ mod tests {
         let out = sync_incoming_state(
             &backend,
             recipient,
-            &viewing_key,
+            viewing_key,
             cursor,
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
         )
@@ -312,11 +327,12 @@ mod tests {
         let out = sync_incoming_state(
             &backend,
             recipient,
-            &viewing_key,
+            viewing_key,
             out.cursor,
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
         )
@@ -343,11 +359,12 @@ mod tests {
         let out = sync_incoming_state(
             &backend,
             recipient,
-            &viewing_key,
+            viewing_key,
             out.cursor,
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
         )
@@ -376,16 +393,17 @@ mod tests {
         // Step 4: budget = COST_SUBCHANNEL_INFO (2)
         // Channel discovery skipped (cursor.channels non-empty). Reads
         // subchannel index 1 → sentinel (salt=0). Budget=0, note discovery
-        // fails (needs COST_NOTE_PROBING=1 for initial probe).
+        // fails (needs boundary_budget(30)=61 for atomic boundary finding).
         let budget = IoBudget::new(COST_SUBCHANNEL_INFO);
         let out = sync_incoming_state(
             &backend,
             recipient,
-            &viewing_key,
+            viewing_key,
             out.cursor,
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
         )
@@ -404,19 +422,19 @@ mod tests {
         );
 
         // Step 5: Subchannels skipped (total cached). Notes discovery:
-        // Exponential probe: 11 offsets [0,1,3,7,...,1023] consumed greedily,
-        // but breaks at offset 1 (empty). Hit at 0, miss at 1. Cost = 11.
-        // Linear scan: 1 note at index 0 → COST_NOTE (2: get_note + nullifier).
-        // Bob's note is spent → filtered. Total = 13.
-        let budget = IoBudget::new(11 * COST_NOTE_PROBING + COST_NOTE);
+        // Atomic boundary finding: consumes boundary_budget(30) = 61 upfront.
+        // Probe: hit at 0, miss at 1 (adjacent). No bisection. Reclaim 30.
+        // Net boundary cost = 31. Scan: 1 note (spent), net cost = 1. Total = 32.
+        let budget = IoBudget::new(boundary_budget(30));
         let out = sync_incoming_state(
             &backend,
             recipient,
-            &viewing_key,
+            viewing_key,
             out.cursor,
             CursorLimits {
                 max_channels: 1024,
                 max_subchannels: 1024,
+                ..Default::default()
             },
             &budget,
         )

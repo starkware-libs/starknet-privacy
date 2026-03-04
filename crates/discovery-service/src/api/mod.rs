@@ -6,15 +6,19 @@ pub mod validators;
 
 use std::sync::Arc;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 use discovery_core::storage_backend::StorageBackend;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
+use tower_http::cors::CorsLayer;
+use tower_http::timeout::TimeoutLayer;
 use tracing::info;
 
 use crate::chain_state::ChainState;
 use crate::config::{ApiServerConfig, ValidationLimits};
+use crate::public_key_cache::PublicKeyCache;
 
 pub use handlers::{
     health_handler, incoming_sync_handler, outgoing_sync_handler, preflight_check_handler,
@@ -46,6 +50,7 @@ pub struct AppState<B> {
     pub backend: B,
     pub health_max_lag_secs: u64,
     pub validation_limits: ValidationLimits,
+    pub public_key_cache: PublicKeyCache,
 }
 
 impl<B> ApiServer<B>
@@ -67,6 +72,9 @@ where
         let app_state = Arc::new(AppState {
             backend: self.backend.clone(),
             health_max_lag_secs: self.config.health_max_lag_secs,
+            public_key_cache: PublicKeyCache::new(
+                self.config.validation_limits.public_key_cache_capacity,
+            ),
             validation_limits: self.config.validation_limits.clone(),
         });
 
@@ -79,6 +87,14 @@ where
                 "/v1/sync/preflight_check",
                 post(preflight_check_handler::<B>),
             )
+            .layer(CorsLayer::permissive())
+            .layer(DefaultBodyLimit::max(
+                self.config.validation_limits.max_request_body_bytes,
+            ))
+            .layer(TimeoutLayer::with_status_code(
+                axum::http::StatusCode::REQUEST_TIMEOUT,
+                self.config.request_timeout,
+            ))
             .with_state(app_state);
 
         let listener = TcpListener::bind(&self.config.host)

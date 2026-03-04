@@ -10,6 +10,7 @@ import type {
   DiscoveryProviderInterface,
   ViewingKeyProvider,
   StarknetAddress,
+  ProofInvocationResult,
 } from "../interfaces.js";
 import type { Account, TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
@@ -41,7 +42,10 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     return new ActionCompiler(this.user, viewingKey, this.params.discoveryProvider);
   }
 
-  async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
+  async createProofInvocation(
+    actions: Actions,
+    options?: ExecuteOptions
+  ): Promise<ProofInvocationResult> {
     // Get viewing key for both compiler and calldata
     const viewingKey = await this.params.viewingKeyProvider.getViewingKey();
     const compiler = new ActionCompiler(this.user, viewingKey, this.params.discoveryProvider);
@@ -57,6 +61,12 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       clientActions,
       details
     );
+
+    return { invocation, registry, warnings };
+  }
+
+  async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
+    const { invocation, registry, warnings } = await this.createProofInvocation(actions, options);
 
     // Get proof from provider (block id only when provided in options)
     const proof = await this.params.provingProvider.prove(invocation, options?.provingBlockId);

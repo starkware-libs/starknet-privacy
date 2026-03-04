@@ -74,7 +74,7 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
 
 - `contract_address`: The privacy pool contract address.
 - `recipient_address`: The recipient's on-chain address.
-- `viewing_key`: The recipient's private viewing key (used for server-side decryption).
+- `viewing_key`: The recipient's private viewing key (used for server-side decryption). Validated against the on-chain public key for the given address.
 - `last_known_block`: Optional. Block hash from last completed sync session. Used for reorg detection on first request. Server returns `409 BLOCK_REORGED` if this block is no longer canonical. Leave empty on fresh syncs or pagination requests.
 - `block_ref`: Optional. Block hash to query state at. Ensures consistent reads across paginated requests. Leave empty on first request (server uses current head and sets it in response).
 - `cursor`: Composite `DiscoveryCursor` for pagination. Default (empty) on first request.
@@ -161,7 +161,7 @@ Uses the same `block_ref`/`last_known_block` reorg-detection pattern and composi
 
 - `contract_address`: The privacy pool contract address.
 - `sender_address`: The sender's on-chain address.
-- `viewing_key`: The sender's private viewing key (used for server-side decryption of outgoing channel data).
+- `viewing_key`: The sender's private viewing key (used for server-side decryption of outgoing channel data). Validated against the on-chain public key for the given address.
 - `last_known_block`: Optional. For reorg detection on first request of a new sync session.
 - `block_ref`: Optional. Block hash for consistent reads across paginated requests.
 - `cursor`: Composite `DiscoveryCursor` for pagination. Default (empty) on first request.
@@ -218,7 +218,7 @@ A non-paginated readiness check that reports what on-chain setup exists for a `(
 
 - `contract_address`: The privacy pool contract address.
 - `sender_address`: The sender's on-chain address.
-- `viewing_key`: The sender's private viewing key (used to derive channel key).
+- `viewing_key`: The sender's private viewing key (used to derive channel key). Validated against the on-chain public key for the given address.
 - `recipient`: The recipient's on-chain address.
 - `token`: The token address to check subchannel for.
 

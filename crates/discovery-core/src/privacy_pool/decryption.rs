@@ -15,6 +15,10 @@ use super::types::{
     SecretFelt,
 };
 
+/// Salt value indicating an open (plaintext) note.
+/// Open notes store their amount unencrypted in the lower 128 bits.
+pub const OPEN_NOTE_SALT: u128 = 1;
+
 /// Errors that can occur during decryption.
 #[derive(Debug, Error)]
 pub enum DecryptionError {
@@ -44,7 +48,7 @@ pub fn decrypt_channel_info(
     let sender_addr = enc.enc_sender_addr - compute_enc_sender_addr_hash(shared_x);
 
     Ok(ChannelInfo {
-        channel_key,
+        channel_key: SecretFelt::new(channel_key),
         sender_addr,
     })
 }
@@ -63,8 +67,12 @@ pub fn decrypt_channel_info(
 /// # Returns
 ///
 /// The decrypted token address.
-pub fn decrypt_subchannel_token(enc: &EncSubchannelInfo, channel_key: &Felt, index: u64) -> Felt {
-    let enc_token_hash = compute_enc_token_hash(*channel_key, index, enc.salt);
+pub fn decrypt_subchannel_token(
+    enc: &EncSubchannelInfo,
+    channel_key: &SecretFelt,
+    index: u64,
+) -> Felt {
+    let enc_token_hash = compute_enc_token_hash(channel_key, index, enc.salt);
     enc.enc_token - enc_token_hash
 }
 
@@ -87,7 +95,7 @@ pub fn unpack_note_amount(packed_amount: Felt) -> (u128, u128) {
 pub fn decrypt_note_amount(
     enc_amount: u128,
     salt: u128,
-    channel_key: Felt,
+    channel_key: &SecretFelt,
     token: Felt,
     index: u64,
 ) -> u128 {
@@ -140,10 +148,10 @@ mod tests {
             enc_sender_addr: f.outputs.enc_channel_sender_addr,
         };
 
-        let key = SecretFelt::new(f.inputs.recipient_private_key);
-        let result = decrypt_channel_info(&encrypted, &key).expect("decryption should succeed");
+        let result = decrypt_channel_info(&encrypted, &f.inputs.recipient_private_key)
+            .expect("decryption should succeed");
 
-        assert_eq!(result.channel_key, f.inputs.channel_key);
+        assert_eq!(*result.channel_key, *f.inputs.channel_key);
         assert_eq!(result.sender_addr, f.inputs.sender);
     }
 
@@ -157,7 +165,6 @@ mod tests {
         };
 
         let token = decrypt_subchannel_token(&encrypted, &f.inputs.channel_key, f.inputs.index);
-
         assert_eq!(token, f.inputs.token);
     }
 
@@ -166,18 +173,32 @@ mod tests {
         let f = load_cairo_ref_fixture();
 
         let (salt, enc_amount) = unpack_note_amount(f.outputs.enc_note_amount);
-        // Compare salt as u128 by converting the fixture's Felt to u128
         let expected_salt = felt_low_u128(f.inputs.salt);
         assert_eq!(salt, expected_salt);
 
         let amount = decrypt_note_amount(
             enc_amount,
             salt,
-            f.inputs.channel_key,
+            &f.inputs.channel_key,
             f.inputs.token,
             f.inputs.index,
         );
         assert_eq!(amount, f.outputs.dec_note_amount as u128);
+    }
+
+    #[test]
+    fn test_unpack_open_note_returns_plaintext_amount() {
+        let amount: u128 = 50_000_000_000_000_000_000; // 50 STRK in wei
+        let salt = OPEN_NOTE_SALT;
+        // Pack: salt in upper 128 bits, amount in lower 128 bits
+        let packed = Felt::from(salt) * Felt::from(1u128 << 64) * Felt::from(1u128 << 64)
+            + Felt::from(amount);
+        let (unpacked_salt, unpacked_amount) = unpack_note_amount(packed);
+        assert_eq!(unpacked_salt, salt, "salt should be OPEN_NOTE_SALT");
+        assert_eq!(
+            unpacked_amount, amount,
+            "open note amount should be plaintext"
+        );
     }
 
     #[test]
@@ -189,10 +210,12 @@ mod tests {
             enc_recipient_addr: f.outputs.enc_outgoing_recipient_addr,
         };
 
-        let key = SecretFelt::new(f.inputs.sender_private_key);
-        let recipient =
-            decrypt_outgoing_recipient_addr(&enc, f.inputs.sender, &key, f.inputs.index);
-
+        let recipient = decrypt_outgoing_recipient_addr(
+            &enc,
+            f.inputs.sender,
+            &f.inputs.sender_private_key,
+            f.inputs.index,
+        );
         assert_eq!(recipient, f.inputs.recipient);
     }
 }

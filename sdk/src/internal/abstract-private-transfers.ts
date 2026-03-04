@@ -15,6 +15,7 @@ import type {
   Note,
   PrivateTransfersBuilder,
   PrivateTransfersInterface,
+  ProofInvocationResult,
   StarknetAddress,
   StarknetAddressBigint,
   ViewingKey,
@@ -100,4 +101,12 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
    * Execute raw actions - must be implemented by subclasses
    */
   abstract execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /**
+   * Build a proof transaction for the raw actions - must be implemented by subclasses
+   */
+  abstract createProofInvocation(
+    actions: Actions,
+    options?: ExecuteOptions
+  ): Promise<ProofInvocationResult>;
 }

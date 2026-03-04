@@ -42,6 +42,7 @@ backoff_max_interval = 60
 [api]
 host = "127.0.0.1:8080"
 health_max_lag_secs = 5
+request_timeout = 30        # seconds
 
 [logging]
 level = "info"
@@ -50,9 +51,12 @@ level = "info"
 max_cursor_channels = 256
 max_cursor_subchannels_per_channel = 64
 max_outgoing_recipients = 64
-server_budget = 100
+server_budget = 10000
+max_request_body_bytes = 102400
 batch_budget = 16
 ```
+
+**Budget clamping:** `server_budget` is clamped to `min_server_budget(max_note_log_index)` at startup (89 with default `max_note_log_index=30`). The minimum is computed from the costs needed to make progress through one step at each discovery level: fetch channel count, discover one channel, discover one subchannel (×2 for sentinel), probe note boundary, and scan 10 notes. Values below the minimum trigger a warning log and are raised to the minimum.
 
 ## Env Var Overrides
 
@@ -64,7 +68,7 @@ These env vars override the corresponding config file values at runtime:
 | `WS_URL` | `indexer.ws_url` | `ws://127.0.0.1:5050/ws` |
 | `API_HOST` | `api.host` | `127.0.0.1:8080` |
 | `RUST_LOG` | `logging.level` | `info` |
-| `SERVER_BUDGET` | `limits.server_budget` | `100` |
+| `SERVER_BUDGET` | `limits.server_budget` | `10000` |
 | `BATCH_BUDGET` | `limits.batch_budget` | `16` |
 
 RPC pool settings, indexer timeouts, and validation limits (except server/batch budget) have no env var — configurable only via file.

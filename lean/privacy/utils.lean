@@ -189,8 +189,8 @@ def list_to_fin_equiv
     apply List.Nodup.idxOf_getElem h_nodup
 
 def two_lists_equiv
-    {α: Type} [DecidableEq α]
-    (ℓ₀ ℓ₁: List α)
+    {α: Type} [DecidableEq α] [DecidableEq β]
+    (ℓ₀: List α) (ℓ₁: List β)
     (h: ℓ₀.length = ℓ₁.length)
     (h_nodup₀: ℓ₀.Nodup)
     (h_nodup₁: ℓ₁.Nodup) :
@@ -228,3 +228,106 @@ theorem mapFinIdx_flatMap_Nodup
       rw [←h_f] at h₀
       have := h_j i xs[i] (by simp; omega) v h₀
       omega
+
+def partial_equiv
+    {α: Type} [DecidableEq α] [DecidableEq β]
+    {ℓ₀: List α} {ℓ₁: List β}
+    (e: ℓ₀.toFinset ≃ ℓ₁.toFinset)
+    (x: α) : Option β :=
+  if h: x ∈ ℓ₀.toFinset then some (e ⟨x, h⟩).val else none
+
+theorem partial_equiv_eq
+    {α: Type} [DecidableEq α] [DecidableEq β]
+    {ℓ₀: List α} {ℓ₁: List β}
+    (e: ℓ₀.toFinset ≃ ℓ₁.toFinset)
+    (x: α) (h_x: x ∈ ℓ₀) :
+    partial_equiv e x = some (e ⟨x, by simp [h_x]⟩) := by
+  simp [partial_equiv, h_x]
+
+theorem partial_equiv_prop
+    {α: Type} [DecidableEq α] [DecidableEq β]
+    {ℓ₀: List α} {ℓ₁: List β}
+    (e: ℓ₀.toFinset ≃ ℓ₁.toFinset)
+    (x: α) (h_x: x ∈ ℓ₀) :
+    ∃ y: β, partial_equiv e x = some y ∧ y ∈ ℓ₁ := by
+  simp only [partial_equiv, List.mem_toFinset, Option.dite_none_right_eq_some, Option.some.injEq,
+    exists_exists_eq_and]
+  have := (e ⟨x, by simp [h_x]⟩).prop
+  rw [List.mem_toFinset] at this
+  exact ⟨h_x, this⟩
+
+theorem partial_equiv_inv_helper
+    {α: Type} [DecidableEq α] [DecidableEq β]
+    {ℓ₀: List α} {ℓ₁: List β}
+    (e: ℓ₀.toFinset ≃ ℓ₁.toFinset)
+    (x: α) (y: β) :
+    partial_equiv e x = some y → partial_equiv e.symm y = some x := by
+  intro h
+  by_cases h_x_ℓ₀: x ∈ ℓ₀
+  case pos =>
+    set a := e ⟨x, by simp [h_x_ℓ₀]⟩ with h_a
+    rw [Equiv.apply_eq_iff_eq_symm_apply e] at h_a
+    simp only [partial_equiv, List.mem_toFinset, h_x_ℓ₀, ↓reduceDIte, Option.some.injEq] at h
+    have : y ∈ ℓ₁ := by
+      have := a.prop
+      simp [a, h] at this
+      exact this
+    rw [partial_equiv_eq e.symm y this]
+    simp [←h, ←h_a]
+  case neg =>
+    simp [partial_equiv, List.mem_toFinset, h_x_ℓ₀] at h
+
+theorem partial_equiv_inv
+    {α: Type} [DecidableEq α] [DecidableEq β]
+    {ℓ₀: List α} {ℓ₁: List β}
+    (e: ℓ₀.toFinset ≃ ℓ₁.toFinset)
+    (x: α) (y: β) :
+    partial_equiv e x = some y ↔ partial_equiv e.symm y = some x := by
+  exact ⟨partial_equiv_inv_helper e x y, partial_equiv_inv_helper e.symm y x⟩
+
+theorem partial_equiv_from_some
+    {α: Type} [DecidableEq α] [DecidableEq β]
+    {ℓ₀: List α} {ℓ₁: List β}
+    {e: ℓ₀.toFinset ≃ ℓ₁.toFinset}
+    {x: α} {y: β}
+    (h: partial_equiv e x = some y) :
+    x ∈ ℓ₀ ∧ y ∈ ℓ₁ := by
+  by_cases h_x_ℓ₀: x ∈ ℓ₀
+  case pos =>
+    have := (e ⟨x, by simp [h_x_ℓ₀]⟩).prop
+    simp only [List.mem_toFinset] at this
+    simp only [partial_equiv, List.mem_toFinset, h_x_ℓ₀, reduceDIte, Option.some.injEq] at h
+    rw [←h]
+    exact ⟨h_x_ℓ₀, this⟩
+  case neg =>
+    simp [partial_equiv, List.mem_toFinset, h_x_ℓ₀] at h
+
+theorem mapIdx_filter_map
+    {α β γ: Type} {ℓ: List α}
+    (f: ℕ → α → β)
+    (p: β → Bool)
+    (q: β → γ)
+    (h_p: ∀ idx₀ idx₁ x, p (f idx₀ x) ↔ p (f idx₁ x))
+    (h_q: ∀ idx₀ idx₁ x, q (f idx₀ x) = q (f idx₁ x)) :
+    (ℓ |>.mapIdx f |>.filter p |>.map q) =
+    (ℓ |>.map (f 0) |>.filter p |>.map q) := by
+  induction ℓ using List.reverseRecOn
+  case nil => simp
+  case append_singleton x xs ih =>
+    simp only [List.mapIdx_concat, List.filter_append, List.map_append, ih, List.map_cons,
+      List.map_nil, List.append_cancel_left_eq]
+    by_cases p (f x.length xs)
+    case pos h =>
+      simp [h, (h_p _ _ _).1 h]
+      apply h_q
+    case neg h =>
+      simp [h]
+      rw [←h_p 0 _ _] at h
+      simp [h]
+
+theorem mem_mapIdx' {α β: Type} {f: ℕ → α → β} {ℓ: List α} {x: β}
+    (h_mem: x ∈ ℓ.mapIdx f) :
+    ∃ (i: ℕ) (y: α), y ∈ ℓ ∧ x = f i y := by
+  rw [List.mem_mapIdx] at h_mem
+  have ⟨i, _, h_x⟩ := h_mem
+  exact ⟨i, ℓ[i], by simp [h_x]⟩
