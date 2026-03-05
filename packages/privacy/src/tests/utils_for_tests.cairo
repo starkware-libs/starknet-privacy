@@ -736,6 +736,63 @@ pub(crate) impl UserImpl of UserTrait {
         self.privacy.apply_actions(actions: self.internal_create_open_note(create_note_input));
     }
 
+    /// Plant an open note directly in storage via WriteOnce, bypassing `EmitOpenNoteCreated`
+    /// and the same-tx fill enforcement.
+    fn cheat_create_open_note_in_storage(self: @User, create_note_input: CreateOpenNoteInput) {
+        let (note_id, note) = self.compute_open_note(:create_note_input);
+        self.privacy.cheat_create_note(:note_id, :note);
+    }
+
+    /// Plant a pre-filled open note directly in storage.
+    /// Caller must also ensure the privacy contract has the backing token balance.
+    fn cheat_create_filled_open_note_in_storage(
+        self: @User, create_note_input: CreateOpenNoteInput, amount: u128,
+    ) {
+        let (note_id, note) = self.compute_open_note_with_amount(:create_note_input, :amount);
+        self.privacy.cheat_create_note(:note_id, :note);
+    }
+
+    /// Build server actions that create an open note and fill it via the echo executor.
+    fn internal_create_and_fill_open_note(
+        self: @User, create_note_input: CreateOpenNoteInput, amount: u128,
+    ) -> (felt252, Span<ServerAction>) {
+        let create_actions = self.internal_create_open_note(:create_note_input);
+        let (note_id, _) = self.compute_open_note(:create_note_input);
+        let fill_actions = self
+            .privacy
+            ._deposit_to_open_note_actions(:note_id, token_addr: create_note_input.token, :amount);
+        let mut actions: Array<ServerAction> = create_actions.into();
+        actions.append_span(fill_actions);
+        (note_id, actions.span())
+    }
+
+    /// Fund the depositor, create an open note, and fill it in a single `apply_actions` call.
+    fn create_and_fill_open_note_e2e(
+        self: @User,
+        create_note_input: CreateOpenNoteInput,
+        amount: u128,
+        depositor: User,
+        token: Token,
+    ) -> felt252 {
+        (@depositor).increase_token_balance(:token, :amount);
+        (@depositor).approve(:token, amount: amount.into());
+        let (note_id, actions) = self
+            .internal_create_and_fill_open_note(:create_note_input, :amount);
+        self.privacy.apply_actions(:actions);
+        note_id
+    }
+
+    /// Build an `InvokeExternalInput` targeting the echo executor for depositing to open notes.
+    fn invoke_external_echo_deposits(
+        self: @User, deposits: Span<DepositToOpenNoteInput>,
+    ) -> InvokeExternalInput {
+        let mut calldata: Array<felt252> = array![];
+        deposits.serialize(ref calldata);
+        InvokeExternalInput {
+            contract_address: *self.privacy.echo_executor, calldata: calldata.span(),
+        }
+    }
+
     fn compute_channel_key(self: @User, recipient: User) -> felt252 {
         compute_channel_key(
             sender_addr: *self.address,
@@ -820,6 +877,14 @@ pub(crate) impl UserImpl of UserTrait {
     /// Computes the note ID and Note for a given CreateOpenNoteInput.
     /// Returns (note_id, Note).
     fn compute_open_note(self: @User, create_note_input: CreateOpenNoteInput) -> (felt252, Note) {
+        self.compute_open_note_with_amount(:create_note_input, amount: Zero::zero())
+    }
+
+    /// Computes the note ID and Note for a given CreateOpenNoteInput with a given amount.
+    /// Returns (note_id, Note).
+    fn compute_open_note_with_amount(
+        self: @User, create_note_input: CreateOpenNoteInput, amount: u128,
+    ) -> (felt252, Note) {
         let channel_key = compute_channel_key(
             sender_addr: *self.address,
             sender_private_key: *self.private_key,
@@ -829,7 +894,7 @@ pub(crate) impl UserImpl of UserTrait {
         let note_id = compute_note_id(
             :channel_key, token: create_note_input.token, index: create_note_input.index,
         );
-        let packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: Zero::zero());
+        let packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
         (
             note_id,
             Note {
@@ -839,7 +904,6 @@ pub(crate) impl UserImpl of UserTrait {
             },
         )
     }
-
 
     fn compute_enc_user_addr(self: @User, random: felt252) -> EncUserAddr {
         encrypt_user_addr(
