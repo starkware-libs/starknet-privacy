@@ -36,4 +36,3 @@ name = "unittest"
 [profile.dev.cairo]
 unstable-add-statements-code-locations-debug-info = true
 unstable-add-statements-functions-debug-info = true
-inlining-strategy = "avoid"
