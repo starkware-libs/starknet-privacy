@@ -780,7 +780,8 @@ pub mod Privacy {
         }
 
         fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
-            // TODO: Assert each note opened is filled by the end of this function.
+            let mut open_notes_created: usize = Zero::zero();
+            let mut open_notes_filled = Zero::zero();
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => self._apply_write_once(:input),
@@ -796,15 +797,21 @@ pub mod Privacy {
                                     depositor: input.contract_address, deposit: *deposit,
                                 );
                         }
+                        open_notes_filled += open_note_deposits.len();
                     },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
-                    ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
+                    ServerAction::EmitOpenNoteCreated(event) => {
+                        self.emit(event);
+                        open_notes_created += 1;
+                    },
                     ServerAction::EmitEncNoteCreated(event) => self.emit(event),
                     ServerAction::EmitNoteUsed(event) => self.emit(event),
                 };
             }
+            // TODO: Change to ==.
+            assert(open_notes_filled >= open_notes_created, errors::UNFILLED_OPEN_NOTES);
         }
 
         fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
