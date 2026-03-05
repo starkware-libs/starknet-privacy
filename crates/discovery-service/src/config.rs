@@ -48,10 +48,10 @@ impl Default for RpcConfig {
         Self {
             url: "http://127.0.0.1:5050".to_string(),
             max_concurrent_requests: 10,
-            connect_timeout: Duration::from_secs(30),
-            request_timeout: Duration::from_secs(60),
+            connect_timeout: Duration::from_secs(60),
+            request_timeout: Duration::from_secs(30),
             max_idle_per_host: 10,
-            max_batch_size: 100,
+            max_batch_size: 256,
         }
     }
 }

@@ -4,7 +4,7 @@ End-to-end tests and fixture generation for the privacy pool.
 
 ## Prerequisites
 
-1. Install the patched starknet-devnet (see [top-level README](../README.md#starknet-devnet) for instructions)
+1. Install the patched starknet-devnet (see [SDK README](../sdk/README.md#starknet-devnet) for instructions)
 2. Build the privacy contract: `scarb build`
 3. Build the SDK: `cd sdk && npm run build`
 4. Install e2e dependencies: `npm install`
@@ -40,6 +40,10 @@ Verifies that the SDK handles indexer reorg responses gracefully. Injects a
 fake cursor with an invalid block ID, triggering an HTTP 409 (BLOCK_REORGED)
 from the indexer. The SDK should clear the registry and retry from scratch
 without surfacing the error to the caller.
+
+## Scripts
+
+See [`scripts/README.md`](scripts/README.md) for load testing and batch operation scripts.
 
 ## Linting
 

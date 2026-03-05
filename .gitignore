@@ -93,3 +93,6 @@ accounts.json
 
 # demo app local env (contains private keys)
 demo/.env
+
+# e2e load test output
+e2e/results/
