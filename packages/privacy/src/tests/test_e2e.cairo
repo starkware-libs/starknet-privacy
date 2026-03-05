@@ -3,8 +3,8 @@
 
 use core::num::traits::Zero;
 use privacy::actions::{
-    ClientAction, CreateEncNoteInput, DepositInput, OpenChannelInput, OpenSubchannelInput,
-    SetViewingKeyInput, UseNoteInput, WithdrawInput,
+    ClientAction, CreateEncNoteInput, DepositInput, DepositToOpenNoteInput, OpenChannelInput,
+    OpenSubchannelInput, SetViewingKeyInput, UseNoteInput, WithdrawInput,
 };
 use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, UserTrait};
 use privacy::utils::encrypt_channel_info;
@@ -197,7 +197,8 @@ fn test_e2e_client_actions_one_by_one() {
     assert_eq!(token.balance_of(address: user_1.address), amount_half.into());
     assert_eq!(token.balance_of(address: test.privacy.address), amount_half.into());
 
-    // 8. CreateOpenNote (user_1: open note for user_2, depositor = swap_executor)
+    // 8. CreateOpenNote + InvokeExternal(echo) (user_1: open note for user_2, depositor =
+    // swap_executor, filled via echo executor in the same tx)
     let create_open_note_input = user_1
         .new_open_note_with_generated_random(
             recipient: user_2,
@@ -205,29 +206,45 @@ fn test_e2e_client_actions_one_by_one() {
             index: 0,
             depositor: test.privacy.swap_executor.address,
         );
+    let (open_note_id, _) = user_1.compute_open_note(create_note_input: create_open_note_input);
+
+    // Fund the depositor (swap_executor) with out_token and approve.
+    out_token.supply(address: test.privacy.swap_executor.address, amount: amount_half);
+    out_token
+        .approve(
+            owner: test.privacy.swap_executor.address,
+            spender: test.privacy.address,
+            amount: amount_half.into(),
+        );
+
+    let echo_invoke = user_1
+        .invoke_external_echo_deposits(
+            [
+                DepositToOpenNoteInput {
+                    note_id: open_note_id, token: out_token_addr, amount: amount_half,
+                },
+            ]
+                .span(),
+        );
     test
         .privacy
         .execute_actions_e2e(
             user_addr: user_1.address,
             user_private_key: user_1.private_key,
-            client_actions: [ClientAction::CreateOpenNote(create_open_note_input)].span(),
+            client_actions: [
+                ClientAction::CreateOpenNote(create_open_note_input),
+                ClientAction::InvokeExternal(echo_invoke),
+            ]
+                .span(),
         );
-    let (open_note_id, expected_open_note) = user_1
-        .compute_open_note(create_note_input: create_open_note_input);
-    assert_eq!(test.privacy.get_note(note_id: open_note_id), expected_open_note);
+    let note_after_fill = test.privacy.get_note(note_id: open_note_id);
+    assert_eq!(note_after_fill.token, out_token_addr);
+    assert_eq!(note_after_fill.depositor, test.privacy.swap_executor.address);
+    assert_eq!(out_token.balance_of(address: test.privacy.address), amount_half.into());
 
-    // 9. UseNote + Withdraw half + InvokeExternal (user_2: one tx, three actions — spend note 1,
-    // withdraw to swap_executor, invoke swap into open note from step 8)
-    out_token.supply(address: test.privacy.mock_amm, amount: amount_half);
+    // 9. UseNote + Withdraw half (user_2: spend note 1, withdraw to user_1)
     let use_note_1 = UseNoteInput { channel_key, token: token_addr, index: 1 };
     let withdraw_random_2 = user_2.get_random();
-    let invoke_input = user_2
-        .invoke_external_mock_swap_executor_input(
-            in_token: token_addr,
-            out_token: out_token_addr,
-            amount: amount_half,
-            note_id: open_note_id,
-        );
     test
         .privacy
         .execute_actions_e2e(
@@ -237,25 +254,19 @@ fn test_e2e_client_actions_one_by_one() {
                 ClientAction::UseNote(use_note_1),
                 ClientAction::Withdraw(
                     WithdrawInput {
-                        to_addr: test.privacy.swap_executor.address,
+                        to_addr: user_1.address,
                         token: token_addr,
                         amount: amount_half,
                         random: withdraw_random_2,
                     },
                 ),
-                ClientAction::InvokeExternal(invoke_input),
             ]
                 .span(),
         );
     let nullifier_1 = user_2.compute_nullifier(sender: user_1, token_addr: token_addr, index: 1);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_1));
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(token.balance_of(address: test.privacy.mock_amm), amount_half.into());
-    assert_eq!(token.balance_of(address: test.privacy.swap_executor.address), Zero::zero());
-    let note_after_swap = test.privacy.get_note(note_id: open_note_id);
-    assert_eq!(note_after_swap.token, out_token_addr);
-    assert_eq!(note_after_swap.depositor, test.privacy.swap_executor.address);
-    assert_eq!(out_token.balance_of(address: test.privacy.address), amount_half.into());
+    assert_eq!(token.balance_of(address: user_1.address), amount_total.into());
 }
 
 // --- Dedicated e2e: deposit + withdraw flow ---

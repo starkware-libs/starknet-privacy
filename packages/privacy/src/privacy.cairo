@@ -775,7 +775,7 @@ pub mod Privacy {
         }
 
         fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
-            // TODO: Assert each note opened is filled by the end of this function.
+            let mut open_notes_created = 0;
             let mut open_note_deposits: Option<Span<DepositToOpenNoteInput>> = None;
             for action in actions {
                 match *action {
@@ -788,14 +788,25 @@ pub mod Privacy {
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
-                    ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
+                    ServerAction::EmitOpenNoteCreated(event) => {
+                        self.emit(event);
+                        open_notes_created += 1;
+                    },
                     ServerAction::EmitNoteUsed(event) => self.emit(event),
                 };
             }
-            if let Some(inputs) = open_note_deposits {
-                for input in inputs {
-                    self.deposit_to_open_note(:input);
-                }
+            // TODO: Consider refactoring to "FollowUpActions" / "PostActions" enum.
+            match open_note_deposits {
+                None => assert(open_notes_created == 0, errors::UNFILLED_OPEN_NOTES),
+                Some(inputs) => {
+                    // If the length is bigger than the number of open notes created, the excess
+                    // deposits will fail.
+                    // TODO: Consider changing to ==.
+                    assert(inputs.len() >= open_notes_created, errors::UNFILLED_OPEN_NOTES);
+                    for input in inputs {
+                        self.deposit_to_open_note(:input);
+                    }
+                },
             }
         }
 
