@@ -220,6 +220,7 @@ pub(crate) impl DepositToOpenNoteInputValid of InputValidation<DepositToOpenNote
     fn assert_valid(self: DepositToOpenNoteInput) {
         let DepositToOpenNoteInput { note_id: _, token, amount } = self;
         assert(token.is_non_zero(), errors::ZERO_TOKEN);
+        // TODO: Consider allowing zero amount?
         assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
     }
 }
