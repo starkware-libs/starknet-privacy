@@ -775,7 +775,7 @@ pub mod Privacy {
         }
 
         fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
-            // TODO: Assert each note opened is filled by the end of this function.
+            let mut open_notes_created = Zero::zero();
             // TODO: Consider refactoring to "FollowUpActions" / "PostActions" enum.
             let mut open_note_deposits = array![];
             for action in actions {
@@ -790,11 +790,18 @@ pub mod Privacy {
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
                     // TODO: Consider removing this event.
-                    ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
+                    ServerAction::EmitOpenNoteCreated(event) => {
+                        self.emit(event);
+                        open_notes_created += 1;
+                    },
                     ServerAction::EmitNoteUsed(event) => self.emit(event),
                 };
             }
 
+            // If the length is bigger than the number of open notes created, the excess
+            // deposits will fail.
+            // TODO: Consider changing to ==.
+            assert(open_note_deposits.len() >= open_notes_created, errors::UNFILLED_OPEN_NOTES);
             for input in open_note_deposits {
                 self.deposit_to_open_note(:input);
             }
