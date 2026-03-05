@@ -621,7 +621,7 @@ pub(crate) impl UserImpl of UserTrait {
     /// Returns a random value.
     fn get_random(ref self: User) -> felt252 {
         let nonce = self.get_nonce();
-        hash(['RANDOM', nonce.into()].span())
+        hash(['RANDOM', self.address.into(), nonce.into()].span())
     }
 
     fn get_nonce(ref self: User) -> u32 {
