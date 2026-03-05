@@ -10,10 +10,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi, beforeAll, afterEach } from "vitest";
 import { Ajv } from "ajv";
-import {
-  ProvingService,
-  type MessageToL1,
-} from "../../src/internal/proving-service.js";
+import { ProvingService, type MessageToL1 } from "../../src/internal/proving-service.js";
 
 const PROVER_URL = "https://prover.test";
 
@@ -298,32 +295,28 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
         mockProveTransactionResponse({
           ...DEFAULT_PROVE_RESULT,
-          l2_to_l1_messages: [
-            { from_address: "0x123", to_address: "0xdead" } as MessageToL1,
-          ],
+          l2_to_l1_messages: [{ from_address: "0x123", to_address: "0xdead" } as MessageToL1],
         })
       );
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(
-        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
-      ).rejects.toThrow(/invalid result/);
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /invalid result/
+      );
     });
 
     it("proveTransaction throws when l2_to_l1_messages item has missing from_address", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue(
         mockProveTransactionResponse({
           ...DEFAULT_PROVE_RESULT,
-          l2_to_l1_messages: [
-            { to_address: "0xdead", payload: ["0x1"] } as MessageToL1,
-          ],
+          l2_to_l1_messages: [{ to_address: "0xdead", payload: ["0x1"] } as MessageToL1],
         })
       );
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(
-        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
-      ).rejects.toThrow(/invalid result/);
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /invalid result/
+      );
     });
 
     it("proveTransaction throws when l2_to_l1_messages item has payload not an array", async () => {
@@ -341,9 +334,9 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       );
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(
-        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
-      ).rejects.toThrow(/invalid result/);
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /invalid result/
+      );
     });
 
     it("proveTransaction throws when proof is empty string", async () => {
@@ -356,9 +349,9 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       );
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(
-        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
-      ).rejects.toThrow(/invalid result/);
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /invalid result/
+      );
     });
 
     it("proveTransaction throws when proof is missing", async () => {
@@ -370,9 +363,9 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       );
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(
-        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
-      ).rejects.toThrow(/invalid result/);
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /invalid result/
+      );
     });
 
     it("proveTransaction throws when proof_facts is not an array", async () => {
@@ -385,9 +378,9 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       );
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(
-        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
-      ).rejects.toThrow(/invalid result/);
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /invalid result/
+      );
     });
 
     it("proveTransaction throws when l2_to_l1_messages is not an array", async () => {
@@ -400,9 +393,58 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       );
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(
-        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
-      ).rejects.toThrow(/invalid result/);
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /invalid result/
+      );
+    });
+
+    it("proveTransaction throws when proof_facts contains non-string", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          proof: "YQ==",
+          proof_facts: ["0x1", 2 as unknown as string],
+          l2_to_l1_messages: [],
+        })
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /invalid result/
+      );
+    });
+
+    it("proveTransaction throws when l2_to_l1_messages item has payload with non-string element", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          ...DEFAULT_PROVE_RESULT,
+          l2_to_l1_messages: [
+            {
+              from_address: "0x1",
+              to_address: "0x2",
+              payload: ["0x1", 2 as unknown as string],
+            } as MessageToL1,
+          ],
+        })
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /invalid result/
+      );
+    });
+
+    it("proveTransaction throws when result is not an object (e.g. string)", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () =>
+          Promise.resolve(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "not-an-object" })),
+      } as Response);
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /invalid result/
+      );
     });
   });
 
@@ -422,23 +464,22 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       } as Response);
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(
-        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
-      ).rejects.toThrow(/Proving service error \(code 24\)/);
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /Proving service error \(code 24\)/
+      );
     });
 
     it("proveTransaction throws when response has no result", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue({
         ok: true,
         status: 200,
-        text: () =>
-          Promise.resolve(JSON.stringify({ jsonrpc: "2.0", id: 1 })),
+        text: () => Promise.resolve(JSON.stringify({ jsonrpc: "2.0", id: 1 })),
       } as Response);
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(
-        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
-      ).rejects.toThrow(/Proving service returned no result/);
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /Proving service returned no result/
+      );
     });
 
     it("proveTransaction throws when HTTP status is not ok", async () => {
@@ -449,9 +490,9 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       } as Response);
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(
-        service.proveTransaction("latest", MINIMAL_INVOKE_TX)
-      ).rejects.toThrow(/Proving service HTTP 503/);
+      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
+        /Proving service HTTP 503/
+      );
     });
   });
 
@@ -550,6 +591,49 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       expect(result.l2_to_l1_messages[0].from_address).toBe(msg.from_address);
       expect(result.l2_to_l1_messages[0].to_address).toBe(msg.to_address);
       expect(result.l2_to_l1_messages[0].payload).toEqual(msg.payload);
+    });
+
+    it("proveTransaction throws when result has extra field", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          ...DEFAULT_PROVE_RESULT,
+          extra_field: "ignored",
+        } as unknown as typeof DEFAULT_PROVE_RESULT)
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      let err: Error | undefined;
+      await service.proveTransaction("latest", MINIMAL_INVOKE_TX).catch((e) => {
+        err = e as Error;
+      });
+      expect(err).toBeDefined();
+      expect(err!.message).toMatch(/invalid result/);
+      expect(err!.message).toMatch(/extra_field|Unrecognized|unexpected/i);
+    });
+
+    it("proveTransaction throws when l2_to_l1_messages item has extra field", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockProveTransactionResponse({
+          ...DEFAULT_PROVE_RESULT,
+          l2_to_l1_messages: [
+            {
+              from_address: "0x1",
+              to_address: "0x2",
+              payload: [],
+              extra_field: true,
+            } as unknown as MessageToL1,
+          ],
+        })
+      );
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      let err: Error | undefined;
+      await service.proveTransaction("latest", MINIMAL_INVOKE_TX).catch((e) => {
+        err = e as Error;
+      });
+      expect(err).toBeDefined();
+      expect(err!.message).toMatch(/invalid result/);
+      expect(err!.message).toMatch(/extra_field|Unrecognized|unexpected/i);
     });
   });
 });

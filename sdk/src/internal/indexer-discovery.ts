@@ -96,12 +96,39 @@ type ApiOutgoingSyncResponse = {
   cursor: ApiDiscoveryCursor;
 };
 
+export type DiscoveryHealthResponse = {
+  status: string;
+  chain_head?: { block_number: number; block_hash: string; timestamp: number };
+  lag_secs?: number;
+};
+
 export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
   constructor(
     private readonly apiUrl: string,
     private readonly contractAddress: StarknetAddress
   ) {
     super();
+  }
+
+  async isHealthy(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.apiUrl}/health`, {
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!response.ok) return false;
+      const body = (await response.json()) as { status: string };
+      return body.status === "OK";
+    } catch {
+      return false;
+    }
+  }
+
+  async getHealth(): Promise<DiscoveryHealthResponse> {
+    const response = await fetch(`${this.apiUrl}/health`, {
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) throw new Error(`Discovery service returned HTTP ${response.status}`);
+    return (await response.json()) as DiscoveryHealthResponse;
   }
 
   async discoverNotes(
