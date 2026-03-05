@@ -5,8 +5,6 @@ use privacy::tests::utils_for_tests::constants::{
     DEFAULT_AMOUNT, DEFAULT_FEE_AMOUNT, DEFAULT_FEE_COLLECTOR, DEFAULT_PROOF_VALIDITY_BLOCKS,
 };
 use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
-use privacy::utils::constants::OPEN_NOTE_SALT;
-use privacy::utils::unpack;
 use snforge_std::TokenTrait;
 use starkware_utils::components::replaceability::interface::{
     IReplaceableDispatcher, IReplaceableDispatcherTrait,
@@ -251,23 +249,16 @@ fn test_get_note() {
         .compute_enc_note(create_note_input: enc_note_input);
     assert_eq!(test.privacy.get_note(note_id: enc_note_id), expected_enc_note);
 
-    // Create and verify empty open note.
-    let depositor = test.privacy.echo_executor;
+    // Create and verify filled open note.
     let open_note_input = user_1
-        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 1, :depositor);
-    user_1.cheat_create_open_note_e2e(create_note_input: open_note_input);
-    let (open_note_id, expected_open_note) = user_1
-        .compute_open_note(create_note_input: open_note_input);
-    assert_eq!(test.privacy.get_note(note_id: open_note_id), expected_open_note);
-
-    // Deposit to the existing open note and verify.
-    test.privacy.fund_and_cheat_invoke_echo(:token, note_id: open_note_id, :amount);
-    let filled_note = test.privacy.get_note(note_id: open_note_id);
-    let (salt, stored_amount) = unpack(packed_value: filled_note.packed_value);
-    assert_eq!(salt, OPEN_NOTE_SALT);
-    assert_eq!(stored_amount, amount);
-    assert_eq!(filled_note.token, token_addr);
-    assert_eq!(filled_note.depositor, depositor);
+        .new_open_note_with_generated_random(
+            recipient: user_2, :token_addr, index: 1, depositor: test.privacy.echo_executor.address,
+        );
+    user_1.cheat_create_filled_open_note_in_storage(create_note_input: open_note_input, :amount);
+    test.privacy.increase_token_balance(:token, :amount);
+    let (open_note_id, expected_filled_note) = user_1
+        .compute_open_note_with_amount(create_note_input: open_note_input, :amount);
+    assert_eq!(test.privacy.get_note(note_id: open_note_id), expected_filled_note);
 }
 
 #[test]
