@@ -23,3 +23,9 @@ cd e2e && npm run generate-dump
 
 This writes `tests/fixtures/devnet-state.json` (among other crate fixtures).
 Run `cargo test -p discovery-core` afterwards to verify.
+
+## See also
+
+- [Project root](../../README.md) — architecture overview, prerequisites, build commands
+- [Discovery service](../discovery-service/README.md) — HTTP indexing service built on this library
+- [Privacy pool contract](../../packages/privacy/README.md) — Cairo contract (source of truth for storage layout and cryptography)
