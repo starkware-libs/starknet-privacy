@@ -61,7 +61,7 @@ const transfers = createPrivateTransfers({
 **`ContractDiscoveryProvider`** — Queries the privacy pool contract directly via Starknet RPC. Best for development and testing.
 
 ```typescript
-new ContractDiscoveryProvider(poolContract, { rateLimit?: { maxConcurrent, minDelay } });
+new ContractDiscoveryProvider(poolContract, { rateLimit?: { concurrency?, maxRetries?, baseDelayMs? } });
 ```
 
 **`IndexerDiscoveryProvider`** — Queries a discovery service via HTTP. Recommended for production; handles pagination and reorg detection.
@@ -158,7 +158,7 @@ const result = await transfers.build()
     .inputs(strkNote)
     .withdraw({ recipient: swapHelper, amount: 10n }))
   .with(BTC, (t) => t
-    .deposit({ amount: Open, depositor: swapHelper }))
+    .transfer({ recipient: self, amount: Open, depositor: swapHelper }))
   .invoke({ contractAddress: swapHelper, entrypoint: "swap", calldata: [...] })
   .execute();
 ```
@@ -186,10 +186,38 @@ const result = await transfers.build({
 | `autoRegister` | `boolean` | Automatically register if user has no viewing key on-chain |
 | `autoSetup` | `boolean` | Automatically open channels and token subchannels as needed |
 | `autoSelectNotes` | `"all" \| "naive"` | Automatically select input notes (`"all"` uses every note, `"naive"` selects minimum) |
-| `autoDiscover` | `{ notes?, channels? }` | Refresh notes/channels before executing (`"missing"`, `"refresh"`, or `"all"`) |
+| `autoDiscover` | `{ notes?, channels? }` | Refresh notes/channels before executing. `notes` accepts `"missing"`, `"refresh"`, or `"all"`; `channels` accepts `"missing"` or `"refresh"` |
 | `registry` | `PrivateRegistry` | User's private state (channels, notes, cursor) |
 | `registryConst` | `boolean` | If true, returns a new registry instead of mutating the provided one |
 | `provingBlockId` | `ProvingBlockId` | Block identifier to use for proving |
+
+### Discovery levels
+
+`autoDiscover` controls whether and when the SDK calls the discovery service during `execute()`:
+
+| Level | Notes | Channels |
+|-------|-------|----------|
+| `"missing"` | Discover only tokens absent from the registry | Discover only recipients absent from the registry |
+| `"refresh"` | Re-discover even if the registry already has data | Re-discover all needed recipients to get latest nonces |
+| `"all"` | Discover all tokens, not just those used in actions | _(not applicable)_ |
+
+**Caveat: optimistic registry updates.** The SDK advances outgoing channel nonces (e.g. `noteNonce`) in the registry at compile time — before proving or on-chain execution. If the transaction later fails (proving error, on-chain revert), the registry holds stale-advanced nonces with no automatic rollback. `SimplePrivateTransfers` works around this by always using `channels: "refresh"`.
+
+When using the builder API directly, prefer `channels: "refresh"` unless you are certain the previous transaction succeeded:
+
+```typescript
+const result = await transfers.build({
+  autoDiscover: { channels: "refresh", notes: "refresh" },
+  autoSelectNotes: "naive",
+  autoSetup: true,
+  registry,
+})
+  .with(STRK, (t) => t.transfer({ recipient: bob, amount: 50n }))
+  .surplusTo(self)
+  .execute();
+```
+
+With `"missing"` (or when `autoDiscover` is omitted), the SDK trusts whatever is already in the registry and only queries the discovery service for recipients/tokens it hasn't seen before.
 
 ## Discovery
 
@@ -225,13 +253,13 @@ Every `execute()` call returns:
 
 ```typescript
 type ExecuteResult = {
-  callAndProof: CallAndProof;  // Call + proof to send to the contract's execute_actions entry point
+  callAndProof: CallAndProof;  // Call + proof to send to the contract's apply_actions entry point
   registry: PrivateRegistry;   // Updated notes and recipient info
   warnings: Warning[];         // Privacy leakage warnings
 };
 ```
 
-The wallet sends `callAndProof` in a transaction to the contract's `execute_actions` entry point. The returned `registry` can be reused in subsequent calls once the transaction is accepted and enough blocks have passed to make the state verifiable.
+The wallet sends `callAndProof` in a transaction to the contract's `apply_actions` entry point. The returned `registry` can be reused in subsequent calls once the transaction is accepted and enough blocks have passed to make the state verifiable.
 
 ## Key types
 
@@ -243,7 +271,7 @@ The wallet sends `callAndProof` in a transaction to the contract's `execute_acti
 
 **`AddressMap<V>`** — A `Map` that normalizes Starknet addresses for consistent key lookup.
 
-**`CallAndProof`** — A call + proof pair to send to the contract's `execute_actions` entry point.
+**`CallAndProof`** — A call + proof pair to send to the contract's `apply_actions` entry point.
 
 **`Witness`** — Cryptographic witness for a note, used when spending.
 

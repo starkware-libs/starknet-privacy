@@ -135,6 +135,13 @@ export class ActionCompiler {
 
     debugLog("compiler", "compile", "post transformToClientActions", clientActions);
 
+    // TODO: Defer registry mutation until the wallet confirms the tx succeeded.
+    // Currently, updateRegistry advances outgoing nonces (e.g. noteNonce) immediately.
+    // If proving or on-chain execution fails, the registry holds stale-advanced nonces
+    // with no rollback, causing subsequent calls to use wrong indices.
+    // Possible fix: return a pending update (closure or snapshot) that the caller
+    // applies only after tx acceptance, similar to how SimplePrivateTransfers
+    // works around this by always using channels: "refresh".
     return {
       clientActions,
       registry: pool.updateRegistry(registry),

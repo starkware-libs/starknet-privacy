@@ -39,7 +39,7 @@ graph LR
 
 ## Compatibility matrix
 
-All components in a row are tested together. Use matching revisions when deploying.
+All components in a row are tested together. Use matching revisions when deploying. Illustrative snapshot; versions reflect last validated combination.
 
 | sequencer | proving-utils | discovery-service | proving-service | starknet-privacy-sdk |
 |-----------|---------------|-------------------|-----------------|----------------------|
@@ -51,7 +51,7 @@ All components in a row are tested together. Use matching revisions when deployi
 |-----------|-------------|
 | [`packages/privacy/`](packages/privacy/) | Cairo smart contract ([README](packages/privacy/README.md)) |
 | [`crates/discovery-core/`](crates/discovery-core/) | Core discovery logic & cryptography ([README](crates/discovery-core/README.md)) |
-| [`crates/discovery-service/`](crates/discovery-service/) | HTTP indexing service with SQLite cache ([README](crates/discovery-service/README.md)) |
+| [`crates/discovery-service/`](crates/discovery-service/) | HTTP discovery service (RPC-backed) ([README](crates/discovery-service/README.md)) |
 | [`sdk/`](sdk/) | TypeScript SDK for private transfers ([README](sdk/README.md)) |
 | [`e2e/`](e2e/) | End-to-end tests & devnet fixture generation ([README](e2e/README.md)) |
 | [`deploy/discovery-service/`](deploy/discovery-service/) | Dockerfile & deployment ([README](deploy/discovery-service/README.md)) |
@@ -94,8 +94,8 @@ See [e2e/README.md](e2e/README.md) for additional setup requirements (devnet, `.
 ```bash
 scarb build && scarb test          # Cairo contract
 cargo build && cargo test          # Rust crates
-cd sdk && npm ci && npm test       # TypeScript SDK
-cd e2e && npm ci && npm test       # E2E
+(cd sdk && npm ci && npm test)      # TypeScript SDK
+(cd e2e && npm ci && npm test)      # E2E
 ```
 
 ## License
