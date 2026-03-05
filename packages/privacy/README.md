@@ -137,11 +137,11 @@ Constructor arguments: `governance_admin` (address), `auditor_public_key` (felt2
 ```bash
 sncast --account <ACCOUNT_NAME> deploy \
   --class-hash <CLASS_HASH_FROM_DECLARE> \
-  --constructor-calldata <GOVERNANCE_ADMIN_ADDRESS> <auditor_public_key> <proof_validity_blocks> \
+  --constructor-calldata <GOVERNANCE_ADMIN_ADDRESS> <AUDITOR_PUBLIC_KEY> <PROOF_VALIDITY_BLOCKS> \
   --network <mainnet|sepolia|devnet>
 ```
 
-Replace `<GOVERNANCE_ADMIN_ADDRESS>` with the Starknet address that will hold governance (e.g. the deployer). Use your auditor’s public key for `<auditor_public_key>` and the proof validity window in blocks for `<proof_validity_blocks>` (e.g. `450` for ~15 min at 2s/block).
+Replace `<GOVERNANCE_ADMIN_ADDRESS>` with the Starknet address that will hold governance (e.g. the deployer). Use your auditor’s public key for `<AUDITOR_PUBLIC_KEY>` and the proof validity window in blocks for `<PROOF_VALIDITY_BLOCKS>` (e.g. `450` for ~15 min at 2s/block).
 
 You can pass `--salt <FELT>` for a deterministic address or `--unique` to include the deployer in the salt.
 
