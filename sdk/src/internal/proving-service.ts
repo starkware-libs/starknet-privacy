@@ -5,8 +5,9 @@
 
 import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-09";
 import type { BlockIdentifier } from "starknet";
+import { z } from "zod";
 
-/** Default request timeout: 10s (proofs should take ~3-4 seconds). */
+/** Default request timeout: 30s (proofs typically take a few seconds). */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 // TODO: Support "latest-verifiable" and { blocksBack: number } server-side; then accept them here and pass through.
@@ -32,36 +33,21 @@ export interface MessageToL1 {
   payload: string[];
 }
 
-/**
- * Type guard for MessageToL1 (MSG_TO_L1 shape): object with string from_address,
- * string to_address, and array payload.
- */
-function isMessageToL1(value: unknown): value is MessageToL1 {
-  if (value === null || typeof value !== "object") return false;
-  const m = value as Record<string, unknown>;
-  return (
-    typeof m.from_address === "string" &&
-    typeof m.to_address === "string" &&
-    Array.isArray(m.payload)
-  );
-}
+const MessageToL1Schema = z
+  .object({
+    from_address: z.string(),
+    to_address: z.string(),
+    payload: z.array(z.string()),
+  })
+  .strict();
 
-/** Check result: proof non-empty, proof_facts and l2_to_l1_messages are arrays; each message has MSG_TO_L1 shape. */
-function isProveTransactionResult(value: unknown): value is ProveTransactionResult {
-  if (value === null || typeof value !== "object") {
-    return false;
-  }
-  const r = value as Record<string, unknown>;
-  const proof = r.proof;
-  const proofOk = typeof proof === "string" && proof.length > 0;
-  const messages = r.l2_to_l1_messages;
-  return (
-    proofOk &&
-    Array.isArray(r.proof_facts) &&
-    Array.isArray(messages) &&
-    (messages as unknown[]).every(isMessageToL1)
-  );
-}
+const ProveTransactionResultSchema = z
+  .object({
+    proof: z.string().min(1),
+    proof_facts: z.array(z.string()),
+    l2_to_l1_messages: z.array(MessageToL1Schema),
+  })
+  .strict();
 
 export class ProvingService {
   private baseUrl: string;
@@ -129,16 +115,17 @@ export class ProvingService {
       block_id: blockIdParam,
       transaction,
     });
-    if (!isProveTransactionResult(result)) {
+    const parsed = ProveTransactionResultSchema.safeParse(result);
+    if (!parsed.success) {
       const snippet =
         typeof result === "object" && result !== null
           ? JSON.stringify(result).slice(0, 500)
           : String(result);
       throw new Error(
-        `Proving service returned invalid result: expected { proof, proof_facts, l2_to_l1_messages }. Response: ${snippet}`
+        `Proving service returned invalid result: expected { proof, proof_facts, l2_to_l1_messages }. ${parsed.error.message} Response: ${snippet}`
       );
     }
-    return result;
+    return parsed.data;
   }
 
   async isHealthy(): Promise<boolean> {
