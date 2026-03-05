@@ -1105,8 +1105,7 @@ fn test_open_channel_multiple_channels_same_recipient() {
         channel_key: channel_key_2,
         sender_addr: user_3.address,
     );
-    // The ephemeral public keys are identical (same recipient and both users use the same random).
-    assert_eq!(
+    assert_ne!(
         expected_enc_channel_info_1.ephemeral_pubkey, expected_enc_channel_info_2.ephemeral_pubkey,
     );
     assert_ne!(

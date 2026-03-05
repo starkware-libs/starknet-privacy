@@ -684,3 +684,391 @@ fn test_e2e_transfer_flow() {
     assert_eq!(user_2.get_num_of_channels(), 2);
     assert_eq!(token.balance_of(address: test.privacy.address), (3 * amount).into());
 }
+
+// --- E2E: two actions per tx where possible (test_e2e_actions_twice) ---
+
+#[test]
+fn test_e2e_actions_twice() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let token_1 = test.new_token();
+    let token_2 = test.new_token();
+    let token_1_addr = token_1.contract_address();
+    let token_2_addr = token_2.contract_address();
+    let amount = 100_u128;
+    let half = amount / 2;
+    let amount_u256: u256 = amount.into();
+    user_1.increase_token_balance(token: token_1, :amount);
+    user_1.increase_token_balance(token: token_2, :amount);
+    user_1.approve(token: token_1, amount: amount_u256);
+    user_1.approve(token: token_2, amount: amount_u256);
+
+    // 1. user1 set viewing key
+    let random_1 = user_1.get_random();
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [ClientAction::SetViewingKey(SetViewingKeyInput { random: random_1 })]
+                .span(),
+        );
+
+    // 2. user2 set viewing key
+    let random_2 = user_2.get_random();
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_2.address,
+            user_private_key: user_2.private_key,
+            client_actions: [ClientAction::SetViewingKey(SetViewingKeyInput { random: random_2 })]
+                .span(),
+        );
+
+    let channel_key_self = user_1.compute_channel_key(recipient: user_1);
+
+    // 3. user1: 2 open channels in one tx (self, user2)
+    let open_self = OpenChannelInput {
+        recipient_addr: user_1.address,
+        index: 0,
+        random: user_1.get_random(),
+        salt: user_1.get_salt().into(),
+    };
+    let open_2 = OpenChannelInput {
+        recipient_addr: user_2.address,
+        index: 1,
+        random: user_1.get_random(),
+        salt: user_1.get_salt().into(),
+    };
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [
+                ClientAction::OpenChannel(open_self), ClientAction::OpenChannel(open_2),
+            ]
+                .span(),
+        );
+    let channel_marker_self = user_1.compute_channel_marker(recipient: user_1);
+    let channel_marker_1_2 = user_1.compute_channel_marker(recipient: user_2);
+    assert!(test.privacy.channel_exists(channel_marker: channel_marker_self));
+    assert!(test.privacy.channel_exists(channel_marker: channel_marker_1_2));
+
+    // 4. user1: 2 open subchannels (self channel, 2 different tokens) in one tx
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user_1.address,
+                        recipient_public_key: user_1.public_key,
+                        channel_key: channel_key_self,
+                        index: 0,
+                        token: token_1_addr,
+                        salt: user_1.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user_1.address,
+                        recipient_public_key: user_1.public_key,
+                        channel_key: channel_key_self,
+                        index: 1,
+                        token: token_2_addr,
+                        salt: user_1.get_salt().into(),
+                    },
+                ),
+            ]
+                .span(),
+        );
+    let subchannel_marker_1 = user_1
+        .compute_subchannel_marker(recipient: user_1, token_addr: token_1_addr);
+    let subchannel_marker_2 = user_1
+        .compute_subchannel_marker(recipient: user_1, token_addr: token_2_addr);
+    assert!(test.privacy.subchannel_exists(subchannel_marker: subchannel_marker_1));
+    assert!(test.privacy.subchannel_exists(subchannel_marker: subchannel_marker_2));
+
+    // 5. user1: 2 deposit + 1 create enc note for token 1 (one tx; phase order: deposits then
+    // create notes)
+    let create_t1_0 = CreateEncNoteInput {
+        recipient_addr: user_1.address,
+        recipient_public_key: user_1.public_key,
+        token: token_1_addr,
+        amount,
+        index: 0,
+        salt: user_1.get_salt(),
+    };
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [
+                ClientAction::Deposit(DepositInput { token: token_1_addr, amount: half }),
+                ClientAction::Deposit(DepositInput { token: token_1_addr, amount: half }),
+                ClientAction::CreateEncNote(create_t1_0),
+            ]
+                .span(),
+        );
+    assert_eq!(token_1.balance_of(address: test.privacy.address), amount.into());
+    let (note_id_0, note_0) = user_1.compute_enc_note(create_note_input: create_t1_0);
+    assert_eq!(test.privacy.get_note(note_id: note_id_0), note_0);
+
+    // 6. user1: 1 deposit + 2 create enc note for token 2 (one tx)
+    let create_t2_0 = CreateEncNoteInput {
+        recipient_addr: user_1.address,
+        recipient_public_key: user_1.public_key,
+        token: token_2_addr,
+        amount: half,
+        index: 0,
+        salt: user_1.get_salt(),
+    };
+    let create_t2_1 = CreateEncNoteInput {
+        recipient_addr: user_1.address,
+        recipient_public_key: user_1.public_key,
+        token: token_2_addr,
+        amount: half,
+        index: 1,
+        salt: user_1.get_salt(),
+    };
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [
+                ClientAction::Deposit(DepositInput { token: token_2_addr, amount }),
+                ClientAction::CreateEncNote(create_t2_0), ClientAction::CreateEncNote(create_t2_1),
+            ]
+                .span(),
+        );
+    assert_eq!(token_2.balance_of(address: test.privacy.address), amount.into());
+    let (note_id_0, note_0) = user_1.compute_enc_note(create_note_input: create_t2_0);
+    assert_eq!(test.privacy.get_note(note_id: note_id_0), note_0);
+    let (note_id_1, note_1) = user_1.compute_enc_note(create_note_input: create_t2_1);
+    assert_eq!(test.privacy.get_note(note_id: note_id_1), note_1);
+
+    // 7. user1: 2 create open note (one tx)
+    let open_note_1 = user_1
+        .new_open_note_with_generated_random(
+            recipient: user_1,
+            token_addr: token_1_addr,
+            index: 1,
+            depositor: test.privacy.swap_executor.address,
+        );
+    let open_note_2 = user_1
+        .new_open_note_with_generated_random(
+            recipient: user_1,
+            token_addr: token_1_addr,
+            index: 2,
+            depositor: test.privacy.swap_executor.address,
+        );
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [
+                ClientAction::CreateOpenNote(open_note_1),
+                ClientAction::CreateOpenNote(open_note_2),
+            ]
+                .span(),
+        );
+    let (open_id_1, open_note_1) = user_1.compute_open_note(create_note_input: open_note_1);
+    let (open_id_2, open_note_2) = user_1.compute_open_note(create_note_input: open_note_2);
+    assert_eq!(test.privacy.get_note(note_id: open_id_1), open_note_1);
+    assert_eq!(test.privacy.get_note(note_id: open_id_2), open_note_2);
+
+    // 8. user1: use 1 note token 1 + 2 withdraws (one tx)
+    let use_t1_0 = UseNoteInput { channel_key: channel_key_self, token: token_1_addr, index: 0 };
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [
+                ClientAction::UseNote(use_t1_0),
+                ClientAction::Withdraw(
+                    WithdrawInput {
+                        to_addr: user_1.address,
+                        token: token_1_addr,
+                        amount: half,
+                        random: user_1.get_random(),
+                    },
+                ),
+                ClientAction::Withdraw(
+                    WithdrawInput {
+                        to_addr: user_1.address,
+                        token: token_1_addr,
+                        amount: half,
+                        random: user_1.get_random(),
+                    },
+                ),
+            ]
+                .span(),
+        );
+    assert_eq!(token_1.balance_of(address: user_1.address), amount.into());
+    assert_eq!(token_1.balance_of(address: test.privacy.address), Zero::zero());
+    let nullifier_0 = user_1.compute_nullifier(sender: user_1, token_addr: token_1_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
+
+    // 9. user1: use both notes token 2 + 1 withdraw (one tx)
+    let use_t2_0 = UseNoteInput { channel_key: channel_key_self, token: token_2_addr, index: 0 };
+    let use_t2_1 = UseNoteInput { channel_key: channel_key_self, token: token_2_addr, index: 1 };
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [
+                ClientAction::UseNote(use_t2_0), ClientAction::UseNote(use_t2_1),
+                ClientAction::Withdraw(
+                    WithdrawInput {
+                        to_addr: user_1.address,
+                        token: token_2_addr,
+                        amount,
+                        random: user_1.get_random(),
+                    },
+                ),
+            ]
+                .span(),
+        );
+    assert_eq!(token_2.balance_of(address: user_1.address), amount.into());
+    assert_eq!(token_2.balance_of(address: test.privacy.address), Zero::zero());
+    let nullifier_0 = user_1.compute_nullifier(sender: user_1, token_addr: token_2_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
+    let nullifier_1 = user_1.compute_nullifier(sender: user_1, token_addr: token_2_addr, index: 1);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_1));
+}
+
+// --- E2E: multi-action and multi-token in one tx ---
+
+#[test]
+fn test_e2e_multi_action_multi_token_one_tx() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let token_1 = test.new_token();
+    let token_2 = test.new_token();
+    let token_1_addr = token_1.contract_address();
+    let token_2_addr = token_2.contract_address();
+    let amount = 100_u128;
+    let amount_u256: u256 = amount.into();
+    user.increase_token_balance(token: token_1, amount: amount);
+    user.increase_token_balance(token: token_2, amount: amount);
+    user.approve(token: token_1, amount: amount_u256);
+    user.approve(token: token_2, amount: amount_u256);
+
+    let channel_key_self = user.compute_channel_key(recipient: user);
+
+    // Tx1: SetViewingKey + OpenChannel + 2 OpenSubchannel + 2 Deposit + 2 CreateEncNote (one tx;
+    // phase order: account, channel, subchannel, subchannel, deposit, deposit, create, create)
+    let create_t1 = CreateEncNoteInput {
+        recipient_addr: user.address,
+        recipient_public_key: user.public_key,
+        token: token_1_addr,
+        amount,
+        index: 0,
+        salt: user.get_salt(),
+    };
+    let create_t2 = CreateEncNoteInput {
+        recipient_addr: user.address,
+        recipient_public_key: user.public_key,
+        token: token_2_addr,
+        amount,
+        index: 0,
+        salt: user.get_salt(),
+    };
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user.address,
+            user_private_key: user.private_key,
+            client_actions: [
+                ClientAction::SetViewingKey(SetViewingKeyInput { random: user.get_random() }),
+                ClientAction::OpenChannel(
+                    OpenChannelInput {
+                        recipient_addr: user.address,
+                        index: 0,
+                        random: user.get_random(),
+                        salt: user.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user.address,
+                        recipient_public_key: user.public_key,
+                        channel_key: channel_key_self,
+                        index: 0,
+                        token: token_1_addr,
+                        salt: user.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user.address,
+                        recipient_public_key: user.public_key,
+                        channel_key: channel_key_self,
+                        index: 1,
+                        token: token_2_addr,
+                        salt: user.get_salt().into(),
+                    },
+                ),
+                ClientAction::Deposit(DepositInput { token: token_1_addr, amount }),
+                ClientAction::Deposit(DepositInput { token: token_2_addr, amount }),
+                ClientAction::CreateEncNote(create_t1), ClientAction::CreateEncNote(create_t2),
+            ]
+                .span(),
+        );
+    assert_eq!(token_1.balance_of(address: test.privacy.address), amount.into());
+    assert_eq!(token_2.balance_of(address: test.privacy.address), amount.into());
+    assert_eq!(token_1.balance_of(address: user.address), Zero::zero());
+    assert_eq!(token_2.balance_of(address: user.address), Zero::zero());
+    let (note_id_t1, expected_t1) = user.compute_enc_note(create_note_input: create_t1);
+    let (note_id_t2, expected_t2) = user.compute_enc_note(create_note_input: create_t2);
+    assert_eq!(test.privacy.get_note(note_id: note_id_t1), expected_t1);
+    assert_eq!(test.privacy.get_note(note_id: note_id_t2), expected_t2);
+
+    // Tx2: multi-action, multi-token — UseNote(token_1) + UseNote(token_2) + Withdraw(token_1) +
+    // Withdraw(token_2)
+    let use_t1 = UseNoteInput { channel_key: channel_key_self, token: token_1_addr, index: 0 };
+    let use_t2 = UseNoteInput { channel_key: channel_key_self, token: token_2_addr, index: 0 };
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user.address,
+            user_private_key: user.private_key,
+            client_actions: [
+                ClientAction::UseNote(use_t1), ClientAction::UseNote(use_t2),
+                ClientAction::Withdraw(
+                    WithdrawInput {
+                        to_addr: user.address,
+                        token: token_1_addr,
+                        amount,
+                        random: user.get_random(),
+                    },
+                ),
+                ClientAction::Withdraw(
+                    WithdrawInput {
+                        to_addr: user.address,
+                        token: token_2_addr,
+                        amount,
+                        random: user.get_random(),
+                    },
+                ),
+            ]
+                .span(),
+        );
+    assert_eq!(token_1.balance_of(address: user.address), amount.into());
+    assert_eq!(token_2.balance_of(address: user.address), amount.into());
+    assert_eq!(token_1.balance_of(address: test.privacy.address), Zero::zero());
+    assert_eq!(token_2.balance_of(address: test.privacy.address), Zero::zero());
+    let nullifier = user.compute_nullifier(sender: user, token_addr: token_1_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(:nullifier));
+    let nullifier = user.compute_nullifier(sender: user, token_addr: token_2_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(:nullifier));
+}
