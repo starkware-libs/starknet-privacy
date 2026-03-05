@@ -1,4 +1,4 @@
-use constants::{VIRTUAL_SNOS, VIRTUAL_SNOS0};
+use constants::{ESTIMATION_BASE_TX_VERSION, TX_V3, VIRTUAL_SNOS, VIRTUAL_SNOS0};
 use core::ec::stark_curve::{GEN_X, GEN_Y};
 use core::ec::{EcPoint, EcPointTrait};
 use core::never;
@@ -17,12 +17,11 @@ use privacy::objects::{
 };
 use privacy::utils::constants::{
     ENTRYPOINT_FAILED, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120,
-    TX_V3,
 };
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
 use starknet::syscalls::{get_class_hash_at_syscall, send_message_to_l1_syscall};
-use starknet::{ContractAddress, Store, SyscallResultTrait, TxInfo, VALIDATED, get_execution_info};
+use starknet::{ContractAddress, Store, SyscallResultTrait, TxInfo, VALIDATED};
 
 #[starknet::interface]
 pub(crate) trait IAccount<TState> {
@@ -33,6 +32,7 @@ pub mod constants {
     use core::ec::stark_curve::ORDER;
     use core::num::traits::{Pow, Zero};
     use starknet::ContractAddress;
+    use starkware_utils::constants::TWO_POW_128;
 
     /// The salt value in the [`Note`](privacy::objects::Note) (packed with the amount in
     /// `packed_value`) identifies which type of note it is;
@@ -43,7 +43,9 @@ pub mod constants {
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
-    pub const TX_V3: u64 = 3;
+    pub const TX_V3: felt252 = 3;
+    /// The offset of simulated transactions.
+    pub const ESTIMATION_BASE_TX_VERSION: felt252 = TWO_POW_128.try_into().unwrap();
     /// The packed value for open notes: `pack(salt = OPEN_NOTE_SALT = 1, amount = 0)`.
     pub const OPEN_NOTE_PACKED_VALUE: felt252 = u256 { high: OPEN_NOTE_SALT, low: Zero::zero() }
         .try_into()
@@ -312,21 +314,6 @@ pub(crate) fn unpack(packed_value: felt252) -> (u128, u128) {
     (high, low)
 }
 
-pub(crate) fn assert_valid_execution_info() {
-    let execution_info = get_execution_info();
-    // Ensure that the current call is the first of the transaction,
-    // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
-    assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
-    let tx_info = execution_info.tx_info;
-    assert(tx_info.version.try_into().unwrap() == TX_V3, errors::INVALID_TX_VERSION);
-    // Ensure that the effective fee of the transaction is zero; this is a sanity check,
-    // to prevent the execution of this code over Starknet.
-    assert(tx_info.tip.is_zero(), errors::NON_ZERO_TIP);
-    for resource_bounds in tx_info.resource_bounds {
-        assert(resource_bounds.max_price_per_unit.is_zero(), errors::NON_ZERO_RESOURCE_PRICE);
-    }
-}
-
 /// Asserts that the calls are valid and deserializes the calldata.
 /// Returns the input for `compile_actions` function: (user_addr, user_private_key, client_actions).
 pub(crate) fn extract_compile_actions_inputs(
@@ -472,4 +459,11 @@ pub(crate) fn compute_message_hash(
     actions.serialize(ref payload);
     payload.serialize(ref l1_message_data);
     poseidon_hash_span(l1_message_data.span())
+}
+
+pub(crate) fn assert_valid_tx_version(tx_version: felt252) {
+    assert(
+        tx_version == TX_V3 || tx_version == ESTIMATION_BASE_TX_VERSION + TX_V3,
+        errors::INVALID_TX_VERSION,
+    );
 }
