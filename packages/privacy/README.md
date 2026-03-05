@@ -114,6 +114,37 @@ snforge version: `0.55.0+nightly-2026-02-20`
 
 Reference data generation: [`tests/generate_reference_data.cairo`](src/tests/generate_reference_data.cairo)
 
+## Declare and deploy with sncast
+
+[sncast](https://foundry-rs.github.io/starknet-foundry/) (Starknet Foundry) can declare and deploy the contract. Run from the **repository root** (workspace has multiple packages) and use an [account](https://foundry-rs.github.io/starknet-foundry/appendix/sncast/account.html) configured in `snfoundry.toml` or via `--account` / `--url`.
+
+**1. Declare the contract**
+
+```bash
+scarb --profile release build
+sncast --account <ACCOUNT_NAME> declare \
+  --contract-name Privacy \
+  --package privacy \
+  --network <mainnet|sepolia|devnet>
+```
+
+If you use a custom RPC instead of a preset network, use `--url <RPC_URL>` instead of `--network`. The command prints the **class hash**; use it for deploy.
+
+**2. Deploy the contract**
+
+Constructor arguments: `governance_admin` (address), `auditor_public_key` (felt252), `proof_validity_blocks` (u64).
+
+```bash
+sncast --account <ACCOUNT_NAME> deploy \
+  --class-hash <CLASS_HASH_FROM_DECLARE> \
+  --constructor-calldata <GOVERNANCE_ADMIN_ADDRESS> <auditor_public_key> <proof_validity_blocks> \
+  --network <mainnet|sepolia|devnet>
+```
+
+Replace `<GOVERNANCE_ADMIN_ADDRESS>` with the Starknet address that will hold governance (e.g. the deployer). Use your auditor’s public key for `<auditor_public_key>` and the proof validity window in blocks for `<proof_validity_blocks>` (e.g. `450` for ~15 min at 2s/block).
+
+You can pass `--salt <FELT>` for a deterministic address or `--unique` to include the deployer in the salt.
+
 ## See also
 
 - [Project root](../../README.md) — architecture overview, prerequisites, build commands
