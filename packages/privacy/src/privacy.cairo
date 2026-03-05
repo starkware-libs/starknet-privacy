@@ -1,7 +1,7 @@
 #[starknet::contract(account)]
 pub mod Privacy {
     use core::iter::Extend;
-    use core::num::traits::Zero;
+    use core::num::traits::{CheckedSub, Zero};
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::security::ReentrancyGuardComponent;
@@ -780,7 +780,7 @@ pub mod Privacy {
         }
 
         fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
-            // TODO: Assert each note opened is filled by the end of this function.
+            let mut undeposited_open_notes = Zero::zero();
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => self._apply_write_once(:input),
@@ -796,15 +796,22 @@ pub mod Privacy {
                                     depositor: input.contract_address, deposit: *deposit,
                                 );
                         }
+                        undeposited_open_notes = undeposited_open_notes
+                            .checked_sub(open_note_deposits.len())
+                            .expect(internal_errors::TOO_MANY_OPEN_NOTES_DEPOSITED);
                     },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
-                    ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
+                    ServerAction::EmitOpenNoteCreated(event) => {
+                        self.emit(event);
+                        undeposited_open_notes += 1;
+                    },
                     ServerAction::EmitEncNoteCreated(event) => self.emit(event),
                     ServerAction::EmitNoteUsed(event) => self.emit(event),
                 };
             }
+            assert(undeposited_open_notes == Zero::zero(), errors::UNDEPOSITED_OPEN_NOTES);
         }
 
         fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
