@@ -2,6 +2,15 @@
 
 TypeScript SDK for private transfers on Starknet.
 
+## Development
+
+```bash
+npm run lint      # check formatting (prettier), lints (eslint), and types (tsc)
+npm run format    # auto-fix formatting and lint issues
+npm run test      # run all tests
+npm run test:fast # run tests excluding devnet
+```
+
 ## Installation
 
 From a tagged release (GitHub npm registry):

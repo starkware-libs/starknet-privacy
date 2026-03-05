@@ -6,9 +6,8 @@
 - `cargo test` - all tests pass, for all targets
 
 **SDK verification checklist (from `sdk/`):**
-- `npx prettier --check src/ tests/` - code formatting (must include `tests/` — husky pre-commit checks both)
-- `npx eslint src/ tests/` - lints (0 warnings required, must include `tests/`)
-- `npx tsc --noEmit` - type-check passes
+- `npm run lint` - formatting (prettier), lints (eslint), and type-check (tsc) in one command
+- If lint fails on formatting or auto-fixable eslint issues, run `npm run format` to fix them
 
 ## E2E integration gate
 
