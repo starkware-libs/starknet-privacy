@@ -732,8 +732,41 @@ pub(crate) impl UserImpl of UserTrait {
             .span()
     }
 
-    fn cheat_create_open_note_e2e(self: @User, create_note_input: CreateOpenNoteInput) {
-        self.privacy.apply_actions(actions: self.internal_create_open_note(create_note_input));
+    /// Plant an open note directly in storage via WriteOnce, bypassing `EmitOpenNoteCreated`
+    /// and the same-tx deposit enforcement.
+    fn cheat_create_open_note(self: @User, create_note_input: CreateOpenNoteInput) {
+        let (note_id, note) = self.compute_open_note(:create_note_input);
+        self.privacy.cheat_create_note(:note_id, :note);
+    }
+
+    /// Build server actions that create an open note and deposit to it via the echo executor.
+    /// Returns (note_id, server actions).
+    fn create_and_deposit_to_open_note(
+        self: @User, create_note_input: CreateOpenNoteInput, amount: u128,
+    ) -> (felt252, Span<ServerAction>) {
+        let mut client_actions = array![ClientAction::CreateOpenNote(create_note_input)];
+        let (note_id, _) = self.compute_open_note(:create_note_input);
+        let deposit = OpenNoteDeposit { note_id, token: create_note_input.token, amount };
+        let deposit_input = self.privacy.invoke_external_echo_deposits([deposit].span());
+        client_actions.append(ClientAction::InvokeExternal(deposit_input));
+        let actions = self.execute(client_actions: client_actions.span());
+        (note_id, actions)
+    }
+
+    /// Fund the depositor, create an open note, and deposit to it in a single `apply_actions`
+    /// call. Returns the note ID.
+    fn create_and_deposit_to_open_note_e2e(
+        self: @User, create_note_input: CreateOpenNoteInput, amount: u128, token: Token,
+    ) -> felt252 {
+        let echo_executor_addr = *self.privacy.echo_executor;
+        token.supply(address: echo_executor_addr, :amount);
+        token
+            .approve(
+                owner: echo_executor_addr, spender: *self.privacy.address, amount: amount.into(),
+            );
+        let (note_id, actions) = self.create_and_deposit_to_open_note(:create_note_input, :amount);
+        self.privacy.apply_actions(:actions);
+        note_id
     }
 
     fn compute_channel_key(self: @User, recipient: User) -> felt252 {
@@ -820,6 +853,14 @@ pub(crate) impl UserImpl of UserTrait {
     /// Computes the note ID and Note for a given CreateOpenNoteInput.
     /// Returns (note_id, Note).
     fn compute_open_note(self: @User, create_note_input: CreateOpenNoteInput) -> (felt252, Note) {
+        self.compute_open_note_with_amount(:create_note_input, amount: Zero::zero())
+    }
+
+    /// Computes the note ID and Note for a given CreateOpenNoteInput with a given amount.
+    /// Returns (note_id, Note).
+    fn compute_open_note_with_amount(
+        self: @User, create_note_input: CreateOpenNoteInput, amount: u128,
+    ) -> (felt252, Note) {
         let channel_key = compute_channel_key(
             sender_addr: *self.address,
             sender_private_key: *self.private_key,
@@ -829,7 +870,7 @@ pub(crate) impl UserImpl of UserTrait {
         let note_id = compute_note_id(
             :channel_key, token: create_note_input.token, index: create_note_input.index,
         );
-        let packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: Zero::zero());
+        let packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
         (
             note_id,
             Note {
@@ -839,7 +880,6 @@ pub(crate) impl UserImpl of UserTrait {
             },
         )
     }
-
 
     fn compute_enc_user_addr(self: @User, random: felt252) -> EncUserAddr {
         encrypt_user_addr(
@@ -1458,33 +1498,43 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn cheat_invoke_echo(
         self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) {
-        let actions = self.cheat_invoke_echo_actions(:note_id, :token_addr, :amount);
-        self.apply_actions(:actions);
+        let deposit = OpenNoteDeposit { note_id, token: token_addr, amount };
+        let input = self.invoke_external_echo_deposits([deposit].span());
+        self.apply_actions(actions: input.into_server_actions());
     }
 
     fn safe_cheat_invoke_echo(
         self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
     ) -> Result<(), Array<felt252>> {
-        let actions = self.cheat_invoke_echo_actions(:note_id, :token_addr, :amount);
-        self.safe_apply_actions(:actions)
+        let deposit = OpenNoteDeposit { note_id, token: token_addr, amount };
+        let input = self.invoke_external_echo_deposits([deposit].span());
+        self.safe_apply_actions(actions: input.into_server_actions())
     }
 
     fn fund_and_cheat_invoke_echo(self: @PrivacyCfg, token: Token, note_id: felt252, amount: u128) {
-        token.supply(address: *self.echo_executor, :amount);
-        token.approve(owner: *self.echo_executor, spender: *self.address, amount: amount.into());
+        let echo_executor_addr = *self.echo_executor;
+        token.supply(address: echo_executor_addr, :amount);
+        token.approve(owner: echo_executor_addr, spender: *self.address, amount: amount.into());
         self.cheat_invoke_echo(:note_id, token_addr: token.contract_address(), :amount);
     }
 
-    fn cheat_invoke_echo_actions(
-        self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
-    ) -> Span<ServerAction> {
+    /// Apply create-actions then deposit-to-open-note actions and return the result.
+    /// Convenience for tests that assert on create+deposit in one call.
+    #[feature("safe_dispatcher")]
+    fn safe_create_open_note_and_invoke(
+        self: @PrivacyCfg,
+        create_actions: Span<ServerAction>,
+        note_id: felt252,
+        token_addr: ContractAddress,
+        amount: u128,
+    ) -> Result<(), Array<felt252>> {
         let deposit = OpenNoteDeposit { note_id, token: token_addr, amount };
-        let mut calldata: Array<felt252> = array![];
-        [deposit].span().serialize(ref calldata);
-        let invoke_input = InvokeInput {
-            contract_address: *self.echo_executor, calldata: calldata.span(),
-        };
-        [ServerAction::Invoke(invoke_input)].span()
+        let deposit_actions = self
+            .invoke_external_echo_deposits([deposit].span())
+            .into_server_actions();
+        let mut actions: Array<ServerAction> = create_actions.into();
+        actions.append_span(deposit_actions);
+        self.safe_apply_actions(actions.span())
     }
 
     fn pause(self: @PrivacyCfg) {
@@ -1776,6 +1826,15 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self._cheat_proof_facts(:proof_facts);
         self.server.apply_actions(actions: server_actions);
     }
+
+    /// Build an `InvokeExternalInput` targeting the echo executor for depositing to open notes.
+    fn invoke_external_echo_deposits(
+        self: @PrivacyCfg, deposits: Span<OpenNoteDeposit>,
+    ) -> InvokeExternalInput {
+        let mut calldata: Array<felt252> = array![];
+        deposits.serialize(ref calldata);
+        InvokeExternalInput { contract_address: *self.echo_executor, calldata: calldata.span() }
+    }
 }
 
 impl DefaultTestImpl of Default<Test> {
@@ -1787,7 +1846,6 @@ impl DefaultTestImpl of Default<Test> {
             auditor_public_key: auditor.public_key,
             proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
         );
-
         Test { privacy, nonce: Zero::zero(), auditor }
     }
 }
