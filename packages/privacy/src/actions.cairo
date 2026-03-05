@@ -232,7 +232,8 @@ pub enum ClientAction {
     OpenSubchannel: OpenSubchannelInput,
     /// Creates a new encrypted note with a specified amount.
     CreateEncNote: CreateEncNoteInput,
-    /// Creates a new open note (unencrypted, zero-value note to be filled by a server action).
+    /// Creates a new open note (unencrypted, zero-value note to be deposited to by a server
+    /// action).
     /// Open notes enable interactions where the final amount is determined at execution time,
     /// such as AMM swaps or receiving funds directly through bridge transfers.
     CreateOpenNote: CreateOpenNoteInput,
