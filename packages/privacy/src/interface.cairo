@@ -24,7 +24,8 @@ pub trait IClient<T> {
     ///
     /// #### Preconditions
     /// - The caller address must be zero.
-    /// - The TX version must be 3.
+    /// - The TX version must be 3 or 3 +
+    /// [`ESTIMATION_BASE_TX_VERSION`](privacy::utils::constants::ESTIMATION_BASE_TX_VERSION).
     /// - `calls` must contain exactly one call to this contract with selector `compile_actions`.
     /// - The single call's calldata must deserialize to `(user_addr, user_private_key,
     /// client_actions)` where `client_actions` are valid sequential actions on the current state,
@@ -43,7 +44,8 @@ pub trait IClient<T> {
     /// - [`NON_ZERO_CALLER`](privacy::errors::NON_ZERO_CALLER): Thrown if the caller address is not
     /// zero.
     /// - [`INVALID_TX_VERSION`](privacy::errors::INVALID_TX_VERSION): Thrown if the TX version is
-    /// not 3.
+    /// not 3 (or 3 +
+    /// [`ESTIMATION_BASE_TX_VERSION`](privacy::utils::constants::ESTIMATION_BASE_TX_VERSION)).
     /// - [`INVALID_SIGNATURE`](privacy::errors::INVALID_SIGNATURE): Thrown if the TX signature is
     /// invalid (The TX signature should be of `user_addr` who is executing the actions).
     /// - [`EXPECTED_ONE_CALL`](privacy::errors::EXPECTED_ONE_CALL): Thrown if `calls.len() != 1`.
@@ -389,11 +391,13 @@ pub trait IClient<T> {
     ///
     /// #### Preconditions
     /// - The effective fee of the transaction is zero (i.e. `tip` and `resource_bounds`).
-    /// - The TX version is 3.
+    /// - The TX version is 3 or 3 +
+    /// [`ESTIMATION_BASE_TX_VERSION`](privacy::utils::constants::ESTIMATION_BASE_TX_VERSION).
     ///
     /// #### Reverts
     /// - [`INVALID_TX_VERSION`](privacy::errors::INVALID_TX_VERSION): Thrown if the TX version is
-    /// not 3.
+    /// not 3 (or 3 +
+    /// [`ESTIMATION_BASE_TX_VERSION`](privacy::utils::constants::ESTIMATION_BASE_TX_VERSION)).
     /// - [`NON_ZERO_TIP`](privacy::errors::NON_ZERO_TIP): Thrown if the transaction tip is not
     /// zero.
     /// - [`NON_ZERO_RESOURCE_PRICE`](privacy::errors::NON_ZERO_RESOURCE_PRICE): Thrown if the
