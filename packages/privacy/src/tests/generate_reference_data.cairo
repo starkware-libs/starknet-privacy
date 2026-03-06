@@ -368,6 +368,14 @@ fn generate_reference_proof_facts() {
         proof_index += 1;
     }
 
+    // The full L2-to-L1 message payload: [class_hash, ...serialized_actions]
+    println!("proofFacts.messagePayloadLength: {}", payload.len());
+    let mut payload_index = 0;
+    for felt in payload {
+        println!("proofFacts.messagePayload.{}: 0x{:x}", payload_index, felt);
+        payload_index += 1;
+    }
+
     // Also print the constants for verification
     println!("proofFacts.virtualSnos: 0x{:x}", VIRTUAL_SNOS);
     println!("proofFacts.virtualSnos0: 0x{:x}", VIRTUAL_SNOS0);

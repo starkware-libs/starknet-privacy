@@ -9,7 +9,7 @@ import type { constants, ETransactionVersion3, ProviderInterface } from "starkne
 import { EDAMode, encode, hash, num, stark } from "starknet";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js";
-import { buildProofFacts } from "../utils/proof-facts.js";
+import { buildProofFacts, buildMessagePayload } from "../utils/proof-facts.js";
 import { toBigInt } from "../utils/convert.js";
 import { extractExecuteViewCalldata } from "../internal/proof-invocation-factory.js";
 
@@ -66,9 +66,11 @@ export class CallMockProofProvider implements ProofProviderInterface {
       this.chainId
     );
 
-    // compile_actions returns Span<ServerAction> which is serialized with its length prefix.
-    // apply_actions also expects Span<ServerAction> with the length prefix, so we pass it through as-is.
-    return { output: result, data: undefined!, proofFacts };
+    // Return the full L2-to-L1 message payload: [class_hash, ...serialized_actions].
+    // This matches the real proving service behavior. The consumer must strip the
+    // class_hash prefix before passing to apply_actions.
+    const messagePayload = buildMessagePayload(poolClassHash, result);
+    return { output: messagePayload, data: undefined!, proofFacts };
   }
 
   /**

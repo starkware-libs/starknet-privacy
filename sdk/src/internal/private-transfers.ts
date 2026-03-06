@@ -71,8 +71,13 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     // Get proof from provider (block id only when provided in options)
     const proof = await this.params.provingProvider.prove(invocation, options?.provingBlockId);
 
+    // proof.output is the L2-to-L1 message payload: [class_hash, ...serialized_actions].
+    // Strip the class_hash prefix — apply_actions expects only Span<ServerAction>.
+    const serverActionsCalldata = proof.output.slice(1);
+
     // Parse and log server actions for debugging
-    const parsedOutput = () => this.params.proofInvocationFactory.parseOutput(proof.output);
+    const parsedOutput = () =>
+      this.params.proofInvocationFactory.parseOutput(serverActionsCalldata);
     debugLog("private-transfers", "execute", "parsed server actions", parsedOutput);
 
     return {
@@ -80,7 +85,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
         call: {
           contractAddress: toHex(this.params.poolContractAddress),
           entrypoint: "apply_actions",
-          calldata: proof.output,
+          calldata: serverActionsCalldata,
         },
         proof,
       },
