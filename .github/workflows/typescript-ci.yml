@@ -65,7 +65,7 @@ jobs:
 
       - name: Fetch proving API spec
         env:
-          SEQUENCER_SPEC_REF: "avi/privacy/add-rpc-spec"
+          SEQUENCER_SPEC_REF: "bc1795da70224480b2fd75f08b4e3823ccc0b228"
         run: npm run fetch:proving-spec
 
       - name: Run tests
