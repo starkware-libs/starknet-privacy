@@ -18,7 +18,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const SPEC_PATH_IN_REPO =
-  "crates/starknet_os_runner/resources/proving_api_openrpc.json";
+  "crates/starknet_transaction_prover/resources/proving_api_openrpc.json";
 const REF = process.env.SEQUENCER_SPEC_REF ?? "main";
 const URL = `https://raw.githubusercontent.com/starkware-libs/sequencer/${REF}/${SPEC_PATH_IN_REPO}`;
 const OUT_PATH = join(__dirname, "..", "tests", "fixtures", "proving_api_openrpc.json");
