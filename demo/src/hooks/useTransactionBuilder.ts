@@ -5,7 +5,6 @@ import type { AccountConfig, AppConfig } from "../config.ts";
 import type { TransactionStatus } from "./useTransactions.ts";
 import type { BuilderOperation } from "../components/TransactionBuilder.tsx";
 import { Timeline } from "../timeline.ts";
-
 import { toRawAmount } from "../format.ts";
 
 const WAIT_OPTIONS = {
@@ -26,10 +25,10 @@ export function useTransactionBuilder(
   config: AppConfig,
   accounts: AccountConfig[],
   onSettled: () => void,
-  tokenDecimals: number,
 ) {
   const [status, setStatus] = useState<TransactionStatus>({
     pending: false,
+    action: null,
     lastTxHash: null,
     lastError: null,
     proofSizeBytes: null,
@@ -57,58 +56,90 @@ export function useTransactionBuilder(
     (operations: BuilderOperation[]) => {
       const action = "Builder";
       const timeline = new Timeline();
-      setStatus({ pending: true, lastTxHash: null, lastError: null, proofSizeBytes: null, timeline: null });
+      setStatus({ pending: true, action, lastTxHash: null, lastError: null, proofSizeBytes: null, timeline: null });
 
-      (async () => {
+      void (async () => {
         try {
           if (!userAccount || !transfers || !provider || !activeAddress)
             throw new Error("Not ready");
 
           await timeline.step(action, async () => {
-            const totalDepositAmount = operations
-              .filter((op) => op.operationType === "deposit")
-              .reduce((sum, op) => sum + toRawAmount(op.amount, tokenDecimals), 0n);
+            const decimalsByToken = new Map(config.tokens.map((t) => [t.address, t.decimals]));
+            function scaleOp(token: string, humanAmount: string): bigint {
+              return toRawAmount(humanAmount, decimalsByToken.get(token) ?? 0);
+            }
 
-            if (totalDepositAmount > 0n) {
+            // Approve pool for deposit amounts, grouped by token
+            const depositsByToken = new Map<string, bigint>();
+            for (const op of operations) {
+              if (op.operationType === "deposit" && op.token) {
+                const current = depositsByToken.get(op.token) ?? 0n;
+                depositsByToken.set(op.token, current + scaleOp(op.token, op.amount));
+              }
+            }
+
+            if (depositsByToken.size > 0) {
               await timeline.step("Approve", async () => {
-                const approveCall = {
-                  contractAddress: config.tokenAddress,
-                  entrypoint: "approve",
-                  calldata: [poolAddress, totalDepositAmount.toString(), "0"],
-                };
-                const approveTx = await timeline.step("Estimate + submit", () =>
-                  userAccount.execute(approveCall, { tip: 0n }),
-                );
-                await timeline.step("Wait for receipt", () =>
-                  provider.waitForTransaction(approveTx.transaction_hash, WAIT_OPTIONS),
-                );
+                for (const [token, totalAmount] of depositsByToken) {
+                  const approveCall = {
+                    contractAddress: token,
+                    entrypoint: "approve",
+                    calldata: [poolAddress, totalAmount.toString(), "0"],
+                  };
+                  const approveTx = await timeline.step(`Approve ${token.slice(0, 10)}...`, () =>
+                    userAccount.execute(approveCall, { tip: 0n }),
+                  );
+                  await timeline.step("Wait for receipt", () =>
+                    provider.waitForTransaction(approveTx.transaction_hash, WAIT_OPTIONS),
+                  );
+                }
               });
             }
 
-            const surplusOperation = operations.find(
-              (op) => op.operationType === "surplus",
-            );
+            const surplusOperation = operations.find((op) => op.operationType === "surplus");
 
-            const builder = transfers.build({
-              autoRegister: true,
-              autoSetup: true,
-              autoDiscover: { notes: "refresh", channels: "refresh" },
-              autoSelectNotes: "naive",
-            }).surplusTo(
-              surplusOperation?.recipient ?? activeAddress,
-              surplusOperation?.withdrawSurplus,
-            );
+            const builder = transfers
+              .build({
+                autoRegister: true,
+                autoSetup: true,
+                autoDiscover: { notes: "refresh", channels: "refresh" },
+                autoSelectNotes: "naive",
+              })
+              .surplusTo(
+                surplusOperation?.recipient ?? activeAddress,
+                surplusOperation?.withdrawSurplus,
+              );
 
-            const invokeOperation = operations.find(
-              (op) => op.operationType === "invoke",
-            );
-            if (invokeOperation) {
-              builder.invoke(() => ({
-                contractAddress: invokeOperation.contractAddress!,
-                calldata: invokeOperation.calldata
-                  ? invokeOperation.calldata.split(",").map((segment) => segment.trim())
-                  : [],
-              }));
+            // Group token ops by token address
+            const operationsByToken = new Map<string, BuilderOperation[]>();
+            for (const op of operations) {
+              if (op.operationType === "surplus") continue;
+              const tokenAddress = op.token;
+              if (!tokenAddress) continue;
+              const group = operationsByToken.get(tokenAddress) ?? [];
+              group.push(op);
+              operationsByToken.set(tokenAddress, group);
+            }
+
+            let chain = builder;
+            for (const [tokenAddress, tokenOps] of operationsByToken) {
+              chain = chain.with(tokenAddress, (tokenBuilder) => {
+                for (const op of tokenOps) {
+                  const rawAmount = scaleOp(tokenAddress, op.amount);
+                  if (op.operationType === "deposit")
+                    tokenBuilder.deposit({
+                      amount: rawAmount,
+                      recipient: op.recipient || undefined,
+                    });
+                  if (op.operationType === "transfer")
+                    tokenBuilder.transfer({ recipient: op.recipient!, amount: rawAmount });
+                  if (op.operationType === "withdraw")
+                    tokenBuilder.withdraw({
+                      amount: rawAmount,
+                      recipient: op.recipient || activeAddress,
+                    });
+                }
+              });
             }
 
             const provingBlockId = await timeline.step("Get block number",
@@ -116,18 +147,7 @@ export function useTransactionBuilder(
             ) - 10;
 
             const { callAndProof } = await timeline.step("SDK build + prove", () =>
-              builder
-                .with(config.tokenAddress, (tokenBuilder) => {
-                  for (const op of operations) {
-                    if (op.operationType === "deposit")
-                      tokenBuilder.deposit({ amount: toRawAmount(op.amount, tokenDecimals), recipient: op.recipient || undefined });
-                    if (op.operationType === "transfer")
-                      tokenBuilder.transfer({ recipient: op.recipient!, amount: toRawAmount(op.amount, tokenDecimals) });
-                    if (op.operationType === "withdraw")
-                      tokenBuilder.withdraw({ amount: toRawAmount(op.amount, tokenDecimals), recipient: op.recipient || activeAddress });
-                  }
-                })
-                .execute({ provingBlockId }),
+              chain.execute({ provingBlockId }),
             );
 
             const proofDetails = callAndProof.proof.proofFacts?.length
@@ -151,12 +171,12 @@ export function useTransactionBuilder(
             const proofSizeBytes = callAndProof.proof.data
               ? base64ByteLength(callAndProof.proof.data)
               : null;
-            setStatus({ pending: false, lastTxHash: executeTx.transaction_hash, lastError: null, proofSizeBytes, timeline });
+            setStatus({ pending: false, action: null, lastTxHash: executeTx.transaction_hash, lastError: null, proofSizeBytes, timeline });
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error(`[${action}] failed:`, err);
-          setStatus({ pending: false, lastTxHash: null, lastError: `${action}: ${message}`, proofSizeBytes: null, timeline });
+          setStatus({ pending: false, action: null, lastTxHash: null, lastError: `${action}: ${message}`, proofSizeBytes: null, timeline });
         } finally {
           onSettledRef.current();
         }
@@ -170,7 +190,6 @@ export function useTransactionBuilder(
       config,
       poolAddress,
       accounts,
-      tokenDecimals,
     ],
   );
 

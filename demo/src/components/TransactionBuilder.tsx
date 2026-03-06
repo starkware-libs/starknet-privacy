@@ -1,14 +1,13 @@
 import { useState, useRef, type FormEvent } from "react";
-import type { AccountConfig } from "../config.ts";
+import type { AccountConfig, TokenConfig } from "../config.ts";
 
-export type OperationType = "deposit" | "transfer" | "withdraw" | "surplus" | "invoke";
+export type OperationType = "deposit" | "transfer" | "withdraw" | "surplus";
 
 const PHASE_ORDER: Record<OperationType, number> = {
   deposit: 3,
   transfer: 5,
   withdraw: 6,
   surplus: 7,
-  invoke: 8,
 };
 
 const OPERATION_LABELS: Record<OperationType, string> = {
@@ -16,55 +15,66 @@ const OPERATION_LABELS: Record<OperationType, string> = {
   transfer: "Transfer",
   withdraw: "Withdraw",
   surplus: "Surplus To",
-  invoke: "Invoke",
 };
 
 export type BuilderOperation = {
   id: number;
   operationType: OperationType;
   amount: string;
+  token?: string;
   recipient?: string;
   withdrawSurplus?: boolean;
-  contractAddress?: string;
-  calldata?: string;
 };
 
 type Props = {
   pending: boolean;
   activeAddress: string;
   otherAccounts: AccountConfig[];
+  tokens: TokenConfig[];
   onExecute: (operations: BuilderOperation[]) => void;
 };
 
-export function TransactionBuilder({ pending, activeAddress, otherAccounts, onExecute }: Props) {
+export function TransactionBuilder({
+  pending,
+  activeAddress,
+  otherAccounts,
+  tokens,
+  onExecute,
+}: Props) {
+  const defaultToken = tokens[0]?.address ?? "";
   const [operations, setOperations] = useState<BuilderOperation[]>([]);
   const [selectedType, setSelectedType] = useState<OperationType>("deposit");
   const [amount, setAmount] = useState("100");
+  const [token, setToken] = useState(defaultToken);
   const [recipient, setRecipient] = useState("");
   const [withdrawSurplus, setWithdrawSurplus] = useState(false);
   const nextOperationId = useRef(0);
 
   const hasSurplus = operations.some((op) => op.operationType === "surplus");
 
+  const tokenNameByAddress = new Map(tokens.map((t) => [t.address, t.name]));
+  const needsToken =
+    selectedType === "deposit" || selectedType === "transfer" || selectedType === "withdraw";
+
   function handleAdd(event: FormEvent) {
     event.preventDefault();
     const needsRecipient =
-      selectedType === "transfer" || selectedType === "surplus" ||
+      selectedType === "transfer" ||
+      selectedType === "surplus" ||
       ((selectedType === "deposit" || selectedType === "withdraw") && recipient);
 
     const operation: BuilderOperation = {
       id: nextOperationId.current++,
       operationType: selectedType,
       amount,
+      ...(needsToken ? { token } : {}),
       ...(needsRecipient ? { recipient } : {}),
       ...(selectedType === "surplus" ? { withdrawSurplus } : {}),
     };
 
     setOperations((previous) => {
       const updated = [...previous, operation];
-      updated.sort(
-        (a, b) => PHASE_ORDER[a.operationType] - PHASE_ORDER[b.operationType],
-      );
+      updated.sort((a, b) => PHASE_ORDER[a.operationType] - PHASE_ORDER[b.operationType]);
       return updated;
     });
   }
@@ -79,12 +89,11 @@ export function TransactionBuilder({ pending, activeAddress, otherAccounts, onEx
 
   function formatOperationDetails(operation: BuilderOperation): string {
     if (operation.operationType === "surplus") {
-      const target = operation.recipient
-        ? `${operation.recipient.slice(0, 10)}...`
-        : "self";
+      const target = operation.recipient ? `${operation.recipient.slice(0, 10)}...` : "self";
       return `→ ${target}${operation.withdrawSurplus ? " (withdraw)" : ""}`;
     }
-    const details = `${operation.amount} STRK`;
+    const tokenName = operation.token ? (tokenNameByAddress.get(operation.token) ?? "?") : "?";
+    const details = `${operation.amount} ${tokenName}`;
     if (operation.recipient) {
       return `${details} → ${operation.recipient.slice(0, 10)}...`;
     }
@@ -103,33 +112,43 @@ export function TransactionBuilder({ pending, activeAddress, otherAccounts, onEx
           <option value="deposit">Deposit</option>
           <option value="transfer">Transfer</option>
           <option value="withdraw">Withdraw</option>
-          <option value="surplus" disabled={hasSurplus}>Surplus To</option>
+          <option value="surplus" disabled={hasSurplus}>
+            Surplus To
+          </option>
         </select>
+
+        {needsToken && (
+          <select value={token} onChange={(event) => setToken(event.target.value)}>
+            {tokens.map((t) => (
+              <option key={t.address} value={t.address}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        )}
 
         {selectedType !== "surplus" && (
           <input
-            type="text"
-            inputMode="decimal"
+            type="number"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
             placeholder="Amount"
+            min="0"
+            step="any"
           />
         )}
 
-        {(selectedType === "transfer" || selectedType === "surplus" ||
-          selectedType === "deposit" || selectedType === "withdraw") && (
-          <select
-            value={recipient}
-            onChange={(event) => setRecipient(event.target.value)}
-          >
+        {(selectedType === "transfer" ||
+          selectedType === "surplus" ||
+          selectedType === "deposit" ||
+          selectedType === "withdraw") && (
+          <select value={recipient} onChange={(event) => setRecipient(event.target.value)}>
             {selectedType === "transfer" || selectedType === "surplus" ? (
               <option value="">Select recipient...</option>
             ) : (
               <option value="">None (set surplus recipient)</option>
             )}
-            <option value={activeAddress}>
-              Self ({activeAddress.slice(0, 10)}...)
-            </option>
+            <option value={activeAddress}>Self ({activeAddress.slice(0, 10)}...)</option>
             {otherAccounts.map((account) => (
               <option key={account.address} value={account.address}>
                 {account.name} ({account.address.slice(0, 10)}...)
@@ -187,13 +206,25 @@ export function TransactionBuilder({ pending, activeAddress, otherAccounts, onEx
         </div>
       )}
 
-      <button
-        onClick={handleExecute}
-        disabled={pending || operations.length === 0}
-        style={{ marginTop: "8px", width: "100%" }}
-      >
-        Execute Transaction ({operations.length} ops)
-      </button>
+      <div style={{ display: "flex", gap: "4px", marginTop: "8px" }}>
+        <button
+          onClick={handleExecute}
+          disabled={pending || operations.length === 0}
+          style={{ flex: 1 }}
+        >
+          {pending && <span className="spinner" />}
+          Execute ({operations.length} ops)
+        </button>
+        {operations.length > 0 && (
+          <button
+            className="builder-clear-button"
+            onClick={() => setOperations([])}
+            disabled={pending}
+          >
+            Clear
+          </button>
+        )}
+      </div>
     </>
   );
 }

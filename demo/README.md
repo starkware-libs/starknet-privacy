@@ -36,11 +36,20 @@ This creates `.env` with all required variables, rewriting backend URLs for loca
 | `VITE_INDEXER_URL` | Discovery service API URL |
 | `VITE_PROVING_SERVICE_URL` | Proving service URL. If unset, the app uses the mock prover (`execute_view` only) |
 | `VITE_POOL_ADDRESS` | Privacy pool contract address |
-| `VITE_TOKEN_ADDRESS` | ERC-20 token contract address |
-| `VITE_FEE_TOKEN_ADDRESS` | Fee token contract address |
 | `VITE_CHAIN_ID` | StarkNet chain ID (hex) |
-| `VITE_ADMIN_ADDRESS` | Admin/minter account address |
-| `VITE_ADMIN_KEY` | Admin account private key |
+| `VITE_POOL_CLASS_HASH` | Privacy pool class hash |
+| `VITE_COMPLIANCE_PUBLIC_KEY` | Compliance public key for the pool |
+| `VITE_PROOF_VALIDITY_BLOCKS` | Number of blocks a proof remains valid |
+| `VITE_TOKENS` | JSON array of supported tokens. Set `"fee":true` for the gas token, `"mintEntrypoint"` if different from `"permissionedMint"` |
+
+**Ekubo swap (optional — all required if `VITE_EKUBO_EXECUTOR_ADDRESS` is set):**
+
+| Variable | Description |
+|----------|-------------|
+| `VITE_EKUBO_EXECUTOR_ADDRESS` | Swap executor contract address |
+| `VITE_EKUBO_CORE_ADDRESS` | Ekubo Core contract address (for pool price queries) |
+| `VITE_EKUBO_ROUTER_ADDRESS` | Ekubo Router contract address (passed to executor) |
+| `VITE_EKUBO_POOL` | Pool key + params as JSON: `token0`, `token1`, `fee`, `tickSpacing`, `extension`, `skipAhead`. Token addresses must match entries in `VITE_TOKENS` |
 
 ## Running
 
@@ -60,6 +69,16 @@ Open http://localhost:5173.
 5. **Deposit** → private balance increases, note appears in the notes table
 6. **Transfer** → new outgoing channel appears
 7. **Withdraw** → private balance decreases, transparent increases
+
+## Vercel deployment
+
+The demo deploys to Vercel as a preview on PRs that touch `demo/`. The Vercel project is already linked (`demo/.vercel/`).
+
+**How it works:**
+
+- The `demo-deploy.yml` workflow runs `vercel pull` + `vercel build` + deploys on PRs touching `demo/`.
+- `VITE_*` vars use `/api/*` proxy paths (not direct HTTP URLs) to avoid mixed HTTP/HTTPS content errors on the HTTPS Vercel deployment.
+- `BACKEND_*` vars (`BACKEND_RPC_URL`, `BACKEND_INDEXER_URL`, `BACKEND_PROVER_URL`, `BACKEND_GATEWAY_URL`) define the actual backend endpoints. CI reads them and generates `vercel.json` rewrite rules that proxy `/api/*` requests to the real backends.
 
 ## Architecture
 

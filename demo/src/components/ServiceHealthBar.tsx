@@ -1,4 +1,8 @@
-import type { HealthStatus, ServiceHealthState, SubsystemHealth } from "../hooks/useServiceHealth.ts";
+import type {
+  HealthStatus,
+  ServiceHealthState,
+  SubsystemHealth,
+} from "../hooks/useServiceHealth.ts";
 
 const STATUS_COLORS: Record<HealthStatus, string> = {
   healthy: "#3fb950",
@@ -10,7 +14,11 @@ const STATUS_COLORS: Record<HealthStatus, string> = {
 function Indicator({ label, health }: { label: string; health: SubsystemHealth }) {
   return (
     <span className="health-indicator">
-      <span className="health-dot" style={{ background: STATUS_COLORS[health.status] }} title={health.detail ?? health.status} />
+      <span
+        className="health-dot"
+        style={{ background: STATUS_COLORS[health.status] }}
+        title={health.detail ?? health.status}
+      />
       <span className="health-label">{label}</span>
     </span>
   );

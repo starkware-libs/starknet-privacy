@@ -32,7 +32,7 @@ export function createTransfers(
   account: Account,
   accountConfig: AccountConfig,
   poolAddress: string,
-  config: AppConfig,
+  config: AppConfig
 ): PrivateTransfersInterface {
   const discovery = new IndexerDiscoveryProvider(
     config.indexerUrl,
@@ -100,4 +100,42 @@ export async function getErc20Metadata(
     symbol: decodeFeltString(symbolResult[0]),
     decimals: Number(decimalsResult[0]),
   };
+}
+
+export type PoolPriceResult = {
+  sqrtRatio: bigint;
+  price: number;
+};
+
+/**
+ * Fetch the current pool price from the Ekubo Core contract.
+ *
+ * Calls `get_pool_price` with the pool key and converts the returned
+ * sqrt_ratio (64.128 fixed-point) to a human-readable price:
+ *   price = (sqrt_ratio / 2^128)^2 * 10^(token0_decimals - token1_decimals)
+ */
+export async function getPoolPrice(
+  provider: RpcProvider,
+  coreAddress: string,
+  token0: string,
+  token1: string,
+  fee: string,
+  tickSpacing: string,
+  extension: string,
+  token0Decimals: number,
+  token1Decimals: number,
+): Promise<PoolPriceResult> {
+  const result = await provider.callContract({
+    contractAddress: coreAddress,
+    entrypoint: "get_pool_price",
+    calldata: [token0, token1, fee, tickSpacing, extension],
+  });
+  const low = BigInt(result[0]);
+  const high = BigInt(result[1]);
+  const sqrtRatio = low + (high << 128n);
+
+  const ratio = Number(sqrtRatio) / 2 ** 128;
+  const price = ratio * ratio * 10 ** (token0Decimals - token1Decimals);
+
+  return { sqrtRatio, price };
 }
