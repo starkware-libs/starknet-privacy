@@ -64,8 +64,8 @@ type ApiIncomingNoteInfo = {
   token: string;
   index: number;
   note_id: string;
-  amount: number;
-  salt: number;
+  amount: string;
+  salt: string;
 };
 
 type ApiOutgoingChannel = {
@@ -578,7 +578,7 @@ export function convertIncomingNotes(
       amount: BigInt(n.amount),
       witness: new Witness(channelKey, n.index, BigInt(n.salt)),
       sender,
-      open: n.salt === 1,
+      open: n.salt === "1",
     });
   }
   return result;

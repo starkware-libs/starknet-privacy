@@ -104,8 +104,8 @@ function noteEntry(overrides: Partial<Record<string, unknown>> = {}) {
     token: TOKEN_ADDR,
     index: 0,
     note_id: "0xde1",
-    amount: 100,
-    salt: 42,
+    amount: "100",
+    salt: "42",
     ...overrides,
   };
 }
@@ -170,7 +170,7 @@ describe("IndexerDiscoveryProvider", () => {
         {
           body: incomingSyncResponse({
             channels: [{ channel_key: CHANNEL_KEY_1, sender_addr: SENDER_ADDR }],
-            notes: [noteEntry({ amount: 50, salt: 10 })],
+            notes: [noteEntry({ amount: "50", salt: "10" })],
             cursor: incompleteCursor({
               [SENDER_ADDR]: { channel_key: CHANNEL_KEY_1 },
             }),
@@ -178,7 +178,7 @@ describe("IndexerDiscoveryProvider", () => {
         },
         {
           body: incomingSyncResponse({
-            notes: [noteEntry({ index: 1, note_id: "0xde2", amount: 75, salt: 20 })],
+            notes: [noteEntry({ index: 1, note_id: "0xde2", amount: "75", salt: "20" })],
             cursor: completeCursor({
               [SENDER_ADDR]: {
                 channel_key: CHANNEL_KEY_1,
@@ -210,8 +210,8 @@ describe("IndexerDiscoveryProvider", () => {
         body: incomingSyncResponse({
           channels: [{ channel_key: CHANNEL_KEY_1, sender_addr: SENDER_ADDR }],
           notes: [
-            noteEntry({ amount: 50, salt: 1 }),
-            noteEntry({ token: TOKEN_ADDR_2, note_id: "0xde2", amount: 75, salt: 2 }),
+            noteEntry({ amount: "50", salt: "1" }),
+            noteEntry({ token: TOKEN_ADDR_2, note_id: "0xde2", amount: "75", salt: "2" }),
           ],
           cursor: completeCursor({
             [SENDER_ADDR]: {
@@ -525,8 +525,8 @@ describe("IndexerDiscoveryProvider", () => {
 
     it("convertIncomingNotes filters by token", () => {
       const apiNotes = [
-        noteEntry({ note_id: "0xe1", salt: 5 }),
-        noteEntry({ token: TOKEN_ADDR_2, note_id: "0xe2", amount: 200, salt: 6 }),
+        noteEntry({ note_id: "0xe1", salt: "5" }),
+        noteEntry({ token: TOKEN_ADDR_2, note_id: "0xe2", amount: "200", salt: "6" }),
       ];
       const channelKeyMap = new Map<string, bigint>([[SENDER_ADDR, 0xcc1n]]);
       const existingChannels = new AddressMap<IncomingChannelCursor>();
