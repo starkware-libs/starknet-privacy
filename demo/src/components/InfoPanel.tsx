@@ -224,7 +224,10 @@ export function InfoPanel({
           <tbody>
             {state.tokenBalances.map((tb) => (
               <tr key={tb.address}>
-                <td>{tb.name}</td>
+                <td>
+                  {tb.name}
+                  {tb.fee && <span className="chip">fee</span>}
+                </td>
                 <td>{formatTokenAmount(tb.private, tb.decimals)}</td>
                 <td>{tb.noteCount}</td>
                 <td>{formatTokenAmount(tb.transparent, tb.decimals)}</td>
@@ -234,16 +237,6 @@ export function InfoPanel({
                 </td>
               </tr>
             ))}
-            <tr>
-              <td>STRK <span className="chip">fee</span></td>
-              <td>&mdash;</td>
-              <td>&mdash;</td>
-              <td>{formatTokenAmount(state.feeTokenBalance, 18)}</td>
-              <td>
-                {truncateAddress(state.feeTokenAddress)}
-                <CopyButton value={state.feeTokenAddress} />
-              </td>
-            </tr>
           </tbody>
         </table>
       </div>

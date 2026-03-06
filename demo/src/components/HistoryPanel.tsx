@@ -9,7 +9,7 @@ const chipLabel: Record<string, string> = {
 };
 
 function actionChipLabel(action: ActionDisplay): string {
-  return chipLabel[action.type] ?? action.type;
+  return action.chipLabel ?? chipLabel[action.type] ?? action.type;
 }
 
 type Props = {

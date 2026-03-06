@@ -19,7 +19,7 @@ export class NoValidateProofProvider implements ProofProviderInterface {
 
   constructor(
     private readonly provider: RpcProvider,
-    chainId: constants.StarknetChainId,
+    chainId: constants.StarknetChainId
   ) {
     this.delegate = new CallMockProofProvider(provider, chainId);
   }

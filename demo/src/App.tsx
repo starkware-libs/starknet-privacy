@@ -18,6 +18,7 @@ import { StatusBar } from "./components/StatusBar.tsx";
 import { ServiceHealthBar } from "./components/ServiceHealthBar.tsx";
 import { useTransactionBuilder } from "./hooks/useTransactionBuilder.ts";
 import { useServiceHealth } from "./hooks/useServiceHealth.ts";
+import { DefiPanel } from "./components/DefiPanel.tsx";
 import { useTokenMetadata } from "./hooks/useTokenMetadata.ts";
 import "./App.css";
 
@@ -72,9 +73,6 @@ export function App() {
     reg.notes = createEmptyRegistry().notes;
   }, [activeAccount, poolAddress]);
 
-  const tokenAddresses = useMemo(() => [config.tokenAddress], []);
-  const tokenMetadata = useTokenMetadata(provider, tokenAddresses);
-
   const { state, loading, error, refresh, refreshBalances } = usePrivateState(
     provider,
     transfers,
@@ -83,7 +81,6 @@ export function App() {
     poolAddress,
     config,
     registry.current,
-    tokenMetadata,
   );
 
   const {
@@ -93,7 +90,7 @@ export function App() {
     historyComplete,
     fetchMore: fetchHistory,
     refreshLatest: refreshHistoryLatest,
-  } = useHistory(provider, poolAddress, config, activeAccount, accounts, registry.current, tokenMetadata);
+  } = useHistory(provider, poolAddress, config, activeAccount, accounts, registry.current);
 
   const refreshAll = useCallback(async () => {
     // Reset cursors so refresh does a full re-sync — incremental discovery
@@ -107,13 +104,11 @@ export function App() {
     refreshHistoryLatest();
   }, [refresh, refreshHistoryLatest]);
 
-  const metadataReady = tokenMetadata.size > 0;
-
   useEffect(() => {
-    if (metadataReady) refresh();
-  }, [refresh, metadataReady]);
+    refresh();
+  }, [refresh]);
 
-  const { status, register, mint, deposit, withdraw, transfer } = useTransactions(
+  const { status, register, mint, deposit, withdraw, transfer, swap } = useTransactions(
     provider,
     transfers,
     activeAccount?.address,
@@ -124,8 +119,6 @@ export function App() {
     refreshBalances,
   );
 
-  const tokenDecimals = tokenMetadata.get(config.tokenAddress)?.decimals ?? 0;
-
   const { status: builderStatus, executeBatch } = useTransactionBuilder(
     provider,
     transfers,
@@ -134,12 +127,11 @@ export function App() {
     config,
     accounts,
     refreshAll,
-    tokenDecimals,
   );
 
   const serviceHealth = useServiceHealth(provider, config);
 
-  const [activeView, setActiveView] = useState<"actions" | "builder">("actions");
+  const [activeView, setActiveView] = useState<"actions" | "builder" | "defi">("actions");
 
   return (
     <div className="app">
@@ -169,7 +161,7 @@ export function App() {
       />
       {activeAccount && (
         <>
-          <StatusBar status={activeView === "actions" ? status : builderStatus} />
+          <StatusBar status={activeView === "builder" ? builderStatus : status} />
           <div className="main-layout">
             <InfoPanel
               state={state}
@@ -197,25 +189,47 @@ export function App() {
                 >
                   Builder
                 </button>
+                {config.ekubo && (
+                  <button
+                    className={activeView === "defi" ? "active" : ""}
+                    onClick={() => setActiveView("defi")}
+                  >
+                    DeFi
+                  </button>
+                )}
               </div>
-              {activeView === "actions" ? (
+              {activeView === "actions" && (
                 <ActionPanel
                   pending={status.pending}
+                  pendingAction={status.action}
                   activeAddress={activeAccount.address}
                   otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
-                  tokenDecimals={tokenDecimals}
+                  tokens={config.tokens}
                   onRegister={register}
                   onMint={mint}
                   onDeposit={deposit}
                   onWithdraw={withdraw}
                   onTransfer={transfer}
                 />
-              ) : (
+              )}
+              {activeView === "builder" && (
                 <TransactionBuilder
                   pending={builderStatus.pending}
                   activeAddress={activeAccount.address}
                   otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
+                  tokens={config.tokens}
                   onExecute={executeBatch}
+                />
+              )}
+              {activeView === "defi" && config.ekubo && (
+                <DefiPanel
+                  pending={status.pending}
+                  pendingAction={status.action}
+                  tokens={config.tokens}
+                  swapTokens={config.ekubo.swapTokens}
+                  provider={provider}
+                  ekubo={config.ekubo}
+                  onSwap={swap}
                 />
               )}
             </div>
