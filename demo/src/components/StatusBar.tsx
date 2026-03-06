@@ -15,9 +15,7 @@ export function StatusBar({ status }: Props) {
           Tx: <code>{status.lastTxHash}</code>
         </span>
       )}
-      {status.lastError && (
-        <span className="error">Error: {status.lastError}</span>
-      )}
+      {status.lastError && <span className="error">Error: {status.lastError}</span>}
     </div>
   );
 }

@@ -23,18 +23,19 @@ const config = loadConfig();
 export function App() {
   const [classHash, setClassHash] = useState(config.poolClassHash);
 
-  const { accounts, activeIndex, activeAccount, setActiveIndex } =
-    useAccounts(config.accounts);
+  const { accounts, activeIndex, activeAccount, setActiveIndex } = useAccounts(config.accounts);
 
   const provider = useMemo(() => createProvider(config.rpcUrl), []);
 
-  const { pools, activePool, selectPool, addPool, loading: poolsLoading } =
-    usePoolSelector(provider, config.poolAddress, classHash);
+  const {
+    pools,
+    activePool,
+    selectPool,
+    addPool,
+    loading: poolsLoading,
+  } = usePoolSelector(provider, config.poolAddress, classHash);
 
-  const configWithClassHash = useMemo(
-    () => ({ ...config, poolClassHash: classHash }),
-    [classHash],
-  );
+  const configWithClassHash = useMemo(() => ({ ...config, poolClassHash: classHash }), [classHash]);
 
   const { deploying, deployError, deploy } = useDeployPool(provider, configWithClassHash);
 
@@ -63,20 +64,20 @@ export function App() {
     activeAccount,
     accounts,
     activePool.address,
-    config,
+    config
   );
 
   useEffect(() => {
-    refresh();
+    void refresh();
   }, [refresh]);
 
-  const { status, register, mint, deposit, withdraw, transfer } = useTransactions(
+  const { status, register, mint, deposit, withdraw, transfer, swap } = useTransactions(
     provider,
     transfers,
     activeAccount?.address,
     activePool.address,
     config,
-    refresh,
+    refresh
   );
 
   const { status: builderStatus, executeBatch } = useTransactionBuilder(
@@ -85,7 +86,7 @@ export function App() {
     activeAccount?.address,
     activePool.address,
     config,
-    refresh,
+    refresh
   );
 
   const serviceHealth = useServiceHealth(provider, config);
@@ -110,19 +111,10 @@ export function App() {
         onDeploy={handleDeploy}
         onClassHashChange={setClassHash}
       />
-      <AccountSelector
-        accounts={accounts}
-        activeIndex={activeIndex}
-        onSelect={setActiveIndex}
-      />
+      <AccountSelector accounts={accounts} activeIndex={activeIndex} onSelect={setActiveIndex} />
       <StatusBar status={activeView === "actions" ? status : builderStatus} />
       <div className="main-layout">
-        <InfoPanel
-          state={state}
-          loading={loading}
-          error={error}
-          onRefresh={refresh}
-        />
+        <InfoPanel state={state} loading={loading} error={error} onRefresh={refresh} />
         <div className="action-panel">
           <div className="view-toggle">
             <button
@@ -143,17 +135,23 @@ export function App() {
               pending={status.pending}
               activeAddress={activeAccount!.address}
               otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
+              tokens={config.tokens}
+              swapTokens={config.ekubo?.swapTokens ?? []}
+              provider={provider}
+              ekubo={config.ekubo}
               onRegister={register}
               onMint={mint}
               onDeposit={deposit}
               onWithdraw={withdraw}
               onTransfer={transfer}
+              onSwap={swap}
             />
           ) : (
             <TransactionBuilder
               pending={builderStatus.pending}
               activeAddress={activeAccount!.address}
               otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
+              tokens={config.tokens}
               onExecute={executeBatch}
             />
           )}
@@ -161,7 +159,11 @@ export function App() {
       </div>
       <footer className="app-footer">
         Built by Starkware &middot; Docs{" "}
-        <a href="https://github.com/starkware-libs/starknet-privacy" target="_blank" rel="noreferrer">
+        <a
+          href="https://github.com/starkware-libs/starknet-privacy"
+          target="_blank"
+          rel="noreferrer"
+        >
           github.com/starkware-libs/starknet-privacy
         </a>
       </footer>

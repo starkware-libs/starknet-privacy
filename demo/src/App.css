@@ -213,17 +213,112 @@ input[type="number"] {
   border-bottom: 1px solid #21262d;
 }
 
+.swap-box {
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+.swap-label {
+  display: block;
+  color: #8b949e;
+  font-size: 11px;
+  margin-bottom: 2px;
+}
+
+.swap-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.swap-row input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13px;
+  padding: 0;
+}
+
+.swap-row select {
+  flex-shrink: 0;
+  min-width: 70px;
+}
+
+.swap-flip-container {
+  display: flex;
+  justify-content: center;
+  margin: -2px 0;
+  position: relative;
+  z-index: 1;
+}
+
+.swap-flip-button {
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  color: #8b949e;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.swap-flip-button:hover {
+  background: #30363d;
+  color: #c9d1d9;
+}
+
+.swap-submit {
+  width: 100%;
+  margin-top: 4px;
+  padding: 3px 9px;
+}
+
+.pool-price {
+  color: #8b949e;
+  font-size: 12px;
+  margin: 4px 0 0;
+  text-align: center;
+}
+
 .action-form:last-child {
   border-bottom: none;
   margin-bottom: 0;
   padding-bottom: 0;
 }
 
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.action-row input[type="number"] {
+  flex: 1;
+}
+
+.action-row button {
+  width: 80px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
 .action-form button {
   margin-top: 4px;
   font-size: 12px;
   padding: 3px 9px;
-  margin-left: 6px;
+}
+
+.action-row button {
+  margin-top: 0;
+}
+
+.transfer-recipient {
+  width: 100%;
+  margin-bottom: 4px;
 }
 
 .status-bar {
@@ -269,7 +364,6 @@ input[type="number"] {
   cursor: default;
   word-break: break-all;
 }
-
 
 .chip {
   display: inline-block;
@@ -404,6 +498,22 @@ input[type="number"] {
 .channel-card-sep {
   color: #30363d;
   margin: 0 6px;
+}
+
+.channel-card table {
+  table-layout: fixed;
+}
+
+.channel-card table col.col-note-id {
+  width: 50%;
+}
+
+.channel-card table col.col-amount {
+  width: 30%;
+}
+
+.channel-card table col.col-index {
+  width: 20%;
 }
 
 .pagination {

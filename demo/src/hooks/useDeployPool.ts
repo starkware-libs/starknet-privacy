@@ -32,7 +32,7 @@ export function useDeployPool(provider: RpcProvider | undefined, config: AppConf
 
       const deployResult = await adminAccount.deployContract(
         { classHash: config.poolClassHash, constructorCalldata, salt },
-        { tip: 0n, resourceBounds: DEPLOY_RESOURCE_BOUNDS },
+        { tip: 0n, resourceBounds: DEPLOY_RESOURCE_BOUNDS }
       );
 
       const receipt = await provider.waitForTransaction(deployResult.transaction_hash);

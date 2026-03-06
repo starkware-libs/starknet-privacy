@@ -31,7 +31,14 @@ jobs:
       - name: Pull Vercel env and build
         working-directory: demo
         run: |
-          npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+          # Try branch-named custom env first, fall back to preview
+          # Vercel env names: underscores -> hyphens, truncated to 32 chars
+          BRANCH=$(echo "${{ github.head_ref || github.ref_name }}" | tr '_' '-' | cut -c1-32)
+          if npx vercel pull --yes --environment="$BRANCH" --token=${{ secrets.VERCEL_TOKEN }}; then
+            cp ".vercel/.env.$BRANCH.local" .vercel/.env.preview.local
+          else
+            npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+          fi
 
           # Generate vercel.json with rewrites to proxy HTTP backends through
           # the Vercel deployment, avoiding mixed HTTP/HTTPS content errors.

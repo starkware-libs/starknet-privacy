@@ -89,10 +89,7 @@ function initialState(config: AppConfig): ServiceHealthState {
   };
 }
 
-export function useServiceHealth(
-  provider: RpcProvider,
-  config: AppConfig,
-): ServiceHealthState {
+export function useServiceHealth(provider: RpcProvider, config: AppConfig): ServiceHealthState {
   const [state, setState] = useState<ServiceHealthState>(() => initialState(config));
   const mountedRef = useRef(true);
 
@@ -101,18 +98,18 @@ export function useServiceHealth(
       if (mountedRef.current) setState((prev) => ({ ...prev, [key]: value }));
     };
 
-    checkDiscovery(config.indexerUrl).then(update("discovery"));
-    checkRpc(provider).then(update("rpc"));
+    void checkDiscovery(config.indexerUrl).then(update("discovery"));
+    void checkRpc(provider).then(update("rpc"));
 
     if (config.provingServiceUrl) {
-      checkProving(config.provingServiceUrl).then(update("proving"));
+      void checkProving(config.provingServiceUrl).then(update("proving"));
     }
     if (config.gatewayUrl) {
-      checkAliveEndpoint(`${config.gatewayUrl}/gateway/is_alive`).then(update("gateway"));
+      void checkAliveEndpoint(`${config.gatewayUrl}/gateway/is_alive`).then(update("gateway"));
     }
     if (config.feederGatewayUrl) {
-      checkAliveEndpoint(`${config.feederGatewayUrl}/feeder_gateway/is_alive`).then(
-        update("feederGateway"),
+      void checkAliveEndpoint(`${config.feederGatewayUrl}/feeder_gateway/is_alive`).then(
+        update("feederGateway")
       );
     }
   }, [provider, config]);

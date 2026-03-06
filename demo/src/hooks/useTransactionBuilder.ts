@@ -4,10 +4,8 @@ import type { PrivateTransfersInterface } from "starknet-sdk";
 import type { AppConfig } from "../config.ts";
 import type { TransactionStatus } from "./useTransactions.ts";
 import type { BuilderOperation } from "../components/TransactionBuilder.tsx";
-import {
-  ERC20_RESOURCE_BOUNDS,
-  POOL_RESOURCE_BOUNDS,
-} from "../starknet.ts";
+import { ERC20_RESOURCE_BOUNDS, POOL_RESOURCE_BOUNDS } from "../starknet.ts";
+import { toRawAmount } from "../format.ts";
 
 export function useTransactionBuilder(
   provider: RpcProvider | undefined,
@@ -15,7 +13,7 @@ export function useTransactionBuilder(
   activeAddress: string | undefined,
   poolAddress: string,
   config: AppConfig,
-  onSuccess: () => void,
+  onSuccess: () => void
 ) {
   const [status, setStatus] = useState<TransactionStatus>({
     pending: false,
@@ -25,9 +23,7 @@ export function useTransactionBuilder(
 
   const userAccount = useMemo(() => {
     if (!provider || !activeAddress) return undefined;
-    const accountConfig = config.accounts.find(
-      (account) => account.address === activeAddress,
-    );
+    const accountConfig = config.accounts.find((account) => account.address === activeAddress);
     if (!accountConfig) return undefined;
     return new Account({
       provider,
@@ -43,68 +39,95 @@ export function useTransactionBuilder(
       console.log(`[${action}] starting with ${operations.length} operations...`);
       setStatus({ pending: true, lastTxHash: null, lastError: null });
 
-      (async () => {
+      void (async () => {
         try {
           if (!userAccount || !transfers || !provider || !activeAddress)
             throw new Error("Not ready");
 
-          // Approve pool for total deposit amount
-          const totalDepositAmount = operations
-            .filter((op) => op.operationType === "deposit")
-            .reduce((sum, op) => sum + BigInt(op.amount), 0n);
+          const decimalsByToken = new Map(config.tokens.map((t) => [t.address, t.decimals]));
+          function scaleOp(token: string, humanAmount: string): bigint {
+            return toRawAmount(humanAmount, decimalsByToken.get(token) ?? 0);
+          }
 
-          if (totalDepositAmount > 0n) {
+          // Approve pool for deposit amounts, grouped by token
+          const depositsByToken = new Map<string, bigint>();
+          for (const op of operations) {
+            if (op.operationType === "deposit" && op.token) {
+              const current = depositsByToken.get(op.token) ?? 0n;
+              depositsByToken.set(op.token, current + scaleOp(op.token, op.amount));
+            }
+          }
+          for (const [token, totalAmount] of depositsByToken) {
             const approveTx = await userAccount.execute(
               {
-                contractAddress: config.tokenAddress,
+                contractAddress: token,
                 entrypoint: "approve",
-                calldata: [poolAddress, totalDepositAmount.toString(), "0"],
+                calldata: [poolAddress, totalAmount.toString(), "0"],
               },
-              { resourceBounds: ERC20_RESOURCE_BOUNDS },
+              { resourceBounds: ERC20_RESOURCE_BOUNDS }
             );
-            console.log(`[${action}] approve tx: ${approveTx.transaction_hash}`);
+            console.log(`[${action}] approve ${token} tx: ${approveTx.transaction_hash}`);
             await provider.waitForTransaction(approveTx.transaction_hash);
           }
 
-          const surplusOperation = operations.find(
-            (op) => op.operationType === "surplus",
-          );
+          const surplusOperation = operations.find((op) => op.operationType === "surplus");
 
-          const builder = transfers.build({
-            autoRegister: true,
-            autoSetup: true,
-            autoDiscover: { notes: "refresh", channels: "refresh" },
-            autoSelectNotes: "naive",
-          }).surplusTo(
-            surplusOperation?.recipient ?? activeAddress,
-            surplusOperation?.withdrawSurplus,
-          );
+          const builder = transfers
+            .build({
+              autoRegister: true,
+              autoSetup: true,
+              autoDiscover: { notes: "refresh", channels: "refresh" },
+              autoSelectNotes: "naive",
+            })
+            .surplusTo(
+              surplusOperation?.recipient ?? activeAddress,
+              surplusOperation?.withdrawSurplus
+            );
 
-          const invokeOperation = operations.find(
-            (op) => op.operationType === "invoke",
-          );
+          const invokeOperation = operations.find((op) => op.operationType === "invoke");
           if (invokeOperation) {
-            builder.invoke({
+            builder.invoke(() => ({
               contractAddress: invokeOperation.contractAddress!,
               calldata: invokeOperation.calldata
                 ? invokeOperation.calldata.split(",").map((segment) => segment.trim())
                 : [],
+            }));
+          }
+
+          // Group token ops by token address
+          const operationsByToken = new Map<string, BuilderOperation[]>();
+          for (const op of operations) {
+            if (op.operationType === "invoke" || op.operationType === "surplus") continue;
+            const tokenAddress = op.token;
+            if (!tokenAddress) continue;
+            const group = operationsByToken.get(tokenAddress) ?? [];
+            group.push(op);
+            operationsByToken.set(tokenAddress, group);
+          }
+
+          let chain = builder;
+          for (const [tokenAddress, tokenOps] of operationsByToken) {
+            chain = chain.with(tokenAddress, (tokenBuilder) => {
+              for (const op of tokenOps) {
+                const rawAmount = scaleOp(tokenAddress, op.amount);
+                if (op.operationType === "deposit")
+                  tokenBuilder.deposit({
+                    amount: rawAmount,
+                    recipient: op.recipient || undefined,
+                  });
+                if (op.operationType === "transfer")
+                  tokenBuilder.transfer({ recipient: op.recipient!, amount: rawAmount });
+                if (op.operationType === "withdraw")
+                  tokenBuilder.withdraw({
+                    amount: rawAmount,
+                    recipient: op.recipient || activeAddress,
+                  });
+              }
             });
           }
 
-          const provingBlockId = await provider.getBlockNumber() - 10;
-          const { callAndProof } = await builder
-            .with(config.tokenAddress, (tokenBuilder) => {
-              for (const op of operations) {
-                if (op.operationType === "deposit")
-                  tokenBuilder.deposit({ amount: BigInt(op.amount), recipient: op.recipient || undefined });
-                if (op.operationType === "transfer")
-                  tokenBuilder.transfer({ recipient: op.recipient!, amount: BigInt(op.amount) });
-                if (op.operationType === "withdraw")
-                  tokenBuilder.withdraw({ amount: BigInt(op.amount), recipient: op.recipient || activeAddress });
-              }
-            })
-            .execute({ provingBlockId });
+          const provingBlockId = (await provider.getBlockNumber()) - 10;
+          const { callAndProof } = await chain.execute({ provingBlockId });
           console.log(`[${action}] callAndProof built, submitting pool tx...`);
 
           const executeTx = await userAccount.execute(callAndProof.call, {
@@ -132,7 +155,7 @@ export function useTransactionBuilder(
         }
       })();
     },
-    [userAccount, transfers, provider, activeAddress, config, poolAddress, onSuccess],
+    [userAccount, transfers, provider, activeAddress, poolAddress, onSuccess]
   );
 
   return { status, executeBatch };

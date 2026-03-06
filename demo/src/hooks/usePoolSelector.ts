@@ -24,10 +24,7 @@ function persistActiveAddress(address: string): void {
   localStorage.setItem(ACTIVE_POOL_STORAGE_KEY, address);
 }
 
-async function fetchPoolAddresses(
-  provider: RpcProvider,
-  poolClassHash: string,
-): Promise<string[]> {
+async function fetchPoolAddresses(provider: RpcProvider, poolClassHash: string): Promise<string[]> {
   const addresses: string[] = [];
   let continuationToken: string | undefined;
   const normalizedClassHash = num.toHex(poolClassHash);
@@ -54,10 +51,7 @@ async function fetchPoolAddresses(
   return addresses;
 }
 
-function buildPoolList(
-  eventAddresses: string[],
-  defaultPoolAddress: string,
-): PoolEntry[] {
+function buildPoolList(eventAddresses: string[], defaultPoolAddress: string): PoolEntry[] {
   const defaultEntry: PoolEntry = { address: defaultPoolAddress, isDefault: true };
 
   // Most recent first (events come chronologically, reverse for recency)
@@ -81,15 +75,13 @@ function buildPoolList(
 export function usePoolSelector(
   provider: RpcProvider | undefined,
   defaultPoolAddress: string,
-  poolClassHash: string,
+  poolClassHash: string
 ) {
   const defaultEntry: PoolEntry = { address: defaultPoolAddress, isDefault: true };
   const storedAddress = loadStoredAddress();
 
   // Active address resolves immediately: localStorage value or default — no waiting for fetch
-  const [activeAddress, setActiveAddress] = useState<string>(
-    storedAddress ?? defaultPoolAddress,
-  );
+  const [activeAddress, setActiveAddress] = useState<string>(storedAddress ?? defaultPoolAddress);
   const [pools, setPools] = useState<PoolEntry[]>(() => {
     if (storedAddress && storedAddress !== defaultPoolAddress) {
       return [{ address: storedAddress, isDefault: false }, defaultEntry];
@@ -113,11 +105,9 @@ export function usePoolSelector(
         if (cancelled) return;
         const fetched = buildPoolList(addresses, defaultPoolAddress);
 
-        const fetchedNormalized = new Set(
-          fetched.map((pool) => pool.address.toLowerCase()),
-        );
+        const fetchedNormalized = new Set(fetched.map((pool) => pool.address.toLowerCase()));
         const pendingOptimistic = optimisticEntries.current.filter(
-          (entry) => !fetchedNormalized.has(entry.address.toLowerCase()),
+          (entry) => !fetchedNormalized.has(entry.address.toLowerCase())
         );
 
         setPools([...pendingOptimistic, ...fetched]);
@@ -135,8 +125,10 @@ export function usePoolSelector(
     };
   }, [provider, poolClassHash, defaultPoolAddress]);
 
-  const activePool = pools.find((pool) => pool.address === activeAddress)
-    ?? { address: activeAddress, isDefault: activeAddress === defaultPoolAddress };
+  const activePool = pools.find((pool) => pool.address === activeAddress) ?? {
+    address: activeAddress,
+    isDefault: activeAddress === defaultPoolAddress,
+  };
 
   const selectPool = useCallback((address: string) => {
     setActiveAddress(address);

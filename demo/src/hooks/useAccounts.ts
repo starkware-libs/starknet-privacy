@@ -23,7 +23,7 @@ export type UseAccountsResult = {
 
 export function useAccounts(initialAccounts: AccountConfig[]): UseAccountsResult {
   const [activeIndex, setActiveIndexState] = useState(() =>
-    loadSavedIndex(initialAccounts.length - 1),
+    loadSavedIndex(initialAccounts.length - 1)
   );
 
   const setActiveIndex = useCallback((index: number) => {

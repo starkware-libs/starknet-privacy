@@ -1,6 +1,11 @@
 import { useState, useCallback, useEffect } from "react";
 import type { RpcProvider } from "starknet";
-import { SetupRequirement, type Note, type Channel, type PrivateTransfersInterface } from "starknet-sdk";
+import {
+  SetupRequirement,
+  type Note,
+  type Channel,
+  type PrivateTransfersInterface,
+} from "starknet-sdk";
 // Direct import avoids pulling in Node-only modules from the testing barrel
 // @ts-expect-error — deep import into dist, not part of the declared exports
 import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
@@ -11,7 +16,9 @@ export type NoteDisplay = {
   id: string;
   rawId: bigint;
   amount: bigint;
+  decimals: number;
   token: string;
+  tokenName: string;
   sender: string;
   senderName: string | null;
   channelKey: string;
@@ -25,22 +32,32 @@ export type ChannelDisplay = {
   publicKey: string;
   channelKey: string;
   noteNonce: number;
-  tokens: Array<{ tokenAddress: string }>;
+  tokenAddress: string;
+  tokenName: string;
 };
 
 export type ChannelGroup = {
+  groupKey: string;
   channelKey: string;
   sender: string;
   senderName: string | null;
   token: string;
+  tokenName: string;
   notes: NoteDisplay[];
+};
+
+export type TokenBalance = {
+  name: string;
+  address: string;
+  decimals: number;
+  transparent: bigint;
+  private: bigint;
 };
 
 export type PrivateState = {
   isRegistered: boolean | null;
-  tokenBalance: bigint;
+  tokenBalances: TokenBalance[];
   feeTokenBalance: bigint;
-  privateBalance: bigint;
   notes: NoteDisplay[];
   channelGroups: ChannelGroup[];
   channels: ChannelDisplay[];
@@ -48,9 +65,8 @@ export type PrivateState = {
 
 const EMPTY_STATE: PrivateState = {
   isRegistered: null,
-  tokenBalance: 0n,
+  tokenBalances: [],
   feeTokenBalance: 0n,
-  privateBalance: 0n,
   notes: [],
   channelGroups: [],
   channels: [],
@@ -78,7 +94,7 @@ export function usePrivateState(
   account: AccountConfig | undefined,
   allAccounts: AccountConfig[],
   poolAddress: string,
-  config: AppConfig,
+  config: AppConfig
 ) {
   const [state, setState] = useState<PrivateState>(EMPTY_STATE);
   const [loading, setLoading] = useState(false);
@@ -97,100 +113,142 @@ export function usePrivateState(
 
     try {
       const indexer = new IndexerDiscoveryProvider(config.indexerUrl, poolAddress);
-      const [tokenBalance, feeTokenBalance, { notes: notesMap }, channelsResult, requirement] =
-        await Promise.all([
-          getErc20Balance(provider, config.tokenAddress, account.address),
-          getErc20Balance(provider, config.feeTokenAddress, account.address),
-          transfers.discoverNotes({ tokens: [BigInt(config.tokenAddress)] }),
-          indexer.discoverChannels(
-            BigInt(account.address),
-            BigInt(account.viewingKey),
-            "all",
-          ),
-          indexer.discoverRequirement(
-            BigInt(account.address),
-            BigInt(account.viewingKey),
-            BigInt(account.address),
-            BigInt(config.tokenAddress),
-          ),
-        ]);
-      const isRegistered = requirement !== SetupRequirement.Register;
 
-      const tokenNotes = notesMap.get(BigInt(config.tokenAddress)) ?? [];
-      const privateBalance = tokenNotes.reduce(
-        (sum: bigint, note: Note) => sum + note.amount,
-        0n,
+      const allTokenAddresses = config.tokens.map((t) => BigInt(t.address));
+      const tokenNameByBigInt = new Map(config.tokens.map((t) => [BigInt(t.address), t.name]));
+      const tokenDecimalsByBigInt = new Map(
+        config.tokens.map((t) => [BigInt(t.address), t.decimals])
       );
+
+      const [
+        transparentBalances,
+        feeTokenBalance,
+        { notes: notesMap },
+        channelsResult,
+        requirement,
+      ] = await Promise.all([
+        Promise.all(
+          config.tokens.map((t) => getErc20Balance(provider, t.address, account.address))
+        ),
+        getErc20Balance(provider, config.feeTokenAddress, account.address),
+        transfers.discoverNotes({ tokens: allTokenAddresses }),
+        indexer.discoverChannels(BigInt(account.address), BigInt(account.viewingKey), "all"),
+        indexer.discoverRequirement(
+          BigInt(account.address),
+          BigInt(account.viewingKey),
+          BigInt(account.address),
+          allTokenAddresses[0] ?? 0n
+        ),
+      ]);
+      const isRegistered = requirement !== SetupRequirement.Register;
 
       const nameByAddress = new Map<bigint, string>();
       for (const acc of allAccounts) {
         const accAddress = BigInt(acc.address);
-        nameByAddress.set(accAddress, accAddress === BigInt(account.address) ? "self" : acc.name.toLowerCase());
+        nameByAddress.set(
+          accAddress,
+          accAddress === BigInt(account.address) ? "self" : acc.name.toLowerCase()
+        );
       }
 
-      const tokenAddressBigInt = BigInt(config.tokenAddress);
-      const notes: NoteDisplay[] = tokenNotes.map((note: Note) => {
-        const witness = readWitness(note.witness);
-        const senderBigInt = toBigInt(note.sender);
-        const noteIdBigInt = toBigInt(note.id);
-        return {
-          id: formatBigInt(noteIdBigInt),
-          rawId: noteIdBigInt,
-          amount: note.amount,
-          token: truncateAddress(tokenAddressBigInt.toString(16)),
-          sender: truncateAddress(senderBigInt.toString(16)),
-          senderName: nameByAddress.get(senderBigInt) ?? null,
-          channelKey: formatBigInt(witness.channelKey),
-          nonce: witness.nonce,
-          open: note.open ?? false,
-        };
-      });
+      // Build notes from all tokens, deduplicating by note ID
+      const allNotes: NoteDisplay[] = [];
+      const seenNoteIds = new Set<bigint>();
+      const privateBalanceByToken = new Map<string, bigint>();
+
+      for (const [tokenBigInt, tokenNotes] of notesMap) {
+        const tokenHex = `0x${tokenBigInt.toString(16)}`;
+        const tokenName =
+          tokenNameByBigInt.get(tokenBigInt) ?? truncateAddress(tokenBigInt.toString(16));
+        const tokenDecimals = tokenDecimalsByBigInt.get(tokenBigInt) ?? 0;
+
+        let privateBalance = 0n;
+        for (const note of tokenNotes as Note[]) {
+          const noteIdBigInt = toBigInt(note.id);
+          if (seenNoteIds.has(noteIdBigInt)) continue;
+          seenNoteIds.add(noteIdBigInt);
+
+          privateBalance += note.amount;
+          const witness = readWitness(note.witness);
+          const senderBigInt = toBigInt(note.sender);
+          allNotes.push({
+            id: formatBigInt(noteIdBigInt),
+            rawId: noteIdBigInt,
+            amount: note.amount,
+            decimals: tokenDecimals,
+            token: truncateAddress(tokenBigInt.toString(16)),
+            tokenName,
+            sender: truncateAddress(senderBigInt.toString(16)),
+            senderName: nameByAddress.get(senderBigInt) ?? null,
+            channelKey: formatBigInt(witness.channelKey),
+            nonce: witness.nonce,
+            open: note.open ?? false,
+          });
+        }
+        privateBalanceByToken.set(tokenHex.toLowerCase(), privateBalance);
+      }
+
+      // Build per-token balance rows
+      const tokenBalances: TokenBalance[] = config.tokens.map((t, index) => ({
+        name: t.name,
+        address: t.address,
+        decimals: t.decimals,
+        transparent: transparentBalances[index],
+        private: privateBalanceByToken.get(t.address.toLowerCase()) ?? 0n,
+      }));
+
       const channels: ChannelDisplay[] = [];
       for (const [recipient, channel] of channelsResult.channels) {
         const internal = readChannel(channel);
-        const tokens: ChannelDisplay["tokens"] = [];
-        let noteNonce = 0;
         for (const [tokenAddress, tokenChannel] of internal.tokens) {
-          tokens.push({
+          channels.push({
+            recipient: truncateAddress(recipient.toString(16)),
+            recipientName: nameByAddress.get(recipient) ?? null,
+            publicKey: formatBigInt(internal.publicKey),
+            channelKey: internal.key ? formatBigInt(internal.key) : "N/A",
+            noteNonce: tokenChannel.noteNonce,
             tokenAddress: truncateAddress(tokenAddress.toString(16)),
+            tokenName:
+              tokenNameByBigInt.get(tokenAddress) ?? truncateAddress(tokenAddress.toString(16)),
           });
-          noteNonce = Math.max(noteNonce, tokenChannel.noteNonce);
         }
-        channels.push({
-          recipient: truncateAddress(recipient.toString(16)),
-          recipientName: nameByAddress.get(recipient) ?? null,
-          publicKey: formatBigInt(internal.publicKey),
-          channelKey: internal.key ? formatBigInt(internal.key) : "N/A",
-          noteNonce,
-          tokens,
-        });
       }
 
       const groupsByKey = new Map<string, NoteDisplay[]>();
-      for (const note of notes) {
-        const existing = groupsByKey.get(note.channelKey);
+      for (const note of allNotes) {
+        const groupKey = `${note.sender}::${note.token}`;
+        const existing = groupsByKey.get(groupKey);
         if (existing) {
           existing.push(note);
         } else {
-          groupsByKey.set(note.channelKey, [note]);
+          groupsByKey.set(groupKey, [note]);
         }
       }
 
       const channelGroups: ChannelGroup[] = [];
-      for (const [channelKey, groupNotes] of groupsByKey) {
+      for (const [groupKey, groupNotes] of groupsByKey) {
         groupNotes.sort((a, b) => b.nonce - a.nonce);
         const firstNote = groupNotes[0];
         channelGroups.push({
-          channelKey,
+          groupKey,
+          channelKey: firstNote.channelKey,
           sender: firstNote.sender,
           senderName: firstNote.senderName,
           token: firstNote.token,
+          tokenName: firstNote.tokenName,
           notes: groupNotes,
         });
       }
       channelGroups.sort((a, b) => b.notes[0].nonce - a.notes[0].nonce);
 
-      setState({ isRegistered, tokenBalance, feeTokenBalance, privateBalance, notes, channelGroups, channels });
+      setState({
+        isRegistered,
+        tokenBalances,
+        feeTokenBalance,
+        notes: allNotes,
+        channelGroups,
+        channels,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

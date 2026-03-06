@@ -77,13 +77,11 @@ export function PoolSelector({
 
       <span className="pool-selector-label">Address:</span>
       <div className="pool-selector-value">
-        <select
-          value={activePool.address}
-          onChange={(event) => onSelect(event.target.value)}
-        >
+        <select value={activePool.address} onChange={(event) => onSelect(event.target.value)}>
           {pools.map((pool) => (
             <option key={pool.address} value={pool.address}>
-              {truncateHash(pool.address)}{pool.isDefault ? " (default)" : pool.isNewest ? " (newest)" : ""}
+              {truncateHash(pool.address)}
+              {pool.isDefault ? " (default)" : pool.isNewest ? " (newest)" : ""}
             </option>
           ))}
         </select>
@@ -94,7 +92,7 @@ export function PoolSelector({
           type="button"
           className="copy-button"
           onClick={() => {
-            navigator.clipboard.writeText(activePool.address);
+            void navigator.clipboard.writeText(activePool.address);
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}

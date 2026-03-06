@@ -17,7 +17,8 @@ export function AccountSelector({ accounts, activeIndex, onSelect }: Props) {
             className={index === activeIndex ? "account-tab active" : "account-tab"}
             onClick={() => onSelect(index)}
           >
-            {account.name}<span className="account-tab-address">({account.address.slice(0, 10)}...)</span>
+            {account.name}
+            <span className="account-tab-address">({account.address.slice(0, 10)}...)</span>
           </button>
         ))}
       </div>

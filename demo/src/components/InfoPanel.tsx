@@ -1,8 +1,9 @@
 import { useState } from "react";
 import type { ChannelGroup, NoteDisplay } from "../hooks/usePrivateState.ts";
 import type { PrivateState } from "../hooks/usePrivateState.ts";
+import { formatTokenAmount } from "../format.ts";
 
-const NOTES_PER_PAGE = 10;
+const NOTES_PER_PAGE = 5;
 
 type Props = {
   state: PrivateState;
@@ -11,10 +12,6 @@ type Props = {
   onRefresh: () => void;
 };
 
-function formatAmount(value: bigint): string {
-  return value.toLocaleString("en-US");
-}
-
 function ChannelCard({ group }: { group: ChannelGroup }) {
   const [page, setPage] = useState(0);
 
@@ -22,7 +19,7 @@ function ChannelCard({ group }: { group: ChannelGroup }) {
   const clampedPage = Math.min(page, totalPages - 1);
   const visibleNotes = group.notes.slice(
     clampedPage * NOTES_PER_PAGE,
-    (clampedPage + 1) * NOTES_PER_PAGE,
+    (clampedPage + 1) * NOTES_PER_PAGE
   );
 
   return (
@@ -32,16 +29,22 @@ function ChannelCard({ group }: { group: ChannelGroup }) {
         <span className="channel-card-value">{group.sender}</span>
         {group.senderName && <span className="chip">{group.senderName}</span>}
         <span className="channel-card-sep">|</span>
-        <span className="channel-card-label">Token</span>{" "}
-        <span className="channel-card-value">{group.token}</span>
-        <span className="channel-card-sep">|</span>
         <span className="channel-card-label">Channel Key</span>{" "}
         <span className="channel-card-value">{group.channelKey}</span>
+        <span className="channel-card-sep">|</span>
+        <span className="channel-card-label">Token</span>{" "}
+        <span className="channel-card-value">{group.token}</span>
+        <span className="chip">{group.tokenName.toLowerCase()}</span>
         <span className="channel-card-sep">|</span>
         <span className="channel-card-label">Unspent Notes</span>{" "}
         <span className="channel-card-value">{group.notes.length}</span>
       </div>
       <table>
+        <colgroup>
+          <col className="col-note-id" />
+          <col className="col-amount" />
+          <col className="col-index" />
+        </colgroup>
         <thead>
           <tr>
             <th>Note ID</th>
@@ -52,31 +55,25 @@ function ChannelCard({ group }: { group: ChannelGroup }) {
         <tbody>
           {visibleNotes.map((note: NoteDisplay) => (
             <tr key={note.id}>
-              <td>{note.id}</td>
-              <td>{formatAmount(note.amount)}</td>
               <td>
-                {note.nonce}
+                {note.id}
                 {note.open && <span className="chip">open</span>}
               </td>
+              <td>{formatTokenAmount(note.amount, note.decimals)}</td>
+              <td>{note.nonce}</td>
             </tr>
           ))}
         </tbody>
       </table>
       {totalPages > 1 && (
         <div className="pagination">
-          <button
-            disabled={clampedPage === 0}
-            onClick={() => setPage(clampedPage - 1)}
-          >
+          <button disabled={clampedPage === 0} onClick={() => setPage(clampedPage - 1)}>
             Newer
           </button>
           <span>
             {clampedPage + 1} / {totalPages}
           </span>
-          <button
-            disabled={clampedPage >= totalPages - 1}
-            onClick={() => setPage(clampedPage + 1)}
-          >
+          <button disabled={clampedPage >= totalPages - 1} onClick={() => setPage(clampedPage + 1)}>
             Older
           </button>
         </div>
@@ -110,18 +107,25 @@ export function InfoPanel({ state, loading, error, onRefresh }: Props) {
       <div className="balances">
         <h3>Balances</h3>
         <table>
+          <thead>
+            <tr>
+              <th>Token</th>
+              <th>Transparent</th>
+              <th>Private</th>
+            </tr>
+          </thead>
           <tbody>
+            {state.tokenBalances.map((tb) => (
+              <tr key={tb.address}>
+                <td>{tb.name}</td>
+                <td>{formatTokenAmount(tb.transparent, tb.decimals)}</td>
+                <td>{formatTokenAmount(tb.private, tb.decimals)}</td>
+              </tr>
+            ))}
             <tr>
               <td>Fee Token</td>
-              <td>{formatAmount(state.feeTokenBalance)}</td>
-            </tr>
-            <tr>
-              <td>Token (transparent)</td>
-              <td>{formatAmount(state.tokenBalance)}</td>
-            </tr>
-            <tr>
-              <td>Token (private)</td>
-              <td>{formatAmount(state.privateBalance)}</td>
+              <td>{formatTokenAmount(state.feeTokenBalance, 18)}</td>
+              <td>&mdash;</td>
             </tr>
           </tbody>
         </table>
@@ -132,9 +136,7 @@ export function InfoPanel({ state, loading, error, onRefresh }: Props) {
         {state.channelGroups.length === 0 ? (
           <p className="empty">No notes discovered</p>
         ) : (
-          state.channelGroups.map((group) => (
-            <ChannelCard key={group.channelKey} group={group} />
-          ))
+          state.channelGroups.map((group) => <ChannelCard key={group.groupKey} group={group} />)
         )}
       </div>
 
@@ -147,8 +149,8 @@ export function InfoPanel({ state, loading, error, onRefresh }: Props) {
             <thead>
               <tr>
                 <th>Recipient</th>
-                <th>Token</th>
                 <th>Channel Key</th>
+                <th>Token</th>
                 <th>Next Note Index</th>
               </tr>
             </thead>
@@ -159,14 +161,11 @@ export function InfoPanel({ state, loading, error, onRefresh }: Props) {
                     {channel.recipient}
                     {channel.recipientName && <span className="chip">{channel.recipientName}</span>}
                   </td>
-                  <td>
-                    {channel.tokens.map((tokenEntry, tokenIndex) => (
-                      <div key={tokenIndex}>
-                        {tokenEntry.tokenAddress}
-                      </div>
-                    ))}
-                  </td>
                   <td>{channel.channelKey}</td>
+                  <td>
+                    {channel.tokenAddress}
+                    <span className="chip">{channel.tokenName.toLowerCase()}</span>
+                  </td>
                   <td>{channel.noteNonce}</td>
                 </tr>
               ))}
