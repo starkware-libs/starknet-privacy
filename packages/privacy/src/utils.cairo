@@ -1,4 +1,6 @@
-use constants::{ESTIMATION_BASE_TX_VERSION, TX_V3, VIRTUAL_SNOS, VIRTUAL_SNOS0};
+use constants::{ESTIMATION_BASE_TX_VERSION, TX_V3};
+#[cfg(test)]
+use constants::{VIRTUAL_SNOS, VIRTUAL_SNOS0};
 use core::ec::stark_curve::{GEN_X, GEN_Y};
 use core::ec::{EcPoint, EcPointTrait};
 use core::never;
