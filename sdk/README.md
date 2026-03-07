@@ -396,7 +396,7 @@ sequenceDiagram
 
 ## Starknet Devnet
 
-SDK tests use a [custom fork of starknet-devnet](https://github.com/m-kus/starknet-devnet) that includes a blockifier version supporting the new transaction version with proofs. Install from the `APOLLO-PRE-PROOF-DEMO-11` release:
+SDK tests use a [custom fork of starknet-devnet](https://github.com/m-kus/starknet-devnet) that includes a blockifier version supporting the new transaction version with proofs. Install from the `APOLLO-PRE-PROOF-DEMO-19` release:
 
 If you have a previous asdf installation of starknet-devnet, remove it first:
 
@@ -408,13 +408,13 @@ Then install from the release:
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-11/starknet-devnet-aarch64-apple-darwin.tar.gz -o /tmp/starknet-devnet.tar.gz
+curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-19/starknet-devnet-aarch64-apple-darwin.tar.gz -o /tmp/starknet-devnet.tar.gz
 sudo tar -xzf /tmp/starknet-devnet.tar.gz -C /usr/local/bin
 sudo chmod +x /usr/local/bin/starknet-devnet
 rm /tmp/starknet-devnet.tar.gz
 
 # Linux (x86_64)
-curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-11/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz -o /tmp/starknet-devnet.tar.gz
+curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-19/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz -o /tmp/starknet-devnet.tar.gz
 sudo tar -xzf /tmp/starknet-devnet.tar.gz -C /usr/local/bin
 sudo chmod +x /usr/local/bin/starknet-devnet
 rm /tmp/starknet-devnet.tar.gz

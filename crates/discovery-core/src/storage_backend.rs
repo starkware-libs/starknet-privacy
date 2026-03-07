@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 
 use async_trait::async_trait;
-use starknet_core::types::BlockId;
+use starknet_core::types::{BlockId, StorageResult};
 use starknet_types_core::felt::Felt;
 use thiserror::Error;
 
@@ -39,6 +39,23 @@ pub trait RawStorageAccess: Send + Sync {
     ///
     /// The returned `Vec` must have the same length as `slots`.
     async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError>;
+
+    /// Reads multiple storage slots with their last-update block numbers.
+    ///
+    /// Default implementation delegates to `read_slots` with last_update_block=0.
+    async fn read_slots_with_block(
+        &self,
+        slots: Vec<Felt>,
+    ) -> Result<Vec<StorageResult>, StorageError> {
+        let values = self.read_slots(slots).await?;
+        Ok(values
+            .into_iter()
+            .map(|value| StorageResult {
+                value,
+                last_update_block: 0,
+            })
+            .collect())
+    }
 }
 
 /// Factory for creating storage snapshots bound to a specific block.
@@ -68,24 +85,35 @@ pub trait StorageSnapshot: IViews {
 #[derive(Clone)]
 pub struct MockBackend {
     slots: HashMap<Felt, Felt>,
+    last_update_blocks: HashMap<Felt, u64>,
 }
 
 impl MockBackend {
     /// Creates a new mock backend with the given slot->value mapping.
     pub fn new(slots: HashMap<Felt, Felt>) -> Self {
-        Self { slots }
+        Self {
+            slots,
+            last_update_blocks: HashMap::new(),
+        }
     }
 
     /// Creates an empty mock backend.
     pub fn empty() -> Self {
         Self {
             slots: HashMap::new(),
+            last_update_blocks: HashMap::new(),
         }
     }
 
     /// Inserts or replaces a slot->value pair into the mock storage.
     pub fn insert(&mut self, slot: Felt, value: Felt) {
         self.slots.insert(slot, value);
+    }
+
+    /// Inserts a slot->value pair with an associated last-update block number.
+    pub fn insert_with_block(&mut self, slot: Felt, value: Felt, last_update_block: u64) {
+        self.slots.insert(slot, value);
+        self.last_update_blocks.insert(slot, last_update_block);
     }
 }
 
@@ -99,6 +127,19 @@ impl RawStorageAccess for MockBackend {
         Ok(slots
             .iter()
             .map(|s| self.slots.get(s).copied().unwrap_or(Felt::ZERO))
+            .collect())
+    }
+
+    async fn read_slots_with_block(
+        &self,
+        slots: Vec<Felt>,
+    ) -> Result<Vec<StorageResult>, StorageError> {
+        Ok(slots
+            .iter()
+            .map(|s| StorageResult {
+                value: self.slots.get(s).copied().unwrap_or(Felt::ZERO),
+                last_update_block: self.last_update_blocks.get(s).copied().unwrap_or(0),
+            })
             .collect())
     }
 }
@@ -158,5 +199,43 @@ mod tests {
             backend.read_slot(Felt::ONE).await.unwrap(),
             Felt::from(100u64)
         );
+    }
+
+    #[tokio::test]
+    async fn test_read_slots_with_block_default() {
+        let mut slots = HashMap::new();
+        slots.insert(Felt::ONE, Felt::from(42u64));
+        let backend = MockBackend::new(slots);
+
+        let results = backend
+            .read_slots_with_block(vec![Felt::ONE, Felt::TWO])
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].value, Felt::from(42u64));
+        assert_eq!(results[0].last_update_block, 0);
+        assert_eq!(results[1].value, Felt::ZERO);
+        assert_eq!(results[1].last_update_block, 0);
+    }
+
+    #[tokio::test]
+    async fn test_read_slots_with_block_with_data() {
+        let mut backend = MockBackend::empty();
+        backend.insert_with_block(Felt::ONE, Felt::from(42u64), 100);
+        backend.insert_with_block(Felt::TWO, Felt::from(99u64), 200);
+
+        let results = backend
+            .read_slots_with_block(vec![Felt::ONE, Felt::TWO, Felt::THREE])
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 3);
+        assert_eq!(results[0].value, Felt::from(42u64));
+        assert_eq!(results[0].last_update_block, 100);
+        assert_eq!(results[1].value, Felt::from(99u64));
+        assert_eq!(results[1].last_update_block, 200);
+        assert_eq!(results[2].value, Felt::ZERO);
+        assert_eq!(results[2].last_update_block, 0);
     }
 }
