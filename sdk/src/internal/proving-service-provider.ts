@@ -58,7 +58,8 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
 
     const result = await this.provingService.proveTransaction(blockId, invocation);
 
-    // Server actions for execute_actions: from L2-to-L1 message payload (from_address = pool)
+    // L2-to-L1 message payload from the pool: [class_hash, ...serialized_actions].
+    // The consumer strips the class_hash prefix before calling apply_actions.
     // TODO: Generalize this to support other projects.
     const poolAddressHex = toHex(invocation.sender_address);
     const poolMessage = result.l2_to_l1_messages?.find(

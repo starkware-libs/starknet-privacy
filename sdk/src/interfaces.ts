@@ -74,7 +74,8 @@ export type NoteId = BigNumberish;
 
 export type Proof = {
   readonly data: string;
-  readonly output: string[]; // array of felts
+  /** L2-to-L1 message payload: [class_hash, ...serialized_server_actions]. */
+  readonly output: string[];
   /** Proof facts from the proving service; must be included in the tx when submitting to the chain. */
   readonly proofFacts: string[];
 };

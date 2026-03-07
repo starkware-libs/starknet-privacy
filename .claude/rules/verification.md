@@ -1,5 +1,9 @@
 **MANDATORY:** Before claiming work is complete, fixed, or passing, invoke `/verification-before-completion`. Run fresh verification commands and confirm output before making any success claims. Evidence before assertions, always.
 
+**Cairo verification checklist:**
+- If `snforge` is not in PATH, read `.tool-versions` for the version and use `~/.asdf/installs/starknet-foundry/<version>/bin/snforge`
+- `snforge test` - all tests pass
+
 **Rust verification checklist:**
 - `cargo fmt --check` - code formatting
 - `cargo clippy` - lints (0 warnings required), including integration tests, for all targets
