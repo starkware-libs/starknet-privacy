@@ -9,7 +9,7 @@ use discovery_core::storage_backend::{
 };
 use starknet_core::types::{
     requests::GetStorageAtRequest, BlockId, BlockTag, EmittedEvent, EventFilter, Felt,
-    MaybePreConfirmedBlockWithTxHashes, StarknetError,
+    MaybePreConfirmedBlockWithTxHashes, StarknetError, StorageResponseFlag, StorageResult,
 };
 use starknet_providers::{
     jsonrpc::{HttpTransport, JsonRpcClient},
@@ -129,6 +129,7 @@ impl RpcSnapshot {
                     contract_address,
                     key: slot,
                     block_id: self.block_id,
+                    response_flags: None,
                 })
             })
             .collect();
@@ -150,6 +151,48 @@ impl RpcSnapshot {
             .into_iter()
             .map(|resp| match resp {
                 ProviderResponseData::GetStorageAt(value) => Ok(value),
+                _ => Err(RpcBackendError::UnexpectedResponseType.into()),
+            })
+            .collect()
+    }
+
+    /// Executes a JSON-RPC batch request with `IncludeLastUpdateBlock` flag.
+    async fn batch_read_with_block(
+        &self,
+        slots: &[Felt],
+    ) -> Result<Vec<StorageResult>, StorageError> {
+        let contract_address = self.contract_address;
+        let flags = vec![StorageResponseFlag::IncludeLastUpdateBlock];
+
+        let requests: Vec<ProviderRequestData> = slots
+            .iter()
+            .map(|&slot| {
+                ProviderRequestData::GetStorageAt(GetStorageAtRequest {
+                    contract_address,
+                    key: slot,
+                    block_id: self.block_id,
+                    response_flags: Some(flags.clone()),
+                })
+            })
+            .collect();
+
+        let responses = self
+            .backend
+            .inner
+            .provider
+            .batch_requests(&requests)
+            .await
+            .map_err(|e| match &e {
+                ProviderError::StarknetError(StarknetError::ContractNotFound) => {
+                    StorageError::ContractNotFound
+                }
+                _ => StorageError::from(RpcBackendError::Request(e.to_string())),
+            })?;
+
+        responses
+            .into_iter()
+            .map(|resp| match resp {
+                ProviderResponseData::GetStorageAtWithFlags(result) => Ok(result),
                 _ => Err(RpcBackendError::UnexpectedResponseType.into()),
             })
             .collect()
@@ -184,6 +227,22 @@ impl RawStorageAccess for RpcSnapshot {
         // TODO: consider provessing chunks concurrently
         for chunk in slots.chunks(self.backend.inner.max_batch_size) {
             let chunk_results = self.batch_read(chunk).await?;
+            results.extend(chunk_results);
+        }
+        Ok(results)
+    }
+
+    async fn read_slots_with_block(
+        &self,
+        slots: Vec<Felt>,
+    ) -> Result<Vec<StorageResult>, StorageError> {
+        if slots.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let mut results = Vec::with_capacity(slots.len());
+        for chunk in slots.chunks(self.backend.inner.max_batch_size) {
+            let chunk_results = self.batch_read_with_block(chunk).await?;
             results.extend(chunk_results);
         }
         Ok(results)

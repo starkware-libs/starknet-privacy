@@ -7,6 +7,7 @@ use starknet_types_core::felt::Felt;
 use super::storage_slots;
 use super::types::{EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo};
 use crate::storage_backend::{RawStorageAccess, StorageError};
+use starknet_core::types::StorageResult;
 
 /// Privacy contract view methods.
 #[async_trait]
@@ -107,6 +108,12 @@ pub trait IViews: Send + Sync {
     ///
     /// Returns a `Vec<bool>` matching the input length. `true` = spent.
     async fn nullifier_exists_batch(&self, nullifiers: &[Felt]) -> Result<Vec<bool>, StorageError>;
+
+    /// Batch-reads note values with their last-update block numbers.
+    async fn get_notes_batch_with_block(
+        &self,
+        note_ids: &[Felt],
+    ) -> Result<Vec<StorageResult>, StorageError>;
 }
 
 /// Blanket implementation of `IViews` for any type implementing `RawStorageAccess`.
@@ -252,5 +259,22 @@ impl<T: RawStorageAccess> IViews for T {
             .collect();
         let values = self.read_slots(slots).await?;
         Ok(values.iter().map(|v| *v != Felt::ZERO).collect())
+    }
+
+    #[tracing::instrument(
+        name = "get_notes_batch_with_block",
+        level = "debug",
+        skip(self, note_ids),
+        fields(count = note_ids.len())
+    )]
+    async fn get_notes_batch_with_block(
+        &self,
+        note_ids: &[Felt],
+    ) -> Result<Vec<StorageResult>, StorageError> {
+        let slots: Vec<_> = note_ids
+            .iter()
+            .map(|&nid| storage_slots::notes(nid))
+            .collect();
+        self.read_slots_with_block(slots).await
     }
 }

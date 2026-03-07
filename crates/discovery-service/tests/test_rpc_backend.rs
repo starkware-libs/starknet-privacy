@@ -17,8 +17,9 @@ mod common;
 
 use common::setup_devnet_with_dump;
 use discovery_core::privacy_pool::events::{IEvents, PrivacyPoolEventContent};
+use discovery_core::privacy_pool::storage_slots;
 use discovery_core::privacy_pool::views::IViews;
-use discovery_core::storage_backend::StorageBackend;
+use discovery_core::storage_backend::{RawStorageAccess, StorageBackend};
 use discovery_service::chain_state::ChainState;
 use discovery_service::config::RpcConfig;
 use discovery_service::rpc_backend::RpcBackend;
@@ -145,4 +146,40 @@ async fn test_withdrawal_events_empty_for_non_recipient() {
         .unwrap();
 
     assert!(withdrawals.is_empty());
+}
+
+#[tokio::test]
+async fn test_read_slots_with_block() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+
+    let rpc_config = RpcConfig {
+        url: devnet.rpc_url(),
+        ..Default::default()
+    };
+    let backend = RpcBackend::new(rpc_config).unwrap();
+    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+
+    // Query a slot known to be written during fixture generation (Alice's public key)
+    let alice_pubkey_slot = storage_slots::public_key(metadata.alice_address);
+    // Query a slot that was never written (random address)
+    let unset_slot = storage_slots::public_key(Felt::from_hex("0xdeadbeef").unwrap());
+
+    let results = snapshot
+        .read_slots_with_block(vec![alice_pubkey_slot, unset_slot])
+        .await
+        .unwrap();
+
+    // Written slot: non-zero value and block_number > 0
+    expect![[r#"
+        0x07913e4dbbc06e873598f6e0bb0076449079fbdd951650c7f7a258d1c6b6a82d
+    "#]]
+    .assert_eq(&format!("{:#066x}\n", results[0].value));
+    assert!(
+        results[0].last_update_block > 0,
+        "written slot should have non-zero last_update_block"
+    );
+
+    // Unset slot: zero value and last_update_block == 0
+    assert_eq!(results[1].value, Felt::ZERO);
+    assert_eq!(results[1].last_update_block, 0);
 }
