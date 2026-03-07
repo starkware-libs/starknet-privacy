@@ -106,6 +106,26 @@ pub fn decrypt_note_amount(
     enc_amount.wrapping_sub(pad)
 }
 
+/// Unpacks and decrypts a note amount from its packed storage value.
+/// Returns `(amount, salt)`.
+///
+/// Open notes (salt == 1) store their amount in plaintext; encrypted notes
+/// (salt >= 2) require hash-based decryption.
+pub fn decrypt_packed_amount(
+    packed: Felt,
+    channel_key: &SecretFelt,
+    token: Felt,
+    note_index: u64,
+) -> (u128, u128) {
+    let (salt, enc_amount) = unpack_note_amount(packed);
+    let amount = if salt == OPEN_NOTE_SALT {
+        enc_amount
+    } else {
+        decrypt_note_amount(enc_amount, salt, channel_key, token, note_index)
+    };
+    (amount, salt)
+}
+
 /// Decrypts an outgoing channel's encrypted recipient address.
 ///
 /// `recipient_addr = enc_recipient_addr - hash(ENC_RECIPIENT_ADDR_TAG, sender_addr, private_key, index, 0, salt)`
