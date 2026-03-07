@@ -97,7 +97,7 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
     { "sender_addr": "0x...", "token": "0x..." }
   ],
   "notes": [
-    { "sender_addr": "0x...", "token": "0x...", "index": 1, "note_id": "0x...", "amount": 1000, "salt": 12345 }
+    { "sender_addr": "0x...", "token": "0x...", "index": 1, "note_id": "0x...", "amount": "1000", "salt": "12345" }
   ],
   "cursor": {
     "channel_discovery_complete": false,
@@ -244,14 +244,105 @@ A non-paginated readiness check that reports what on-chain setup exists for a `(
 - `500 INTERNAL_ERROR` — Failed to create RPC snapshot.
 - Standard `DiscoveryError` mapping for storage errors.
 
-## 6.8 History Endpoint (Not Yet Specified)
+## 6.8 History Endpoint
 
-`POST /v1/discovery/history`
+`POST /v1/history`
 
-A planned endpoint for full history retrieval. Unlike the sync endpoints which focus on current unspent notes, this endpoint will provide:
+Retrieves paginated transaction history by scanning backward through note subchannels. Unlike the sync endpoints which discover channels and return current unspent notes, this endpoint operates on already-discovered subchannels and returns full transaction records including deposits, withdrawals, and both spent/unspent notes.
 
-- Full history of all notes (both spent and unspent)
-- Both sent and received notes
-- Historical transaction data for audit/reporting purposes
+**Prerequisites:** The client must first complete incoming and/or outgoing sync to discover channel keys and subchannel metadata. The history cursor is built client-side from those sync results.
 
-**Status:** Not yet specified. This section is a placeholder for future design work.
+**Request:**
+
+```json
+{
+  "contract_address": "0x...",
+  "user_address": "0x...",
+  "max_transactions": 50,
+  "last_known_block": "0x...",
+  "block_ref": "0x...",
+  "cursor": {
+    "subchannels": [
+      {
+        "channel_key": "0x...",
+        "token": "0x...",
+        "channel_kind": "incoming",
+        "counterparty": "0x...",
+        "next_index": 5
+      }
+    ],
+    "begin_block_number": 0,
+    "history_complete": false
+  }
+}
+```
+
+- `contract_address`: The privacy pool contract address.
+- `user_address`: The user's on-chain address (used for withdrawal event filtering).
+- `max_transactions`: Maximum number of transactions to return per page. Capped by server `max_history_transactions` limit.
+- `last_known_block`: Optional. Block hash from last completed sync session. Used for reorg detection on first request.
+- `block_ref`: Optional. Block hash for consistent storage reads across paginated requests. Leave empty on first request.
+- `cursor`: History cursor for pagination.
+  - `subchannels`: List of subchannels to scan. Each contains the `channel_key`, `token`, `channel_kind` (`incoming`, `outgoing`, `self_channel`), `counterparty` address, and `next_index` (next note index to read descending, `null` if exhausted).
+  - `begin_block_number`: Inclusive upper bound for event queries. Set to `0` on first request (server resolves from chain head). On subsequent requests, use the value from the previous response cursor.
+  - `history_complete`: `false` on initial request.
+
+**Response:**
+
+```json
+{
+  "block_ref": "0x...",
+  "transactions": [
+    {
+      "block_number": 100,
+      "transaction_hash": "0x...",
+      "notes": [
+        {
+          "channel_kind": "incoming",
+          "token": "0x...",
+          "note_index": 0,
+          "note_id": "0x...",
+          "counterparty": "0x...",
+          "amount": "1000",
+          "salt": "12345"
+        }
+      ],
+      "deposits": [
+        { "user_address": "0x...", "token": "0x...", "amount": "1000" }
+      ],
+      "withdrawals": [],
+      "open_note_deposits": []
+    }
+  ],
+  "cursor": {
+    "subchannels": [ ... ],
+    "begin_block_number": 50,
+    "history_complete": false
+  }
+}
+```
+
+- `block_ref`: Block hash pinning all storage reads. Pass back as `block_ref` in subsequent requests.
+- `transactions`: Transactions sorted by `block_number` descending. Each contains matched notes, deposits, withdrawals, and open note deposits from the same transaction.
+- `cursor`: Updated cursor for continuation. Pass back in next request.
+
+**Completion:** Check `cursor.history_complete` — `true` when all subchannels are exhausted.
+
+**Cursor lifecycle:**
+
+1. **Build initial cursor:** After completing incoming/outgoing sync, build `HistorySubchannel` entries from discovered channels and subchannels. Set `begin_block_number` to `0` and `history_complete` to `false`.
+2. **First request:** Server resolves `begin_block_number` from chain head. Scans notes backward, fetches block events, groups into transactions.
+3. **Pagination:** Pass back cursor from response. Server continues scanning from where it left off.
+4. **Done:** When `history_complete` is `true`, all history has been retrieved.
+
+**Validation limits:**
+
+- `max_history_subchannels` (default: 256): Maximum number of subchannels in a history cursor.
+- `max_history_transactions` (default: 100): Maximum allowed `max_transactions` value.
+
+**Error responses:**
+
+- `400 INVALID_REQUEST` — Cursor exceeds size limits, or `max_transactions` exceeds server limit.
+- `409 BLOCK_REORGED` — `last_known_block` was reorged out.
+- `503 SERVICE_UNAVAILABLE` — No indexed head available yet.
+- Standard `DiscoveryError` mapping for storage and event errors.

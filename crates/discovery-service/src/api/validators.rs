@@ -4,6 +4,7 @@ use std::collections::HashSet;
 
 use axum::http::StatusCode;
 use discovery_core::discovery::DiscoveryCursor;
+use discovery_core::history::types::HistoryCursor;
 use discovery_core::storage_backend::{StorageError, StorageSnapshot};
 use starknet_core::types::Felt;
 use tracing::warn;
@@ -172,6 +173,25 @@ pub fn validate_recipients(
         limits.max_outgoing_recipients,
         "recipients",
     )
+}
+
+/// Rejects history cursors that exceed size limits.
+pub fn validate_history_cursor(
+    cursor: &HistoryCursor,
+    max_transactions: u32,
+    limits: &ValidationLimits,
+) -> Result<(), (StatusCode, ApiErrorResponse)> {
+    validate_bound(
+        cursor.subchannels.len(),
+        limits.max_history_subchannels,
+        "history subchannels",
+    )?;
+    validate_bound(
+        max_transactions as usize,
+        limits.max_history_transactions,
+        "max_transactions",
+    )?;
+    Ok(())
 }
 
 /// Validates that the viewing key matches the public key registered on-chain for the given address.
@@ -461,6 +481,67 @@ mod tests {
         cursor.channels.insert(Felt::ONE, channel_cursor);
 
         let result = validate_cursor(&cursor, &limits);
+        assert!(result.is_ok());
+    }
+
+    use discovery_core::history::types::{ChannelKind, HistorySubchannel};
+
+    fn dummy_history_subchannel() -> HistorySubchannel {
+        HistorySubchannel {
+            channel_key: SecretFelt::new(Felt::ZERO),
+            token: Felt::ZERO,
+            channel_kind: ChannelKind::Incoming,
+            counterparty: Felt::ZERO,
+            next_index: None,
+        }
+    }
+
+    #[test]
+    fn test_history_cursor_too_many_subchannels() {
+        let limits = ValidationLimits::default();
+        let subchannels: Vec<_> = (0..limits.max_history_subchannels + 1)
+            .map(|_| dummy_history_subchannel())
+            .collect();
+        let cursor = HistoryCursor {
+            subchannels,
+            begin_block_number: 100,
+            history_complete: false,
+        };
+
+        let result = validate_history_cursor(&cursor, 10, &limits);
+        assert!(result.is_err());
+
+        let (status, error) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.error.code, error_codes::INVALID_REQUEST);
+        assert!(error.error.message.contains("history subchannels"));
+    }
+
+    #[test]
+    fn test_history_cursor_max_transactions_exceeded() {
+        let limits = ValidationLimits::default();
+        let cursor = HistoryCursor::default();
+
+        let result =
+            validate_history_cursor(&cursor, limits.max_history_transactions as u32 + 1, &limits);
+        assert!(result.is_err());
+
+        let (status, error) = result.unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert!(error.error.message.contains("max_transactions"));
+    }
+
+    #[test]
+    fn test_history_cursor_valid() {
+        let limits = ValidationLimits::default();
+        let subchannels: Vec<_> = (0..5).map(|_| dummy_history_subchannel()).collect();
+        let cursor = HistoryCursor {
+            subchannels,
+            begin_block_number: 100,
+            history_complete: false,
+        };
+
+        let result = validate_history_cursor(&cursor, 50, &limits);
         assert!(result.is_ok());
     }
 
