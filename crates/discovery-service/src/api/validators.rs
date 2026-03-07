@@ -501,6 +501,13 @@ mod tests {
             async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError> {
                 self.backend.read_slots(slots).await
             }
+
+            async fn read_slots_with_block(
+                &self,
+                slots: Vec<Felt>,
+            ) -> Result<Vec<starknet_core::types::StorageResult>, StorageError> {
+                self.backend.read_slots_with_block(slots).await
+            }
         }
 
         #[async_trait::async_trait]
