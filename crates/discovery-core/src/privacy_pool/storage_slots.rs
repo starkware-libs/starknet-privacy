@@ -151,8 +151,8 @@ pub fn outgoing_channels(outgoing_channel_id: Felt) -> EncOutgoingChannelInfoSlo
     }
 }
 
-/// Storage slot for a note's existence.
-/// Cairo: `notes: LegacyMap<NoteId, bool>`
+/// Storage slot for a note's packed_value (first field of Note struct).
+/// Cairo: `notes: Map<felt252, Note>` where Note = {packed_value, token, depositor}.
 pub fn notes(note_id: Felt) -> Felt {
     slot("notes", &[note_id])
 }

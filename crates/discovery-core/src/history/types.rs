@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
+use crate::privacy_pool::events::PrivacyPoolEvent;
 use crate::privacy_pool::types::SecretFelt;
 
 /// Direction of the channel from the scanning user's perspective.
@@ -21,8 +22,20 @@ pub struct CreateNoteEvent {
     pub note_index: u64,
     pub note_id: Felt,
     pub amount: u128,
+    /// The other party: sender for Incoming, recipient for Outgoing, self address for SelfChannel.
     pub counterparty: Felt,
+    /// Whether this note is an open note (salt == OPEN_NOTE_SALT). Open notes are part of swaps.
     pub is_open: bool,
+}
+
+/// A unified event in the history timeline.
+///
+/// Groups note creation events with on-chain deposit/withdrawal events
+/// for presentation in client action history.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HistoryEvent {
+    NoteCreated(CreateNoteEvent),
+    OnChain(PrivacyPoolEvent),
 }
 
 /// A single event stream in the backward history scan.
@@ -32,6 +45,7 @@ pub struct HistoryEventSource {
     pub channel_key: SecretFelt,
     pub token: Felt,
     pub channel_kind: ChannelKind,
+    /// The other party: sender for Incoming, recipient for Outgoing, self address for SelfChannel.
     pub counterparty: Felt,
     /// Next note index to read (descending). None = stream exhausted.
     pub next_index: Option<u64>,

@@ -244,14 +244,125 @@ A non-paginated readiness check that reports what on-chain setup exists for a `(
 - `500 INTERNAL_ERROR` — Failed to create RPC snapshot.
 - Standard `DiscoveryError` mapping for storage errors.
 
-## 6.8 History Endpoint (Not Yet Specified)
+## 6.8 History Endpoint
 
-`POST /v1/discovery/history`
+`POST /v1/history`
 
-A planned endpoint for full history retrieval. Unlike the sync endpoints which focus on current unspent notes, this endpoint will provide:
+Returns a paginated, backward-ordered list of client actions reconstructed from on-chain note events. Unlike the sync endpoints which focus on current unspent notes, this endpoint provides the full operation history: deposits, transfers, withdrawals, and swaps.
 
-- Full history of all notes (both spent and unspent)
-- Both sent and received notes
-- Historical transaction data for audit/reporting purposes
+### 6.8.1 Overview
 
-**Status:** Not yet specified. This section is a placeholder for future design work.
+The history pipeline has three stages:
+
+1. **Cursor construction** (caller): the caller builds a `HistoryCursor` from previously discovered channels/subchannels, containing one `HistoryEventSource` per subchannel.
+2. **Note event aggregation** (`fetch_aggregated_note_events`): reads note creation events from contract storage, groups them by block number in descending order, and paginates via the cursor.
+3. **On-chain event fetching** (`fetch_on_chain_events`): fetches Deposit and Withdrawal contract events for the block range covered by the aggregated note events.
+4. **Client action reconstruction** (`reconstruct_client_actions`): classifies per-block note events into user-facing actions using both note creation events and on-chain deposit/withdrawal events. Optionally enriched via `enrich_swap_actions` (TODO).
+
+### 6.8.2 Note Event Aggregation
+
+Each `HistoryEventSource` represents one stream of note creation events to scan backward:
+
+| Field | Description |
+|-------|-------------|
+| `channel_key` | Secret channel key (for note ID computation) |
+| `token` | Token address for this subchannel |
+| `channel_kind` | `Incoming`, `Outgoing`, or `SelfChannel` |
+| `counterparty` | Sender (Incoming), recipient (Outgoing), or self address (SelfChannel) |
+| `next_index` | Next note index to read (descending); `None` = exhausted |
+
+Each subchannel produces **one** source (note creation reads only). Spending is not tracked via the backward scanner — deposits and withdrawals are identified from on-chain events instead.
+
+The aggregator reads note values in batch via `get_notes_batch_with_block`. The block number comes from the note's storage write. Events at the same block number are grouped together.
+
+**Pagination**: the caller passes `max_items` (max block groups per call) and an `IoBudget`. The cursor is updated in place — pass it back on subsequent calls.
+
+**Open note detection**: notes with `salt == OPEN_NOTE_SALT (1)` are flagged as `is_open: true` on the `CreateNoteEvent`. The salt is extracted from the packed note value during decryption.
+
+### 6.8.3 Client Action Reconstruction
+
+`reconstruct_client_actions` takes note events (`BTreeMap<block_number, Vec<CreateNoteEvent>>`) and on-chain events (`BTreeMap<block_number, BlockOnChainEvents>`) and produces a `Vec<ClientAction>` in ascending block order.
+
+#### Action types
+
+| Action | Description | Fields |
+|--------|-------------|--------|
+| `Deposit` | Funds entered the pool (from on-chain Deposit event) | `from_address: Option<Felt>` |
+| `TransferSent` | Notes sent to a recipient | `recipient: Felt` |
+| `TransferReceived` | Notes received from a sender | `sender: Felt` |
+| `Withdrawal` | Funds withdrawn from the pool (from on-chain Withdrawal event) | `to_address: Option<Felt>` |
+| `SwapIn` | Open note created as part of a swap | (no fields) |
+| `SwapOut` | Withdrawal co-occurring with a SwapIn | `to_address: Option<Felt>` |
+| `Unknown` | Self-channel notes without matching on-chain event | (no fields) |
+
+Each `ClientAction` contains: `block_number`, `action_kind`, `token`, `amount`, and the underlying `Vec<CreateNoteEvent>`.
+
+#### Classification logic (per block, per token)
+
+Note creation events are partitioned in a single pass:
+
+1. **Open note Created** (`is_open == true` on SelfChannel): collected separately. Produces `SwapIn` action.
+2. **Incoming Created**: grouped by sender. Each sender group produces a `TransferReceived` action.
+3. **Outgoing Created**: grouped by recipient. Each recipient group produces a `TransferSent` action.
+4. **SelfChannel Created** (non-open): collected as context events for deposit/withdrawal/unknown actions.
+
+On-chain events are then matched by block and token:
+
+5. **On-chain Deposit** (same token): produces `Deposit` action with `from_address` from the event's `keys[1]` and `amount` from `data[0]`. Self-channel note events are included as context.
+6. **On-chain Withdrawal** (same token): produces `Withdrawal` action with `to_address` from the event's `keys[1]` and `amount` from `data[3]`. Self-channel note events are included as context.
+7. **Self-channel notes without matching on-chain event**: produces `Unknown` action. TODO: once a `NoteCreated` event exists in the contract, fetch it by `note_id` → get `tx_hash` → fetch all tx events to discover deposits/withdrawals.
+
+**Swap promotion**: after classifying all tokens in a block, if any `SwapIn` action exists, all `Withdrawal` actions in that block are promoted to `SwapOut`.
+
+#### On-chain event layouts (Cairo)
+
+- **Deposit**: keys = `[selector, user_addr, token]`, data = `[amount]`
+- **Withdrawal**: keys = `[selector, to_addr, token]`, data = `[enc_user_addr(3 felts), amount]`
+
+#### Assumptions and known limitations
+
+- **One transaction per block per user**: since note events are aggregated by block without transaction boundaries, multiple transactions from the same user in the same block are merged into a single set of actions. This is acceptable in practice but can produce incorrect classifications in edge cases.
+- **Swap detection is heuristic**: `SwapIn` is detected by open note salt, and all withdrawals in the same block are assumed to be part of the swap. TODO: after enrichment via `OpenNoteDeposited`, confirm `depositor == to_address` before keeping as `SwapOut`.
+- **No spending assumption**: unlike earlier designs, classification does not rely on sequential spending or nullifier scanning. Deposits and withdrawals are identified directly from on-chain events.
+
+### 6.8.4 Enrichment
+
+`enrich_swap_actions` (TODO) will fill in swap counterparty information:
+
+1. For each `SwapIn`, get the open note's `note_id`.
+2. Fetch `OpenNoteDeposited` event by `note_id` key → get `depositor`, `tx_hash`.
+3. Fetch all tx events → find `Withdrawal` where `to_addr == depositor`.
+4. Create `SwapOut` with `to_address = depositor`.
+
+### 6.8.5 Response Shape (Planned)
+
+The HTTP endpoint is not yet implemented. The planned response shape:
+
+```json
+{
+  "block_ref": "0x...",
+  "actions": [
+    {
+      "block_number": 12345,
+      "action_kind": { "Withdrawal": { "to_address": "0x..." } },
+      "token": "0x...",
+      "amount": "1000",
+      "events": [
+        {
+          "channel_kind": "SelfChannel",
+          "token": "0x...",
+          "note_index": 0,
+          "note_id": "0x...",
+          "amount": "1000",
+          "counterparty": "0x...",
+          "is_open": false
+        }
+      ]
+    }
+  ],
+  "cursor": { ... },
+  "has_more": true
+}
+```
+
+The endpoint will use the same `block_ref` / `last_known_block` reorg-detection pattern as the sync endpoints (§6.2, §6.5).
