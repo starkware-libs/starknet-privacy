@@ -4,3 +4,7 @@ members = [
     "crates/discovery-core",
     "crates/discovery-service",
 ]
+
+[patch.crates-io]
+starknet-core = { git = "ssh://git@github.com/m-kus/starknet-rs.git", branch = "get-storage-at-flags" }
+starknet-providers = { git = "ssh://git@github.com/m-kus/starknet-rs.git", branch = "get-storage-at-flags" }

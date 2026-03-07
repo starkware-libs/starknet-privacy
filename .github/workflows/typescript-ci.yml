@@ -94,7 +94,7 @@ jobs:
 
       - name: Install starknet-devnet
         run: |
-          curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-11/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
+          curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-19/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
           chmod +x /usr/local/bin/starknet-devnet
 
       - name: Install npm dependencies

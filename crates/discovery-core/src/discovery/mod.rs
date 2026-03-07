@@ -37,6 +37,7 @@ pub const COST_PUBLIC_KEY: usize = 1;
 /// Minimum server budget to make progress through one step at each discovery level:
 /// fetch channel count, discover one channel, discover one subchannel (×2 for sentinel),
 /// probe note boundary, and scan 10 notes.
+// TODO: update to account for history scan budget requirements.
 pub fn min_server_budget(max_note_log_index: u32) -> usize {
     COST_NUM_CHANNELS
         + COST_CHANNEL_INFO
@@ -66,4 +67,7 @@ pub enum DiscoveryError {
     /// Invalid cursor data provided by client.
     #[error("invalid cursor: {0}")]
     InvalidCursor(String),
+    /// Not enough I/O budget for the requested operation.
+    #[error("insufficient budget: need {needed}, have {available}")]
+    InsufficientBudget { needed: usize, available: usize },
 }

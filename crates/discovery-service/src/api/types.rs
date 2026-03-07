@@ -111,6 +111,14 @@ pub fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErr
             StatusCode::BAD_REQUEST,
             ApiErrorResponse::new(error_codes::INVALID_REQUEST, msg),
         ),
+        DiscoveryError::InsufficientBudget { needed, available } => (
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::with_details(
+                error_codes::INVALID_REQUEST,
+                "Insufficient I/O budget for the requested operation",
+                format!("need {needed}, have {available}").into(),
+            ),
+        ),
     }
 }
 
