@@ -90,6 +90,8 @@ pub fn mock_event(
         block_hash: None,
         block_number: Some(block_number),
         transaction_hash,
+        event_index: 0,
+        transaction_index: 0,
     }
 }
 

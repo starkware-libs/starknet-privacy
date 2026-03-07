@@ -4,3 +4,7 @@ members = [
     "crates/discovery-core",
     "crates/discovery-service",
 ]
+
+[patch.crates-io]
+starknet-rust-core = { git = "https://github.com/m-kus/starknet-rust.git", rev = "b65378c3e732c0b61f7f2901e43cba606945be71" }
+starknet-rust-providers = { git = "https://github.com/m-kus/starknet-rust.git", rev = "b65378c3e732c0b61f7f2901e43cba606945be71" }
