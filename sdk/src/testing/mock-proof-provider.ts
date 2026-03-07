@@ -11,6 +11,7 @@ import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js"
 import type { MockPoolContract } from "./mock-pool-contract.js";
 import { bigintReviver } from "./mock-proof-invocation-factory.js";
 import { constants } from "starknet";
+import { buildMessagePayload } from "../utils/proof-facts.js";
 
 /**
  * Mock proof provider that executes actions on MockPoolContract.
@@ -40,8 +41,9 @@ export class MockProofProvider implements ProofProviderInterface {
 
     return {
       data: "",
-      // Store callbacks in output (duck-typed, will be extracted by MockPublicCallBuilder)
-      output: callbacks as unknown as string[],
+      // L2-to-L1 message payload: [class_hash, ...callbacks].
+      // The consumer strips the class_hash prefix before passing to apply_actions.
+      output: buildMessagePayload("0x0", callbacks as unknown as string[]),
       proofFacts: [],
     };
   }

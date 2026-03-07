@@ -5,9 +5,10 @@ End-to-end tests and fixture generation for the privacy pool.
 ## Prerequisites
 
 1. Install the patched starknet-devnet (see [SDK README](../sdk/README.md#starknet-devnet) for instructions)
-2. Build the privacy contract: `scarb build`
+2. Build the privacy contract: `scarb --profile release build`
 3. Build the SDK: `cd sdk && npm run build`
-4. Install e2e dependencies: `npm install`
+4. Build the discovery service: `cargo build -p discovery-service`
+5. Install e2e dependencies: `npm install`
 
 ## Tests
 
@@ -87,9 +88,12 @@ update `POOL_CLASS_HASH` in `.env` to match.
 ## Privacy StarkNet integration (`tests/privacy-starknet-integration.test.ts`)
 
 Tests against a real (non-devnet) StarkNet deployment on integration sepolia.
-Spawns the discovery service indexer, runs preflight and deposit flows via the SDK.
+Declares the contract class from built artifacts (no-op if already declared),
+deploys a fresh pool instance, spawns the discovery service indexer, and runs
+preflight and deposit flows via the SDK.
 
-Requires network access and a `.env` file with account credentials and contract addresses.
+Requires network access, built contract artifacts (`scarb --profile release build`),
+and a `.env` file with account credentials.
 
 ### Setting up `.env`
 

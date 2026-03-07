@@ -13,6 +13,7 @@ import {
   SetupRequirement,
 } from "starknet-sdk";
 import { IndexerClient } from "../src/indexer-client.js";
+import { declarePoolClass } from "../src/harness.js";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -31,13 +32,13 @@ const RPC = requireEnv("RPC_URL");
 const WS = requireEnv("WS_URL");
 const TOKEN = requireEnv("TOKEN_ADDRESS");
 const CHAIN_ID = requireEnv("CHAIN_ID") as constants.StarknetChainId;
-const POOL_CLASS_HASH = requireEnv("POOL_CLASS_HASH");
 const COMPLIANCE_PUBLIC_KEY = requireEnv("COMPLIANCE_PUBLIC_KEY");
-const PROVING_SERVICE_URL = requireEnv("VITE_PROVING_SERVICE_URL")
+const PROVING_SERVICE_URL = requireEnv("VITE_PROVING_SERVICE_URL");
 const accounts: AccountEntry[] = JSON.parse(requireEnv("ACCOUNTS"));
 function findAccount(name: string): AccountEntry {
   const entry = accounts.find((account) => account.name === name);
-  if (!entry) throw new Error(`Account "${name}" not found in ACCOUNTS env var`);
+  if (!entry)
+    throw new Error(`Account "${name}" not found in ACCOUNTS env var`);
   return entry;
 }
 const admin = findAccount("admin");
@@ -51,6 +52,11 @@ const ERC20_RESOURCE_BOUNDS = {
   l2_gas: { max_amount: 2_000_000n, max_price_per_unit: L2_GAS_PRICE },
   l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
   l1_data_gas: { max_amount: 640n, max_price_per_unit: L1_DATA_GAS_PRICE },
+};
+const DECLARE_RESOURCE_BOUNDS = {
+  l2_gas: { max_amount: 2_500_000_000n, max_price_per_unit: L2_GAS_PRICE },
+  l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
+  l1_data_gas: { max_amount: 25_000n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };
 const DEPLOY_RESOURCE_BOUNDS = {
   l2_gas: { max_amount: 4_000_000n, max_price_per_unit: L2_GAS_PRICE },
@@ -86,22 +92,35 @@ describe("Privacy StarkNet integration", () => {
       cairoVersion: "1",
     });
 
-    // Deploy a fresh privacy pool via UDC v2
+    // Declare the contract class (no-op if already declared), then deploy
+    const poolClassHash = await declarePoolClass(
+      adminAccount,
+      DECLARE_RESOURCE_BOUNDS,
+    );
+
     const deploymentSalt = `0x${Date.now().toString(16)}`;
     const constructorCalldata = [admin.address, COMPLIANCE_PUBLIC_KEY, "450"];
-    console.log("[debug] deploying fresh privacy pool with salt:", deploymentSalt);
+    console.log(
+      "[debug] deploying fresh privacy pool with salt:",
+      deploymentSalt,
+    );
 
     const deployResult = await adminAccount.deployContract(
       {
-        classHash: POOL_CLASS_HASH,
+        classHash: poolClassHash,
         constructorCalldata,
         salt: deploymentSalt,
       },
       { tip: 0n, resourceBounds: DEPLOY_RESOURCE_BOUNDS },
     );
-    const deployReceipt = await provider.waitForTransaction(deployResult.transaction_hash);
+    const deployReceipt = await provider.waitForTransaction(
+      deployResult.transaction_hash,
+    );
     if (!deployReceipt.isSuccess()) {
-      console.error("[debug] deploy FAILED:", JSON.stringify(deployReceipt, null, 2));
+      console.error(
+        "[debug] deploy FAILED:",
+        JSON.stringify(deployReceipt, null, 2),
+      );
       throw new Error("Privacy pool deployment failed");
     }
     poolAddress = deployResult.contract_address;
@@ -129,7 +148,11 @@ describe("Privacy StarkNet integration", () => {
       BigInt(alice.address),
       BigInt(TOKEN),
     );
-    console.log("[debug] preflight requirement:", SetupRequirement[requirement], `(${requirement})`);
+    console.log(
+      "[debug] preflight requirement:",
+      SetupRequirement[requirement],
+      `(${requirement})`,
+    );
     expect(requirement).toBeGreaterThanOrEqual(SetupRequirement.Register);
     expect(requirement).toBeLessThanOrEqual(SetupRequirement.Ready);
   });
@@ -137,7 +160,9 @@ describe("Privacy StarkNet integration", () => {
   it("deposit with auto-register", async () => {
     const transfers = createPrivateTransfers({
       account: aliceAccount,
-      viewingKeyProvider: { getViewingKey: async () => BigInt(alice.viewingKey) },
+      viewingKeyProvider: {
+        getViewingKey: async () => BigInt(alice.viewingKey),
+      },
       provingProvider: new ProvingServiceProofProvider(
         PROVING_SERVICE_URL,
         CHAIN_ID,
@@ -156,8 +181,15 @@ describe("Privacy StarkNet integration", () => {
       },
       { tip: 0n, resourceBounds: ERC20_RESOURCE_BOUNDS },
     );
-    const mintReceipt = await provider.waitForTransaction(mintTx.transaction_hash);
-    console.log("[debug] mint tx:", mintTx.transaction_hash, "status:", mintReceipt.isSuccess() ? "OK" : "FAILED");
+    const mintReceipt = await provider.waitForTransaction(
+      mintTx.transaction_hash,
+    );
+    console.log(
+      "[debug] mint tx:",
+      mintTx.transaction_hash,
+      "status:",
+      mintReceipt.isSuccess() ? "OK" : "FAILED",
+    );
 
     // Approve pool to spend Alice's tokens
     console.log("[debug] approving pool to spend 100 tokens");
@@ -169,8 +201,15 @@ describe("Privacy StarkNet integration", () => {
       },
       { tip: 0n, resourceBounds: ERC20_RESOURCE_BOUNDS },
     );
-    const approveReceipt = await provider.waitForTransaction(approveTx.transaction_hash);
-    console.log("[debug] approve tx:", approveTx.transaction_hash, "status:", approveReceipt.isSuccess() ? "OK" : "FAILED");
+    const approveReceipt = await provider.waitForTransaction(
+      approveTx.transaction_hash,
+    );
+    console.log(
+      "[debug] approve tx:",
+      approveTx.transaction_hash,
+      "status:",
+      approveReceipt.isSuccess() ? "OK" : "FAILED",
+    );
 
     // Deposit 100 tokens — SDK checks state internally and registers if needed
     console.log("[debug] building deposit transaction...");
@@ -191,7 +230,12 @@ describe("Privacy StarkNet integration", () => {
       .surplusTo(alice.address)
       .execute({ provingBlockId });
     console.log("[debug] execute() completed successfully");
-    console.log("[debug] ProofFacts:", callAndProof.proof.proofFacts ? `${callAndProof.proof.proofFacts.length} elements` : "undefined");
+    console.log(
+      "[debug] ProofFacts:",
+      callAndProof.proof.proofFacts
+        ? `${callAndProof.proof.proofFacts.length} elements`
+        : "undefined",
+    );
 
     // Submit via outside execution (admin submits on behalf of Alice).
     // This is required because proofFacts change the tx hash, and the account
@@ -207,13 +251,18 @@ describe("Privacy StarkNet integration", () => {
       callAndProof.call,
       OutsideExecutionVersion.V2,
     );
-    const executeTx = await adminAccount.executeFromOutside(outsideTransaction, {
-      tip: 0n,
-      resourceBounds: POOL_RESOURCE_BOUNDS,
-      proofFacts: callAndProof.proof.proofFacts,
-      proof: callAndProof.proof.data,
-    });
-    const receipt = await provider.waitForTransaction(executeTx.transaction_hash);
+    const executeTx = await adminAccount.executeFromOutside(
+      outsideTransaction,
+      {
+        tip: 0n,
+        resourceBounds: POOL_RESOURCE_BOUNDS,
+        proofFacts: callAndProof.proof.proofFacts,
+        proof: callAndProof.proof.data,
+      },
+    );
+    const receipt = await provider.waitForTransaction(
+      executeTx.transaction_hash,
+    );
     if (!receipt.isSuccess()) {
       console.error("Transaction reverted:", JSON.stringify(receipt, null, 2));
     }

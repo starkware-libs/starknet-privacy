@@ -274,7 +274,8 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       const validate = compileSchemaForRef(spec!, "components/schemas/BLOCK_ID");
 
       expect(validate("latest")).toBe(true);
-      expect(validate("pending")).toBe(true);
+      // "pending" was removed from BLOCK_ID in the proving API spec.
+      expect(validate("pending")).toBe(false);
       expect(validate({ block_number: 42 })).toBe(true);
       expect(validate({ block_number: 0 })).toBe(true);
       expect(validate({ block_hash: "0x123" })).toBe(true);

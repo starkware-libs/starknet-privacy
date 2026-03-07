@@ -2,8 +2,8 @@
   "openrpc": "1.0.0-rc1",
   "info": {
     "version": "0.10.0",
-    "title": "Starknet OS Runner Proving API",
-    "description": "JSON-RPC API for proving Starknet transactions via the Starknet OS Runner.",
+    "title": "Starknet Transaction Prover API",
+    "description": "JSON-RPC API for proving Starknet transactions via the Starknet Transaction Prover.",
     "license": {
       "name": "Apache 2.0",
       "url": "https://www.apache.org/licenses/LICENSE-2.0"
@@ -87,7 +87,7 @@
       },
       "BLOCK_ID": {
         "title": "Block id",
-        "description": "Identifies a block by hash, number, or tag.",
+        "description": "Identifies a finalized block by hash, number, or the \"latest\" tag.",
         "oneOf": [
           {
             "title": "Block hash",
@@ -115,7 +115,7 @@
           {
             "title": "Block tag",
             "type": "string",
-            "enum": ["latest", "pending"]
+            "enum": ["latest"]
           }
         ]
       },
