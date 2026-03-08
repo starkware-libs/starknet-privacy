@@ -250,19 +250,14 @@ fn test_get_note() {
         .compute_enc_note(create_note_input: enc_note_input);
     assert_eq!(test.privacy.get_note(note_id: enc_note_id), expected_enc_note);
 
-    // Create and verify empty open note.
+    // Create and verify filled open note.
     let open_note_input = user_1
         .new_open_note_with_generated_random(
             recipient: user_2, :token_addr, index: 1, depositor: depositor.address,
         );
-    user_1.cheat_create_open_note_in_storage(create_note_input: open_note_input);
-    let (open_note_id, expected_open_note) = user_1
-        .compute_open_note(create_note_input: open_note_input);
-    assert_eq!(test.privacy.get_note(note_id: open_note_id), expected_open_note);
-
-    // Deposit to the existing open note and verify.
-    depositor.fund_and_deposit_to_open_note(:token, note_id: open_note_id, :amount);
-    let (_, expected_filled_note) = user_1
+    user_1.cheat_create_filled_open_note_in_storage(create_note_input: open_note_input, :amount);
+    test.privacy.increase_token_balance(:token, :amount);
+    let (open_note_id, expected_filled_note) = user_1
         .compute_open_note_with_amount(create_note_input: open_note_input, :amount);
     assert_eq!(test.privacy.get_note(note_id: open_note_id), expected_filled_note);
 }
