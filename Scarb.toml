@@ -3,7 +3,6 @@ members = [
     "packages/privacy",
 ]
 
-
 [workspace.package]
 version = "0.1.0"
 edition = "2024_07"
@@ -31,11 +30,6 @@ casm = true
 
 [[test]]
 name = "unittest"
-
-[profile.dev.cairo]
-unstable-add-statements-code-locations-debug-info = true
-unstable-add-statements-functions-debug-info = true
-inlining-strategy = "avoid"
 
 [profile.release.cairo]
 inlining-strategy = 250
