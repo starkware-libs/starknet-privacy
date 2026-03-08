@@ -33,10 +33,12 @@ import type { ClientAction } from "./client-actions.js";
 import { PoolSimulator } from "./pool-simulator.js";
 
 import { assert, isOpen, isOpenNote } from "../utils/validation.js";
+import { CallData } from "starknet";
 import type { BigNumberish } from "starknet";
 import { generateRandom, generateRandom120 } from "../utils/crypto.js";
 import { debugLog } from "../utils/logging.js";
 import { toHex } from "../utils/convert.js";
+import { compute_note_id } from "../utils/hashes.js";
 import { ReorgError } from "./indexer-discovery.js";
 
 export type CompileResult = {
@@ -82,7 +84,8 @@ export class ActionCompiler {
   constructor(
     private userAddress: bigint,
     private userViewingKey: ViewingKey,
-    private discoveryProvider: DiscoveryProviderInterface
+    private discoveryProvider: DiscoveryProviderInterface,
+    private poolAddress: StarknetAddressBigint = 0n
   ) {}
 
   /**
@@ -445,12 +448,33 @@ export class ActionCompiler {
 
     // 8. InvokeExternal
     if (actions.invoke) {
+      const openNotes = clientActions.createOpenNotes.map((openNote) => {
+        const channelKey = pool.getChannel(openNote.input.recipient_addr)?.key;
+        assert(channelKey, () => `Missing channel key for open note recipient`);
+        return {
+          noteId: compute_note_id(channelKey, openNote.input.token, openNote.input.index),
+          token: openNote.input.token,
+          depositor: openNote.input.depositor,
+        };
+      });
+      const withdrawals = clientActions.withdraws.map((withdraw) => ({
+        recipient: withdraw.input.to_addr,
+        token: withdraw.input.token,
+        amount: withdraw.input.amount,
+      }));
+
+      const call = actions.invoke.callBuilder({
+        openNotes,
+        withdrawals,
+        poolAddress: this.poolAddress,
+      });
+      const calldata = CallData.compile(call.calldata ?? []).map((value) => toBigInt(value));
+
       const input = {
         type: "InvokeExternal",
         input: {
-          contract_address: actions.invoke.callDetails
-            .contractAddress as unknown as StarknetAddressBigint,
-          calldata: actions.invoke.callDetails.calldata as unknown as bigint[],
+          contract_address: toBigInt(call.contractAddress),
+          calldata,
         },
       } as const; // typescipt magic
       clientActions.invoke = execute(input);

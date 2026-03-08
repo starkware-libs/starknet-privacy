@@ -1,8 +1,6 @@
 pub mod generate_reference_data;
 pub mod mock_account;
-pub mod mock_amm;
 pub mod mock_reentrancy;
-pub mod mock_swap_executor;
 pub mod test_admin;
 pub mod test_client;
 pub mod test_e2e;
