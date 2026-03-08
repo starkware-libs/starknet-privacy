@@ -96,7 +96,14 @@ pub(crate) impl CreateEncNoteInputIntoServerActionImpl of CreateEncNoteInputInto
     }
 
     fn into_server_actions(self: @CreateEncNoteInput, user: User) -> Span<ServerAction> {
-        [self.into_server_action(:user)].span()
+        let (note_id, note) = user.compute_enc_note(create_note_input: *self);
+        [
+            self.into_server_action(:user),
+            ServerAction::EmitNoteCreated(
+                events::NoteCreated { note_id, packed_value: note.packed_value },
+            ),
+        ]
+            .span()
     }
 }
 
@@ -119,6 +126,9 @@ pub(crate) impl CreateOpenNoteInputIntoServerActionImpl of CreateOpenNoteInputIn
                 events::OpenNoteCreated {
                     enc_recipient_addr, depositor: note.depositor, token: note.token, note_id,
                 },
+            ),
+            ServerAction::EmitNoteCreated(
+                events::NoteCreated { note_id, packed_value: note.packed_value },
             ),
         ]
             .span()

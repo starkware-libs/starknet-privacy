@@ -77,6 +77,15 @@ pub struct OpenNoteDeposited {
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct NoteCreated {
+    /// The note ID.
+    #[key]
+    pub note_id: felt252,
+    /// The packed note value (encodes salt and amount).
+    pub packed_value: felt252,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct NoteUsed {
     /// The nullifier of the used note.
     #[key]

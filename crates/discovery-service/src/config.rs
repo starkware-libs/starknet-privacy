@@ -41,6 +41,13 @@ pub struct RpcConfig {
     /// Maximum number of storage slots per JSON-RPC batch request.
     /// Larger `read_slots` calls are automatically chunked.
     pub max_batch_size: usize,
+    /// Maximum number of events per `starknet_getEvents` page.
+    /// The RPC spec allows up to 1024.
+    pub event_page_size: usize,
+    /// Maximum allowed block range for a single `get_events` query.
+    /// Requests spanning more than this many blocks are rejected with an error.
+    /// `0` means unlimited.
+    pub max_event_block_range: u64,
 }
 
 impl Default for RpcConfig {
@@ -52,6 +59,8 @@ impl Default for RpcConfig {
             request_timeout: Duration::from_secs(30),
             max_idle_per_host: 10,
             max_batch_size: 256,
+            event_page_size: 1024,
+            max_event_block_range: 0,
         }
     }
 }

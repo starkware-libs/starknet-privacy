@@ -3,12 +3,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use discovery_core::events_backend::RawEventAccess;
 use discovery_core::storage_backend::{
     RawStorageAccess, StorageBackend, StorageError, StorageSnapshot,
 };
 use starknet_core::types::{
-    requests::GetStorageAtRequest, BlockId, BlockTag, Felt, MaybePreConfirmedBlockWithTxHashes,
-    StarknetError, StorageResponseFlag, StorageResult,
+    requests::GetStorageAtRequest, BlockId, BlockTag, EmittedEvent, EventFilter, Felt,
+    MaybePreConfirmedBlockWithTxHashes, StarknetError, StorageResponseFlag, StorageResult,
 };
 use starknet_providers::{
     jsonrpc::{HttpTransport, JsonRpcClient},
@@ -50,6 +51,10 @@ struct RpcBackendInner {
     provider: JsonRpcClient<HttpTransport>,
     head: RwLock<Option<ChainHead>>,
     max_batch_size: usize,
+    event_page_size: usize,
+    /// Maximum allowed block range for a single `get_events` query.
+    /// `0` means unlimited.
+    max_event_block_range: u64,
 }
 
 /// RPC-based storage backend that reads from a StarkNet node via JSON-RPC.
@@ -83,6 +88,8 @@ impl RpcBackend {
                 provider,
                 head: RwLock::new(None),
                 max_batch_size: config.max_batch_size,
+                event_page_size: config.event_page_size,
+                max_event_block_range: config.max_event_block_range,
             }),
         })
     }
@@ -239,6 +246,75 @@ impl RawStorageAccess for RpcSnapshot {
             results.extend(chunk_results);
         }
         Ok(results)
+    }
+}
+
+#[async_trait]
+impl RawEventAccess for RpcSnapshot {
+    async fn get_events(
+        &self,
+        keys: &[Vec<Felt>],
+        from_block: u64,
+        to_block: u64,
+    ) -> Result<Vec<EmittedEvent>, StorageError> {
+        let max_range = self.backend.inner.max_event_block_range;
+        if max_range > 0 {
+            let range = to_block.saturating_sub(from_block).saturating_add(1);
+            if range > max_range {
+                return Err(RpcBackendError::Request(format!(
+                    "event query block range {range} exceeds maximum {max_range}"
+                ))
+                .into());
+            }
+        }
+
+        // Strip trailing empty key vecs — they mean "wildcard" in our trait but
+        // some RPC implementations (e.g. devnet) treat them as "match nothing".
+        let trimmed_keys: Vec<Vec<Felt>> = {
+            let end = keys
+                .iter()
+                .rposition(|v| !v.is_empty())
+                .map_or(0, |i| i + 1);
+            keys[..end].to_vec()
+        };
+
+        let filter = EventFilter {
+            from_block: Some(BlockId::Number(from_block)),
+            to_block: Some(BlockId::Number(to_block)),
+            address: Some(self.contract_address),
+            keys: if trimmed_keys.is_empty() {
+                None
+            } else {
+                Some(trimmed_keys)
+            },
+        };
+
+        let mut all_events = Vec::new();
+        let mut continuation_token = None;
+
+        loop {
+            let page = self
+                .backend
+                .inner
+                .provider
+                .get_events(
+                    filter.clone(),
+                    continuation_token,
+                    self.backend.inner.event_page_size as u64,
+                )
+                .await
+                .map_err(|e| RpcBackendError::Request(e.to_string()))?;
+
+            all_events.reserve(page.events.len());
+            all_events.extend(page.events);
+
+            match page.continuation_token {
+                Some(token) => continuation_token = Some(token),
+                None => break,
+            }
+        }
+
+        Ok(all_events)
     }
 }
 

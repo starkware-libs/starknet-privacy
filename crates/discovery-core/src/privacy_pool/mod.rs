@@ -3,6 +3,7 @@
 use starknet_types_core::felt::Felt;
 
 pub mod decryption;
+pub mod events;
 pub mod hashes;
 pub mod storage_slots;
 pub mod types;

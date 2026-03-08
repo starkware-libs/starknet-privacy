@@ -16,9 +16,11 @@
 mod common;
 
 use common::setup_devnet_with_dump;
+use discovery_core::privacy_pool::events::{IEvents, PrivacyPoolEventContent};
 use discovery_core::privacy_pool::storage_slots;
 use discovery_core::privacy_pool::views::IViews;
 use discovery_core::storage_backend::{RawStorageAccess, StorageBackend};
+use discovery_service::chain_state::ChainState;
 use discovery_service::config::RpcConfig;
 use discovery_service::rpc_backend::RpcBackend;
 use expect_test::expect;
@@ -88,4 +90,96 @@ async fn test_read_slots_with_block() {
     // Unset slot: zero value and last_update_block == 0
     assert_eq!(results[1].value, Felt::ZERO);
     assert_eq!(results[1].last_update_block, 0);
+}
+
+#[tokio::test]
+async fn test_block_events() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+
+    let backend = RpcBackend::new(RpcConfig {
+        url: devnet.rpc_url(),
+        ..Default::default()
+    })
+    .unwrap();
+    let head_block = backend.get_head().await.unwrap().block_number;
+    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+
+    // Collect all events across all blocks in the devnet fixture.
+    let mut all_events = Vec::new();
+    for block_number in 0..=head_block {
+        let events = snapshot.get_block_events(block_number).await.unwrap();
+        all_events.extend(events);
+    }
+
+    // Devnet scenario: deposit 100 + transfer 50 to Bob, then Bob withdraws 50.
+    // Expected events: 1 Deposit, 2 NoteCreated, 1 Withdrawal (at minimum).
+    let deposit_count = all_events
+        .iter()
+        .filter(|e| matches!(e.content, PrivacyPoolEventContent::Deposit(_)))
+        .count();
+    let withdrawal_count = all_events
+        .iter()
+        .filter(|e| matches!(e.content, PrivacyPoolEventContent::Withdrawal(_)))
+        .count();
+    let note_created_count = all_events
+        .iter()
+        .filter(|e| matches!(e.content, PrivacyPoolEventContent::NoteCreated(_)))
+        .count();
+
+    assert!(deposit_count >= 1, "expected at least 1 Deposit event");
+    assert!(
+        withdrawal_count >= 1,
+        "expected at least 1 Withdrawal event"
+    );
+    assert!(
+        note_created_count >= 2,
+        "expected at least 2 NoteCreated events"
+    );
+}
+
+#[tokio::test]
+async fn test_withdrawal_events() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+
+    let backend = RpcBackend::new(RpcConfig {
+        url: devnet.rpc_url(),
+        ..Default::default()
+    })
+    .unwrap();
+    let head_block = backend.get_head().await.unwrap().block_number;
+    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+
+    let withdrawals = snapshot
+        .get_withdrawal_events(metadata.bob_address, 0, head_block)
+        .await
+        .unwrap();
+
+    assert_eq!(withdrawals.len(), 1);
+    let PrivacyPoolEventContent::Withdrawal(withdrawal) = &withdrawals[0].content else {
+        panic!("expected Withdrawal event");
+    };
+    assert_eq!(withdrawal.to_address, metadata.bob_address);
+    assert_eq!(withdrawal.token, metadata.strk_token);
+    assert_eq!(withdrawal.amount, 50);
+}
+
+#[tokio::test]
+async fn test_withdrawal_events_empty_for_non_recipient() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+
+    let backend = RpcBackend::new(RpcConfig {
+        url: devnet.rpc_url(),
+        ..Default::default()
+    })
+    .unwrap();
+    let head_block = backend.get_head().await.unwrap().block_number;
+    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+
+    // Alice is not a withdrawal recipient in the devnet scenario
+    let withdrawals = snapshot
+        .get_withdrawal_events(metadata.alice_address, 0, head_block)
+        .await
+        .unwrap();
+
+    assert!(withdrawals.is_empty());
 }
