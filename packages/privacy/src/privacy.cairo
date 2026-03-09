@@ -128,6 +128,7 @@ pub mod Privacy {
         Deposit: events::Deposit,
         AuditorPublicKeySet: events::AuditorPublicKeySet,
         OpenNoteCreated: events::OpenNoteCreated,
+        NoteCreated: events::NoteCreated,
         OpenNoteDeposited: events::OpenNoteDeposited,
         NoteUsed: events::NoteUsed,
         FeeAmountSet: events::FeeAmountSet,
@@ -582,7 +583,7 @@ pub mod Privacy {
             } = input;
 
             // Validate and compute note values.
-            let (channel_key, storage_address, _) = self
+            let (channel_key, storage_address, note_id) = self
                 ._prepare_note_creation(
                     :sender_addr,
                     :sender_private_key,
@@ -600,7 +601,10 @@ pub mod Privacy {
 
             // Only `packed_value` needs to be written to storage, `token` and `depositor` are
             // initialized to zero.
-            array![to_write_once_action(:storage_address, value: packed_value)]
+            array![
+                to_write_once_action(:storage_address, value: packed_value),
+                ServerAction::EmitNoteCreated(events::NoteCreated { note_id, packed_value }),
+            ]
         }
 
         /// Returns the server action to create an open note.
@@ -642,6 +646,9 @@ pub mod Privacy {
                 to_write_once_action(:storage_address, value: note),
                 ServerAction::EmitOpenNoteCreated(
                     events::OpenNoteCreated { enc_recipient_addr, depositor, token, note_id },
+                ),
+                ServerAction::EmitNoteCreated(
+                    events::NoteCreated { note_id, packed_value: note.packed_value },
                 ),
             ]
         }
@@ -704,6 +711,7 @@ pub mod Privacy {
                     ServerAction::EmitWithdrawal(_) => {},
                     ServerAction::EmitDeposit(_) => {},
                     ServerAction::EmitOpenNoteCreated(_) => {},
+                    ServerAction::EmitNoteCreated(_) => {},
                     ServerAction::EmitNoteUsed(_) => {},
                 }
             }
@@ -820,6 +828,7 @@ pub mod Privacy {
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
                     ServerAction::EmitDeposit(event) => self.emit(event),
                     ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
+                    ServerAction::EmitNoteCreated(event) => self.emit(event),
                     ServerAction::EmitNoteUsed(event) => self.emit(event),
                 };
             };
