@@ -139,16 +139,8 @@ impl BufferedNoteScanner {
             "fill_buffers: preparing batch read"
         );
 
-        if !active_subchannels.is_empty() && !budget.consume(cost) {
-            trace!(
-                cost,
-                budget_remaining = budget.remaining(),
-                "fill_buffers: budget insufficient"
-            );
-            return Err(DiscoveryError::InsufficientBudget {
-                needed: cost,
-                available: budget.remaining(),
-            });
+        if !active_subchannels.is_empty() {
+            budget.try_consume(cost)?;
         }
 
         let note_ids: Vec<_> = active_subchannels
