@@ -253,6 +253,7 @@ class ChannelsDiscovery {
     timestamp: BlockIdentifier;
     channels?: AddressMap<Channel>;
     total?: number;
+    cursor: ChannelCursor;
   }> {
     if (this.recipients == "all" || this.recipients == "total-only") {
       void scan(
@@ -296,7 +297,12 @@ class ChannelsDiscovery {
       }
     }
     await this.tracker.wait();
-    return { timestamp: 0, channels: this.channels, total: this.total };
+    return {
+      timestamp: 0,
+      channels: this.channels,
+      total: this.total,
+      cursor: { channels: this.channels, total: this.total, blockId: 0 },
+    };
   }
 
   private async discoverChannel(recipient: StarknetAddressBigint): Promise<void> {
@@ -412,7 +418,12 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
     viewingKey: ViewingKey,
     recipients: RecipientsFilter,
     params?: { cursor?: ChannelCursor }
-  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }> {
+  ): Promise<{
+    timestamp: BlockIdentifier;
+    channels?: AddressMap<Channel>;
+    total?: number;
+    cursor: ChannelCursor;
+  }> {
     const discovery = new ChannelsDiscovery(
       address,
       toBigInt(viewingKey),

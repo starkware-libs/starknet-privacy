@@ -18,7 +18,7 @@ import {
   type ProofInvocationFactoryInterface,
 } from "./internal/proof-invocation-factory.js";
 import { ProvingServiceProofProvider } from "./internal/proving-service-provider.js";
-import { IndexerDiscoveryProvider } from "./internal/indexer-discovery.js";
+import { IndexerDiscoveryProvider } from "./internal/indexer/index.js";
 
 function isProofProviderConfig(
   x: ProofProviderInterface | ProofProviderConfig

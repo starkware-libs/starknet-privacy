@@ -64,7 +64,7 @@ describe("E2E Reorg Recovery", () => {
     // NotesCursor fields are @internal (stripped from .d.ts), so we cast through `any`.
     const registry = createEmptyRegistry();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registry.cursor = { blockId: "0xdeadbeef", incomingChannels: new AddressMap() } as any;
+    registry.notesCursor = { blockId: "0xdeadbeef", incomingChannels: new AddressMap() } as any;
 
     // Second operation: withdraw triggers a deficit, forcing note discovery.
     // Note discovery sends the fake cursor → indexer returns 409 →
@@ -82,10 +82,10 @@ describe("E2E Reorg Recovery", () => {
 
     // Verify recovery succeeded:
     // - No error thrown (reorg was handled internally)
-    // - Registry cursor was cleared and re-populated with a valid blockId
-    expect(updatedRegistry.cursor).toBeDefined();
+    // - Registry notesCursor was cleared and re-populated with a valid blockId
+    expect(updatedRegistry.notesCursor).toBeDefined();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((updatedRegistry.cursor as any).blockId).not.toBe("0xdeadbeef");
+    expect((updatedRegistry.notesCursor as any).blockId).not.toBe("0xdeadbeef");
     // - Notes were re-discovered (Alice has a 50 STRK change note)
     expect(updatedRegistry.notes.size).toBeGreaterThanOrEqual(1);
   });

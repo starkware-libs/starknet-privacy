@@ -57,6 +57,7 @@ import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./internal/ch
 import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-010";
 export { Witness, Channel };
 export type { NotesCursor as DiscoveryCursor };
+export type { NotesCursor, ChannelCursor };
 
 export type Note = {
   readonly id: NoteId;
@@ -243,22 +244,21 @@ export type AutoDiscoveryOptions = {
 export type AutoSelectionStrategy = "all" | "naive" /*| "exact"*/; //
 
 /**
- * Registry holding the user's private state: channels and notes.
+ * Registry holding the user's private state: cursors and notes.
  * Passed to execute() for context resolution and updated with new state.
  */
 export type PrivateRegistry = {
-  /** Channels by recipient address */
-  channels: AddressMap<Channel>;
+  /** Cursor for incoming notes discovery */
+  notesCursor?: NotesCursor;
+  /** Cursor for outgoing channels discovery */
+  channelCursor?: ChannelCursor;
   /** Notes by token address */
   notes: AddressMap<Note[]>;
-  /** Cursor for discovery */
-  cursor?: NotesCursor;
 };
 
 /** Create an empty private registry */
 export function createEmptyRegistry(): PrivateRegistry {
   return {
-    channels: new AddressMap<Channel>(),
     notes: new AddressMap<Note[]>(() => []),
   };
 }
@@ -409,7 +409,11 @@ export interface PrivateTransfersInterface {
   discoverChannels(
     recipients: RecipientsFilter<StarknetAddress>,
     params?: { cursor?: ChannelCursor }
-  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
+  ): Promise<{
+    timestamp: BlockIdentifier;
+    channels?: AddressMap<Channel>;
+    total?: number;
+  }>;
 
   /**
    * Execute raw actions. The implementation:
@@ -639,7 +643,12 @@ export interface DiscoveryProviderInterface {
     viewingKey: ViewingKey,
     recipients: RecipientsFilter,
     params?: { cursor?: ChannelCursor }
-  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
+  ): Promise<{
+    timestamp: BlockIdentifier;
+    channels?: AddressMap<Channel>;
+    total?: number;
+    cursor: ChannelCursor;
+  }>;
 
   /**
    * Check the setup requirements for a recipient.

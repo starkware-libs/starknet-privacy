@@ -6,7 +6,7 @@ import {
   apiCursorToNotesCursor,
   convertIncomingNotes,
   buildSubchannelCursors,
-} from "../../src/internal/indexer-discovery.js";
+} from "../../src/internal/indexer/discovery.js";
 import { SetupRequirement } from "../../src/interfaces.js";
 import { AddressMap } from "../../src/utils/maps.js";
 import type { IncomingChannelCursor, NotesCursor } from "../../src/internal/channel.js";
@@ -243,6 +243,50 @@ describe("IndexerDiscoveryProvider", () => {
       mockFetchJson({ body: { error: "BLOCK_REORGED" }, status: 409 });
 
       await expect(provider.discoverNotes(USER_ADDRESS, VIEWING_KEY)).rejects.toThrow(ReorgError);
+    });
+
+    it("incremental call uses channel keys from the input cursor", async () => {
+      const provider = createProvider();
+
+      // The second (incremental) response contains a note from SENDER_ADDR but does NOT
+      // include SENDER_ADDR in the channels array — the server omits it because the
+      // channel was already communicated in the previous sync call.
+      mockFetchJson({
+        body: incomingSyncResponse({
+          channels: [], // no channel info in this response
+          notes: [noteEntry({ index: 1, note_id: "0xde2", amount: "200", salt: "77" })],
+          cursor: completeCursor({
+            [SENDER_ADDR]: {
+              channel_key: CHANNEL_KEY_1,
+              subchannels: {
+                [TOKEN_ADDR]: { note_discovery_complete: true, last_note_index: 1 },
+              },
+            },
+          }),
+        }),
+      });
+
+      // Build a cursor that carries the channel key from the "previous" discovery call
+      const previousIncomingChannels = new AddressMap<IncomingChannelCursor>();
+      previousIncomingChannels.set(BigInt(SENDER_ADDR), {
+        channelKey: BigInt(CHANNEL_KEY_1),
+        subchannelIdIndex: 0,
+        noteIndexes: new AddressMap<number>([[BigInt(TOKEN_ADDR), 1]]),
+      });
+      const previousCursor: NotesCursor = {
+        blockId: BLOCK_REF,
+        incomingChannels: previousIncomingChannels,
+      };
+
+      // Without the fix this would throw "Missing channel_key for sender 0xaaa1"
+      const result = await provider.discoverNotes(USER_ADDRESS, VIEWING_KEY, {
+        cursor: previousCursor,
+      });
+
+      const tokenNotes = result.notes.get(BigInt(TOKEN_ADDR));
+      expect(tokenNotes).toHaveLength(1);
+      expect(tokenNotes![0].id).toBe("0xde2");
+      expect(tokenNotes![0].witness.channelKey).toBe(BigInt(CHANNEL_KEY_1));
     });
   });
 
