@@ -23,6 +23,9 @@ starkware_utils_testing.workspace = true
 name = "privacy_unittest"
 build-external-contracts = ["starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock"]
 
+[features]
+test_contracts = []
+
 [scripts]
 test = "snforge test -- --run-native"
 
