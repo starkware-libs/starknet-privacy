@@ -9,6 +9,7 @@ use std::sync::Arc;
 use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
+use discovery_core::events_backend::RawEventAccess;
 use discovery_core::storage_backend::StorageBackend;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
@@ -21,12 +22,13 @@ use crate::config::{ApiServerConfig, ValidationLimits};
 use crate::public_key_cache::PublicKeyCache;
 
 pub use handlers::{
-    health_handler, incoming_sync_handler, outgoing_sync_handler, preflight_check_handler,
+    health_handler, history_handler, incoming_sync_handler, outgoing_sync_handler,
+    preflight_check_handler,
 };
 pub use types::{
-    ApiErrorBody, ApiErrorResponse, HealthResponse, IncomingSyncRequest, IncomingSyncResponse,
-    OutgoingSyncRequest, OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse,
-    SyncRequestBase,
+    ApiErrorBody, ApiErrorResponse, HealthResponse, HistoryRequest, HistoryResponse,
+    IncomingSyncRequest, IncomingSyncResponse, OutgoingSyncRequest, OutgoingSyncResponse,
+    PreflightCheckRequest, PreflightCheckResponse, SyncRequestBase,
 };
 
 /// API server for the discovery service.
@@ -56,7 +58,7 @@ pub struct AppState<B> {
 impl<B> ApiServer<B>
 where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
-    B::Snapshot: Clone + Send + Sync + 'static,
+    B::Snapshot: RawEventAccess + Clone + Send + Sync + 'static,
 {
     /// Creates a new API server.
     pub fn new(config: ApiServerConfig, rx_shutdown: broadcast::Receiver<()>, backend: B) -> Self {
@@ -87,6 +89,7 @@ where
                 "/v1/sync/preflight_check",
                 post(preflight_check_handler::<B>),
             )
+            .route("/v1/history", post(history_handler::<B>))
             .layer(CorsLayer::permissive())
             .layer(DefaultBodyLimit::max(
                 self.config.validation_limits.max_request_body_bytes,

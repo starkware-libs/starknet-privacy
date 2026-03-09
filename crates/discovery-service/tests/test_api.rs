@@ -8,10 +8,11 @@ use common::{
     setup_devnet_with_dump, setup_indexer, DevnetClient, DevnetConfig, IndexerClient,
     IndexerSpawnConfig, DEFAULT_STARTUP_TIMEOUT,
 };
+use discovery_core::history::types::{ChannelKind, HistoryCursor, HistorySubchannel};
 use discovery_core::privacy_pool::types::SecretFelt;
 use discovery_service::api::{
-    HealthResponse, IncomingSyncRequest, OutgoingSyncRequest, PreflightCheckRequest,
-    SyncRequestBase,
+    HealthResponse, HistoryRequest, IncomingSyncRequest, OutgoingSyncRequest,
+    PreflightCheckRequest, SyncRequestBase,
 };
 use starknet_core::types::Felt;
 
@@ -406,6 +407,81 @@ async fn test_preflight_check_basic() {
         !response.subchannel_exists,
         "No subchannel from unknown sender"
     );
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_history_basic() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    // First, run incoming sync to discover Alice's channels and subchannels.
+    let sync_request = IncomingSyncRequest {
+        recipient_address: metadata.alice_address,
+        base: SyncRequestBase {
+            contract_address: metadata.contract_address,
+            viewing_key: metadata.alice_viewing_key.clone(),
+            last_known_block: None,
+            block_ref: None,
+            cursor: Default::default(),
+        },
+    };
+    let sync_response = indexer.incoming_sync(&sync_request).await.unwrap();
+    assert!(sync_response.cursor.is_complete());
+
+    // Build history subchannels from sync results: each (channel, subchannel) pair
+    // becomes a HistorySubchannel with the channel key and the last note index.
+    let mut history_subchannels = Vec::new();
+    for (sender_addr, channel_cursor) in &sync_response.cursor.channels {
+        for (token, subchannel_cursor) in &channel_cursor.subchannels {
+            history_subchannels.push(HistorySubchannel {
+                channel_key: channel_cursor.channel_key.clone(),
+                token: *token,
+                channel_kind: ChannelKind::Incoming,
+                counterparty: *sender_addr,
+                next_index: subchannel_cursor.last_note_index,
+            });
+        }
+    }
+
+    let history_request = HistoryRequest {
+        contract_address: metadata.contract_address,
+        user_address: metadata.alice_address,
+        max_transactions: 50,
+        last_known_block: None,
+        block_ref: Some(sync_response.block_ref),
+        cursor: HistoryCursor {
+            subchannels: history_subchannels,
+            begin_block_number: 0,
+            history_complete: false,
+        },
+    };
+
+    let history_response = indexer.history(&history_request).await.unwrap();
+
+    assert!(
+        history_response.block_ref != Felt::ZERO,
+        "block_ref should be set"
+    );
+    assert!(
+        !history_response.transactions.is_empty(),
+        "Alice should have at least one history transaction"
+    );
+    assert!(
+        history_response.cursor.history_complete,
+        "History should be complete with large budget"
+    );
+
+    // Verify transactions have expected structure
+    for transaction in &history_response.transactions {
+        assert!(transaction.block_number > 0, "block_number should be set");
+        assert!(
+            transaction.transaction_hash != Felt::ZERO,
+            "transaction_hash should be set"
+        );
+    }
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();

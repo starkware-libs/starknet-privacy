@@ -9,6 +9,7 @@ use discovery_core::discovery::notes::DecryptedNote;
 use discovery_core::discovery::outgoing_channels::OutgoingChannel;
 use discovery_core::discovery::DiscoveryCursor;
 use discovery_core::discovery::DiscoveryError;
+use discovery_core::history::types::{HistoryCursor, HistoryTransaction};
 use discovery_core::privacy_pool::types::{secret_felt_serde, SecretFelt};
 use discovery_core::sync::incoming_state::IncomingSubchannel;
 use discovery_core::sync::outgoing_state::OutgoingSubchannel;
@@ -296,6 +297,40 @@ pub struct PreflightCheckResponse {
     pub channel_exists: bool,
     /// Whether the token subchannel exists within the channel.
     pub subchannel_exists: bool,
+}
+
+/// Request body for POST /v1/history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryRequest {
+    /// The privacy pool contract address.
+    pub contract_address: Felt,
+    /// The user's on-chain address (used for withdrawal event filtering).
+    pub user_address: Felt,
+    /// Maximum number of transactions to return per page.
+    pub max_transactions: u32,
+    /// Block hash from last completed sync session. Used for reorg detection
+    /// on first request. Leave empty on fresh syncs or pagination requests.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_known_block: Option<Felt>,
+    /// Block hash for consistent storage reads across paginated requests.
+    /// Leave empty on first request (server uses current head).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub block_ref: Option<Felt>,
+    /// History cursor for pagination. Use the cursor from previous response
+    /// to continue scanning.
+    #[serde(default)]
+    pub cursor: HistoryCursor,
+}
+
+/// Response body for POST /v1/history.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HistoryResponse {
+    /// Block hash pinning all storage reads.
+    pub block_ref: Felt,
+    /// History transactions for the current page.
+    pub transactions: Vec<HistoryTransaction>,
+    /// Updated cursor for continuation.
+    pub cursor: HistoryCursor,
 }
 
 /// Well-known error codes.
