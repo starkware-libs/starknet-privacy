@@ -4,8 +4,8 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use discovery_service::api::{
-    ApiErrorResponse, IncomingSyncRequest, IncomingSyncResponse, OutgoingSyncRequest,
-    OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse,
+    ApiErrorResponse, HistoryRequest, HistoryResponse, IncomingSyncRequest, IncomingSyncResponse,
+    OutgoingSyncRequest, OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse,
 };
 use nix::sys::signal::Signal;
 use reqwest::StatusCode;
@@ -195,6 +195,11 @@ impl IndexerClient {
         req: &OutgoingSyncRequest,
     ) -> Result<(StatusCode, ApiErrorResponse)> {
         self.sync_err("v1/sync/outgoing_state", req).await
+    }
+
+    /// POST `/v1/history` and return the parsed success response.
+    pub async fn history(&self, req: &HistoryRequest) -> Result<HistoryResponse> {
+        self.sync_ok("v1/history", req).await
     }
 
     /// POST `/v1/sync/preflight_check` and return the parsed success response.

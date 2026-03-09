@@ -7,6 +7,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
+use discovery_core::events_backend::RawEventAccess;
 use discovery_core::io_budget::IoBudget;
 use discovery_core::storage_backend::StorageBackend;
 use starknet_core::types::{BlockId, Felt};
@@ -15,12 +16,13 @@ use tracing::debug;
 use discovery_core::privacy_pool::felt_hex;
 
 use crate::api::types::{
-    error_codes, ApiErrorResponse, HealthResponse, IncomingSyncRequest, IncomingSyncResponse,
-    OutgoingSyncRequest, OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse,
-    SyncRequestBase,
+    error_codes, ApiErrorResponse, HealthResponse, HistoryRequest, HistoryResponse,
+    IncomingSyncRequest, IncomingSyncResponse, OutgoingSyncRequest, OutgoingSyncResponse,
+    PreflightCheckRequest, PreflightCheckResponse, SyncRequestBase,
 };
 use crate::api::validators::{
-    validate_block_ref, validate_cursor, validate_recipients, validate_viewing_key,
+    validate_block_ref, validate_cursor, validate_history_cursor, validate_recipients,
+    validate_viewing_key,
 };
 use crate::api::AppState;
 use crate::chain_state::ChainState;
@@ -301,5 +303,88 @@ where
         sender_registered: result.sender_registered,
         channel_exists: result.channel_exists,
         subchannel_exists: result.subchannel_exists,
+    })
+}
+
+/// Handler for POST /v1/history.
+pub async fn history_handler<B>(
+    State(state): State<Arc<AppState<B>>>,
+    Json(request): Json<HistoryRequest>,
+) -> impl IntoResponse
+where
+    B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
+    B::Snapshot: RawEventAccess + Clone + Send + Sync + 'static,
+{
+    match history_impl(&state, request).await {
+        Ok(response) => (StatusCode::OK, Json(response)).into_response(),
+        Err((status, error)) => (status, Json(error)).into_response(),
+    }
+}
+
+async fn history_impl<B>(
+    state: &AppState<B>,
+    request: HistoryRequest,
+) -> Result<HistoryResponse, (StatusCode, ApiErrorResponse)>
+where
+    B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
+    B::Snapshot: RawEventAccess + Clone + Send + Sync + 'static,
+{
+    validate_history_cursor(
+        &request.cursor,
+        request.max_transactions,
+        &state.validation_limits,
+    )?;
+
+    let block_ref =
+        validate_block_ref(request.last_known_block, request.block_ref, &state.backend).await?;
+
+    let snapshot = state
+        .backend
+        .snapshot(request.contract_address, Some(BlockId::Hash(block_ref)))
+        .await;
+
+    let mut cursor = request.cursor;
+    if cursor.begin_block_number == 0 {
+        let head = state.backend.get_head().await.ok_or_else(|| {
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorResponse::new(
+                    error_codes::SERVICE_UNAVAILABLE,
+                    "No indexed head available yet",
+                ),
+            )
+        })?;
+        cursor.begin_block_number = head.block_number;
+    }
+
+    debug!(
+        user = %format!("{:#x}", request.user_address),
+        block = %block_ref,
+        num_subchannels = cursor.subchannels.len(),
+        begin_block = cursor.begin_block_number,
+        "history request"
+    );
+
+    let budget = IoBudget::new(state.validation_limits.server_budget);
+    let transactions = discovery_core::history::transactions::fetch_transactions(
+        &snapshot,
+        request.user_address,
+        &mut cursor,
+        request.max_transactions as usize,
+        &budget,
+    )
+    .await
+    .map_err(crate::api::types::discovery_error_to_response)?;
+
+    debug!(
+        num_transactions = transactions.len(),
+        history_complete = cursor.history_complete,
+        "history response"
+    );
+
+    Ok(HistoryResponse {
+        block_ref,
+        transactions,
+        cursor,
     })
 }
