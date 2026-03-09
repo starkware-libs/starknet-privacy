@@ -39,7 +39,7 @@ import { generateRandom, generateRandom120 } from "../utils/crypto.js";
 import { debugLog } from "../utils/logging.js";
 import { toHex } from "../utils/convert.js";
 import { compute_note_id } from "../utils/hashes.js";
-import { ReorgError } from "./indexer-discovery.js";
+import { ReorgError } from "./indexer/index.js";
 
 export type CompileResult = {
   clientActions: ClientAction[];
@@ -100,8 +100,8 @@ export class ActionCompiler {
         // Reorg detected: clear stale registry state and retry from scratch.
         if (options?.registry) {
           options.registry.notes.clear();
-          options.registry.channels.clear();
-          delete options.registry.cursor;
+          delete options.registry.notesCursor;
+          delete options.registry.channelCursor;
         }
         return await this.compileOnce(actions, options);
       }
@@ -199,9 +199,9 @@ export class ActionCompiler {
       pool.setupChannel(addr, channel);
     }
 
-    debugLog("compiler", "setup registry channels", registry?.channels);
+    debugLog("compiler", "setup registry channels", registry?.channelCursor?.channels);
 
-    for (const [addr, channel] of registry?.channels?.entries() ?? []) {
+    for (const [addr, channel] of registry?.channelCursor?.channels?.entries() ?? []) {
       if (channels?.has(addr)) continue; // skip channels that were already set up in the previous step
       pool.setupChannel(addr, channel);
     }
@@ -512,7 +512,9 @@ export class ActionCompiler {
       recipientsToDiscover = [...recipientsNeeded.keys()];
     } else {
       // None or 'missing': only discover recipients not in registry
-      recipientsToDiscover = [...recipientsNeeded.keys()].filter((r) => !registry.channels.has(r));
+      recipientsToDiscover = [...recipientsNeeded.keys()].filter(
+        (r) => !registry.channelCursor?.channels?.has(r)
+      );
     }
 
     if (recipientsToDiscover.length === 0) {
@@ -636,14 +638,14 @@ export class ActionCompiler {
         const { notes, cursor } = await this.discoveryProvider.discoverNotes(
           this.userAddress,
           this.userViewingKey,
-          { cursor: registry.cursor, tokens: tokensToDiscover }
+          { cursor: registry.notesCursor, tokens: tokensToDiscover }
         );
 
         // Replace registry notes (don't merge - some may have been spent)
         for (const [token, discoveredNotes] of notes.entries()) {
           registry.notes.set(token, discoveredNotes);
         }
-        registry.cursor = cursor;
+        registry.notesCursor = cursor;
       }
     }
 
@@ -707,19 +709,17 @@ export class ActionCompiler {
   }
 
   private cloneRegistry(registry: PrivateRegistry): PrivateRegistry {
-    // Clone channels
-    const clonedChannels = new AddressMap<Channel>();
-    for (const [addr, channel] of registry.channels.entries()) {
-      clonedChannels.set(addr, channel);
-    }
-
     // Clone notes
     const clonedNotes = new AddressMap<Note[]>(() => []);
     for (const [addr, notes] of registry.notes.entries()) {
       clonedNotes.set(addr, [...notes]);
     }
 
-    return { channels: clonedChannels, notes: clonedNotes };
+    return {
+      notesCursor: registry.notesCursor,
+      channelCursor: registry.channelCursor,
+      notes: clonedNotes,
+    };
   }
 
   private allOpen(

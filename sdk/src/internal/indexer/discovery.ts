@@ -6,18 +6,18 @@ import {
   type StarknetAddress,
   type StarknetAddressBigint,
   type ViewingKey,
-} from "../interfaces.js";
-import { toBigInt } from "../utils/crypto.js";
-import { toHex } from "../utils/convert.js";
-import { AddressMap } from "../utils/maps.js";
-import { AbstractDiscoveryProvider } from "./abstract-discovery.js";
-import { Channel, Witness } from "./channel.js";
+} from "../../interfaces.js";
+import { toBigInt } from "../../utils/crypto.js";
+import { toHex } from "../../utils/convert.js";
+import { AddressMap } from "../../utils/maps.js";
+import { AbstractDiscoveryProvider } from "../abstract-discovery.js";
+import { Channel, Witness } from "../channel.js";
 import type {
   ChannelCursor,
   IncomingChannelCursor,
   NotesCursor,
   RecipientsFilter,
-} from "./channel.js";
+} from "../channel.js";
 
 /** Thrown when the indexer reports a block reorg (HTTP 409, BLOCK_REORGED). */
 export class ReorgError extends Error {
@@ -146,7 +146,9 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     let blockRef: string | undefined;
 
     const allNotes = new AddressMap<Note[]>(() => []);
-    const incomingChannels = new AddressMap<IncomingChannelCursor>();
+    const incomingChannels = cursor
+      ? new AddressMap<IncomingChannelCursor>(cursor.incomingChannels.entries())
+      : new AddressMap<IncomingChannelCursor>();
 
     let complete = false;
     do {
@@ -214,6 +216,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     timestamp: BlockIdentifier;
     channels?: AddressMap<ChannelInterface>;
     total?: number;
+    cursor: ChannelCursor;
   }> {
     if (recipients === "total-only") {
       // For total-only, do a minimal outgoing sync to get the total channel count
@@ -224,7 +227,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
         cursor: { channel_discovery_complete: false },
       };
       const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
-      return { timestamp: resp.block_ref, total: resp.cursor.total_n_channels! };
+      return { timestamp: resp.block_ref, total: resp.cursor.total_n_channels!, cursor: { total: resp.cursor.total_n_channels!, blockId: resp.block_ref } };
     }
 
     const cursorMap = params?.cursor?.channels;
@@ -274,6 +277,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       Map<string, { token: bigint; lastIndex: number | null }>
     >();
     const nonCreatedChannelMap = new Map<string, { publicKey: bigint; channelKey: bigint }>();
+    const lastKnownBlock = params?.cursor?.blockId as string | undefined;
     let blockRef: string | undefined;
 
     let complete = false;
@@ -286,6 +290,8 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       };
       if (blockRef) {
         body.block_ref = blockRef;
+      } else if (lastKnownBlock) {
+        body.last_known_block = lastKnownBlock;
       }
       if (recipients !== "all") {
         body.recipients = recipients.map((r) => toHex(r));
@@ -321,7 +327,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       }
     }
 
-    return { timestamp: blockRef!, channels };
+    return { timestamp: blockRef!, channels, cursor: { channels, blockId: blockRef! } };
   }
 
   async discoverRequirement(

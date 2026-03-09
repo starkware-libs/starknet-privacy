@@ -7,6 +7,7 @@ import {
   POOL_ADDRESS,
 } from "../helpers/test-fixtures.js";
 import { Open } from "../../src/interfaces.js";
+import { AddressMap } from "../../src/utils/maps.js";
 import { debugHint, isDebugEnabled, toBigInt } from "../../src/utils/index.js";
 import { debugLog } from "../../src/utils/logging.js";
 import { toHex } from "../../src/utils/convert.js";
@@ -172,7 +173,8 @@ describe("Private Transfers Integration", () => {
       const channel = (await alice.discoverChannels([env.alice.address])).channels!.get(
         env.alice.address
       )!;
-      channelOnly.channels.set(env.alice.address, channel);
+      channelOnly.channelCursor = { channels: new AddressMap() };
+      channelOnly.channelCursor.channels!.set(env.alice.address, channel);
 
       // Deposit 30n with:
       // - autoSelectNotes: "all" (sweeps ALL notes, not just enough for deficit)

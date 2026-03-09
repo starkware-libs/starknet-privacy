@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { ActionCompiler } from "../../src/internal/compiler.js";
-import { ReorgError } from "../../src/internal/indexer-discovery.js";
+import { ReorgError } from "../../src/internal/indexer/index.js";
 import { createEmptyRegistry, SetupRequirement } from "../../src/interfaces.js";
 import type { DiscoveryProviderInterface, Note } from "../../src/interfaces.js";
 import { AddressMap } from "../../src/utils/maps.js";
@@ -24,6 +24,7 @@ function createMockProvider(overrides: Partial<DiscoveryProviderInterface> = {})
         [USER_ADDRESS, new Channel(0xaa1n, 0xcc1n)],
         [RECIPIENT_ADDR, new Channel(0xaa2n, 0xcc2n)],
       ]),
+      cursor: { channels: new AddressMap<Channel>(), blockId: "0xblock" },
     }),
     discoverRequirement: vi.fn().mockResolvedValue(SetupRequirement.Ready),
     ...overrides,
@@ -46,6 +47,7 @@ describe("ActionCompiler reorg handling", () => {
             [USER_ADDRESS, new Channel(0xaa1n, 0xcc1n)],
             [RECIPIENT_ADDR, new Channel(0xaa2n, 0xcc2n)],
           ]),
+          cursor: { channels: new AddressMap<Channel>(), blockId: "0xblock2" },
         }),
     });
 
@@ -60,8 +62,10 @@ describe("ActionCompiler reorg handling", () => {
         sender: 0xaaan,
       },
     ]);
-    registry.channels.set(RECIPIENT_ADDR, new Channel(0xa1dn, 0xa1cn));
-    registry.cursor = { blockId: "0xoldblock", incomingChannels: new AddressMap() };
+    registry.channelCursor = {
+      channels: new AddressMap<Channel>([[RECIPIENT_ADDR, new Channel(0xa1dn, 0xa1cn)]]),
+    };
+    registry.notesCursor = { blockId: "0xoldblock", incomingChannels: new AddressMap() };
 
     const result = await compiler.compile(
       { openChannels: [{ recipient: RECIPIENT_ADDR }] },
