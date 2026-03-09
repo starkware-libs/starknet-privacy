@@ -5,7 +5,7 @@
  *   RPC_URL   — JSON-RPC endpoint
  *   ACCOUNTS  — JSON array; uses the "admin" entry for signing
  *
- * Loads sierra + casm artifacts from target/dev/ and submits a DECLARE v3 tx.
+ * Loads sierra + casm artifacts from target/release/ and submits a DECLARE v3 tx.
  *
  * Usage: npm run declare-class   (from e2e/, with .env populated)
  */
