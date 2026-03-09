@@ -2490,7 +2490,7 @@ fn test_create_note_decrypt_amount() {
     let (channel_key, _) = decrypt_channel_info(
         :enc_channel_info, recipient_private_key: user_2.private_key,
     );
-    let note_id = compute_note_id(:channel_key, token: token_addr, index: index);
+    let note_id = compute_note_id(:channel_key, token: token_addr, :index);
     let note = user_2.privacy.get_note(:note_id);
     let dec_note_amount = decode_note_amount(
         packed_value: note.packed_value, :channel_key, token: token_addr, :index,
@@ -5468,7 +5468,7 @@ fn test_no_replay_protection() {
     let out_token = test.new_token();
     let out_token_addr = out_token.contract_address();
     user.open_subchannel_e2e(recipient: user, token_addr: out_token_addr, index: 1);
-    out_token.supply(address: test.privacy.mock_amm, amount: amount);
+    out_token.supply(address: test.privacy.mock_amm, :amount);
     let create_open_note_input = user
         .new_open_note_with_generated_random(
             recipient: user,
