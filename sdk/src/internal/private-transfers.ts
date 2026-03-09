@@ -18,7 +18,7 @@ import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
-import { toHex } from "../utils/convert.js";
+import { toBigInt, toHex } from "../utils/convert.js";
 
 // Export the specific typed contract type for the Privacy Pool
 export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
@@ -39,7 +39,12 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
 
   private async getCompiler(): Promise<ActionCompiler> {
     const viewingKey = await this.params.viewingKeyProvider.getViewingKey();
-    return new ActionCompiler(this.user, viewingKey, this.params.discoveryProvider);
+    return new ActionCompiler(
+      this.user,
+      viewingKey,
+      this.params.discoveryProvider,
+      toBigInt(this.params.poolContractAddress)
+    );
   }
 
   async createProofInvocation(
@@ -48,7 +53,12 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
   ): Promise<ProofInvocationResult> {
     // Get viewing key for both compiler and calldata
     const viewingKey = await this.params.viewingKeyProvider.getViewingKey();
-    const compiler = new ActionCompiler(this.user, viewingKey, this.params.discoveryProvider);
+    const compiler = new ActionCompiler(
+      this.user,
+      viewingKey,
+      this.params.discoveryProvider,
+      toBigInt(this.params.poolContractAddress)
+    );
 
     // Compile actions
     const { clientActions, registry, warnings } = await compiler.compile(actions, options);

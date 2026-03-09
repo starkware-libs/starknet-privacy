@@ -13,7 +13,7 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use starknet_types_core::felt::Felt;
 
 use tracing::{debug, trace};
@@ -28,7 +28,26 @@ use crate::privacy_pool::hashes::{compute_note_id, compute_nullifier};
 use crate::privacy_pool::types::SecretFelt;
 use crate::privacy_pool::views::IViews;
 
+/// Serde helper: serializes `u128` as a decimal string to avoid
+/// precision loss in JSON (JS numbers are 53-bit floats).
+mod u128_as_string {
+    use super::*;
+
+    pub fn serialize<S: Serializer>(value: &u128, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u128, D::Error> {
+        let s: &str = Deserialize::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
 /// A discovered and decrypted note.
+///
+/// `amount` and `salt` are serialized as decimal strings to avoid
+/// precision loss when transported via JSON (JavaScript numbers are
+/// IEEE 754 doubles with only 53 bits of mantissa).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecryptedNote {
     /// The sender's address. Set by the sync orchestrator after discovery.
@@ -42,8 +61,10 @@ pub struct DecryptedNote {
     /// The note ID (storage key).
     pub note_id: Felt,
     /// The decrypted amount.
+    #[serde(with = "u128_as_string")]
     pub amount: u128,
     /// The salt used for encryption.
+    #[serde(with = "u128_as_string")]
     pub salt: u128,
 }
 
