@@ -66,4 +66,10 @@ pub enum DiscoveryError {
     /// Invalid cursor data provided by client.
     #[error("invalid cursor: {0}")]
     InvalidCursor(String),
+    /// The I/O budget is too small to make progress.
+    #[error("insufficient budget: needed {needed}, available {available}")]
+    InsufficientBudget { needed: usize, available: usize },
+    /// Expected event not found on-chain.
+    #[error("missing event: {0}")]
+    EventError(String),
 }
