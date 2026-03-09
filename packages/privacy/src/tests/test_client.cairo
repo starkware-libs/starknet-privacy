@@ -184,6 +184,9 @@ fn test_transfer() {
         to_write_once_action(storage_address: storage_path_felt_nullifier, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier }),
         create_note_input.into_server_action(user: user_1),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id, packed_value: expected_note.packed_value },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -229,6 +232,9 @@ fn test_transfer_to_self() {
         to_write_once_action(storage_address: storage_path_felt_nullifier, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier }),
         create_note_input.into_server_action(user: user_1),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id, packed_value: expected_note.packed_value },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -286,7 +292,13 @@ fn test_transfer_one_to_many() {
         to_write_once_action(storage_address: storage_path_felt_nullifier, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier }),
         create_note_input_1.into_server_action(user: user_1),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id: note_id_1, packed_value: expected_note_1.packed_value },
+        ),
         create_note_input_2.into_server_action(user: user_1),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id: note_id_2, packed_value: expected_note_2.packed_value },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -353,6 +365,9 @@ fn test_transfer_many_to_one() {
         to_write_once_action(storage_address: storage_path_felt_nullifier_2, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier_2 }),
         create_note_input.into_server_action(user: user_1),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id, packed_value: expected_note.packed_value },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -425,7 +440,13 @@ fn test_transfer_many_to_many() {
         to_write_once_action(storage_address: storage_path_felt_nullifier_2, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier_2 }),
         create_note_input_1.into_server_action(user: user_3),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id: note_id_1, packed_value: expected_note_1.packed_value },
+        ),
         create_note_input_2.into_server_action(user: user_3),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id: note_id_2, packed_value: expected_note_2.packed_value },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -3706,6 +3727,9 @@ fn test_execute_deposit_create_note() {
         ),
         ServerAction::EmitDeposit(expected_event),
         create_note_input.into_server_action(user: user_1),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id, packed_value: expected_note.packed_value },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -3765,6 +3789,9 @@ fn test_execute_use_note_create_note() {
         to_write_once_action(storage_address: nullifier_storage_path, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier }),
         create_note_input_2.into_server_action(user: user_2),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id, packed_value: expected_note.packed_value },
+        ),
     ]
         .span();
     assert_eq!(actions, expected_actions);
@@ -5227,6 +5254,7 @@ fn test_client_apply_writes() {
         user_addr: address, public_key, enc_private_key,
     };
     let expected_event_deposit = events::Deposit { user_addr: address, token: token_addr, amount };
+    let (enc_note_id, enc_note) = user.compute_enc_note(create_note_input: create_enc_note_input);
     let expected_server_actions = [
         // Set viewing key.
         to_write_once_action(storage_address: public_key_storage_path, value: public_key),
@@ -5249,6 +5277,9 @@ fn test_client_apply_writes() {
         ),
         ServerAction::EmitDeposit(expected_event_deposit), // Create note.
         create_enc_note_input.into_server_action(:user),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id: enc_note_id, packed_value: enc_note.packed_value },
+        ),
     ]
         .span();
     // Assert server actions.
@@ -5356,11 +5387,15 @@ fn test_client_transfers_dont_execute() {
         salt,
     };
     let expected_event = events::Deposit { user_addr: user.address, token: token_addr, amount };
+    let (note_id, note) = user.compute_enc_note(:create_note_input);
     let expected_server_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput { from_addr: user.address, token: token_addr, amount: amount.into() },
         ),
         ServerAction::EmitDeposit(expected_event), create_note_input.into_server_action(:user),
+        ServerAction::EmitNoteCreated(
+            events::NoteCreated { note_id, packed_value: note.packed_value },
+        ),
     ]
         .span();
     assert_eq!(server_actions, expected_server_actions);

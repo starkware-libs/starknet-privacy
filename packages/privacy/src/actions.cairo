@@ -356,6 +356,8 @@ pub enum ServerAction {
     EmitDeposit: events::Deposit,
     /// Emit [`OpenNoteCreated`](privacy::events::OpenNoteCreated) event.
     EmitOpenNoteCreated: events::OpenNoteCreated,
+    /// Emit [`NoteCreated`](privacy::events::NoteCreated) event.
+    EmitNoteCreated: events::NoteCreated,
     /// Emit [`NoteUsed`](privacy::events::NoteUsed) event.
     EmitNoteUsed: events::NoteUsed,
     /// Invoke an external contract via the

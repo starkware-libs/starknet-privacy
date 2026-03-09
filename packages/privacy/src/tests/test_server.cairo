@@ -576,6 +576,25 @@ fn test_apply_emit_open_note_created() {
 }
 
 #[test]
+fn test_apply_emit_note_created() {
+    let mut test: Test = Default::default();
+    let note_id = 'NOTE_ID';
+    let packed_value = 'PACKED_VALUE';
+    let expected_event = events::NoteCreated { note_id, packed_value };
+    let actions = array![ServerAction::EmitNoteCreated(expected_event)];
+    let mut spy = spy_events();
+    test.privacy.apply_actions(actions.span());
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("NoteCreated"),
+        expected_event_name: "NoteCreated",
+    );
+}
+
+#[test]
 fn test_apply_emit_note_used() {
     let mut test: Test = Default::default();
     let nullifier = test.mock_new_nullifier();
