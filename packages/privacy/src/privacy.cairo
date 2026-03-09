@@ -809,8 +809,7 @@ pub mod Privacy {
                     ServerAction::EmitNoteUsed(event) => self.emit(event),
                 };
             }
-            // TODO: Change to ==.
-            assert(open_notes_filled >= open_notes_created, errors::UNFILLED_OPEN_NOTES);
+            assert(open_notes_filled == open_notes_created, errors::UNFILLED_OPEN_NOTES);
         }
 
         fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {

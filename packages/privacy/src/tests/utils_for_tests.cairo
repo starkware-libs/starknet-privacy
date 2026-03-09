@@ -1542,6 +1542,13 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.cheat_invoke_echo(:note_id, token_addr: token.contract_address(), :amount);
     }
 
+    /// Construct deposit-to-open-note server actions using the default echo executor.
+    fn _deposit_to_open_note_actions(
+        self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
+    ) -> Span<ServerAction> {
+        self.echo_executor.cheat_invoke_echo_actions(:note_id, :token_addr, :amount)
+    }
+
     fn pause(self: @PrivacyCfg) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.security_agent,
