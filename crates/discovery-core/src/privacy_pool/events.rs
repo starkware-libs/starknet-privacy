@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use starknet_core::utils::starknet_keccak;
 use starknet_types_core::felt::Felt;
 
-use super::types::felt_low_u128;
+use super::types::{felt_low_u128, u128_as_string};
 use crate::events_backend::{EmittedEvent, RawEventAccess};
 use crate::storage_backend::StorageError;
 
@@ -36,6 +36,7 @@ pub struct PrivacyPoolEvent {
 pub struct DepositEvent {
     pub user_address: Felt,
     pub token: Felt,
+    #[serde(with = "u128_as_string")]
     pub amount: u128,
 }
 
@@ -45,6 +46,7 @@ pub struct DepositEvent {
 pub struct WithdrawalEvent {
     pub to_address: Felt,
     pub token: Felt,
+    #[serde(with = "u128_as_string")]
     pub amount: u128,
 }
 
@@ -63,6 +65,7 @@ pub struct OpenNoteDepositedEvent {
     pub depositor: Felt,
     pub token: Felt,
     pub note_id: Felt,
+    #[serde(with = "u128_as_string")]
     pub amount: u128,
 }
 

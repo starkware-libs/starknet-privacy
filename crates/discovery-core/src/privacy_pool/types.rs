@@ -58,6 +58,21 @@ impl fmt::Debug for SecretFelt {
     }
 }
 
+/// Serde helper: serializes `u128` as a decimal string to avoid
+/// precision loss in JSON (JS numbers are 53-bit floats).
+pub mod u128_as_string {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub fn serialize<S: Serializer>(value: &u128, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u128, D::Error> {
+        let s: String = Deserialize::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
 /// Serde helpers for `SecretFelt`. Use with `#[serde(serialize_with, deserialize_with)]`.
 pub mod secret_felt_serde {
     use super::*;
@@ -115,6 +130,27 @@ mod tests {
         let json = serde_json::to_string(&original).unwrap();
         let restored: Wrapper = serde_json::from_str(&json).unwrap();
         assert_eq!(*restored.key, *original.key);
+    }
+
+    #[test]
+    fn test_u128_as_string_roundtrip() {
+        #[derive(Serialize, Deserialize, PartialEq, Debug)]
+        struct Wrapper {
+            #[serde(with = "u128_as_string")]
+            value: u128,
+        }
+
+        let cases = [0u128, 1, u128::MAX, 1u128 << 53, (1u128 << 53) + 1];
+        for value in cases {
+            let wrapper = Wrapper { value };
+            let json = serde_json::to_string(&wrapper).unwrap();
+            assert!(
+                json.contains(&format!("\"{}\"", value)),
+                "value {value} should be serialized as a string"
+            );
+            let restored: Wrapper = serde_json::from_str(&json).unwrap();
+            assert_eq!(restored, wrapper);
+        }
     }
 }
 

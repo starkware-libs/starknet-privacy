@@ -13,7 +13,7 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use starknet_types_core::felt::Felt;
 
 use tracing::{debug, trace};
@@ -25,23 +25,8 @@ use crate::io_budget::IoBudget;
 use crate::privacy_pool::decryption::{decrypt_packed_value, OPEN_NOTE_SALT};
 use crate::privacy_pool::felt_hex;
 use crate::privacy_pool::hashes::{compute_note_id, compute_nullifier};
-use crate::privacy_pool::types::SecretFelt;
+use crate::privacy_pool::types::{u128_as_string, SecretFelt};
 use crate::privacy_pool::views::IViews;
-
-/// Serde helper: serializes `u128` as a decimal string to avoid
-/// precision loss in JSON (JS numbers are 53-bit floats).
-mod u128_as_string {
-    use super::*;
-
-    pub fn serialize<S: Serializer>(value: &u128, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&value.to_string())
-    }
-
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u128, D::Error> {
-        let s: &str = Deserialize::deserialize(deserializer)?;
-        s.parse().map_err(serde::de::Error::custom)
-    }
-}
 
 /// A discovered and decrypted note.
 ///
