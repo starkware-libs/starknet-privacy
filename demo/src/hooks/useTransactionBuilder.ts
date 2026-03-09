@@ -1,9 +1,10 @@
 import { useState, useCallback, useMemo } from "react";
-import { Account, TransactionFinalityStatus, type RpcProvider } from "starknet";
+import { TransactionFinalityStatus, type RpcProvider } from "starknet";
 import type { PrivateTransfersInterface } from "starknet-sdk";
 import type { AccountConfig, AppConfig } from "../config.ts";
 import type { TransactionStatus } from "./useTransactions.ts";
 import type { BuilderOperation } from "../components/TransactionBuilder.tsx";
+import { createAccount } from "../starknet.ts";
 import { Timeline } from "../timeline.ts";
 
 const WAIT_OPTIONS = {
@@ -39,12 +40,7 @@ export function useTransactionBuilder(
       (account) => account.address === activeAddress,
     );
     if (!accountConfig) return undefined;
-    return new Account({
-      provider,
-      address: accountConfig.address,
-      signer: accountConfig.privateKey,
-      cairoVersion: "1",
-    });
+    return createAccount(provider, accountConfig);
   }, [provider, activeAddress, accounts]);
 
   const executeBatch = useCallback(

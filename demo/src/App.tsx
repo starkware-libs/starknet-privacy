@@ -49,7 +49,7 @@ export function App() {
 
   const account = useMemo(() => {
     if (!activeAccount) return undefined;
-    return createAccount(provider, activeAccount.address, activeAccount.privateKey);
+    return createAccount(provider, activeAccount);
   }, [provider, activeAccount]);
 
   const transfers = useMemo(() => {
@@ -126,6 +126,7 @@ export function App() {
           <div className="main-layout">
             <InfoPanel
               state={state}
+              accountType={activeAccount.type}
               loading={loading}
               error={error}
               onRefresh={refresh}

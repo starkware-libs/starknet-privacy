@@ -9,17 +9,18 @@ import {
 import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
 import type { AppConfig, AccountConfig } from "./config.ts";
 import { NoValidateProofProvider } from "./proof-provider.ts";
+import { ArgentOwnerSigner } from "./argent-signer.ts";
 
 export function createProvider(rpcUrl: string): RpcProvider {
   return new RpcProvider({ nodeUrl: rpcUrl });
 }
 
-export function createAccount(
-  provider: RpcProvider,
-  address: string,
-  privateKey: string,
-): Account {
-  return new Account({ provider, address, signer: privateKey, cairoVersion: "1" });
+export function createAccount(provider: RpcProvider, accountConfig: AccountConfig): Account {
+  const signer =
+    accountConfig.type === "argent"
+      ? new ArgentOwnerSigner(accountConfig.privateKey)
+      : accountConfig.privateKey;
+  return new Account({ provider, address: accountConfig.address, signer, cairoVersion: "1" });
 }
 
 export function createTransfers(

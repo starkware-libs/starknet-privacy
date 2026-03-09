@@ -50,6 +50,27 @@ npm run load-test-discovery -- --threads 8 --duration 30 --account alice --warmu
 `/v1/sync/incoming_state`, giving visibility into how many pagination round
 trips each `discoverNotes()` call requires.
 
+### `deploy-argent.ts`
+
+Deploys Argent accounts (owner-only, no guardian) via counterfactual `deployAccount`.
+Funds each account from an existing account, then self-deploys and verifies the on-chain owner.
+
+```
+ARGENT_CLASS_HASH=0x036078334509b514626504edc9fb252328d1a240e4e948bef8d0c08dff45927f \
+ARGENT_ACCOUNTS='[{"name":"Dave","privateKey":"0xabc...","viewingKey":"0xabc...","salt":"0x1"}]' \
+npm run deploy-argent
+```
+
+**Env vars:**
+
+- `ARGENT_CLASS_HASH` — declared Argent account class hash
+- `ARGENT_ACCOUNTS` — JSON array of `{ name, privateKey, viewingKey, salt }`
+- `FUNDER_ACCOUNT` — name of the account in `ACCOUNTS` used to fund deployments (default: `alice`)
+- `FEE_TOKEN_ADDRESS` — STRK token address (from `.env`)
+
+Each account gets 2 STRK for gas. The script is idempotent — skips already-deployed addresses.
+Prints a ready-to-use JSON entry for `VITE_ACCOUNTS` after each deployment.
+
 ### `batch-operations.ts`
 
 Creates many notes via chunked deposits or transfers. Used to build up pool

@@ -1,11 +1,30 @@
 import type { constants } from "starknet";
 
+export type AccountType = "oz" | "argent";
+
 export type AccountConfig = {
   name: string;
   address: string;
   privateKey: string;
   viewingKey: string;
   admin?: boolean;
+  type?: AccountType;
+};
+
+export type TokenConfig = {
+  name: string;
+  address: string;
+  decimals: number;
+};
+
+export type EkuboConfig = {
+  coreAddress: string;
+  executorAddress: string;
+  poolFee: string;
+  tickSpacing: string;
+  extension: string;
+  skipAhead: string;
+  swapTokens: TokenConfig[];
 };
 
 export type AppConfig = {

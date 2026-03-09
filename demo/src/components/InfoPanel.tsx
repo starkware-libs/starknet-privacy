@@ -1,11 +1,12 @@
 import { useState } from "react";
-import type { ChannelGroup, NoteDisplay } from "../hooks/usePrivateState.ts";
-import type { PrivateState } from "../hooks/usePrivateState.ts";
+import type { ChannelGroup, NoteDisplay, PrivateState } from "../hooks/usePrivateState.ts";
+import type { AccountType } from "../config.ts";
 
 const NOTES_PER_PAGE = 10;
 
 type Props = {
   state: PrivateState;
+  accountType?: AccountType;
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
@@ -85,7 +86,7 @@ function ChannelCard({ group }: { group: ChannelGroup }) {
   );
 }
 
-export function InfoPanel({ state, loading, error, onRefresh }: Props) {
+export function InfoPanel({ state, accountType, loading, error, onRefresh }: Props) {
   return (
     <div className="info-panel">
       <h2>
@@ -96,14 +97,22 @@ export function InfoPanel({ state, loading, error, onRefresh }: Props) {
       </h2>
       {error && <div className="error">Error: {error}</div>}
 
-      <div>
-        Registered:{" "}
-        {state.isRegistered === null ? (
-          <span className="chip">unknown</span>
-        ) : state.isRegistered ? (
-          <span className="chip chip-ok">yes</span>
-        ) : (
-          <span className="chip chip-no">no</span>
+      <div className="account-info">
+        <div>
+          Registered:{" "}
+          {state.isRegistered === null ? (
+            <span className="chip">unknown</span>
+          ) : state.isRegistered ? (
+            <span className="chip chip-ok">yes</span>
+          ) : (
+            <span className="chip chip-no">no</span>
+          )}
+        </div>
+        {accountType && (
+          <div>
+            Account type:{" "}
+            <span className="chip">{accountType === "argent" ? "Argent" : "OpenZeppelin"}</span>
+          </div>
         )}
       </div>
 

@@ -298,6 +298,13 @@ select {
   padding: 12px;
 }
 
+.account-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -382,7 +389,15 @@ input[type="number"] {
   background: #161b22;
 }
 
-.status-bar .pending {
+.status-bar > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.status-bar--pending {
+  background: #2d2a1a;
   color: #d29922;
 }
 
@@ -399,6 +414,84 @@ input[type="number"] {
   color: #8b949e;
   font-size: 11px;
   margin-left: 10px;
+}
+
+.status-bar-error {
+  flex: 1;
+  min-width: 0;
+}
+
+.status-bar-error-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.status-bar-error-summary {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.status-bar-error-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.status-bar-error-detail {
+  margin-top: 6px;
+  font-size: 12px;
+  opacity: 0.85;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.status-bar-error-label {
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.status-bar-error-reason {
+  display: block;
+  margin-top: 2px;
+  white-space: pre-wrap;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.status-bar .copy-error-button,
+.status-bar .status-bar-detail-button {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.status-bar .copy-error-button:hover,
+.status-bar .status-bar-detail-button:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.status-bar .close-button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px 8px;
+  margin: -4px -8px -4px 0;
+  font-size: 18px;
+  line-height: 1;
+  opacity: 0.6;
+  flex-shrink: 0;
+  border-radius: 4px;
 }
 
 .timeline-button {

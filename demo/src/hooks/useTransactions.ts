@@ -1,7 +1,8 @@
 import { useState, useCallback, useMemo } from "react";
-import { Account, TransactionFinalityStatus, type RpcProvider } from "starknet";
+import { TransactionFinalityStatus, type RpcProvider } from "starknet";
 import type { PrivateTransfersInterface } from "starknet-sdk";
 import type { AccountConfig, AppConfig } from "../config.ts";
+import { createAccount } from "../starknet.ts";
 import { Timeline } from "../timeline.ts";
 
 const WAIT_OPTIONS = {
@@ -43,12 +44,7 @@ export function useTransactions(
     if (!provider) return undefined;
     const admin = accounts.find((a) => a.admin);
     if (!admin) return undefined;
-    return new Account({
-      provider,
-      address: admin.address,
-      signer: admin.privateKey,
-      cairoVersion: "1",
-    });
+    return createAccount(provider, admin);
   }, [provider, accounts]);
 
   const userAccount = useMemo(() => {
@@ -57,12 +53,7 @@ export function useTransactions(
       (a) => a.address === activeAddress,
     );
     if (!accountConfig) return undefined;
-    return new Account({
-      provider,
-      address: accountConfig.address,
-      signer: accountConfig.privateKey,
-      cairoVersion: "1",
-    });
+    return createAccount(provider, accountConfig);
   }, [provider, activeAddress, accounts]);
 
   const execute = useCallback(
