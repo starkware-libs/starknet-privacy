@@ -34,6 +34,15 @@ pub const COST_NOTE_PROBING: usize = 1;
 /// Cost for a single `get_public_key` (1 storage slot read).
 pub const COST_PUBLIC_KEY: usize = 1;
 
+/// Cost per `get_block_events` call (fetches all events in a single block).
+pub const COST_BLOCK_EVENTS_QUERY: usize = 10;
+
+/// Number of blocks per pricing chunk for event range queries.
+pub const EVENTS_COST_CHUNK_SIZE: usize = 1024;
+
+/// Cost per event range chunk (covers up to [`EVENTS_COST_CHUNK_SIZE`] blocks).
+pub const COST_EVENTS_CHUNK: usize = 10;
+
 /// Minimum server budget to make progress through one step at each discovery level:
 /// fetch channel count, discover one channel, discover one subchannel (×2 for sentinel),
 /// probe note boundary, and scan 10 notes.
