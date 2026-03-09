@@ -8,6 +8,7 @@ import {
   PrivateRegistry,
   PrivateTransfersInterface,
 } from "../../src/interfaces.js";
+import { AddressMap } from "../../src/utils/maps.js";
 
 export const POOL_ADDRESS = 0x1n;
 
@@ -72,15 +73,16 @@ export async function setupSelfChannel(
   executeOutside(await user.build().register().execute());
   executeOutside(await user.build().setup(userAddress).execute());
 
-  let channel = (await user.discoverChannels([userAddress])).channels.get(userAddress)!;
+  let channel = (await user.discoverChannels([userAddress])).channels!.get(userAddress)!;
   const registry = createEmptyRegistry();
-  registry.channels.set(userAddress, channel);
+  registry.channelCursor = { channels: new AddressMap() };
+  registry.channelCursor.channels!.set(userAddress, channel);
 
   executeOutside(await user.build({ registry }).with(token).setup(userAddress).execute());
 
   // Refresh channel to include token info
-  channel = (await user.discoverChannels([userAddress])).channels.get(userAddress)!;
-  registry.channels.set(userAddress, channel);
+  channel = (await user.discoverChannels([userAddress])).channels!.get(userAddress)!;
+  registry.channelCursor.channels!.set(userAddress, channel);
 
   return registry;
 }
@@ -105,15 +107,18 @@ export async function setupRecipientChannel(
   // Sender sets up channel to recipient
   executeOutside(await sender.build().setup(recipientAddress).execute());
 
-  let channel = (await sender.discoverChannels([recipientAddress])).channels.get(recipientAddress)!;
+  let channel = (await sender.discoverChannels([recipientAddress])).channels!.get(
+    recipientAddress
+  )!;
   const registry = createEmptyRegistry();
-  registry.channels.set(recipientAddress, channel);
+  registry.channelCursor = { channels: new AddressMap() };
+  registry.channelCursor.channels!.set(recipientAddress, channel);
 
   executeOutside(await sender.build({ registry }).with(token).setup(recipientAddress).execute());
 
   // Refresh channel to include token info
-  channel = (await sender.discoverChannels([recipientAddress])).channels.get(recipientAddress)!;
-  registry.channels.set(recipientAddress, channel);
+  channel = (await sender.discoverChannels([recipientAddress])).channels!.get(recipientAddress)!;
+  registry.channelCursor.channels!.set(recipientAddress, channel);
 
   return registry;
 }

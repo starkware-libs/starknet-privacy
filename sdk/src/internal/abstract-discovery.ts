@@ -31,7 +31,12 @@ export abstract class AbstractDiscoveryProvider implements DiscoveryProviderInte
     viewingKey: ViewingKey,
     recipients: RecipientsFilter,
     params?: { cursor?: ChannelCursor }
-  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
+  ): Promise<{
+    timestamp: BlockIdentifier;
+    channels?: AddressMap<Channel>;
+    total?: number;
+    cursor: ChannelCursor;
+  }>;
 
   // Default implementation provided by the abstract class
   async discoverRequirement(
