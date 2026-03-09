@@ -33,7 +33,7 @@ export {
   ContractDiscoveryProvider,
   type PoolContractInterface,
 } from "../internal/contract-discovery.js";
-export { IndexerDiscoveryProvider } from "../internal/indexer-discovery.js";
+export { IndexerDiscoveryProvider } from "../internal/indexer/index.js";
 export {
   createConcurrencyProfiler,
   formatReport,

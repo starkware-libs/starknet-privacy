@@ -187,9 +187,42 @@ const result = await transfers.build({
 | `autoSetup` | `boolean` | Automatically open channels and token subchannels as needed |
 | `autoSelectNotes` | `"all" \| "naive"` | Automatically select input notes (`"all"` uses every note, `"naive"` selects minimum) |
 | `autoDiscover` | `{ notes?, channels? }` | Refresh notes/channels before executing (`"missing"`, `"refresh"`, or `"all"`) |
-| `registry` | `PrivateRegistry` | User's private state (channels, notes, cursor) |
+| `registry` | `PrivateRegistry` | User's private state (notes, discovery cursors) |
 | `registryConst` | `boolean` | If true, returns a new registry instead of mutating the provided one |
 | `provingBlockId` | `ProvingBlockId` | Block identifier to use for proving |
+
+## Registry management
+
+The `PrivateRegistry` holds the user's private state: unspent notes and discovery cursors. Create one with `createEmptyRegistry()` and pass it through `ExecuteOptions`.
+
+```typescript
+import { createEmptyRegistry } from "starknet-sdk";
+
+const registry = createEmptyRegistry();
+
+// The registry is updated in-place after each execute()
+const result = await transfers.build({
+  registry,
+  autoDiscover: { notes: "refresh", channels: "refresh" },
+  autoSetup: true,
+  autoSelectNotes: "naive",
+}).with(STRK, (t) => t
+  .deposit({ amount: 100n }))
+.surplusTo(self)
+.execute();
+
+// result.registry === registry (same object, mutated)
+// Use registryConst: true to get a new object instead
+```
+
+The registry contains:
+- **`notes`** — `AddressMap<Note[]>`: unspent notes keyed by token address
+- **`notesCursor`** — pagination cursor for incoming notes discovery (incremental sync)
+- **`channelCursor`** — pagination cursor for outgoing channels discovery (incremental sync, includes `blockId` for reorg detection)
+
+Discovery cursors are internal to the registry flow. When `autoDiscover` is set, the SDK uses them automatically for incremental syncing. You don't need to manage them directly.
+
+**Optimistic updates:** After `execute()`, the registry is updated optimistically — spent notes are removed and new notes/channels are added before the transaction is confirmed on-chain. If the transaction reverts, the registry becomes stale. Handle this by re-discovering from scratch (`autoDiscover: "refresh"`) or by snapshotting the registry before `execute()` (use `registryConst: true`) and restoring on revert.
 
 ## Discovery
 
@@ -205,7 +238,6 @@ const requirement = await transfers.discoverRequirement(recipient, token);
 ```typescript
 const { notes, timestamp } = await transfers.discoverNotes({
   tokens: [STRK],
-  cursor: previousCursor,
 });
 // notes: AddressMap<Note[]> — unspent notes keyed by token address
 ```
@@ -213,9 +245,7 @@ const { notes, timestamp } = await transfers.discoverNotes({
 ### Discover channels
 
 ```typescript
-const { timestamp, channels, total } = await transfers.discoverChannels("all", {
-  cursor: previousCursor,
-});
+const { timestamp, channels, total } = await transfers.discoverChannels("all");
 // channels: AddressMap<Channel> — channels keyed by recipient address
 ```
 
@@ -239,7 +269,7 @@ The wallet sends `callAndProof` in a transaction to the contract's `execute_acti
 
 **`Channel`** — A communication channel to a recipient, holding a shared key and per-token nonces.
 
-**`PrivateRegistry`** — The user's local state: discovered channels, unspent notes, and a pagination cursor. Create with `createEmptyRegistry()`.
+**`PrivateRegistry`** — The user's local state: unspent notes and discovery cursors for incremental sync. Create with `createEmptyRegistry()`.
 
 **`AddressMap<V>`** — A `Map` that normalizes Starknet addresses for consistent key lookup.
 

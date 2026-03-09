@@ -2,7 +2,6 @@ import {
   SimplePrivateTransfersInterface,
   PrivateTransfersInterface,
   Amount,
-  Channel,
   Note,
   Open,
   PrivateRegistry,
@@ -23,7 +22,6 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
   }
 
   readonly registry: PrivateRegistry = {
-    channels: new AddressMap<Channel>(),
     notes: new AddressMap<Note[]>(),
   };
 

@@ -138,10 +138,18 @@ export class PoolSimulator {
 
   /**
    * Export tracked state back to the registry.
+   *
+   * TODO: This applies optimistic updates (spent notes removed, new notes/channels added)
+   * before the transaction is confirmed on-chain. If the transaction reverts, the registry
+   * becomes stale — spent notes are gone and phantom notes/channels are present. Callers
+   * must handle this by re-discovering from scratch (e.g. `autoDiscover: "refresh"`) or
+   * by snapshotting the registry before execute and restoring on revert.
    */
   updateRegistry(registry: PrivateRegistry): PrivateRegistry {
     for (const [address, channel] of this.channels.entries()) {
-      registry.channels.set(address, channel);
+      registry.channelCursor ??= {};
+      registry.channelCursor.channels ??= new AddressMap<Channel>();
+      registry.channelCursor.channels.set(address, channel);
     }
     for (const [token, notes] of this.notes.entries()) {
       registry.notes.set(token, Array.from(notes.values()));

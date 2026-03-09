@@ -66,7 +66,11 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
   async discoverChannels(
     recipients: RecipientsFilter<StarknetAddress>,
     params?: { cursor?: ChannelCursor }
-  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }> {
+  ): Promise<{
+    timestamp: BlockIdentifier;
+    channels?: AddressMap<Channel>;
+    total?: number;
+  }> {
     return this.discoveryProvider.discoverChannels(
       this.user,
       await this.getViewingKey(),

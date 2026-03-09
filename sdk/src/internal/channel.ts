@@ -72,6 +72,7 @@ export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
 export type RecipientsFilter<T = StarknetAddressBigint> = T[] | "all" | "total-only";
 
 export type ChannelCursor = {
+  /** @internal */ blockId?: BlockIdentifier;
   /** @internal */ channels?: AddressMap<Channel>;
   /** @internal */ total?: number;
 };
@@ -84,6 +85,7 @@ export function cloneChannelCursor(cursor?: ChannelCursor): ChannelCursor {
   }
 
   return {
+    blockId: cursor.blockId,
     channels: cursor.channels
       ? new AddressMap<Channel>(
           [...cursor.channels.entries()].map(([k, v]): [StarknetAddressBigint, Channel] => [
