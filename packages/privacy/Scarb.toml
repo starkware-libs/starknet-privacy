@@ -39,4 +39,3 @@ casm-add-pythonic-hints = true
 [profile.dev.cairo]
 unstable-add-statements-functions-debug-info = true
 unstable-add-statements-code-locations-debug-info = true
-inlining-strategy = "avoid"
