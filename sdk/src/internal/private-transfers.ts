@@ -10,6 +10,7 @@ import type {
   DiscoveryProviderInterface,
   ViewingKeyProvider,
   StarknetAddress,
+  ProofInvocationResult,
 } from "../interfaces.js";
 import type { Account, TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
@@ -17,7 +18,7 @@ import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
-import { toHex } from "../utils/convert.js";
+import { toBigInt, toHex } from "../utils/convert.js";
 
 // Export the specific typed contract type for the Privacy Pool
 export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
@@ -38,13 +39,26 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
 
   private async getCompiler(): Promise<ActionCompiler> {
     const viewingKey = await this.params.viewingKeyProvider.getViewingKey();
-    return new ActionCompiler(this.user, viewingKey, this.params.discoveryProvider);
+    return new ActionCompiler(
+      this.user,
+      viewingKey,
+      this.params.discoveryProvider,
+      toBigInt(this.params.poolContractAddress)
+    );
   }
 
-  async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
+  async createProofInvocation(
+    actions: Actions,
+    options?: ExecuteOptions
+  ): Promise<ProofInvocationResult> {
     // Get viewing key for both compiler and calldata
     const viewingKey = await this.params.viewingKeyProvider.getViewingKey();
-    const compiler = new ActionCompiler(this.user, viewingKey, this.params.discoveryProvider);
+    const compiler = new ActionCompiler(
+      this.user,
+      viewingKey,
+      this.params.discoveryProvider,
+      toBigInt(this.params.poolContractAddress)
+    );
 
     // Compile actions
     const { clientActions, registry, warnings } = await compiler.compile(actions, options);
@@ -58,11 +72,22 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       details
     );
 
+    return { invocation, registry, warnings };
+  }
+
+  async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
+    const { invocation, registry, warnings } = await this.createProofInvocation(actions, options);
+
     // Get proof from provider (block id only when provided in options)
     const proof = await this.params.provingProvider.prove(invocation, options?.provingBlockId);
 
+    // proof.output is the L2-to-L1 message payload: [class_hash, ...serialized_actions].
+    // Strip the class_hash prefix — apply_actions expects only Span<ServerAction>.
+    const serverActionsCalldata = proof.output.slice(1);
+
     // Parse and log server actions for debugging
-    const parsedOutput = () => this.params.proofInvocationFactory.parseOutput(proof.output);
+    const parsedOutput = () =>
+      this.params.proofInvocationFactory.parseOutput(serverActionsCalldata);
     debugLog("private-transfers", "execute", "parsed server actions", parsedOutput);
 
     return {
@@ -70,7 +95,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
         call: {
           contractAddress: toHex(this.params.poolContractAddress),
           entrypoint: "apply_actions",
-          calldata: proof.output,
+          calldata: serverActionsCalldata,
         },
         proof,
       },

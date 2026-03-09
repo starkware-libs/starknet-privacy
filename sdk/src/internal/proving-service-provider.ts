@@ -1,10 +1,8 @@
 /**
  * Proof provider that calls a remote proving service (JSON-RPC starknet_proveTransaction).
- * Uses provider.channel.buildTransaction with details taken from the invocation.
  */
 
 import type { constants } from "starknet";
-import { RpcChannel } from "starknet";
 import type {
   Proof,
   ProvingBlockId,
@@ -56,20 +54,14 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
   }
 
   async prove(invocation: ProofInvocation, blockIdentifier?: ProvingBlockId): Promise<Proof> {
-    // invocation.calldata is already the full __execute__ calldata
-    // (Array<Call> wrapping execute_view), compiled by ProofInvocationFactory.
-
-    const transactionPayload = RpcChannel.prototype.buildTransaction({
-      ...invocation,
-      calldata: invocation.calldata as string[],
-    });
     const blockId = blockIdentifier ?? this.blockIdentifier;
 
-    const result = await this.provingService.proveTransaction(blockId, transactionPayload);
+    const result = await this.provingService.proveTransaction(blockId, invocation);
 
-    // Server actions for execute_actions: from L2-to-L1 message payload (from_address = pool)
+    // L2-to-L1 message payload from the pool: [class_hash, ...serialized_actions].
+    // The consumer strips the class_hash prefix before calling apply_actions.
     // TODO: Generalize this to support other projects.
-    const poolAddressHex = toHex(invocation.contractAddress);
+    const poolAddressHex = toHex(invocation.sender_address);
     const poolMessage = result.l2_to_l1_messages?.find(
       (m) => m.from_address?.toLowerCase() === poolAddressHex.toLowerCase()
     );

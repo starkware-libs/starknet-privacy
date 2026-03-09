@@ -51,6 +51,16 @@
       "0x1",
       "0x6ecbe1e6bce2468d4f9241154bb6c545aed378aa89a661e18f9f8af9a3add9e"
     ],
+    "messagePayloadLength": 7,
+    "messagePayload": [
+      "0x12345",
+      "0x1",
+      "0x0",
+      "0x111",
+      "0x2",
+      "0x222",
+      "0x333"
+    ],
     "virtualSnos": "0x5649525455414c5f534e4f53",
     "virtualSnos0": "0x5649525455414c5f534e4f5330"
   },

@@ -18,7 +18,7 @@
 
 import { ec, hash } from "starknet";
 import { shortStringToFelt } from "./crypto.js";
-import { toBigInt } from "./convert.js";
+import { toBigInt, toHex } from "./convert.js";
 import type { BigNumberish } from "starknet";
 
 const PROOF_VERSION = shortStringToFelt("PROOF0");
@@ -53,23 +53,35 @@ function computeVirtualOsConfigHash(
 
 /**
  * Compute the message hash matching Cairo's _compute_message_hash:
- *   `hash([contract_address, 0, payload_len, ...serialized_actions])`
- * where hash = poseidon_hash_span.
+ *   `poseidon([pool_address, 0, payload_len, class_hash, ...serialized_actions])`
  */
 function computeMessageHash(
   poolAddress: BigNumberish,
   poolClassHash: BigNumberish,
   serverActionsCalldata: string[]
 ): bigint {
-  const payloadLen = BigInt(serverActionsCalldata.length + 1);
+  const messagePayload = buildMessagePayload(poolClassHash, serverActionsCalldata);
   const feltValues = [
     toBigInt(poolAddress),
     0n,
-    payloadLen,
-    toBigInt(poolClassHash),
-    ...serverActionsCalldata.map(toBigInt),
+    BigInt(messagePayload.length),
+    ...messagePayload.map(toBigInt),
   ];
   return ec.starkCurve.poseidonHashMany(feltValues);
+}
+
+/**
+ * Build the L2-to-L1 message payload matching Cairo's compute_message_hash:
+ *   `[class_hash, ...serialized_actions]`
+ *
+ * This is what the proving service returns in the L2-to-L1 message payload,
+ * and what the message hash is computed over (after prepending pool_addr, 0, payload_len).
+ */
+export function buildMessagePayload(
+  poolClassHash: BigNumberish,
+  serverActionsCalldata: string[]
+): string[] {
+  return [toHex(poolClassHash), ...serverActionsCalldata];
 }
 
 /**

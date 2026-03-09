@@ -6,14 +6,16 @@ use privacy::actions::{
     TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
+use privacy::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::objects::{EncSubchannelInfo, EncUserAddr};
-use privacy::tests::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     AuditorTrait, CreateEncNoteInputIntoServerActionTrait, CreateOpenNoteInputIntoServerActionTrait,
     InvokeExternalInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
 };
-use privacy::utils::constants::{OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120};
+use privacy::utils::constants::{
+    ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
+};
 use privacy::utils::{
     compute_message_hash, decode_note_amount, encrypt_channel_info, encrypt_user_addr,
     is_canonical_key, to_write_once_action, unpack,
@@ -93,17 +95,17 @@ fn test_set_viewing_key_assertions() {
     user_zero_public_key.private_key = Zero::zero();
     let result = user_zero_public_key.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_public_key.safe_set_viewing_key_execute_and_panic(:random);
+    let result = user_zero_public_key.safe_set_viewing_key_compile_and_panic(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_public_key.safe_set_viewing_key_execute_view(:random);
+    let result = user_zero_public_key.safe_set_viewing_key_compile_actions(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch ZERO_RANDOM.
     let result = user.safe_set_viewing_key(random: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
-    let result = user.safe_set_viewing_key_execute_and_panic(random: Zero::zero());
+    let result = user.safe_set_viewing_key_compile_and_panic(random: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
-    let result = user.safe_set_viewing_key_execute_view(random: Zero::zero());
+    let result = user.safe_set_viewing_key_compile_actions(random: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
@@ -111,9 +113,9 @@ fn test_set_viewing_key_assertions() {
     user_key_not_canonical.private_key = Neg::neg(user.private_key);
     let result = user_key_not_canonical.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
-    let result = user_key_not_canonical.safe_set_viewing_key_execute_and_panic(:random);
+    let result = user_key_not_canonical.safe_set_viewing_key_compile_and_panic(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
-    let result = user_key_not_canonical.safe_set_viewing_key_execute_view(:random);
+    let result = user_key_not_canonical.safe_set_viewing_key_compile_actions(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch ZERO_USER_ADDR.
@@ -121,18 +123,18 @@ fn test_set_viewing_key_assertions() {
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero_addr.safe_set_viewing_key_execute_and_panic(:random);
+    let result = user_zero_addr.safe_set_viewing_key_compile_and_panic(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero_addr.safe_set_viewing_key_execute_view(:random);
+    let result = user_zero_addr.safe_set_viewing_key_compile_actions(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch NON_ZERO_VALUE (user already registered).
     user.set_viewing_key_e2e();
     let result = user.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user.safe_set_viewing_key_execute_and_panic(:random);
+    let result = user.safe_set_viewing_key_compile_and_panic(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user.safe_set_viewing_key_execute_view(:random);
+    let result = user.safe_set_viewing_key_compile_actions(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -841,10 +843,10 @@ fn test_open_channel_assertions() {
     let result = user_zero_addr.safe_open_channel(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
     let result = user_zero_addr
-        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+        .safe_open_channel_compile_and_panic(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
     let result = user_zero_addr
-        .safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
+        .safe_open_channel_compile_actions(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_PRIVATE_KEY.
@@ -853,10 +855,10 @@ fn test_open_channel_assertions() {
     let result = user_zero_private_key.safe_open_channel(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
     let result = user_zero_private_key
-        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+        .safe_open_channel_compile_and_panic(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
     let result = user_zero_private_key
-        .safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
+        .safe_open_channel_compile_actions(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch ZERO_RECIPIENT_ADDR.
@@ -865,34 +867,34 @@ fn test_open_channel_assertions() {
     let result = user_1.safe_open_channel(recipient: user_zero_addr, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user_1
-        .safe_open_channel_execute_and_panic(recipient: user_zero_addr, :index, :random, :salt);
+        .safe_open_channel_compile_and_panic(recipient: user_zero_addr, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user_1
-        .safe_open_channel_execute_view(recipient: user_zero_addr, :index, :random, :salt);
+        .safe_open_channel_compile_actions(recipient: user_zero_addr, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_RANDOM.
     let result = user_1.safe_open_channel(recipient: user_2, :index, random: Zero::zero(), :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
     let result = user_1
-        .safe_open_channel_execute_and_panic(
+        .safe_open_channel_compile_and_panic(
             recipient: user_2, :index, random: Zero::zero(), :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
     let result = user_1
-        .safe_open_channel_execute_view(recipient: user_2, :index, random: Zero::zero(), :salt);
+        .safe_open_channel_compile_actions(recipient: user_2, :index, random: Zero::zero(), :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RANDOM);
 
     // Catch ZERO_SALT.
     let result = user_1.safe_open_channel(recipient: user_2, :index, :random, salt: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
     let result = user_1
-        .safe_open_channel_execute_and_panic(
+        .safe_open_channel_compile_and_panic(
             recipient: user_2, :index, :random, salt: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
     let result = user_1
-        .safe_open_channel_execute_view(recipient: user_2, :index, :random, salt: Zero::zero());
+        .safe_open_channel_compile_actions(recipient: user_2, :index, :random, salt: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
@@ -902,19 +904,20 @@ fn test_open_channel_assertions() {
         .safe_open_channel(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_invalid_private_key
-        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+        .safe_open_channel_compile_and_panic(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_invalid_private_key
-        .safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
+        .safe_open_channel_compile_actions(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch SENDER_NOT_REGISTERED.
     let result = user_1.safe_open_channel(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_REGISTERED);
     let result = user_1
-        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+        .safe_open_channel_compile_and_panic(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_REGISTERED);
-    let result = user_1.safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
+    let result = user_1
+        .safe_open_channel_compile_actions(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_REGISTERED);
 
     // Catch SENDER_NOT_AUTHENTICATED.
@@ -927,9 +930,10 @@ fn test_open_channel_assertions() {
     let result = user_1.safe_open_channel(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
     let result = user_1
-        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+        .safe_open_channel_compile_and_panic(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
-    let result = user_1.safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
+    let result = user_1
+        .safe_open_channel_compile_actions(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::SENDER_NOT_AUTHENTICATED);
     user_1.private_key = user_1_private_key;
 
@@ -937,9 +941,10 @@ fn test_open_channel_assertions() {
     let result = user_1.safe_open_channel(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
     let result = user_1
-        .safe_open_channel_execute_and_panic(recipient: user_2, :index, :random, :salt);
+        .safe_open_channel_compile_and_panic(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
-    let result = user_1.safe_open_channel_execute_view(recipient: user_2, :index, :random, :salt);
+    let result = user_1
+        .safe_open_channel_compile_actions(recipient: user_2, :index, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::RECIPIENT_NOT_REGISTERED);
 
     // Catch INDEX_NOT_SEQUENTIAL.
@@ -947,9 +952,10 @@ fn test_open_channel_assertions() {
     let result = user_1.safe_open_channel(recipient: user_2, index: 1, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user_1
-        .safe_open_channel_execute_and_panic(recipient: user_2, index: 1, :random, :salt);
+        .safe_open_channel_compile_and_panic(recipient: user_2, index: 1, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
-    let result = user_1.safe_open_channel_execute_view(recipient: user_2, index: 1, :random, :salt);
+    let result = user_1
+        .safe_open_channel_compile_actions(recipient: user_2, index: 1, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
 
     // Catch NON_ZERO_VALUE (channel already exists).
@@ -957,18 +963,20 @@ fn test_open_channel_assertions() {
     let result = user_1.safe_open_channel(recipient: user_2, index: 1, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user_1
-        .safe_open_channel_execute_and_panic(recipient: user_2, index: 0, :random, :salt);
+        .safe_open_channel_compile_and_panic(recipient: user_2, index: 0, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user_1.safe_open_channel_execute_view(recipient: user_2, index: 0, :random, :salt);
+    let result = user_1
+        .safe_open_channel_compile_actions(recipient: user_2, index: 0, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch NON_ZERO_VALUE (outgoing channel index already used).
     let result = user_1.safe_open_channel(recipient: user_1, index: 0, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user_1
-        .safe_open_channel_execute_and_panic(recipient: user_1, index: 0, :random, :salt);
+        .safe_open_channel_compile_and_panic(recipient: user_1, index: 0, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user_1.safe_open_channel_execute_view(recipient: user_1, index: 0, :random, :salt);
+    let result = user_1
+        .safe_open_channel_compile_actions(recipient: user_1, index: 0, :random, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -1099,8 +1107,7 @@ fn test_open_channel_multiple_channels_same_recipient() {
         channel_key: channel_key_2,
         sender_addr: user_3.address,
     );
-    // The ephemeral public keys are identical (same recipient and both users use the same random).
-    assert_eq!(
+    assert_ne!(
         expected_enc_channel_info_1.ephemeral_pubkey, expected_enc_channel_info_2.ephemeral_pubkey,
     );
     assert_ne!(
@@ -1294,10 +1301,10 @@ fn test_open_subchannel_assertions() {
     let result = user_zero_addr.safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
     let result = user_zero_addr
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
     let result = user_zero_addr
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_actions(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_PRIVATE_KEY.
@@ -1307,10 +1314,10 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
     let result = user_zero_private_key
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
     let result = user_zero_private_key
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_actions(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
@@ -1320,10 +1327,10 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_actions(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch ZERO_RECIPIENT_ADDR.
@@ -1332,12 +1339,14 @@ fn test_open_subchannel_assertions() {
     let result = user_1.safe_open_subchannel(recipient: user_zero_addr, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(
+        .safe_open_subchannel_compile_and_panic(
             recipient: user_zero_addr, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user_1
-        .safe_open_subchannel_execute_view(recipient: user_zero_addr, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_actions(
+            recipient: user_zero_addr, :token_addr, :index, :salt,
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
 
     // Catch ZERO_TOKEN.
@@ -1345,12 +1354,12 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_2, token_addr: Zero::zero(), :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(
+        .safe_open_subchannel_compile_and_panic(
             recipient: user_2, token_addr: Zero::zero(), :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user_1
-        .safe_open_subchannel_execute_view(
+        .safe_open_subchannel_compile_actions(
             recipient: user_2, token_addr: Zero::zero(), :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
@@ -1360,12 +1369,12 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_2, :token_addr, :index, salt: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(
+        .safe_open_subchannel_compile_and_panic(
             recipient: user_2, :token_addr, :index, salt: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
     let result = user_1
-        .safe_open_subchannel_execute_view(
+        .safe_open_subchannel_compile_actions(
             recipient: user_2, :token_addr, :index, salt: Zero::zero(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
@@ -1377,12 +1386,12 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_zero_public_key, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(
+        .safe_open_subchannel_compile_and_panic(
             recipient: user_zero_public_key, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
     let result = user_1
-        .safe_open_subchannel_execute_view(
+        .safe_open_subchannel_compile_actions(
             recipient: user_zero_public_key, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
@@ -1393,10 +1402,10 @@ fn test_open_subchannel_assertions() {
     let result = user_1.safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_actions(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     user_1.set_viewing_key_e2e();
@@ -1405,10 +1414,10 @@ fn test_open_subchannel_assertions() {
     let result = user_1.safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_actions(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     user_1.open_channel_e2e(recipient: user_2, index: 0);
@@ -1421,10 +1430,10 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1_wrong_addr
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1_wrong_addr
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_actions(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
 
     // Catch INVALID_CHANNEL - wrong recipient_addr.
@@ -1434,12 +1443,12 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_2_wrong_addr, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(
+        .safe_open_subchannel_compile_and_panic(
             recipient: user_2_wrong_addr, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_view(
+        .safe_open_subchannel_compile_actions(
             recipient: user_2_wrong_addr, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
@@ -1451,12 +1460,12 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_2_wrong_public_key, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(
+        .safe_open_subchannel_compile_and_panic(
             recipient: user_2_wrong_public_key, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_execute_view(
+        .safe_open_subchannel_compile_actions(
             recipient: user_2_wrong_public_key, :token_addr, :index, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
@@ -1468,12 +1477,12 @@ fn test_open_subchannel_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_with_channel_key_execute_and_panic(
+        .safe_open_subchannel_with_channel_key_compile_and_panic(
             recipient: user_2, :token_addr, :index, :salt, channel_key: channel_key + 1,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
     let result = user_1
-        .safe_open_subchannel_with_channel_key_execute_view(
+        .safe_open_subchannel_with_channel_key_compile_actions(
             recipient: user_2, :token_addr, :index, :salt, channel_key: channel_key + 1,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_CHANNEL);
@@ -1483,12 +1492,14 @@ fn test_open_subchannel_assertions() {
         .safe_open_subchannel(recipient: user_2, :token_addr, index: index + 1, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(
+        .safe_open_subchannel_compile_and_panic(
             recipient: user_2, :token_addr, index: index + 1, :salt,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user_1
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, index: index + 1, :salt);
+        .safe_open_subchannel_compile_actions(
+            recipient: user_2, :token_addr, index: index + 1, :salt,
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
 
     // Should succeed.
@@ -1498,10 +1509,10 @@ fn test_open_subchannel_assertions() {
     let result = user_1.safe_open_subchannel(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user_1
-        .safe_open_subchannel_execute_and_panic(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_and_panic(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
     let result = user_1
-        .safe_open_subchannel_execute_view(recipient: user_2, :token_addr, :index, :salt);
+        .safe_open_subchannel_compile_actions(recipient: user_2, :token_addr, :index, :salt);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -1931,9 +1942,9 @@ fn test_create_enc_note_assertions() {
     user_zero.address = Zero::zero();
     let result = user_zero.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero.safe_create_enc_note_execute_and_panic(:create_note_input);
+    let result = user_zero.safe_create_enc_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero.safe_create_enc_note_execute_view(:create_note_input);
+    let result = user_zero.safe_create_enc_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_PRIVATE_KEY.
@@ -1941,9 +1952,9 @@ fn test_create_enc_note_assertions() {
     user_zero_private_key.private_key = Zero::zero();
     let result = user_zero_private_key.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_private_key.safe_create_enc_note_execute_and_panic(:create_note_input);
+    let result = user_zero_private_key.safe_create_enc_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_private_key.safe_create_enc_note_execute_view(:create_note_input);
+    let result = user_zero_private_key.safe_create_enc_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
@@ -1952,10 +1963,10 @@ fn test_create_enc_note_assertions() {
     let result = user_private_key_not_canonical.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical
-        .safe_create_enc_note_execute_and_panic(:create_note_input);
+        .safe_create_enc_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical
-        .safe_create_enc_note_execute_view(:create_note_input);
+        .safe_create_enc_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch ZERO_RECIPIENT_ADDR.
@@ -1967,14 +1978,14 @@ fn test_create_enc_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user
-        .safe_create_enc_note_execute_and_panic(
+        .safe_create_enc_note_compile_and_panic(
             create_note_input: CreateEncNoteInput {
                 recipient_addr: Zero::zero(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user
-        .safe_create_enc_note_execute_view(
+        .safe_create_enc_note_compile_actions(
             create_note_input: CreateEncNoteInput {
                 recipient_addr: Zero::zero(), ..create_note_input,
             },
@@ -1988,12 +1999,12 @@ fn test_create_enc_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user
-        .safe_create_enc_note_execute_and_panic(
+        .safe_create_enc_note_compile_and_panic(
             create_note_input: CreateEncNoteInput { token: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user
-        .safe_create_enc_note_execute_view(
+        .safe_create_enc_note_compile_actions(
             create_note_input: CreateEncNoteInput { token: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
@@ -2007,14 +2018,14 @@ fn test_create_enc_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
     let result = user
-        .safe_create_enc_note_execute_and_panic(
+        .safe_create_enc_note_compile_and_panic(
             create_note_input: CreateEncNoteInput {
                 recipient_public_key: Zero::zero(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
     let result = user
-        .safe_create_enc_note_execute_view(
+        .safe_create_enc_note_compile_actions(
             create_note_input: CreateEncNoteInput {
                 recipient_public_key: Zero::zero(), ..create_note_input,
             },
@@ -2028,12 +2039,12 @@ fn test_create_enc_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
     let result = user
-        .safe_create_enc_note_execute_and_panic(
+        .safe_create_enc_note_compile_and_panic(
             create_note_input: CreateEncNoteInput { salt: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
     let result = user
-        .safe_create_enc_note_execute_view(
+        .safe_create_enc_note_compile_actions(
             create_note_input: CreateEncNoteInput { salt: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_SALT);
@@ -2046,13 +2057,13 @@ fn test_create_enc_note_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
 
     let result = user
-        .safe_create_enc_note_execute_and_panic(
+        .safe_create_enc_note_compile_and_panic(
             create_note_input: CreateEncNoteInput { salt: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
 
     let result = user
-        .safe_create_enc_note_execute_view(
+        .safe_create_enc_note_compile_actions(
             create_note_input: CreateEncNoteInput { salt: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_TOO_SMALL);
@@ -2066,14 +2077,14 @@ fn test_create_enc_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_EXCEEDS_120_BITS);
     let result = user
-        .safe_create_enc_note_execute_and_panic(
+        .safe_create_enc_note_compile_and_panic(
             create_note_input: CreateEncNoteInput {
                 salt: TWO_POW_120.try_into().unwrap(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SALT_EXCEEDS_120_BITS);
     let result = user
-        .safe_create_enc_note_execute_view(
+        .safe_create_enc_note_compile_actions(
             create_note_input: CreateEncNoteInput {
                 salt: TWO_POW_120.try_into().unwrap(), ..create_note_input,
             },
@@ -2083,9 +2094,9 @@ fn test_create_enc_note_assertions() {
     // Catch SUBCHANNEL_NOT_FOUND (channel doesnt exist).
     let result = user.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_enc_note_execute_and_panic(:create_note_input);
+    let result = user.safe_create_enc_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_enc_note_execute_view(:create_note_input);
+    let result = user.safe_create_enc_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     user.open_channel_e2e(recipient: user, index: 0);
@@ -2093,9 +2104,9 @@ fn test_create_enc_note_assertions() {
     // Catch SUBCHANNEL_NOT_FOUND (subchannel doesnt exist).
     let result = user.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_enc_note_execute_and_panic(:create_note_input);
+    let result = user.safe_create_enc_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_enc_note_execute_view(:create_note_input);
+    let result = user.safe_create_enc_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     user.open_subchannel_e2e(recipient: user, :token_addr, index: 0);
@@ -2107,12 +2118,12 @@ fn test_create_enc_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user
-        .safe_create_enc_note_execute_and_panic(
+        .safe_create_enc_note_compile_and_panic(
             create_note_input: CreateEncNoteInput { index: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user
-        .safe_create_enc_note_execute_view(
+        .safe_create_enc_note_compile_actions(
             create_note_input: CreateEncNoteInput { index: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
@@ -2120,9 +2131,9 @@ fn test_create_enc_note_assertions() {
     // Catch NEGATIVE_INTERMEDIATE_BALANCE.
     let result = user.safe_create_enc_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-    let result = user.safe_create_enc_note_execute_and_panic(:create_note_input);
+    let result = user.safe_create_enc_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-    let result = user.safe_create_enc_note_execute_view(:create_note_input);
+    let result = user.safe_create_enc_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
     user.cheat_create_enc_note_e2e(:create_note_input);
@@ -2139,9 +2150,9 @@ fn test_create_enc_note_assertions() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -2160,9 +2171,9 @@ fn test_create_open_note_assertions() {
     user_zero.address = Zero::zero();
     let result = user_zero.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero.safe_create_open_note_execute_and_panic(:create_note_input);
+    let result = user_zero.safe_create_open_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero.safe_create_open_note_execute_view(:create_note_input);
+    let result = user_zero.safe_create_open_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_PRIVATE_KEY.
@@ -2170,9 +2181,9 @@ fn test_create_open_note_assertions() {
     user_zero_private_key.private_key = Zero::zero();
     let result = user_zero_private_key.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_private_key.safe_create_open_note_execute_and_panic(:create_note_input);
+    let result = user_zero_private_key.safe_create_open_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_private_key.safe_create_open_note_execute_view(:create_note_input);
+    let result = user_zero_private_key.safe_create_open_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
@@ -2181,10 +2192,10 @@ fn test_create_open_note_assertions() {
     let result = user_private_key_not_canonical.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical
-        .safe_create_open_note_execute_and_panic(:create_note_input);
+        .safe_create_open_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical
-        .safe_create_open_note_execute_view(:create_note_input);
+        .safe_create_open_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch ZERO_RECIPIENT_ADDR.
@@ -2196,14 +2207,14 @@ fn test_create_open_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user
-        .safe_create_open_note_execute_and_panic(
+        .safe_create_open_note_compile_and_panic(
             create_note_input: CreateOpenNoteInput {
                 recipient_addr: Zero::zero(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_ADDR);
     let result = user
-        .safe_create_open_note_execute_view(
+        .safe_create_open_note_compile_actions(
             create_note_input: CreateOpenNoteInput {
                 recipient_addr: Zero::zero(), ..create_note_input,
             },
@@ -2217,12 +2228,12 @@ fn test_create_open_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user
-        .safe_create_open_note_execute_and_panic(
+        .safe_create_open_note_compile_and_panic(
             create_note_input: CreateOpenNoteInput { token: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user
-        .safe_create_open_note_execute_view(
+        .safe_create_open_note_compile_actions(
             create_note_input: CreateOpenNoteInput { token: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
@@ -2236,14 +2247,14 @@ fn test_create_open_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
     let result = user
-        .safe_create_open_note_execute_and_panic(
+        .safe_create_open_note_compile_and_panic(
             create_note_input: CreateOpenNoteInput {
                 recipient_public_key: Zero::zero(), ..create_note_input,
             },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_RECIPIENT_PUBLIC_KEY);
     let result = user
-        .safe_create_open_note_execute_view(
+        .safe_create_open_note_compile_actions(
             create_note_input: CreateOpenNoteInput {
                 recipient_public_key: Zero::zero(), ..create_note_input,
             },
@@ -2257,12 +2268,12 @@ fn test_create_open_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_DEPOSITOR);
     let result = user
-        .safe_create_open_note_execute_and_panic(
+        .safe_create_open_note_compile_and_panic(
             create_note_input: CreateOpenNoteInput { depositor: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_DEPOSITOR);
     let result = user
-        .safe_create_open_note_execute_view(
+        .safe_create_open_note_compile_actions(
             create_note_input: CreateOpenNoteInput { depositor: Zero::zero(), ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_DEPOSITOR);
@@ -2270,9 +2281,9 @@ fn test_create_open_note_assertions() {
     // Catch SUBCHANNEL_NOT_FOUND (channel doesnt exist).
     let result = user.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_open_note_execute_and_panic(:create_note_input);
+    let result = user.safe_create_open_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_open_note_execute_view(:create_note_input);
+    let result = user.safe_create_open_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     user.open_channel_e2e(recipient: user, index: 0);
@@ -2280,9 +2291,9 @@ fn test_create_open_note_assertions() {
     // Catch SUBCHANNEL_NOT_FOUND (subchannel doesnt exist).
     let result = user.safe_create_open_note(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_open_note_execute_and_panic(:create_note_input);
+    let result = user.safe_create_open_note_compile_and_panic(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
-    let result = user.safe_create_open_note_execute_view(:create_note_input);
+    let result = user.safe_create_open_note_compile_actions(:create_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
 
     user.open_subchannel_e2e(recipient: user, :token_addr, index: 0);
@@ -2294,12 +2305,12 @@ fn test_create_open_note_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user
-        .safe_create_open_note_execute_and_panic(
+        .safe_create_open_note_compile_and_panic(
             create_note_input: CreateOpenNoteInput { index: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
     let result = user
-        .safe_create_open_note_execute_view(
+        .safe_create_open_note_compile_actions(
             create_note_input: CreateOpenNoteInput { index: 1, ..create_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INDEX_NOT_SEQUENTIAL);
@@ -2310,9 +2321,9 @@ fn test_create_open_note_assertions() {
     let client_actions = [ClientAction::CreateOpenNote(create_note_input),].span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -3081,9 +3092,9 @@ fn test_use_note_assertions() {
     user_zero.address = Zero::zero();
     let result = user_zero.safe_use_note(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero.safe_use_note_execute_and_panic(note: use_note_input);
+    let result = user_zero.safe_use_note_compile_and_panic(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero.safe_use_note_execute_view(note: use_note_input);
+    let result = user_zero.safe_use_note_compile_actions(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_PRIVATE_KEY.
@@ -3091,9 +3102,9 @@ fn test_use_note_assertions() {
     user_zero_private_key.private_key = Zero::zero();
     let result = user_zero_private_key.safe_use_note(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_private_key.safe_use_note_execute_and_panic(note: use_note_input);
+    let result = user_zero_private_key.safe_use_note_compile_and_panic(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_private_key.safe_use_note_execute_view(note: use_note_input);
+    let result = user_zero_private_key.safe_use_note_compile_actions(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
@@ -3102,21 +3113,23 @@ fn test_use_note_assertions() {
     let result = user_private_key_not_canonical.safe_use_note(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
     let result = user_private_key_not_canonical
-        .safe_use_note_execute_and_panic(note: use_note_input);
+        .safe_use_note_compile_and_panic(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
-    let result = user_private_key_not_canonical.safe_use_note_execute_view(note: use_note_input);
+    let result = user_private_key_not_canonical.safe_use_note_compile_actions(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch ZERO_TOKEN.
     let result = user.safe_use_note(note: UseNoteInput { token: Zero::zero(), ..use_note_input });
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user
-        .safe_use_note_execute_and_panic(
+        .safe_use_note_compile_and_panic(
             note: UseNoteInput { token: Zero::zero(), ..use_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
     let result = user
-        .safe_use_note_execute_view(note: UseNoteInput { token: Zero::zero(), ..use_note_input });
+        .safe_use_note_compile_actions(
+            note: UseNoteInput { token: Zero::zero(), ..use_note_input },
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch SUBCHANNEL_NOT_FOUND (wrong channel key).
@@ -3125,12 +3138,12 @@ fn test_use_note_assertions() {
         .safe_use_note(note: UseNoteInput { channel_key: wrong_channel_key, ..use_note_input });
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
     let result = user
-        .safe_use_note_execute_and_panic(
+        .safe_use_note_compile_and_panic(
             note: UseNoteInput { channel_key: wrong_channel_key, ..use_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
     let result = user
-        .safe_use_note_execute_view(
+        .safe_use_note_compile_actions(
             note: UseNoteInput { channel_key: wrong_channel_key, ..use_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -3141,12 +3154,12 @@ fn test_use_note_assertions() {
         .safe_use_note(note: UseNoteInput { token: wrong_token_addr, ..use_note_input });
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
     let result = user
-        .safe_use_note_execute_and_panic(
+        .safe_use_note_compile_and_panic(
             note: UseNoteInput { token: wrong_token_addr, ..use_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
     let result = user
-        .safe_use_note_execute_view(
+        .safe_use_note_compile_actions(
             note: UseNoteInput { token: wrong_token_addr, ..use_note_input },
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SUBCHANNEL_NOT_FOUND);
@@ -3155,9 +3168,10 @@ fn test_use_note_assertions() {
     let result = user.safe_use_note(note: UseNoteInput { index: 1, ..use_note_input });
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
     let result = user
-        .safe_use_note_execute_and_panic(note: UseNoteInput { index: 1, ..use_note_input });
+        .safe_use_note_compile_and_panic(note: UseNoteInput { index: 1, ..use_note_input });
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
-    let result = user.safe_use_note_execute_view(note: UseNoteInput { index: 1, ..use_note_input });
+    let result = user
+        .safe_use_note_compile_actions(note: UseNoteInput { index: 1, ..use_note_input });
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     // Catch NON_ZERO_VALUE (nullifier already exists).
@@ -3179,9 +3193,9 @@ fn test_use_note_assertions() {
     user.privacy.apply_actions(actions: server_actions);
     let result = user.safe_use_note(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user.safe_use_note_execute_and_panic(note: use_note_input);
+    let result = user.safe_use_note_compile_and_panic(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user.safe_use_note_execute_view(note: use_note_input);
+    let result = user.safe_use_note_compile_actions(note: use_note_input);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
@@ -3498,12 +3512,12 @@ fn test_execute_set_viewing_key() {
         .span();
     assert_eq!(actions, expected_actions);
     let mut spy = spy_events();
-    let view_actions = user_1.execute_view(:client_actions);
+    let view_actions = user_1.compile_actions(:client_actions);
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 0);
     assert_eq!(view_actions, actions);
     let mut spy = spy_events();
-    let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    let panic_data_actions = user_1.compile_and_panic(:client_actions);
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 0);
     assert_eq!(panic_data_actions, actions);
@@ -3574,9 +3588,9 @@ fn test_execute_open_channel() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
-    let view_actions = user_1.execute_view(:client_actions);
+    let view_actions = user_1.compile_actions(:client_actions);
     assert_eq!(view_actions, actions);
-    let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    let panic_data_actions = user_1.compile_and_panic(:client_actions);
     assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.channel_exists(channel_marker: expected_channel_marker));
     assert_eq!(user_2.get_num_of_channels(), 0);
@@ -3641,9 +3655,9 @@ fn test_execute_open_subchannel() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
-    let view_actions = user_1.execute_view(:client_actions);
+    let view_actions = user_1.compile_actions(:client_actions);
     assert_eq!(view_actions, actions);
-    let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    let panic_data_actions = user_1.compile_and_panic(:client_actions);
     assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.subchannel_exists(subchannel_marker: expected_subchannel_marker));
     assert_eq!(
@@ -3695,9 +3709,9 @@ fn test_execute_deposit_create_note() {
     ]
         .span();
     assert_eq!(actions, expected_actions);
-    let view_actions = user_1.execute_view(:client_actions);
+    let view_actions = user_1.compile_actions(:client_actions);
     assert_eq!(view_actions, actions);
-    let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    let panic_data_actions = user_1.compile_and_panic(:client_actions);
     assert_eq!(panic_data_actions, actions);
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
     assert_eq!(token.balance_of(address: user_1.address), amount.into());
@@ -3755,20 +3769,20 @@ fn test_execute_use_note_create_note() {
         .span();
     assert_eq!(actions, expected_actions);
     let mut spy = spy_events();
-    let view_actions = user_2.execute_view(:client_actions);
-    let execute_view_events = spy
+    let view_actions = user_2.compile_actions(:client_actions);
+    let compile_actions_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_view_events.len(), 0);
+    assert_eq!(compile_actions_events.len(), 0);
     assert_eq!(view_actions, actions);
     let mut spy = spy_events();
-    let panic_data_actions = user_2.execute_and_panic(:client_actions);
-    let execute_and_panic_events = spy
+    let panic_data_actions = user_2.compile_and_panic(:client_actions);
+    let compile_and_panic_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_and_panic_events.len(), 0);
+    assert_eq!(compile_and_panic_events.len(), 0);
     assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
@@ -3832,20 +3846,20 @@ fn test_execute_use_note_withdraw() {
         .span();
     assert_eq!(actions, expected_actions);
     let mut spy = spy_events();
-    let view_actions = user_2.execute_view(:client_actions);
-    let execute_view_events = spy
+    let view_actions = user_2.compile_actions(:client_actions);
+    let compile_actions_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_view_events.len(), 0);
+    assert_eq!(compile_actions_events.len(), 0);
     assert_eq!(view_actions, actions);
     let mut spy = spy_events();
-    let panic_data_actions = user_2.execute_and_panic(:client_actions);
-    let execute_and_panic_events = spy
+    let panic_data_actions = user_2.compile_and_panic(:client_actions);
+    let compile_and_panic_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_and_panic_events.len(), 0);
+    assert_eq!(compile_and_panic_events.len(), 0);
     assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
@@ -3935,20 +3949,20 @@ fn test_execute_use_note_swap() {
         .span();
     assert_eq!(actions, expected_actions);
     let mut spy = spy_events();
-    let view_actions = user.execute_view(:client_actions);
-    let execute_view_events = spy
+    let view_actions = user.compile_actions(:client_actions);
+    let compile_actions_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_view_events.len(), 0);
+    assert_eq!(compile_actions_events.len(), 0);
     assert_eq!(view_actions, actions);
     let mut spy = spy_events();
-    let panic_data_actions = user.execute_and_panic(:client_actions);
-    let execute_and_panic_events = spy
+    let panic_data_actions = user.compile_and_panic(:client_actions);
+    let compile_and_panic_events = spy
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(execute_and_panic_events.len(), 0);
+    assert_eq!(compile_and_panic_events.len(), 0);
     assert_eq!(panic_data_actions, actions);
     assert!(!test.privacy.nullifier_exists(:nullifier));
     let note = test.privacy.get_note(:note_id);
@@ -4255,12 +4269,7 @@ fn test_validate_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
-    // Catch NON_ZERO_CALLER.
-    let result = user.safe_validate(client_actions: [].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_CALLER);
-
     // Catch INVALID_TX_VERSION.
-    user.privacy.cheat_zero_caller_address();
     cheat_transaction_version(
         contract_address: user.privacy.address,
         version: Zero::zero(),
@@ -4270,21 +4279,63 @@ fn test_validate_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_TX_VERSION);
 
     // Catch NON_ZERO_TIP.
-    user.privacy.cheat_zero_caller_address();
     cheat_tip(contract_address: user.privacy.address, tip: 1, span: CheatSpan::TargetCalls(1));
     let result = user.safe_validate(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_TIP);
 
     // Catch NON_ZERO_RESOURCE_PRICE.
-    user.privacy.cheat_zero_caller_address();
     let result = user.safe_validate(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_RESOURCE_PRICE);
+}
+
+#[test]
+fn test_execute_and_validate_accept_simulated_tx_version() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random })].span();
+
+    // Execute with simulated TX version.
+    cheat_transaction_version(
+        contract_address: test.privacy.address,
+        version: ESTIMATION_BASE_TX_VERSION + TX_V3,
+        span: CheatSpan::TargetCalls(1),
+    );
+    let server_actions = test
+        .privacy
+        .execute(user_addr: user.address, user_private_key: user.private_key, :client_actions);
+    let expected_server_actions = user.set_viewing_key(:random);
+    assert_eq!(server_actions, expected_server_actions);
+
+    // Validate with simulated TX version.
+    cheat_transaction_version(
+        contract_address: test.privacy.address,
+        version: ESTIMATION_BASE_TX_VERSION + TX_V3,
+        span: CheatSpan::TargetCalls(1),
+    );
+    let result = test
+        .privacy
+        .validate(user_addr: user.address, user_private_key: user.private_key, :client_actions);
+    assert_eq!(result, VALIDATED);
 }
 
 #[test]
 fn test_execute_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
+
+    // Catch NON_ZERO_CALLER.
+    let result = user.safe_execute_without_cheat(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_CALLER);
+
+    // Catch INVALID_TX_VERSION.
+    cheat_transaction_version(
+        contract_address: user.privacy.address,
+        version: Zero::zero(),
+        span: CheatSpan::TargetCalls(1),
+    );
+    let result = user.safe_execute(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_TX_VERSION);
 
     // Catch EXPECTED_ONE_CALL (zero calls).
     let result = test.privacy.safe_execute_with_calls(calls: array![]);
@@ -4340,7 +4391,7 @@ fn test_execute_assertions() {
 }
 
 #[test]
-fn test_execute_and_panic_assertions() {
+fn test_compile_and_panic_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
@@ -4349,9 +4400,9 @@ fn test_execute_and_panic_assertions() {
     user_zero_addr.address = Zero::zero();
     let result = user_zero_addr.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero_addr.safe_execute_and_panic(client_actions: [].span());
+    let result = user_zero_addr.safe_compile_and_panic(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
-    let result = user_zero_addr.safe_execute_view(client_actions: [].span());
+    let result = user_zero_addr.safe_compile_actions(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_USER_ADDR);
 
     // Catch ZERO_PRIVATE_KEY.
@@ -4359,9 +4410,9 @@ fn test_execute_and_panic_assertions() {
     user_zero_private_key.private_key = Zero::zero();
     let result = user_zero_private_key.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_private_key.safe_execute_and_panic(client_actions: [].span());
+    let result = user_zero_private_key.safe_compile_and_panic(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
-    let result = user_zero_private_key.safe_execute_view(client_actions: [].span());
+    let result = user_zero_private_key.safe_compile_actions(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_PRIVATE_KEY);
 
     // Catch PRIVATE_KEY_NOT_CANONICAL.
@@ -4369,17 +4420,17 @@ fn test_execute_and_panic_assertions() {
     user_private_key_not_canonical.private_key = Neg::neg(user.private_key);
     let result = user_private_key_not_canonical.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
-    let result = user_private_key_not_canonical.safe_execute_and_panic(client_actions: [].span());
+    let result = user_private_key_not_canonical.safe_compile_and_panic(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
-    let result = user_private_key_not_canonical.safe_execute_view(client_actions: [].span());
+    let result = user_private_key_not_canonical.safe_compile_actions(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::PRIVATE_KEY_NOT_CANONICAL);
 
     // Catch NO_REPLAY_PROTECTION.
     let result = user.safe_execute(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
-    let result = user.safe_execute_and_panic(client_actions: [].span());
+    let result = user.safe_compile_and_panic(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
-    let result = user.safe_execute_view(client_actions: [].span());
+    let result = user.safe_compile_actions(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Catch ACTIONS_OUT_OF_ORDER. (just one sanity example, the other cases are tested in
@@ -4394,9 +4445,9 @@ fn test_execute_and_panic_assertions() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 }
 
@@ -4424,9 +4475,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Catch ACTIONS_OUT_OF_ORDER (open channel -> set viewing key).
@@ -4440,9 +4491,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (open subchannel -> set viewing key).
@@ -4465,9 +4516,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (open subchannel -> open channel).
@@ -4489,9 +4540,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> set viewing key).
@@ -4502,9 +4553,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> open channel).
@@ -4517,9 +4568,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (deposit -> open subchannel).
@@ -4539,9 +4590,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> set viewing key).
@@ -4554,9 +4605,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> open channel).
@@ -4569,9 +4620,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> open subchannel).
@@ -4591,9 +4642,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (use note -> deposit).
@@ -4604,9 +4655,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> set viewing key).
@@ -4618,9 +4669,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> open channel).
@@ -4634,9 +4685,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> open subchannel).
@@ -4657,9 +4708,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> deposit).
@@ -4671,9 +4722,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create enc note -> use note).
@@ -4684,9 +4735,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> set viewing key).
@@ -4701,9 +4752,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> open channel).
@@ -4716,9 +4767,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> open subchannel).
@@ -4738,9 +4789,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> deposit).
@@ -4751,9 +4802,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (create open note -> use note).
@@ -4763,9 +4814,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> set viewing key).
@@ -4779,9 +4830,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open channel).
@@ -4797,9 +4848,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> open subchannel).
@@ -4822,9 +4873,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> deposit).
@@ -4838,9 +4889,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> use note).
@@ -4854,9 +4905,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create enc note).
@@ -4870,9 +4921,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (withdraw -> create open note).
@@ -4886,9 +4937,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> set viewing key).
@@ -4908,9 +4959,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> open channel).
@@ -4924,9 +4975,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> open subchannel).
@@ -4947,9 +4998,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> deposit).
@@ -4961,9 +5012,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> use note).
@@ -4974,9 +5025,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> create enc note).
@@ -4988,9 +5039,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> create open note).
@@ -5002,9 +5053,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> withdraw).
@@ -5018,9 +5069,9 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> second invoke).
@@ -5031,12 +5082,12 @@ fn test_actions_out_of_order() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 }
 
 #[test]
-fn test_execute_and_panic_balance_assertions() {
+fn test_compile_and_panic_balance_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
@@ -5060,18 +5111,18 @@ fn test_execute_and_panic_balance_assertions() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
 
     // Catch FINAL_BALANCE_MUST_BE_ZERO (use note).
     let client_actions = [ClientAction::UseNote(use_note_input)].span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::FINAL_BALANCE_MUST_BE_ZERO);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE (withdraw).
@@ -5084,18 +5135,18 @@ fn test_execute_and_panic_balance_assertions() {
         .span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
     // Catch NEGATIVE_INTERMEDIATE_BALANCE (create note).
     let client_actions = [ClientAction::CreateEncNote(create_note_input),].span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 }
 
@@ -5205,10 +5256,10 @@ fn test_client_apply_writes() {
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 0);
     // Assert view actions are the same.
-    let view_actions = user.execute_view(:client_actions);
+    let view_actions = user.compile_actions(:client_actions);
     assert_eq!(view_actions, server_actions);
     // Test panic data matches the server actions.
-    let panic_data_actions = user.execute_and_panic(:client_actions);
+    let panic_data_actions = user.compile_and_panic(:client_actions);
     assert_eq!(panic_data_actions, server_actions);
 
     // Test CreateEncNote writes.
@@ -5400,9 +5451,9 @@ fn test_no_replay_protection() {
     let deposit_action = ClientAction::Deposit(DepositInput { token: token_addr, amount });
     let result = user.safe_execute(client_actions: [deposit_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
-    let result = user.safe_execute_and_panic(client_actions: [deposit_action].span());
+    let result = user.safe_compile_and_panic(client_actions: [deposit_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
-    let result = user.safe_execute_view(client_actions: [deposit_action].span());
+    let result = user.safe_compile_actions(client_actions: [deposit_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Withdraw only.
@@ -5413,9 +5464,9 @@ fn test_no_replay_protection() {
     );
     let result = user.safe_execute(client_actions: [withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-    let result = user.safe_execute_and_panic(client_actions: [withdraw_action].span());
+    let result = user.safe_compile_and_panic(client_actions: [withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
-    let result = user.safe_execute_view(client_actions: [withdraw_action].span());
+    let result = user.safe_compile_actions(client_actions: [withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
 
     // InvokeExternal only.
@@ -5442,27 +5493,28 @@ fn test_no_replay_protection() {
     // InvokeExternal alone has should_execute=false, so no privacy actions.
     let result = user.safe_execute(client_actions: [invoke_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
-    let result = user.safe_execute_and_panic(client_actions: [invoke_action].span());
+    let result = user.safe_compile_and_panic(client_actions: [invoke_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
-    let result = user.safe_execute_view(client_actions: [invoke_action].span());
+    let result = user.safe_compile_actions(client_actions: [invoke_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Deposit and Withdraw.
     let result = user.safe_execute(client_actions: [deposit_action, withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user
-        .safe_execute_and_panic(client_actions: [deposit_action, withdraw_action].span());
+        .safe_compile_and_panic(client_actions: [deposit_action, withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
-    let result = user.safe_execute_view(client_actions: [deposit_action, withdraw_action].span());
+    let result = user
+        .safe_compile_actions(client_actions: [deposit_action, withdraw_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Deposit and InvokeExternal.
     let result = user.safe_execute(client_actions: [deposit_action, invoke_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user
-        .safe_execute_and_panic(client_actions: [deposit_action, invoke_action].span());
+        .safe_compile_and_panic(client_actions: [deposit_action, invoke_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
-    let result = user.safe_execute_view(client_actions: [deposit_action, invoke_action].span());
+    let result = user.safe_compile_actions(client_actions: [deposit_action, invoke_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 
     // Deposit, Withdraw, InvokeExternal.
@@ -5473,12 +5525,14 @@ fn test_no_replay_protection() {
         .safe_execute(client_actions: [deposit_action, withdraw_action, invoke_action].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user
-        .safe_execute_and_panic(
+        .safe_compile_and_panic(
             client_actions: [deposit_action, withdraw_action, invoke_action].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user
-        .safe_execute_view(client_actions: [deposit_action, withdraw_action, invoke_action].span());
+        .safe_compile_actions(
+            client_actions: [deposit_action, withdraw_action, invoke_action].span(),
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 }
 
@@ -5517,12 +5571,12 @@ fn test_execute_create_open_note() {
 
     // Verify view and panic paths return the same actions.
     let mut spy = spy_events();
-    let view_actions = user_1.execute_view(:client_actions);
+    let view_actions = user_1.compile_actions(:client_actions);
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 0);
     assert_eq!(view_actions, actions);
     let mut spy = spy_events();
-    let panic_data_actions = user_1.execute_and_panic(:client_actions);
+    let panic_data_actions = user_1.compile_and_panic(:client_actions);
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 0);
     assert_eq!(panic_data_actions, actions);
@@ -6013,9 +6067,9 @@ fn test_multiple_invoke_external_reverts() {
 
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 }
 
@@ -6033,9 +6087,9 @@ fn test_invoke_external_client_action_assertions() {
     let client_actions = [ClientAction::InvokeExternal(input)].span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CONTRACT_ADDRESS);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CONTRACT_ADDRESS);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CONTRACT_ADDRESS);
 
     // InvokeExternal alone (no privacy actions) - has should_execute=false, so without a
@@ -6046,9 +6100,9 @@ fn test_invoke_external_client_action_assertions() {
     let client_actions = [ClientAction::InvokeExternal(valid_input)].span();
     let result = user.safe_execute(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
-    let result = user.safe_execute_and_panic(:client_actions);
+    let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
-    let result = user.safe_execute_view(:client_actions);
+    let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 }
 
@@ -6496,7 +6550,9 @@ fn test_send_message_to_server() {
         .expect('Failed deserialize');
     let expected_server_actions = test
         .privacy
-        .execute_view(user_addr: user.address, user_private_key: user.private_key, :client_actions);
+        .compile_actions(
+            user_addr: user.address, user_private_key: user.private_key, :client_actions,
+        );
     assert_eq!(server_actions, expected_server_actions);
     assert!(payload.is_empty());
     // Assert message hash.

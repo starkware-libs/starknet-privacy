@@ -1,14 +1,17 @@
 **MANDATORY:** Before claiming work is complete, fixed, or passing, invoke `/verification-before-completion`. Run fresh verification commands and confirm output before making any success claims. Evidence before assertions, always.
 
+**Cairo verification checklist:**
+- If `snforge` is not in PATH, read `.tool-versions` for the version and use `~/.asdf/installs/starknet-foundry/<version>/bin/snforge`
+- `snforge test` - all tests pass
+
 **Rust verification checklist:**
 - `cargo fmt --check` - code formatting
 - `cargo clippy` - lints (0 warnings required), including integration tests, for all targets
 - `cargo test` - all tests pass, for all targets
 
 **SDK verification checklist (from `sdk/`):**
-- `npx prettier --check src/ tests/` - code formatting (must include `tests/` — husky pre-commit checks both)
-- `npx eslint src/ tests/` - lints (0 warnings required, must include `tests/`)
-- `npx tsc --noEmit` - type-check passes
+- `npm run lint` - formatting (prettier), lints (eslint), and type-check (tsc) in one command
+- If lint fails on formatting or auto-fixable eslint issues, run `npm run format` to fix them
 
 ## E2E integration gate
 
@@ -35,6 +38,12 @@ After all verification passes (fmt, clippy, tests), ask the user if they want to
 5. Iterate with the user until the plan is settled
 6. Execute the agreed simplifications
 7. Re-run verification to confirm nothing broke
+
+## E2E scripts verification checklist (from repo root)
+
+- `npx prettier --check e2e/scripts/` - code formatting
+- `cd e2e && npx eslint scripts/` - lints (0 warnings required)
+- Do **not** run `tsc --noEmit` in `e2e/` — pre-existing type gaps in scripts cause false failures
 
 ## E2E tests
 

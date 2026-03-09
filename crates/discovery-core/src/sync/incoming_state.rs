@@ -65,9 +65,6 @@ struct ProcessSubchannelResult {
 /// channels are marked via completion flags but never pruned from the cursor.
 ///
 /// Channel and subchannel processing is concurrent via [`FuturesUnordered`].
-// TODO: Handle open notes — notes with salt==OPEN_NOTE_SALT(1) have plaintext
-//       amounts, non-zero token and depositor fields (see Cairo objects.cairo
-//       Note struct)
 #[instrument(skip_all, fields(recipient = felt_hex(&recipient)))]
 pub async fn sync_incoming_state<S: IViews>(
     pool: &S,

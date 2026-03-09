@@ -1,5 +1,4 @@
 import type {
-  AccountInvocationItem,
   AccountInvocationsFactoryDetails,
   AllowArray,
   BigNumberish,
@@ -8,7 +7,6 @@ import type {
   Call,
   CallDetails,
   constants,
-  TransactionType,
 } from "starknet";
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
@@ -56,6 +54,7 @@ export type StarknetAddressBigint = bigint;
 // Import and re-export from internal channel
 import { Witness, Channel } from "./internal/channel.js";
 import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./internal/channel.js";
+import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-010";
 export { Witness, Channel };
 export type { NotesCursor as DiscoveryCursor };
 
@@ -75,7 +74,8 @@ export type NoteId = BigNumberish;
 
 export type Proof = {
   readonly data: string;
-  readonly output: string[]; // array of felts
+  /** L2-to-L1 message payload: [class_hash, ...serialized_server_actions]. */
+  readonly output: string[];
   /** Proof facts from the proving service; must be included in the tx when submitting to the chain. */
   readonly proofFacts: string[];
 };
@@ -180,8 +180,26 @@ export type SurplusAction = {
   withdraw?: boolean;
 };
 
+export type InvokeOpenNote = {
+  noteId: NoteId;
+  token: StarknetAddressBigint;
+  depositor: StarknetAddressBigint;
+};
+
+export type InvokeWithdrawal = {
+  recipient: StarknetAddressBigint;
+  token: StarknetAddressBigint;
+  amount: Amount;
+};
+
+export type InvokeCalldataBuilderArgs = {
+  openNotes: InvokeOpenNote[];
+  withdrawals: InvokeWithdrawal[];
+  poolAddress: StarknetAddressBigint;
+};
+
 export type InvokeAction = {
-  callDetails: CallDetails;
+  callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails;
 };
 
 /** Actions - context comes from registry */
@@ -291,6 +309,12 @@ export type ExecuteResult = {
   warnings: Warning[];
 };
 
+export type ProofInvocationResult = {
+  invocation: ProofInvocation;
+  registry: PrivateRegistry;
+  warnings: Warning[];
+};
+
 /**
  * Simple interface for simple private transfer scenarios
  */
@@ -325,13 +349,12 @@ export interface SimplePrivateTransfersInterface {
 
   /**
    * will withdraw to the contract in `helperCall` and then deposit to the privacy pool in `toToken`
-   * Note: a noteid will be added to the helper calldata
    */
   swap(
     fromToken: StarknetAddress,
     fromAmount: Amount,
     toToken: StarknetAddress,
-    helperCall: Call
+    executor: StarknetAddress
   ): Promise<ExecuteResult>;
 }
 
@@ -396,6 +419,11 @@ export interface PrivateTransfersInterface {
    * 4. Returns result with updated registry
    */
   execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /**
+   * Return the transaction to be proven so it can be sent independently to the prover
+   */
+  createProofInvocation(actions: Actions, options?: ExecuteOptions): Promise<ProofInvocationResult>;
 
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
@@ -462,6 +490,9 @@ export interface TokenOperationsBuilder {
 
   /** Execute all queued operations */
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /** Build proof invocation without executing */
+  createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult>;
 }
 
 /**
@@ -526,7 +557,10 @@ export interface TokenOperationsBuilder {
  *     .withdraw({ recipient: swapHelper, amount: 10n }))
  *   .with(BTC, t => t
  *     .deposit(open)) // semi-transparent note for swap result
- *   .invoke({ contractAddress: swapHelper, entrypoint: "swap", calldata: [...] })
+ *   .invoke(({ openNotes, withdrawals, poolAddress }) => ({
+ *       contractAddress: swapHelper,
+ *       calldata: [...]
+ *   }))
  *   .execute();
  * ```
  */
@@ -538,7 +572,7 @@ export interface PrivateTransfersBuilder {
   setup(recipient: StarknetAddress): this;
 
   /** Add a call to `privacy_invoke` entrypoint that will run on starknet after the private operations are executed */
-  invoke(callDetails: CallDetails): this;
+  invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this;
 
   /**
    * Set the default recipient for any surplus across all tokens.
@@ -554,13 +588,13 @@ export interface PrivateTransfersBuilder {
 
   /** Execute all queued operations and return the results */
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /** Build proof invocation without executing */
+  createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult>;
 }
 
 /** INVOKE branch of AccountInvocationItem; used for proof invocations and buildTransaction. */
-export type ProofInvocation = Extract<
-  AccountInvocationItem,
-  { type: typeof TransactionType.INVOKE }
->;
+export type ProofInvocation = INVOKE_TXN_V3;
 
 /**
  * Factory details for creating proof invocations.

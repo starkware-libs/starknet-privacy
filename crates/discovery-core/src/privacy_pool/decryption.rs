@@ -15,6 +15,10 @@ use super::types::{
     SecretFelt,
 };
 
+/// Salt value indicating an open (plaintext) note.
+/// Open notes store their amount unencrypted in the lower 128 bits.
+pub const OPEN_NOTE_SALT: u128 = 1;
+
 /// Errors that can occur during decryption.
 #[derive(Debug, Error)]
 pub enum DecryptionError {
@@ -180,6 +184,21 @@ mod tests {
             f.inputs.index,
         );
         assert_eq!(amount, f.outputs.dec_note_amount as u128);
+    }
+
+    #[test]
+    fn test_unpack_open_note_returns_plaintext_amount() {
+        let amount: u128 = 50_000_000_000_000_000_000; // 50 STRK in wei
+        let salt = OPEN_NOTE_SALT;
+        // Pack: salt in upper 128 bits, amount in lower 128 bits
+        let packed = Felt::from(salt) * Felt::from(1u128 << 64) * Felt::from(1u128 << 64)
+            + Felt::from(amount);
+        let (unpacked_salt, unpacked_amount) = unpack_note_amount(packed);
+        assert_eq!(unpacked_salt, salt, "salt should be OPEN_NOTE_SALT");
+        assert_eq!(
+            unpacked_amount, amount,
+            "open note amount should be plaintext"
+        );
     }
 
     #[test]

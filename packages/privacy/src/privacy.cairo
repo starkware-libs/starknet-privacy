@@ -25,11 +25,11 @@ pub mod Privacy {
         INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
     };
     use privacy::utils::{
-        ProofFacts, assert_valid_execution_info, assert_valid_signature, compute_message_hash,
+        ProofFacts, assert_valid_signature, assert_valid_tx_version, compute_message_hash,
         decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
         encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_execute_view_inputs,
-        extract_server_actions_from_execute_and_panic, is_canonical_key, open_note, pack,
+        encrypt_user_addr, extract_compile_actions_inputs,
+        extract_server_actions_from_compile_and_panic, is_canonical_key, open_note, pack,
         panic_with_server_actions, send_message_to_server, storage_path_to_felt252,
         to_write_once_action, unpack,
     };
@@ -48,7 +48,7 @@ pub mod Privacy {
     };
     use starknet::{
         ContractAddress, SyscallResultTrait, VALIDATED, get_caller_address, get_contract_address,
-        get_execution_info,
+        get_execution_info, get_tx_info,
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -161,23 +161,38 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn __validate__(self: @ContractState, calls: Array<Call>) -> felt252 {
-            assert_valid_execution_info();
+            let tx_info = get_tx_info();
+            // Ensure that the effective fee of the transaction is zero.
+            assert_valid_tx_version(tx_version: tx_info.version);
+            assert(tx_info.tip.is_zero(), errors::NON_ZERO_TIP);
+            for resource_bounds in tx_info.resource_bounds {
+                assert(
+                    resource_bounds.max_price_per_unit.is_zero(), errors::NON_ZERO_RESOURCE_PRICE,
+                );
+            }
             VALIDATED
         }
 
         fn __execute__(ref self: ContractState, calls: Array<Call>) {
             let execution_info = get_execution_info();
-            let (user_addr, user_private_key, client_actions) = extract_execute_view_inputs(
+            let tx_info = execution_info.tx_info;
+            // Ensure that the current call is the first of the transaction,
+            // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
+            assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
+            assert_valid_tx_version(tx_version: tx_info.version);
+
+            let (user_addr, user_private_key, client_actions) = extract_compile_actions_inputs(
                 :calls, contract_address: execution_info.contract_address,
             );
-            let server_actions = self.execute_view(:user_addr, :user_private_key, :client_actions);
-            assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
+            let server_actions = self
+                .compile_actions(:user_addr, :user_private_key, :client_actions);
+            assert_valid_signature(:user_addr, :tx_info);
             send_message_to_server(
                 :server_actions, contract_address: execution_info.contract_address,
             );
         }
 
-        fn execute_view(
+        fn compile_actions(
             self: @ContractState,
             user_addr: ContractAddress,
             user_private_key: felt252,
@@ -189,16 +204,16 @@ pub mod Privacy {
             client_actions.serialize(ref calldata);
             let syscall_result = call_contract_syscall(
                 address: get_contract_address(),
-                entry_point_selector: selector!("execute_and_panic"),
+                entry_point_selector: selector!("compile_and_panic"),
                 calldata: calldata.span(),
             );
 
-            extract_server_actions_from_execute_and_panic(:syscall_result)
+            extract_server_actions_from_compile_and_panic(:syscall_result)
         }
 
         /// Panics directly for internal errors; external calls should be wrapped via syscall
         /// to prevent injection of `OK_WRAPPER` into the panic data.
-        fn execute_and_panic(
+        fn compile_and_panic(
             ref self: ContractState,
             user_addr: ContractAddress,
             user_private_key: felt252,

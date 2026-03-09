@@ -48,14 +48,14 @@ export class MockSwapHelper implements MockContract {
 
   constructor(
     public address: StarknetAddress,
-    private contracts: MockContracts
+    private contracts: MockContracts,
+    private poolAddress: StarknetAddress
   ) {}
 
   privacy_invoke(
     fromToken: StarknetAddress,
     toToken: StarknetAddress,
     amount: Amount,
-    poolAddress: StarknetAddress,
     noteId: NoteId
   ): void {
     const balance = this.contracts.get(fromToken).balanceOf(this.address)!;
@@ -63,7 +63,7 @@ export class MockSwapHelper implements MockContract {
     this.contracts.get(fromToken).setBalance(this.address, 0n);
     this.contracts.get(toToken).setBalance(this.address, amount * 2n);
     this.contracts
-      .get<MockPoolContract>(toBigInt(poolAddress))
+      .get<MockPoolContract>(toBigInt(this.poolAddress))
       .openDeposit(toBigInt(noteId), toBigInt(toToken), amount * 2n, toBigInt(this.address));
   }
 }

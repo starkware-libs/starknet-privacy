@@ -6,14 +6,16 @@
   "scripts": {
     "test": "vitest run",
     "test:e2e": "vitest run",
+    "batch-operations": "tsx --env-file=.env scripts/batch-operations.ts",
     "declare-class": "tsx --env-file=.env scripts/declare-class.ts",
+    "load-test-discovery": "tsx --env-file=.env scripts/load-test-discovery.ts",
     "generate-dump": "tsx scripts/generate-dump.ts",
     "lint": "eslint src tests scripts --fix",
     "lint:check": "eslint src tests scripts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "starknet": "github:m-kus/starknet.js#375736f96cf928b1555407767d96a7751b546808",
+    "starknet": "github:starkware-libs/starknet.js#375736f96cf928b1555407767d96a7751b546808",
     "starknet-sdk": "file:../sdk"
   },
   "devDependencies": {

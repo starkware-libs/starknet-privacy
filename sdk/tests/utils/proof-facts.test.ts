@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildProofFacts } from "../../src/utils/proof-facts.js";
+import { buildProofFacts, buildMessagePayload } from "../../src/utils/proof-facts.js";
 import { shortStringToFelt } from "../../src/utils/crypto.js";
 import { hash, constants } from "starknet";
 import referenceData from "../fixtures/cairo-reference-data.json" with { type: "json" };
@@ -55,6 +55,15 @@ describe("ProofFacts Compatibility with Cairo", () => {
 
     // [6] is starknet_os_config_hash
     expect(proofFacts[6]).toBe(expectedConfigHash);
+  });
+
+  it("buildMessagePayload matches Cairo: [class_hash, ...serialized_actions]", () => {
+    const messagePayload = buildMessagePayload(
+      reference.poolClassHash,
+      reference.serializedActions
+    );
+
+    expect(messagePayload).toEqual(reference.messagePayload);
   });
 
   it("buildProofFacts produces correct layout", () => {

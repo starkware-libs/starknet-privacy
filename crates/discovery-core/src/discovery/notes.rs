@@ -13,7 +13,7 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use starknet_types_core::felt::Felt;
 
 use tracing::{debug, trace};
@@ -22,13 +22,32 @@ use crate::discovery::cursor::SubchannelCursor;
 use crate::discovery::last_note_index::find_last_note_index;
 use crate::discovery::{DiscoveryError, COST_NOTE, COST_NOTE_PROBING};
 use crate::io_budget::IoBudget;
-use crate::privacy_pool::decryption::{decrypt_note_amount, unpack_note_amount};
+use crate::privacy_pool::decryption::{decrypt_note_amount, unpack_note_amount, OPEN_NOTE_SALT};
 use crate::privacy_pool::felt_hex;
 use crate::privacy_pool::hashes::{compute_note_id, compute_nullifier};
 use crate::privacy_pool::types::SecretFelt;
 use crate::privacy_pool::views::IViews;
 
+/// Serde helper: serializes `u128` as a decimal string to avoid
+/// precision loss in JSON (JS numbers are 53-bit floats).
+mod u128_as_string {
+    use super::*;
+
+    pub fn serialize<S: Serializer>(value: &u128, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&value.to_string())
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u128, D::Error> {
+        let s: &str = Deserialize::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
+}
+
 /// A discovered and decrypted note.
+///
+/// `amount` and `salt` are serialized as decimal strings to avoid
+/// precision loss when transported via JSON (JavaScript numbers are
+/// IEEE 754 doubles with only 53 bits of mantissa).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DecryptedNote {
     /// The sender's address. Set by the sync orchestrator after discovery.
@@ -42,9 +61,18 @@ pub struct DecryptedNote {
     /// The note ID (storage key).
     pub note_id: Felt,
     /// The decrypted amount.
+    #[serde(with = "u128_as_string")]
     pub amount: u128,
     /// The salt used for encryption.
+    #[serde(with = "u128_as_string")]
     pub salt: u128,
+}
+
+impl DecryptedNote {
+    /// Returns `true` if this is an open note (plaintext amount, salt == 1).
+    pub fn is_open(&self) -> bool {
+        self.salt == OPEN_NOTE_SALT
+    }
 }
 
 /// Result of notes discovery operation.
@@ -256,6 +284,9 @@ async fn process_note_batch<S: IViews>(
 }
 
 /// Unpacks and decrypts a single note from its packed storage value.
+///
+/// Open notes (salt == 1) store their amount in plaintext; encrypted notes
+/// (salt >= 2) require ECDH-based decryption.
 fn decrypt_note(
     channel_key: &SecretFelt,
     token: Felt,
@@ -264,8 +295,12 @@ fn decrypt_note(
     packed: Felt,
 ) -> DecryptedNote {
     let (salt, enc_amount) = unpack_note_amount(packed);
-    let amount = decrypt_note_amount(enc_amount, salt, channel_key, token, index);
-    trace!(index, amount, "unspent note found");
+    let amount = if salt == OPEN_NOTE_SALT {
+        enc_amount
+    } else {
+        decrypt_note_amount(enc_amount, salt, channel_key, token, index)
+    };
+    trace!(index, amount, salt, "unspent note found");
     DecryptedNote {
         sender_addr: Felt::ZERO, // set by the sync orchestrator after discovery
         token: Felt::ZERO,       // set by the sync orchestrator after discovery
@@ -356,6 +391,10 @@ mod tests {
         // at index 0. This note is unspent.
         assert_eq!(notes.len(), 1, "1 unspent change note");
         assert!(notes[0].amount > 0, "Note amount should be positive");
+        assert!(
+            !notes[0].is_open(),
+            "encrypted note should not be marked open"
+        );
         assert_eq!(cursor.last_note_index, Some(0));
         assert!(cursor.note_discovery_complete);
     }
@@ -691,5 +730,47 @@ mod tests {
             100 - NUM_PROBE_OFFSETS - COST_NOTE + COST_NOTE_PROBING,
             "cache saves 1 budget unit vs no-cache"
         );
+    }
+
+    #[test]
+    fn test_decrypt_note_open_note_returns_plaintext() {
+        use crate::privacy_pool::decryption::OPEN_NOTE_SALT;
+
+        let channel_key = SecretFelt::new(Felt::from_hex_unchecked("0xABCDE"));
+        let token = Felt::from_hex_unchecked("0x67890");
+        let index = 0u64;
+        let note_id = Felt::from(42u64);
+
+        let amount: u128 = 50_000_000_000_000_000_000;
+        // Pack: salt=1 in upper 128 bits, plaintext amount in lower 128 bits
+        let packed = Felt::from(OPEN_NOTE_SALT) * Felt::from(1u128 << 64) * Felt::from(1u128 << 64)
+            + Felt::from(amount);
+
+        let note = decrypt_note(&channel_key, token, index, note_id, packed);
+
+        assert!(note.is_open(), "salt==1 note should be open");
+        assert_eq!(note.amount, amount, "open note amount should be plaintext");
+        assert_eq!(note.salt, OPEN_NOTE_SALT);
+        assert_eq!(note.index, index);
+        assert_eq!(note.note_id, note_id);
+    }
+
+    #[test]
+    fn test_decrypt_note_encrypted_note_not_open() {
+        let channel_key = SecretFelt::new(Felt::from_hex_unchecked("0xABCDE"));
+        let token = Felt::from_hex_unchecked("0x67890");
+        let index = 0u64;
+        let note_id = Felt::from(42u64);
+
+        // Salt >= 2 means encrypted note
+        let salt: u128 = 2;
+        let enc_amount: u128 = 999;
+        let packed = Felt::from(salt) * Felt::from(1u128 << 64) * Felt::from(1u128 << 64)
+            + Felt::from(enc_amount);
+
+        let note = decrypt_note(&channel_key, token, index, note_id, packed);
+
+        assert!(!note.is_open(), "salt>=2 note should not be open");
+        assert_eq!(note.salt, salt);
     }
 }
