@@ -316,6 +316,8 @@ pub trait IClient<T> {
     /// **For [`CreateEncNote`](privacy::actions::ClientAction::CreateEncNote) action:**
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the encrypted note to
     /// storage.
+    /// - [`EmitEncNoteCreated`](privacy::actions::ServerAction::EmitEncNoteCreated): Emits an
+    /// [`EncNoteCreated`](privacy::events::EncNoteCreated) event.
     ///
     /// **For [`CreateOpenNote`](privacy::actions::ClientAction::CreateOpenNote) action:**
     /// - [`WriteOnce`](privacy::actions::ServerAction::WriteOnce): Writes the open note to
@@ -438,6 +440,8 @@ pub trait IServer<T> {
     ///   [`Deposit`](privacy::events::Deposit) event.
     ///   - [`EmitOpenNoteCreated`](privacy::actions::ServerAction::EmitOpenNoteCreated): Emit an
     ///   [`OpenNoteCreated`](privacy::events::OpenNoteCreated) event.
+    ///   - [`EmitEncNoteCreated`](privacy::actions::ServerAction::EmitEncNoteCreated): Emit an
+    ///   [`EncNoteCreated`](privacy::events::EncNoteCreated) event.
     ///   - [`EmitNoteUsed`](privacy::actions::ServerAction::EmitNoteUsed): Emit a
     ///   [`NoteUsed`](privacy::events::NoteUsed) event.
     ///   - [`Invoke`](privacy::actions::ServerAction::Invoke): Invoke an external contract.
@@ -465,6 +469,9 @@ pub trait IServer<T> {
     /// [`EmitDeposit`](privacy::actions::ServerAction::EmitDeposit) action is executed.
     /// - [`OpenNoteCreated`](privacy::events::OpenNoteCreated): Emitted when
     /// [`EmitOpenNoteCreated`](privacy::actions::ServerAction::EmitOpenNoteCreated) action is
+    /// executed.
+    /// - [`EncNoteCreated`](privacy::events::EncNoteCreated): Emitted when
+    /// [`EmitEncNoteCreated`](privacy::actions::ServerAction::EmitEncNoteCreated) action is
     /// executed.
     /// - [`NoteUsed`](privacy::events::NoteUsed): Emitted when
     /// [`EmitNoteUsed`](privacy::actions::ServerAction::EmitNoteUsed) action is executed.

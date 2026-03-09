@@ -88,15 +88,21 @@ pub(crate) impl InvokeExternalInputIntoServerActionImpl of InvokeExternalInputIn
 #[generate_trait]
 pub(crate) impl CreateEncNoteInputIntoServerActionImpl of CreateEncNoteInputIntoServerActionTrait {
     fn into_server_action(self: @CreateEncNoteInput, user: User) -> ServerAction {
+        panic!("use into_server_actions");
+    }
+
+    fn into_server_actions(self: @CreateEncNoteInput, user: User) -> Span<ServerAction> {
         let (note_id, note) = user.compute_enc_note(create_note_input: *self);
         let storage_path = map_entry_address(
             map_selector: selector!("notes"), keys: [note_id].span(),
         );
-        to_write_once_action(storage_address: storage_path, value: note.packed_value)
-    }
-
-    fn into_server_actions(self: @CreateEncNoteInput, user: User) -> Span<ServerAction> {
-        [self.into_server_action(:user)].span()
+        [
+            to_write_once_action(storage_address: storage_path, value: note.packed_value),
+            ServerAction::EmitEncNoteCreated(
+                events::EncNoteCreated { note_id, packed_value: note.packed_value },
+            ),
+        ]
+            .span()
     }
 }
 
@@ -1139,16 +1145,18 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, token: Token, amount: u128, create_note_input: CreateEncNoteInput,
     ) {
         self.approve(:token, amount: amount.into());
-        let actions = [
-            create_note_input.into_server_action(user: *self),
-            ServerAction::TransferFrom(
-                TransferFromInput {
-                    from_addr: *self.address, token: token.contract_address(), amount,
-                },
-            ),
-        ]
-            .span();
-        self.privacy.apply_actions(:actions);
+        let mut actions: Array<ServerAction> = create_note_input
+            .into_server_actions(user: *self)
+            .into();
+        actions
+            .append(
+                ServerAction::TransferFrom(
+                    TransferFromInput {
+                        from_addr: *self.address, token: token.contract_address(), amount,
+                    },
+                ),
+            );
+        self.privacy.apply_actions(actions: actions.span());
     }
 
     /// Cheat withdraw in the server side (no client side).

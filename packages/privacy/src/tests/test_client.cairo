@@ -180,13 +180,12 @@ fn test_transfer() {
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
-    let expected_actions = array![
+    let mut expected_actions = array![
         to_write_once_action(storage_address: storage_path_felt_nullifier, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier }),
-        create_note_input.into_server_action(user: user_1),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
+    ];
+    expected_actions.append_span(create_note_input.into_server_actions(user: user_1));
+    assert_eq!(actions, expected_actions.span());
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
@@ -225,13 +224,12 @@ fn test_transfer_to_self() {
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
-    let expected_actions = array![
+    let mut expected_actions = array![
         to_write_once_action(storage_address: storage_path_felt_nullifier, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier }),
-        create_note_input.into_server_action(user: user_1),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
+    ];
+    expected_actions.append_span(create_note_input.into_server_actions(user: user_1));
+    assert_eq!(actions, expected_actions.span());
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
 
@@ -282,14 +280,13 @@ fn test_transfer_one_to_many() {
     let storage_path_felt_nullifier = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier].span(),
     );
-    let expected_actions = array![
+    let mut expected_actions = array![
         to_write_once_action(storage_address: storage_path_felt_nullifier, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier }),
-        create_note_input_1.into_server_action(user: user_1),
-        create_note_input_2.into_server_action(user: user_1),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
+    ];
+    expected_actions.append_span(create_note_input_1.into_server_actions(user: user_1));
+    expected_actions.append_span(create_note_input_2.into_server_actions(user: user_1));
+    assert_eq!(actions, expected_actions.span());
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
     assert_eq!(test.privacy.get_note(note_id: note_id_1), Zero::zero());
     assert_eq!(test.privacy.get_note(note_id: note_id_2), Zero::zero());
@@ -347,15 +344,14 @@ fn test_transfer_many_to_one() {
     let storage_path_felt_nullifier_2 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_2].span(),
     );
-    let expected_actions = array![
+    let mut expected_actions = array![
         to_write_once_action(storage_address: storage_path_felt_nullifier_1, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier_1 }),
         to_write_once_action(storage_address: storage_path_felt_nullifier_2, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier_2 }),
-        create_note_input.into_server_action(user: user_1),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
+    ];
+    expected_actions.append_span(create_note_input.into_server_actions(user: user_1));
+    assert_eq!(actions, expected_actions.span());
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
     assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
@@ -419,16 +415,15 @@ fn test_transfer_many_to_many() {
     let storage_path_felt_nullifier_2 = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [expected_nullifier_2].span(),
     );
-    let expected_actions = array![
+    let mut expected_actions = array![
         to_write_once_action(storage_address: storage_path_felt_nullifier_1, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier_1 }),
         to_write_once_action(storage_address: storage_path_felt_nullifier_2, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier: expected_nullifier_2 }),
-        create_note_input_1.into_server_action(user: user_3),
-        create_note_input_2.into_server_action(user: user_3),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
+    ];
+    expected_actions.append_span(create_note_input_1.into_server_actions(user: user_3));
+    expected_actions.append_span(create_note_input_2.into_server_actions(user: user_3));
+    assert_eq!(actions, expected_actions.span());
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_1));
     assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier_2));
     assert_eq!(test.privacy.get_note(note_id: note_id_1), Zero::zero());
@@ -3698,17 +3693,16 @@ fn test_execute_deposit_create_note() {
     let actions = user_1.execute(:client_actions);
     let (note_id, expected_note) = user_1.compute_enc_note(:create_note_input);
     let expected_event = events::Deposit { user_addr: user_1.address, token: token_addr, amount };
-    let expected_actions = array![
+    let mut expected_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput {
                 from_addr: user_1.address, token: token_addr, amount: amount.into(),
             },
         ),
         ServerAction::EmitDeposit(expected_event),
-        create_note_input.into_server_action(user: user_1),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
+    ];
+    expected_actions.append_span(create_note_input.into_server_actions(user: user_1));
+    assert_eq!(actions, expected_actions.span());
     let view_actions = user_1.compile_actions(:client_actions);
     assert_eq!(view_actions, actions);
     let panic_data_actions = user_1.compile_and_panic(:client_actions);
@@ -3761,13 +3755,12 @@ fn test_execute_use_note_create_note() {
     let nullifier_storage_path = map_entry_address(
         map_selector: selector!("nullifiers"), keys: [nullifier].span(),
     );
-    let expected_actions = array![
+    let mut expected_actions = array![
         to_write_once_action(storage_address: nullifier_storage_path, value: true),
         ServerAction::EmitNoteUsed(events::NoteUsed { nullifier }),
-        create_note_input_2.into_server_action(user: user_2),
-    ]
-        .span();
-    assert_eq!(actions, expected_actions);
+    ];
+    expected_actions.append_span(create_note_input_2.into_server_actions(user: user_2));
+    assert_eq!(actions, expected_actions.span());
     let mut spy = spy_events();
     let view_actions = user_2.compile_actions(:client_actions);
     let compile_actions_events = spy
@@ -5227,7 +5220,8 @@ fn test_client_apply_writes() {
         user_addr: address, public_key, enc_private_key,
     };
     let expected_event_deposit = events::Deposit { user_addr: address, token: token_addr, amount };
-    let expected_server_actions = [
+    let (enc_note_id, enc_note) = user.compute_enc_note(create_note_input: create_enc_note_input);
+    let mut expected_server_actions = array![
         // Set viewing key.
         to_write_once_action(storage_address: public_key_storage_path, value: public_key),
         to_write_once_action(storage_address: enc_private_key_storage_path, value: enc_private_key),
@@ -5247,10 +5241,12 @@ fn test_client_apply_writes() {
         ServerAction::TransferFrom(
             TransferFromInput { from_addr: address, token: token_addr, amount },
         ),
-        ServerAction::EmitDeposit(expected_event_deposit), // Create note.
-        create_enc_note_input.into_server_action(:user),
-    ]
-        .span();
+        ServerAction::EmitDeposit(expected_event_deposit),
+    ];
+    // Create note.
+    expected_server_actions
+        .append_span(create_enc_note_input.into_server_actions(:user));
+    let expected_server_actions = expected_server_actions.span();
     // Assert server actions.
     assert_eq!(server_actions, expected_server_actions);
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
@@ -5356,14 +5352,14 @@ fn test_client_transfers_dont_execute() {
         salt,
     };
     let expected_event = events::Deposit { user_addr: user.address, token: token_addr, amount };
-    let expected_server_actions = array![
+    let mut expected_server_actions = array![
         ServerAction::TransferFrom(
             TransferFromInput { from_addr: user.address, token: token_addr, amount: amount.into() },
         ),
-        ServerAction::EmitDeposit(expected_event), create_note_input.into_server_action(:user),
-    ]
-        .span();
-    assert_eq!(server_actions, expected_server_actions);
+        ServerAction::EmitDeposit(expected_event),
+    ];
+    expected_server_actions.append_span(create_note_input.into_server_actions(user: user));
+    assert_eq!(server_actions, expected_server_actions.span());
     let result = test.privacy.safe_apply_actions(actions: server_actions);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 
