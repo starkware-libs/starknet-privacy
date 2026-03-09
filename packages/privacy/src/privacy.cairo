@@ -799,10 +799,7 @@ pub mod Privacy {
             }
 
             // Apply deposits to open notes returned by Invoke.
-            // If the length is bigger than the number of open notes created, the excess
-            // deposits will fail.
-            // TODO: Change to ==.
-            assert(open_note_deposits.len() >= open_notes_created, errors::UNFILLED_OPEN_NOTES);
+            assert(open_note_deposits.len() == open_notes_created, errors::UNFILLED_OPEN_NOTES);
             for input in open_note_deposits {
                 self.deposit_to_open_note(:input);
             }
