@@ -9,14 +9,6 @@
 ## Withdraw
 3. Call server withdraw twice with the same input.
 
-## Create note
-1. Try to create same note twice in one transfer.
-3. Create note with non-sequential index (should fail - INDEX_NOT_SEQUENTIAL).
-4. Create open and enc note for the same note id in same tx (enc first, should fail - NON_ZERO_VALUE).
-5. Create open and enc note for the same note id in same tx (open first, should fail - NON_ZERO_VALUE).
-6. Create enc note, then open note for the same note id in different tx (should fail - NON_ZERO_VALUE).
-7. Create open note, then enc note for the same note id in different tx (should fail - NON_ZERO_VALUE).
-
 ## Open note
 2. Split from open note: create open note -> deposit large amount -> use to create multiple output notes for different recipients.
 3. Open note chain: User A creates open note for User B -> Depositor deposits -> User B transfers to User C -> User C withdraws.
