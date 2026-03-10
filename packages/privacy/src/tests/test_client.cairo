@@ -241,6 +241,39 @@ fn test_transfer_to_self() {
 }
 
 #[test]
+fn test_transfer_use_note_and_create_same_note_twice() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    let token_addr = test.mock_new_token();
+    user_1.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 0);
+    user_2.open_channel_with_token_e2e(recipient: user_1, :token_addr, outgoing_channel_index: 0);
+    let amount = 1;
+    let index = 0;
+    let incoming_note = user_2
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_addr, :amount, :index);
+    user_2.cheat_create_enc_note_e2e(create_note_input: incoming_note);
+    let use_note_input = UseNoteInput {
+        channel_key: user_2.compute_channel_key(recipient: user_1), token: token_addr, index,
+    };
+    let create_note_input = user_1
+        .new_enc_note_with_generated_salt(recipient: user_1, :token_addr, :amount, :index);
+
+    let result = user_1.safe_transfer(
+        notes_to_use: [use_note_input].span(),
+        notes_to_create: [create_note_input, create_note_input].span(),
+    );
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_INTERMEDIATE_BALANCE);
+
+    let expected_nullifier = user_1.compute_nullifier(sender: user_2, :token_addr, :index);
+    let (note_id, _) = user_1.compute_enc_note(:create_note_input);
+    assert!(!test.privacy.nullifier_exists(nullifier: expected_nullifier));
+    assert_eq!(test.privacy.get_note(:note_id), Zero::zero());
+}
+
+#[test]
 fn test_transfer_one_to_many() {
     let mut test = Default::default();
     let mut user_1 = test.new_user();
@@ -5752,6 +5785,64 @@ fn test_create_note_at_existing_note_id(initial_is_open: bool, colliding_is_open
         user_1.safe_create_enc_note(create_note_input: zero_enc_note_input)
     };
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+}
+
+#[test]
+#[test_case(true, false)]
+#[test_case(true, true)]
+#[test_case(false, false)]
+#[test_case(false, true)]
+fn test_create_colliding_notes_in_same_tx(initial_is_open: bool, colliding_is_open: bool) {
+    // Test that creating two notes with the same note_id in one tx fails.
+    // Cases:
+    // - (true, false): open note then enc note
+    // - (true, true): open note then open note
+    // - (false, false): enc note then enc note
+    // - (false, true): enc note then open note
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let mut depositor = test.new_user();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    user_1.set_viewing_key_e2e();
+    user_2.set_viewing_key_e2e();
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
+
+    let open_note_input = user_1
+        .new_open_note_with_generated_random(
+            recipient: user_2, :token_addr, index: 0, depositor: depositor.address,
+        );
+    let enc_note_input = user_1
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 0, index: 0);
+    let mut client_actions: Array<ClientAction> = array![];
+    client_actions.append(
+        if initial_is_open {
+            ClientAction::CreateOpenNote(open_note_input)
+        } else {
+            ClientAction::CreateEncNote(enc_note_input)
+        },
+    );
+    client_actions.append(
+        if colliding_is_open {
+            ClientAction::CreateOpenNote(open_note_input)
+        } else {
+            ClientAction::CreateEncNote(enc_note_input)
+        },
+    );
+    let client_actions = client_actions.span();
+
+    let result = user_1.safe_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user_1.safe_compile_actions(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+    let result = user_1.safe_compile_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
+
+    let (open_note_id, _) = user_1.compute_open_note(create_note_input: open_note_input);
+    let (enc_note_id, _) = user_1.compute_enc_note(create_note_input: enc_note_input);
+    assert_eq!(open_note_id, enc_note_id);
+    assert_eq!(test.privacy.get_note(note_id: open_note_id), Zero::zero());
 }
 
 #[test]
