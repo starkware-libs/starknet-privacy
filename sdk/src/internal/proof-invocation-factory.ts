@@ -27,7 +27,7 @@ import { ClientAction } from "./client-actions.js";
 import { toHex } from "../utils/convert.js";
 
 /** Default L2 gas max amount for proof invocations */
-const DEFAULT_L2_GAS_MAX_AMOUNT = 10_000_000n;
+const DEFAULT_L2_GAS_MAX_AMOUNT = 100_000_000n;
 
 /** Hardcoded nonce for proof invocations (no chain fetch). */
 const PROOF_INVOCATION_NONCE = 0n;
