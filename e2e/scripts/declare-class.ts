@@ -46,7 +46,7 @@ const L2_GAS_PRICE = 16_000_000_000n;
 const L1_GAS_PRICE = 1_000_000_000_000n;
 const L1_DATA_GAS_PRICE = 2_000n;
 const DECLARE_RESOURCE_BOUNDS = {
-  l2_gas: { max_amount: 4_000_000_000n, max_price_per_unit: L2_GAS_PRICE },
+  l2_gas: { max_amount: 3_000_000_000n, max_price_per_unit: L2_GAS_PRICE },
   l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
   l1_data_gas: { max_amount: 25_000n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };

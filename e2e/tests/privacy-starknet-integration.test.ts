@@ -11,6 +11,7 @@ import {
   createPrivateTransfers,
   ProvingServiceProofProvider,
   SetupRequirement,
+  type HistoryTransaction,
 } from "starknet-sdk";
 import { IndexerClient } from "../src/indexer-client.js";
 import { declarePoolClass } from "../src/harness.js";
@@ -64,7 +65,7 @@ const DEPLOY_RESOURCE_BOUNDS = {
   l1_data_gas: { max_amount: 3_500n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };
 const POOL_RESOURCE_BOUNDS = {
-  l2_gas: { max_amount: 2_000_000_000n, max_price_per_unit: L2_GAS_PRICE },
+  l2_gas: { max_amount: 500_000_000n, max_price_per_unit: L2_GAS_PRICE },
   l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
   l1_data_gas: { max_amount: 5_000n, max_price_per_unit: L1_DATA_GAS_PRICE },
 };
@@ -267,5 +268,106 @@ describe("Privacy StarkNet integration", () => {
       console.error("Transaction reverted:", JSON.stringify(receipt, null, 2));
     }
     expect(receipt.isSuccess()).toBe(true);
+  }, 120_000);
+
+  it("fetches history after deposit", async () => {
+    const aliceAddress = BigInt(alice.address);
+    const aliceViewingKey = BigInt(alice.viewingKey);
+
+    // Poll until the indexer has processed the deposit block
+    const deadline = Date.now() + 90_000;
+    let notesResult = await discovery.discoverNotes(
+      aliceAddress,
+      aliceViewingKey,
+    );
+    while (notesResult.notes.size === 0) {
+      if (Date.now() > deadline)
+        throw new Error("Timeout waiting for indexer to process deposit");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      notesResult = await discovery.discoverNotes(
+        aliceAddress,
+        aliceViewingKey,
+      );
+    }
+
+    const { cursor: channelCursor } = await discovery.discoverChannels(
+      aliceAddress,
+      aliceViewingKey,
+      "all",
+    );
+
+    const historyPage = await discovery.fetchHistory(
+      aliceAddress,
+      notesResult.cursor,
+      channelCursor,
+      { maxTransactions: 10 },
+    );
+
+    expect(historyPage.blockRef).toBeDefined();
+    expect(historyPage.transactions.length).toBeGreaterThan(0);
+
+    const allDeposits = historyPage.transactions.flatMap(
+      (transaction) => transaction.deposits,
+    );
+    expect(
+      allDeposits.find(
+        (deposit) =>
+          deposit.amount === 100n && deposit.token === BigInt(TOKEN),
+      ),
+    ).toBeDefined();
+  }, 120_000);
+
+  it("paginates history", async () => {
+    const aliceAddress = BigInt(alice.address);
+    const aliceViewingKey = BigInt(alice.viewingKey);
+
+    const { cursor: notesCursor } = await discovery.discoverNotes(
+      aliceAddress,
+      aliceViewingKey,
+    );
+    const { cursor: channelCursor } = await discovery.discoverChannels(
+      aliceAddress,
+      aliceViewingKey,
+      "all",
+    );
+
+    const allTransactions: HistoryTransaction[] = [];
+    const firstPage = await discovery.fetchHistory(
+      aliceAddress,
+      notesCursor,
+      channelCursor,
+      { maxTransactions: 1 },
+    );
+    allTransactions.push(...firstPage.transactions);
+
+    let historyCursor = firstPage.cursor;
+    let blockRef: string | undefined = firstPage.blockRef;
+    const MAX_PAGES = 5;
+    let pageCount = 1;
+
+    while (!historyCursor.historyComplete && pageCount < MAX_PAGES) {
+      const page = await discovery.fetchHistory(
+        aliceAddress,
+        notesCursor,
+        channelCursor,
+        { maxTransactions: 1, historyCursor, blockRef },
+      );
+      allTransactions.push(...page.transactions);
+      historyCursor = page.cursor;
+      blockRef = page.blockRef;
+      pageCount++;
+    }
+
+    expect(allTransactions.length).toBeGreaterThan(0);
+
+    const allDeposits = allTransactions.flatMap(
+      (transaction) => transaction.deposits,
+    );
+    expect(
+      allDeposits.find(
+        (deposit) =>
+          deposit.amount === 100n && deposit.token === BigInt(TOKEN),
+      ),
+    ).toBeDefined();
   }, 120_000);
 });
