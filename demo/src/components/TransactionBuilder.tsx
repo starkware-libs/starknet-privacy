@@ -41,12 +41,9 @@ export function TransactionBuilder({ pending, activeAddress, otherAccounts, onEx
   const [selectedType, setSelectedType] = useState<OperationType>("deposit");
   const [amount, setAmount] = useState("100");
   const [recipient, setRecipient] = useState("");
-  const [contractAddress, setContractAddress] = useState("");
-  const [calldata, setCalldata] = useState("");
   const [withdrawSurplus, setWithdrawSurplus] = useState(false);
   const nextOperationId = useRef(0);
 
-  const hasInvoke = operations.some((op) => op.operationType === "invoke");
   const hasSurplus = operations.some((op) => op.operationType === "surplus");
 
   function handleAdd(event: FormEvent) {
@@ -61,9 +58,6 @@ export function TransactionBuilder({ pending, activeAddress, otherAccounts, onEx
       amount,
       ...(needsRecipient ? { recipient } : {}),
       ...(selectedType === "surplus" ? { withdrawSurplus } : {}),
-      ...(selectedType === "invoke"
-        ? { contractAddress, calldata }
-        : {}),
     };
 
     setOperations((previous) => {
@@ -84,9 +78,6 @@ export function TransactionBuilder({ pending, activeAddress, otherAccounts, onEx
   }
 
   function formatOperationDetails(operation: BuilderOperation): string {
-    if (operation.operationType === "invoke") {
-      return `${operation.contractAddress?.slice(0, 10)}...`;
-    }
     if (operation.operationType === "surplus") {
       const target = operation.recipient
         ? `${operation.recipient.slice(0, 10)}...`
@@ -113,16 +104,15 @@ export function TransactionBuilder({ pending, activeAddress, otherAccounts, onEx
           <option value="transfer">Transfer</option>
           <option value="withdraw">Withdraw</option>
           <option value="surplus" disabled={hasSurplus}>Surplus To</option>
-          <option value="invoke" disabled={hasInvoke}>Invoke</option>
         </select>
 
-        {selectedType !== "invoke" && selectedType !== "surplus" && (
+        {selectedType !== "surplus" && (
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
             placeholder="Amount"
-            min="1"
           />
         )}
 
@@ -159,28 +149,10 @@ export function TransactionBuilder({ pending, activeAddress, otherAccounts, onEx
           </label>
         )}
 
-        {selectedType === "invoke" && (
-          <>
-            <input
-              type="text"
-              value={contractAddress}
-              onChange={(event) => setContractAddress(event.target.value)}
-              placeholder="Contract address (0x...)"
-            />
-            <input
-              type="text"
-              value={calldata}
-              onChange={(event) => setCalldata(event.target.value)}
-              placeholder="Calldata (comma-separated)"
-            />
-          </>
-        )}
-
         <button
           type="submit"
           disabled={
             pending ||
-            (selectedType === "invoke" && hasInvoke) ||
             (selectedType === "surplus" && hasSurplus) ||
             ((selectedType === "transfer" || selectedType === "surplus") && !recipient)
           }

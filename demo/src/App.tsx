@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createEmptyRegistry } from "starknet-sdk";
 import { formatChainId } from "./format.ts";
 import { loadConfig } from "./config.ts";
 import { createProvider, createAccount, createTransfers } from "./starknet.ts";
@@ -6,6 +7,7 @@ import { useAccounts } from "./hooks/useAccounts.ts";
 import { usePoolSelector } from "./hooks/usePoolSelector.ts";
 import { useDeployPool } from "./hooks/useDeployPool.ts";
 import { usePrivateState } from "./hooks/usePrivateState.ts";
+import { useHistory } from "./hooks/useHistory.ts";
 import { useTransactions } from "./hooks/useTransactions.ts";
 import { AccountSelector } from "./components/AccountSelector.tsx";
 import { PoolSelector } from "./components/PoolSelector.tsx";
@@ -16,6 +18,7 @@ import { StatusBar } from "./components/StatusBar.tsx";
 import { ServiceHealthBar } from "./components/ServiceHealthBar.tsx";
 import { useTransactionBuilder } from "./hooks/useTransactionBuilder.ts";
 import { useServiceHealth } from "./hooks/useServiceHealth.ts";
+import { useTokenMetadata } from "./hooks/useTokenMetadata.ts";
 import "./App.css";
 
 const config = loadConfig();
@@ -57,18 +60,58 @@ export function App() {
     return createTransfers(provider, account, activeAccount, poolAddress, config);
   }, [provider, account, activeAccount, poolAddress]);
 
-  const { state, loading, error, refresh } = usePrivateState(
+  const registry = useRef(createEmptyRegistry());
+
+  // Reset registry in-place when account or pool changes so discovery starts
+  // fresh. Mutating the existing object (rather than replacing it) ensures that
+  // callbacks captured during this render cycle see the cleared state.
+  useEffect(() => {
+    const reg = registry.current;
+    reg.cursor = undefined;
+    reg.channels = createEmptyRegistry().channels;
+    reg.notes = createEmptyRegistry().notes;
+  }, [activeAccount, poolAddress]);
+
+  const tokenAddresses = useMemo(() => [config.tokenAddress], []);
+  const tokenMetadata = useTokenMetadata(provider, tokenAddresses);
+
+  const { state, loading, error, refresh, refreshBalances } = usePrivateState(
     provider,
     transfers,
     activeAccount,
     accounts,
     poolAddress,
     config,
+    registry.current,
+    tokenMetadata,
   );
 
+  const {
+    transactions: historyTransactions,
+    loading: historyLoading,
+    error: historyError,
+    historyComplete,
+    fetchMore: fetchHistory,
+    refreshLatest: refreshHistoryLatest,
+  } = useHistory(provider, poolAddress, config, activeAccount, accounts, registry.current, tokenMetadata);
+
+  const refreshAll = useCallback(async () => {
+    // Reset cursors so refresh does a full re-sync — incremental discovery
+    // only returns new notes, so stale cursors would yield empty results
+    // after a transaction that consumed/created notes.
+    const reg = registry.current;
+    reg.cursor = undefined;
+    reg.channels = createEmptyRegistry().channels;
+    reg.notes = createEmptyRegistry().notes;
+    await refresh();
+    refreshHistoryLatest();
+  }, [refresh, refreshHistoryLatest]);
+
+  const metadataReady = tokenMetadata.size > 0;
+
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    if (metadataReady) refresh();
+  }, [refresh, metadataReady]);
 
   const { status, register, mint, deposit, withdraw, transfer } = useTransactions(
     provider,
@@ -77,8 +120,11 @@ export function App() {
     poolAddress,
     config,
     accounts,
-    refresh,
+    refreshAll,
+    refreshBalances,
   );
+
+  const tokenDecimals = tokenMetadata.get(config.tokenAddress)?.decimals ?? 0;
 
   const { status: builderStatus, executeBatch } = useTransactionBuilder(
     provider,
@@ -87,7 +133,8 @@ export function App() {
     poolAddress,
     config,
     accounts,
-    refresh,
+    refreshAll,
+    tokenDecimals,
   );
 
   const serviceHealth = useServiceHealth(provider, config);
@@ -128,7 +175,13 @@ export function App() {
               state={state}
               loading={loading}
               error={error}
-              onRefresh={refresh}
+              onRefresh={refreshAll}
+              historyTransactions={historyTransactions}
+              explorerUrl={config.explorerUrl}
+              historyLoading={historyLoading}
+              historyError={historyError}
+              historyComplete={historyComplete}
+              onFetchHistory={fetchHistory}
             />
             <div className="action-panel">
               <div className="view-toggle">
@@ -150,6 +203,7 @@ export function App() {
                   pending={status.pending}
                   activeAddress={activeAccount.address}
                   otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
+                  tokenDecimals={tokenDecimals}
                   onRegister={register}
                   onMint={mint}
                   onDeposit={deposit}

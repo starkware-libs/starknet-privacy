@@ -22,6 +22,7 @@ export type ServiceHealthState = {
 
 const POLL_INTERVAL_MS = 30_000;
 const RPC_STALENESS_THRESHOLD_SECS = 120;
+const RPC_BLOCK_DIVERGENCE_THRESHOLD = 0;
 const FETCH_TIMEOUT_MS = 8_000;
 
 function pending(): SubsystemHealth {
@@ -42,16 +43,36 @@ async function checkDiscovery(indexerUrl: string): Promise<SubsystemHealth> {
   }
 }
 
-async function checkRpc(provider: RpcProvider): Promise<SubsystemHealth> {
+async function checkRpc(provider: RpcProvider, feederGatewayUrl?: string): Promise<SubsystemHealth> {
   try {
     const block = await provider.getBlock("latest");
-    const blockTimestamp = block.timestamp;
+    const rpcBlockNumber = block.block_number;
     const nowSecs = Math.floor(Date.now() / 1000);
-    const lagSecs = nowSecs - blockTimestamp;
-    if (lagSecs <= RPC_STALENESS_THRESHOLD_SECS) {
-      return { status: "healthy", detail: `lag: ${lagSecs}s` };
+    const lagSecs = nowSecs - block.timestamp;
+    if (lagSecs > RPC_STALENESS_THRESHOLD_SECS) {
+      return { status: "unhealthy", detail: `stale: ${lagSecs}s behind` };
     }
-    return { status: "unhealthy", detail: `stale: ${lagSecs}s behind` };
+
+    if (feederGatewayUrl) {
+      try {
+        const response = await fetch(
+          `${feederGatewayUrl}/feeder_gateway/get_block?blockNumber=latest`,
+          { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
+        );
+        if (response.ok) {
+          const feederBlock = await response.json();
+          const feederBlockNumber = feederBlock.block_number as number;
+          const divergence = Math.abs(rpcBlockNumber - feederBlockNumber);
+          if (divergence > RPC_BLOCK_DIVERGENCE_THRESHOLD) {
+            return { status: "unhealthy", detail: `block ${rpcBlockNumber} vs feeder ${feederBlockNumber} (${divergence} behind)` };
+          }
+        }
+      } catch {
+        // Feeder gateway unavailable — skip divergence check
+      }
+    }
+
+    return { status: "healthy", detail: `block ${rpcBlockNumber}, lag: ${lagSecs}s` };
   } catch (error) {
     return { status: "unhealthy", detail: error instanceof Error ? error.message : "unreachable" };
   }
@@ -102,7 +123,7 @@ export function useServiceHealth(
     };
 
     checkDiscovery(config.indexerUrl).then(update("discovery"));
-    checkRpc(provider).then(update("rpc"));
+    checkRpc(provider, config.feederGatewayUrl).then(update("rpc"));
 
     if (config.provingServiceUrl) {
       checkProving(config.provingServiceUrl).then(update("proving"));

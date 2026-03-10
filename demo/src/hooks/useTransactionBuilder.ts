@@ -1,10 +1,12 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { Account, TransactionFinalityStatus, type RpcProvider } from "starknet";
 import type { PrivateTransfersInterface } from "starknet-sdk";
 import type { AccountConfig, AppConfig } from "../config.ts";
 import type { TransactionStatus } from "./useTransactions.ts";
 import type { BuilderOperation } from "../components/TransactionBuilder.tsx";
 import { Timeline } from "../timeline.ts";
+
+import { toRawAmount } from "../format.ts";
 
 const WAIT_OPTIONS = {
   successStates: [TransactionFinalityStatus.PRE_CONFIRMED],
@@ -23,7 +25,8 @@ export function useTransactionBuilder(
   poolAddress: string,
   config: AppConfig,
   accounts: AccountConfig[],
-  onSuccess: () => void,
+  onSettled: () => void,
+  tokenDecimals: number,
 ) {
   const [status, setStatus] = useState<TransactionStatus>({
     pending: false,
@@ -32,6 +35,9 @@ export function useTransactionBuilder(
     proofSizeBytes: null,
     timeline: null,
   });
+
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
 
   const userAccount = useMemo(() => {
     if (!provider || !activeAddress) return undefined;
@@ -61,7 +67,7 @@ export function useTransactionBuilder(
           await timeline.step(action, async () => {
             const totalDepositAmount = operations
               .filter((op) => op.operationType === "deposit")
-              .reduce((sum, op) => sum + BigInt(op.amount), 0n);
+              .reduce((sum, op) => sum + toRawAmount(op.amount, tokenDecimals), 0n);
 
             if (totalDepositAmount > 0n) {
               await timeline.step("Approve", async () => {
@@ -114,11 +120,11 @@ export function useTransactionBuilder(
                 .with(config.tokenAddress, (tokenBuilder) => {
                   for (const op of operations) {
                     if (op.operationType === "deposit")
-                      tokenBuilder.deposit({ amount: BigInt(op.amount), recipient: op.recipient || undefined });
+                      tokenBuilder.deposit({ amount: toRawAmount(op.amount, tokenDecimals), recipient: op.recipient || undefined });
                     if (op.operationType === "transfer")
-                      tokenBuilder.transfer({ recipient: op.recipient!, amount: BigInt(op.amount) });
+                      tokenBuilder.transfer({ recipient: op.recipient!, amount: toRawAmount(op.amount, tokenDecimals) });
                     if (op.operationType === "withdraw")
-                      tokenBuilder.withdraw({ amount: BigInt(op.amount), recipient: op.recipient || activeAddress });
+                      tokenBuilder.withdraw({ amount: toRawAmount(op.amount, tokenDecimals), recipient: op.recipient || activeAddress });
                   }
                 })
                 .execute({ provingBlockId }),
@@ -146,16 +152,26 @@ export function useTransactionBuilder(
               ? base64ByteLength(callAndProof.proof.data)
               : null;
             setStatus({ pending: false, lastTxHash: executeTx.transaction_hash, lastError: null, proofSizeBytes, timeline });
-            onSuccess();
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error(`[${action}] failed:`, err);
           setStatus({ pending: false, lastTxHash: null, lastError: `${action}: ${message}`, proofSizeBytes: null, timeline });
+        } finally {
+          onSettledRef.current();
         }
       })();
     },
-    [userAccount, transfers, provider, activeAddress, config, poolAddress, onSuccess],
+    [
+      userAccount,
+      transfers,
+      provider,
+      activeAddress,
+      config,
+      poolAddress,
+      accounts,
+      tokenDecimals,
+    ],
   );
 
   return { status, executeBatch };

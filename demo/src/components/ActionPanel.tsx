@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from "react";
 import type { AccountConfig } from "../config.ts";
+import { toRawAmount } from "../format.ts";
 
 type Props = {
   pending: boolean;
   activeAddress: string;
   otherAccounts: AccountConfig[];
+  tokenDecimals: number;
   onRegister: () => void;
   onMint: (amount: bigint) => void;
   onDeposit: (amount: bigint) => void;
@@ -16,6 +18,7 @@ export function ActionPanel({
   pending,
   activeAddress,
   otherAccounts,
+  tokenDecimals,
   onRegister,
   onMint,
   onDeposit,
@@ -28,25 +31,27 @@ export function ActionPanel({
   const [transferAmount, setTransferAmount] = useState("50");
   const [transferRecipient, setTransferRecipient] = useState("");
 
+  const parseAmount = (value: string) => toRawAmount(value, tokenDecimals);
+
   function handleMint(event: FormEvent) {
     event.preventDefault();
-    onMint(BigInt(mintAmount));
+    onMint(parseAmount(mintAmount));
   }
 
   function handleDeposit(event: FormEvent) {
     event.preventDefault();
-    onDeposit(BigInt(depositAmount));
+    onDeposit(parseAmount(depositAmount));
   }
 
   function handleWithdraw(event: FormEvent) {
     event.preventDefault();
-    onWithdraw(BigInt(withdrawAmount));
+    onWithdraw(parseAmount(withdrawAmount));
   }
 
   function handleTransfer(event: FormEvent) {
     event.preventDefault();
     if (!transferRecipient) return;
-    onTransfer(transferRecipient, BigInt(transferAmount));
+    onTransfer(transferRecipient, parseAmount(transferAmount));
   }
 
   return (
@@ -56,11 +61,11 @@ export function ActionPanel({
       <form onSubmit={handleMint} className="action-form">
         <h3>Mint tokens (transparent)</h3>
         <input
-          type="number"
+          type="text"
+          inputMode="decimal"
           value={mintAmount}
           onChange={(event) => setMintAmount(event.target.value)}
           placeholder="Amount"
-          min="1"
         />
         <button type="submit" disabled={pending}>
           Mint
@@ -77,11 +82,11 @@ export function ActionPanel({
       <form onSubmit={handleDeposit} className="action-form">
         <h3>Deposit to self (auto setup)</h3>
         <input
-          type="number"
+          type="text"
+          inputMode="decimal"
           value={depositAmount}
           onChange={(event) => setDepositAmount(event.target.value)}
           placeholder="Amount"
-          min="1"
         />
         <button type="submit" disabled={pending}>
           Deposit
@@ -91,11 +96,11 @@ export function ActionPanel({
       <form onSubmit={handleWithdraw} className="action-form">
         <h3>Withdraw to self</h3>
         <input
-          type="number"
+          type="text"
+          inputMode="decimal"
           value={withdrawAmount}
           onChange={(event) => setWithdrawAmount(event.target.value)}
           placeholder="Amount"
-          min="1"
         />
         <button type="submit" disabled={pending}>
           Withdraw
@@ -128,11 +133,11 @@ export function ActionPanel({
           />
         )}
         <input
-          type="number"
+          type="text"
+          inputMode="decimal"
           value={transferAmount}
           onChange={(event) => setTransferAmount(event.target.value)}
           placeholder="Amount"
-          min="1"
         />
         <button
           type="submit"

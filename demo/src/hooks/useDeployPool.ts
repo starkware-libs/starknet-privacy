@@ -2,7 +2,6 @@ import { useState, useCallback, useMemo } from "react";
 import { Account, type RpcProvider } from "starknet";
 import type { AccountConfig, AppConfig } from "../config.ts";
 
-
 export function useDeployPool(
   provider: RpcProvider | undefined,
   config: AppConfig,
@@ -46,7 +45,9 @@ export function useDeployPool(
         { tip: 0n, resourceBounds: deployFee.resourceBounds },
       );
 
-      const receipt = await provider.waitForTransaction(deployResult.transaction_hash);
+      const receipt = await provider.waitForTransaction(
+        deployResult.transaction_hash,
+      );
       if (!receipt.isSuccess()) {
         throw new Error(`Deploy reverted: ${JSON.stringify(receipt)}`);
       }
