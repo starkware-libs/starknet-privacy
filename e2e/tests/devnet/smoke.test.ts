@@ -10,7 +10,6 @@ import {
   SetupRequirement,
 } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
-import { E2E_TIMEOUTS } from "../../src/timeouts.js";
 
 describe("E2E Smoke", () => {
   let devnet: Devnet;
@@ -58,17 +57,8 @@ describe("E2E Smoke", () => {
 
     await devnet.executeOutside(callAndProof);
 
-    // Create a block so the indexer catches up with the transaction blocks
-    await fetch(devnet.url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "devnet_createBlock",
-      }),
-    });
-    await env.indexer.waitForNewLog("New block #", E2E_TIMEOUTS.indexerLog);
+    // Create a block and wait for the indexer to process it
+    await env.indexer.waitForBlock(devnet.url);
 
     // Verify discovery via IndexerDiscoveryProvider (exercises SDK → indexer end-to-end)
     const indexerDiscovery = new IndexerDiscoveryProvider(

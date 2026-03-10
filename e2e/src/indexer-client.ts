@@ -113,18 +113,27 @@ export class IndexerClient {
     await this.waitForLog("Subscribed to new heads", E2E_TIMEOUTS.indexerLog);
 
     // Create a block so the indexer processes at least one
-    await fetch(rpcUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
-    });
-
-    await this.waitForLog("New block #", E2E_TIMEOUTS.indexerLog);
+    await this.waitForBlock(rpcUrl);
   }
 
   async healthCheck(): Promise<Record<string, unknown>> {
     const resp = await fetch(`${this.apiUrl}/health`);
     return resp.json() as Promise<Record<string, unknown>>;
+  }
+
+  /**
+   * Create a devnet block and wait for the indexer to process it.
+   * Registers the log listener BEFORE creating the block to avoid
+   * the race where the indexer processes the block before the listener is set up.
+   */
+  async waitForBlock(rpcUrl: string, timeoutMs = E2E_TIMEOUTS.indexerLog): Promise<string> {
+    const logPromise = this.waitForNewLog("New block #", timeoutMs);
+    await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
+    });
+    return logPromise;
   }
 
   async shutdown(): Promise<void> {

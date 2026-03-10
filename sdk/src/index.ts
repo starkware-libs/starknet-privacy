@@ -16,6 +16,7 @@ export type { DiscoveryOptions } from "./internal/contract-discovery.js";
 export { IndexerDiscoveryProvider } from "./internal/indexer-discovery.js";
 export type { DiscoveryHealthResponse } from "./internal/indexer-discovery.js";
 export { buildHistoryCursor } from "./internal/history.js";
+export { classifyTransaction } from "./internal/action-classifier.js";
 export type {
   ChannelKind,
   HistorySubchannel,
@@ -27,3 +28,9 @@ export type {
   HistoryTransaction,
   HistoryPage,
 } from "./internal/history.js";
+export type {
+  ClassifiedTransaction,
+  HistoryActionKind,
+  HistoryAction,
+  SwapLeg,
+} from "./internal/action-classifier.js";

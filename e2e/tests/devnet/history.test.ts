@@ -5,7 +5,6 @@ import {
 } from "@starkware-libs/starknet-privacy-sdk/testing";
 import { type HistoryTransaction } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
-import { E2E_TIMEOUTS } from "../../src/timeouts.js";
 
 describe("E2E History", () => {
   let devnet: Devnet;
@@ -52,8 +51,7 @@ describe("E2E History", () => {
     await devnet.executeOutside(callAndProof);
 
     // Create block + wait for indexer
-    await createBlock();
-    await env.indexer.waitForNewLog("New block #", E2E_TIMEOUTS.indexerLog);
+    await env.indexer.waitForBlock(devnet.url);
 
     // Bob withdraws 50 STRK
     const { callAndProof: bobWithdraw } = await transfers.bob
@@ -68,26 +66,13 @@ describe("E2E History", () => {
     await devnet.executeOutside(bobWithdraw);
 
     // Create block + wait for indexer
-    await createBlock();
-    await env.indexer.waitForNewLog("New block #", E2E_TIMEOUTS.indexerLog);
+    await env.indexer.waitForBlock(devnet.url);
   });
 
   afterAll(async () => {
     await env?.indexer.shutdown();
     await devnet?.cleanup();
   });
-
-  async function createBlock() {
-    await fetch(devnet.url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "devnet_createBlock",
-      }),
-    });
-  }
 
   it("Alice history shows deposit and transfer", async () => {
     const { env: de } = env;

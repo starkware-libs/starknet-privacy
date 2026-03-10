@@ -5,7 +5,6 @@ import {
   AddressMap,
 } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
-import { E2E_TIMEOUTS } from "../../src/timeouts.js";
 
 describe("E2E Reorg Recovery", () => {
   let devnet: Devnet;
@@ -20,18 +19,6 @@ describe("E2E Reorg Recovery", () => {
     await env?.indexer.shutdown();
     await devnet?.cleanup();
   });
-
-  async function createBlock() {
-    await fetch(devnet.url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "devnet_createBlock",
-      }),
-    });
-  }
 
   it("recovers from a simulated reorg during compile", async () => {
     const { env: de, transfers } = env;
@@ -66,8 +53,7 @@ describe("E2E Reorg Recovery", () => {
     await devnet.executeOutside(callAndProof);
 
     // Sync indexer with the new block
-    await createBlock();
-    await env.indexer.waitForNewLog("New block #", E2E_TIMEOUTS.indexerLog);
+    await env.indexer.waitForBlock(devnet.url);
 
     // Prepare a registry with a fake cursor to simulate a reorged block.
     // The fake blockId will be sent as last_known_block to the indexer,

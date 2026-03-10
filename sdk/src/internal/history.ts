@@ -31,7 +31,7 @@ export type HistoryNote = {
 };
 
 export type HistoryDeposit = {
-  userAddress: bigint;
+  fromAddress: bigint;
   token: bigint;
   amount: bigint;
 };
@@ -200,7 +200,7 @@ export function apiResponseToHistoryPage(resp: ApiHistoryResponse): HistoryPage 
         salt: BigInt(note.salt),
       })),
       deposits: tx.deposits.map((deposit) => ({
-        userAddress: BigInt(deposit.user_address),
+        fromAddress: BigInt(deposit.user_address),
         token: BigInt(deposit.token),
         amount: BigInt(deposit.amount),
       })),
