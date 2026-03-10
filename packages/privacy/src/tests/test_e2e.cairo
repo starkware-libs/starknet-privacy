@@ -266,6 +266,189 @@ fn test_e2e_client_actions_one_by_one() {
     assert_eq!(token.balance_of(address: user_1.address), amount_total.into());
 }
 
+/// Runs all executable action phases in one correctly ordered e2e tx.
+#[test]
+fn test_e2e_action_phases_in_correct_order() {
+    let mut test: Test = Default::default();
+    let mut user_1 = test.new_user();
+    let mut user_2 = test.new_user();
+    let in_token = test.new_token();
+    let out_token = test.new_token();
+    let in_token_addr = in_token.contract_address();
+    let out_token_addr = out_token.contract_address();
+    let amount = 100_u128;
+    let total_amount = amount + amount;
+    let swap_executor_addr = test.privacy.swap_executor.address;
+
+    user_1.increase_token_balance(token: in_token, amount: total_amount);
+    user_1.approve(token: in_token, amount: total_amount.into());
+
+    // Tx 1-2: register both users.
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [
+                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_1.get_random() })
+            ]
+                .span(),
+        );
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_2.address,
+            user_private_key: user_2.private_key,
+            client_actions: [
+                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_2.get_random() })
+            ]
+                .span(),
+        );
+
+    let channel_key_self = user_1.compute_channel_key(recipient: user_1);
+    let create_self_note_0 = CreateEncNoteInput {
+        recipient_addr: user_1.address,
+        recipient_public_key: user_1.public_key,
+        token: in_token_addr,
+        amount,
+        index: 0,
+        salt: user_1.get_salt(),
+    };
+
+    // Tx 3: create one spendable self note for the later combined transaction.
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [
+                ClientAction::OpenChannel(
+                    OpenChannelInput {
+                        recipient_addr: user_1.address,
+                        index: 0,
+                        random: user_1.get_random(),
+                        salt: user_1.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user_1.address,
+                        recipient_public_key: user_1.public_key,
+                        channel_key: channel_key_self,
+                        index: 0,
+                        token: in_token_addr,
+                        salt: user_1.get_salt().into(),
+                    },
+                ),
+                ClientAction::Deposit(DepositInput { token: in_token_addr, amount }),
+                ClientAction::CreateEncNote(create_self_note_0),
+            ]
+                .span(),
+        );
+
+    let channel_key_1_2 = user_1.compute_channel_key(recipient: user_2);
+    let create_note_for_user_2 = CreateEncNoteInput {
+        recipient_addr: user_2.address,
+        recipient_public_key: user_2.public_key,
+        token: in_token_addr,
+        amount,
+        index: 0,
+        salt: user_1.get_salt(),
+    };
+    let create_open_note = user_1
+        .new_open_note_with_generated_random(
+            recipient: user_1, token_addr: out_token_addr, index: 0, depositor: swap_executor_addr,
+        );
+    let (open_note_id, _) = user_1.compute_open_note(create_note_input: create_open_note);
+    let invoke_input = user_1
+        .invoke_external_mock_swap_executor_input(
+            in_token: in_token_addr,
+            out_token: out_token_addr,
+            amount: amount,
+            note_id: open_note_id,
+        );
+
+    out_token.supply(address: test.privacy.mock_amm, amount: amount);
+
+    // Tx 4: run the ordered phases together after the one-time registration setup.
+    test
+        .privacy
+        .execute_actions_e2e(
+            user_addr: user_1.address,
+            user_private_key: user_1.private_key,
+            client_actions: [
+                ClientAction::OpenChannel(
+                    OpenChannelInput {
+                        recipient_addr: user_2.address,
+                        index: 1,
+                        random: user_1.get_random(),
+                        salt: user_1.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user_2.address,
+                        recipient_public_key: user_2.public_key,
+                        channel_key: channel_key_1_2,
+                        index: 0,
+                        token: in_token_addr,
+                        salt: user_1.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user_1.address,
+                        recipient_public_key: user_1.public_key,
+                        channel_key: channel_key_self,
+                        index: 1,
+                        token: out_token_addr,
+                        salt: user_1.get_salt().into(),
+                    },
+                ),
+                ClientAction::Deposit(DepositInput { token: in_token_addr, amount }),
+                ClientAction::UseNote(
+                    UseNoteInput { channel_key: channel_key_self, token: in_token_addr, index: 0 },
+                ),
+                ClientAction::CreateEncNote(create_note_for_user_2),
+                ClientAction::CreateOpenNote(create_open_note),
+                ClientAction::Withdraw(
+                    WithdrawInput {
+                        to_addr: swap_executor_addr,
+                        token: in_token_addr,
+                        amount,
+                        random: user_1.get_random(),
+                    },
+                ),
+                ClientAction::InvokeExternal(invoke_input),
+            ]
+                .span(),
+        );
+
+    let channel_marker_1_2 = user_1.compute_channel_marker(recipient: user_2);
+    let nullifier_self_0 = user_1
+        .compute_nullifier(sender: user_1, token_addr: in_token_addr, index: 0);
+    let (note_id_1_2_0, note_1_2_0) = user_1
+        .compute_enc_note(create_note_input: create_note_for_user_2);
+    let note_after_swap = test.privacy.get_note(note_id: open_note_id);
+    let (salt, filled_amount) = unpack(packed_value: note_after_swap.packed_value);
+
+    assert!(test.privacy.channel_exists(channel_marker: channel_marker_1_2));
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_self_0));
+    assert_eq!(test.privacy.get_note(note_id: note_id_1_2_0), note_1_2_0);
+    assert_eq!(note_after_swap.token, out_token_addr);
+    assert_eq!(note_after_swap.depositor, swap_executor_addr);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, amount);
+    assert_eq!(in_token.balance_of(address: user_1.address), Zero::zero());
+    assert_eq!(in_token.balance_of(address: test.privacy.address), amount.into());
+    assert_eq!(in_token.balance_of(address: test.privacy.mock_amm), amount.into());
+    assert_eq!(in_token.balance_of(address: swap_executor_addr), Zero::zero());
+    assert_eq!(out_token.balance_of(address: user_1.address), Zero::zero());
+    assert_eq!(out_token.balance_of(address: test.privacy.address), amount.into());
+    assert_eq!(out_token.balance_of(address: test.privacy.mock_amm), Zero::zero());
+    assert_eq!(out_token.balance_of(address: swap_executor_addr), Zero::zero());
+}
+
 /// Deposits and creates a note for another user.
 #[test]
 fn test_e2e_deposit_create_note_for_other_user() {
