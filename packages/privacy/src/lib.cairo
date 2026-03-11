@@ -2,21 +2,11 @@ pub mod actions;
 pub mod errors;
 pub mod events;
 pub mod hashes;
+#[cfg(test)]
+pub mod helpers;
+#[cfg(feature: 'test_contracts')]
+pub mod helpers;
 pub mod interface;
-
-#[cfg(test)]
-pub mod mock_amm;
-
-#[cfg(not(test))]
-#[cfg(feature: 'test_contracts')]
-pub mod mock_amm;
-
-#[cfg(test)]
-pub mod mock_swap_executor;
-
-#[cfg(not(test))]
-#[cfg(feature: 'test_contracts')]
-pub mod mock_swap_executor;
 pub mod objects;
 pub mod privacy;
 #[cfg(test)]

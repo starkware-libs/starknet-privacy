@@ -14,17 +14,17 @@ use privacy::hashes::{
     compute_enc_token_hash, compute_enc_user_addr_hash, compute_note_id, compute_nullifier,
     compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker, hash,
 };
+use privacy::helpers::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
+use privacy::helpers::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
+use privacy::helpers::mock_swap_executor::{
+    ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait, ISwapExecutorSafeDispatcher,
+    ISwapExecutorSafeDispatcherTrait,
+};
 use privacy::interface::{
     IAdminDispatcher, IAdminDispatcherTrait, IAdminSafeDispatcher, IAdminSafeDispatcherTrait,
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
-};
-use privacy::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
-use privacy::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
-use privacy::mock_swap_executor::{
-    ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait, ISwapExecutorSafeDispatcher,
-    ISwapExecutorSafeDispatcherTrait,
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
