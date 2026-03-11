@@ -10,6 +10,7 @@ import {
   SetupRequirement,
 } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
+import { E2E_TIMEOUTS } from "../../src/timeouts.js";
 
 describe("E2E Smoke", () => {
   let devnet: Devnet;
@@ -21,7 +22,7 @@ describe("E2E Smoke", () => {
   });
 
   afterAll(async () => {
-    env?.indexer.shutdown();
+    await env?.indexer.shutdown();
     await devnet?.cleanup();
   });
 
@@ -67,7 +68,7 @@ describe("E2E Smoke", () => {
         method: "devnet_createBlock",
       }),
     });
-    await env.indexer.waitForNewLog("New block #", 15_000);
+    await env.indexer.waitForNewLog("New block #", E2E_TIMEOUTS.indexerLog);
 
     // Verify discovery via IndexerDiscoveryProvider (exercises SDK → indexer end-to-end)
     const indexerDiscovery = new IndexerDiscoveryProvider(

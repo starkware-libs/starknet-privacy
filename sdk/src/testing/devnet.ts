@@ -426,12 +426,31 @@ export class Devnet {
   }
 
   /**
-   * Terminate the devnet process.
+   * Terminate the devnet process and wait for it to exit.
+   * Sends SIGINT first; escalates to SIGKILL after {@link timeoutMs}.
    */
-  async cleanup(): Promise<void> {
-    if (this.devnet) {
-      this.devnet.kill("SIGINT");
-    }
+  async cleanup(timeoutMs = 10_000): Promise<void> {
+    if (!this.devnet) return;
+
+    // StarknetDevnet.process is typed as private but exists at runtime.
+    const childProcess = (
+      this.devnet as unknown as { process: import("child_process").ChildProcess }
+    ).process;
+
+    if (!childProcess.pid || childProcess.exitCode !== null) return;
+
+    const exitPromise = new Promise<void>((resolve) => {
+      childProcess.on("exit", () => resolve());
+    });
+
+    this.devnet.kill("SIGINT");
+
+    const timer = setTimeout(() => {
+      childProcess.kill("SIGKILL");
+    }, timeoutMs);
+
+    await exitPromise;
+    clearTimeout(timer);
   }
 }
 

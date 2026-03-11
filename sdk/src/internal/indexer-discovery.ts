@@ -18,6 +18,8 @@ import type {
   NotesCursor,
   RecipientsFilter,
 } from "./channel.js";
+import type { ApiHistoryResponse, HistoryCursor, HistoryPage } from "./history.js";
+import { buildHistoryCursor, historyCursorToApi, apiResponseToHistoryPage } from "./history.js";
 
 /** Thrown when the indexer reports a block reorg (HTTP 409, BLOCK_REORGED). */
 export class ReorgError extends Error {
@@ -346,6 +348,35 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     if (!resp.channel_exists) return SetupRequirement.SetupChannel;
     if (!resp.subchannel_exists) return SetupRequirement.SetupToken;
     return SetupRequirement.Ready;
+  }
+
+  async fetchHistory(
+    userAddress: StarknetAddressBigint,
+    notesCursor: NotesCursor,
+    channelCursor: ChannelCursor,
+    options?: {
+      maxTransactions?: number;
+      lastKnownBlock?: string;
+      blockRef?: string;
+      /** Pass the cursor from a previous HistoryPage to continue pagination. */
+      historyCursor?: HistoryCursor;
+    }
+  ): Promise<HistoryPage> {
+    const cursor =
+      options?.historyCursor ?? buildHistoryCursor(userAddress, notesCursor, channelCursor);
+    const body: Record<string, unknown> = {
+      contract_address: toHex(this.contractAddress),
+      user_address: toHex(userAddress),
+      max_transactions: options?.maxTransactions ?? 50,
+      cursor: historyCursorToApi(cursor),
+    };
+    if (options?.blockRef) {
+      body.block_ref = options.blockRef;
+    } else if (options?.lastKnownBlock) {
+      body.last_known_block = options.lastKnownBlock;
+    }
+    const resp = await this.post<ApiHistoryResponse>("/v1/history", body);
+    return apiResponseToHistoryPage(resp);
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {

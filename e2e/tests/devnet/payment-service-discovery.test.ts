@@ -13,6 +13,7 @@ import {
   type PrivateTransfersInterface,
 } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
+import { E2E_TIMEOUTS } from "../../src/timeouts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const INDEXER_LOG = path.join(__dirname, "../../indexer-discovery.log");
@@ -216,11 +217,11 @@ describe("Payment Service Discovery", () => {
         method: "devnet_createBlock",
       }),
     });
-    await env.indexer.waitForNewLog("New block #", 60_000);
+    await env.indexer.waitForNewLog("New block #", 4 * E2E_TIMEOUTS.indexerLog);
   });
 
   afterAll(async () => {
-    env?.indexer.shutdown();
+    await env?.indexer.shutdown();
     await devnet?.cleanup();
   });
 
