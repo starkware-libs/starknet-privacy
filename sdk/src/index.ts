@@ -15,3 +15,15 @@ export type { RateLimitOptions } from "./utils/rate-limiter.js";
 export type { DiscoveryOptions } from "./internal/contract-discovery.js";
 export { IndexerDiscoveryProvider } from "./internal/indexer/index.js";
 export type { DiscoveryHealthResponse } from "./internal/indexer/index.js";
+export { buildHistoryCursor } from "./internal/indexer/index.js";
+export type {
+  ChannelKind,
+  HistorySubchannel,
+  HistoryCursor,
+  HistoryNote,
+  HistoryDeposit,
+  HistoryWithdrawal,
+  HistoryOpenNoteDeposit,
+  HistoryTransaction,
+  HistoryPage,
+} from "./internal/indexer/index.js";
