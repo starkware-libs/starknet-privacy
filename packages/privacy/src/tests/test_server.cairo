@@ -4,7 +4,7 @@ use privacy::actions::{
     AppendInput, InvokeInput, ServerAction, TransferFromInput, TransferToInput, WriteOnceInput,
 };
 use privacy::errors::internal_errors;
-use privacy::mock_swap_executor::errors as mock_swap_executor_errors;
+use privacy::helpers::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::objects::{EncOutgoingChannelInfo, Note};
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,

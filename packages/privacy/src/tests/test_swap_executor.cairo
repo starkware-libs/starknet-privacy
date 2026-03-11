@@ -1,5 +1,5 @@
 use core::num::traits::Zero;
-use privacy::mock_swap_executor::errors;
+use privacy::helpers::mock_swap_executor::errors;
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, SwapExecutorCfg, SwapExecutorCfgTrait, Test, TestTrait, UserTrait, constants,
     deploy_mock_swap_executor,
