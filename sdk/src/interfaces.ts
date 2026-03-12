@@ -52,12 +52,12 @@ export enum SetupRequirement {
 export type StarknetAddressBigint = bigint;
 
 // Import and re-export from internal channel
-import { Witness, Channel } from "./internal/channel.js";
-import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./internal/channel.js";
+import { Witness, Channel, PrivateRegistry } from "./internal/channel.js";
+import type { ChannelCursor, NotesCursor, RegistryUpdate } from "./internal/channel.js";
 import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-010";
-export { Witness, Channel };
+export { Witness, Channel, PrivateRegistry };
 export type { NotesCursor as DiscoveryCursor };
-export type { NotesCursor, ChannelCursor };
+export type { NotesCursor, ChannelCursor, RegistryUpdate };
 
 export type Note = {
   readonly id: NoteId;
@@ -220,9 +220,9 @@ export type Actions = {
 
 /**
  * Discovery level controls when/whether to call the discovery service.
- * - 'none': Never call discovery. Missing data → error.
- * - 'missing': Only discover when data is missing from registry. Trust existing registry contents.
- * - 'refresh': Always discover. Use registry as optimization hint.
+ * - undefined: No discovery.
+ * - 'missing': Discover with existing cursor (skip already-known data).
+ * - 'refresh': Discover from scratch (empty cursor, full rescan).
  */
 export type DiscoveryLevel = "missing" | "refresh";
 
@@ -230,8 +230,14 @@ export type DiscoveryLevel = "missing" | "refresh";
  * Options for automatic discovery during execute.
  */
 export type AutoDiscoveryOptions = {
-  /** Discovery level for notes. 'all' means discover all tokens regardless if used in the actions */
-  notes?: DiscoveryLevel | "all";
+  /**
+   * Discovery level for notes.
+   * - 'missing': Discover with existing cursor (skip already-scanned data).
+   * - 'refresh': Discover from scratch (empty cursor, full rescan).
+   *
+   * Token filter defaults to tokens referenced in the current actions.
+   */
+  notes?: DiscoveryLevel;
   /** Discovery level for recipient channels (includes self) */
   channels?: DiscoveryLevel;
 };
@@ -242,26 +248,6 @@ export type AutoDiscoveryOptions = {
  * - 'naive': Select first notes until balance is non negative (may create surplus)
  */
 export type AutoSelectionStrategy = "all" | "naive" /*| "exact"*/; //
-
-/**
- * Registry holding the user's private state: cursors and notes.
- * Passed to execute() for context resolution and updated with new state.
- */
-export type PrivateRegistry = {
-  /** Cursor for incoming notes discovery */
-  notesCursor?: NotesCursor;
-  /** Cursor for outgoing channels discovery */
-  channelCursor?: ChannelCursor;
-  /** Notes by token address */
-  notes: AddressMap<Note[]>;
-};
-
-/** Create an empty private registry */
-export function createEmptyRegistry(): PrivateRegistry {
-  return {
-    notes: new AddressMap<Note[]>(() => []),
-  };
-}
 
 /**
  * Block reference for proving. Passed as block_id to the proving service.
@@ -282,10 +268,8 @@ export type ExecuteOptions = {
   autoSetup?: boolean;
   /** If defined, auto select notes from registry. **/
   autoSelectNotes?: AutoSelectionStrategy;
-  /** Registry for context/notes lookup. Updated during execute unless registryConst is true. */
+  /** Registry for context/notes lookup. Discovery updates are applied in-place. */
   registry?: PrivateRegistry;
-  /** If true, registry is not mutated; a new one is returned instead */
-  registryConst?: boolean;
   /** If defined, use the given block id for proving */
   provingBlockId?: ProvingBlockId;
 };
@@ -299,19 +283,18 @@ export enum WarningCode {
   USER_LINKAGE = "USER_LINKAGE",
 }
 /**
- * Result of execute, including the call/proof and updated registry.
+ * Result of execute.
  */
 export type ExecuteResult = {
   callAndProof: CallAndProof;
-  /** Updated registry (new object if registryConst was true, same object otherwise) */
-  registry: PrivateRegistry;
-
+  /** Post-execution state for optimistic registry update. Apply via `registry.applyExecuteResult()`. */
+  registryUpdate: RegistryUpdate;
   warnings: Warning[];
 };
 
 export type ProofInvocationResult = {
   invocation: ProofInvocation;
-  registry: PrivateRegistry;
+  registryUpdate: RegistryUpdate;
   warnings: Warning[];
 };
 
@@ -395,21 +378,40 @@ export interface PrivateTransfersInterface {
   ): Promise<SetupRequirement>;
 
   /**
-   * Discover unspent notes per token
+   * Discover unspent notes per token.
    *
+   * When `registry` is provided, uses `registry.notesCursor` to seed the
+   * discovery cursor and updates the registry in-place after discovery:
+   * - `"missing"`: incremental — sends existing cursor, appends newly
+   *   discovered notes to existing ones.
+   * - `"refresh"`: full rescan — ignores cursor, replaces notes per token.
+   *
+   * When `registry` is omitted, returns raw results without side effects.
    */
-  discoverNotes(params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }): Promise<{
+  discoverNotes(params?: {
+    registry?: PrivateRegistry;
+    level?: DiscoveryLevel;
+    tokens?: StarknetAddressBigint[];
+  }): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
+    cursor: NotesCursor;
   }>;
 
   /**
-   * Discover channels for one or more recipients
+   * Discover channels for one or more recipients.
+   * Omit `recipients` to discover all outgoing channels.
+   * Pass an array for specific recipients (server also precomputes channels for them).
+   *
+   * When `registry` is provided, uses `registry.channelCursor` to seed
+   * the discovery cursor and merges the result back in-place.
+   * When `registry` is omitted, returns raw results without side effects.
    */
-  discoverChannels(
-    recipients: RecipientsFilter<StarknetAddress>,
-    params?: { cursor?: ChannelCursor }
-  ): Promise<{
+  discoverChannels(params?: {
+    registry?: PrivateRegistry;
+    level?: DiscoveryLevel;
+    recipients?: StarknetAddress[];
+  }): Promise<{
     timestamp: BlockIdentifier;
     channels?: AddressMap<Channel>;
     total?: number;
@@ -647,13 +649,13 @@ export interface DiscoveryProviderInterface {
 
   /**
    * Discover channels for one or more recipients.
-   * Pass "all" to discover all outgoing channels by iterating through the outgoing channel map.
+   * Omit `recipients` to discover all outgoing channels.
+   * Pass an array for specific recipients (server also precomputes channels for them).
    */
   discoverChannels(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipients: RecipientsFilter,
-    params?: { cursor?: ChannelCursor }
+    params?: { recipients?: StarknetAddressBigint[]; cursor?: ChannelCursor }
   ): Promise<{
     timestamp: BlockIdentifier;
     channels?: AddressMap<Channel>;

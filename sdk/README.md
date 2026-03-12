@@ -204,68 +204,130 @@ const result = await transfers.build({
 | `autoRegister` | `boolean` | Automatically register if user has no viewing key on-chain |
 | `autoSetup` | `boolean` | Automatically open channels and token subchannels as needed |
 | `autoSelectNotes` | `"all" \| "naive"` | Automatically select input notes (`"all"` uses every note, `"naive"` selects minimum) |
-| `autoDiscover` | `{ notes?, channels? }` | Refresh notes/channels before executing (`"missing"`, `"refresh"`, or `"all"`) |
-| `registry` | `PrivateRegistry` | User's private state (notes, discovery cursors) |
-| `registryConst` | `boolean` | If true, returns a new registry instead of mutating the provided one |
+| `autoDiscover` | `{ notes?, channels? }` | Discovery strategy for notes/channels before executing (`"missing"` or `"refresh"`) |
+| `registry` | `PrivateRegistry` | User's private state (notes, discovery cursors). Discovery updates are applied in-place. |
 | `provingBlockId` | `ProvingBlockId` | Block identifier to use for proving |
 
-## Registry management
+## State management
 
-The `PrivateRegistry` holds the user's private state: unspent notes and discovery cursors. Create one with `createEmptyRegistry()` and pass it through `ExecuteOptions`.
+### Registry
+
+The `PrivateRegistry` holds the user's local private state:
 
 ```typescript
-import { createEmptyRegistry } from "starknet-sdk";
+import { PrivateRegistry } from "starknet-sdk";
 
-const registry = createEmptyRegistry();
+const registry = new PrivateRegistry();
+```
 
-// The registry is updated in-place after each execute()
+It contains:
+- **`notes`** — `AddressMap<Note[]>`: unspent notes keyed by token address
+- **`notesCursor`** — pagination cursor for incoming notes discovery
+- **`channelCursor`** — pagination cursor for outgoing channels discovery (includes `blockId` for reorg detection)
+
+### Discovery strategies
+
+Both `autoDiscover` (transaction-scoped) and `discoverNotes`/`discoverChannels` (direct) support two strategies:
+
+| Strategy | Cursor | Notes merge | Use case |
+|----------|--------|-------------|----------|
+| `"missing"` | Sends existing cursor — server skips already-known data | Appends newly discovered notes | Incremental sync, efficient for polling |
+| `"refresh"` | No cursor — full rescan from scratch | Replaces notes per token | Recover from stale state, first load |
+
+### Flow 1: Transaction discovery
+
+The SDK discovers the minimum state needed to build a transaction when `autoDiscover` is set. Discovery is scoped to the tokens and recipients in the current actions:
+
+```typescript
 const result = await transfers.build({
   registry,
-  autoDiscover: { notes: "refresh", channels: "refresh" },
+  autoDiscover: { notes: "missing", channels: "missing" },
   autoSetup: true,
   autoSelectNotes: "naive",
 }).with(STRK, (t) => t
-  .deposit({ amount: 100n }))
-.surplusTo(self)
+  .transfer({ recipient: bob, amount: 50n }))
 .execute();
-
-// result.registry === registry (same object, mutated)
-// Use registryConst: true to get a new object instead
 ```
 
-The registry contains:
-- **`notes`** — `AddressMap<Note[]>`: unspent notes keyed by token address
-- **`notesCursor`** — pagination cursor for incoming notes discovery (incremental sync)
-- **`channelCursor`** — pagination cursor for outgoing channels discovery (incremental sync, includes `blockId` for reorg detection)
+The compiler discovers notes for STRK and channels for Bob, using cursors from the registry for incremental updates. After compilation, the registry's cursors are updated in-place so subsequent calls skip already-known data.
 
-Discovery cursors are internal to the registry flow. When `autoDiscover` is set, the SDK uses them automatically for incremental syncing. You don't need to manage them directly.
+### Flow 2: Post-transaction update
 
-**Optimistic updates:** After `execute()`, the registry is updated optimistically — spent notes are removed and new notes/channels are added before the transaction is confirmed on-chain. If the transaction reverts, the registry becomes stale. Handle this by re-discovering from scratch (`autoDiscover: "refresh"`) or by snapshotting the registry before `execute()` (use `registryConst: true`) and restoring on revert.
+After `execute()`, the SDK returns a `registryUpdate` — the expected state changes from the transaction. The SDK does not apply it automatically because it cannot know whether the on-chain transaction will succeed or revert.
 
-## Discovery
+**Option A: Optimistic update** — fast, applies immediately after tx confirmation:
 
-### Check transfer readiness
+```typescript
+const receipt = await sendTransaction(result.callAndProof);
+
+if (receipt.isSuccess) {
+  registry.applyExecuteResult(result.registryUpdate);
+}
+```
+
+**Option B: Re-discover** — slower but reflects actual on-chain state (recommended over optimistic):
+
+```typescript
+const receipt = await sendTransaction(result.callAndProof);
+
+if (receipt.isSuccess) {
+  // Notes must use "refresh" — spent notes need to be removed, not just appended
+  await transfers.discoverNotes({ registry, level: "refresh" });
+  // Channels can use "missing" — channels are never spent, only added
+  await transfers.discoverChannels({ registry, level: "missing" });
+}
+```
+
+On failure, the registry is unchanged.
+
+### Flow 3: Periodic refresh
+
+Use direct discovery to keep the registry up to date — for displaying balances, populating the address book (outgoing channels), and syncing state across devices.
+
+```typescript
+// Incremental balance update — fetch only new notes since last sync
+await transfers.discoverNotes({ registry, level: "missing" });
+
+// Incremental address book update — fetch only new channels since last sync
+await transfers.discoverChannels({ registry, level: "missing" });
+```
+
+For token-scoped or recipient-scoped discovery:
+
+```typescript
+// Only discover STRK notes
+await transfers.discoverNotes({ registry, level: "missing", tokens: [STRK] });
+
+// Only discover channels to specific recipients
+await transfers.discoverChannels({ registry, level: "missing", recipients: [bob, alice] });
+```
+
+For first load or to recover from stale state, use `"refresh"`:
+
+```typescript
+await transfers.discoverNotes({ registry, level: "refresh" });
+await transfers.discoverChannels({ registry, level: "refresh" });
+```
+
+Discovery is cursor-driven and stateless on the server. To sync across devices, persist and restore the registry (including its cursors). Notes must use `"refresh"` because another device may have spent notes that this device still considers unspent — `"missing"` would only append, never remove. Channels can use `"missing"` since channels are append-only and never deleted.
+
+```typescript
+await transfers.discoverNotes({ registry, level: "refresh" });
+await transfers.discoverChannels({ registry, level: "missing" });
+```
+
+> **Future optimisation:** a batch nullifier check method may be added to verify whether existing notes are spent, enabling incremental note sync across devices without a full rescan.
+
+### Setup requirement check
+
+Before transferring to a new recipient, check whether setup is needed:
 
 ```typescript
 const requirement = await transfers.discoverRequirement(recipient, token);
 // Returns: SetupRequirement.Register | SetupChannel | SetupToken | Ready
 ```
 
-### Discover notes
-
-```typescript
-const { notes, timestamp } = await transfers.discoverNotes({
-  tokens: [STRK],
-});
-// notes: AddressMap<Note[]> — unspent notes keyed by token address
-```
-
-### Discover channels
-
-```typescript
-const { timestamp, channels, total } = await transfers.discoverChannels("all");
-// channels: AddressMap<Channel> — channels keyed by recipient address
-```
+With `autoSetup: true` in execute options, the SDK handles this automatically.
 
 ## Execute result
 
@@ -273,13 +335,13 @@ Every `execute()` call returns:
 
 ```typescript
 type ExecuteResult = {
-  callAndProof: CallAndProof;  // Call + proof to send to the contract's execute_actions entry point
-  registry: PrivateRegistry;   // Updated notes and recipient info
-  warnings: Warning[];         // Privacy leakage warnings
+  callAndProof: CallAndProof;    // Call + proof for the contract
+  registryUpdate: RegistryUpdate; // Optimistic state for post-tx update
+  warnings: Warning[];            // Privacy leakage warnings
 };
 ```
 
-The wallet sends `callAndProof` in a transaction to the contract's `execute_actions` entry point. The returned `registry` can be reused in subsequent calls once the transaction is accepted and enough blocks have passed to make the state verifiable.
+The wallet sends `callAndProof` in a transaction to the contract's `apply_actions` entry point. After the transaction is confirmed, call `registry.applyExecuteResult(result.registryUpdate)` to update spent notes and add newly created notes/channels.
 
 ## Key types
 
@@ -287,7 +349,7 @@ The wallet sends `callAndProof` in a transaction to the contract's `execute_acti
 
 **`Channel`** — A communication channel to a recipient, holding a shared key and per-token nonces.
 
-**`PrivateRegistry`** — The user's local state: unspent notes and discovery cursors for incremental sync. Create with `createEmptyRegistry()`.
+**`PrivateRegistry`** — The user's local state: unspent notes and discovery cursors for incremental sync. Create with `new PrivateRegistry()`.
 
 **`AddressMap<V>`** — A `Map` that normalizes Starknet addresses for consistent key lookup.
 

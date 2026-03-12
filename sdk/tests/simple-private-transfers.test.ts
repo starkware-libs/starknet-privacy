@@ -26,7 +26,7 @@ describe("SimplePrivateTransfers", () => {
     const alice = new SimplePrivateTransfersImpl(transfers.alice);
 
     // Deposit 100 ACE
-    mocknet.executeOutside(await alice.deposit(env.ace, 100n));
+    mocknet.executeOutside(await alice.deposit(env.ace, 100n), alice.registry);
 
     // Verify: Alice has 100n ACE note
     const aliceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];
@@ -46,8 +46,8 @@ describe("SimplePrivateTransfers", () => {
     const alice = new SimplePrivateTransfersImpl(transfers.alice);
 
     // Deposit then withdraw partial
-    mocknet.executeOutside(await alice.deposit(env.ace, 100n));
-    mocknet.executeOutside(await alice.withdraw(env.ace, env.alice.address, 40n));
+    mocknet.executeOutside(await alice.deposit(env.ace, 100n), alice.registry);
+    mocknet.executeOutside(await alice.withdraw(env.ace, env.alice.address, 40n), alice.registry);
 
     // Verify: Alice has 60n surplus note
     const aliceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];
@@ -69,8 +69,8 @@ describe("SimplePrivateTransfers", () => {
     const alice = new SimplePrivateTransfersImpl(transfers.alice);
 
     // Deposit then transfer
-    mocknet.executeOutside(await alice.deposit(env.ace, 100n));
-    mocknet.executeOutside(await alice.transfer(env.ace, env.bob.address, 30n));
+    mocknet.executeOutside(await alice.deposit(env.ace, 100n), alice.registry);
+    mocknet.executeOutside(await alice.transfer(env.ace, env.bob.address, 30n), alice.registry);
 
     // Verify: Bob has 30n
     const bobNotes = (await transfers.bob.discoverNotes()).notes.get(ace) ?? [];
@@ -96,11 +96,14 @@ describe("SimplePrivateTransfers", () => {
     const alice = new SimplePrivateTransfersImpl(transfers.alice);
 
     // Deposit 100 ACE first
-    mocknet.executeOutside(await alice.deposit(env.ace, 100n));
+    mocknet.executeOutside(await alice.deposit(env.ace, 100n), alice.registry);
 
     // Swap 10 ACE for BEE using the swap helper.
     // note_id is auto-injected by the compiler into the invoke calldata.
-    mocknet.executeOutside(await alice.swap(env.ace, 10n, env.bee, toHex(swapHelper.address)));
+    mocknet.executeOutside(
+      await alice.swap(env.ace, 10n, env.bee, toHex(swapHelper.address)),
+      alice.registry
+    );
 
     // Verify: Alice has 90n ACE change note
     const aceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { constants, type Account } from "starknet";
 import { createPrivateTransfers } from "../src/factory.js";
-import type { ProofProviderConfig, DiscoveryProviderConfig } from "../src/interfaces.js";
+import { type ProofProviderConfig, type DiscoveryProviderConfig } from "../src/interfaces.js";
 import { Mocknet } from "../src/testing/mocknet.js";
 import { MockProofProvider } from "../src/testing/mock-proof-provider.js";
 import { MockProofInvocationFactory } from "../src/testing/mock-proof-invocation-factory.js";

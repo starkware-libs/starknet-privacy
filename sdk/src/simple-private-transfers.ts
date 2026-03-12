@@ -2,16 +2,14 @@ import {
   SimplePrivateTransfersInterface,
   PrivateTransfersInterface,
   Amount,
-  Note,
   Open,
   PrivateRegistry,
   StarknetAddress,
   All,
   ExecuteResult,
-} from "./interfaces.js"; // Assuming you moved interfaces
+} from "./interfaces.js";
 import { toBigInt } from "./utils/convert.js";
 import { toHex } from "./utils/convert.js";
-import { AddressMap } from "./utils/maps.js";
 import { isAll } from "./utils/validation.js";
 
 export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterface {
@@ -21,9 +19,7 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
     return this.inner.user;
   }
 
-  readonly registry: PrivateRegistry = {
-    notes: new AddressMap<Note[]>(),
-  };
+  readonly registry: PrivateRegistry = new PrivateRegistry();
 
   deposit(token: StarknetAddress, amount: Amount): Promise<ExecuteResult> {
     return this.build(token).deposit({ amount }).execute();

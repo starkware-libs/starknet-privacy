@@ -2,13 +2,11 @@
 import { Mocknet, type MocknetEnvironment } from "../../src/testing/mocknet.js";
 import { MockPoolContract } from "../../src/testing/mock-pool-contract.js";
 import {
-  createEmptyRegistry,
   ExecuteOptions,
   ExecuteResult,
   PrivateRegistry,
   PrivateTransfersInterface,
 } from "../../src/interfaces.js";
-import { AddressMap } from "../../src/utils/maps.js";
 
 export const POOL_ADDRESS = 0x1n;
 
@@ -67,22 +65,18 @@ export async function setupSelfChannel(
 ): Promise<PrivateRegistry> {
   const executeOutside = (result: ExecuteResult) => {
     pool.apply_actions(result.callAndProof.call.calldata as string[]);
-    return result.registry;
   };
 
   executeOutside(await user.build().register().execute());
   executeOutside(await user.build().setup(userAddress).execute());
 
-  let channel = (await user.discoverChannels([userAddress])).channels!.get(userAddress)!;
-  const registry = createEmptyRegistry();
-  registry.channelCursor = { channels: new AddressMap() };
-  registry.channelCursor.channels!.set(userAddress, channel);
+  const registry = new PrivateRegistry();
+  await user.discoverChannels({ registry, level: "refresh", recipients: [userAddress] });
 
   executeOutside(await user.build({ registry }).with(token).setup(userAddress).execute());
 
   // Refresh channel to include token info
-  channel = (await user.discoverChannels([userAddress])).channels!.get(userAddress)!;
-  registry.channelCursor.channels!.set(userAddress, channel);
+  await user.discoverChannels({ registry, level: "refresh", recipients: [userAddress] });
 
   return registry;
 }
@@ -98,7 +92,6 @@ export async function setupRecipientChannel(
 ): Promise<PrivateRegistry> {
   const executeOutside = (result: ExecuteResult) => {
     pool.apply_actions(result.callAndProof.call.calldata as string[]);
-    return result.registry;
   };
 
   // Recipient must be registered first
@@ -107,21 +100,21 @@ export async function setupRecipientChannel(
   // Sender sets up channel to recipient
   executeOutside(await sender.build().setup(recipientAddress).execute());
 
-  let channel = (await sender.discoverChannels([recipientAddress])).channels!.get(
-    recipientAddress
-  )!;
-  const registry = createEmptyRegistry();
-  registry.channelCursor = { channels: new AddressMap() };
-  registry.channelCursor.channels!.set(recipientAddress, channel);
+  const registry = new PrivateRegistry();
+  await sender.discoverChannels({ registry, level: "refresh", recipients: [recipientAddress] });
 
   executeOutside(await sender.build({ registry }).with(token).setup(recipientAddress).execute());
 
   // Refresh channel to include token info
-  channel = (await sender.discoverChannels([recipientAddress])).channels!.get(recipientAddress)!;
-  registry.channelCursor.channels!.set(recipientAddress, channel);
+  await sender.discoverChannels({ registry, level: "refresh", recipients: [recipientAddress] });
 
   return registry;
 }
 
+/** Shorthand for verification-only discovery: fresh registry, full rescan. */
+export function freshDiscover() {
+  return { registry: new PrivateRegistry(), level: "refresh" as const };
+}
+
 // Re-export commonly used utilities
-export { createEmptyRegistry };
+export { PrivateRegistry };

@@ -12,8 +12,8 @@
  * - Just tracks Channel objects with nonces and Note objects
  */
 
-import type { Note, PrivateRegistry, StarknetAddressBigint } from "../interfaces.js";
-import { Channel } from "./channel.js";
+import type { Note, StarknetAddressBigint } from "../interfaces.js";
+import { Channel, type RegistryUpdate } from "./channel.js";
 import { derivePublicKey, toBigInt } from "../utils/crypto.js";
 import { AddressMap } from "../utils/maps.js";
 import type {
@@ -136,25 +136,14 @@ export class PoolSimulator {
     this.notes.get(token)!.set(toBigInt(note.id), note);
   }
 
-  /**
-   * Export tracked state back to the registry.
-   *
-   * TODO: This applies optimistic updates (spent notes removed, new notes/channels added)
-   * before the transaction is confirmed on-chain. If the transaction reverts, the registry
-   * becomes stale — spent notes are gone and phantom notes/channels are present. Callers
-   * must handle this by re-discovering from scratch (e.g. `autoDiscover: "refresh"`) or
-   * by snapshotting the registry before execute and restoring on revert.
-   */
-  updateRegistry(registry: PrivateRegistry): PrivateRegistry {
-    for (const [address, channel] of this.channels.entries()) {
-      registry.channelCursor ??= {};
-      registry.channelCursor.channels ??= new AddressMap<Channel>();
-      registry.channelCursor.channels.set(address, channel);
-    }
-    for (const [token, notes] of this.notes.entries()) {
-      registry.notes.set(token, Array.from(notes.values()));
-    }
-    return registry;
+  /** Returns data for optimistic registry updates after tx inclusion. */
+  createRegistryUpdate(): RegistryUpdate {
+    return {
+      channels: this.channels,
+      notes: new AddressMap<Note[]>(
+        [...this.notes].map(([token, noteMap]): [bigint, Note[]] => [token, [...noteMap.values()]])
+      ),
+    };
   }
 
   private handleSetViewingKey(_input: SetViewingKeyInput): void {

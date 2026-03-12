@@ -87,15 +87,11 @@ describe("Discovery pagination with small budget", () => {
       poolContractAddress: de.privacy.address,
     });
 
-    // total-only: exercises total_n_channels
-    const { total } = await aliceTransfers.discoverChannels("total-only");
+    // full discovery: exercises multi-round pagination and returns total
+    const { channels, total } = await aliceTransfers.discoverChannels({
+      recipients: [de.alice.address, de.bob.address],
+    });
     expect(total).toBe(2); // self-channel + Bob
-
-    // full discovery: exercises multi-round pagination
-    const { channels } = await aliceTransfers.discoverChannels([
-      de.alice.address,
-      de.bob.address,
-    ]);
     expect(channels).toBeDefined();
     expect(channels!.size).toBe(2);
     expect(channels!.has(BigInt(de.alice.address))).toBe(true);

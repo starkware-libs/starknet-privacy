@@ -246,7 +246,9 @@ describe("Payment Service Discovery", () => {
     });
 
     const allAddresses = [de.alice.address, ...users.map((u) => u.address)];
-    const { channels } = await aliceDiscover.discoverChannels(allAddresses);
+    const { channels } = await aliceDiscover.discoverChannels({
+      recipients: allAddresses,
+    });
     expect(channels).toBeDefined();
 
     // Self-channel + all 9 users
@@ -294,7 +296,9 @@ describe("Payment Service Discovery", () => {
         poolContractAddress: de.privacy.address,
       });
 
-      const { channels } = await userDiscover.discoverChannels([de.alice.address]);
+      const { channels } = await userDiscover.discoverChannels({
+        recipients: [de.alice.address],
+      });
       expect(channels).toBeDefined();
       expect(channels!.has(BigInt(de.alice.address))).toBe(true);
     }

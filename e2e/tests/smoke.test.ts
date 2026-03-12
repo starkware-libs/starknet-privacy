@@ -72,7 +72,9 @@ describe("E2E Smoke", () => {
     expect(strkNotes!.length).toBeGreaterThanOrEqual(1);
     expect(strkNotes![0].amount).toBe(50n); // Alice's change note
 
-    const { channels } = await aliceIndexer.discoverChannels([de.alice.address, de.bob.address]);
+    const { channels } = await aliceIndexer.discoverChannels({
+      recipients: [de.alice.address, de.bob.address],
+    });
     expect(channels).toBeDefined();
     expect(channels!.size).toBeGreaterThanOrEqual(2); // self-channel + Bob
     expect(channels!.has(BigInt(de.alice.address))).toBe(true);

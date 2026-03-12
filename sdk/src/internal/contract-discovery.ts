@@ -15,7 +15,7 @@ import {
 } from "../utils/hashes.js";
 import { encryptions } from "../utils/encryptions.js";
 import { cloneNotesCursor, cloneChannelCursor } from "./channel.js";
-import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./channel.js";
+import type { ChannelCursor, NotesCursor } from "./channel.js";
 import { bisect, scan, Tracker } from "../utils/scan.js";
 import { createRateLimitedObject, type RateLimitOptions } from "../utils/rate-limiter.js";
 import type { PoolContractInterface, NoteData } from "./pool-contract-interface.js";
@@ -240,7 +240,7 @@ class ChannelsDiscovery {
   constructor(
     private readonly address: StarknetAddressBigint,
     private readonly viewingKey: bigint,
-    private readonly recipients: RecipientsFilter,
+    private readonly recipients: StarknetAddressBigint[] | undefined,
     private readonly cursor: ChannelCursor | undefined,
     private readonly pool: PoolContractInterface
   ) {
@@ -255,28 +255,25 @@ class ChannelsDiscovery {
     total?: number;
     cursor: ChannelCursor;
   }> {
-    if (this.recipients == "all" || this.recipients == "total-only") {
+    if (this.recipients === undefined) {
       void scan(
         async (s) => {
           const encOutgoingChannelInfo = await this.pool.get_outgoing_channel_info(
             compute_outgoing_channel_id(this.address, toBigInt(this.viewingKey), s)
           );
           if (toBigInt(encOutgoingChannelInfo.salt) === 0n) return false;
-          if (this.recipients !== "total-only") {
-            const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
-              encOutgoingChannelInfo,
-              this.address,
-              this.viewingKey,
-              s
-            );
-            void this.tracker.add(this.discoverChannel(recipientAddr));
-          }
+          const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
+            encOutgoingChannelInfo,
+            this.address,
+            this.viewingKey,
+            s
+          );
+          void this.tracker.add(this.discoverChannel(recipientAddr));
           this.total = Math.max(this.total ?? 0, s + 1);
           return true;
         },
         this.total ?? 0,
-        this.tracker,
-        this.recipients === "total-only"
+        this.tracker
       );
     } else {
       for (const recipient of this.recipients) {
@@ -416,8 +413,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
   async discoverChannels(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipients: RecipientsFilter,
-    params?: { cursor?: ChannelCursor }
+    params?: { recipients?: StarknetAddressBigint[]; cursor?: ChannelCursor }
   ): Promise<{
     timestamp: BlockIdentifier;
     channels?: AddressMap<Channel>;
@@ -427,7 +423,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
     const discovery = new ChannelsDiscovery(
       address,
       toBigInt(viewingKey),
-      recipients,
+      params?.recipients,
       params?.cursor,
       this.pool
     );
