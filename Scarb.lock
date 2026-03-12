@@ -4,8 +4,7 @@ version = 1
 [[package]]
 name = "openzeppelin"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:ded6f53e0b50a3583f72c556d9ca508e627d175c6f01a2f5124f2e9a052ac985"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 dependencies = [
  "openzeppelin_access",
  "openzeppelin_account",
@@ -24,8 +23,7 @@ dependencies = [
 [[package]]
 name = "openzeppelin_access"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:2c7fab22d2601fca4f456c81272637f2563a423652d1671383bbe3d007803977"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 dependencies = [
  "openzeppelin_interfaces",
  "openzeppelin_introspection",
@@ -34,8 +32,7 @@ dependencies = [
 [[package]]
 name = "openzeppelin_account"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:b46f41be21fff6692d32949664d2f0dd1919c741346a676d6e0f1fe2ea576999"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 dependencies = [
  "openzeppelin_interfaces",
  "openzeppelin_introspection",
@@ -45,8 +42,7 @@ dependencies = [
 [[package]]
 name = "openzeppelin_finance"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:f77f4f5262666d8033f16b3a7df839ed2abb699a09ad33099c7bb6bf2807fec1"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 dependencies = [
  "openzeppelin_access",
  "openzeppelin_interfaces",
@@ -56,8 +52,7 @@ dependencies = [
 [[package]]
 name = "openzeppelin_governance"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:b76c87f72b1481a62e3c6904a9a3da5cfc4de8b5a86a4742de30f1e2984c7e2b"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 dependencies = [
  "openzeppelin_access",
  "openzeppelin_interfaces",
@@ -69,14 +64,12 @@ dependencies = [
 [[package]]
 name = "openzeppelin_interfaces"
 version = "2.1.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:f69fdb36eb894a0e0732385e723c5ff56d8cb4c1d49b29446c77eefac00b02a5"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 
 [[package]]
 name = "openzeppelin_introspection"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:ee491981a69736cde220f8b7dd290b6d8620c85ee6b83c81f665f5bef78b62b1"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 dependencies = [
  "openzeppelin_interfaces",
 ]
@@ -84,14 +77,12 @@ dependencies = [
 [[package]]
 name = "openzeppelin_merkle_tree"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:3417680a1f672bd6cfb54962481f6b96d72f6510be2658d17c8356709b5c950a"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 
 [[package]]
 name = "openzeppelin_presets"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:1facc433476df1c36ecb33e3a10b6a5fb219c670c437b43696788843fbc0bc25"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 dependencies = [
  "openzeppelin_access",
  "openzeppelin_account",
@@ -106,8 +97,7 @@ dependencies = [
 [[package]]
 name = "openzeppelin_security"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:470f2debae50e03f1435874bc697a0825c257edcad4d1a0cc134e40360e6aba8"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 dependencies = [
  "openzeppelin_interfaces",
 ]
@@ -115,8 +105,7 @@ dependencies = [
 [[package]]
 name = "openzeppelin_token"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:5ce19d297251d9f11acc38a3e3e2faeb2e73b003c8de2f02c7c5d06d9161a5fc"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 dependencies = [
  "openzeppelin_access",
  "openzeppelin_interfaces",
@@ -127,14 +116,12 @@ dependencies = [
 [[package]]
 name = "openzeppelin_upgrades"
 version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:1b148d5da1ae90a056b455e8865260423c5491a82777377abfdc68fd8e7d0675"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 
 [[package]]
 name = "openzeppelin_utils"
 version = "2.1.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:4d5504fef1c5a6d9fee6a3ae392004a4a24b4b3ccb790c5e5217da96beb73e08"
+source = "git+https://github.com/noa-starkware/cairo-contracts?rev=d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05#d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"
 dependencies = [
  "openzeppelin_interfaces",
 ]
@@ -167,7 +154,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=0e12df09afe29f59a877a5b04801fedd8b31c50d#0e12df09afe29f59a877a5b04801fedd8b31c50d"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=0ccab71bd2b1809a3db1823dd482e2a1ed65812e#0ccab71bd2b1809a3db1823dd482e2a1ed65812e"
 dependencies = [
  "openzeppelin",
 ]
@@ -175,7 +162,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils_testing"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=0e12df09afe29f59a877a5b04801fedd8b31c50d#0e12df09afe29f59a877a5b04801fedd8b31c50d"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=0ccab71bd2b1809a3db1823dd482e2a1ed65812e#0ccab71bd2b1809a3db1823dd482e2a1ed65812e"
 dependencies = [
  "openzeppelin",
  "snforge_std",
