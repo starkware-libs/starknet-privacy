@@ -35,6 +35,7 @@ export type IncomingChannelCursor = {
   /** @internal */ channelKey: ChannelKey;
   /** @internal */ subchannelIdIndex: number;
   /** @internal */ noteIndexes: AddressMap<number>; // token -> i
+  /** @internal */ totalNoteCounts: AddressMap<number>; // token -> total notes found by boundary finder
 };
 
 export type NotesCursor = {
@@ -56,6 +57,7 @@ export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
     channelKey: sc.channelKey,
     subchannelIdIndex: sc.subchannelIdIndex,
     noteIndexes: new AddressMap<number>(sc.noteIndexes.entries()),
+    totalNoteCounts: new AddressMap<number>(sc.totalNoteCounts.entries()),
   });
 
   const incomingChannels = new AddressMap<IncomingChannelCursor>(
