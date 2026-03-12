@@ -11,6 +11,7 @@ import type {
   ViewingKeyProvider,
   StarknetAddress,
   ProofInvocationResult,
+  ProvingBlockId,
 } from "../interfaces.js";
 import type { Account, TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
@@ -75,11 +76,11 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     return { invocation, registry, warnings };
   }
 
-  async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
-    const { invocation, registry, warnings } = await this.createProofInvocation(actions, options);
-
-    // Get proof from provider (block id only when provided in options)
-    const proof = await this.params.provingProvider.prove(invocation, options?.provingBlockId);
+  async executeWithInvocation(
+    { invocation, registry, warnings }: ProofInvocationResult,
+    provingBlockId?: ProvingBlockId
+  ): Promise<ExecuteResult> {
+    const proof = await this.params.provingProvider.prove(invocation, provingBlockId);
 
     // proof.output is the L2-to-L1 message payload: [class_hash, ...serialized_actions].
     // Strip the class_hash prefix — apply_actions expects only Span<ServerAction>.

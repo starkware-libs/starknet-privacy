@@ -16,6 +16,7 @@ import type {
   PrivateTransfersBuilder,
   PrivateTransfersInterface,
   ProofInvocationResult,
+  ProvingBlockId,
   StarknetAddress,
   StarknetAddressBigint,
   ViewingKey,
@@ -98,9 +99,12 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
   }
 
   /**
-   * Execute raw actions - must be implemented by subclasses
+   * Execute raw actions: compile, prove, and return the call+proof.
    */
-  abstract execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult>;
+  async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
+    const invocationResult = await this.createProofInvocation(actions, options);
+    return this.executeWithInvocation(invocationResult, options?.provingBlockId);
+  }
 
   /**
    * Build a proof transaction for the raw actions - must be implemented by subclasses
@@ -109,4 +113,12 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
     actions: Actions,
     options?: ExecuteOptions
   ): Promise<ProofInvocationResult>;
+
+  /**
+   * Execute a pre-built proof invocation: prove it and return the call+proof ready for submission.
+   */
+  abstract executeWithInvocation(
+    invocation: ProofInvocationResult,
+    provingBlockId?: ProvingBlockId
+  ): Promise<ExecuteResult>;
 }
