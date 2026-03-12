@@ -10,12 +10,12 @@ edition = "2024_07"
 license-file = "LICENSE"
 
 [workspace.dependencies]
-starknet = "2.15.1"
+starknet = "2.17.0-rc.1"
 snforge_std = { version = "0.55.0+nightly-2026-02-20", registry = "https://scarbs.dev/" }
-assert_macros = "2.15.1"
-openzeppelin = "3.0.0"
-starkware_utils = { git ="https://github.com/starkware-libs/starkware-starknet-utils", rev="0e12df09afe29f59a877a5b04801fedd8b31c50d" }
-starkware_utils_testing = { git="https://github.com/starkware-libs/starkware-starknet-utils", rev="0e12df09afe29f59a877a5b04801fedd8b31c50d" }
+assert_macros = "2.17.0-rc.1"
+openzeppelin = { git = "https://github.com/noa-starkware/cairo-contracts", rev = "d5f9f389c5c6fc91fe58eff8fc7ab83e5a100e05"}
+starkware_utils = { git ="https://github.com/starkware-libs/starkware-starknet-utils", rev="0ccab71bd2b1809a3db1823dd482e2a1ed65812e" }
+starkware_utils_testing = { git="https://github.com/starkware-libs/starkware-starknet-utils", rev="0ccab71bd2b1809a3db1823dd482e2a1ed65812e" }
 
 [workspace.tool.fmt]
 sort-module-level-items = true
