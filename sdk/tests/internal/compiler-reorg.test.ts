@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { ActionCompiler } from "../../src/internal/compiler.js";
 import { ReorgError } from "../../src/internal/indexer/index.js";
-import { createEmptyRegistry, SetupRequirement } from "../../src/interfaces.js";
+import { PrivateRegistry, SetupRequirement } from "../../src/interfaces.js";
 import type { DiscoveryProviderInterface, Note } from "../../src/interfaces.js";
 import { AddressMap } from "../../src/utils/maps.js";
 import { Channel } from "../../src/internal/channel.js";
@@ -53,7 +53,7 @@ describe("ActionCompiler reorg handling", () => {
 
     const compiler = new ActionCompiler(USER_ADDRESS, VIEWING_KEY, mockProvider);
 
-    const registry = createEmptyRegistry();
+    const registry = new PrivateRegistry();
     registry.notes.set(TOKEN_ADDR, [
       {
         id: "0xstale",
@@ -88,7 +88,7 @@ describe("ActionCompiler reorg handling", () => {
     await expect(
       compiler.compile(
         { openChannels: [{ recipient: RECIPIENT_ADDR }] },
-        { registry: createEmptyRegistry(), autoDiscover: { channels: "refresh" } }
+        { registry: new PrivateRegistry(), autoDiscover: { channels: "refresh" } }
       )
     ).rejects.toThrow("network failure");
 

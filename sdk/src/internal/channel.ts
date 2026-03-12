@@ -4,6 +4,8 @@ import {
   StarknetAddressBigint,
   type Blob,
   type ChannelSerde,
+  type DiscoveryLevel,
+  type Note,
   type StarknetAddress,
   type WitnessSerde,
 } from "../interfaces.js";
@@ -71,8 +73,6 @@ export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
   };
 }
 
-export type RecipientsFilter<T = StarknetAddressBigint> = T[] | "all" | "total-only";
-
 export type ChannelCursor = {
   /** @internal */ blockId?: BlockIdentifier;
   /** @internal */ channels?: AddressMap<Channel>;
@@ -99,6 +99,110 @@ export function cloneChannelCursor(cursor?: ChannelCursor): ChannelCursor {
     total: cursor.total,
   };
 }
+
+/**
+ * Merge a discovered channel cursor into `target` in-place. Overwrites channels
+ * present in `update`, preserves channels only in `target`.
+ */
+export function mergeChannelCursor(target: ChannelCursor, update: ChannelCursor): void {
+  target.blockId = update.blockId;
+  target.total = update.total;
+  if (update.channels) {
+    target.channels ??= new AddressMap<Channel>();
+    for (const [addr, channel] of update.channels) {
+      target.channels.set(addr, channel);
+    }
+  }
+}
+
+/**
+ * Merge a discovered notes cursor into `target` in-place. For each incoming channel,
+ * merges per-token subchannel cursors (noteIndexes, totalNoteCounts) so that tokens
+ * not in the discovery filter are preserved.
+ */
+export function mergeNotesCursor(target: NotesCursor, update: NotesCursor): void {
+  target.blockId = update.blockId;
+  for (const [sender, incomingCursor] of update.incomingChannels) {
+    const existing = target.incomingChannels.get(sender);
+    if (!existing) {
+      target.incomingChannels.set(sender, incomingCursor);
+    } else {
+      existing.subchannelIdIndex = incomingCursor.subchannelIdIndex;
+      for (const [token, noteIndex] of incomingCursor.noteIndexes) {
+        existing.noteIndexes.set(token, noteIndex);
+      }
+      for (const [token, count] of incomingCursor.totalNoteCounts) {
+        existing.totalNoteCounts.set(token, count);
+      }
+    }
+  }
+}
+
+/**
+ * Registry holding the user's private state: cursors and notes.
+ * Passed to execute() for context resolution and updated with new state.
+ */
+export class PrivateRegistry {
+  notesCursor?: NotesCursor;
+  channelCursor?: ChannelCursor;
+  notes: AddressMap<Note[]>;
+
+  constructor() {
+    this.notes = new AddressMap<Note[]>(() => []);
+  }
+
+  /** Apply discovered notes using missing/refresh semantics and merge the cursor. */
+  applyDiscoveredNotes(
+    level: DiscoveryLevel | undefined,
+    notes: AddressMap<Note[]>,
+    cursor: NotesCursor
+  ): void {
+    for (const [token, discoveredNotes] of notes.entries()) {
+      if (level === "missing") {
+        const existing = this.notes.get(token);
+        if (existing) {
+          existing.push(...discoveredNotes);
+        } else {
+          this.notes.set(token, discoveredNotes);
+        }
+      } else {
+        this.notes.set(token, discoveredNotes);
+      }
+    }
+    if (!this.notesCursor) {
+      this.notesCursor = cursor;
+    } else {
+      mergeNotesCursor(this.notesCursor, cursor);
+    }
+  }
+
+  /** Apply a discovered channel cursor (merge in-place). */
+  applyDiscoveredChannels(cursor: ChannelCursor): void {
+    if (!this.channelCursor) {
+      this.channelCursor = cursor;
+    } else {
+      mergeChannelCursor(this.channelCursor, cursor);
+    }
+  }
+
+  /** Apply post-execution optimistic update (channels and notes, without touching cursors). */
+  applyExecuteResult(update: RegistryUpdate): void {
+    for (const [address, channel] of update.channels) {
+      this.channelCursor ??= {};
+      this.channelCursor.channels ??= new AddressMap<Channel>();
+      this.channelCursor.channels.set(address, channel);
+    }
+    for (const [token, tokenNotes] of update.notes) {
+      this.notes.set(token, tokenNotes);
+    }
+  }
+}
+
+/** Data produced by compilation for optimistic registry updates after tx inclusion. */
+export type RegistryUpdate = {
+  channels: AddressMap<Channel>;
+  notes: AddressMap<Note[]>;
+};
 
 type ChannelKey = bigint;
 

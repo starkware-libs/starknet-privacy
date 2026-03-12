@@ -1,13 +1,13 @@
 import { describe, expect, it, beforeEach, afterAll } from "vitest";
 import {
   createTestEnv,
-  createEmptyRegistry,
+  PrivateRegistry,
   AUTO_ALL,
   MockTestEnv,
   POOL_ADDRESS,
 } from "../helpers/test-fixtures.js";
 import { Open } from "../../src/interfaces.js";
-import { AddressMap } from "../../src/utils/maps.js";
+import { cloneChannelCursor } from "../../src/internal/channel.js";
 import { debugHint, isDebugEnabled, toBigInt } from "../../src/utils/index.js";
 import { debugLog } from "../../src/utils/logging.js";
 import { toHex } from "../../src/utils/convert.js";
@@ -42,10 +42,11 @@ describe("Private Transfers Integration", () => {
       mocknet.executeOutside(await bob.build().register().execute());
 
       // Alice: register, setup channels (self + Bob), setup token (self + Bob), deposit
+      const registry = new PrivateRegistry();
       // prettier-ignore
-      const registry = mocknet.executeOutside(
+      mocknet.executeOutside(
         await alice
-          .build()
+          .build({ registry })
           .register()
           .setup(env.alice.address)
           .setup(env.bob.address)
@@ -53,7 +54,8 @@ describe("Private Transfers Integration", () => {
             .setup(env.alice.address)
             .setup(env.bob.address)
             .deposit({ amount: 100n, recipient: env.alice.address })
-          .execute()
+          .execute(),
+        registry
       );
 
       debugLog("test", "registry", registry);
@@ -72,7 +74,8 @@ describe("Private Transfers Integration", () => {
             .inputs(note)
             .transfer({ recipient: env.bob.address, amount: 50n })
             .withdraw({ amount: 25n })
-          .execute()
+          .execute(),
+        registry
       );
 
       // Alice should have 25n surplus note, Bob should have 50n note
@@ -115,10 +118,11 @@ describe("Private Transfers Integration", () => {
       mocknet.executeOutside(await bob.build().register().execute());
 
       // Alice uses autoRegister, autoSetup and autoSelectNotes: deposits and transfers to Bob
+      const registry = new PrivateRegistry();
       // prettier-ignore
-      const registry = mocknet.executeOutside(
+      mocknet.executeOutside(
         await alice
-          .build(AUTO_ALL)
+          .build({ ...AUTO_ALL, registry })
           .with(env.ace)
             .deposit({ amount: 100n })
             .transfer({ recipient: env.bob.address, amount: 50n })
@@ -127,7 +131,8 @@ describe("Private Transfers Integration", () => {
             .deposit({ amount: 100n })
             .transfer({ recipient: env.bob.address, amount: 50n })
             .transfer({ recipient: env.alice.address, amount: 50n })
-          .execute()
+          .execute(),
+        registry
       );
 
       expect(registry.notes.get(ace)?.length).toBe(0);
@@ -140,7 +145,7 @@ describe("Private Transfers Integration", () => {
       expect(bobNotes.get(bee)?.[0].amount).toBe(50n);
     });
 
-    it("covers autoSelectNotes: all, autoDiscover: missing, registryConst, implicit surplus", async () => {
+    it("covers autoSelectNotes: all, autoDiscover: missing, separate working registry, implicit surplus", async () => {
       const { env, transfers } = testEnv;
       const { alice } = transfers;
       const ace = toBigInt(env.ace);
@@ -168,25 +173,28 @@ describe("Private Transfers Integration", () => {
       );
 
       // Phase 2: Use registry with channels but WITHOUT notes
-      // This tests autoDiscover: "missing" (discovers notes not in registry)
-      const channelOnly = createEmptyRegistry();
-      const channel = (await alice.discoverChannels([env.alice.address])).channels!.get(
-        env.alice.address
-      )!;
-      channelOnly.channelCursor = { channels: new AddressMap() };
-      channelOnly.channelCursor.channels!.set(env.alice.address, channel);
+      // This tests autoDiscover: "missing" for notes (discovers notes not in registry)
+      const channelOnly = new PrivateRegistry();
+      await alice.discoverChannels({
+        registry: channelOnly,
+        level: "refresh",
+        recipients: [env.alice.address],
+      });
+
+      // Create a separate working registry with the same channel cursor.
+      // channelOnly is never passed to build() or executeOutside(), so it stays unchanged.
+      const workingRegistry = new PrivateRegistry();
+      workingRegistry.channelCursor = cloneChannelCursor(channelOnly.channelCursor!);
 
       // Deposit 30n with:
       // - autoSelectNotes: "all" (sweeps ALL notes, not just enough for deficit)
-      // - registryConst: true (don't mutate channelOnly)
       // - autoDiscover: { notes: "missing" } (discover ACE notes since not in registry)
       // - surplusTo triggers the "sweeping" code path for discovery
       debugLog("test", "main");
-      const result = mocknet.executeOutside(
+      mocknet.executeOutside(
         await alice
           .build({
-            registry: channelOnly,
-            registryConst: true,
+            registry: workingRegistry,
             autoDiscover: { channels: "refresh", notes: "missing" },
             autoSelectNotes: "all",
             autoSetup: true,
@@ -194,15 +202,16 @@ describe("Private Transfers Integration", () => {
           .surplusTo(env.alice.address) // Explicit surplus triggers sweeping discovery
           .with(env.ace)
           .deposit({ amount: 30n })
-          .execute()
+          .execute(),
+        workingRegistry
       );
 
       // Verify autoSelectNotes: "all" swept all notes into one
       // 100n + 50n (discovered & swept) + 30n (deposit) = 180n
-      expect(result.notes.get(ace)?.length).toBe(1);
-      expect(result.notes.get(ace)?.[0].amount).toBe(180n);
+      expect(workingRegistry.notes.get(ace)?.length).toBe(1);
+      expect(workingRegistry.notes.get(ace)?.[0].amount).toBe(180n);
 
-      // Verify registryConst: original registry unchanged
+      // Verify original registry is unchanged (never passed to build/executeOutside)
       expect(channelOnly.notes.has(ace)).toBe(false);
 
       // Verify ERC20 balance
@@ -219,20 +228,22 @@ describe("Private Transfers Integration", () => {
       // Deposit 100n, transfer only 30n to Bob -> 70n surplus with NO explicit surplusTo
       mocknet.executeOutside(await bob.build().register().execute());
 
-      const result = mocknet.executeOutside(
+      const registry = new PrivateRegistry();
+      mocknet.executeOutside(
         await alice
-          .build(AUTO_ALL)
+          .build({ ...AUTO_ALL, registry })
           .setup(env.alice.address)
           .setup(env.bob.address)
           .with(env.ace)
           .deposit({ amount: 100n }) // No recipient, no surplusTo
           .transfer({ recipient: env.bob.address, amount: 30n })
-          .execute()
+          .execute(),
+        registry
       );
 
       // Implicit surplus: 100n - 30n = 70n goes to self
-      expect(result.notes.get(ace)?.length).toBe(1);
-      expect(result.notes.get(ace)?.[0].amount).toBe(70n);
+      expect(registry.notes.get(ace)?.length).toBe(1);
+      expect(registry.notes.get(ace)?.[0].amount).toBe(70n);
 
       // Bob got his 30n
       const bobNotes = (await bob.discoverNotes()).notes.get(ace) ?? [];
@@ -253,14 +264,16 @@ describe("Private Transfers Integration", () => {
       mocknet.executeOutside(await david.build().register().execute());
 
       // Alice deposits and transfers to Bob (creates outgoing channel index 0 to self, index 1 to Bob)
-      const registryAfterBob = mocknet.executeOutside(
+      const registryAfterBob = new PrivateRegistry();
+      mocknet.executeOutside(
         await alice
-          .build(AUTO_ALL)
+          .build({ ...AUTO_ALL, registry: registryAfterBob })
           .with(env.ace)
           .deposit({ amount: 100n })
           .transfer({ recipient: env.bob.address, amount: 30n })
           .surplusTo(env.alice.address)
-          .execute()
+          .execute(),
+        registryAfterBob
       );
 
       // Verify Bob got his transfer
@@ -269,7 +282,7 @@ describe("Private Transfers Integration", () => {
       expect(bobNotes[0].amount).toBe(30n);
 
       // Alice transfers to Carol using the registry from step 1 (creates outgoing channel index 2 to Carol)
-      const registryAfterCarol = mocknet.executeOutside(
+      mocknet.executeOutside(
         await alice
           .build({
             registry: registryAfterBob,
@@ -280,7 +293,8 @@ describe("Private Transfers Integration", () => {
           .with(env.ace)
           .transfer({ recipient: env.carol.address, amount: 20n })
           .surplusTo(env.alice.address)
-          .execute()
+          .execute(),
+        registryAfterBob
       );
 
       // Verify Carol got her transfer
@@ -289,19 +303,21 @@ describe("Private Transfers Integration", () => {
       expect(carolNotes[0].amount).toBe(20n);
 
       // Alice should have 50n remaining (100 - 30 - 20)
-      expect(registryAfterCarol.notes.get(ace)?.length).toBe(1);
-      expect(registryAfterCarol.notes.get(ace)?.[0].amount).toBe(50n);
+      expect(registryAfterBob.notes.get(ace)?.length).toBe(1);
+      expect(registryAfterBob.notes.get(ace)?.[0].amount).toBe(50n);
 
       // Now transfer to David WITHOUT passing a registry (fresh discovery)
       // This tests that the channel index accounting is correct when discovering from scratch
       // and creating a new channel to a completely new recipient
-      const finalRegistry = mocknet.executeOutside(
+      const finalRegistry = new PrivateRegistry();
+      mocknet.executeOutside(
         await alice
-          .build(AUTO_ALL) // Fresh discovery, no registry passed
+          .build({ ...AUTO_ALL, registry: finalRegistry }) // Fresh discovery
           .with(env.ace)
           .transfer({ recipient: env.david.address, amount: 10n })
           .surplusTo(env.alice.address)
-          .execute()
+          .execute(),
+        finalRegistry
       );
 
       // Verify David got his transfer

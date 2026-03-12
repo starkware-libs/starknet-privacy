@@ -8,7 +8,7 @@ import type {
 } from "../interfaces.js";
 import { SetupRequirement } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
-import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./channel.js";
+import type { ChannelCursor, NotesCursor } from "./channel.js";
 
 export abstract class AbstractDiscoveryProvider implements DiscoveryProviderInterface {
   // Abstract methods that subclasses must implement
@@ -29,7 +29,7 @@ export abstract class AbstractDiscoveryProvider implements DiscoveryProviderInte
   abstract discoverChannels(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipients: RecipientsFilter,
+    recipients: StarknetAddressBigint[] | undefined,
     params?: { cursor?: ChannelCursor }
   ): Promise<{
     timestamp: BlockIdentifier;

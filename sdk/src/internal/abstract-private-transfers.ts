@@ -9,10 +9,13 @@ import type { BlockIdentifier } from "starknet";
 import type {
   Actions,
   Channel,
+  DiscoveryLevel,
   DiscoveryProviderInterface,
   ExecuteOptions,
   ExecuteResult,
   Note,
+  NotesCursor,
+  PrivateRegistry,
   PrivateTransfersBuilder,
   PrivateTransfersInterface,
   ProofInvocationResult,
@@ -25,7 +28,6 @@ import { SetupRequirement } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { toBigInt } from "../utils/crypto.js";
 import { PrivateTransfersBuilderImpl } from "./builders.js";
-import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./channel.js";
 
 /**
  * Abstract base class that implements the common functionality for PrivateTransfers.
@@ -50,33 +52,68 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
   }
 
   /**
-   * Discover unspent notes per token
+   * Discover unspent notes per token.
+   * When `registry` and `level` are provided, updates the registry in-place.
    */
-  async discoverNotes(params: { since?: BlockIdentifier; cursor?: NotesCursor } = {}): Promise<{
+  async discoverNotes(
+    params: {
+      registry?: PrivateRegistry;
+      level?: DiscoveryLevel;
+      tokens?: StarknetAddressBigint[];
+    } = {}
+  ): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
+    cursor: NotesCursor;
   }> {
-    return this.discoveryProvider.discoverNotes(this.user, await this.getViewingKey(), params);
+    const { registry, level, tokens } = params;
+
+    const result = await this.discoveryProvider.discoverNotes(
+      this.user,
+      await this.getViewingKey(),
+      { cursor: level === "missing" ? registry?.notesCursor : undefined, tokens }
+    );
+
+    if (registry) {
+      registry.applyDiscoveredNotes(level, result.notes, result.cursor);
+    }
+
+    return { timestamp: result.timestamp, notes: result.notes, cursor: result.cursor };
   }
 
   /**
-   * Discover channels for one or more recipients
+   * Discover channels for one or more recipients.
+   * When `registry` is provided, updates `channelCursor` in-place.
    */
-
   async discoverChannels(
-    recipients: RecipientsFilter<StarknetAddress>,
-    params?: { cursor?: ChannelCursor }
+    params: {
+      registry?: PrivateRegistry;
+      level?: DiscoveryLevel;
+      recipients?: StarknetAddress[];
+    } = {}
   ): Promise<{
     timestamp: BlockIdentifier;
     channels?: AddressMap<Channel>;
     total?: number;
   }> {
-    return this.discoveryProvider.discoverChannels(
+    const { registry, level, recipients } = params;
+
+    const result = await this.discoveryProvider.discoverChannels(
       this.user,
       await this.getViewingKey(),
-      Array.isArray(recipients) ? recipients.map(toBigInt) : recipients,
-      params
+      recipients?.map(toBigInt),
+      { cursor: level === "missing" ? registry?.channelCursor : undefined }
     );
+
+    if (registry) {
+      registry.applyDiscoveredChannels(result.cursor);
+    }
+
+    return {
+      timestamp: result.timestamp,
+      channels: result.channels,
+      total: result.total,
+    };
   }
 
   /**

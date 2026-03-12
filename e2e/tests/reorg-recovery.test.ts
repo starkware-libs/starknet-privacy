@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Devnet } from "starknet-sdk/testing";
-import { createEmptyRegistry, AddressMap } from "starknet-sdk";
+import { PrivateRegistry, AddressMap } from "starknet-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../src/harness.js";
 
 describe("E2E Reorg Recovery", () => {
@@ -62,7 +62,7 @@ describe("E2E Reorg Recovery", () => {
     // The fake blockId will be sent as last_known_block to the indexer,
     // which will respond with HTTP 409 (BLOCK_REORGED).
     // NotesCursor fields are @internal (stripped from .d.ts), so we cast through `any`.
-    const registry = createEmptyRegistry();
+    const registry = new PrivateRegistry();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     registry.notesCursor = { blockId: "0xdeadbeef", incomingChannels: new AddressMap() } as any;
 

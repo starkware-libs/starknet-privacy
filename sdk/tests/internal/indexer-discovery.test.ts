@@ -272,6 +272,7 @@ describe("IndexerDiscoveryProvider", () => {
         channelKey: BigInt(CHANNEL_KEY_1),
         subchannelIdIndex: 0,
         noteIndexes: new AddressMap<number>([[BigInt(TOKEN_ADDR), 1]]),
+        totalNoteCounts: new AddressMap<number>([[BigInt(TOKEN_ADDR), 1]]),
       });
       const previousCursor: NotesCursor = {
         blockId: BLOCK_REF,
@@ -291,7 +292,7 @@ describe("IndexerDiscoveryProvider", () => {
   });
 
   describe("discoverChannels", () => {
-    it("returns channels for 'all' recipients on a single page", async () => {
+    it("returns channels for all recipients on a single page", async () => {
       const provider = createProvider();
       const fetchMock = mockFetchJson({
         body: outgoingSyncResponse({
@@ -308,7 +309,7 @@ describe("IndexerDiscoveryProvider", () => {
         }),
       });
 
-      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, undefined);
 
       expect(fetchMock).toHaveBeenCalledOnce();
       expect(result.timestamp).toBe(BLOCK_REF);
@@ -323,7 +324,7 @@ describe("IndexerDiscoveryProvider", () => {
       expect(tokenNonces!.noteNonce).toBe(3); // last_note_index 2 + 1
     });
 
-    it("paginates 'all' recipients across 2 pages and merges", async () => {
+    it("paginates all recipients across 2 pages and merges", async () => {
       const provider = createProvider();
       const fetchMock = mockFetchJson(
         {
@@ -353,7 +354,7 @@ describe("IndexerDiscoveryProvider", () => {
         }
       );
 
-      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, undefined);
 
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(result.channels!.has(BigInt(RECIPIENT_ADDR))).toBe(true);
@@ -389,34 +390,42 @@ describe("IndexerDiscoveryProvider", () => {
       expect(result.channels!.has(BigInt(RECIPIENT_ADDR_2))).toBe(true);
     });
 
-    it("does not send recipients field for 'all' filter", async () => {
+    it("does not send recipients field when recipients is undefined", async () => {
       const provider = createProvider();
       const fetchMock = mockFetchJson({
         body: outgoingSyncResponse(),
       });
 
-      await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, undefined);
 
       const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(requestBody.recipients).toBeUndefined();
     });
 
-    it("returns total from total_n_channels for 'total-only' recipients filter", async () => {
+    it("returns total from total_n_channels in outgoing sync response for all recipients", async () => {
       const provider = createProvider();
       mockFetchJson({
         body: outgoingSyncResponse({
+          channels: [channelEntry(RECIPIENT_ADDR, PUBLIC_KEY_1, CHANNEL_KEY_1)],
+          subchannels: [{ recipient_addr: RECIPIENT_ADDR, token: TOKEN_ADDR, last_note_index: 0 }],
           cursor: {
-            channel_discovery_complete: true,
-            last_channel_index: 4,
+            ...completeCursor({
+              [RECIPIENT_ADDR]: {
+                channel_key: CHANNEL_KEY_1,
+                subchannels: {
+                  [TOKEN_ADDR]: { note_discovery_complete: true, last_note_index: 0 },
+                },
+              },
+            }),
             total_n_channels: 5,
           },
         }),
       });
 
-      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "total-only");
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, undefined);
 
       expect(result.total).toBe(5);
-      expect(result.channels).toBeUndefined();
+      expect(result.channels).toBeDefined();
     });
 
     it("prefers real channels over precomputed channels for the same recipient", async () => {
@@ -437,7 +446,7 @@ describe("IndexerDiscoveryProvider", () => {
         }),
       });
 
-      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, undefined);
 
       const channel = result.channels!.get(BigInt(RECIPIENT_ADDR));
       expect(channel).toBeDefined();
@@ -502,7 +511,7 @@ describe("IndexerDiscoveryProvider", () => {
       const provider = createProvider();
       const fetchMock = mockFetchJson({ body: outgoingSyncResponse() });
 
-      await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, undefined);
 
       const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(requestBody.contract_address).toBe("0x123");
