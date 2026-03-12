@@ -348,6 +348,7 @@ mod tests {
             "all channels should be on-chain"
         );
         assert!(out.cursor.is_complete(), "all discovery complete");
+        assert_eq!(out.cursor.total_n_channels, Some(2));
     }
 
     /// Pagination test: first call discovers channels only (budget=9 covers
@@ -389,6 +390,7 @@ mod tests {
             out.cursor.channel_discovery_complete,
             "step 1: channel discovery complete (sentinel found)"
         );
+        assert_eq!(out.cursor.total_n_channels, Some(2));
 
         // Step 1 should have emitted the channels (discovered in this call).
         assert_eq!(

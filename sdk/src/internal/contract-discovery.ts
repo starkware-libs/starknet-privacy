@@ -71,6 +71,7 @@ class NotesDiscovery {
           channelKey: channel.key,
           subchannelIdIndex: 0,
           noteIndexes: new AddressMap<number>(),
+          totalNoteCounts: new AddressMap<number>(),
         };
         this.cursor!.incomingChannels.set(channel.sender, incomingChannelCursor);
 

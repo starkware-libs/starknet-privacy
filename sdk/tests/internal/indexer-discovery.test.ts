@@ -357,13 +357,14 @@ describe("IndexerDiscoveryProvider", () => {
       expect(requestBody.recipients).toBeUndefined();
     });
 
-    it("returns total for 'total-only' recipients filter", async () => {
+    it("returns total from total_n_channels for 'total-only' recipients filter", async () => {
       const provider = createProvider();
       mockFetchJson({
         body: outgoingSyncResponse({
           cursor: {
-            channel_discovery_complete: false,
+            channel_discovery_complete: true,
             last_channel_index: 4,
+            total_n_channels: 5,
           },
         }),
       });
@@ -499,11 +500,15 @@ describe("IndexerDiscoveryProvider", () => {
       const noteIndexes = new AddressMap<number>();
       noteIndexes.set(tokenAddress, 5);
 
+      const totalNoteCounts = new AddressMap<number>();
+      totalNoteCounts.set(tokenAddress, 10);
+
       const incomingChannels = new AddressMap<IncomingChannelCursor>();
       incomingChannels.set(senderAddress, {
         channelKey,
         subchannelIdIndex: 3,
         noteIndexes,
+        totalNoteCounts,
       });
 
       const originalCursor: NotesCursor = {
@@ -521,6 +526,7 @@ describe("IndexerDiscoveryProvider", () => {
       expect(rtChannel!.channelKey).toBe(channelKey);
       expect(rtChannel!.subchannelIdIndex).toBe(3);
       expect(rtChannel!.noteIndexes.get(tokenAddress)).toBe(5);
+      expect(rtChannel!.totalNoteCounts.get(tokenAddress)).toBe(10);
     });
 
     it("convertIncomingNotes filters by token", () => {
@@ -599,6 +605,7 @@ describe("IndexerDiscoveryProvider", () => {
           channelKey: 0x999n,
           subchannelIdIndex: 1,
           noteIndexes,
+          totalNoteCounts: new AddressMap<number>(),
         });
 
         const cursor: NotesCursor = { blockId: BLOCK_REF, incomingChannels };
@@ -624,6 +631,7 @@ describe("IndexerDiscoveryProvider", () => {
           channelKey: 0x999n,
           subchannelIdIndex: 2,
           noteIndexes,
+          totalNoteCounts: new AddressMap<number>(),
         });
 
         const cursor: NotesCursor = { blockId: BLOCK_REF, incomingChannels };
@@ -645,6 +653,7 @@ describe("IndexerDiscoveryProvider", () => {
           channelKey: 0x999n,
           subchannelIdIndex: 1,
           noteIndexes,
+          totalNoteCounts: new AddressMap<number>(),
         });
 
         const cursor: NotesCursor = { blockId: BLOCK_REF, incomingChannels };
