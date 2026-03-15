@@ -2,6 +2,7 @@ use core::ec::EcPointTrait;
 use core::num::traits::Zero;
 use core::poseidon::poseidon_hash_span;
 use core::traits::Neg;
+use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
     InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput, ServerAction,
@@ -26,6 +27,11 @@ use privacy::interface::{
     IServerDispatcher, IServerDispatcherTrait, IServerSafeDispatcher, IServerSafeDispatcherTrait,
     IViewsDispatcher, IViewsDispatcherTrait, IViewsSafeDispatcher, IViewsSafeDispatcherTrait,
 };
+use privacy::invoke_helpers::vesu_lending_helper::{
+    IVesuLendingHelperDispatcher, IVesuLendingHelperDispatcherTrait,
+    IVesuLendingHelperSafeDispatcher, IVesuLendingHelperSafeDispatcherTrait, LendingOperation,
+    VesuLendingHelper,
+};
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
     OpenNoteDeposit, TokenBalances, TokenBalancesTrait,
@@ -37,6 +43,9 @@ use privacy::tests::mock_invoke_returns::MockEcho::deploy_for_test as deploy_moc
 use privacy::tests::mock_invoke_returns::MockReturnGarbage::deploy_for_test as deploy_mock_return_garbage_for_test;
 use privacy::tests::mock_invoke_returns::MockReturnTrailingGarbage::deploy_for_test as deploy_mock_return_trailing_garbage_for_test;
 use privacy::tests::mock_reentrancy::MockReentrancy::deploy_for_test as deploy_mock_reentrancy_for_test;
+use privacy::tests::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
+use privacy::tests::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
+use privacy::tests::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
 use privacy::tests::utils_for_tests::constants::DEFAULT_PROOF_VALIDITY_BLOCKS;
 use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
@@ -313,16 +322,14 @@ pub(crate) impl UserImpl of UserTrait {
     fn withdraw_and_use_note_e2e(
         ref self: User,
         to_addr: ContractAddress,
-        token: Token,
+        token_addr: ContractAddress,
         amount: u128,
         channel_key: felt252,
         index: usize,
     ) {
         let random = self.get_random();
-        let use_note_input = UseNoteInput { channel_key, token: token.contract_address(), index };
-        let withdraw_input = WithdrawInput {
-            to_addr, token: token.contract_address(), amount, random,
-        };
+        let use_note_input = UseNoteInput { channel_key, token: token_addr, index };
+        let withdraw_input = WithdrawInput { to_addr, token: token_addr, amount, random };
         let server_actions = self
             .execute(
                 client_actions: [
@@ -1200,6 +1207,136 @@ pub(crate) struct Test {
     pub auditor: Auditor,
 }
 
+#[derive(Drop, Copy)]
+pub(crate) struct VesuComponents {
+    pub underlying_token: Token,
+    pub vault: ContractAddress,
+    pub lending_helper: ContractAddress,
+}
+
+#[generate_trait]
+pub(crate) impl VesuComponentsImpl of VesuComponentsTrait {
+    fn privacy_invoke_deposit(
+        self: @VesuComponents, amount: u128, note_id: felt252,
+    ) -> Span<OpenNoteDeposit> {
+        IVesuLendingHelperDispatcher { contract_address: *self.lending_helper }
+            .privacy_invoke(
+                operation: LendingOperation::Deposit,
+                in_token: self.underlying_token.contract_address(),
+                out_token: *self.vault,
+                in_amount: amount,
+                :note_id,
+            )
+    }
+
+    fn privacy_invoke_withdraw(
+        self: @VesuComponents, amount: u128, note_id: felt252,
+    ) -> Span<OpenNoteDeposit> {
+        IVesuLendingHelperDispatcher { contract_address: *self.lending_helper }
+            .privacy_invoke(
+                operation: LendingOperation::Withdraw,
+                in_token: *self.vault,
+                out_token: self.underlying_token.contract_address(),
+                in_amount: amount,
+                :note_id,
+            )
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_privacy_invoke_deposit(
+        self: @VesuComponents, amount: u128, note_id: felt252,
+    ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
+        IVesuLendingHelperSafeDispatcher { contract_address: *self.lending_helper }
+            .privacy_invoke(
+                operation: LendingOperation::Deposit,
+                in_token: self.underlying_token.contract_address(),
+                out_token: *self.vault,
+                in_amount: amount,
+                :note_id,
+            )
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_privacy_invoke_withdraw(
+        self: @VesuComponents, amount: u128, note_id: felt252,
+    ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
+        IVesuLendingHelperSafeDispatcher { contract_address: *self.lending_helper }
+            .privacy_invoke(
+                operation: LendingOperation::Withdraw,
+                in_token: *self.vault,
+                out_token: self.underlying_token.contract_address(),
+                in_amount: amount,
+                :note_id,
+            )
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_privacy_invoke(
+        self: @VesuComponents,
+        operation: LendingOperation,
+        in_token: ContractAddress,
+        out_token: ContractAddress,
+        in_amount: u128,
+        note_id: felt252,
+    ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
+        IVesuLendingHelperSafeDispatcher { contract_address: *self.lending_helper }
+            .privacy_invoke(
+                operation: operation,
+                in_token: in_token,
+                out_token: out_token,
+                in_amount: in_amount,
+                :note_id,
+            )
+    }
+
+    /// Creates an `InvokeInput` for the Vesu lending helper from the given parameters.
+    fn invoke_vesu_deposit_input(
+        self: @VesuComponents, in_amount: u128, note_id: felt252,
+    ) -> InvokeInput {
+        let mut calldata: Array<felt252> = array![];
+        LendingOperation::Deposit.serialize(ref calldata);
+        self.underlying_token.contract_address().serialize(ref calldata);
+        self.vault.serialize(ref calldata);
+        in_amount.serialize(ref calldata);
+        note_id.serialize(ref calldata);
+        InvokeInput { contract_address: *self.lending_helper, calldata: calldata.span() }
+    }
+
+    fn invoke_vesu_withdraw_input(
+        self: @VesuComponents, in_amount: u128, note_id: felt252,
+    ) -> InvokeInput {
+        let mut calldata: Array<felt252> = array![];
+        LendingOperation::Withdraw.serialize(ref calldata);
+        self.vault.serialize(ref calldata);
+        self.underlying_token.contract_address().serialize(ref calldata);
+        in_amount.serialize(ref calldata);
+        note_id.serialize(ref calldata);
+        InvokeInput { contract_address: *self.lending_helper, calldata: calldata.span() }
+    }
+
+    /// Creates an `InvokeExternalInput` for Vesu deposit (for use with
+    /// ClientAction::InvokeExternal).
+    fn invoke_vesu_deposit_external_input(
+        self: @VesuComponents, in_amount: u128, note_id: felt252,
+    ) -> InvokeExternalInput {
+        let invoke = self.invoke_vesu_deposit_input(:in_amount, :note_id);
+        InvokeExternalInput { contract_address: invoke.contract_address, calldata: invoke.calldata }
+    }
+
+    /// Creates an `InvokeExternalInput` for Vesu withdraw (for use with
+    /// ClientAction::InvokeExternal).
+    fn invoke_vesu_withdraw_external_input(
+        self: @VesuComponents, in_amount: u128, note_id: felt252,
+    ) -> InvokeExternalInput {
+        let invoke = self.invoke_vesu_withdraw_input(:in_amount, :note_id);
+        InvokeExternalInput { contract_address: invoke.contract_address, calldata: invoke.calldata }
+    }
+
+    fn vault_balance_of(self: @VesuComponents, address: ContractAddress) -> u256 {
+        IERC20Dispatcher { contract_address: *self.vault }.balance_of(account: address)
+    }
+}
+
 #[generate_trait]
 pub(crate) impl TestImpl of TestTrait {
     fn new_user(ref self: Test) -> User {
@@ -1316,6 +1453,13 @@ pub(crate) impl TestImpl of TestTrait {
         self.auditor.private_key = 'AUDITOR_PRIVATE_KEY' + self.nonce.into();
         self.auditor.public_key = derive_public_key(private_key: self.auditor.private_key);
         self.privacy.set_auditor_public_key(auditor_public_key: self.auditor.public_key);
+    }
+
+    fn deploy_vesu_components(ref self: Test) -> VesuComponents {
+        let underlying_token = self.new_token();
+        let vault = deploy_mock_vesu_vault(underlying_token: underlying_token.contract_address());
+        let lending_helper = deploy_vesu_lending_helper();
+        VesuComponents { underlying_token, vault, lending_helper }
     }
 }
 
@@ -1843,6 +1987,72 @@ fn deploy_privacy(
         echo_executor,
         mock_amm,
     }
+}
+
+fn deploy_vesu_lending_helper() -> ContractAddress {
+    let class_hash = declare(contract: "VesuLendingHelper")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (address, _) = VesuLendingHelper::deploy_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('VesuLendingHelper deploy failed');
+    address
+}
+
+fn deploy_mock_vesu_vault(underlying_token: ContractAddress) -> ContractAddress {
+    let class_hash = declare(contract: "MockVesuVault")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 1, deploy_from_zero: true };
+    let (address, _) = deploy_mock_vesu_vault_for_test(
+        class_hash: *class_hash,
+        :deployment_params,
+        name: "MockVesuVault",
+        symbol: "MV",
+        :underlying_token,
+    )
+        .expect('MockVesuVault deploy failed');
+    address
+}
+
+pub(crate) fn deploy_mock_vesu_vault_noop(underlying_token: ContractAddress) -> ContractAddress {
+    let class_hash = declare(contract: "MockVesuVaultNoop")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 1, deploy_from_zero: true };
+    let (address, _) = deploy_mock_vesu_vault_noop_for_test(
+        class_hash: *class_hash,
+        :deployment_params,
+        name: "MockVesuVaultNoop",
+        symbol: "MVN",
+        :underlying_token,
+    )
+        .expect('MockVesuVaultNoop deploy failed');
+    address
+}
+
+pub(crate) fn deploy_mock_vesu_vault_overflow(
+    underlying_token: ContractAddress,
+) -> ContractAddress {
+    let class_hash = declare(contract: "MockVesuVaultOverflow")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 1, deploy_from_zero: true };
+    let (address, _) = deploy_mock_vesu_vault_overflow_for_test(
+        class_hash: *class_hash,
+        :deployment_params,
+        name: "MockVesuVaultOverflow",
+        symbol: "MVO",
+        :underlying_token,
+    )
+        .expect('MockVesuVaultOverflow failed');
+    address
 }
 
 fn _set_privacy_roles(contract: ContractAddress, roles: Roles) -> Roles {
