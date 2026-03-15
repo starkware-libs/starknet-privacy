@@ -2,24 +2,13 @@
 
 ## Deposit
 4. Call server deposit twice with the same input.
-6. User A deposit note, transfer to user B, user B withdraws it.
-7. User deposit note, transfer to themselves, withdraw it.
-8. User deposit note, transfer to themselves, withdraw it, deposit again. (check deposit indexing)
-9. User deposit multiple notes, merge them into one note for themselves, withdraw it.
-10. User A deposit multiple notes, merge them into one note for themselves, transfer it to users B and C, users B and C withdraw the notes.
-11. User A deposit multiple notes, transfer them to one note for user B, user B withdraw it.
-12. User A deposit one note, transfer to users B and C, users B and C withdraw the notes.
 13. User A deposit one note, transfer to users B and C with leftover for themselves, all users withdraw.
 
 ## Transfer
 5. Call server transfer twice with the same input.
-6. User A transfer to user B, user B to user C, user C back to A.
-7. User A transfer to users B and C, users B and C back to A.
 8. User A split one note into two notes for themselves.
 10. Test transfer use and create note same channel.
     10.1. Test transfer use and create note same channel same amount (actually same note).
-    10.2. Test transfer use notes multi channels create note to one channel of the used notes.
-    10.3. Test transfer use note one channel create notes multi channels that one of them is the channel of the used note.
     10.4. Test transfer use notes same channel create note same channel (merging notes).
 
 ## Withdraw
