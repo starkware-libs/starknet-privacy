@@ -149,14 +149,14 @@ pub mod VesuLendingHelper {
             // Execute operation.
             match operation {
                 LendingOperation::Deposit => {
-                    // Approve Vesu Token contract to spend `assets` of `in_token`.
+                    // Approve Vesu Token contract (`out_token`) to spend `assets` of `in_token`.
                     in_erc20.approve(spender: out_token, amount: assets);
                     IVTokenDispatcher { contract_address: out_token }
-                        .deposit(assets: assets, receiver: self_addr)
+                        .deposit(:assets, receiver: self_addr)
                 },
                 LendingOperation::Withdraw => {
                     IVTokenDispatcher { contract_address: in_token }
-                        .withdraw(assets: assets, receiver: self_addr, owner: self_addr)
+                        .withdraw(:assets, receiver: self_addr, owner: self_addr)
                 },
             }
 

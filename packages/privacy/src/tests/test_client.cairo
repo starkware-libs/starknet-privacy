@@ -1632,6 +1632,8 @@ fn test_open_subchannel_multiple() {
         .span();
     assert_eq!(c1_output, expected_actions_1);
     assert_eq!(c2_output, expected_actions_2);
+    let result = test.privacy.safe_apply_actions(actions: c2_output);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 
     // Multiple subchannels with the same index (fails only on the server side).
     let mut user_1 = test.new_user();
@@ -1692,6 +1694,8 @@ fn test_open_subchannel_multiple() {
         .span();
     assert_eq!(c1_output, expected_actions_1);
     assert_eq!(c2_output, expected_actions_2);
+    let result = test.privacy.safe_apply_actions(actions: c2_output);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
