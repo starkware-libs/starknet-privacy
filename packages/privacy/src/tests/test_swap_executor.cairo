@@ -1,6 +1,6 @@
 use core::num::traits::Zero;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
-use privacy::helpers::mock_swap_executor::errors;
+use privacy::test_contracts::mock_swap_executor::errors;
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, SwapExecutorCfg, SwapExecutorCfgTrait, Test, TestTrait, UserTrait, constants,
     deploy_mock_swap_executor,
