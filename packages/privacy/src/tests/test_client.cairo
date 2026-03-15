@@ -6,8 +6,8 @@ use privacy::actions::{
     TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
-use privacy::helpers::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::objects::{EncSubchannelInfo, EncUserAddr};
+use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     AuditorTrait, CreateEncNoteInputIntoServerActionTrait, CreateOpenNoteInputIntoServerActionTrait,
     InvokeExternalInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,

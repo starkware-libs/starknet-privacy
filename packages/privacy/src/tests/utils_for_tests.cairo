@@ -14,12 +14,6 @@ use privacy::hashes::{
     compute_enc_token_hash, compute_enc_user_addr_hash, compute_note_id, compute_nullifier,
     compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker, hash,
 };
-use privacy::helpers::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
-use privacy::helpers::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
-use privacy::helpers::mock_swap_executor::{
-    ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait, ISwapExecutorSafeDispatcher,
-    ISwapExecutorSafeDispatcherTrait,
-};
 use privacy::interface::{
     IAdminDispatcher, IAdminDispatcherTrait, IAdminSafeDispatcher, IAdminSafeDispatcherTrait,
     IClientDispatcher, IClientDispatcherTrait, IClientSafeDispatcher, IClientSafeDispatcherTrait,
@@ -32,6 +26,12 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
+use privacy::test_contracts::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
+use privacy::test_contracts::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
+use privacy::test_contracts::mock_swap_executor::{
+    ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait, ISwapExecutorSafeDispatcher,
+    ISwapExecutorSafeDispatcherTrait,
+};
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
 use privacy::tests::mock_invoke_returns::MockEcho::deploy_for_test as deploy_mock_echo_for_test;
 use privacy::tests::mock_invoke_returns::MockReturnGarbage::deploy_for_test as deploy_mock_return_garbage_for_test;
