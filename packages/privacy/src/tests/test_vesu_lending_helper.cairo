@@ -93,48 +93,48 @@ fn test_privacy_invoke_assertions() {
     // Catch ZERO_IN_TOKEN.
     let result = vesu
         .safe_privacy_invoke(
-            operation: deposit, in_token: Zero::zero(), :out_token, in_amount: amount, :note_id,
+            operation: deposit, in_token: Zero::zero(), :out_token, assets: amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
     let result = vesu
         .safe_privacy_invoke(
-            operation: withdraw, in_token: Zero::zero(), :out_token, in_amount: amount, :note_id,
+            operation: withdraw, in_token: Zero::zero(), :out_token, assets: amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
 
     // Catch ZERO_OUT_TOKEN.
     let result = vesu
         .safe_privacy_invoke(
-            operation: deposit, :in_token, out_token: Zero::zero(), in_amount: amount, :note_id,
+            operation: deposit, :in_token, out_token: Zero::zero(), assets: amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
     let result = vesu
         .safe_privacy_invoke(
-            operation: withdraw, :in_token, out_token: Zero::zero(), in_amount: amount, :note_id,
+            operation: withdraw, :in_token, out_token: Zero::zero(), assets: amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
 
-    // Catch ZERO_IN_AMOUNT.
+    // Catch ZERO_ ASSETS.
     let result = vesu
         .safe_privacy_invoke(
-            operation: deposit, :in_token, :out_token, in_amount: Zero::zero(), :note_id,
+            operation: deposit, :in_token, :out_token, assets: Zero::zero(), :note_id,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_AMOUNT);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ASSETS);
     let result = vesu
         .safe_privacy_invoke(
-            operation: withdraw, :in_token, :out_token, in_amount: Zero::zero(), :note_id,
+            operation: withdraw, :in_token, :out_token, assets: Zero::zero(), :note_id,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_AMOUNT);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ASSETS);
 
     // Catch TOKENS_EQUAL.
     let result = vesu
         .safe_privacy_invoke(
-            operation: deposit, :in_token, out_token: in_token, in_amount: amount, :note_id,
+            operation: deposit, :in_token, out_token: in_token, assets: amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::TOKENS_EQUAL);
     let result = vesu
         .safe_privacy_invoke(
-            operation: withdraw, :in_token, out_token: in_token, in_amount: amount, :note_id,
+            operation: withdraw, :in_token, out_token: in_token, assets: amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::TOKENS_EQUAL);
 }

@@ -1,17 +1,3 @@
-use starknet::ContractAddress;
-
-/// Interface for a mock Vesu vault (ERC-4626 / SNIP-22 style).
-#[starknet::interface]
-pub trait IMockVesuVault<T> {
-    /// Deposit: pulls underlying from caller, transfers share tokens to receiver.
-    /// Calldata: [amount_low, amount_high, receiver]
-    fn deposit(ref self: T, amount: u256, receiver: ContractAddress);
-
-    /// Withdraw: pulls share tokens from owner, transfers underlying to receiver.
-    /// Calldata: [amount_low, amount_high, receiver, owner]
-    fn withdraw(ref self: T, amount: u256, receiver: ContractAddress, owner: ContractAddress);
-}
-
 /// Mock Vesu vault for testing deposit/withdraw. Implements 1:1 asset/share exchange.
 /// Must be pre-funded with underlying_token (for withdraw).
 #[starknet::contract]
@@ -19,9 +5,9 @@ pub mod MockVesuVault {
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::token::erc20::{DefaultConfig, ERC20Component, ERC20HooksEmptyImpl};
+    use privacy::invoke_helpers::vesu_lending_helper::IVToken;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
-    use super::IMockVesuVault;
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
 
@@ -59,24 +45,26 @@ pub mod MockVesuVault {
     }
 
     #[abi(embed_v0)]
-    impl MockVesuVaultImpl of IMockVesuVault<ContractState> {
-        fn deposit(ref self: ContractState, amount: u256, receiver: ContractAddress) {
+    impl MockVesuVaultImpl of IVToken<ContractState> {
+        fn deposit(ref self: ContractState, assets: u256, receiver: ContractAddress) -> u256 {
             IERC20Dispatcher { contract_address: self.underlying_token.read() }
                 .transfer_from(
-                    sender: get_caller_address(), recipient: get_contract_address(), :amount,
+                    sender: get_caller_address(), recipient: get_contract_address(), amount: assets,
                 );
-            self.erc20.mint(recipient: receiver, :amount);
+            self.erc20.mint(recipient: receiver, amount: assets);
+            assets
         }
 
         fn withdraw(
             ref self: ContractState,
-            amount: u256,
+            assets: u256,
             receiver: ContractAddress,
             owner: ContractAddress,
-        ) {
-            self.erc20.burn(account: owner, :amount);
+        ) -> u256 {
+            self.erc20.burn(account: owner, amount: assets);
             IERC20Dispatcher { contract_address: self.underlying_token.read() }
-                .transfer(recipient: receiver, :amount);
+                .transfer(recipient: receiver, amount: assets);
+            assets
         }
     }
 }
@@ -84,11 +72,12 @@ pub mod MockVesuVault {
 /// Mock Vesu vault that returns zero tokens. Implements same interface for zero-out-amount tests.
 #[starknet::contract]
 pub mod MockVesuVaultNoop {
+    use core::num::traits::Zero;
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::token::erc20::{DefaultConfig, ERC20Component, ERC20HooksEmptyImpl};
+    use privacy::invoke_helpers::vesu_lending_helper::IVToken;
     use starknet::ContractAddress;
     use starknet::storage::StoragePointerWriteAccess;
-    use super::IMockVesuVault;
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
 
@@ -126,15 +115,19 @@ pub mod MockVesuVaultNoop {
     }
 
     #[abi(embed_v0)]
-    impl MockVesuVaultImpl of IMockVesuVault<ContractState> {
-        fn deposit(ref self: ContractState, amount: u256, receiver: ContractAddress) {}
+    impl MockVesuVaultImpl of IVToken<ContractState> {
+        fn deposit(ref self: ContractState, assets: u256, receiver: ContractAddress) -> u256 {
+            Zero::zero()
+        }
 
         fn withdraw(
             ref self: ContractState,
-            amount: u256,
+            assets: u256,
             receiver: ContractAddress,
             owner: ContractAddress,
-        ) {}
+        ) -> u256 {
+            Zero::zero()
+        }
     }
 }
 
@@ -142,13 +135,14 @@ pub mod MockVesuVaultNoop {
 /// tests.
 #[starknet::contract]
 pub mod MockVesuVaultOverflow {
+    use core::num::traits::Zero;
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::token::erc20::{DefaultConfig, ERC20Component, ERC20HooksEmptyImpl};
+    use privacy::invoke_helpers::vesu_lending_helper::IVToken;
     use starknet::ContractAddress;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starkware_utils::constants::MAX_U128;
-    use super::IMockVesuVault;
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
 
@@ -186,21 +180,23 @@ pub mod MockVesuVaultOverflow {
     }
 
     #[abi(embed_v0)]
-    impl MockVesuVaultImpl of IMockVesuVault<ContractState> {
-        fn deposit(ref self: ContractState, amount: u256, receiver: ContractAddress) {
+    impl MockVesuVaultImpl of IVToken<ContractState> {
+        fn deposit(ref self: ContractState, assets: u256, receiver: ContractAddress) -> u256 {
             let overflow_amount: u256 = MAX_U128.into() + 1;
             self.erc20.mint(recipient: receiver, amount: overflow_amount);
+            overflow_amount
         }
 
         fn withdraw(
             ref self: ContractState,
-            amount: u256,
+            assets: u256,
             receiver: ContractAddress,
             owner: ContractAddress,
-        ) {
+        ) -> u256 {
             let overflow_amount: u256 = MAX_U128.into() + 1;
             IERC20Dispatcher { contract_address: self.underlying_token.read() }
                 .transfer(recipient: receiver, amount: overflow_amount);
+            Zero::zero()
         }
     }
 }
