@@ -2661,7 +2661,9 @@ fn test_use_deposited_open_note_withdraw() {
     // User 2 withdraws using the deposited open note.
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     user_2
-        .withdraw_and_use_note_e2e(to_addr: user_2.address, :token, :amount, :channel_key, :index);
+        .withdraw_and_use_note_e2e(
+            to_addr: user_2.address, :token_addr, :amount, :channel_key, :index,
+        );
 
     // Verify tokens were transferred to user_2.
     assert_eq!(token.balance_of(address: user_2.address), amount.into());
@@ -3391,7 +3393,7 @@ fn test_withdraw_decrypt_user_addr() {
     let mut spy_events = spy_events();
     user_1
         .withdraw_and_use_note_e2e(
-            to_addr: user_1.address, :token, :amount, :channel_key, index: 0,
+            to_addr: user_1.address, :token_addr, :amount, :channel_key, index: 0,
         );
 
     // Auditor should be able to decrypt the user address.
