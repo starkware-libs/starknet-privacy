@@ -5,11 +5,13 @@ use privacy::actions::{
 };
 use privacy::errors::internal_errors;
 use privacy::helpers::mock_swap_executor::errors as mock_swap_executor_errors;
+use privacy::invoke_helpers::vesu_lending_helper::errors as vesu_errors;
 use privacy::objects::{EncOutgoingChannelInfo, Note, OpenNoteDeposit};
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
-    constants, deploy_mock_echo_with_salt, deploy_mock_reentrancy, deploy_mock_return_garbage,
-    deploy_mock_return_trailing_garbage, deploy_mock_swap_executor, invoke_mock_swap_executor_input,
+    VesuComponentsTrait, constants, deploy_mock_echo_with_salt, deploy_mock_reentrancy,
+    deploy_mock_return_garbage, deploy_mock_return_trailing_garbage, deploy_mock_swap_executor,
+    deploy_mock_vesu_vault_noop, invoke_mock_swap_executor_input,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{ProofFacts, compute_message_hash, open_note, to_write_once_action, unpack};
@@ -1439,6 +1441,351 @@ fn test_apply_swap_with_executor_deposit_assertions() {
     assert_eq!(output_token.balance_of(address: privacy_address), swap_amount.into());
     assert_eq!(output_token.balance_of(address: executor_addr), Zero::zero());
     assert_eq!(output_token.balance_of(address: amm_address), (swap_amount * 3).into());
+}
+
+#[test]
+fn test_apply_invoke_vesu_deposit() {
+    let mut test: Test = Default::default();
+    let vesu = test.deploy_vesu_components();
+    let deposit_amount = constants::DEFAULT_AMOUNT;
+    let helper_addr = vesu.lending_helper;
+    let vault_addr = vesu.vault;
+
+    // Create an open note with lending_helper as depositor.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    let recipient = user;
+    user.open_channel_e2e(:recipient, index: 0);
+    user.open_subchannel_e2e(:recipient, token_addr: vault_addr, index: 0);
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient, token_addr: vault_addr, index: 0, depositor: helper_addr,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id, _) = user.compute_open_note(:create_note_input);
+
+    // Verify open note was created with zero amount.
+    let initial_note = test.privacy.get_note(:note_id);
+    let (initial_salt, initial_amount) = unpack(packed_value: initial_note.packed_value);
+    assert_eq!(initial_salt, OPEN_NOTE_SALT);
+    assert_eq!(initial_amount, 0);
+
+    // Fund lending helper with underlying tokens.
+    vesu.underlying_token.supply(address: helper_addr, amount: deposit_amount);
+
+    // Verify balances before deposit.
+    assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), deposit_amount.into());
+    assert_eq!(vesu.vault_balance_of(address: test.privacy.address), 0);
+    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
+
+    // Create Invoke input for deposit.
+    let invoke_input = vesu.invoke_vesu_deposit_input(in_amount: deposit_amount, :note_id);
+
+    // Spy on events before executing.
+    let mut spy = spy_events();
+
+    // Execute the invoke action.
+    test.privacy.apply_actions([ServerAction::Invoke(invoke_input)].span());
+
+    // Verify open note was filled with deposit amount.
+    let filled_note = test.privacy.get_note(:note_id);
+    let (filled_salt, filled_amount) = unpack(packed_value: filled_note.packed_value);
+    assert_eq!(filled_salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, deposit_amount);
+    assert_eq!(filled_note.token, vault_addr);
+    assert_eq!(filled_note.depositor, helper_addr);
+
+    // Verify balances after deposit.
+    assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), deposit_amount.into());
+    assert_eq!(vesu.vault_balance_of(address: test.privacy.address), deposit_amount.into());
+    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
+
+    // Verify OpenNoteDeposited event emitted.
+    let expected_event = events::OpenNoteDeposited {
+        depositor: helper_addr, token: vault_addr, note_id, amount: deposit_amount,
+    };
+    let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(emitted_events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: emitted_events[0],
+        :expected_event,
+        expected_event_selector: @selector!("OpenNoteDeposited"),
+        expected_event_name: "OpenNoteDeposited",
+    );
+}
+
+
+#[test]
+fn test_apply_invoke_vesu_withdraw() {
+    let mut test: Test = Default::default();
+    let vesu = test.deploy_vesu_components();
+    let deposit_amount = constants::DEFAULT_AMOUNT;
+    let helper_addr = vesu.lending_helper;
+    let vault_addr = vesu.vault;
+    let underlying_token_addr = vesu.underlying_token.contract_address();
+
+    // Create an open note with lending_helper as depositor.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    let recipient = user;
+    user.open_channel_e2e(:recipient, index: 0);
+    user.open_subchannel_e2e(:recipient, token_addr: vault_addr, index: 0);
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient, token_addr: vault_addr, index: 0, depositor: helper_addr,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id, _) = user.compute_open_note(:create_note_input);
+
+    // Fund lending helper with underlying tokens.
+    vesu.underlying_token.supply(address: helper_addr, amount: deposit_amount);
+
+    // Deposit before withdraw.
+    let invoke_input = vesu.invoke_vesu_deposit_input(in_amount: deposit_amount, :note_id);
+    test.privacy.apply_actions([ServerAction::Invoke(invoke_input)].span());
+
+    // Verify balances before withdraw.
+    assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), deposit_amount.into());
+    assert_eq!(vesu.vault_balance_of(address: test.privacy.address), deposit_amount.into());
+    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
+
+    // Create open note with lending_helper as depositor for the withdraw.
+    user.open_subchannel_e2e(:recipient, token_addr: underlying_token_addr, index: 1);
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient, token_addr: underlying_token_addr, index: 0, depositor: helper_addr,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id, _) = user.compute_open_note(:create_note_input);
+
+    // Verify open note was created with zero amount.
+    let initial_note = test.privacy.get_note(:note_id);
+    let (initial_salt, initial_amount) = unpack(packed_value: initial_note.packed_value);
+    assert_eq!(initial_salt, OPEN_NOTE_SALT);
+    assert_eq!(initial_amount, 0);
+
+    // Withdraw vault to helper contract.
+    user
+        .withdraw_and_use_note_e2e(
+            to_addr: helper_addr,
+            token_addr: vault_addr,
+            amount: deposit_amount,
+            channel_key: user.compute_channel_key(recipient: user),
+            index: 0,
+        );
+
+    // Create Invoke input for withdraw.
+    let invoke_input = vesu.invoke_vesu_withdraw_input(in_amount: deposit_amount, :note_id);
+
+    // Spy on events before executing.
+    let mut spy = spy_events();
+
+    // Execute the invoke action.
+    test.privacy.apply_actions([ServerAction::Invoke(invoke_input)].span());
+
+    // Verify open note was filled with deposit amount.
+    let filled_note = test.privacy.get_note(:note_id);
+    let (filled_salt, filled_amount) = unpack(packed_value: filled_note.packed_value);
+    assert_eq!(filled_salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, deposit_amount);
+    assert_eq!(filled_note.token, underlying_token_addr);
+    assert_eq!(filled_note.depositor, helper_addr);
+
+    // Verify balances after withdraw.
+    assert_eq!(
+        vesu.underlying_token.balance_of(address: test.privacy.address), deposit_amount.into(),
+    );
+    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: test.privacy.address), 0);
+    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
+
+    // Verify OpenNoteDeposited event emitted.
+    let expected_event = events::OpenNoteDeposited {
+        depositor: helper_addr, token: underlying_token_addr, note_id, amount: deposit_amount,
+    };
+    let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(emitted_events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: emitted_events[0],
+        :expected_event,
+        expected_event_selector: @selector!("OpenNoteDeposited"),
+        expected_event_name: "OpenNoteDeposited",
+    );
+}
+
+#[test]
+fn test_apply_invoke_vesu_assertions() {
+    let mut test: Test = Default::default();
+    let vesu = test.deploy_vesu_components();
+    let amount = constants::DEFAULT_AMOUNT;
+    let helper_addr = vesu.lending_helper;
+    let vault_addr = vesu.vault;
+
+    // Create an open note with lending_helper as depositor.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    let recipient = user;
+    user.open_channel_e2e(:recipient, index: 0);
+    user.open_subchannel_e2e(:recipient, token_addr: vault_addr, index: 0);
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient, token_addr: vault_addr, index: 0, depositor: helper_addr,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id, _) = user.compute_open_note(:create_note_input);
+
+    // Base valid invoke input (will be modified for each error case).
+    let valid_invoke_input_deposit = vesu.invoke_vesu_deposit_input(in_amount: amount, :note_id);
+    let valid_invoke_input_withdraw = vesu.invoke_vesu_withdraw_input(in_amount: amount, :note_id);
+
+    // Catch ZERO_IN_TOKEN
+    let mut vesu_zero_vault = vesu;
+    vesu_zero_vault.vault = Zero::zero();
+    let zero_in_token_invoke_input = vesu_zero_vault
+        .invoke_vesu_withdraw_input(in_amount: amount, :note_id);
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::Invoke(zero_in_token_invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: vesu_errors::ZERO_IN_TOKEN);
+
+    // Catch ZERO_OUT_TOKEN
+    let zero_out_token_invoke_input = vesu_zero_vault
+        .invoke_vesu_deposit_input(in_amount: amount, :note_id);
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::Invoke(zero_out_token_invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: vesu_errors::ZERO_OUT_TOKEN);
+
+    // Catch ZERO_IN_AMOUNT
+    let zero_in_amount_invoke_input = vesu.invoke_vesu_deposit_input(in_amount: 0, :note_id);
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::Invoke(zero_in_amount_invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: vesu_errors::ZERO_IN_AMOUNT);
+
+    // Catch TOKENS_EQUAL
+    let mut vesu_tokens_equal = vesu;
+    vesu_tokens_equal.vault = vesu.underlying_token.contract_address();
+    let tokens_equal_invoke_input = vesu_tokens_equal
+        .invoke_vesu_deposit_input(in_amount: amount, :note_id);
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::Invoke(tokens_equal_invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: vesu_errors::TOKENS_EQUAL);
+
+    // Catch INSUFFICIENT_BALANCE (ERC20).
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::Invoke(valid_invoke_input_deposit)].span());
+    assert_panic_with_felt_error(:result, expected_error: 'ERC20: insufficient balance');
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::Invoke(valid_invoke_input_withdraw)].span());
+    assert_panic_with_felt_error(:result, expected_error: 'ERC20: insufficient balance');
+
+    // Catch ZERO_OUT_AMOUNT
+    let noop_vault = deploy_mock_vesu_vault_noop(
+        underlying_token: vesu.underlying_token.contract_address(),
+    );
+    let mut vesu_noop = vesu;
+    vesu_noop.vault = noop_vault;
+    vesu_noop.underlying_token.supply(address: helper_addr, :amount);
+    let noop_invoke_input = vesu_noop.invoke_vesu_deposit_input(in_amount: amount, :note_id);
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(noop_invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: vesu_errors::ZERO_OUT_AMOUNT);
+}
+
+#[test]
+fn test_apply_invoke_vesu_open_note_deposit_assertions() {
+    let mut test: Test = Default::default();
+    let vesu = test.deploy_vesu_components();
+    let amount = constants::DEFAULT_AMOUNT;
+    let helper_addr = vesu.lending_helper;
+    let vault_addr = vesu.vault;
+    let token_addr = vesu.underlying_token.contract_address();
+
+    // Setup user with viewing key and subchannel.
+    let mut user = test.new_user();
+    user.set_viewing_key_e2e();
+    let recipient = user;
+    user.open_channel_e2e(:recipient, index: 0);
+    user.open_subchannel_e2e(:recipient, token_addr: vault_addr, index: 0);
+
+    // Fund lending helper with underlying (enough for multiple attempts).
+    vesu.underlying_token.supply(address: helper_addr, amount: amount * 4);
+
+    // Catch NOTE_NOT_FOUND
+    let nonexistent_note_id = 'NONEXISTENT_NOTE';
+    let invoke_input = vesu
+        .invoke_vesu_deposit_input(in_amount: amount, note_id: nonexistent_note_id);
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+
+    // Catch NOTE_NOT_OPEN
+    let create_note_input = user
+        .new_enc_note_with_generated_salt(
+            recipient: user, token_addr: vault_addr, amount: amount, index: 0,
+        );
+    user.cheat_create_enc_note_e2e(:create_note_input);
+    let (note_id_enc, _) = user.compute_enc_note(:create_note_input);
+
+    let invoke_input = vesu.invoke_vesu_deposit_input(in_amount: amount, note_id: note_id_enc);
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
+
+    // Catch NOTE_ALREADY_DEPOSITED
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient, token_addr: vault_addr, index: 1, depositor: helper_addr,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id_filled, _) = user.compute_open_note(:create_note_input);
+
+    let invoke_input = vesu.invoke_vesu_deposit_input(in_amount: amount, note_id: note_id_filled);
+
+    // First deposit succeeds.
+    test.privacy.apply_actions([ServerAction::Invoke(invoke_input)].span());
+
+    // Second deposit to same note should fail.
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
+
+    // Catch DEPOSITOR_MISMATCH
+    let wrong_depositor: ContractAddress = 'WRONG_DEPOSITOR'.try_into().unwrap();
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient, token_addr: vault_addr, index: 2, depositor: wrong_depositor,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id_mismatch, _) = user.compute_open_note(:create_note_input);
+
+    let invoke_input = vesu.invoke_vesu_deposit_input(in_amount: amount, note_id: note_id_mismatch);
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::DEPOSITOR_MISMATCH);
+
+    // Catch TOKEN_MISMATCH: open note is for underlying; helper deposits share token (vault).
+    user.open_subchannel_e2e(:recipient, :token_addr, index: 1);
+    let create_note_input = user
+        .new_open_note_with_generated_random(
+            :recipient, :token_addr, index: 0, depositor: helper_addr,
+        );
+    user.cheat_create_open_note_e2e(:create_note_input);
+    let (note_id_token_mismatch, _) = user.compute_open_note(:create_note_input);
+
+    let invoke_input = vesu
+        .invoke_vesu_deposit_input(in_amount: amount, note_id: note_id_token_mismatch);
+    let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_MISMATCH);
 }
 
 #[test]

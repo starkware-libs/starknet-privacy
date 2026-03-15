@@ -7,6 +7,7 @@ pub mod helpers;
 #[cfg(feature: 'test_contracts')]
 pub mod helpers;
 pub mod interface;
+pub mod invoke_helpers;
 pub mod objects;
 pub mod privacy;
 #[cfg(test)]
