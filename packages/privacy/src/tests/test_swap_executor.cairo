@@ -41,7 +41,7 @@ fn test_privacy_invoke_basic(preexisting_balance: u128) {
             index: 0,
             depositor: test.privacy.swap_executor.address,
         );
-    user_1.cheat_create_open_note_e2e(:create_note_input);
+    user_1.cheat_create_open_note(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // Fund swap executor with input tokens.
@@ -258,7 +258,7 @@ fn test_privacy_invoke_caller_not_privacy_contract() {
             index: 0,
             depositor: test.privacy.swap_executor.address,
         );
-    user_1.cheat_create_open_note_e2e(:create_note_input);
+    user_1.cheat_create_open_note(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     // Verify note exists but is not yet deposited.

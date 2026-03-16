@@ -263,7 +263,7 @@ pub trait IClient<T> {
     ///   - [`CreateEncNote`](privacy::actions::ClientAction::CreateEncNote): Creates a new
     ///   encrypted note with a specified amount.
     ///   - [`CreateOpenNote`](privacy::actions::ClientAction::CreateOpenNote): Creates a new open
-    ///   note (zero-value, to be filled by a server action).
+    ///   note (zero-value, to be deposited to by a server action).
     ///   - [`Deposit`](privacy::actions::ClientAction::Deposit): Deposit funds into the contract.
     ///   - [`UseNote`](privacy::actions::ClientAction::UseNote): Uses up a note (creates a
     ///   nullifier for it).
