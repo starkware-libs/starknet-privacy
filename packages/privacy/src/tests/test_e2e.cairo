@@ -104,8 +104,7 @@ fn test_e2e_client_actions_one_by_one() {
             ]
                 .span(),
         );
-    let subchannel_marker = user_1
-        .compute_subchannel_marker(recipient: user_2, token_addr: token_addr);
+    let subchannel_marker = user_1.compute_subchannel_marker(recipient: user_2, :token_addr);
     assert!(test.privacy.subchannel_exists(:subchannel_marker));
     let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
@@ -194,7 +193,7 @@ fn test_e2e_client_actions_one_by_one() {
             ]
                 .span(),
         );
-    let nullifier_0 = user_2.compute_nullifier(sender: user_1, token_addr: token_addr, index: 0);
+    let nullifier_0 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 0);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
     assert_eq!(token.balance_of(address: user_1.address), amount_half.into());
     assert_eq!(token.balance_of(address: test.privacy.address), amount_half.into());
@@ -270,7 +269,7 @@ fn test_e2e_client_actions_one_by_one() {
             ]
                 .span(),
         );
-    let nullifier_1 = user_2.compute_nullifier(sender: user_1, token_addr: token_addr, index: 1);
+    let nullifier_1 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 1);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_1));
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
     assert_eq!(token.balance_of(address: user_1.address), amount_total.into());
@@ -383,8 +382,8 @@ fn test_e2e_deposit_withdraw_flow() {
             ]
                 .span(),
         );
-    let nullifier_0 = user.compute_nullifier(sender: user, token_addr: token_addr, index: 0);
-    let nullifier_1 = user.compute_nullifier(sender: user, token_addr: token_addr, index: 1);
+    let nullifier_0 = user.compute_nullifier(sender: user, :token_addr, index: 0);
+    let nullifier_1 = user.compute_nullifier(sender: user, :token_addr, index: 1);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_1));
     assert_eq!(token.balance_of(address: user.address), (2 * amount).into());
@@ -559,8 +558,8 @@ fn test_e2e_transfer_flow() {
             ]
                 .span(),
         );
-    let nullifier_0 = user_1.compute_nullifier(sender: user_1, token_addr: token_addr, index: 0);
-    let nullifier_1 = user_1.compute_nullifier(sender: user_1, token_addr: token_addr, index: 1);
+    let nullifier_0 = user_1.compute_nullifier(sender: user_1, :token_addr, index: 0);
+    let nullifier_1 = user_1.compute_nullifier(sender: user_1, :token_addr, index: 1);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_1));
     let (note_id_0, note_0) = user_1.compute_enc_note(create_note_input: create_for_2_t1);
@@ -605,8 +604,8 @@ fn test_e2e_transfer_flow() {
             ]
                 .span(),
         );
-    let nullifier_2 = user_1.compute_nullifier(sender: user_1, token_addr: token_addr, index: 2);
-    let nullifier_3 = user_1.compute_nullifier(sender: user_1, token_addr: token_addr, index: 3);
+    let nullifier_2 = user_1.compute_nullifier(sender: user_1, :token_addr, index: 2);
+    let nullifier_3 = user_1.compute_nullifier(sender: user_1, :token_addr, index: 3);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_2));
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_3));
     let (note_id_1, note_1) = user_1.compute_enc_note(create_note_input: create_for_2_t2);
@@ -636,7 +635,7 @@ fn test_e2e_transfer_flow() {
             ]
                 .span(),
         );
-    let nullifier_4 = user_1.compute_nullifier(sender: user_1, token_addr: token_addr, index: 4);
+    let nullifier_4 = user_1.compute_nullifier(sender: user_1, :token_addr, index: 4);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_4));
     let (note_id_2, note_2) = user_1.compute_enc_note(create_note_input: create_for_2_t3);
     assert_eq!(test.privacy.get_note(note_id: note_id_2), note_2);
@@ -996,8 +995,8 @@ fn test_e2e_multi_action_multi_token_one_tx() {
     let token_2_addr = token_2.contract_address();
     let amount = 100_u128;
     let amount_u256: u256 = amount.into();
-    user.increase_token_balance(token: token_1, amount: amount);
-    user.increase_token_balance(token: token_2, amount: amount);
+    user.increase_token_balance(token: token_1, :amount);
+    user.increase_token_balance(token: token_2, :amount);
     user.approve(token: token_1, amount: amount_u256);
     user.approve(token: token_2, amount: amount_u256);
 

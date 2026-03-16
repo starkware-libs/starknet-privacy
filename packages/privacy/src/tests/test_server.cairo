@@ -464,9 +464,7 @@ fn test_apply_transfer_to() {
     // Test transfer_to.
     let actions: Array<ServerAction> = array![
         ServerAction::TransferTo(
-            TransferToInput {
-                to_addr: recipient.address, token: token.contract_address(), amount: amount,
-            },
+            TransferToInput { to_addr: recipient.address, token: token.contract_address(), amount },
         ),
     ];
     test.privacy.apply_actions(actions.span());
@@ -486,9 +484,7 @@ fn test_apply_transfer_to_assertions() {
     // Catch INSUFFICIENT_BALANCE.
     let actions: Array<ServerAction> = array![
         ServerAction::TransferTo(
-            TransferToInput {
-                to_addr: recipient.address, token: token.contract_address(), amount: amount,
-            },
+            TransferToInput { to_addr: recipient.address, token: token.contract_address(), amount },
         ),
     ];
     assert_lt!(token.balance_of(address: test.privacy.address), amount.into());
