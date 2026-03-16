@@ -2,14 +2,9 @@
 
 ## Deposit
 4. Call server deposit twice with the same input.
-13. User A deposit one note, transfer to users B and C with leftover for themselves, all users withdraw.
 
 ## Transfer
 5. Call server transfer twice with the same input.
-8. User A split one note into two notes for themselves.
-10. Test transfer use and create note same channel.
-    10.1. Test transfer use and create note same channel same amount (actually same note).
-    10.4. Test transfer use notes same channel create note same channel (merging notes).
 
 ## Withdraw
 3. Call server withdraw twice with the same input.
