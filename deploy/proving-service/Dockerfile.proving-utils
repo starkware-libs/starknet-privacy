@@ -1,0 +1,33 @@
+# Clone the proving-utils repo at a pinned commit
+FROM debian:bookworm-slim AS proving-utils-source
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates sed && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+ARG PROVING_UTILS_COMMIT
+RUN git clone --depth 1 https://github.com/m-kus/proving-utils.git . && \
+    git fetch --depth 1 origin "$PROVING_UTILS_COMMIT" && \
+    git checkout "$PROVING_UTILS_COMMIT"
+# Relax exact cairo-lang version pins that conflict with Cargo.lock
+RUN sed -i 's/"=2\.14\.1-dev\.0"/"2.15.0"/g' Cargo.toml
+
+# Shared build environment: rustup, system deps
+FROM debian:bookworm-slim AS builder-base
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates \
+    build-essential pkg-config \
+    libssl-dev libgmp-dev \
+    clang \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
+    sh -s -- -y --default-toolchain none --profile minimal
+ENV PATH="/root/.cargo/bin:$PATH"
+
+# Build stwo_run_and_prove from the proving-utils source
+FROM builder-base AS proving-utils-builder
+WORKDIR /app
+COPY --from=proving-utils-source /app .
+RUN OPENSSL_STATIC=1 cargo build --release -p stwo-run-and-prove
+
+# Output stage: exported to local filesystem via --output type=local
+FROM scratch AS output
+COPY --from=proving-utils-builder /app/target/release/stwo-run-and-prove /stwo_run_and_prove

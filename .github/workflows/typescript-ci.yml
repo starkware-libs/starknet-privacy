@@ -2,17 +2,77 @@ name: TypeScript CI
 
 on:
   pull_request:
-    paths:
-      - 'sdk/**'
-      - 'packages/**'
-      - '.github/workflows/typescript-ci.yml'
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
+  lint:
+    name: SDK Lint & Format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            sdk:
+              - 'sdk/**'
+      - uses: actions/setup-node@v4
+        if: steps.filter.outputs.sdk == 'true'
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: sdk/package-lock.json
+      - if: steps.filter.outputs.sdk == 'true'
+        run: npm ci && npm run lint
+
   check:
-    name: Build & Test
+    name: SDK Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: sdk/package-lock.json
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Install Scarb
+        uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: "2.15.1"
+
+      - name: Install starknet-foundry via asdf
+        uses: asdf-vm/actions/install@v3
+        with:
+          tool_versions: |
+            starknet-foundry nightly-2026-02-03
+
+      - name: Regenerate Cairo contract artifacts
+        run: npm run generate
+
+      - name: Fetch proving API spec
+        env:
+          SEQUENCER_SPEC_REF: "avi/privacy/add-rpc-spec"
+        run: npm run fetch:proving-spec
+
+      - name: Run tests
+        run: npm run test:fast
+
+  devnet:
+    name: SDK Devnet Test
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -30,22 +90,18 @@ jobs:
       - name: Install Scarb
         uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.15.0"
+          scarb-version: "2.15.1"
 
-      - name: Install snforge
-        uses: foundry-rs/setup-snfoundry@v3
+      - name: Install starknet-devnet
+        run: |
+          curl -L https://github.com/m-kus/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-11/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
+          chmod +x /usr/local/bin/starknet-devnet
 
-      - name: Build Cairo contracts
-        working-directory: .
-        run: scarb build
-
-      - name: Install dependencies
+      - name: Install npm dependencies
         run: npm ci
 
-      - name: Build, lint, and test
-        run: |
-          if npm run ci --if-present 2>/dev/null; then
-            echo "Ran npm run ci"
-          else
-            npm run check
-          fi
+      - name: Build Cairo contracts
+        run: npm run scarb:build
+
+      - name: Run devnet tests
+        run: npm run test:devnet

@@ -37,7 +37,8 @@ export class PoolSimulator {
 
   constructor(
     private readonly userAddress: StarknetAddressBigint,
-    private readonly userViewingKey: bigint
+    private readonly userViewingKey: bigint,
+    private nextChannelIndex: number
   ) {}
 
   /**
@@ -78,8 +79,8 @@ export class PoolSimulator {
         // Withdrawals don't affect tracking state (handled by MockPoolContract)
         break;
 
-      case "FollowupCall":
-        // Followup calls don't affect tracking state
+      case "InvokeExternal":
+        // InvokeExternal doesn't affect tracking state
         break;
     }
   }
@@ -89,6 +90,10 @@ export class PoolSimulator {
    */
   getChannel(recipient: StarknetAddressBigint): Channel | undefined {
     return this.channels.get(recipient);
+  }
+
+  getNextChannelIndex(): number {
+    return this.nextChannelIndex;
   }
 
   /**
@@ -159,22 +164,28 @@ export class PoolSimulator {
   }
 
   private handleOpenChannel(input: OpenChannelInput): void {
-    const { recipient_addr, recipient_public_key } = input;
+    const { recipient_addr } = input;
+
+    // Look up the recipient's public key from the channel set up during setupChannel
+    const existingChannel = this.channels.get(recipient_addr);
+    assert(
+      existingChannel,
+      () =>
+        `Channel not found for recipient ${toHex(recipient_addr)} — setupChannel must be called first`
+    );
+    const recipientPublicKey = existingChannel.publicKey;
 
     // Compute the real channel key using the viewing key from constructor
     const channelKey = compute_channel_key(
       this.userAddress,
       toBigInt(this.userViewingKey),
       recipient_addr,
-      toBigInt(recipient_public_key)
+      toBigInt(recipientPublicKey)
     );
 
-    // Create/update channel
-    const channel = this.channels.get(recipient_addr, () => new Channel(recipient_public_key))!;
-
-    if (channelKey) {
-      channel.key = channelKey;
-    }
+    // Update channel with computed key
+    existingChannel.key = channelKey;
+    this.nextChannelIndex++;
 
     debugLog("pool-simulator", "OpenChannel", toHex(this.userAddress), "->", toHex(recipient_addr));
   }

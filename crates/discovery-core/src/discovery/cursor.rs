@@ -1,0 +1,159 @@
+//! Cursor types for paginated discovery.
+//!
+//! These cursors track progress across paginated discovery calls, allowing
+//! callers to resume discovery from where they left off.
+
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+use starknet_types_core::felt::Felt;
+
+use crate::privacy_pool::types::{secret_felt_serde, SecretFelt};
+
+/// Capacity limits for cursor growth during paginated discovery.
+///
+/// These caps prevent unbounded cursor expansion when processing accounts
+/// with many channels or subchannels. Discovery stops adding new entries
+/// once the cursor reaches the limit; existing entries are still processed.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CursorLimits {
+    /// Maximum number of channels in the cursor at once.
+    pub max_channels: usize,
+    /// Maximum number of subchannels per channel in the cursor at once.
+    pub max_subchannels: usize,
+    /// Maximum exponent for note index probe offsets.
+    /// Offsets: `[0, 1, 3, 7, ..., 2^max_note_log_index - 1]`.
+    /// Default 30 → 31 probes covering ~1 billion indices.
+    pub max_note_log_index: u32,
+}
+
+impl Default for CursorLimits {
+    fn default() -> Self {
+        Self {
+            max_channels: 256,
+            max_subchannels: 64,
+            max_note_log_index: 30,
+        }
+    }
+}
+
+/// Top-level cursor for channel discovery (shared by incoming and outgoing).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DiscoveryCursor {
+    /// All channels have been enumerated. Set by the discovery service once
+    /// the sentinel channel is reached. When `true`, no further channel
+    /// discovery is attempted — only channels already in the cursor are
+    /// processed.
+    #[serde(default)]
+    pub channel_discovery_complete: bool,
+
+    /// Total number of channels. For incoming: cached from `get_num_of_channels`.
+    /// For outgoing: set when the sentinel channel is found.
+    /// Used as optimization to avoid redundant RPC calls.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_n_channels: Option<u64>,
+
+    /// Last fully processed channel index. `None` = start from index 0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_channel_index: Option<u64>,
+
+    /// Channels with pending subchannel/note discovery.
+    /// - Incoming: keyed by sender address.
+    /// - Outgoing: keyed by recipient address.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub channels: HashMap<Felt, ChannelCursor>,
+}
+
+impl DiscoveryCursor {
+    /// Returns `true` when all discovery levels are complete: channels,
+    /// subchannels within each channel, and notes within each subchannel.
+    pub fn is_complete(&self) -> bool {
+        self.channel_discovery_complete && self.all_channels_processed()
+    }
+
+    /// Returns `true` when every channel currently in the cursor has
+    /// completed subchannel and note discovery. Also returns `true` when
+    /// the cursor has no channels (vacuously).
+    ///
+    /// Used by sync orchestrators to decide whether to discover new
+    /// channels vs. process pending subchannel/note work.
+    pub fn all_channels_processed(&self) -> bool {
+        self.channels.values().all(ChannelCursor::is_complete)
+    }
+}
+
+/// Cursor state for a single channel (shared by incoming and outgoing).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChannelCursor {
+    /// The channel key for this channel.
+    #[serde(
+        serialize_with = "secret_felt_serde::serialize",
+        deserialize_with = "secret_felt_serde::deserialize"
+    )]
+    pub channel_key: SecretFelt,
+
+    /// All subchannels have been enumerated. Set by the discovery service
+    /// once the sentinel subchannel is reached. When `true`, no further
+    /// subchannel discovery is attempted — only subchannels already in the
+    /// cursor are processed.
+    #[serde(default)]
+    pub subchannel_discovery_complete: bool,
+
+    /// Last fully processed subchannel index. `None` = start from index 0.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_subchannel_index: Option<u64>,
+
+    /// Subchannels with pending note discovery, keyed by token address.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub subchannels: HashMap<Felt, SubchannelCursor>,
+}
+
+impl ChannelCursor {
+    /// Returns `true` when subchannel discovery is complete and all
+    /// subchannels have finished note discovery.
+    pub fn is_complete(&self) -> bool {
+        self.subchannel_discovery_complete
+            && self
+                .subchannels
+                .values()
+                .all(|sc| sc.note_discovery_complete)
+    }
+}
+
+/// Cursor state for a single subchannel (shared by incoming and outgoing).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SubchannelCursor {
+    /// All notes in this subchannel have been discovered. Set when the
+    /// note discovery scan completes without budget exhaustion.
+    #[serde(default)]
+    pub note_discovery_complete: bool,
+
+    /// Last scanned note index (incoming scan progress only).
+    /// Outgoing flow does not use this — it reads `last_existing_index()`
+    /// from `total_n_notes`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_note_index: Option<u64>,
+
+    /// Cached total number of notes in this subchannel (from boundary finding).
+    /// Analogous to `total_n_channels` at the channel level.
+    /// `None` = not yet probed. `Some(0)` = empty. `Some(n)` = notes at indices 0..n-1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_n_notes: Option<u64>,
+}
+
+impl SubchannelCursor {
+    /// Returns the next note index to scan from.
+    ///
+    /// If `last_note_index` is `Some(i)`, returns `i + 1` (resume after last
+    /// scanned). If `None`, returns 0 (fresh cursor).
+    pub fn start_index(&self) -> u64 {
+        self.last_note_index.map_or(0, |i| i + 1)
+    }
+
+    /// Returns the last existing note index, derived from the cached total.
+    /// `None` if not yet probed or subchannel is empty.
+    pub fn last_existing_index(&self) -> Option<u64> {
+        self.total_n_notes.and_then(|n| n.checked_sub(1))
+    }
+}

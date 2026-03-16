@@ -3,7 +3,10 @@ import privacy.utils
 inductive Event where
   | Register (addralice kalice: ℕ)
   | CreateOpenNote (note_id user_enc: ℕ)
+  | UseNote (nullifier: ℕ)
+  | Withdraw (user_enc amount token: ℕ)
   | None
+deriving DecidableEq
 
 inductive ServerAction where
   -- Writes `val` at `(t, key)`.
@@ -13,8 +16,6 @@ inductive ServerAction where
   -- Appends `val` to a list at `(t, key ++ [idx])`.
   -- `(t_idx, key)` is used to store the length of the list.
   | Append (t_idx t: MemoryType) (key: List ℕ) (val: ℕ) (h: t_idx = .ChannelsJ ∧ t = .Channels)
-  -- Reads the value and asserts that it is equal to `val`.
-  | ReadAssert (t: MemoryType) (key: List ℕ) (val: ℕ)
   -- Deposits `amount` of `token` into the open note `note_id`.
   | OpenDeposit (note_id amount token: ℕ)
   -- Emits an event.
@@ -29,7 +30,6 @@ def ServerAction.run (crypto: Crypto) (action: ServerAction) (m: Memory) : Memor
     let m := write t_idx key (idx + 1) m
     let m := write t (key ++ [idx]) val m
     (m, true)
-  | .ReadAssert t key val => (m, m t key = val)
   | .OpenDeposit note_id amount token =>
     let old_value := m .Notes [note_id, 0]
     let m := write .Notes [note_id, 0] (crypto.pack 1 amount) m

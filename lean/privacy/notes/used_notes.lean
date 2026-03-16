@@ -4,8 +4,8 @@ import privacy.notes.notes
 import privacy.notes.note_implies
 import privacy.subchannels.subchannels
 
-def note_used (crypto: Crypto) (m: Memory) (c token i₀ i₁ kbob: ℕ) : Prop :=
-  m .Nullifiers [crypto.hash [c, token, i₀, i₁, kbob]] ≠ 0
+def note_used (crypto: Crypto) (m: Memory) (c token i kbob: ℕ) : Prop :=
+  m .Nullifiers [crypto.hash [c, token, i, kbob]] ≠ 0
 
 structure UseImplies₀
     {crypto: Crypto} (rm: ReachableMemory crypto) (inp: UseNoteInput) where
@@ -17,12 +17,12 @@ structure UseImplies₀
 abbrev UseImplies₀.inp_create
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: UseNoteInput}
     (self: UseImplies₀ rm inp) : CreateNoteInput :=
-  ⟨self.addralice, self.kalice, inp.addrbob, crypto.priv_to_pub inp.kbob, inp.token, inp.i₀, inp.i₁, self.r_create, self.amount_create⟩
+  ⟨self.addralice, self.kalice, inp.addrbob, crypto.priv_to_pub inp.kbob, inp.token, inp.i, self.r_create, self.amount_create⟩
 
 structure UseImplies
     {crypto: Crypto} (rm: ReachableMemory crypto) (inp: UseNoteInput)
     extends UseImplies₀ rm inp where
-  h_note_used: note_used crypto rm.m inp.c inp.token inp.i₀ inp.i₁ inp.kbob
+  h_note_used: note_used crypto rm.m inp.c inp.token inp.i inp.kbob
   note_created: NoteImplies rm (toUseImplies₀.inp_create)
   h_c: toUseImplies₀.inp_create.c crypto = inp.c
 
@@ -137,9 +137,9 @@ theorem UseImplies.from_action
   case tail h => exact (ih h |>.some).next success
 
 theorem UseImplies.from_note_used
-    {crypto: Crypto} {rm: ReachableMemory crypto} {c token i₀ i₁ kbob: ℕ}
-    (h: note_used crypto rm c token i₀ i₁ kbob) :
-    ∃ addrbob amount, Nonempty (UseImplies rm ⟨c, addrbob, kbob, token, i₀, i₁, amount⟩) := by
+    {crypto: Crypto} {rm: ReachableMemory crypto} {c token i kbob: ℕ}
+    (h: note_used crypto rm c token i kbob) :
+    ∃ addrbob amount, Nonempty (UseImplies rm ⟨c, addrbob, kbob, token, i, amount⟩) := by
   revert rm
   apply ReachableMemory.induction
   case inv₀ => intro h; trivial
@@ -149,7 +149,7 @@ theorem UseImplies.from_note_used
   case UseNote inp =>
     let info := use_note_info crypto inp rm success
     have ⟨kalice, ⟨subchannel_imp⟩⟩ := SubchannelImplies.from_subchannel_marker_exists info.subchannel_exists
-    by_cases h_is_same : crypto.hash [c, token, i₀, i₁, kbob] = inp.nullifier crypto
+    by_cases h_is_same : crypto.hash [c, token, i, kbob] = inp.nullifier crypto
     case pos =>
       use inp.addrbob, inp.amount
       have := crypto.h_hash h_is_same
@@ -194,8 +194,8 @@ theorem UseImplies.from_used_note_actions
 theorem note_used_monotone_extend
     {crypto: Crypto} {rm rm': ReachableMemory crypto}
     (h_extends: rm'.extends rm)
-    (h: note_used crypto rm c token i₀ i₁ kbob) :
-    note_used crypto rm' c token i₀ i₁ kbob := by
+    (h: note_used crypto rm c token i kbob) :
+    note_used crypto rm' c token i kbob := by
   have ⟨addrbob, amount, ⟨use_imp⟩⟩ := UseImplies.from_note_used h
   have ⟨ℓ, h_extends⟩ := h_extends
   have := h_extends ▸ (List.mem_append (s:=ℓ)).2 (Or.inr use_imp.h_action)

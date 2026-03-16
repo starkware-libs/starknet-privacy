@@ -27,39 +27,28 @@
     "dist"
   ],
   "scripts": {
-    "scarb:build": "cd .. && scarb build",
+    "scarb:build": "cd .. && scarb cache clean && scarb build --features test_contracts",
     "generate:abi": "npx tsx scripts/generate-abi.ts",
     "generate:client-actions": "npx tsx scripts/generate-client-actions.ts",
-    "generate:hashes": "npx tsx scripts/generate-hashes.ts && prettier --write src/utils/hashes.ts",
+    "generate:cairo-hashes": "npx tsx scripts/generate-hashes.ts && prettier --write src/utils/hashes.ts",
     "generate:pool-interface": "npx tsx scripts/generate-pool-interface.ts",
     "generate:cairo-refs": "cd .. && scarb test -p privacy -- --color always generate_reference --include-ignored 2>&1 | tee target/cairo-refs-output.txt && cd sdk && npx tsx scripts/generate-cairo-refs.ts ../target/cairo-refs-output.txt",
-    "generate": "npm run scarb:build && npm run generate:abi && npm run generate:client-actions && npm run generate:hashes && npm run generate:pool-interface && npm run generate:cairo-refs",
+    "generate": "npm run scarb:build && npm run generate:abi && npm run generate:client-actions && npm run generate:cairo-hashes && npm run generate:pool-interface && npm run generate:cairo-refs",
     "build": "tsc -p tsconfig.build.json",
     "build:browser": "npx tsx scripts/build-browser.ts",
-    "lint": "eslint src tests --fix",
-    "lint:check": "eslint src tests",
-    "format": "prettier --write src tests",
-    "format:check": "prettier --check src tests",
+    "lint": "prettier --check src/ tests/ && eslint src/ tests/ && tsc --noEmit -p tsconfig.build.json",
+    "format": "prettier --write src/ tests/ && eslint --fix src/ tests/",
     "test": "vitest run",
     "test:fast": "vitest run --exclude '**/devnet.test.ts' --exclude '**/parallel-discovery.test.ts'",
+    "test:devnet": "vitest run --coverage.enabled=false tests/devnet.test.ts",
     "test:browser": "vitest run --browser.enabled --coverage.enabled=false --exclude '**/devnet.test.ts'",
     "test:watch": "vitest watch",
-    "all": "npm run build && npm run lint && npm run format && npm run test",
-    "check": "npm run build && npm run lint:check && npm run format:check && npm run test",
-    "check:fast": "npm run build && npm run lint:check && npm run format:check && npm run test:fast",
-    "ci": "npm run generate && npm run check",
+    "all": "npm run build && npm run lint && npm run test",
+    "check": "npm run build && npm run lint && npm run test",
+    "check:fast": "npm run build && npm run lint && npm run test:fast",
     "clean": "rm -rf dist",
     "decode-error": "npx tsx scripts/decode-error.ts",
-    "prepare": "cd .. && git config core.hooksPath .husky || true"
-  },
-  "lint-staged": {
-    "*.{ts,js}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{json,md}": [
-      "prettier --write"
-    ]
+    "fetch:proving-spec": "npx tsx scripts/fetch-proving-api-spec.ts"
   },
   "keywords": [
     "starknet",
@@ -69,21 +58,20 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "starknet": "^9.2.1",
-    "starknet-devnet": "^0.7.2"
+    "@starknet-io/starknet-types-09": "npm:@starknet-io/types-js@~0.9.1",
+    "starknet": "github:starkware-libs/starknet.js#375736f96cf928b1555407767d96a7751b546808",
+    "starknet-devnet": "^0.7.2",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
-    "@commitlint/cli": "^20.2.0",
-    "@commitlint/config-conventional": "^20.2.0",
     "@eslint/js": "^9.39.2",
     "@types/node": "^24.10.1",
     "@vitest/browser": "^4.0.17",
     "@vitest/browser-playwright": "^4.0.17",
     "@vitest/coverage-v8": "^4.0.17",
+    "ajv": "^8.18.0",
     "esbuild": "^0.27.2",
     "eslint": "^9.39.2",
-    "husky": "^9.1.7",
-    "lint-staged": "^16.2.7",
     "playwright": "^1.58.1",
     "prettier": "^3.7.4",
     "typescript": "^5.9.3",

@@ -15,6 +15,7 @@ import type {
   Note,
   PrivateTransfersBuilder,
   PrivateTransfersInterface,
+  ProofInvocationResult,
   StarknetAddress,
   StarknetAddressBigint,
   ViewingKey,
@@ -24,7 +25,7 @@ import { SetupRequirement } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { toBigInt } from "../utils/crypto.js";
 import { PrivateTransfersBuilderImpl } from "./builders.js";
-import type { NotesCursor } from "./channel.js";
+import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./channel.js";
 
 /**
  * Abstract base class that implements the common functionality for PrivateTransfers.
@@ -63,16 +64,13 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
    */
 
   async discoverChannels(
-    recipients: StarknetAddress[],
-    params?: { cursor?: AddressMap<Channel> }
-  ): Promise<{
-    timestamp: BlockIdentifier;
-    channels: AddressMap<Channel>;
-  }> {
+    recipients: RecipientsFilter<StarknetAddress>,
+    params?: { cursor?: ChannelCursor }
+  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }> {
     return this.discoveryProvider.discoverChannels(
       this.user,
       await this.getViewingKey(),
-      recipients.map(toBigInt),
+      Array.isArray(recipients) ? recipients.map(toBigInt) : recipients,
       params
     );
   }
@@ -103,4 +101,12 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
    * Execute raw actions - must be implemented by subclasses
    */
   abstract execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /**
+   * Build a proof transaction for the raw actions - must be implemented by subclasses
+   */
+  abstract createProofInvocation(
+    actions: Actions,
+    options?: ExecuteOptions
+  ): Promise<ProofInvocationResult>;
 }

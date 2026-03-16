@@ -9,14 +9,14 @@ import privacy.notes.scanned_note
 import privacy.notes.note_implies
 
 structure ScanNoteContext (crypto: Crypto) (m: Memory) extends ScanTokenContext crypto m where
-  h_notes: ∀ c token i₀, ∃ i₁, m .Notes [crypto.hash [c, token, i₀, i₁], 0] = 0
+  h_notes: ∀ c token, ∃ i, m .Notes [crypto.hash [c, token, i], 0] = 0
 
 theorem ScanNoteContext.from {crypto: Crypto} (rm: ReachableMemory crypto) :
     ScanNoteContext crypto rm := {
   toScanTokenContext := .from rm,
   h_notes := by
-    intro c token i₀
-    obtain ⟨bound, h_bound⟩ := notes_contiguous c token i₀
+    intro c token
+    obtain ⟨bound, h_bound⟩ := notes_contiguous c token
     use bound
     have := (h_bound bound).not.mp (Nat.lt_irrefl bound)
     unfold note_exists at this
@@ -24,73 +24,55 @@ theorem ScanNoteContext.from {crypto: Crypto} (rm: ReachableMemory crypto) :
     exact this
   }
 
-----------------------------------
--- Scan notes for (channel, i₀) --
-----------------------------------
-
-def scan_notes_for_channel_i₀
-    {crypto: Crypto} {m: Memory} (context: ScanNoteContext crypto m)
-    (c token i₀: ℕ)
-    : List ScannedNote :=
-  let bound := Nat.find (context.h_notes c token i₀)
-  (List.range bound).map (λ i₁ ↦ ⟨c, token, i₀, i₁⟩)
-
--- Once a note is discoverable, it stays discoverable.
-theorem notes_discoverable_monotone {crypto: Crypto} {rm: ReachableMemory crypto} {action: Action}
-    (success: (run_action crypto action rm.m).success)
-    {c token i₀: ℕ} {sn: ScannedNote}
-    (h : sn ∈ scan_notes_for_channel_i₀ (.from rm) c token i₀) :
-    sn ∈ scan_notes_for_channel_i₀ (.from (rm.add action success)) c token i₀ := by
-  simp only [scan_notes_for_channel_i₀, List.mem_map, List.mem_range, Nat.lt_find_iff] at *
-  obtain ⟨i₁, h⟩ := h
-  use i₁
-  constructor
-  · intro i₁' i₁'_le_i₁
-    have := h.1 i₁' i₁'_le_i₁
-    let note_id := crypto.hash [c, token, i₀, i₁']
-    exact note_exists_monotone success (h.1 i₁' i₁'_le_i₁)
-  · exact h.2
-
-theorem NoteImplies.scan_i₀
-    {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
-    (note_imp: NoteImplies rm inp) :
-    inp.to_scanned_note crypto ∈ scan_notes_for_channel_i₀ (.from rm) (inp.c crypto) inp.token inp.i₀ := by
-  simp only [scan_notes_for_channel_i₀, List.mem_map, List.mem_range, Nat.lt_find_iff]
-  use inp.i₁
-  constructor
-  · intro i₁' i₁'_le_i₁
-    obtain ⟨bound, h_bound⟩ := notes_contiguous (inp.c crypto) inp.token inp.i₀
-    have := (h_bound inp.i₁).2 note_imp.h_note_exists
-    have := (h_bound i₁').1 (by omega)
-    exact this
-  · rfl
-
 ----------------------------
 -- Scan notes for channel --
 ----------------------------
 
 def scan_notes_for_channel
     {crypto: Crypto} {m: Memory} (context: ScanNoteContext crypto m)
-    (c token: ℕ) : List ScannedNote :=
-  (List.range crypto.MAX_I₀).flatMap
-    λ i₀ ↦ scan_notes_for_channel_i₀ context c token i₀
+    (c token: ℕ)
+    : List ScannedNote :=
+  let bound := Nat.find (context.h_notes c token)
+  (List.range bound).map (λ i ↦ ⟨c, token, i⟩)
 
-theorem scan_notes_for_channel_props {crypto: Crypto} {rm: ReachableMemory crypto}
-    {sn: ScannedNote} {c token: ℕ}
-    (h: sn ∈ scan_notes_for_channel (.from rm) c token) :
-    sn.c = c ∧ sn.token = token := by
-  simp only [scan_notes_for_channel, scan_notes_for_channel_i₀,
-    List.mem_flatMap, List.mem_range, List.mem_map, Nat.lt_find_iff] at h
-  obtain ⟨i₀, h_i₀, i₁, h₀, h₁⟩ := h
-  simp [←h₁]
+-- Once a note is discoverable, it stays discoverable.
+theorem notes_discoverable_monotone {crypto: Crypto} {rm: ReachableMemory crypto} {action: Action}
+    (success: (run_action crypto action rm.m).success)
+    {c token: ℕ} {sn: ScannedNote}
+    (h : sn ∈ scan_notes_for_channel (.from rm) c token) :
+    sn ∈ scan_notes_for_channel (.from (rm.add action success)) c token := by
+  simp only [scan_notes_for_channel, List.mem_map, List.mem_range, Nat.lt_find_iff] at *
+  obtain ⟨i, h⟩ := h
+  use i
+  constructor
+  · intro i' i'_le_i
+    have := h.1 i' i'_le_i
+    let note_id := crypto.hash [c, token, i']
+    exact note_exists_monotone success (h.1 i' i'_le_i)
+  · exact h.2
 
 -- Existing note is discoverable via `scan_notes_for_channel`.
 theorem NoteImplies.scan_for_channel
     {crypto: Crypto} {rm: ReachableMemory crypto} {inp: CreateNoteInput}
     (note_imp: NoteImplies rm inp) :
     inp.to_scanned_note crypto ∈ scan_notes_for_channel (.from rm) (inp.c crypto) inp.token := by
-  simp only [scan_notes_for_channel, List.mem_flatMap, List.mem_range]
-  use inp.i₀, note_imp.h_i₀, note_imp.scan_i₀
+  simp only [scan_notes_for_channel, List.mem_map, List.mem_range, Nat.lt_find_iff]
+  use inp.i
+  constructor
+  · intro i' i'_le_i
+    obtain ⟨bound, h_bound⟩ := notes_contiguous (inp.c crypto) inp.token
+    have := (h_bound inp.i).2 note_imp.h_note_exists
+    have := (h_bound i').1 (by omega)
+    exact this
+  · rfl
+
+theorem scan_notes_for_channel_props {crypto: Crypto} {rm: ReachableMemory crypto}
+    {sn: ScannedNote} {c token: ℕ}
+    (h: sn ∈ scan_notes_for_channel (.from rm) c token) :
+    sn.c = c ∧ sn.token = token := by
+  simp only [scan_notes_for_channel, List.mem_range, List.mem_map, Nat.lt_find_iff] at h
+  obtain ⟨i, h₀, h₁⟩ := h
+  simp [←h₁]
 
 ------------------------------
 -- Scan notes for recipient --
@@ -140,7 +122,7 @@ theorem NoteImplies.scan_for_recipient
     ⟨inp.to_scanned_note crypto, inp.addralice, inp.addrbob⟩ ∈
       scan_notes_for_recipient (.from rm) inp.addrbob note_imp.subchannel.channel.kbob := by
   rw [scan_notes_for_recipient']
-  refine ⟨by rfl, ?_, note_imp.subchannel.scan, note_imp.scan_for_channel⟩
+  refine ⟨by rfl, ?_, note_imp.subchannel.scan_for_channel, note_imp.scan_for_channel⟩
   · have := note_imp.subchannel.channel.scan
     simp only [OpenChannelInput.c, CreateNoteInput.c, ←NoteImplies.h_kalice] at this
     exact this
@@ -168,9 +150,6 @@ theorem NoteImplies.from_scan_notes_for_recipient
   rw [scan_notes_for_recipient'] at *
   obtain ⟨h_addrbob, h_scan_channels, _, h'⟩ := h
   unfold scan_notes_for_channel at h'
-  simp only [List.mem_flatMap, List.mem_range] at h'
-  obtain ⟨i₀, i₀_lt, h'⟩ := h'
-  unfold scan_notes_for_channel_i₀ at h'
   simp only [List.mem_map, List.mem_range, Nat.lt_find_iff] at h'
   obtain ⟨i₁, h', h_sn⟩ := h'
   replace h' := h' i₁ (by rfl)

@@ -9,12 +9,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      - uses: foundry-rs/setup-snfoundry@v3
-        with:
-          starknet-foundry-version: "0.54.1"
       - uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.15.0"
+          scarb-version: "2.15.1"
+
+      - name: Install starknet-foundry via asdf
+        uses: asdf-vm/actions/install@v3
+        with:
+          tool_versions: starknet-foundry nightly-2026-02-20
 
       - name: Run tests
         run: scarb test -w

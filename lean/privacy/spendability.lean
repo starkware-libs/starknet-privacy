@@ -10,8 +10,7 @@ def spend_note (crypto: Crypto) (m: Memory) (addrbob: ℕ) (kbob: crypto.Private
   {
     c := sn.c,
     token := sn.token,
-    i₀ := sn.i₀,
-    i₁ := sn.i₁,
+    i := sn.i,
     kbob := kbob,
     addrbob := addrbob,
     amount := sn.amount crypto m,
@@ -22,7 +21,7 @@ theorem spendable_note
     {crypto: Crypto} {rm: ReachableMemory crypto} {sn: ScannedNote}
     (bob: UserPrivKey crypto rm.m)
     (h_note_in_scan: sn ∈ scan_notes_for_recipient₀ (.from rm) bob.addr bob.k)
-    (h_not_used: ¬note_used crypto rm.m sn.c sn.token sn.i₀ sn.i₁ bob.k)
+    (h_not_used: ¬note_used crypto rm.m sn.c sn.token sn.i bob.k)
     (h_amount_ne_zero: sn.amount crypto rm.m ≠ 0) :
     let inp := spend_note crypto rm bob.addr bob.k sn
     (use_note crypto inp rm |> process_action crypto rm).success := by
@@ -55,7 +54,7 @@ theorem spendable_note
   · exact h_amount_ne_zero
   · unfold note_used at h_not_used
     simp at h_not_used
-    exact h_not_used
+    exact ⟨h_not_used, by trivial⟩
 
 def spend_notes
     (crypto: Crypto) (m: Memory) (addrbob: ℕ) (kbob: crypto.PrivateKeys)
@@ -90,7 +89,7 @@ theorem spendable_notes
     {crypto: Crypto} {rm: ReachableMemory crypto} {sns: List ScannedNote}
     (bob: UserPrivKey crypto rm.m)
     (h_note_in_scan: sns ⊆ scan_notes_for_recipient₀ (.from rm) bob.addr bob.k)
-    (h_not_used: ∀ sn ∈ sns, ¬note_used crypto rm.m sn.c sn.token sn.i₀ sn.i₁ bob.k)
+    (h_not_used: ∀ sn ∈ sns, ¬note_used crypto rm.m sn.c sn.token sn.i bob.k)
     (h_amount_ne_zero: ∀ sn ∈ sns, sn.amount crypto rm ≠ 0)
     (h_nodup: sns.Nodup) :
     let res := spend_notes crypto rm bob.addr bob.k sns
@@ -98,7 +97,7 @@ theorem spendable_notes
       rm'.m = res.2 ∧
       scan_notes_for_recipient₀ (.from rm') bob.addr bob.k = scan_notes_for_recipient₀ (.from rm) bob.addr bob.k ∧
       rm'.actions = res.1.map (λ inp ↦ Action.UseNote inp) ++ rm.actions ∧
-      (∀ sn ∈ sns, note_used crypto rm'.m sn.c sn.token sn.i₀ sn.i₁ bob.k) ∧
+      (∀ sn ∈ sns, note_used crypto rm'.m sn.c sn.token sn.i bob.k) ∧
       (∀ sn: ScannedNote, sn.amount crypto rm' = sn.amount crypto rm)
     ) := by
   induction sns
@@ -170,7 +169,7 @@ theorem spendable_notes
 
 def spend_all (crypto: Crypto) (rm: ReachableMemory crypto) (addrbob: ℕ) (kbob: crypto.PrivateKeys) : List UseNoteInput :=
   let sns := scan_notes_for_recipient₀ (.from rm) addrbob kbob
-    |>.filter (λ sn ↦ rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, kbob]] = 0)
+    |>.filter (λ sn ↦ rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i, kbob]] = 0)
   let res := spend_notes crypto rm addrbob kbob sns
   res.1
 
@@ -185,7 +184,7 @@ theorem spend_all_props
       + sum_deposit_amounts crypto rm' bob.addr token =
       sum_use_note_amounts crypto rm' bob.addr token := by
   let sns := scan_notes_for_recipient₀ (.from rm) bob.addr bob.k
-    |>.filter (λ sn ↦ rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i₀, sn.i₁, bob.k]] = 0)
+    |>.filter (λ sn ↦ rm.m .Nullifiers [crypto.hash [sn.c, sn.token, sn.i, bob.k]] = 0)
     |>.filter (λ sn ↦ sn.amount crypto rm.m ≠ 0)
   let used_note_inps := spend_all crypto rm bob.addr bob.k
 
@@ -194,7 +193,7 @@ theorem spend_all_props
     rw [List.mem_filter, List.mem_filter] at h_sn
     exact h_sn.1.1
 
-  have h_not_used: ∀ sn ∈ sns, ¬note_used crypto rm.m sn.c sn.token sn.i₀ sn.i₁ bob.k := by
+  have h_not_used: ∀ sn ∈ sns, ¬note_used crypto rm.m sn.c sn.token sn.i bob.k := by
     intro sn h_sn
     rw [List.mem_filter, List.mem_filter, decide_eq_true_eq] at h_sn
     unfold note_used
@@ -229,11 +228,11 @@ theorem spend_all_props
   rw [←h₃, h_amounts]
   rw [h_scan_notes_for_recipient] at h₀
 
-  have : rm'.m MemoryType.Nullifiers [crypto.hash [sn.c, token, sn.i₀, sn.i₁, bob.k]] = 0 := by
+  have : rm'.m MemoryType.Nullifiers [crypto.hash [sn.c, token, sn.i, bob.k]] = 0 := by
     by_contra h_nullifier_nz
     exact h_nullifier_nz (h₁ ▸ h₂)
 
-  have : rm.m MemoryType.Nullifiers [crypto.hash [sn.c, token, sn.i₀, sn.i₁, bob.k]] = 0 := by
+  have : rm.m MemoryType.Nullifiers [crypto.hash [sn.c, token, sn.i, bob.k]] = 0 := by
     rw [←h₁] at *
     by_contra h_nullifier_nz
     exact note_used_monotone_extend h_extends h_nullifier_nz this

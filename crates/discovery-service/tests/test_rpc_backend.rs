@@ -15,44 +15,27 @@
 
 mod common;
 
-use std::path::Path;
-
-use common::{DevnetClient, DevnetConfig, DumpMetadata};
-use discovery_core::storage::{IViews, StorageBackend};
-use discovery_service::rpc_backend::{RpcBackend, RpcConfig};
+use common::setup_devnet_with_dump;
+use discovery_core::privacy_pool::events::{IEvents, PrivacyPoolEventContent};
+use discovery_core::privacy_pool::views::IViews;
+use discovery_core::storage_backend::StorageBackend;
+use discovery_service::chain_state::ChainState;
+use discovery_service::config::RpcConfig;
+use discovery_service::rpc_backend::RpcBackend;
 use expect_test::expect;
 use starknet_core::types::Felt;
-use url::Url;
-
-const FIXTURES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
-
-async fn setup_devnet() -> (DevnetClient, DumpMetadata) {
-    let mut devnet = DevnetClient::spawn(DevnetConfig {
-        seed: 42,
-        accounts: 3,
-        ..Default::default()
-    })
-    .expect("failed to spawn devnet");
-
-    let metadata = devnet
-        .load_dump(Path::new(FIXTURES_DIR))
-        .await
-        .expect("failed to load dump");
-
-    (devnet, metadata)
-}
 
 #[tokio::test]
 async fn test_public_key_lookup() {
-    let (devnet, metadata) = setup_devnet().await;
+    let (devnet, metadata) = setup_devnet_with_dump().await;
 
-    let backend = RpcBackend::new(RpcConfig::new(
-        Url::parse(&devnet.rpc_url()).unwrap(),
-        metadata.contract_address,
-    ))
-    .unwrap();
+    let rpc_config = RpcConfig {
+        url: devnet.rpc_url(),
+        ..Default::default()
+    };
+    let backend = RpcBackend::new(rpc_config).unwrap();
 
-    let snapshot = backend.snapshot(None).await.unwrap();
+    let snapshot = backend.snapshot(metadata.contract_address, None).await;
 
     // Alice should have a registered public key
     let alice_pubkey = snapshot
@@ -70,4 +53,96 @@ async fn test_public_key_lookup() {
         .await
         .unwrap();
     assert_eq!(random_pubkey, Felt::ZERO);
+}
+
+#[tokio::test]
+async fn test_block_events() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+
+    let backend = RpcBackend::new(RpcConfig {
+        url: devnet.rpc_url(),
+        ..Default::default()
+    })
+    .unwrap();
+    let head_block = backend.get_head().await.unwrap().block_number;
+    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+
+    // Collect all events across all blocks in the devnet fixture.
+    let mut all_events = Vec::new();
+    for block_number in 0..=head_block {
+        let events = snapshot.get_block_events(block_number).await.unwrap();
+        all_events.extend(events);
+    }
+
+    // Devnet scenario: deposit 100 + transfer 50 to Bob, then Bob withdraws 50.
+    // Expected events: 1 Deposit, 2 EncNoteCreated, 1 Withdrawal (at minimum).
+    let deposit_count = all_events
+        .iter()
+        .filter(|e| matches!(e.content, PrivacyPoolEventContent::Deposit(_)))
+        .count();
+    let withdrawal_count = all_events
+        .iter()
+        .filter(|e| matches!(e.content, PrivacyPoolEventContent::Withdrawal(_)))
+        .count();
+    let note_created_count = all_events
+        .iter()
+        .filter(|e| matches!(e.content, PrivacyPoolEventContent::EncNoteCreated(_)))
+        .count();
+
+    assert!(deposit_count >= 1, "expected at least 1 Deposit event");
+    assert!(
+        withdrawal_count >= 1,
+        "expected at least 1 Withdrawal event"
+    );
+    assert!(
+        note_created_count >= 2,
+        "expected at least 2 EncNoteCreated events"
+    );
+}
+
+#[tokio::test]
+async fn test_withdrawal_events() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+
+    let backend = RpcBackend::new(RpcConfig {
+        url: devnet.rpc_url(),
+        ..Default::default()
+    })
+    .unwrap();
+    let head_block = backend.get_head().await.unwrap().block_number;
+    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+
+    let withdrawals = snapshot
+        .get_withdrawal_events(metadata.bob_address, 0, head_block)
+        .await
+        .unwrap();
+
+    assert_eq!(withdrawals.len(), 1);
+    let PrivacyPoolEventContent::Withdrawal(withdrawal) = &withdrawals[0].content else {
+        panic!("expected Withdrawal event");
+    };
+    assert_eq!(withdrawal.to_address, metadata.bob_address);
+    assert_eq!(withdrawal.token, metadata.strk_token);
+    assert_eq!(withdrawal.amount, 50);
+}
+
+#[tokio::test]
+async fn test_withdrawal_events_empty_for_non_recipient() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+
+    let backend = RpcBackend::new(RpcConfig {
+        url: devnet.rpc_url(),
+        ..Default::default()
+    })
+    .unwrap();
+    let head_block = backend.get_head().await.unwrap().block_number;
+    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+
+    // Alice is not a withdrawal recipient in the devnet scenario
+    let withdrawals = snapshot
+        .get_withdrawal_events(metadata.alice_address, 0, head_block)
+        .await
+        .unwrap();
+
+    assert!(withdrawals.is_empty());
 }

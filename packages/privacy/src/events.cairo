@@ -15,45 +15,45 @@ pub struct ViewingKeySet {
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct Withdrawal {
-    /// Encrypted user_addr who is withdrawing. Can be decrypted by the compliance.
+    /// Encrypted address of the withdrawing user. Can be decrypted by the auditor.
     pub enc_user_addr: EncUserAddr,
-    /// The address to withdraw the funds to.
+    /// The address the funds are withdrawn to.
     #[key]
-    pub withdrawal_target: ContractAddress,
-    /// The token's address.
+    pub to_addr: ContractAddress,
+    /// The token address.
     #[key]
     pub token: ContractAddress,
-    /// The amount to withdraw.
+    /// The withdrawn amount.
     pub amount: u128,
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct Deposit {
-    /// User address who is depositing.
+    /// The depositing user address.
     #[key]
     pub user_addr: ContractAddress,
-    /// The token's address.
+    /// The token address.
     #[key]
     pub token: ContractAddress,
-    /// The amount to deposit.
+    /// The deposited amount.
     pub amount: u128,
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
-pub struct CompliancePublicKeySet {
-    /// The compliance public key.
+pub struct AuditorPublicKeySet {
+    /// The auditor public key.
     #[key]
-    pub compliance_public_key: felt252,
+    pub auditor_public_key: felt252,
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct OpenNoteCreated {
-    /// Encrypted recipient address (the owner of the note). Can be decrypted by the compliance.
+    /// Encrypted recipient address (the note owner). Can be decrypted by the auditor.
     pub enc_recipient_addr: EncUserAddr,
-    /// The address who is allowed to deposit into the note.
+    /// Address allowed to deposit into the note.
     #[key]
     pub depositor: ContractAddress,
-    /// The token's address.
+    /// The token address.
     #[key]
     pub token: ContractAddress,
     /// The note ID.
@@ -63,15 +63,52 @@ pub struct OpenNoteCreated {
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct OpenNoteDeposited {
-    /// The address of the contract that performed the deposit.
+    /// The address that performed the deposit.
     #[key]
     pub depositor: ContractAddress,
-    /// The token's address.
+    /// The token address.
     #[key]
     pub token: ContractAddress,
-    /// The note id that was deposited into.
+    /// The note ID deposited into.
     #[key]
     pub note_id: felt252,
-    /// The amount deposited.
+    /// The deposited amount.
     pub amount: u128,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct EncNoteCreated {
+    /// The note ID.
+    #[key]
+    pub note_id: felt252,
+    /// The packed note value (encodes salt and amount).
+    pub packed_value: felt252,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct NoteUsed {
+    /// The nullifier of the used note.
+    #[key]
+    pub nullifier: felt252,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct FeeAmountSet {
+    /// The fee amount in FRI per `apply_actions` call.
+    #[key]
+    pub fee_amount: u128,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct FeeCollectorSet {
+    /// The address that receives the fee.
+    #[key]
+    pub fee_collector: ContractAddress,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct ProofValidityBlocksSet {
+    /// The number of blocks that a proof is valid for.
+    #[key]
+    pub proof_validity_blocks: u64,
 }

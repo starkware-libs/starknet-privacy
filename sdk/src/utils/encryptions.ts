@@ -14,7 +14,7 @@ import {
   compute_enc_amount_hash,
   compute_enc_recipient_addr_hash,
   compute_enc_private_key_hash,
-  compute_enc_address_hash,
+  compute_enc_user_addr_hash,
 } from "./hashes.js";
 import { toBigInt } from "./convert.js";
 import type {
@@ -356,12 +356,12 @@ export const encryptions = {
    * Matches Cairo's encrypt_private_key in utils.cairo.
    *
    * @param ephemeralSecret - Random scalar for ECDH
-   * @param compliancePublicKey - Compliance's public key (x-coordinate)
+   * @param auditorPublicKey - Auditor's public key (x-coordinate)
    * @param privateKey - The private key to encrypt
    */
   encryptPrivateKey: (
     ephemeralSecret: bigint,
-    compliancePublicKey: bigint,
+    auditorPublicKey: bigint,
     privateKey: bigint
   ): EncPrivateKey => {
     const ephemeralSecretBytes = toBytes(ephemeralSecret);
@@ -370,11 +370,11 @@ export const encryptions = {
     const ephemeralPubPoint = starkCurve.getPublicKey(ephemeralSecretBytes);
     const ephemeralPubkey = getXCoordinateFromBytes(ephemeralPubPoint);
 
-    // Recover compliance public key point from x-coordinate
-    const compliancePubBytes = recoverPointFromX(compliancePublicKey);
+    // Recover auditor public key point from x-coordinate
+    const auditorPubBytes = recoverPointFromX(auditorPublicKey);
 
     // Compute shared secret via ECDH
-    const sharedPoint = starkCurve.getSharedSecret(ephemeralSecretBytes, compliancePubBytes);
+    const sharedPoint = starkCurve.getSharedSecret(ephemeralSecretBytes, auditorPubBytes);
     const sharedX = getXCoordinateFromBytes(sharedPoint);
 
     // Encrypt using field addition (matching Cairo)
@@ -388,10 +388,10 @@ export const encryptions = {
    * Inverse of encrypt_private_key.
    *
    * @param encrypted - The encrypted private key
-   * @param compliancePrivateKey - The compliance's private key
+   * @param auditorPrivateKey - The auditor's private key
    */
-  decryptPrivateKey: (encrypted: EncPrivateKey, compliancePrivateKey: bigint): bigint => {
-    const privateKeyBytes = toBytes(compliancePrivateKey);
+  decryptPrivateKey: (encrypted: EncPrivateKey, auditorPrivateKey: bigint): bigint => {
+    const privateKeyBytes = toBytes(auditorPrivateKey);
 
     // Recover ephemeral public key point from x-coordinate
     const ephemeralPubBytes = recoverPointFromX(encrypted.ephemeralPubkey);
@@ -416,12 +416,12 @@ export const encryptions = {
    * Matches Cairo's encrypt_user_addr in utils.cairo.
    *
    * @param ephemeralSecret - Random scalar for ECDH
-   * @param compliancePublicKey - Compliance's public key (x-coordinate)
+   * @param auditorPublicKey - Auditor's public key (x-coordinate)
    * @param userAddr - The user address to encrypt
    */
   encryptUserAddr: (
     ephemeralSecret: bigint,
-    compliancePublicKey: bigint,
+    auditorPublicKey: bigint,
     userAddr: bigint
   ): EncUserAddr => {
     const ephemeralSecretBytes = toBytes(ephemeralSecret);
@@ -430,15 +430,15 @@ export const encryptions = {
     const ephemeralPubPoint = starkCurve.getPublicKey(ephemeralSecretBytes);
     const ephemeralPubkey = getXCoordinateFromBytes(ephemeralPubPoint);
 
-    // Recover compliance public key point from x-coordinate
-    const compliancePubBytes = recoverPointFromX(compliancePublicKey);
+    // Recover auditor public key point from x-coordinate
+    const auditorPubBytes = recoverPointFromX(auditorPublicKey);
 
     // Compute shared secret via ECDH
-    const sharedPoint = starkCurve.getSharedSecret(ephemeralSecretBytes, compliancePubBytes);
+    const sharedPoint = starkCurve.getSharedSecret(ephemeralSecretBytes, auditorPubBytes);
     const sharedX = getXCoordinateFromBytes(sharedPoint);
 
     // Encrypt using field addition (matching Cairo)
-    const encUserAddr = (compute_enc_address_hash(sharedX) + userAddr) % FIELD_PRIME;
+    const encUserAddr = (compute_enc_user_addr_hash(sharedX) + userAddr) % FIELD_PRIME;
 
     return { ephemeralPubkey, encUserAddr };
   },
@@ -448,10 +448,10 @@ export const encryptions = {
    * Inverse of encrypt_user_addr.
    *
    * @param encrypted - The encrypted user address
-   * @param compliancePrivateKey - The compliance's private key
+   * @param auditorPrivateKey - The auditor's private key
    */
-  decryptUserAddr: (encrypted: EncUserAddr, compliancePrivateKey: bigint): bigint => {
-    const privateKeyBytes = toBytes(compliancePrivateKey);
+  decryptUserAddr: (encrypted: EncUserAddr, auditorPrivateKey: bigint): bigint => {
+    const privateKeyBytes = toBytes(auditorPrivateKey);
 
     // Recover ephemeral public key point from x-coordinate
     const ephemeralPubBytes = recoverPointFromX(encrypted.ephemeralPubkey);
@@ -462,7 +462,8 @@ export const encryptions = {
 
     // Decrypt using field subtraction (matching Cairo)
     const userAddr =
-      (((encrypted.encUserAddr - compute_enc_address_hash(sharedX)) % FIELD_PRIME) + FIELD_PRIME) %
+      (((encrypted.encUserAddr - compute_enc_user_addr_hash(sharedX)) % FIELD_PRIME) +
+        FIELD_PRIME) %
       FIELD_PRIME;
 
     return userAddr;

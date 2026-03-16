@@ -35,6 +35,7 @@ export type IncomingChannelCursor = {
   /** @internal */ channelKey: ChannelKey;
   /** @internal */ subchannelIdIndex: number;
   /** @internal */ noteIndexes: AddressMap<number>; // token -> i
+  /** @internal */ totalNoteCounts: AddressMap<number>; // token -> total notes found by boundary finder
 };
 
 export type NotesCursor = {
@@ -56,6 +57,7 @@ export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
     channelKey: sc.channelKey,
     subchannelIdIndex: sc.subchannelIdIndex,
     noteIndexes: new AddressMap<number>(sc.noteIndexes.entries()),
+    totalNoteCounts: new AddressMap<number>(sc.totalNoteCounts.entries()),
   });
 
   const incomingChannels = new AddressMap<IncomingChannelCursor>(
@@ -69,14 +71,31 @@ export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
   };
 }
 
-export function cloneChannelCursor(cursor?: AddressMap<Channel>): AddressMap<Channel> {
+export type RecipientsFilter<T = StarknetAddressBigint> = T[] | "all" | "total-only";
+
+export type ChannelCursor = {
+  /** @internal */ channels?: AddressMap<Channel>;
+  /** @internal */ total?: number;
+};
+export function cloneChannelCursor(cursor?: ChannelCursor): ChannelCursor {
   if (!cursor) {
-    return new AddressMap<Channel>();
+    return {
+      channels: new AddressMap<Channel>(),
+      total: undefined,
+    };
   }
 
-  return new AddressMap<Channel>(
-    [...cursor.entries()].map(([k, v]): [StarknetAddressBigint, Channel] => [k, v.clone()])
-  );
+  return {
+    channels: cursor.channels
+      ? new AddressMap<Channel>(
+          [...cursor.channels.entries()].map(([k, v]): [StarknetAddressBigint, Channel] => [
+            k,
+            v.clone(),
+          ])
+        )
+      : undefined,
+    total: cursor.total,
+  };
 }
 
 type ChannelKey = bigint;

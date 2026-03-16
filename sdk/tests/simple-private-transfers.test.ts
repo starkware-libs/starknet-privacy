@@ -2,9 +2,7 @@ import { describe, expect, it, beforeEach, afterAll } from "vitest";
 import { createTestEnv, MockTestEnv, POOL_ADDRESS } from "./helpers/test-fixtures.js";
 import { SimplePrivateTransfersImpl } from "../src/simple-private-transfers.js";
 import { debugHint, isDebugEnabled, toBigInt, toHex } from "../src/utils/index.js";
-import { derivePublicKey } from "../src/utils/crypto.js";
 import { MockSwapHelper } from "../src/testing/contracts.js";
-import { compute_channel_key, compute_note_id } from "../src/testing/index.js";
 
 describe("SimplePrivateTransfers", () => {
   let testEnv: MockTestEnv;
@@ -90,7 +88,7 @@ describe("SimplePrivateTransfers", () => {
     const ace = toBigInt(env.ace);
     const bee = toBigInt(env.bee);
 
-    const swapHelper = new MockSwapHelper("0x53A2", env.contracts);
+    const swapHelper = new MockSwapHelper("0x53A2", env.contracts, POOL_ADDRESS);
     env.contracts.register(swapHelper);
 
     mocknet.executeOutside(await transfers.alice.build().register().execute());
@@ -100,23 +98,9 @@ describe("SimplePrivateTransfers", () => {
     // Deposit 100 ACE first
     mocknet.executeOutside(await alice.deposit(env.ace, 100n));
 
-    // Compute the BEE note ID that the swap helper will fill
-    const channelKey = compute_channel_key(
-      env.alice.address,
-      env.alice.privateKey,
-      env.alice.address,
-      derivePublicKey(env.alice.privateKey)
-    );
-    const beeNoteId = compute_note_id(channelKey, bee, 0);
-
-    // Swap 10 ACE for BEE using the swap helper
-    mocknet.executeOutside(
-      await alice.swap(env.ace, 10n, env.bee, {
-        contractAddress: toHex(swapHelper.address),
-        entrypoint: "swap",
-        calldata: [ace, bee, 10n, POOL_ADDRESS, beeNoteId],
-      })
-    );
+    // Swap 10 ACE for BEE using the swap helper.
+    // note_id is auto-injected by the compiler into the invoke calldata.
+    mocknet.executeOutside(await alice.swap(env.ace, 10n, env.bee, toHex(swapHelper.address)));
 
     // Verify: Alice has 90n ACE change note
     const aceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];

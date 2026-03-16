@@ -1,8 +1,7 @@
-use core::num::traits::Zero;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::objects::{
-    EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey, EncPrivateKeyTrait,
-    EncSubchannelInfo, Note, TokenBalances, TokenBalancesTrait,
+    EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note, TokenBalances,
+    TokenBalancesTrait,
 };
 use privacy::tests::test_objects::MockContract::deploy_for_test as deploy_mock_contract_for_test;
 use privacy::utils::to_write_once_action;
@@ -10,47 +9,6 @@ use snforge_std::{DeclareResultTrait, declare, map_entry_address};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
 
-
-#[test]
-fn test_enc_channel_info_is_all_non_zero() {
-    let mut enc_channel_info = EncChannelInfo {
-        ephemeral_pubkey: 'EPHEMERAL_PUBKEY'.try_into().unwrap(),
-        enc_channel_key: 'ENC_CHANNEL_KEY'.try_into().unwrap(),
-        enc_sender_addr: 'ENC_SENDER_ADDR'.try_into().unwrap(),
-    };
-    assert_eq!(enc_channel_info.is_all_non_zero(), true);
-    enc_channel_info.ephemeral_pubkey = Zero::zero();
-    assert_eq!(enc_channel_info.is_all_non_zero(), false);
-    enc_channel_info.ephemeral_pubkey = 'EPHEMERAL_PUBKEY'.try_into().unwrap();
-    enc_channel_info.enc_channel_key = Zero::zero();
-    assert_eq!(enc_channel_info.is_all_non_zero(), false);
-    enc_channel_info.enc_channel_key = 'ENC_CHANNEL_KEY'.try_into().unwrap();
-    enc_channel_info.enc_sender_addr = Zero::zero();
-    assert_eq!(enc_channel_info.is_all_non_zero(), false);
-    let enc_channel_info_zero = EncChannelInfo {
-        ephemeral_pubkey: Zero::zero(),
-        enc_channel_key: Zero::zero(),
-        enc_sender_addr: Zero::zero(),
-    };
-    assert_eq!(enc_channel_info_zero.is_all_non_zero(), false);
-}
-
-#[test]
-fn test_enc_private_key_is_all_non_zero() {
-    let mut enc_private_key = EncPrivateKey {
-        compliance_public_key: 'COMPLIANCE_PUBLIC_KEY',
-        ephemeral_pubkey: 'EPHEMERAL_PUBKEY',
-        enc_private_key: 'ENC_PRIVATE_KEY',
-    };
-    assert_eq!(enc_private_key.is_all_non_zero(), true);
-    enc_private_key.ephemeral_pubkey = Zero::zero();
-    assert_eq!(enc_private_key.is_all_non_zero(), false);
-    enc_private_key.ephemeral_pubkey = 'EPHEMERAL_PUBKEY';
-    enc_private_key.enc_private_key = Zero::zero();
-    assert_eq!(enc_private_key.is_all_non_zero(), false);
-    enc_private_key.ephemeral_pubkey = Zero::zero();
-    assert_eq!(enc_private_key.is_all_non_zero(), false);
-}
 
 #[test]
 fn test_token_balances() {
@@ -113,11 +71,11 @@ fn test_token_balances_final_balance_must_be_zero() {
 
 #[test]
 fn test_enc_private_key_to_write_once_action() {
-    let compliance_public_key = 'COMPLIANCE_PUBLIC_KEY';
+    let auditor_public_key = 'AUDITOR_PUBLIC_KEY';
     let ephemeral_pubkey = 'EPHEMERAL_PUBKEY';
     let enc_private_key = 'ENC_PRIVATE_KEY';
     let enc_private_key_obj = EncPrivateKey {
-        compliance_public_key, ephemeral_pubkey, enc_private_key,
+        auditor_public_key, ephemeral_pubkey, enc_private_key,
     };
     let key = 'KEY';
     let storage_address = map_entry_address(
@@ -129,7 +87,7 @@ fn test_enc_private_key_to_write_once_action() {
         ServerAction::WriteOnce(
             WriteOnceInput {
                 storage_address,
-                value: [compliance_public_key, ephemeral_pubkey, enc_private_key].span(),
+                value: [auditor_public_key, ephemeral_pubkey, enc_private_key].span(),
             },
         ),
     );
@@ -348,7 +306,7 @@ fn enc_private_key_serialization_format() {
     let mock_contract_address = deploy_mock_contract();
     let mock_contract = IMockContractDispatcher { contract_address: mock_contract_address };
     let enc_private_key = EncPrivateKey {
-        compliance_public_key: 'COMPLIANCE_PUBLIC_KEY',
+        auditor_public_key: 'AUDITOR_PUBLIC_KEY',
         ephemeral_pubkey: 'EPHEMERAL_PUBKEY',
         enc_private_key: 'ENC_PRIVATE_KEY',
     };

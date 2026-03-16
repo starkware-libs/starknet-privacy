@@ -1,0 +1,102 @@
+# 18. Configuration
+
+## Overview
+
+The discovery service uses a layered configuration system with three levels of precedence:
+
+```
+env var > config file (with ${VAR} expansion) > code default
+```
+
+- **Tests:** set env vars directly (no config file needed)
+- **Docker:** set env vars in compose (no config file needed)
+- **Production:** config file with `${VAR:-default}` for secrets/endpoints, env vars for per-instance overrides
+
+## CLI Arguments
+
+```
+--config <path>    Optional path to TOML config file
+```
+
+No other CLI args. All configuration is via file and/or env vars.
+
+## Config File Format (TOML)
+
+All sections and fields are optional. Supports env var expansion: `${VAR}` (required) and `${VAR:-default}` (with fallback).
+
+```toml
+[rpc]
+url = "http://127.0.0.1:5050"
+max_concurrent_requests = 10
+connect_timeout = 30        # seconds
+request_timeout = 60        # seconds
+max_idle_per_host = 10
+max_batch_size = 256        # max storage slots per JSON-RPC batch request
+event_page_size = 1024      # max events per starknet_getEvents page (spec max: 1024)
+max_event_block_range = 0   # max block range for get_events queries; 0 = unlimited
+
+[indexer]
+ws_url = "ws://127.0.0.1:5050/ws"
+connect_timeout = 10        # seconds
+backoff_initial_interval = 1
+backoff_max_interval = 60
+# backoff_max_elapsed_time — omit for infinite retries
+
+[api]
+host = "127.0.0.1:8080"
+health_max_lag_secs = 5
+request_timeout = 30        # seconds
+
+[logging]
+level = "info"
+
+[limits]
+max_cursor_channels = 256
+max_cursor_subchannels_per_channel = 64
+max_outgoing_recipients = 64
+server_budget = 10000
+max_request_body_bytes = 102400
+```
+
+**Budget clamping:** `server_budget` is clamped to `min_server_budget(max_note_log_index)` at startup (89 with default `max_note_log_index=30`). The minimum is computed from the costs needed to make progress through one step at each discovery level: fetch channel count, discover one channel, discover one subchannel (×2 for sentinel), probe note boundary, and scan 10 notes. Values below the minimum trigger a warning log and are raised to the minimum.
+
+## Env Var Overrides
+
+These env vars override the corresponding config file values at runtime:
+
+| Env var | Config path | Default |
+|---|---|---|
+| `RPC_URL` | `rpc.url` | `http://127.0.0.1:5050` |
+| `WS_URL` | `indexer.ws_url` | `ws://127.0.0.1:5050/ws` |
+| `API_HOST` | `api.host` | `127.0.0.1:8080` |
+| `RUST_LOG` | `logging.level` | `info` |
+| `SERVER_BUDGET` | `limits.server_budget` | `10000` |
+
+RPC pool settings, indexer timeouts, and validation limits (except server budget) have no env var — configurable only via file.
+
+## Env Var Expansion
+
+Pre-processes raw TOML text before parsing. Regex: `\$\{([^}:]+)(?::-([^}]*))?\}`
+
+- `${VAR}` — substitute value; error if unset or empty
+- `${VAR:-default}` — substitute value; use default if unset or empty
+
+This is text substitution on the file content, separate from env var overrides which are field-level after parsing.
+
+## Required Fields
+
+No required fields. All configuration has sensible defaults. The contract address is provided per-request via the API endpoints.
+
+## Loading Sequence
+
+1. Parse `--config` CLI arg
+2. If config path provided: read file → expand env vars → parse TOML
+3. If no config path: use `ServiceConfig::default()` (all defaults)
+4. Apply env var overrides (`apply_env_overrides`)
+5. Construct component configs from resolved values
+
+## Implementation
+
+- All config types live in a single `config` module — the single owner of configuration concerns
+- Component modules import what they need; they don't define their own config structs
+- Validation limits are threaded through API server state to handlers

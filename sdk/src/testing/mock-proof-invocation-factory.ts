@@ -56,19 +56,46 @@ export class MockProofInvocationFactory implements ProofInvocationFactoryInterfa
     user: ProofUser,
     poolAddress: StarknetAddress,
     clientActions: ClientAction[],
-    _details: ProofInvocationFactoryDetails
+    details: ProofInvocationFactoryDetails
   ): Promise<ProofInvocation> {
-    // For mock, we store the client actions in a way the mock pool can use
-    // The mock proof provider will extract and process these
+    // Build INVOKE_TXN_V3 directly (without buildTransaction) so the raw
+    // JSON string in calldata is preserved for MockProofProvider to parse.
     const poolAddressHex = toHex(poolAddress);
+    const rb = details.resourceBounds ?? {
+      l1_gas: { max_amount: 0n, max_price_per_unit: 0n },
+      l2_gas: { max_amount: 0n, max_price_per_unit: 0n },
+      l1_data_gas: { max_amount: 0n, max_price_per_unit: 0n },
+    };
     return {
-      contractAddress: poolAddressHex,
+      type: "INVOKE",
+      sender_address: poolAddressHex,
       calldata: [
         toHex(user.address),
         toHex(user.viewingKey),
         JSON.stringify(clientActions, jsonReplacer),
       ],
       signature: [],
+      nonce: toHex(details.nonce ?? 0n),
+      resource_bounds: {
+        l1_gas: {
+          max_amount: toHex(rb.l1_gas.max_amount),
+          max_price_per_unit: toHex(rb.l1_gas.max_price_per_unit),
+        },
+        l2_gas: {
+          max_amount: toHex(rb.l2_gas.max_amount),
+          max_price_per_unit: toHex(rb.l2_gas.max_price_per_unit),
+        },
+        l1_data_gas: {
+          max_amount: toHex(rb.l1_data_gas?.max_amount ?? 0n),
+          max_price_per_unit: toHex(rb.l1_data_gas?.max_price_per_unit ?? 0n),
+        },
+      },
+      tip: toHex(details.tip ?? 0n),
+      paymaster_data: (details.paymasterData ?? []).map((x) => toHex(x)),
+      account_deployment_data: (details.accountDeploymentData ?? []).map((x) => toHex(x)),
+      nonce_data_availability_mode: details.nonceDataAvailabilityMode ?? "L1",
+      fee_data_availability_mode: details.feeDataAvailabilityMode ?? "L1",
+      version: "0x3",
     };
   }
 

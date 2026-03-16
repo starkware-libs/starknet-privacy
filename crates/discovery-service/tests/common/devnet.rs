@@ -7,6 +7,7 @@ use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
 use anyhow::{bail, Context, Result};
+use discovery_core::privacy_pool::types::{secret_felt_serde, SecretFelt};
 use flate2::read::GzDecoder;
 use nix::sys::signal::Signal;
 use starknet_types_core::felt::Felt;
@@ -15,12 +16,18 @@ use tempfile::NamedTempFile;
 use super::process::{find_free_port, signal_process, wait_for_log_pattern};
 
 /// Metadata from devnet dump, written by SDK during fixture generation.
+#[allow(dead_code)]
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct DumpMetadata {
     pub timestamp: u64,
     pub contract_address: Felt,
     pub alice_address: Felt,
-    pub alice_private_key: Felt,
+    #[serde(deserialize_with = "secret_felt_serde::deserialize")]
+    pub alice_viewing_key: SecretFelt,
+    pub bob_address: Felt,
+    #[serde(deserialize_with = "secret_felt_serde::deserialize")]
+    pub bob_viewing_key: SecretFelt,
+    pub strk_token: Felt,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -37,6 +44,7 @@ pub struct DevnetClient {
     _temp_dump: Option<NamedTempFile>,
 }
 
+#[allow(dead_code)]
 impl DevnetClient {
     pub fn spawn(config: DevnetConfig) -> Result<Self> {
         let port = config.port.unwrap_or(find_free_port()?);

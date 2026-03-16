@@ -23,6 +23,9 @@ starkware_utils_testing.workspace = true
 name = "privacy_unittest"
 build-external-contracts = ["starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock"]
 
+[features]
+test_contracts = []
+
 [scripts]
 test = "snforge test"
 
@@ -37,3 +40,6 @@ casm-add-pythonic-hints = true
 unstable-add-statements-functions-debug-info = true
 unstable-add-statements-code-locations-debug-info = true
 inlining-strategy = "avoid"
+
+[profile.release.cairo]
+inlining-strategy = 250

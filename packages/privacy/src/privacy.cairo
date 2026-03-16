@@ -3,60 +3,68 @@ pub mod Privacy {
     use core::iter::Extend;
     use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
-    use openzeppelin::interfaces::token::erc20::IERC20Dispatcher;
     use openzeppelin::introspection::src5::SRC5Component;
+    use openzeppelin::security::ReentrancyGuardComponent;
     use privacy::actions::{
-        AppendToVecInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
-        DepositInput, OpenChannelInput, OpenSubchannelInput, ReadAssertInput, ServerAction,
-        SetViewingKeyInput, SwapInput, SwapWithExecutorInput, TransferFromInput, TransferToInput,
-        UseNoteInput, WithdrawInput,
+        AppendInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
+        DepositInput, InputValidation, InvokeExternalInput, InvokeInput, OpenChannelInput,
+        OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
+        UseNoteInput, WithdrawInput, WriteOnceInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
         compute_channel_key, compute_channel_marker, compute_note_id, compute_nullifier,
         compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker,
     };
-    use privacy::interface::{IClient, ICompliance, IServer, IViews};
+    use privacy::interface::{IAdmin, IClient, IServer, IViews};
     use privacy::objects::{
-        EncChannelInfo, EncChannelInfoTrait, EncOutgoingChannelInfo, EncPrivateKey,
-        EncPrivateKeyTrait, EncSubchannelInfo, EncUserAddrTrait, Note, TokenBalances,
-        TokenBalancesTrait,
+        EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
+        OpenNoteDeposit, TokenBalances, TokenBalancesTrait,
     };
-    use privacy::swap_executor::interface::{ISwapExecutorDispatcher, ISwapExecutorDispatcherTrait};
-    use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
+    use privacy::utils::constants::{
+        INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
+    };
     use privacy::utils::{
-        StoragePathIntoFelt, assert_note_creation_params, assert_valid_execution_info,
-        assert_valid_signature, decode_note_amount, derive_public_key, enc_note_packed_value,
-        encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
-        encrypt_subchannel_info, encrypt_user_addr, extract_server_actions_from_execute_and_panic,
-        is_canonical_key, open_note, packing, panic_with_server_actions, send_message_to_server,
-        to_write_once_action, unpacking,
+        ProofFacts, assert_valid_signature, assert_valid_tx_version, compute_message_hash,
+        decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
+        encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
+        encrypt_user_addr, extract_compile_actions_inputs,
+        extract_server_actions_from_compile_and_panic, is_canonical_key, open_note, pack,
+        panic_with_server_actions, send_message_to_server, storage_path_to_felt252,
+        to_write_once_action, unpack,
     };
     use privacy::{errors, events};
+    use starknet::account::Call;
     use starknet::storage::{
-        Map, Mutable, MutableVecTrait, StorageBase, StorageMapReadAccess, StoragePathEntry,
-        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
+        Map, MutableVecTrait, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
+        StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::storage_access::{
         StorageBaseAddress, storage_address_from_base_and_offset, storage_base_address_from_felt252,
     };
-    use starknet::syscalls::{call_contract_syscall, storage_read_syscall, storage_write_syscall};
+    use starknet::syscalls::{
+        call_contract_syscall, get_execution_info_v3_syscall, storage_read_syscall,
+        storage_write_syscall,
+    };
     use starknet::{
         ContractAddress, SyscallResultTrait, VALIDATED, get_caller_address, get_contract_address,
-        get_execution_info,
+        get_execution_info, get_tx_info,
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternalTrait;
-    use starkware_utils::erc20::erc20_utils::CheckedIERC20DispatcherTrait;
+    use starkware_utils::erc20::erc20_utils::{checked_transfer, checked_transfer_from};
 
     component!(path: PausableComponent, storage: pausable, event: PausableEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
+    component!(
+        path: ReentrancyGuardComponent, storage: reentrancyguard, event: ReentrancyGuardEvent,
+    );
 
     #[storage]
     struct Storage {
@@ -70,6 +78,8 @@ pub mod Privacy {
         accesscontrol: AccessControlComponent::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
+        #[substorage(v0)]
+        reentrancyguard: ReentrancyGuardComponent::Storage,
         /// Map of recipient_addr to a list of their encrypted channels.
         recipient_channels: Map<ContractAddress, Vec<EncChannelInfo>>,
         /// Map of outgoing-channel ids to their encrypted recipient addresses.
@@ -88,8 +98,14 @@ pub mod Privacy {
         public_key: Map<ContractAddress, felt252>,
         /// Map of user addresses to their encrypted private key.
         enc_private_key: Map<ContractAddress, EncPrivateKey>,
-        /// Public key of the compliance used for private key encryptions.
-        compliance_public_key: felt252,
+        /// Public key of the auditor used for private key encryptions.
+        auditor_public_key: felt252,
+        /// Fee amount (in FRI) charged per `apply_actions` call.
+        fee_amount: u128,
+        /// Address that receives the fee.
+        fee_collector: ContractAddress,
+        /// The number of blocks that a proof is valid for.
+        proof_validity_blocks: u64,
     }
 
     #[event]
@@ -105,26 +121,38 @@ pub mod Privacy {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
+        #[flat]
+        ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
         ViewingKeySet: events::ViewingKeySet,
         Withdrawal: events::Withdrawal,
         Deposit: events::Deposit,
-        CompliancePublicKeySet: events::CompliancePublicKeySet,
+        AuditorPublicKeySet: events::AuditorPublicKeySet,
         OpenNoteCreated: events::OpenNoteCreated,
+        EncNoteCreated: events::EncNoteCreated,
         OpenNoteDeposited: events::OpenNoteDeposited,
+        NoteUsed: events::NoteUsed,
+        FeeAmountSet: events::FeeAmountSet,
+        FeeCollectorSet: events::FeeCollectorSet,
+        ProofValidityBlocksSet: events::ProofValidityBlocksSet,
     }
 
     #[constructor]
     pub(crate) fn constructor(
-        ref self: ContractState, governance_admin: ContractAddress, compliance_public_key: felt252,
+        ref self: ContractState,
+        governance_admin: ContractAddress,
+        auditor_public_key: felt252,
+        proof_validity_blocks: u64,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(upgrade_delay: Zero::zero());
-        self._set_compliance_public_key(:compliance_public_key);
+        self._set_auditor_public_key(:auditor_public_key);
+        self._set_proof_validity_blocks(:proof_validity_blocks);
     }
 
     #[abi(embed_v0)]
     impl PausableImpl = PausableComponent::PausableImpl<ContractState>;
     impl PausableInternalImpl = PausableComponent::InternalImpl<ContractState>;
+    impl ReentrancyGuardInternalImpl = ReentrancyGuardComponent::InternalImpl<ContractState>;
     #[abi(embed_v0)]
     impl ReplaceabilityImpl =
         ReplaceabilityComponent::ReplaceabilityImpl<ContractState>;
@@ -133,29 +161,39 @@ pub mod Privacy {
 
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
-        fn __validate__(
-            self: @ContractState,
-            user_addr: ContractAddress,
-            user_private_key: felt252,
-            client_actions: Span<ClientAction>,
-        ) -> felt252 {
+        fn __validate__(self: @ContractState, calls: Array<Call>) -> felt252 {
+            let tx_info = get_tx_info();
+            // Ensure that the effective fee of the transaction is zero.
+            assert_valid_tx_version(tx_version: tx_info.version);
+            assert(tx_info.tip.is_zero(), errors::NON_ZERO_TIP);
+            for resource_bounds in tx_info.resource_bounds {
+                assert(
+                    resource_bounds.max_price_per_unit.is_zero(), errors::NON_ZERO_RESOURCE_PRICE,
+                );
+            }
             VALIDATED
         }
 
-        fn __execute__(
-            ref self: ContractState,
-            user_addr: ContractAddress,
-            user_private_key: felt252,
-            client_actions: Span<ClientAction>,
-        ) {
+        fn __execute__(ref self: ContractState, calls: Array<Call>) {
             let execution_info = get_execution_info();
-            assert_valid_execution_info(:execution_info);
-            let server_actions = self.execute_view(:user_addr, :user_private_key, :client_actions);
-            assert_valid_signature(:user_addr, tx_info: execution_info.tx_info);
-            send_message_to_server(:server_actions);
+            let tx_info = execution_info.tx_info;
+            // Ensure that the current call is the first of the transaction,
+            // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
+            assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
+            assert_valid_tx_version(tx_version: tx_info.version);
+
+            let (user_addr, user_private_key, client_actions) = extract_compile_actions_inputs(
+                :calls, contract_address: execution_info.contract_address,
+            );
+            let server_actions = self
+                .compile_actions(:user_addr, :user_private_key, :client_actions);
+            assert_valid_signature(:user_addr, :tx_info);
+            send_message_to_server(
+                :server_actions, contract_address: execution_info.contract_address,
+            );
         }
 
-        fn execute_view(
+        fn compile_actions(
             self: @ContractState,
             user_addr: ContractAddress,
             user_private_key: felt252,
@@ -167,16 +205,16 @@ pub mod Privacy {
             client_actions.serialize(ref calldata);
             let syscall_result = call_contract_syscall(
                 address: get_contract_address(),
-                entry_point_selector: selector!("execute_and_panic"),
+                entry_point_selector: selector!("compile_and_panic"),
                 calldata: calldata.span(),
             );
 
-            extract_server_actions_from_execute_and_panic(:syscall_result)
+            extract_server_actions_from_compile_and_panic(:syscall_result)
         }
 
         /// Panics directly for internal errors; external calls should be wrapped via syscall
         /// to prevent injection of `OK_WRAPPER` into the panic data.
-        fn execute_and_panic(
+        fn compile_and_panic(
             ref self: ContractState,
             user_addr: ContractAddress,
             user_private_key: felt252,
@@ -206,76 +244,47 @@ pub mod Privacy {
             let mut server_actions: Array<ServerAction> = array![];
             let mut curr_phase = ClientActionTrait::ACCOUNT_PHASE;
             let mut token_balances: TokenBalances = Default::default();
-            // Used to make sure a storage action was included in the client actions.
-            let mut has_privacy_action = false;
+            // Used to ensure at least one client action provides replay protection (WriteOnce).
+            let mut has_replay_protection = false;
             for client_action in client_actions {
-                let action_phase = client_action.phase();
-                assert(action_phase >= curr_phase, errors::ACTIONS_OUT_OF_ORDER);
-                curr_phase = action_phase;
-                let (actions, should_execute) = match *client_action {
-                    ClientAction::SetViewingKey(input) => (
-                        self.set_viewing_key(:user_addr, :user_private_key, :input), true,
-                    ),
-                    ClientAction::OpenChannel(input) => (
-                        self
-                            .open_channel(
-                                sender_addr: user_addr,
-                                sender_private_key: user_private_key,
-                                :input,
-                            ),
-                        true,
-                    ),
-                    ClientAction::OpenSubchannel(input) => (
-                        self.open_subchannel(sender_addr: user_addr, :input), true,
-                    ),
-                    ClientAction::Deposit(input) => (
-                        self.deposit(:user_addr, :input, ref :token_balances), false,
-                    ),
-                    ClientAction::CreateEncNote(input) => (
-                        self
-                            .create_enc_note(
-                                sender_addr: user_addr,
-                                sender_private_key: user_private_key,
-                                :input,
-                                ref :token_balances,
-                            ),
-                        true,
-                    ),
-                    ClientAction::CreateOpenNote(input) => (
-                        self
-                            .create_open_note(
-                                sender_addr: user_addr,
-                                sender_private_key: user_private_key,
-                                :input,
-                            ),
-                        true,
-                    ),
-                    ClientAction::UseNote(input) => (
-                        self
-                            .use_note(
-                                owner_addr: user_addr,
-                                owner_private_key: user_private_key,
-                                :input,
-                                ref :token_balances,
-                            ),
-                        true,
-                    ),
-                    ClientAction::Withdraw(input) => (
-                        self.withdraw(:user_addr, :input, ref :token_balances), false,
-                    ),
-                    ClientAction::Swap(input) => (
-                        self.swap(:user_addr, :user_private_key, :input, ref :token_balances),
-                        false,
-                    ),
+                client_action.assert_and_advance_phase(ref :curr_phase);
+                let actions = match *client_action {
+                    ClientAction::SetViewingKey(input) => self
+                        .set_viewing_key(:user_addr, :user_private_key, :input),
+                    ClientAction::OpenChannel(input) => self
+                        .open_channel(
+                            sender_addr: user_addr, sender_private_key: user_private_key, :input,
+                        ),
+                    ClientAction::OpenSubchannel(input) => self
+                        .open_subchannel(sender_addr: user_addr, :input),
+                    ClientAction::Deposit(input) => self
+                        .deposit(:user_addr, :input, ref :token_balances),
+                    ClientAction::CreateEncNote(input) => self
+                        .create_enc_note(
+                            sender_addr: user_addr,
+                            sender_private_key: user_private_key,
+                            :input,
+                            ref :token_balances,
+                        ),
+                    ClientAction::CreateOpenNote(input) => self
+                        .create_open_note(
+                            sender_addr: user_addr, sender_private_key: user_private_key, :input,
+                        ),
+                    ClientAction::UseNote(input) => self
+                        .use_note(
+                            owner_addr: user_addr,
+                            owner_private_key: user_private_key,
+                            :input,
+                            ref :token_balances,
+                        ),
+                    ClientAction::Withdraw(input) => self
+                        .withdraw(:user_addr, :input, ref :token_balances),
+                    ClientAction::InvokeExternal(input) => self.invoke_external(:input),
                 };
-                if should_execute {
-                    has_privacy_action = true;
-                    self.execute_actions(actions.span());
-                }
+                self._client_apply_actions(actions: actions.span(), ref :has_replay_protection);
                 server_actions.extend(actions);
             }
-            // TODO: Consider allowing Deposit + Swap.
-            assert(has_privacy_action, errors::NO_PRIVACY_ACTIONS);
+            assert(has_replay_protection, errors::NO_REPLAY_PROTECTION);
             token_balances.squash().assert_valid();
 
             server_actions.span()
@@ -290,28 +299,30 @@ pub mod Privacy {
             user_private_key: felt252,
             input: SetViewingKeyInput,
         ) -> Array<ServerAction> {
-            let random = input.random;
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            input.assert_valid();
+            let SetViewingKeyInput { random } = input;
 
             // Derive the public key from the private key.
             let user_public_key = derive_public_key(private_key: user_private_key);
-            assert(user_public_key.is_non_zero(), internal_errors::ZERO_DERIVED_PUBLIC_KEY);
 
-            // Encrypt the private key for the compliance.
+            // Encrypt the private key for the auditor.
             let enc_private_key = encrypt_private_key(
                 ephemeral_secret: random,
-                compliance_public_key: self.compliance_public_key.read(),
+                auditor_public_key: self.auditor_public_key.read(),
                 private_key: user_private_key,
             );
-            assert(enc_private_key.is_all_non_zero(), internal_errors::ZERO_ENC_PRIVATE_KEY);
 
             array![
                 to_write_once_action(
-                    storage_address: self.public_key.entry(user_addr).into(),
+                    storage_address: storage_path_to_felt252(
+                        path: self.public_key.entry(user_addr),
+                    ),
                     value: user_public_key,
                 ),
                 to_write_once_action(
-                    storage_address: self.enc_private_key.entry(user_addr).into(),
+                    storage_address: storage_path_to_felt252(
+                        path: self.enc_private_key.entry(user_addr),
+                    ),
                     value: enc_private_key,
                 ),
                 ServerAction::EmitViewingKeySet(
@@ -331,15 +342,8 @@ pub mod Privacy {
             sender_private_key: felt252,
             input: OpenChannelInput,
         ) -> Array<ServerAction> {
-            let recipient_addr = input.recipient_addr;
-            let recipient_public_key = input.recipient_public_key;
-            let index = input.index;
-            let random = input.random;
-            let salt = input.salt;
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
-            assert(salt.is_non_zero(), errors::ZERO_SALT);
+            input.assert_valid();
+            let OpenChannelInput { recipient_addr, index, random, salt } = input;
 
             // Assert sender is registered with the given private key.
             let sender_public_key = self.public_key.read(sender_addr);
@@ -348,6 +352,10 @@ pub mod Privacy {
                 sender_public_key == derive_public_key(private_key: sender_private_key),
                 errors::SENDER_NOT_AUTHENTICATED,
             );
+
+            // Assert recipient is registered.
+            let recipient_public_key = self.public_key.read(recipient_addr);
+            assert(recipient_public_key.is_non_zero(), errors::RECIPIENT_NOT_REGISTERED);
 
             // Assert index is sequential, i.e. the previous channel exists.
             assert(
@@ -369,7 +377,6 @@ pub mod Privacy {
             let channel_key = compute_channel_key(
                 :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key,
             );
-            assert(channel_key.is_non_zero(), internal_errors::UNEXPECTED_ZERO_CHANNEL_KEY);
             let enc_channel_info = encrypt_channel_info(
                 ephemeral_secret: random, :recipient_public_key, :channel_key, :sender_addr,
             );
@@ -383,23 +390,18 @@ pub mod Privacy {
                 :sender_addr, :sender_private_key, :index, :recipient_addr, :salt,
             );
 
-            assert(enc_channel_info.is_all_non_zero(), internal_errors::ZERO_ENC_CHANNEL_INFO);
-            assert(channel_marker.is_non_zero(), internal_errors::ZERO_CHANNEL_MARKER);
-            assert(outgoing_channel_id.is_non_zero(), internal_errors::ZERO_OUTGOING_CHANNEL_ID);
-
             array![
-                ServerAction::ReadAssert(
-                    ReadAssertInput {
-                        storage_address: self.public_key.entry(recipient_addr).into(),
-                        value: recipient_public_key,
-                    },
-                ),
-                ServerAction::AppendToVec(AppendToVecInput { recipient_addr, enc_channel_info }),
+                ServerAction::Append(AppendInput { recipient_addr, enc_channel_info }),
                 to_write_once_action(
-                    storage_address: self.channel_exists.entry(channel_marker).into(), value: true,
+                    storage_address: storage_path_to_felt252(
+                        path: self.channel_exists.entry(channel_marker),
+                    ),
+                    value: true,
                 ),
                 to_write_once_action(
-                    storage_address: self.outgoing_channels.entry(outgoing_channel_id).into(),
+                    storage_address: storage_path_to_felt252(
+                        path: self.outgoing_channels.entry(outgoing_channel_id),
+                    ),
                     value: enc_outgoing_channel_info,
                 ),
             ]
@@ -410,17 +412,10 @@ pub mod Privacy {
         fn open_subchannel(
             self: @ContractState, sender_addr: ContractAddress, input: OpenSubchannelInput,
         ) -> Array<ServerAction> {
-            let recipient_addr = input.recipient_addr;
-            let recipient_public_key = input.recipient_public_key;
-            let channel_key = input.channel_key;
-            let index = input.index;
-            let token = input.token;
-            let salt = input.salt;
-            assert(recipient_addr.is_non_zero(), errors::ZERO_RECIPIENT_ADDR);
-            assert(recipient_public_key.is_non_zero(), errors::ZERO_RECIPIENT_PUBLIC_KEY);
-            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(salt.is_non_zero(), errors::ZERO_SALT);
+            input.assert_valid();
+            let OpenSubchannelInput {
+                recipient_addr, recipient_public_key, channel_key, index, token, salt,
+            } = input;
 
             // Assert channel key is valid for the given sender and recipient.
             let channel_marker = compute_channel_marker(
@@ -446,16 +441,18 @@ pub mod Privacy {
             let subchannel_marker = compute_subchannel_marker(
                 :channel_key, :recipient_addr, :recipient_public_key, :token,
             );
-            assert(subchannel_id.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_ID);
-            assert(subchannel_marker.is_non_zero(), internal_errors::ZERO_SUBCHANNEL_MARKER);
 
             array![
                 to_write_once_action(
-                    storage_address: self.subchannel_tokens.entry(subchannel_id).into(),
+                    storage_address: storage_path_to_felt252(
+                        path: self.subchannel_tokens.entry(subchannel_id),
+                    ),
                     value: enc_subchannel_info,
                 ),
                 to_write_once_action(
-                    storage_address: self.subchannel_exists.entry(subchannel_marker).into(),
+                    storage_address: storage_path_to_felt252(
+                        path: self.subchannel_exists.entry(subchannel_marker),
+                    ),
                     value: true,
                 ),
             ]
@@ -469,17 +466,14 @@ pub mod Privacy {
             input: DepositInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            // Assert input is valid.
-            let token = input.token;
-            let amount = input.amount;
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+            input.assert_valid();
+            let DepositInput { token, amount } = input;
 
             token_balances.add_balance(:token, :amount);
 
             array![
                 ServerAction::TransferFrom(
-                    TransferFromInput { sender_addr: user_addr, token, amount },
+                    TransferFromInput { from_addr: user_addr, token, amount },
                 ),
                 ServerAction::EmitDeposit(events::Deposit { user_addr, token, amount }),
             ]
@@ -493,106 +487,34 @@ pub mod Privacy {
             input: WithdrawInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            let withdrawal_target = input.withdrawal_target;
-            let token = input.token;
-            let amount = input.amount;
-            let random = input.random;
-            // Assert valid input.
-            assert(withdrawal_target.is_non_zero(), errors::ZERO_WITHDRAWAL_TARGET);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            input.assert_valid();
+            let WithdrawInput { to_addr, token, amount, random } = input;
 
             token_balances.subtract_balance(:token, :amount);
 
-            // Encrypt the user address for the compliance.
+            // Encrypt the user address for the auditor.
             let enc_user_addr = encrypt_user_addr(
                 ephemeral_secret: random,
-                compliance_public_key: self.compliance_public_key.read(),
+                auditor_public_key: self.auditor_public_key.read(),
                 :user_addr,
             );
-            assert(enc_user_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
 
             array![
-                ServerAction::TransferTo(
-                    TransferToInput { recipient_addr: withdrawal_target, token, amount },
-                ),
+                ServerAction::TransferTo(TransferToInput { to_addr, token, amount }),
                 ServerAction::EmitWithdrawal(
-                    events::Withdrawal { enc_user_addr, withdrawal_target, token, amount },
+                    events::Withdrawal { enc_user_addr, to_addr, token, amount },
                 ),
             ]
         }
 
-        /// Triggers a swap: transfers input tokens to swap executor and executes swap.
-        /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical
-        /// (checked in `main`).
-        fn swap(
-            self: @ContractState,
-            user_addr: ContractAddress,
-            user_private_key: felt252,
-            input: SwapInput,
-            ref token_balances: TokenBalances,
+        /// Invokes an external contract by forwarding the contract address and calldata as a
+        /// server-side Invoke action.
+        fn invoke_external(
+            self: @ContractState, input: InvokeExternalInput,
         ) -> Array<ServerAction> {
-            // Extract input members.
-            let swap_executor = input.swap_executor;
-            let swap_contract = input.swap_contract;
-            let swap_selector = input.swap_selector;
-            let swap_calldata = input.swap_calldata;
-            let in_token = input.in_token;
-            let out_token = input.out_token;
-            let in_amount = input.in_amount;
-            let channel_key = input.channel_key;
-            let note_index = input.note_index;
-            let random = input.random;
-
-            // Validate all inputs.
-            assert(swap_executor.is_non_zero(), errors::ZERO_SWAP_EXECUTOR);
-            assert(swap_contract.is_non_zero(), errors::ZERO_SWAP_CONTRACT);
-            assert(swap_selector.is_non_zero(), errors::ZERO_SWAP_SELECTOR);
-            assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
-            assert(in_amount.is_non_zero(), errors::ZERO_IN_AMOUNT);
-            assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
-            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
-
-            // Verify the user owns the output note's subchannel.
-            let user_public_key = derive_public_key(private_key: user_private_key);
-            let subchannel_marker = compute_subchannel_marker(
-                :channel_key,
-                recipient_addr: user_addr,
-                recipient_public_key: user_public_key,
-                token: out_token,
-            );
-            assert(self.subchannel_exists.read(subchannel_marker), errors::SUBCHANNEL_NOT_FOUND);
-
-            // Compute note_id from the verified components.
-            let note_id = compute_note_id(:channel_key, token: out_token, index: note_index);
-
-            // Use withdraw to transfer funds to the swap executor and emit a withdrawal event.
-            let withdraw_input = WithdrawInput {
-                withdrawal_target: swap_executor, token: in_token, amount: in_amount, random,
-            };
-            let mut server_actions = self
-                .withdraw(:user_addr, input: withdraw_input, ref :token_balances);
-
-            // Append the swap action.
-            server_actions
-                .append(
-                    ServerAction::SwapWithExecutor(
-                        SwapWithExecutorInput {
-                            swap_executor,
-                            swap_contract,
-                            swap_selector,
-                            swap_calldata,
-                            in_token,
-                            out_token,
-                            in_amount,
-                            note_id,
-                        },
-                    ),
-                );
-
-            server_actions
+            input.assert_valid();
+            let InvokeExternalInput { contract_address, calldata } = input;
+            array![ServerAction::Invoke(InvokeInput { contract_address, calldata })]
         }
 
         /// Returns the server actions to use a note.
@@ -605,13 +527,10 @@ pub mod Privacy {
             input: UseNoteInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            let channel_key = input.channel_key;
-            let token = input.token;
-            let index = input.index;
-            assert(channel_key.is_non_zero(), errors::ZERO_CHANNEL_KEY);
-            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            input.assert_valid();
+            let UseNoteInput { channel_key, token, index } = input;
 
-            // Assert subchannel exists and is connected to owner's address and public key.
+            // Verify the owner owns the note's subchannel.
             let owner_public_key = derive_public_key(private_key: owner_private_key);
             let subchannel_marker = compute_subchannel_marker(
                 :channel_key,
@@ -621,7 +540,7 @@ pub mod Privacy {
             );
             assert(self.subchannel_exists.read(subchannel_marker), errors::SUBCHANNEL_NOT_FOUND);
 
-            // Compute note id.
+            // Compute note_id from the verified components.
             let note_id = compute_note_id(:channel_key, :token, :index);
 
             // Read note from storage and assert it exists.
@@ -634,14 +553,17 @@ pub mod Privacy {
 
             // Compute nullifier.
             let nullifier = compute_nullifier(:channel_key, :token, :index, :owner_private_key);
-            assert(nullifier.is_non_zero(), internal_errors::ZERO_NULLIFIER);
 
             token_balances.add_balance(:token, :amount);
 
             array![
                 to_write_once_action(
-                    storage_address: self.nullifiers.entry(nullifier).into(), value: true,
+                    storage_address: storage_path_to_felt252(
+                        path: self.nullifiers.entry(nullifier),
+                    ),
+                    value: true,
                 ),
+                ServerAction::EmitNoteUsed(events::NoteUsed { nullifier }),
             ]
         }
 
@@ -655,23 +577,13 @@ pub mod Privacy {
             input: CreateEncNoteInput,
             ref token_balances: TokenBalances,
         ) -> Array<ServerAction> {
-            let recipient_addr = input.recipient_addr;
-            let recipient_public_key = input.recipient_public_key;
-            let token = input.token;
-            let amount = input.amount;
-            let index = input.index;
-            let salt = input.salt;
-
-            // Validate inputs.
-            assert_note_creation_params(:recipient_addr, :recipient_public_key, :token);
-            assert(salt.is_non_zero(), errors::ZERO_SALT);
-            assert(salt > OPEN_NOTE_SALT, errors::SALT_TOO_SMALL);
-            assert(salt < TWO_POW_120, errors::SALT_EXCEEDS_120_BITS);
-            // Zero `amount` is allowed to enable note creation on reverted transaction indexes,
-            // preventing data leakage from index reuse after a revert.
+            input.assert_valid();
+            let CreateEncNoteInput {
+                recipient_addr, recipient_public_key, token, amount, index, salt,
+            } = input;
 
             // Validate and compute note values.
-            let (channel_key, storage_address, _) = self
+            let (channel_key, storage_address, note_id) = self
                 ._prepare_note_creation(
                     :sender_addr,
                     :sender_private_key,
@@ -689,7 +601,10 @@ pub mod Privacy {
 
             // Only `packed_value` needs to be written to storage, `token` and `depositor` are
             // initialized to zero.
-            array![to_write_once_action(:storage_address, value: packed_value)]
+            array![
+                to_write_once_action(:storage_address, value: packed_value),
+                ServerAction::EmitEncNoteCreated(events::EncNoteCreated { note_id, packed_value }),
+            ]
         }
 
         /// Returns the server action to create an open note.
@@ -701,17 +616,10 @@ pub mod Privacy {
             sender_private_key: felt252,
             input: CreateOpenNoteInput,
         ) -> Array<ServerAction> {
-            let recipient_addr = input.recipient_addr;
-            let recipient_public_key = input.recipient_public_key;
-            let token = input.token;
-            let index = input.index;
-            let depositor = input.depositor;
-            let random = input.random;
-
-            // Validate inputs.
-            assert_note_creation_params(:recipient_addr, :recipient_public_key, :token);
-            assert(depositor.is_non_zero(), errors::ZERO_DEPOSITOR);
-            assert(random.is_non_zero(), errors::ZERO_RANDOM);
+            input.assert_valid();
+            let CreateOpenNoteInput {
+                recipient_addr, recipient_public_key, token, index, depositor, random,
+            } = input;
 
             // Validate and compute note values.
             let (_, storage_address, note_id) = self
@@ -727,13 +635,12 @@ pub mod Privacy {
             let note = open_note(:token, :depositor);
             assert(note.packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
 
-            // Encrypt the recipient address for the compliance.
+            // Encrypt the recipient address for the auditor.
             let enc_recipient_addr = encrypt_user_addr(
                 ephemeral_secret: random,
-                compliance_public_key: self.compliance_public_key.read(),
+                auditor_public_key: self.auditor_public_key.read(),
                 user_addr: recipient_addr,
             );
-            assert(enc_recipient_addr.is_all_non_zero(), internal_errors::ZERO_ENC_USER_ADDR);
 
             array![
                 to_write_once_action(:storage_address, value: note),
@@ -745,6 +652,7 @@ pub mod Privacy {
 
         /// Validates preconditions and computes values needed for creating a note.
         /// Returns `(channel_key, storage_address, note_id)`.
+        /// Assumes all input is valid (non-zero, canonical private_key).
         fn _prepare_note_creation(
             self: @ContractState,
             sender_addr: ContractAddress,
@@ -757,7 +665,6 @@ pub mod Privacy {
             let channel_key = compute_channel_key(
                 :sender_addr, :sender_private_key, :recipient_addr, :recipient_public_key,
             );
-            assert(channel_key.is_non_zero(), internal_errors::UNEXPECTED_ZERO_CHANNEL_KEY);
 
             // Assert subchannel exists.
             let subchannel_marker = compute_subchannel_marker(
@@ -779,198 +686,213 @@ pub mod Privacy {
 
             // Compute note id and assert it is non-zero.
             let note_id = compute_note_id(:channel_key, :token, :index);
-            assert(note_id.is_non_zero(), internal_errors::ZERO_NOTE_ID);
 
-            let storage_address = self.notes.entry(note_id).into();
+            let storage_address = storage_path_to_felt252(path: self.notes.entry(note_id));
             (channel_key, storage_address, note_id)
+        }
+
+        fn _client_apply_actions(
+            ref self: ContractState, actions: Span<ServerAction>, ref has_replay_protection: bool,
+        ) {
+            for action in actions {
+                match *action {
+                    ServerAction::WriteOnce(input) => {
+                        self._apply_write_once(:input);
+                        has_replay_protection = true;
+                    },
+                    ServerAction::Append(input) => self._apply_append(:input),
+                    ServerAction::TransferFrom(_) => {},
+                    ServerAction::TransferTo(_) => {},
+                    ServerAction::Invoke(_) => {},
+                    ServerAction::EmitViewingKeySet(_) => {},
+                    ServerAction::EmitWithdrawal(_) => {},
+                    ServerAction::EmitDeposit(_) => {},
+                    ServerAction::EmitOpenNoteCreated(_) => {},
+                    ServerAction::EmitEncNoteCreated(_) => {},
+                    ServerAction::EmitNoteUsed(_) => {},
+                }
+            }
         }
     }
 
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
-        fn execute_actions(ref self: ContractState, actions: Span<ServerAction>) {
+        fn apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
+            self.reentrancyguard.start();
             self.pausable.assert_not_paused();
-            // TODO: Verify client proof.
-            for action in actions {
-                match *action {
-                    ServerAction::WriteOnce(input) => {
-                        self
-                            ._execute_write(
-                                storage_address: input.storage_address,
-                                new_value: input.value,
-                                require_zero: true,
-                            );
-                    },
-                    ServerAction::AppendToVec(input) => {
-                        self
-                            ._execute_append_to_vector(
-                                key: input.recipient_addr, value: input.enc_channel_info,
-                            );
-                    },
-                    ServerAction::TransferFrom(input) => {
-                        self
-                            ._execute_transfer_from(
-                                sender_addr: input.sender_addr,
-                                token: input.token,
-                                amount: input.amount,
-                            );
-                    },
-                    ServerAction::TransferTo(input) => {
-                        self
-                            ._execute_transfer_to(
-                                recipient_addr: input.recipient_addr,
-                                token: input.token,
-                                amount: input.amount,
-                            );
-                    },
-                    ServerAction::ReadAssert(input) => {
-                        self
-                            ._execute_read_assert(
-                                storage_address: input.storage_address, value: input.value,
-                            );
-                    },
-                    ServerAction::SwapWithExecutor(input) => {
-                        self
-                            ._execute_swap_with_executor(
-                                swap_executor: input.swap_executor,
-                                swap_contract: input.swap_contract,
-                                swap_selector: input.swap_selector,
-                                swap_calldata: input.swap_calldata,
-                                in_token: input.in_token,
-                                out_token: input.out_token,
-                                in_amount: input.in_amount,
-                                note_id: input.note_id,
-                            );
-                    },
-                    ServerAction::EmitViewingKeySet(event) => self.emit(event),
-                    ServerAction::EmitWithdrawal(event) => self.emit(event),
-                    ServerAction::EmitDeposit(event) => self.emit(event),
-                    ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
-                };
-            };
-        }
-
-        fn deposit_to_open_note(ref self: ContractState, note_id: felt252, amount: u128) {
-            self.pausable.assert_not_paused();
-            // Validate inputs.
-            assert(note_id.is_non_zero(), errors::ZERO_NOTE_ID);
-            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
-
-            // Read the Note from storage and assert it exists.
-            let note_entry = self.notes.entry(note_id);
-            let note = note_entry.read();
-            let packed_value = note.packed_value;
-            let token = note.token;
-            let depositor = note.depositor;
-            assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
-
-            // Unpack the packed_value to get (salt, current_amount).
-            let (salt, current_amount) = unpacking(packed_value: note.packed_value);
-
-            // Assert it's an open note (salt == OPEN_NOTE_SALT).
-            assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
-
-            // Assert the note hasn't been deposited to yet (current_amount == 0).
-            assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
-
-            // Assert the caller is the depositor.
-            let caller = get_caller_address();
-            assert(caller == depositor, errors::CALLER_NOT_DEPOSITOR);
-
-            // Transfer funds from the depositor (caller).
-            self._execute_transfer_from(sender_addr: depositor, :token, :amount);
-
-            // Write the new packed_value (OPEN_NOTE_SALT, amount) to storage.
-            let new_packed_value = packing(value_1: OPEN_NOTE_SALT, value_2: amount);
-            note_entry.packed_value.write(new_packed_value);
-
-            // Emit the OpenNoteDeposited event.
-            self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
+            self.validate_proof(:actions);
+            self.collect_fee();
+            self._apply_actions(:actions);
+            self.reentrancyguard.end();
         }
     }
 
     #[generate_trait]
     pub impl ServerInternalImpl of ServerInternalTrait {
-        fn _execute_write(
-            ref self: ContractState,
-            storage_address: felt252,
-            new_value: Span<felt252>,
-            require_zero: bool,
-        ) {
-            let base: StorageBaseAddress = storage_base_address_from_felt252(addr: storage_address);
-            let mut offset = 0;
-            for value in new_value {
-                let address = storage_address_from_base_and_offset(:base, :offset);
-                offset += 1;
+        fn validate_proof(self: @ContractState, actions: Span<ServerAction>) {
+            let execution_info = get_execution_info_v3_syscall().unwrap_syscall();
+            let contract_address = execution_info.contract_address;
+            let mut proof_facts_span = execution_info.tx_info.proof_facts;
+            assert(!proof_facts_span.is_empty(), errors::EMPTY_PROOF_FACTS);
+            let proof_facts: ProofFacts = Serde::deserialize(ref proof_facts_span)
+                .expect(errors::PROOF_FACTS_DESERIALIZE_ERROR);
+            assert(proof_facts_span.is_empty(), errors::INVALID_PROOF_FACTS);
+            let ProofFacts {
+                proof_version: _,
+                program_variant,
+                virtual_program_hash: _,
+                starknet_os_output_version,
+                base_block_number,
+                base_block_hash: _,
+                starknet_os_config_hash: _,
+                message_to_l1_hashes,
+            } = proof_facts;
 
-                if require_zero {
-                    assert(
-                        storage_read_syscall(address_domain: 0, :address)
-                            .unwrap_syscall()
-                            .is_zero(),
-                        errors::NON_ZERO_VALUE,
-                    );
-                }
-                storage_write_syscall(address_domain: 0, :address, value: *value).unwrap_syscall();
+            // Assert program variant and output version are correct.
+            assert(program_variant == VIRTUAL_SNOS, errors::INVALID_PROGRAM_VARIANT);
+            assert(starknet_os_output_version == VIRTUAL_SNOS0, errors::INVALID_OS_OUTPUT_VERSION);
+
+            // Assert base block number is recent.
+            let current_block_number = execution_info.block_info.block_number;
+            assert(base_block_number < current_block_number, errors::INVALID_BASE_BLOCK_NUMBER);
+            assert(
+                current_block_number <= base_block_number + self.proof_validity_blocks.read(),
+                errors::PROOF_EXPIRED,
+            );
+
+            // Assert that the message hash is included in the L1 messages,
+            // meaning the proof is valid for this transaction.
+            let message_hash = compute_message_hash(:actions, :contract_address);
+            assert(message_to_l1_hashes == [message_hash].span(), errors::INVALID_PROOF_MSG);
+        }
+
+        fn collect_fee(ref self: ContractState) {
+            let fee_amount = self.fee_amount.read();
+            if fee_amount.is_non_zero() {
+                let fee_collector = self.fee_collector.read();
+                checked_transfer_from(
+                    token_address: STRK_TOKEN_ADDRESS,
+                    sender: get_caller_address(),
+                    recipient: fee_collector,
+                    amount: fee_amount.into(),
+                );
             }
         }
 
-        fn _execute_append_to_vector(
-            ref self: ContractState, key: ContractAddress, value: EncChannelInfo,
-        ) {
-            self.recipient_channels.entry(key).push(value);
+        fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
+            // TODO: Assert each note opened is filled by the end of this function.
+            for action in actions {
+                match *action {
+                    ServerAction::WriteOnce(input) => self._apply_write_once(:input),
+                    ServerAction::Append(input) => self._apply_append(:input),
+                    ServerAction::TransferFrom(input) => self._apply_transfer_from(:input),
+                    ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
+                    ServerAction::Invoke(input) => {
+                        let open_note_deposits = self._apply_invoke(:input);
+                        // Apply deposits to open notes returned by Invoke.
+                        for deposit in open_note_deposits {
+                            self
+                                ._deposit_to_open_note(
+                                    depositor: input.contract_address, deposit: *deposit,
+                                );
+                        }
+                    },
+                    ServerAction::EmitViewingKeySet(event) => self.emit(event),
+                    ServerAction::EmitWithdrawal(event) => self.emit(event),
+                    ServerAction::EmitDeposit(event) => self.emit(event),
+                    ServerAction::EmitOpenNoteCreated(event) => self.emit(event),
+                    ServerAction::EmitEncNoteCreated(event) => self.emit(event),
+                    ServerAction::EmitNoteUsed(event) => self.emit(event),
+                };
+            }
         }
 
-        fn _execute_transfer_from(
-            ref self: ContractState,
-            sender_addr: ContractAddress,
-            token: ContractAddress,
-            amount: u128,
-        ) {
-            IERC20Dispatcher { contract_address: token }
-                .checked_transfer_from(
-                    sender: sender_addr, recipient: get_contract_address(), amount: amount.into(),
+        fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
+            let WriteOnceInput { storage_address, value } = input;
+            assert(!value.is_empty(), internal_errors::UNEXPECTED_EMPTY_VALUE);
+            assert(value[0].is_non_zero(), internal_errors::UNEXPECTED_ZERO_VALUE);
+            let base: StorageBaseAddress = storage_base_address_from_felt252(addr: storage_address);
+            let mut offset = 0;
+            for felt in value {
+                let address = storage_address_from_base_and_offset(:base, :offset);
+                assert(
+                    storage_read_syscall(address_domain: 0, :address).unwrap_syscall().is_zero(),
+                    errors::NON_ZERO_VALUE,
                 );
+                storage_write_syscall(address_domain: 0, :address, value: *felt).unwrap_syscall();
+                offset += 1;
+            }
         }
 
-        fn _execute_transfer_to(
-            ref self: ContractState,
-            recipient_addr: ContractAddress,
-            token: ContractAddress,
-            amount: u128,
-        ) {
+        fn _apply_append(ref self: ContractState, input: AppendInput) {
+            let AppendInput { recipient_addr, enc_channel_info } = input;
+            self.recipient_channels.entry(recipient_addr).push(enc_channel_info);
+        }
+
+        fn _apply_transfer_from(ref self: ContractState, input: TransferFromInput) {
+            let TransferFromInput { from_addr, token, amount } = input;
+            checked_transfer_from(
+                token_address: token,
+                sender: from_addr,
+                recipient: get_contract_address(),
+                amount: amount.into(),
+            );
+        }
+
+        fn _apply_transfer_to(ref self: ContractState, input: TransferToInput) {
+            let TransferToInput { to_addr, token, amount } = input;
             // Note: This function should NOT panic as the contract should have the balance.
-            IERC20Dispatcher { contract_address: token }
-                .checked_transfer(recipient: recipient_addr, amount: amount.into());
+            checked_transfer(token_address: token, recipient: to_addr, amount: amount.into());
         }
 
-        fn _execute_read_assert(ref self: ContractState, storage_address: felt252, value: felt252) {
-            let target = StorageBase::<Mutable<felt252>> { __base_address__: storage_address };
-            let current_value = target.read();
-            assert(current_value == value, errors::VALUE_MISMATCH);
+        fn _apply_invoke(ref self: ContractState, input: InvokeInput) -> Span<OpenNoteDeposit> {
+            let InvokeInput { contract_address, calldata } = input;
+            let mut return_data = call_contract_syscall(
+                address: contract_address, entry_point_selector: INVOKE_SELECTOR, :calldata,
+            )
+                .unwrap_syscall();
+
+            let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
+                .expect(errors::INVALID_INVOKE_RETURN_DATA);
+            assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
+            deposits
         }
 
-        fn _execute_swap_with_executor(
-            ref self: ContractState,
-            swap_executor: ContractAddress,
-            swap_contract: ContractAddress,
-            swap_selector: felt252,
-            swap_calldata: Span<felt252>,
-            in_token: ContractAddress,
-            out_token: ContractAddress,
-            in_amount: u128,
-            note_id: felt252,
+        /// Applies a single deposit to an open note. Verifies the input depositor matches the
+        /// note's depositor. Used when applying the span returned by an Invoke.
+        fn _deposit_to_open_note(
+            ref self: ContractState, depositor: ContractAddress, deposit: OpenNoteDeposit,
         ) {
-            ISwapExecutorDispatcher { contract_address: swap_executor }
-                .swap(
-                    :swap_contract,
-                    :swap_selector,
-                    :swap_calldata,
-                    :in_token,
-                    :out_token,
-                    :in_amount,
-                    :note_id,
-                );
+            let OpenNoteDeposit { note_id, token, amount } = deposit;
+            assert(token.is_non_zero(), errors::ZERO_TOKEN);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
+
+            // Read the Note from storage and assert it exists.
+            let note_entry = self.notes.entry(note_id);
+            let Note {
+                packed_value, token: note_token, depositor: note_depositor,
+            } = note_entry.read();
+            assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
+
+            let (salt, current_amount) = unpack(:packed_value);
+            assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
+            assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
+            assert(token == note_token, errors::TOKEN_MISMATCH);
+            assert(depositor == note_depositor, errors::DEPOSITOR_MISMATCH);
+
+            checked_transfer_from(
+                token_address: token,
+                sender: depositor,
+                recipient: get_contract_address(),
+                amount: amount.into(),
+            );
+
+            // Write the new `packed_value` (OPEN_NOTE_SALT, amount) to storage.
+            let new_packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
+            assert(new_packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
+            note_entry.packed_value.write(new_packed_value);
+
+            self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
         }
     }
 
@@ -1020,26 +942,70 @@ pub mod Privacy {
             self.enc_private_key.read(user_addr)
         }
 
-        fn get_compliance_public_key(self: @ContractState) -> felt252 {
-            self.compliance_public_key.read()
+        fn get_auditor_public_key(self: @ContractState) -> felt252 {
+            self.auditor_public_key.read()
+        }
+
+        fn get_fee_amount(self: @ContractState) -> u128 {
+            self.fee_amount.read()
+        }
+
+        fn get_fee_collector(self: @ContractState) -> ContractAddress {
+            self.fee_collector.read()
+        }
+
+        fn get_proof_validity_blocks(self: @ContractState) -> u64 {
+            self.proof_validity_blocks.read()
         }
     }
 
     #[abi(embed_v0)]
-    pub impl ComplianceImpl of ICompliance<ContractState> {
-        fn set_compliance_public_key(ref self: ContractState, compliance_public_key: felt252) {
+    pub impl AdminImpl of IAdmin<ContractState> {
+        fn set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
             // TODO: Change to the real role.
             self.roles.only_token_admin();
-            self._set_compliance_public_key(:compliance_public_key);
+            self._set_auditor_public_key(:auditor_public_key);
+        }
+
+        fn set_fee_amount(ref self: ContractState, fee_amount: u128) {
+            // TODO: Change to real role.
+            self.roles.only_app_governor();
+            if fee_amount.is_non_zero() {
+                assert(self.fee_collector.read().is_non_zero(), errors::ZERO_FEE_COLLECTOR);
+            }
+            self.fee_amount.write(fee_amount);
+            self.emit(events::FeeAmountSet { fee_amount });
+        }
+
+        fn set_fee_collector(ref self: ContractState, fee_collector: ContractAddress) {
+            // TODO: Change to real role.
+            self.roles.only_app_governor();
+            if self.fee_amount.read().is_non_zero() {
+                assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
+            }
+            self.fee_collector.write(fee_collector);
+            self.emit(events::FeeCollectorSet { fee_collector });
+        }
+
+        fn set_proof_validity_blocks(ref self: ContractState, proof_validity_blocks: u64) {
+            // TODO: Change to real role.
+            self.roles.only_app_governor();
+            self._set_proof_validity_blocks(:proof_validity_blocks);
         }
     }
 
     #[generate_trait]
-    impl ComplianceInternalImpl of ComplianceInternalTrait {
-        fn _set_compliance_public_key(ref self: ContractState, compliance_public_key: felt252) {
-            assert(compliance_public_key.is_non_zero(), errors::ZERO_COMPLIANCE_PUBLIC_KEY);
-            self.compliance_public_key.write(compliance_public_key);
-            self.emit(events::CompliancePublicKeySet { compliance_public_key });
+    impl AdminInternalImpl of AdminInternalTrait {
+        fn _set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
+            assert(auditor_public_key.is_non_zero(), errors::ZERO_AUDITOR_PUBLIC_KEY);
+            self.auditor_public_key.write(auditor_public_key);
+            self.emit(events::AuditorPublicKeySet { auditor_public_key });
+        }
+
+        fn _set_proof_validity_blocks(ref self: ContractState, proof_validity_blocks: u64) {
+            assert(proof_validity_blocks.is_non_zero(), errors::ZERO_PROOF_VALIDITY_BLOCKS);
+            self.proof_validity_blocks.write(proof_validity_blocks);
+            self.emit(events::ProofValidityBlocksSet { proof_validity_blocks });
         }
     }
 }

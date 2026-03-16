@@ -4,25 +4,24 @@ import privacy.utils
 
 structure SubchannelImplies₀
     {crypto: Crypto} (rm: ReachableMemory crypto) (c addralice addrbob Kbob token: ℕ) where
-  (k₀ k₁ r kalice channel_s channel_r: ℕ)
-  h_k₀: k₀ < crypto.MAX_K₀
+  (k r kalice channel_q channel_r: ℕ)
   r_ne_zero: r ≠ 0
-  h_action: .OpenSubchannel ⟨c, addralice, addrbob, Kbob, token, k₀, k₁, r⟩ ∈ rm.actions
-  channel: ChannelImplies rm ⟨addralice, kalice, addrbob, Kbob, channel_s, channel_r⟩
+  h_action: .OpenSubchannel ⟨c, addralice, addrbob, Kbob, token, k, r⟩ ∈ rm.actions
+  channel: ChannelImplies rm ⟨addralice, kalice, addrbob, Kbob, channel_q, channel_r⟩
   h_c: c = channel.c
 
 abbrev SubchannelImplies₀.subchannel_input
     {crypto: Crypto} {rm: ReachableMemory crypto} {c addralice addrbob Kbob token: ℕ}
     (subchannel_imp: SubchannelImplies₀ rm c addralice addrbob Kbob token) : OpenSubchannelInput :=
-  ⟨c, addralice, addrbob, Kbob, token, subchannel_imp.k₀, subchannel_imp.k₁, subchannel_imp.r⟩
+  ⟨c, addralice, addrbob, Kbob, token, subchannel_imp.k, subchannel_imp.r⟩
 
 structure SubchannelImplies
     {crypto: Crypto} (rm: ReachableMemory crypto) (c addralice addrbob Kbob token: ℕ)
     extends SubchannelImplies₀ rm c addralice addrbob Kbob token where
   subchannel_marker: rm.m .SubchannelMarkers [toSubchannelImplies₀.subchannel_input.subchannel_marker crypto] ≠ 0
   subchannel_tokens₀ : rm.m .SubchannelTokens [toSubchannelImplies₀.subchannel_input.subchannel_id crypto, 0] = r
-  subchannel_tokens₁ : rm.m .SubchannelTokens [toSubchannelImplies₀.subchannel_input.subchannel_id crypto, 1] = crypto.hash [c, k₀, k₁, r] + token
-  prev_subchannel_exists: k₁ = 0 ∨ rm.m .SubchannelTokens [crypto.hash [c, k₀, k₁ - 1], 0] ≠ 0
+  subchannel_tokens₁ : rm.m .SubchannelTokens [toSubchannelImplies₀.subchannel_input.subchannel_id crypto, 1] = crypto.hash [c, k, r] + token
+  prev_subchannel_exists: k = 0 ∨ rm.m .SubchannelTokens [crypto.hash [c, k - 1], 0] ≠ 0
 
 theorem SubchannelImplies.h_channel_exists
     {crypto: Crypto} {rm: ReachableMemory crypto} {c addralice addrbob Kbob token: ℕ}
@@ -36,13 +35,11 @@ theorem SubchannelImplies.next
     (subchannel_imp: SubchannelImplies rm c addralice addrbob Kbob token) :
     Nonempty (SubchannelImplies (rm.add action success) c addralice addrbob Kbob token) := by
   let subchannel_imp₀ : SubchannelImplies₀ (rm.add action success) c addralice addrbob Kbob token := {
-    k₀ := subchannel_imp.k₀,
-    k₁ := subchannel_imp.k₁,
+    k := subchannel_imp.k,
     r := subchannel_imp.r,
     kalice := subchannel_imp.kalice,
-    channel_s := subchannel_imp.channel_s,
+    channel_q := subchannel_imp.channel_q,
     channel_r := subchannel_imp.channel_r,
-    h_k₀ := subchannel_imp.h_k₀,
     r_ne_zero := subchannel_imp.r_ne_zero,
     h_action := by simp [subchannel_imp.h_action],
     channel := Nonempty.some (subchannel_imp.channel.next success),
@@ -74,18 +71,18 @@ theorem SubchannelImplies.next
       exact subchannel_imp.subchannel_tokens₀
     · rw [rm.add_m, run_action, ←info.h_m', info.no_change _ _ (by simp) (by simp) (by simp [h_subchannel_id_ne])]
       exact subchannel_imp.subchannel_tokens₁
-    · by_cases h: subchannel_imp₀.k₁ = 0
+    · by_cases h: subchannel_imp₀.k = 0
       case pos => simp [h]
       case neg =>
         have prev_exists := Or.resolve_left subchannel_imp.prev_subchannel_exists h
         apply Or.inr
-        have : crypto.hash [c, subchannel_imp₀.k₀, subchannel_imp₀.k₁ - 1] ≠ OpenSubchannelInput.subchannel_id crypto inp := by
+        have : crypto.hash [c, subchannel_imp₀.k - 1] ≠ OpenSubchannelInput.subchannel_id crypto inp := by
           by_contra h'
           have := crypto.h_hash h'
           injections
-          rename_i h₀ h₁ h₂
+          rename_i h₀ h₁
           have := info.old_token_was_zero
-          simp only [OpenSubchannelInput.subchannel_id, ←h₀, ←h₁, ←h₂] at this
+          simp only [OpenSubchannelInput.subchannel_id, ←h₀, ←h₁] at this
           exact prev_exists this
         rw [rm.add_m, run_action, ←info.h_m', info.no_change _ _ (by simp) (by simp [this]) (by simp)]
         exact prev_exists
@@ -110,17 +107,15 @@ theorem SubchannelImplies.from_action
   cases h
   case head =>
     let info := open_subchannel_info crypto inp rm success
-    obtain ⟨kalice, channel_s, channel_r, ⟨channel_imp, h_c⟩⟩ := ChannelImplies.from_channel_markers info.channel_exists
+    obtain ⟨kalice, channel_q, channel_r, ⟨channel_imp, h_c⟩⟩ := ChannelImplies.from_channel_markers info.channel_exists
 
     refine ⟨{
-      k₀ := inp.k₀,
-      k₁ := inp.k₁,
+      k := inp.k,
       r := inp.r,
       kalice := kalice,
-      channel_s := channel_s,
+      channel_q := channel_q,
       channel_r := channel_r,
       h_action := by simp,
-      h_k₀ := info.k₀_lt_MAX_K₀,
       r_ne_zero := info.r_ne_zero,
       channel := Nonempty.some (channel_imp.next success),
       h_c := by simp [h_c],
@@ -130,11 +125,11 @@ theorem SubchannelImplies.from_action
       prev_subchannel_exists := ?_,
     }⟩
     -- prev_subchannel_exists:
-    · by_cases h: inp.k₁ = 0
+    · by_cases h: inp.k = 0
       case pos => simp [h]
       case neg =>
         apply Or.inr
-        have : crypto.hash [inp.c, inp.k₀, inp.k₁ - 1] ≠ OpenSubchannelInput.subchannel_id crypto inp := by
+        have : crypto.hash [inp.c, inp.k - 1] ≠ OpenSubchannelInput.subchannel_id crypto inp := by
           by_contra h
           have := crypto.h_hash h
           injections

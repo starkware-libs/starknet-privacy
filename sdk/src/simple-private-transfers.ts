@@ -1,4 +1,3 @@
-import { Call } from "starknet";
 import {
   SimplePrivateTransfersInterface,
   PrivateTransfersInterface,
@@ -11,6 +10,8 @@ import {
   All,
   ExecuteResult,
 } from "./interfaces.js"; // Assuming you moved interfaces
+import { toBigInt } from "./utils/convert.js";
+import { toHex } from "./utils/convert.js";
 import { AddressMap } from "./utils/maps.js";
 import { isAll } from "./utils/validation.js";
 
@@ -61,15 +62,26 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
     fromToken: StarknetAddress,
     fromAmount: Amount,
     toToken: StarknetAddress,
-    helperCall: Call
+    executor: StarknetAddress
   ): Promise<ExecuteResult> {
+    const toTokenAddress = toBigInt(toToken);
     return this.build(fromToken)
-      .withdraw({ recipient: helperCall.contractAddress, amount: fromAmount })
+      .withdraw({ recipient: executor, amount: fromAmount })
       .surplusTo(this.inner.user, false) // Keep ACE surplus as private note
       .with(toToken)
-      .transfer({ recipient: this.inner.user, amount: Open, depositor: helperCall.contractAddress })
+      .transfer({ recipient: this.inner.user, amount: Open, depositor: executor })
       .done()
-      .call(helperCall)
+      .invoke(({ openNotes, withdrawals }) => {
+        return {
+          contractAddress: toHex(executor),
+          calldata: [
+            withdrawals[0].token,
+            toTokenAddress,
+            withdrawals[0].amount,
+            openNotes[0].noteId,
+          ],
+        };
+      })
       .execute();
   }
 

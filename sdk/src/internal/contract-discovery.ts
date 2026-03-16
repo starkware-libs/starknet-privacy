@@ -15,7 +15,7 @@ import {
 } from "../utils/hashes.js";
 import { encryptions } from "../utils/encryptions.js";
 import { cloneNotesCursor, cloneChannelCursor } from "./channel.js";
-import type { NotesCursor } from "./channel.js";
+import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./channel.js";
 import { bisect, scan, Tracker } from "../utils/scan.js";
 import { createRateLimitedObject, type RateLimitOptions } from "../utils/rate-limiter.js";
 import type { PoolContractInterface, NoteData } from "./pool-contract-interface.js";
@@ -71,6 +71,7 @@ class NotesDiscovery {
           channelKey: channel.key,
           subchannelIdIndex: 0,
           noteIndexes: new AddressMap<number>(),
+          totalNoteCounts: new AddressMap<number>(),
         };
         this.cursor!.incomingChannels.set(channel.sender, incomingChannelCursor);
 
@@ -234,46 +235,58 @@ class NotesDiscovery {
 
 class ChannelsDiscovery {
   private readonly tracker = new Tracker();
-  private readonly channels;
+  private readonly channels: AddressMap<Channel>;
+  private total?: number;
   constructor(
     private readonly address: StarknetAddressBigint,
     private readonly viewingKey: bigint,
-    private readonly recipients: StarknetAddressBigint[] | "all",
-    private readonly cursor: AddressMap<Channel> | undefined,
+    private readonly recipients: RecipientsFilter,
+    private readonly cursor: ChannelCursor | undefined,
     private readonly pool: PoolContractInterface
   ) {
-    this.channels = cloneChannelCursor(cursor);
+    const { channels, total } = cloneChannelCursor(cursor);
+    this.channels = channels!;
+    this.total = total;
   }
 
-  async discover(): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }> {
-    if (this.recipients === "all") {
+  async discover(): Promise<{
+    timestamp: BlockIdentifier;
+    channels?: AddressMap<Channel>;
+    total?: number;
+  }> {
+    if (this.recipients == "all" || this.recipients == "total-only") {
       void scan(
         async (s) => {
           const encOutgoingChannelInfo = await this.pool.get_outgoing_channel_info(
             compute_outgoing_channel_id(this.address, toBigInt(this.viewingKey), s)
           );
           if (toBigInt(encOutgoingChannelInfo.salt) === 0n) return false;
-          const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
-            encOutgoingChannelInfo,
-            this.address,
-            this.viewingKey,
-            s
-          );
-          void this.tracker.add(this.discoverChannel(recipientAddr));
+          if (this.recipients !== "total-only") {
+            const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
+              encOutgoingChannelInfo,
+              this.address,
+              this.viewingKey,
+              s
+            );
+            void this.tracker.add(this.discoverChannel(recipientAddr));
+          }
+          this.total = Math.max(this.total ?? 0, s + 1);
           return true;
         },
-        0,
-        this.tracker
+        this.total ?? 0,
+        this.tracker,
+        this.recipients === "total-only"
       );
     } else {
       for (const recipient of this.recipients) {
+        // TODO: this may mean double discovering recipients already probed in the sync above
         void this.tracker.add(this.discoverChannel(toBigInt(recipient)));
       }
     }
 
     if (this.cursor) {
       // discover subchannels
-      for (const [recipient, channel] of this.cursor.entries()) {
+      for (const [recipient, channel] of this.cursor.channels?.entries() ?? []) {
         if (!channel.key) continue;
         void this.tracker.add(this.discoverSubchannels(recipient, channel));
         // discover note indexes
@@ -283,12 +296,16 @@ class ChannelsDiscovery {
       }
     }
     await this.tracker.wait();
-    return { timestamp: 0, channels: this.channels };
+    return { timestamp: 0, channels: this.channels, total: this.total };
   }
 
   private async discoverChannel(recipient: StarknetAddressBigint): Promise<void> {
     debugLog("contract-discovery", "discoverChannels", "recipient", toHex(recipient));
-    if (this.channels.has(recipient) && this.channels.get(recipient)!.key !== 0n) return;
+    let channel = this.channels.get(recipient);
+    if (channel && channel.key !== 0n) {
+      void this.tracker.add(this.discoverSubchannels(recipient, channel));
+      return;
+    }
 
     const publicKey =
       this.channels.get(recipient)?.publicKey ?? (await this.pool.get_public_key(recipient));
@@ -296,7 +313,7 @@ class ChannelsDiscovery {
     debugLog("contract-discovery", "discoverChannels", "publicKey", publicKey);
     if (!publicKey) return;
 
-    const channel = this.channels.get(recipient, () => new Channel(publicKey))!;
+    channel = this.channels.get(recipient, () => new Channel(publicKey))!;
 
     const channelKey = compute_channel_key(
       this.address,
@@ -393,13 +410,13 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
   async discoverChannels(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    _recipients: StarknetAddressBigint[] | "all",
-    params?: { cursor?: AddressMap<Channel> }
-  ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }> {
+    recipients: RecipientsFilter,
+    params?: { cursor?: ChannelCursor }
+  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }> {
     const discovery = new ChannelsDiscovery(
       address,
       toBigInt(viewingKey),
-      _recipients,
+      recipients,
       params?.cursor,
       this.pool
     );

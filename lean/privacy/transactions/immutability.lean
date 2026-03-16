@@ -82,6 +82,8 @@ theorem immutability₀ (crypto: Crypto) (m: Memory) (action: Action) (t: Memory
     rw [run_action, ←info.h_m',
       info.no_change _ _ (λ h' ↦ by rw [Prod.mk.injEq] at h'; simp [h'] at h_t)]
 
+  case Withdraw inp => trivial
+
 -- Once a value is non-zero in certain memory spaces, it cannot change.
 theorem immutability {crypto: Crypto} {rm rm': ReachableMemory crypto}
     (h_extends: rm'.extends rm)
@@ -199,7 +201,7 @@ theorem open_channel_immutable
   dsimp only [run_action₀, open_channel] at *
   rw [decide_eq_true_iff] at success
 
-  have ⟨h₀, h₁, h₂, h₃, h₄⟩ := success
+  have ⟨h₀, h₁, h₂, h₃, h₄, h₅⟩ := success
 
   dsimp only [immutable_fn, mem_cell_fn] at imm₀ imm₁
 
@@ -208,6 +210,7 @@ theorem open_channel_immutable
   · simp only [imm₀ [inp.addralice] (by
       rw [h₁]; exact crypto.zero_not_public_key ⟨inp.kalice, h₂⟩
     )]
+    simp only [imm₀ [inp.addrbob] (by rw [h₅]; exact h₀)]
 
     cases h₄
     case inl h₄ => simp [h₄]
@@ -221,7 +224,7 @@ theorem open_subchannel_immutable
     run_action₀ crypto (.OpenSubchannel inp) m₁ = run_action₀ crypto (.OpenSubchannel inp) m₀ := by
   dsimp only [run_action₀, open_subchannel] at *
   rw [decide_eq_true_iff] at success
-  have ⟨h₀, h₁, h₂, h₃⟩ := success
+  have ⟨h₀, h₁, h₂⟩ := success
 
   dsimp only [immutable_fn, mem_cell_fn] at imm₀ imm₁
 
@@ -244,7 +247,7 @@ theorem create_note_immutable
     run_action₀ crypto (.CreateNote inp) m₁ = run_action₀ crypto (.CreateNote inp) m₀ := by
   dsimp only [run_action₀, create_note] at *
   rw [decide_eq_true_iff] at success
-  have ⟨h₀, h₁, h₂, h₃, h₄⟩ := success
+  have ⟨h₀, h₁, h₂, h₃⟩ := success
 
   dsimp only [immutable_fn, mem_cell_fn] at imm₀
   dsimp only [note_exists_fn] at imm₁
@@ -252,13 +255,13 @@ theorem create_note_immutable
   apply Prod.ext
   · trivial
   · simp only
-    rw [imm₀ _ h₃]
+    rw [imm₀ _ h₂]
     cases h₁
     case inl h₁ =>
       simp [h₁]
     case inr h₁ =>
       have := immutable_fn_prop
-        (imm₁ (crypto.hash [CreateNoteInput.c crypto inp, inp.token, inp.i₀, inp.i₁ - 1]))
+        (imm₁ (crypto.hash [CreateNoteInput.c crypto inp, inp.token, inp.i - 1]))
         (by simp; exact h₁)
       simp only [Function.comp_apply, decide_eq_true_eq, mem_cell_fn] at this
       conv => lhs; arg 1; rw [this]
@@ -318,6 +321,7 @@ theorem run_action₀_immutable
   case CreateNote inp => exact create_note_immutable inp imm.imm₂ imm.imm₅ success
   case UseNote inp => exact use_note_immutable inp imm.imm₂ imm.imm₆ success
   case OpenDeposit inp => trivial
+  case Withdraw inp => trivial
 
 theorem ImmutableCells.of_extends
     (crypto: Crypto) {rm rm': ReachableMemory crypto}

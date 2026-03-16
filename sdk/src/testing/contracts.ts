@@ -48,14 +48,14 @@ export class MockSwapHelper implements MockContract {
 
   constructor(
     public address: StarknetAddress,
-    private contracts: MockContracts
+    private contracts: MockContracts,
+    private poolAddress: StarknetAddress
   ) {}
 
-  swap(
+  privacy_invoke(
     fromToken: StarknetAddress,
     toToken: StarknetAddress,
     amount: Amount,
-    poolAddress: StarknetAddress,
     noteId: NoteId
   ): void {
     const balance = this.contracts.get(fromToken).balanceOf(this.address)!;
@@ -63,7 +63,7 @@ export class MockSwapHelper implements MockContract {
     this.contracts.get(fromToken).setBalance(this.address, 0n);
     this.contracts.get(toToken).setBalance(this.address, amount * 2n);
     this.contracts
-      .get<MockPoolContract>(toBigInt(poolAddress))
+      .get<MockPoolContract>(toBigInt(this.poolAddress))
       .openDeposit(toBigInt(noteId), toBigInt(toToken), amount * 2n, toBigInt(this.address));
   }
 }
@@ -94,7 +94,7 @@ export class MockContracts {
 
   /**
    * Execute a call on a contract.
-   * This is a helper for executing arbitrary calls, e.g. from FollowupCall actions.
+   * This is a helper for executing arbitrary calls, e.g. from InvokeExternal actions.
    * It attempts to find the method on the mock contract instance and invoke it.
    */
   call(contractAddress: StarknetAddress, method: string, args: unknown[] = []): unknown {

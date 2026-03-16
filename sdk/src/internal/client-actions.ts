@@ -4,7 +4,6 @@
  * Run: npx tsx scripts/generate-client-actions.ts
  */
 
-import { Call } from "starknet";
 import { StarknetAddressBigint } from "../interfaces.js";
 
 export type SetViewingKeyInput = {
@@ -13,7 +12,6 @@ export type SetViewingKeyInput = {
 
 export type OpenChannelInput = {
   recipient_addr: StarknetAddressBigint;
-  recipient_public_key: bigint;
   index: number;
   random: bigint;
   salt: bigint;
@@ -58,14 +56,15 @@ export type UseNoteInput = {
 };
 
 export type WithdrawInput = {
-  withdrawal_target: StarknetAddressBigint;
+  to_addr: StarknetAddressBigint;
   token: StarknetAddressBigint;
   amount: bigint;
   random: bigint;
 };
 
-export type FollowupCallInput = {
-  call: Call;
+export type InvokeExternalInput = {
+  contract_address: StarknetAddressBigint;
+  calldata: unknown;
 };
 
 /**
@@ -80,7 +79,7 @@ export type ClientAction =
   | { type: "Deposit"; input: DepositInput }
   | { type: "UseNote"; input: UseNoteInput }
   | { type: "Withdraw"; input: WithdrawInput }
-  | { type: "FollowupCall"; input: FollowupCallInput };
+  | { type: "InvokeExternal"; input: InvokeExternalInput };
 
 /** All valid client action type names */
 export const CLIENT_ACTION_TYPES = [
@@ -92,7 +91,7 @@ export const CLIENT_ACTION_TYPES = [
   "Deposit",
   "UseNote",
   "Withdraw",
-  "FollowupCall",
+  "InvokeExternal",
 ] as const;
 
 export type ClientActionType = (typeof CLIENT_ACTION_TYPES)[number];

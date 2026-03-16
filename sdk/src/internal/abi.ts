@@ -17,6 +17,34 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
+    "name": "core::array::Span::<core::felt252>",
+    "members": [
+      {
+        "name": "snapshot",
+        "type": "@core::array::Array::<core::felt252>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "core::starknet::account::Call",
+    "members": [
+      {
+        "name": "to",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "selector",
+        "type": "core::felt252"
+      },
+      {
+        "name": "calldata",
+        "type": "core::array::Span::<core::felt252>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
     "name": "privacy::actions::SetViewingKeyInput",
     "members": [
       {
@@ -32,10 +60,6 @@ export const PrivacyPoolABI = [
       {
         "name": "recipient_addr",
         "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
-        "name": "recipient_public_key",
-        "type": "core::felt252"
       },
       {
         "name": "index",
@@ -178,7 +202,7 @@ export const PrivacyPoolABI = [
     "name": "privacy::actions::WithdrawInput",
     "members": [
       {
-        "name": "withdrawal_target",
+        "name": "to_addr",
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
@@ -192,6 +216,20 @@ export const PrivacyPoolABI = [
       {
         "name": "random",
         "type": "core::felt252"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "privacy::actions::InvokeExternalInput",
+    "members": [
+      {
+        "name": "contract_address",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "calldata",
+        "type": "core::array::Span::<core::felt252>"
       }
     ]
   },
@@ -230,6 +268,10 @@ export const PrivacyPoolABI = [
       {
         "name": "Withdraw",
         "type": "privacy::actions::WithdrawInput"
+      },
+      {
+        "name": "InvokeExternal",
+        "type": "privacy::actions::InvokeExternalInput"
       }
     ]
   },
@@ -240,16 +282,6 @@ export const PrivacyPoolABI = [
       {
         "name": "snapshot",
         "type": "@core::array::Array::<privacy::actions::ClientAction>"
-      }
-    ]
-  },
-  {
-    "type": "struct",
-    "name": "core::array::Span::<core::felt252>",
-    "members": [
-      {
-        "name": "snapshot",
-        "type": "@core::array::Array::<core::felt252>"
       }
     ]
   },
@@ -287,7 +319,7 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "privacy::actions::AppendToVecInput",
+    "name": "privacy::actions::AppendInput",
     "members": [
       {
         "name": "recipient_addr",
@@ -304,7 +336,7 @@ export const PrivacyPoolABI = [
     "name": "privacy::actions::TransferFromInput",
     "members": [
       {
-        "name": "sender_addr",
+        "name": "from_addr",
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
@@ -322,7 +354,7 @@ export const PrivacyPoolABI = [
     "name": "privacy::actions::TransferToInput",
     "members": [
       {
-        "name": "recipient_addr",
+        "name": "to_addr",
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
@@ -337,24 +369,10 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "privacy::actions::ReadAssertInput",
-    "members": [
-      {
-        "name": "storage_address",
-        "type": "core::felt252"
-      },
-      {
-        "name": "value",
-        "type": "core::felt252"
-      }
-    ]
-  },
-  {
-    "type": "struct",
     "name": "privacy::objects::EncPrivateKey",
     "members": [
       {
-        "name": "compliance_public_key",
+        "name": "auditor_public_key",
         "type": "core::felt252"
       },
       {
@@ -390,7 +408,7 @@ export const PrivacyPoolABI = [
     "name": "privacy::objects::EncUserAddr",
     "members": [
       {
-        "name": "compliance_public_key",
+        "name": "auditor_public_key",
         "type": "core::felt252"
       },
       {
@@ -412,7 +430,7 @@ export const PrivacyPoolABI = [
         "type": "privacy::objects::EncUserAddr"
       },
       {
-        "name": "withdrawal_target",
+        "name": "to_addr",
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
@@ -467,15 +485,25 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
-    "name": "privacy::actions::DepositToOpenNoteInput",
+    "name": "privacy::events::NoteUsed",
     "members": [
       {
-        "name": "note_id",
+        "name": "nullifier",
         "type": "core::felt252"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "privacy::actions::InvokeInput",
+    "members": [
+      {
+        "name": "contract_address",
+        "type": "core::starknet::contract_address::ContractAddress"
       },
       {
-        "name": "amount",
-        "type": "core::integer::u128"
+        "name": "calldata",
+        "type": "core::array::Span::<core::felt252>"
       }
     ]
   },
@@ -488,8 +516,8 @@ export const PrivacyPoolABI = [
         "type": "privacy::actions::WriteOnceInput"
       },
       {
-        "name": "AppendToVec",
-        "type": "privacy::actions::AppendToVecInput"
+        "name": "Append",
+        "type": "privacy::actions::AppendInput"
       },
       {
         "name": "TransferFrom",
@@ -498,10 +526,6 @@ export const PrivacyPoolABI = [
       {
         "name": "TransferTo",
         "type": "privacy::actions::TransferToInput"
-      },
-      {
-        "name": "ReadAssert",
-        "type": "privacy::actions::ReadAssertInput"
       },
       {
         "name": "EmitViewingKeySet",
@@ -520,8 +544,12 @@ export const PrivacyPoolABI = [
         "type": "privacy::events::OpenNoteCreated"
       },
       {
-        "name": "DepositToOpenNote",
-        "type": "privacy::actions::DepositToOpenNoteInput"
+        "name": "EmitNoteUsed",
+        "type": "privacy::events::NoteUsed"
+      },
+      {
+        "name": "Invoke",
+        "type": "privacy::actions::InvokeInput"
       }
     ]
   },
@@ -544,16 +572,8 @@ export const PrivacyPoolABI = [
         "name": "__execute__",
         "inputs": [
           {
-            "name": "user_addr",
-            "type": "core::starknet::contract_address::ContractAddress"
-          },
-          {
-            "name": "user_private_key",
-            "type": "core::felt252"
-          },
-          {
-            "name": "client_actions",
-            "type": "core::array::Span::<privacy::actions::ClientAction>"
+            "name": "calls",
+            "type": "core::array::Array::<core::starknet::account::Call>"
           }
         ],
         "outputs": [],
@@ -561,7 +581,7 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
-        "name": "execute_and_panic",
+        "name": "compile_and_panic",
         "inputs": [
           {
             "name": "user_addr",
@@ -581,7 +601,7 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
-        "name": "execute_view",
+        "name": "compile_actions",
         "inputs": [
           {
             "name": "user_addr",
@@ -608,16 +628,8 @@ export const PrivacyPoolABI = [
         "name": "__validate__",
         "inputs": [
           {
-            "name": "user_addr",
-            "type": "core::starknet::contract_address::ContractAddress"
-          },
-          {
-            "name": "user_private_key",
-            "type": "core::felt252"
-          },
-          {
-            "name": "client_actions",
-            "type": "core::array::Span::<privacy::actions::ClientAction>"
+            "name": "calls",
+            "type": "core::array::Array::<core::starknet::account::Call>"
           }
         ],
         "outputs": [
@@ -640,11 +652,31 @@ export const PrivacyPoolABI = [
     "items": [
       {
         "type": "function",
-        "name": "execute_actions",
+        "name": "apply_actions",
         "inputs": [
           {
             "name": "actions",
             "type": "core::array::Span::<privacy::actions::ServerAction>"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "deposit_to_open_note",
+        "inputs": [
+          {
+            "name": "note_id",
+            "type": "core::felt252"
+          },
+          {
+            "name": "token",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "amount",
+            "type": "core::integer::u128"
           }
         ],
         "outputs": [],
@@ -887,11 +919,44 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
-        "name": "get_compliance_public_key",
+        "name": "get_auditor_public_key",
         "inputs": [],
         "outputs": [
           {
             "type": "core::felt252"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_fee_amount",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::integer::u128"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_fee_collector",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_proof_validity_blocks",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::integer::u64"
           }
         ],
         "state_mutability": "view"
@@ -900,20 +965,56 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "impl",
-    "name": "ComplianceImpl",
-    "interface_name": "privacy::interface::ICompliance"
+    "name": "AdminImpl",
+    "interface_name": "privacy::interface::IAdmin"
   },
   {
     "type": "interface",
-    "name": "privacy::interface::ICompliance",
+    "name": "privacy::interface::IAdmin",
     "items": [
       {
         "type": "function",
-        "name": "set_compliance_public_key",
+        "name": "set_auditor_public_key",
         "inputs": [
           {
-            "name": "compliance_public_key",
+            "name": "auditor_public_key",
             "type": "core::felt252"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "set_fee_amount",
+        "inputs": [
+          {
+            "name": "fee_amount",
+            "type": "core::integer::u128"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "set_fee_collector",
+        "inputs": [
+          {
+            "name": "fee_collector",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "set_proof_validity_blocks",
+        "inputs": [
+          {
+            "name": "proof_validity_blocks",
+            "type": "core::integer::u64"
           }
         ],
         "outputs": [],
@@ -1081,6 +1182,16 @@ export const PrivacyPoolABI = [
     "type": "impl",
     "name": "RolesImpl",
     "interface_name": "starkware_utils::components::roles::interface::IRoles"
+  },
+  {
+    "type": "struct",
+    "name": "core::array::Span::<core::starknet::contract_address::ContractAddress>",
+    "members": [
+      {
+        "name": "snapshot",
+        "type": "@core::array::Array::<core::starknet::contract_address::ContractAddress>"
+      }
+    ]
   },
   {
     "type": "interface",
@@ -1500,27 +1611,26 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
-        "name": "has_legacy_role",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          },
-          {
-            "name": "role",
-            "type": "core::felt252"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
+        "name": "reclaim_legacy_roles",
+        "inputs": [],
+        "outputs": [],
+        "state_mutability": "external"
       },
       {
         "type": "function",
-        "name": "reclaim_legacy_roles",
+        "name": "reclaim_legacy_roles_for_accounts",
+        "inputs": [
+          {
+            "name": "accounts",
+            "type": "core::array::Span::<core::starknet::contract_address::ContractAddress>"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "disable_legacy_role_reclaim",
         "inputs": [],
         "outputs": [],
         "state_mutability": "external"
@@ -1536,8 +1646,12 @@ export const PrivacyPoolABI = [
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
-        "name": "compliance_public_key",
+        "name": "auditor_public_key",
         "type": "core::felt252"
+      },
+      {
+        "name": "proof_validity_blocks",
+        "type": "core::integer::u64"
       }
     ]
   },
@@ -2232,6 +2346,12 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "event",
+    "name": "openzeppelin_security::reentrancyguard::ReentrancyGuardComponent::Event",
+    "kind": "enum",
+    "variants": []
+  },
+  {
+    "type": "event",
     "name": "privacy::events::ViewingKeySet",
     "kind": "struct",
     "members": [
@@ -2263,7 +2383,7 @@ export const PrivacyPoolABI = [
         "kind": "data"
       },
       {
-        "name": "withdrawal_target",
+        "name": "to_addr",
         "type": "core::starknet::contract_address::ContractAddress",
         "kind": "key"
       },
@@ -2303,11 +2423,11 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "event",
-    "name": "privacy::events::CompliancePublicKeySet",
+    "name": "privacy::events::AuditorPublicKeySet",
     "kind": "struct",
     "members": [
       {
-        "name": "compliance_public_key",
+        "name": "auditor_public_key",
         "type": "core::felt252",
         "kind": "key"
       }
@@ -2369,6 +2489,54 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "event",
+    "name": "privacy::events::NoteUsed",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "nullifier",
+        "type": "core::felt252",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "privacy::events::FeeAmountSet",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "fee_amount",
+        "type": "core::integer::u128",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "privacy::events::FeeCollectorSet",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "fee_collector",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "privacy::events::ProofValidityBlocksSet",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "proof_validity_blocks",
+        "type": "core::integer::u64",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
     "name": "privacy::privacy::Privacy::Event",
     "kind": "enum",
     "variants": [
@@ -2398,6 +2566,11 @@ export const PrivacyPoolABI = [
         "kind": "flat"
       },
       {
+        "name": "ReentrancyGuardEvent",
+        "type": "openzeppelin_security::reentrancyguard::ReentrancyGuardComponent::Event",
+        "kind": "flat"
+      },
+      {
         "name": "ViewingKeySet",
         "type": "privacy::events::ViewingKeySet",
         "kind": "nested"
@@ -2413,8 +2586,8 @@ export const PrivacyPoolABI = [
         "kind": "nested"
       },
       {
-        "name": "CompliancePublicKeySet",
-        "type": "privacy::events::CompliancePublicKeySet",
+        "name": "AuditorPublicKeySet",
+        "type": "privacy::events::AuditorPublicKeySet",
         "kind": "nested"
       },
       {
@@ -2425,6 +2598,26 @@ export const PrivacyPoolABI = [
       {
         "name": "OpenNoteDeposited",
         "type": "privacy::events::OpenNoteDeposited",
+        "kind": "nested"
+      },
+      {
+        "name": "NoteUsed",
+        "type": "privacy::events::NoteUsed",
+        "kind": "nested"
+      },
+      {
+        "name": "FeeAmountSet",
+        "type": "privacy::events::FeeAmountSet",
+        "kind": "nested"
+      },
+      {
+        "name": "FeeCollectorSet",
+        "type": "privacy::events::FeeCollectorSet",
+        "kind": "nested"
+      },
+      {
+        "name": "ProofValidityBlocksSet",
+        "type": "privacy::events::ProofValidityBlocksSet",
         "kind": "nested"
       }
     ]

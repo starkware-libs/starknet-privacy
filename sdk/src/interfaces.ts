@@ -5,8 +5,8 @@ import type {
   BlockIdentifier,
   BlockNumber,
   Call,
+  CallDetails,
   constants,
-  Invocation,
 } from "starknet";
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
@@ -53,7 +53,8 @@ export type StarknetAddressBigint = bigint;
 
 // Import and re-export from internal channel
 import { Witness, Channel } from "./internal/channel.js";
-import type { NotesCursor } from "./internal/channel.js";
+import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./internal/channel.js";
+import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-010";
 export { Witness, Channel };
 export type { NotesCursor as DiscoveryCursor };
 
@@ -72,9 +73,11 @@ export type Note = {
 export type NoteId = BigNumberish;
 
 export type Proof = {
-  readonly data: Uint8Array;
-  readonly outputHash: string;
-  readonly output: string[]; // array of felts
+  readonly data: string;
+  /** L2-to-L1 message payload: [class_hash, ...serialized_server_actions]. */
+  readonly output: string[];
+  /** Proof facts from the proving service; must be included in the tx when submitting to the chain. */
+  readonly proofFacts: string[];
 };
 
 /**
@@ -91,14 +94,30 @@ export type PrivateInvocationResult = {
 };
 
 export interface ViewingKeyProvider {
-  getViewingKey(): Promise<ViewingKey> | ViewingKey;
+  getViewingKey(): Promise<ViewingKey>;
 }
 
+/**
+ * Config for creating a production proving provider (ProvingServiceProofProvider).
+ * Use this when you want the factory to instantiate the prover from a URL instead of passing an instance.
+ */
 export type ProofProviderConfig = {
+  /** Base URL of the proving service (e.g. https://prover.example.com:3000). */
   url: string;
+  /** Chain ID used for proof invocation details (e.g. SN_MAIN, SN_SEPOLIA). */
+  chainId: constants.StarknetChainId;
+  /** Request timeout in ms. Default 30_000. */
+  requestTimeoutMs?: number;
+  /** Default block identifier for proving when not provided in execute options. Default "latest". */
+  blockIdentifier?: ProvingBlockId;
 };
 
+/**
+ * Config for creating a production discovery provider (IndexerDiscoveryProvider).
+ * Use this when you want the factory to instantiate discovery from a URL instead of passing an instance.
+ */
 export type DiscoveryProviderConfig = {
+  /** Base URL of the discovery/indexer API. */
   url: string;
 };
 
@@ -161,8 +180,26 @@ export type SurplusAction = {
   withdraw?: boolean;
 };
 
-export type FollowupCallAction = {
-  call: Call;
+export type InvokeOpenNote = {
+  noteId: NoteId;
+  token: StarknetAddressBigint;
+  depositor: StarknetAddressBigint;
+};
+
+export type InvokeWithdrawal = {
+  recipient: StarknetAddressBigint;
+  token: StarknetAddressBigint;
+  amount: Amount;
+};
+
+export type InvokeCalldataBuilderArgs = {
+  openNotes: InvokeOpenNote[];
+  withdrawals: InvokeWithdrawal[];
+  poolAddress: StarknetAddressBigint;
+};
+
+export type InvokeAction = {
+  callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails;
 };
 
 /** Actions - context comes from registry */
@@ -175,7 +212,7 @@ export type Actions = {
   createNotes?: CreateNoteAction[];
   withdraws?: WithdrawAction[];
   surpluses?: SurplusAction[];
-  followupCall?: FollowupCallAction;
+  invoke?: InvokeAction;
 };
 
 // ============ Auto-Discovery & Registry Types ============
@@ -227,6 +264,13 @@ export function createEmptyRegistry(): PrivateRegistry {
 }
 
 /**
+ * Block reference for proving. Passed as block_id to the proving service.
+ * Server currently supports: "latest" | { block_number: N } | { block_hash: "0x..." }.
+ */
+// TODO: Add latest-verifiable to the proving service.
+export type ProvingBlockId = BlockIdentifier;
+
+/**
  * Options for building and executing private transfers.
  */
 export type ExecuteOptions = {
@@ -242,6 +286,8 @@ export type ExecuteOptions = {
   registry?: PrivateRegistry;
   /** If true, registry is not mutated; a new one is returned instead */
   registryConst?: boolean;
+  /** If defined, use the given block id for proving */
+  provingBlockId?: ProvingBlockId;
 };
 
 export type Warning = {
@@ -260,6 +306,12 @@ export type ExecuteResult = {
   /** Updated registry (new object if registryConst was true, same object otherwise) */
   registry: PrivateRegistry;
 
+  warnings: Warning[];
+};
+
+export type ProofInvocationResult = {
+  invocation: ProofInvocation;
+  registry: PrivateRegistry;
   warnings: Warning[];
 };
 
@@ -297,13 +349,12 @@ export interface SimplePrivateTransfersInterface {
 
   /**
    * will withdraw to the contract in `helperCall` and then deposit to the privacy pool in `toToken`
-   * Note: a noteid will be added to the helper calldata
    */
   swap(
     fromToken: StarknetAddress,
     fromAmount: Amount,
     toToken: StarknetAddress,
-    helperCall: Call
+    executor: StarknetAddress
   ): Promise<ExecuteResult>;
 }
 
@@ -356,12 +407,9 @@ export interface PrivateTransfersInterface {
    * Discover channels for one or more recipients
    */
   discoverChannels(
-    recipients: StarknetAddress[],
-    params?: { cursor?: AddressMap<Channel> }
-  ): Promise<{
-    timestamp: BlockIdentifier;
-    channels: AddressMap<Channel>;
-  }>;
+    recipients: RecipientsFilter<StarknetAddress>,
+    params?: { cursor?: ChannelCursor }
+  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
 
   /**
    * Execute raw actions. The implementation:
@@ -371,6 +419,11 @@ export interface PrivateTransfersInterface {
    * 4. Returns result with updated registry
    */
   execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /**
+   * Return the transaction to be proven so it can be sent independently to the prover
+   */
+  createProofInvocation(actions: Actions, options?: ExecuteOptions): Promise<ProofInvocationResult>;
 
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
@@ -386,9 +439,7 @@ export type TransferOutput = { recipient: StarknetAddress } & (
   | { amount: Open; depositor: StarknetAddress }
 );
 export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
-export type DepositInput = { recipient?: StarknetAddress } & {
-  amount: Amount;
-};
+export type DepositInput = { recipient?: StarknetAddress; amount: Amount };
 
 /**
  * Token-specific sub-builder for operations on a single token.
@@ -439,6 +490,9 @@ export interface TokenOperationsBuilder {
 
   /** Execute all queued operations */
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /** Build proof invocation without executing */
+  createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult>;
 }
 
 /**
@@ -503,7 +557,10 @@ export interface TokenOperationsBuilder {
  *     .withdraw({ recipient: swapHelper, amount: 10n }))
  *   .with(BTC, t => t
  *     .deposit(open)) // semi-transparent note for swap result
- *   .call({ contractAddress: swapHelper, entrypoint: "swap", calldata: [...] })
+ *   .invoke(({ openNotes, withdrawals, poolAddress }) => ({
+ *       contractAddress: swapHelper,
+ *       calldata: [...]
+ *   }))
  *   .execute();
  * ```
  */
@@ -514,8 +571,8 @@ export interface PrivateTransfersBuilder {
   /** Setup initial channel for a new recipient. */
   setup(recipient: StarknetAddress): this;
 
-  /** Add an arbitrary Starknet call that will run on starknet after the private operations are executed */
-  call(call: Call): this;
+  /** Add a call to `privacy_invoke` entrypoint that will run on starknet after the private operations are executed */
+  invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this;
 
   /**
    * Set the default recipient for any surplus across all tokens.
@@ -531,9 +588,13 @@ export interface PrivateTransfersBuilder {
 
   /** Execute all queued operations and return the results */
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
+
+  /** Build proof invocation without executing */
+  createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult>;
 }
 
-export type ProofInvocation = Invocation;
+/** INVOKE branch of AccountInvocationItem; used for proof invocations and buildTransaction. */
+export type ProofInvocation = INVOKE_TXN_V3;
 
 /**
  * Factory details for creating proof invocations.
@@ -549,9 +610,10 @@ export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
  * Operator API contract — the proving service must implement this surface.
  */
 export interface ProofProviderInterface {
-  /** Get the default factory details for creating proof invocations */
+  /** Get the default factory details for creating proof invocations. */
   getDefaultDetails(): ProofInvocationFactoryDetails;
-  prove(invocation: ProofInvocation): Promise<Proof>;
+  /** Prove the given invocation against the given block id. If no block id is provided, use the default block identifier defined in the provider. */
+  prove(invocation: ProofInvocation, blockIdentifier?: ProvingBlockId): Promise<Proof>;
 }
 
 export interface DiscoveryProviderInterface {
@@ -575,9 +637,9 @@ export interface DiscoveryProviderInterface {
   discoverChannels(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipients: StarknetAddressBigint[] | "all",
-    params?: { cursor?: AddressMap<Channel> }
-  ): Promise<{ timestamp: BlockIdentifier; channels: AddressMap<Channel> }>;
+    recipients: RecipientsFilter,
+    params?: { cursor?: ChannelCursor }
+  ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
 
   /**
    * Check the setup requirements for a recipient.

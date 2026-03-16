@@ -36,10 +36,8 @@ import {
 } from "../internal/contract-discovery.js";
 import { toBigInt } from "../utils/crypto.js";
 import { Devnet as StarknetDevnet } from "starknet-devnet";
-import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from "fs";
-import { gzipSync } from "zlib";
+import { readFileSync } from "fs";
 import { join, dirname } from "path";
-import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 import { PrivacyPoolABI } from "../internal/abi.js";
 import type { PrivacyPoolContract } from "../internal/private-transfers.js";
@@ -77,10 +75,17 @@ const DEVNET_RESOURCE_BOUNDS = {
   },
 };
 
+export interface DevnetConfig {
+  /** Number of predeployed user accounts (excludes admin). Default: 2 (alice, bob). */
+  userAccounts?: number;
+}
+
 export interface DevnetEnvironment {
   alice: Account;
   bob: Account;
   admin: Account;
+  /** Extra user accounts beyond alice and bob (index 0 = 3rd user, etc.) */
+  extraAccounts: Account[];
   strk: string;
   eth: string;
   privacy: PrivacyPoolContract;
@@ -135,9 +140,22 @@ export class Devnet {
   private provider?: RpcProvider;
   public setup?: DevnetEnvironment;
   private accountNonces = new AddressMap<number>(() => 0);
-  private tempDevnetDumpPath?: string;
-  private spawnTimestamp?: number;
-  private alicePrivateKey?: string;
+  private config: Required<DevnetConfig>;
+
+  constructor(config?: DevnetConfig) {
+    this.config = { userAccounts: Math.max(config?.userAccounts ?? 2, 2) };
+  }
+
+  /** HTTP RPC URL of the running devnet (e.g. `http://127.0.0.1:5050`). */
+  get url(): string {
+    if (!this.devnet) throw new Error("Devnet not initialized");
+    return this.devnet.provider.url;
+  }
+
+  /** WebSocket URL of the running devnet (e.g. `ws://127.0.0.1:5050/ws`). */
+  get wsUrl(): string {
+    return this.url.replace(/^http/, "ws") + "/ws";
+  }
 
   /**
    * Initialize the devnet environment and deploy all contracts
@@ -151,30 +169,23 @@ export class Devnet {
       "--block-generation-on",
       "transaction", // Generate blocks immediately on transaction
       "--state-archive-capacity",
-      "none", // Disable state commitments for faster testing
+      "full", // Required for block hash computation (proof_facts validation)
       "--accounts",
-      "3", // 3 accounts (alice, bob, admin)
+      String(this.config.userAccounts + 1), // user accounts + admin
       "--l2-gas-price-fri",
       "1",
       "--data-gas-price-fri",
       "1",
       "--gas-price-fri",
       "1",
+      "--dump-on",
+      "request", // Enable devnet_dump RPC (no-op unless explicitly called)
+      "--chain-id",
+      "TESTNET",
     ];
 
-    // Add dump args if DUMP_DEVNET_PATH is set (directory for devnet dump output)
-    const dumpDir = process.env.DUMP_DEVNET_PATH;
-    if (dumpDir) {
-      mkdirSync(dumpDir, { recursive: true });
-      this.tempDevnetDumpPath = join(tmpdir(), `devnet-dump-${Date.now()}.json`);
-      devnetArgs.push("--dump-on", "exit", "--dump-path", this.tempDevnetDumpPath);
-      console.log(`Devnet dump enabled, will write to: ${dumpDir}`);
-    }
-
-    // Spawn a devnet instance on a random free port
-    // Using latest version for Cairo 1.7.0 (Sierra 1.7.0) support
-    this.spawnTimestamp = Math.floor(Date.now() / 1000);
-    this.devnet = await StarknetDevnet.spawnVersion("v0.7.2", {
+    // Spawn a devnet instance on a random free port using the system-installed binary
+    this.devnet = await StarknetDevnet.spawnInstalled({
       args: devnetArgs,
     });
 
@@ -208,50 +219,35 @@ export class Devnet {
       public_key: string;
     }>;
 
-    // Setup Alice (first account)
-    const aliceAccount = accounts[0];
-    this.alicePrivateKey = aliceAccount.private_key;
-    const alicePrivateKeyBytes = new Uint8Array(
-      aliceAccount.private_key
+    // Create user accounts (alice, bob, and any extra)
+    const userAccounts: Account[] = [];
+    for (let i = 0; i < this.config.userAccounts; i++) {
+      const raw = accounts[i];
+      const keyBytes = new Uint8Array(
+        raw.private_key
+          .replace("0x", "")
+          .match(/.{1,2}/g)!
+          .map((byte) => parseInt(byte, 16))
+      );
+      userAccounts.push(
+        new Account({ provider: this.provider, address: raw.address, signer: keyBytes })
+      );
+    }
+    const [alice, bob] = userAccounts;
+
+    // Admin is always the last predeployed account
+    const adminRaw = accounts[this.config.userAccounts];
+    const adminKeyBytes = new Uint8Array(
+      adminRaw.private_key
         .replace("0x", "")
         .match(/.{1,2}/g)!
         .map((byte) => parseInt(byte, 16))
     );
-    const alice = new Account({
-      provider: this.provider,
-      address: aliceAccount.address,
-      signer: alicePrivateKeyBytes,
-    });
-
-    // Setup Bob (second account)
-    const bobAccount = accounts[1];
-    const bobPrivateKeyBytes = new Uint8Array(
-      bobAccount.private_key
-        .replace("0x", "")
-        .match(/.{1,2}/g)!
-        .map((byte) => parseInt(byte, 16))
-    );
-    const bob = new Account({
-      provider: this.provider,
-      address: bobAccount.address,
-      signer: bobPrivateKeyBytes,
-    });
-
-    // Setup Admin (third account)
-    const adminAccount = accounts[2];
-    const adminPrivateKeyBytes = new Uint8Array(
-      adminAccount.private_key
-        .replace("0x", "")
-        .match(/.{1,2}/g)!
-        .map((byte) => parseInt(byte, 16))
-    );
-
-    // Wrap admin account with devnet behavior (automatic nonce management)
     const admin = this.wrapAccount(
       new Account({
         provider: this.provider,
-        address: adminAccount.address,
-        signer: adminPrivateKeyBytes,
+        address: adminRaw.address,
+        signer: adminKeyBytes,
         cairoVersion: "1",
       })
     );
@@ -267,10 +263,30 @@ export class Devnet {
     // Deploy the privacy pool contract
     const privacy = await this.deployPrivacyContract(admin, contractClass, compiledContract);
 
-    this.setup = { alice, bob, admin, strk, eth, privacy, provider: this.provider };
+    // Pad devnet with empty blocks so block numbers exceed the blockifier's
+    // STORED_BLOCK_HASH_BUFFER (10), required for proof_facts validation.
+    for (let blockIndex = 0; blockIndex < 10; blockIndex++) {
+      await fetch(this.devnet.provider.url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
+      });
+    }
+
+    this.setup = {
+      alice,
+      bob,
+      admin,
+      extraAccounts: userAccounts.slice(2),
+      strk,
+      eth,
+      privacy,
+      provider: this.provider,
+    };
 
     debugLog("devnet", "initialize", () =>
       Object.entries(this.setup!)
+        .filter(([, value]) => value && typeof value === "object" && "address" in value)
         .map(([key, value]) => `${key}: ${value.address}`)
         .join("\n")
     );
@@ -352,13 +368,14 @@ export class Devnet {
     debugLog("devnet", "setup", "class hash:", classHash);
 
     // Deploy the contract
-    // Constructor params: governance_admin: ContractAddress, compliance_public_key: felt252
+    // Constructor params: governance_admin, auditor_public_key, proof_validity_blocks
     const deployResponse = await deployer.deployContract(
       {
         classHash,
         constructorCalldata: [
           deployer.address, // governance_admin
-          "0x1", // compliance_public_key (dummy value)
+          "0x1", // auditor_public_key (dummy value)
+          "450", // proof_validity_blocks (~15 min at 2s/block)
         ],
         salt: "0x0", // Deterministic salt for reproducible contract address
       },
@@ -402,105 +419,18 @@ export class Devnet {
       OutsideExecutionVersion.V2
     );
 
-    const response = await this.setup.admin.executeFromOutside(outsideTransaction);
+    const response = await this.setup.admin.executeFromOutside(outsideTransaction, {
+      proofFacts: callAndProof.proof.proofFacts,
+    });
     return this.provider!.waitForTransaction(response.transaction_hash);
   }
 
   /**
-   * Dump contract storage state to a JSON file for Rust discovery tests.
-   * Iterates through all blocks and accumulates storage diffs for the privacy contract.
-   */
-  async dumpContractState(outputPath: string): Promise<void> {
-    if (!this.setup || !this.provider) {
-      throw new Error("Devnet not initialized");
-    }
-
-    // 1. Get latest block number
-    const latestBlock = await this.provider.getBlockNumber();
-
-    // 2. Accumulate storage state across all blocks
-    const storageState: Record<string, string> = {};
-
-    for (let blockNum = 0; blockNum <= latestBlock; blockNum++) {
-      const stateUpdate = await this.provider.getStateUpdate(blockNum);
-
-      // 3. Filter storage_diffs by privacy contract address
-      for (const diff of stateUpdate.state_diff.storage_diffs) {
-        if (diff.address.toLowerCase() === this.setup.privacy.address.toLowerCase()) {
-          // 4. Merge entries (later blocks override earlier)
-          for (const entry of diff.storage_entries) {
-            storageState[entry.key] = entry.value;
-          }
-        }
-      }
-    }
-
-    // 5. Write JSON output with constants needed for discovery
-    const output = {
-      _comment:
-        "Devnet storage dump for Rust discovery tests. Regenerate by running SDK devnet tests with DUMP_STATE_PATH set.",
-      constants: {
-        contract_address: this.setup.privacy.address,
-        alice_address: this.setup.alice.address,
-        alice_viewing_key: "0xa11ce", // Hardcoded in devnet.test.ts
-        bob_address: this.setup.bob.address,
-        bob_viewing_key: "0xb0b", // Hardcoded in devnet.test.ts
-        admin_address: this.setup.admin.address,
-        eth_token: this.setup.eth,
-        strk_token: this.setup.strk,
-      },
-      block: latestBlock,
-      slots: storageState,
-    };
-
-    writeFileSync(outputPath, JSON.stringify(output, null, 2));
-    console.log(`Dumped ${Object.keys(storageState).length} storage slots to ${outputPath}`);
-  }
-
-  /**
    * Terminate the devnet process.
-   * If DUMP_STATE_PATH is set, dumps contract state before cleanup.
-   * If DUMP_DEVNET_PATH is set, compresses the devnet dump after exit.
    */
   async cleanup(): Promise<void> {
-    const dumpStatePath = process.env.DUMP_STATE_PATH;
-    if (dumpStatePath && this.setup) {
-      mkdirSync(dirname(dumpStatePath), { recursive: true });
-      await this.dumpContractState(dumpStatePath);
-    }
-
     if (this.devnet) {
       this.devnet.kill("SIGINT");
-
-      // Compress devnet dump if requested (DUMP_DEVNET_PATH is the output directory)
-      const dumpDir = process.env.DUMP_DEVNET_PATH;
-      if (dumpDir && this.tempDevnetDumpPath && this.setup && this.spawnTimestamp) {
-        // Wait for dump file (devnet writes on exit)
-        for (let i = 0; i < 50 && !existsSync(this.tempDevnetDumpPath); i++) {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-        if (existsSync(this.tempDevnetDumpPath)) {
-          mkdirSync(dumpDir, { recursive: true });
-
-          // Compress and write dump
-          const dumpPath = join(dumpDir, "devnet-dump.json.gz");
-          const rawDump = readFileSync(this.tempDevnetDumpPath);
-          writeFileSync(dumpPath, gzipSync(rawDump));
-          unlinkSync(this.tempDevnetDumpPath);
-          console.log(`Wrote dump: ${dumpPath}`);
-
-          // Write metadata file
-          const metadata = {
-            timestamp: this.spawnTimestamp,
-            contract_address: this.setup.privacy.address,
-            alice_address: this.setup.alice.address,
-            alice_private_key: this.alicePrivateKey,
-          };
-          const metadataPath = join(dumpDir, "devnet-dump.metadata.json");
-          writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-          console.log(`Wrote metadata: ${metadataPath}`);
-        }
-      }
     }
   }
 }
@@ -521,6 +451,8 @@ export interface DevnetTestEnv {
  * Configuration for createDevnetTestEnv.
  */
 export interface DevnetTestEnvConfig {
+  /** Devnet configuration (account count, etc.) */
+  devnet?: DevnetConfig;
   /** Options for discovery (rate limiting, etc.) */
   discoveryOptions?: DiscoveryOptions;
 }
@@ -543,14 +475,14 @@ export async function createDevnetTestEnv(
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
-      viewingKeyProvider: { getViewingKey: () => toBigInt("0xA11CE") },
+      viewingKeyProvider: { getViewingKey: async () => toBigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),
     bob: createPrivateTransfers({
       account: env.bob,
-      viewingKeyProvider: { getViewingKey: () => toBigInt("0xB0B") },
+      viewingKeyProvider: { getViewingKey: async () => toBigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,

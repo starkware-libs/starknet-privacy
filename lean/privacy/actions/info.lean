@@ -59,7 +59,7 @@ structure OpenChannelInfo (crypto: Crypto) (inp: OpenChannelInput) (m: Memory) w
   alice_registered: m .PublicKeys [inp.addralice] = crypto.priv_to_pub inp.kalice
   kalice_valid: inp.kalice ∈ crypto.PrivateKeys
   r_ne_zero: inp.r ≠ 0
-  prev_outgoing_exists: inp.s = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
+  prev_outgoing_exists: inp.q = 0 ∨ m .OutgoingChannels [inp.prev_outgoing_channel_id crypto, 0] ≠ 0
   channel_didnt_exist: m .ChannelMarkers [inp.channel_marker crypto] = 0
   outgoing_channel_didnt_exist: m .OutgoingChannels [inp.outgoing_channel_id crypto, 0] = 0
   no_change: ∀ t, ∀ x, (
@@ -89,10 +89,10 @@ def open_channel_info
   simp only [Bool.decide_and, decide_not, Bool.decide_or, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
     Bool.not_true, decide_eq_false_iff_not, Bool.or_eq_true, decide_eq_true_eq] at success₀
 
-  let ⟨bob_registered, alice_registered, kalice_valid, r_ne_zero, prev_outgoing_exists⟩ := success₀
+  let ⟨bob_registered, alice_registered, kalice_valid, r_ne_zero, prev_outgoing_exists, h_Kbob⟩ := success₀
 
   simp [ServerAction.run_all, open_channel, ServerAction.run, List.foldl_cons, List.foldl_nil, write_ne] at success₁
-  have ⟨⟨⟨h_Kbob, channel_didnt_exist⟩, outgoing_channel_didnt_exist⟩, _⟩ := success₁
+  have ⟨⟨channel_didnt_exist, outgoing_channel_didnt_exist⟩, _⟩ := success₁
 
   exact {
     m' := m'
@@ -130,10 +130,9 @@ structure OpenSubchannelInfo (crypto: Crypto) (inp: OpenSubchannelInput) (m: Mem
   h_m': m' = (open_subchannel crypto inp m |> process_action crypto m).m
   r_ne_zero: inp.r ≠ 0
   channel_exists: m .ChannelMarkers [crypto.hash [inp.c, inp.addralice, inp.addrbob, inp.Kbob]] ≠ 0
-  prev_subchannel_exists: inp.k₁ = 0 ∨ m .SubchannelTokens [crypto.hash [inp.c, inp.k₀, inp.k₁ - 1], 0] ≠ 0
+  prev_subchannel_exists: inp.k = 0 ∨ m .SubchannelTokens [crypto.hash [inp.c, inp.k - 1], 0] ≠ 0
   old_token_was_zero: m .SubchannelTokens [inp.subchannel_id crypto, 0] = 0
   old_hash_was_zero: m .SubchannelMarkers [inp.subchannel_marker crypto] = 0
-  k₀_lt_MAX_K₀: inp.k₀ < crypto.MAX_K₀
   no_change: ∀ t, ∀ x,
     (t, x) ≠ (.SubchannelMarkers, [inp.subchannel_marker crypto]) →
     (t, x) ≠ (.SubchannelTokens, [inp.subchannel_id crypto, 0]) →
@@ -156,7 +155,7 @@ def open_subchannel_info
     Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true, decide_eq_false_iff_not,
     Bool.or_eq_true, decide_eq_true_eq] at success₀ success₁
 
-  let ⟨r_ne_zero, channel_exists, prev_subchannel_exists, k₀_lt_MAX_K₀⟩ := success₀
+  let ⟨r_ne_zero, channel_exists, prev_subchannel_exists⟩ := success₀
   simp only [ServerAction.run_all, ServerAction.run, List.foldl_cons, Bool.true_and,
     ne_eq, Prod.mk.injEq, reduceCtorEq, List.cons.injEq, List.ne_cons_self, and_false, and_self,
     not_false_eq_true, write_ne, List.foldl_nil, Bool.and_eq_true, decide_eq_true_eq] at success₁
@@ -170,7 +169,6 @@ def open_subchannel_info
     prev_subchannel_exists := prev_subchannel_exists,
     old_token_was_zero := old_token_was_zero,
     old_hash_was_zero := old_hash_was_zero,
-    k₀_lt_MAX_K₀ := k₀_lt_MAX_K₀,
     no_change := by
       intro t x h₀ h₁ h₂
       simp [m', h₀, h₁, h₂, open_subchannel, ServerAction.run_all, ServerAction.run]
@@ -192,8 +190,7 @@ structure CreateNoteInfo (crypto: Crypto) (inp: CreateNoteInput) (m: Memory) whe
     m' t x = m t x
   r_ne_zero: inp.r ≠ 0
   old_value_was_zero: m .Notes [inp.note_id crypto, 0] = 0
-  prev_note_exists: inp.i₁ = 0 ∨ m .Notes [crypto.hash [inp.c crypto, inp.token, inp.i₀, inp.i₁ - 1], 0] ≠ 0
-  i₀_lt_MAX_I₀: inp.i₀ < crypto.MAX_I₀
+  prev_note_exists: inp.i = 0 ∨ m .Notes [crypto.hash [inp.c crypto, inp.token, inp.i - 1], 0] ≠ 0
   subchannel_exists : m .SubchannelMarkers [crypto.hash [inp.c crypto, inp.addrbob, inp.Kbob, inp.token]] ≠ 0
   h_open_note_amount_zero: inp.r = 1 → inp.amount = 0
   memory_diff₀: m' .Notes [inp.note_id crypto, 0] = crypto.pack inp.r (inp.enc crypto)
@@ -210,7 +207,7 @@ def create_note_info
   simp only [Bool.and_eq_true] at success
   have ⟨success₀, success₁⟩ := success
   simp only [create_note, decide_eq_true_eq] at success₀
-  let ⟨r_ne_zero, prev_note_exists, i₀_lt_MAX_I₀, subchannel_exists, h_open_note_amount_zero⟩ := success₀
+  let ⟨r_ne_zero, prev_note_exists, subchannel_exists, h_open_note_amount_zero⟩ := success₀
 
   simp only [ServerAction.run_all, ServerAction.run, create_note] at success₁
 
@@ -225,7 +222,6 @@ def create_note_info
     r_ne_zero := r_ne_zero
     old_value_was_zero := old_value_was_zero
     prev_note_exists := prev_note_exists
-    i₀_lt_MAX_I₀ := i₀_lt_MAX_I₀
     subchannel_exists := subchannel_exists
     h_open_note_amount_zero := h_open_note_amount_zero
     no_change := by
@@ -247,13 +243,14 @@ structure UseNoteInfo (crypto: Crypto) (inp: UseNoteInput) (m: Memory) where
   subchannel_exists: m .SubchannelMarkers [crypto.hash [inp.c, inp.addrbob, inp.Kbob crypto, inp.token]] ≠ 0
   nullifier_didnt_exist: m .Nullifiers [inp.nullifier crypto] = 0
   r_ne_zero: m .Notes [inp.note_id crypto, 0] ≠ 0
-  h_amount: note_amount crypto m (inp.note_id crypto) inp.c inp.token inp.i₀ inp.i₁= inp.amount
+  h_amount: note_amount crypto m (inp.note_id crypto) inp.c inp.token inp.i = inp.amount
   kbob_private_key: inp.kbob ∈ crypto.PrivateKeys
   amount_ne_zero: inp.amount ≠ 0
   no_change: ∀ t, ∀ x,
     (t, x) ≠ (.Nullifiers, [inp.nullifier crypto]) →
     m' t x = m t x
   memory_diff₀: m' .Nullifiers [inp.nullifier crypto] = 1
+  events: (use_note crypto inp m |> process_action crypto m).events = [.UseNote (inp.nullifier crypto)]
 
 def use_note_info
   (crypto: Crypto) (inp: UseNoteInput) (m: Memory)
@@ -283,6 +280,7 @@ def use_note_info
       simp [m', h₀, use_note, ServerAction.run_all, ServerAction.run]
     memory_diff₀ := by
       simp [m', use_note, ServerAction.run_all, ServerAction.run]
+    events := by rfl
   }
 
 -------------

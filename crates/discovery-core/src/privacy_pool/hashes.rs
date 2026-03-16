@@ -1,0 +1,372 @@
+//! Hash functions and domain separation tags.
+
+use std::sync::LazyLock;
+
+use starknet_crypto::poseidon_hash_many;
+use starknet_types_core::felt::Felt;
+
+use super::types::SecretFelt;
+
+/// Domain separation tag for encrypted channel key.
+static ENC_CHANNEL_KEY_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("ENC_CHANNEL_KEY_TAG:V1"));
+
+/// Domain separation tag for encrypted sender address.
+static ENC_SENDER_ADDR_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("ENC_SENDER_ADDR_TAG:V1"));
+
+/// Domain separation tag for subchannel id derivation.
+static SUBCHANNEL_ID_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("SUBCHANNEL_ID_TAG:V1"));
+
+/// Domain separation tag for encrypted token.
+static ENC_TOKEN_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("ENC_TOKEN_TAG:V1"));
+
+/// Domain separation tag for note ID derivation.
+static NOTE_ID_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("NOTE_ID_TAG:V1"));
+
+/// Domain separation tag for encrypted amount.
+static ENC_AMOUNT_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("ENC_AMOUNT_TAG:V1"));
+
+/// Domain separation tag for nullifier derivation.
+static NULLIFIER_TAG: LazyLock<Felt> = LazyLock::new(|| short_string_to_felt("NULLIFIER_TAG:V1"));
+
+/// Domain separation tag for channel key derivation.
+static CHANNEL_KEY_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("CHANNEL_KEY_TAG:V1"));
+
+/// Domain separation tag for channel marker derivation.
+static CHANNEL_MARKER_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("CHANNEL_MARKER_TAG:V1"));
+
+/// Domain separation tag for subchannel marker derivation.
+static SUBCHANNEL_MARKER_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("SUBCHANNEL_MARKER_TAG:V1"));
+
+/// Domain separation tag for outgoing channel id derivation.
+static OUTGOING_CHANNEL_ID_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("OUTGOING_CHANNEL_ID_TAG:V1"));
+
+/// Domain separation tag for encrypted recipient address.
+static ENC_RECIPIENT_ADDR_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("ENC_RECIPIENT_ADDR_TAG:V1"));
+
+/// Converts a short string (up to 31 ASCII chars) to Felt.
+fn short_string_to_felt(s: &str) -> Felt {
+    assert!(
+        s.len() <= 31,
+        "short string must be at most 31 bytes, got {}",
+        s.len()
+    );
+    Felt::from_bytes_be_slice(s.as_bytes())
+}
+
+/// Cryptographic hash function.
+pub fn hash(elements: &[Felt]) -> Felt {
+    poseidon_hash_many(elements.iter())
+}
+
+/// Computes the encryption mask for channel key.
+pub fn compute_enc_channel_key_hash(shared_x: Felt) -> Felt {
+    hash(&[*ENC_CHANNEL_KEY_TAG, shared_x])
+}
+
+/// Computes the encryption mask for sender address.
+pub fn compute_enc_sender_addr_hash(shared_x: Felt) -> Felt {
+    hash(&[*ENC_SENDER_ADDR_TAG, shared_x])
+}
+
+/// Computes the subchannel key from channel key and index.
+pub fn compute_subchannel_id(channel_key: &SecretFelt, index: u64) -> Felt {
+    hash(&[
+        *SUBCHANNEL_ID_TAG,
+        **channel_key,
+        Felt::from(index),
+        Felt::ZERO,
+    ])
+}
+
+/// Computes the encryption mask for token encryption.
+pub fn compute_enc_token_hash(channel_key: &SecretFelt, index: u64, salt: Felt) -> Felt {
+    hash(&[
+        *ENC_TOKEN_TAG,
+        **channel_key,
+        Felt::from(index),
+        Felt::ZERO,
+        salt,
+    ])
+}
+
+/// Computes the note ID from channel key, token, and note index.
+pub fn compute_note_id(channel_key: &SecretFelt, token: Felt, index: u64) -> Felt {
+    hash(&[
+        *NOTE_ID_TAG,
+        **channel_key,
+        token,
+        Felt::from(index),
+        Felt::ZERO,
+    ])
+}
+
+/// Computes the encryption mask for note amount.
+pub fn compute_enc_amount_hash(
+    channel_key: &SecretFelt,
+    token: Felt,
+    index: u64,
+    salt: u128,
+) -> Felt {
+    hash(&[
+        *ENC_AMOUNT_TAG,
+        **channel_key,
+        token,
+        Felt::from(index),
+        Felt::ZERO,
+        Felt::from(salt),
+    ])
+}
+
+/// Computes the nullifier for a note.
+pub fn compute_nullifier(
+    channel_key: &SecretFelt,
+    token: Felt,
+    index: u64,
+    private_key: &SecretFelt,
+) -> Felt {
+    hash(&[
+        *NULLIFIER_TAG,
+        **channel_key,
+        token,
+        Felt::from(index),
+        Felt::ZERO,
+        **private_key,
+    ])
+}
+
+/// Computes the channel key from sender credentials and recipient identity.
+pub fn compute_channel_key(
+    sender_addr: Felt,
+    private_key: &SecretFelt,
+    recipient_addr: Felt,
+    recipient_public_key: Felt,
+) -> SecretFelt {
+    SecretFelt::new(hash(&[
+        *CHANNEL_KEY_TAG,
+        sender_addr,
+        **private_key,
+        recipient_addr,
+        recipient_public_key,
+    ]))
+}
+
+/// Computes the channel marker for `channel_exists` storage lookup.
+pub fn compute_channel_marker(
+    channel_key: &SecretFelt,
+    sender_addr: Felt,
+    recipient_addr: Felt,
+    recipient_public_key: Felt,
+) -> Felt {
+    hash(&[
+        *CHANNEL_MARKER_TAG,
+        **channel_key,
+        sender_addr,
+        recipient_addr,
+        recipient_public_key,
+    ])
+}
+
+/// Computes the subchannel marker for `subchannel_exists` storage lookup.
+pub fn compute_subchannel_marker(
+    channel_key: &SecretFelt,
+    recipient_addr: Felt,
+    recipient_public_key: Felt,
+    token: Felt,
+) -> Felt {
+    hash(&[
+        *SUBCHANNEL_MARKER_TAG,
+        **channel_key,
+        recipient_addr,
+        recipient_public_key,
+        token,
+    ])
+}
+
+/// Computes the outgoing channel id for storage lookup.
+pub fn compute_outgoing_channel_id(
+    sender_addr: Felt,
+    private_key: &SecretFelt,
+    index: u64,
+) -> Felt {
+    hash(&[
+        *OUTGOING_CHANNEL_ID_TAG,
+        sender_addr,
+        **private_key,
+        Felt::from(index),
+        Felt::ZERO,
+    ])
+}
+
+/// Computes the encryption mask for the outgoing recipient address.
+pub fn compute_enc_recipient_addr_hash(
+    sender_addr: Felt,
+    private_key: &SecretFelt,
+    index: u64,
+    salt: Felt,
+) -> Felt {
+    hash(&[
+        *ENC_RECIPIENT_ADDR_TAG,
+        sender_addr,
+        **private_key,
+        Felt::from(index),
+        Felt::ZERO,
+        salt,
+    ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_fixtures::load_cairo_ref_fixture;
+
+    #[test]
+    fn test_short_string_to_felt() {
+        let felt = short_string_to_felt("hello");
+        assert_eq!(felt, Felt::from_hex_unchecked("0x68656c6c6f"));
+    }
+
+    #[test]
+    fn test_hashes_with_cairo_vectors() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_enc_channel_key_hash(f.inputs.shared_x),
+            f.outputs.enc_channel_key_hash
+        );
+        assert_eq!(
+            compute_enc_sender_addr_hash(f.inputs.shared_x),
+            f.outputs.enc_sender_addr_hash
+        );
+    }
+
+    #[test]
+    fn test_compute_subchannel_id() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_subchannel_id(&f.inputs.channel_key, f.inputs.index),
+            f.outputs.subchannel_id
+        );
+    }
+
+    #[test]
+    fn test_compute_enc_token_hash() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_enc_token_hash(&f.inputs.channel_key, f.inputs.index, f.inputs.salt),
+            f.outputs.enc_token_hash
+        );
+    }
+
+    #[test]
+    fn test_compute_note_id() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_note_id(&f.inputs.channel_key, f.inputs.token, f.inputs.index),
+            f.outputs.note_id
+        );
+    }
+
+    #[test]
+    fn test_compute_nullifier() {
+        let f = load_cairo_ref_fixture();
+        // Reference data uses sender_private_key as the owner (note owner
+        // in the reference scenario is the sender).
+        assert_eq!(
+            compute_nullifier(
+                &f.inputs.channel_key,
+                f.inputs.token,
+                f.inputs.index,
+                &f.inputs.sender_private_key,
+            ),
+            f.outputs.nullifier
+        );
+    }
+
+    #[test]
+    fn test_compute_enc_amount_hash() {
+        use crate::privacy_pool::types::felt_low_u128;
+
+        let f = load_cairo_ref_fixture();
+        let salt = felt_low_u128(f.inputs.salt);
+        assert_eq!(
+            compute_enc_amount_hash(&f.inputs.channel_key, f.inputs.token, f.inputs.index, salt),
+            f.outputs.enc_amount_hash
+        );
+    }
+
+    #[test]
+    fn test_compute_channel_key() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            *compute_channel_key(
+                f.inputs.sender,
+                &f.inputs.sender_private_key,
+                f.inputs.recipient,
+                f.inputs.recipient_public_key,
+            ),
+            f.outputs.channel_key
+        );
+    }
+
+    #[test]
+    fn test_compute_outgoing_channel_id() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_outgoing_channel_id(
+                f.inputs.sender,
+                &f.inputs.sender_private_key,
+                f.inputs.index
+            ),
+            f.outputs.outgoing_channel_id
+        );
+    }
+
+    #[test]
+    fn test_compute_enc_recipient_addr_hash() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_enc_recipient_addr_hash(
+                f.inputs.sender,
+                &f.inputs.sender_private_key,
+                f.inputs.index,
+                f.inputs.salt
+            ),
+            f.outputs.enc_recipient_addr_hash
+        );
+    }
+
+    #[test]
+    fn test_compute_channel_marker() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_channel_marker(
+                &f.inputs.channel_key,
+                f.inputs.sender,
+                f.inputs.recipient,
+                f.inputs.recipient_public_key,
+            ),
+            f.outputs.channel_marker
+        );
+    }
+
+    #[test]
+    fn test_compute_subchannel_marker() {
+        let f = load_cairo_ref_fixture();
+        assert_eq!(
+            compute_subchannel_marker(
+                &f.inputs.channel_key,
+                f.inputs.recipient,
+                f.inputs.recipient_public_key,
+                f.inputs.token,
+            ),
+            f.outputs.subchannel_marker
+        );
+    }
+}

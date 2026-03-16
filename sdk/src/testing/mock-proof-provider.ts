@@ -5,16 +5,13 @@
  * MockServerAction[] callbacks as the proof output.
  */
 
-import type {
-  Proof,
-  ProofProviderInterface,
-  ProofInvocation,
-  ProofInvocationFactoryDetails,
-} from "../interfaces.js";
+import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import type { ClientAction } from "../internal/client-actions.js";
+import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js";
 import type { MockPoolContract } from "./mock-pool-contract.js";
 import { bigintReviver } from "./mock-proof-invocation-factory.js";
-import { constants, ETransactionVersion } from "starknet";
+import { constants } from "starknet";
+import { buildMessagePayload } from "../utils/proof-facts.js";
 
 /**
  * Mock proof provider that executes actions on MockPoolContract.
@@ -29,24 +26,8 @@ import { constants, ETransactionVersion } from "starknet";
 export class MockProofProvider implements ProofProviderInterface {
   constructor(private pool: MockPoolContract) {}
 
-  getDefaultDetails(): ProofInvocationFactoryDetails {
-    return {
-      versions: [ETransactionVersion.V3],
-      nonce: 0n,
-      skipValidate: true,
-      resourceBounds: {
-        l1_gas: { max_amount: 0n, max_price_per_unit: 0n },
-        l2_gas: { max_amount: 0n, max_price_per_unit: 0n },
-        l1_data_gas: { max_amount: 0n, max_price_per_unit: 0n },
-      },
-      tip: 0n,
-      paymasterData: [],
-      accountDeploymentData: [],
-      nonceDataAvailabilityMode: "L1",
-      feeDataAvailabilityMode: "L1",
-      version: ETransactionVersion.V3,
-      chainId: constants.StarknetChainId.SN_SEPOLIA, // Mock chain ID
-    };
+  getDefaultDetails() {
+    return getDefaultProofDetails(constants.StarknetChainId.SN_SEPOLIA);
   }
 
   async prove(invocation: ProofInvocation): Promise<Proof> {
@@ -59,10 +40,11 @@ export class MockProofProvider implements ProofProviderInterface {
     const callbacks = this.pool.execute(userAddress, privateKey, ...clientActions);
 
     return {
-      data: new Uint8Array([0, 1, 2, 3]),
-      outputHash: "0x0",
-      // Store callbacks in output (duck-typed, will be extracted by MockPublicCallBuilder)
-      output: callbacks as unknown as string[],
+      data: "",
+      // L2-to-L1 message payload: [class_hash, ...callbacks].
+      // The consumer strips the class_hash prefix before passing to apply_actions.
+      output: buildMessagePayload("0x0", callbacks as unknown as string[]),
+      proofFacts: [],
     };
   }
 }

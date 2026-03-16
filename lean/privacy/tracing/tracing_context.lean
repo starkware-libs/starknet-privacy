@@ -1,8 +1,9 @@
-import privacy.tracing.outgoing_notes
-import privacy.tracing.incoming_notes
 import privacy.tracing.coin
+import privacy.tracing.incoming_notes
+import privacy.tracing.outgoing_notes
+import privacy.tracing.withdrawals
 
-structure TracingContext (crypto: Crypto) (m: Memory) (events: List Event)
+structure TracingContext (crypto: Crypto) (m: Memory) (events: List (List Event))
     extends ScanOutgoingNoteContext crypto m where
   h_incoming_eq_outgoing: ∀ (user: UserPrivKey crypto m) (token: ℕ),
     (
@@ -13,14 +14,18 @@ structure TracingContext (crypto: Crypto) (m: Memory) (events: List Event)
       nonopen_created_notes toScanOutgoingNoteContext user.addr user.k token
       |>.map (λ sn ↦ sn.amount crypto m)
       |>.sum
+    ) + (
+      withdrawals_for_user_token toScanNoteContext events user token
+      |>.map (λ evt ↦ evt.amount)
+      |>.sum
     )
   h_coin_props_alice : ∀ coin: Coin crypto m,
-    let kalice := get_priv_key crypto events coin.esn.addralice
+    let kalice := get_priv_key crypto events.flatten coin.esn.addralice
     kalice ∈ crypto.PrivateKeys ∧
     m MemoryType.PublicKeys [coin.esn.addralice] = crypto.priv_to_pub kalice ∧
     coin.esn ∈ scan_outgoing_notes_for_sender toScanOutgoingNoteContext coin.esn.addralice kalice
   h_coin_props_bob : ∀ coin: Coin crypto m,
-    let kbob := get_priv_key crypto events coin.esn.addrbob
+    let kbob := get_priv_key crypto events.flatten coin.esn.addrbob
     kbob ∈ crypto.PrivateKeys ∧
     m MemoryType.PublicKeys [coin.esn.addrbob] = crypto.priv_to_pub kbob ∧
     ∀ h, coin.esn ∈ scan_notes_for_recipient toScanNoteContext coin.esn.addrbob ⟨kbob, h⟩
@@ -34,11 +39,11 @@ structure TracingContext (crypto: Crypto) (m: Memory) (events: List Event)
     ∃ kalice, esn.c = crypto.hash [esn.addralice, kalice, esn.addrbob, crypto.priv_to_pub bob.k]
   h_fintype_coin: Nonempty (Fintype (Coin crypto m))
   h_from_create_open_note_event: ∀ note_id user_enc: ℕ,
-    .CreateOpenNote note_id user_enc ∈ events →
+    .CreateOpenNote note_id user_enc ∈ events.flatten →
     is_open_note crypto m note_id ∧
     (
       let addr := (crypto.dec crypto.council_priv_key user_enc).headD 0
-      let privkey := get_priv_key crypto events addr
+      let privkey := get_priv_key crypto events.flatten addr
       privkey ∈ crypto.PrivateKeys ∧
       m MemoryType.PublicKeys [addr] = crypto.priv_to_pub privkey
     )
@@ -53,6 +58,10 @@ theorem incoming_eq_outgoing
       nonopen_created_notes (.from stxs.rm) user.addr user.k token
       |>.map (λ sn ↦ sn.amount crypto stxs.rm)
       |>.sum
+    ) + (
+      withdrawals_for_user_token (.from stxs.rm) stxs.events user token
+      |>.map (λ evt ↦ evt.amount)
+      |>.sum
     ) := by
   -- Simplify LHS:
   set f_amount := (λ sn: ExScannedNote ↦ sn.amount crypto stxs.rm)
@@ -63,7 +72,8 @@ theorem incoming_eq_outgoing
     rw [spent_notes_ex_eq_spent_notes]
 
   -- Both hands:
-  rw [incoming_notes, outgoing_notes]
+  rw [incoming_notes, outgoing_notes, withdrawals_for_user_token_sum]
+  rw [←List.sum_map_add]
   apply congrArg
   apply List.map_congr_left
   intro tx h_tx
@@ -71,7 +81,7 @@ theorem incoming_eq_outgoing
   rw [←tx.sum_create_note_amounts_eq_nonopen _ h_tx.1, tx.h_balance]
 
 theorem TracingContext.from {crypto: Crypto} (stxs: SuccessfulTransactions crypto) :
-    TracingContext crypto stxs.rm.m stxs.rm.events := {
+    TracingContext crypto stxs.rm.m stxs.events := {
   toScanOutgoingNoteContext := .from stxs.rm,
   h_incoming_eq_outgoing := λ user token ↦ incoming_eq_outgoing stxs user token
   h_coin_props_alice := by
@@ -100,6 +110,7 @@ theorem TracingContext.from {crypto: Crypto} (stxs: SuccessfulTransactions crypt
     have register_imp := RegisterImplies.for_get_priv_key stxs.rm coin.esn.addralice (
       by rw [h_public_keys]; apply crypto.zero_not_public_key ⟨inp.kalice, kalice_priv⟩)
 
+    simp only [←SuccessfulTransactions.events.flatten_eq] at register_imp
     refine ⟨?_, ?_, ?_⟩
     · exact register_imp.h_kalice
     · rw [register_imp.public_key]
@@ -141,6 +152,7 @@ theorem TracingContext.from {crypto: Crypto} (stxs: SuccessfulTransactions crypt
     have register_imp := RegisterImplies.for_get_priv_key stxs.rm coin.esn.addrbob (
       by rw [h_public_keys]; apply crypto.zero_not_public_key)
 
+    simp only [←SuccessfulTransactions.events.flatten_eq] at register_imp
     refine ⟨?_, ?_, ?_⟩
     · exact register_imp.h_kalice
     · rw [register_imp.public_key]
@@ -174,6 +186,7 @@ theorem TracingContext.from {crypto: Crypto} (stxs: SuccessfulTransactions crypt
   h_fintype_coin := ⟨Coin.fintype⟩
   h_from_create_open_note_event := by
     intro note_id user_enc h
+    simp only [SuccessfulTransactions.events.flatten_eq] at h
     have ⟨inp, note_imp, h_note_id, h_r, h_user_enc⟩ := NoteImplies.from_open_note_event h
     have h_addrbob : (crypto.dec (↑crypto.council_priv_key) user_enc).headD 0 = inp.addrbob:= by
       rw [h_user_enc, crypto.h_council_priv_key, crypto.dec_enc, List.headD]
@@ -187,6 +200,7 @@ theorem TracingContext.from {crypto: Crypto} (stxs: SuccessfulTransactions crypt
     apply crypto.priv_to_pub_inj register_imp₁.h_kalice register_imp₀.h_kalice at this
     simp only at this
 
+    simp only [←SuccessfulTransactions.events.flatten_eq] at this
     refine ⟨?_, ?_, ?_⟩
     · have := h_note_id ▸ h_r ▸ note_imp.h_r
       rw [is_open_note, decide_eq_true_eq, this]

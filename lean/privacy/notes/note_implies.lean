@@ -5,7 +5,6 @@ import privacy.utils
 
 structure NoteImplies {crypto: Crypto} (rm: ReachableMemory crypto) (inp: CreateNoteInput) where
   h_action: .CreateNote inp ∈ rm.actions
-  h_i₀: inp.i₀ < crypto.MAX_I₀
   subchannel: SubchannelImplies rm (inp.c crypto) inp.addralice inp.addrbob inp.Kbob inp.token
   h_note_exists: note_exists rm (inp.note_id crypto)
   h_open_note: inp.r = 1 → rm.m .OpenNoteToken [inp.note_id crypto] = inp.token ∧ inp.amount = 0
@@ -36,7 +35,6 @@ theorem NoteImplies.next
 
     constructor; constructor
     case h_action => simp [note_imp.h_action]
-    case h_i₀ => exact note_imp.h_i₀
     case subchannel => exact Nonempty.some (note_imp.subchannel.next success)
     case h_note_exists => exact note_exists_monotone success note_imp.h_note_exists
 
@@ -52,7 +50,6 @@ theorem NoteImplies.next
 
     refine ⟨{
       h_action := by simp [note_imp.h_action],
-      h_i₀ := note_imp.h_i₀,
       subchannel := Nonempty.some (note_imp.subchannel.next success),
       h_note_exists := note_exists_monotone success note_imp.h_note_exists,
       h_open_note := note_imp.h_open_note,
@@ -72,7 +69,6 @@ theorem NoteImplies.next
 
   all_goals exact ⟨{
     h_action := by simp [note_imp.h_action],
-    h_i₀ := note_imp.h_i₀,
     subchannel := Nonempty.some (note_imp.subchannel.next success),
     h_note_exists := note_exists_monotone success note_imp.h_note_exists,
     h_open_note := note_imp.h_open_note,
@@ -98,7 +94,6 @@ theorem NoteImplies.from_action
     constructor; constructor
 
     case h_action => simp
-    case h_i₀ => exact info.i₀_lt_MAX_I₀
     case subchannel => rw [h_addralice]; exact Nonempty.some (subchannel_imp.next success)
     case h_note_exists =>
       rw [ReachableMemory.add_m, run_action, ←info.h_m', note_exists, info.memory_diff₀]
@@ -189,3 +184,11 @@ theorem NoteImplies.from_open_note_event
         contradiction
 
     all_goals contradiction
+
+theorem NoteImplies.extend
+    {crypto: Crypto} {rm₀ rm₁: ReachableMemory crypto} {inp: CreateNoteInput}
+    (h_extends: rm₁.extends rm₀) (note_imp: NoteImplies rm₀ inp) :
+    Nonempty (NoteImplies rm₁ inp) := by
+  apply NoteImplies.from_action
+  obtain ⟨ℓ, h_extends⟩ := h_extends
+  simp [←h_extends, note_imp.h_action]

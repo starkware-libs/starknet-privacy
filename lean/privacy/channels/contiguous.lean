@@ -25,7 +25,7 @@ theorem channel_exists_monotone (crypto: Crypto) (rm: ReachableMemory crypto) (a
       rwa [info.no_change _ _ (by simp [h₀])]
   all_goals exact h
 
--- The j-s of the channels for addrbob form a contiguous range [0, j_bound) where j_bound
+-- The j-q of the channels for addrbob form a contiguous range [0, j_bound) where j_bound
 -- is recorded in ChannelsJ.
 theorem channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypto) (addrbob: ℕ) :
     ∀ j, (j ≥ rm.m .ChannelsJ [addrbob]) ↔ rm.m .Channels [addrbob, j] = 0 := by
@@ -74,9 +74,9 @@ theorem channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypto) (addrb
         exact h j
   all_goals intro h success; exact h
 
--- The s of outgoing channels for given (addralice, kalice) form a contiguous range [0, s_bound).
+-- The q of outgoing channels for given (addralice, kalice) form a contiguous range [0, q_bound).
 theorem outgoing_channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypto) (addralice kalice: ℕ) :
-    ∃ s_bound, ∀ s, s < s_bound ↔ rm.m .OutgoingChannels [crypto.hash [addralice, kalice, s], 0] ≠ 0 := by
+    ∃ q_bound, ∀ q, q < q_bound ↔ rm.m .OutgoingChannels [crypto.hash [addralice, kalice, q], 0] ≠ 0 := by
   revert rm
   apply ReachableMemory.induction
   case inv₀ => use 0; intros; simp [ReachableMemory.m]
@@ -84,57 +84,57 @@ theorem outgoing_channels_contiguous {crypto: Crypto} (rm: ReachableMemory crypt
   intro action rm ih success
   cases action
   case OpenChannel inp =>
-    obtain ⟨s_bound, ih⟩ := ih
+    obtain ⟨q_bound, ih⟩ := ih
     let info := open_channel_info crypto inp rm success
     rw [ReachableMemory.add_m, run_action, ←info.h_m']
 
     by_cases h₀ : addralice = inp.addralice ∧ kalice = inp.kalice
     case pos =>
-      use s_bound + 1
-      intro s
+      use q_bound + 1
+      intro q
 
-      have h_inp_s_not_small : ¬inp.s < s_bound := by
-        have := (ih inp.s).1
+      have h_inp_q_not_small : ¬inp.q < q_bound := by
+        have := (ih inp.q).1
         simp [h₀, info.outgoing_channel_didnt_exist] at this
         omega
 
-      have h_inp_s_not_big : ¬inp.s > s_bound := by
+      have h_inp_q_not_big : ¬inp.q > q_bound := by
         cases info.prev_outgoing_exists
         case inl h_prev => omega
         case inr h_prev =>
-          have := (ih (inp.s - 1)).2
+          have := (ih (inp.q - 1)).2
           simp only [h₀, OpenChannelInput.prev_outgoing_channel_id] at h_prev this
           omega
 
-      have h_s : s_bound = inp.s := by omega
+      have h_q : q_bound = inp.q := by omega
 
-      by_cases h₁ : s = inp.s
+      by_cases h₁ : q = inp.q
       case pos =>
-        simp only [h₁, h_s, h₀.1, h₀.2, info.memory_diff₃, lt_add_iff_pos_right, Nat.lt_one_iff,
+        simp only [h₁, h_q, h₀.1, h₀.2, info.memory_diff₃, lt_add_iff_pos_right, Nat.lt_one_iff,
           ne_eq, true_iff]
         exact info.r_ne_zero
       case neg =>
-        have h_hash_ne : crypto.hash [inp.addralice, inp.kalice, s] ≠ inp.outgoing_channel_id crypto := by
+        have h_hash_ne : crypto.hash [inp.addralice, inp.kalice, q] ≠ inp.outgoing_channel_id crypto := by
           simp only [OpenChannelInput.outgoing_channel_id, ne_eq]
           intro h
           apply crypto.h_hash at h
           injections h
           contradiction
         rw [h₀.1, h₀.2, info.no_change _ _ (by simp [h_hash_ne])]
-        have := ih s
+        have := ih q
         simp only [h₀] at this
         rw [←this]
         omega
     case neg =>
-      use s_bound
-      intro s
-      have h_hash_ne : crypto.hash [addralice, kalice, s] ≠ inp.outgoing_channel_id crypto := by
+      use q_bound
+      intro q
+      have h_hash_ne : crypto.hash [addralice, kalice, q] ≠ inp.outgoing_channel_id crypto := by
         simp only [OpenChannelInput.outgoing_channel_id, ne_eq]
         intro h
         apply crypto.h_hash at h
         injections h
         omega
       rw [info.no_change _ _ (by simp [h_hash_ne])]
-      exact ih s
+      exact ih q
 
   all_goals exact ih

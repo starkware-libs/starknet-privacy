@@ -1,10 +1,12 @@
 use core::num::traits::Zero;
 use privacy::objects::{EncOutgoingChannelInfo, EncSubchannelInfo};
 use privacy::privacy::Privacy;
-use privacy::tests::utils_for_tests::constants::DEFAULT_AMOUNT;
+use privacy::tests::utils_for_tests::constants::{
+    DEFAULT_AMOUNT, DEFAULT_FEE_AMOUNT, DEFAULT_FEE_COLLECTOR, DEFAULT_PROOF_VALIDITY_BLOCKS,
+};
 use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
 use privacy::utils::constants::OPEN_NOTE_SALT;
-use privacy::utils::unpacking;
+use privacy::utils::unpack;
 use snforge_std::TokenTrait;
 use starkware_utils::components::replaceability::interface::{
     IReplaceableDispatcher, IReplaceableDispatcherTrait,
@@ -16,8 +18,8 @@ use starkware_utils_testing::test_utils::assert_panic_with_error;
 #[test]
 fn test_constructor() {
     let mut test: Test = Default::default();
-    // Test compliance public key.
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
+    // Test auditor public key.
+    assert_eq!(test.privacy.get_auditor_public_key(), test.auditor.public_key);
     // Test roles.
     let contract_roles = IRolesDispatcher { contract_address: test.privacy.address };
     assert!(contract_roles.is_governance_admin(account: test.privacy.roles.governance_admin));
@@ -28,23 +30,71 @@ fn test_constructor() {
     // Test replaceability.
     let contract_replaceability = IReplaceableDispatcher { contract_address: test.privacy.address };
     assert_eq!(contract_replaceability.get_upgrade_delay(), Zero::zero());
+    // Test fee amount and collector.
+    assert_eq!(test.privacy.get_fee_amount(), Zero::zero());
+    assert_eq!(test.privacy.get_fee_collector(), Zero::zero());
+    // Test proof validity blocks.
+    assert_eq!(test.privacy.get_proof_validity_blocks(), DEFAULT_PROOF_VALIDITY_BLOCKS);
+    // TODO: Verify constructor events (CompliancePublicKeySet, ProofValidityBlocksSet).
 }
 
 #[test]
-#[should_panic(expected: 'ZERO_COMPLIANCE_PUBLIC_KEY')]
-fn test_constructor_assertions() {
+#[should_panic(expected: 'ZERO_AUDITOR_PUBLIC_KEY')]
+fn test_constructor_zero_auditor_public_key() {
     let mut state = Privacy::contract_state_for_testing();
     Privacy::constructor(
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
-        compliance_public_key: Zero::zero(),
+        auditor_public_key: Zero::zero(),
+        proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
     );
 }
 
 #[test]
-fn test_get_compliance_public_key() {
+#[should_panic(expected: 'ZERO_PROOF_VALIDITY_BLOCKS')]
+fn test_constructor_zero_proof_validity_blocks() {
+    let mut state = Privacy::contract_state_for_testing();
+    Privacy::constructor(
+        ref state,
+        governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
+        auditor_public_key: 'AUDITOR_PUBLIC_KEY'.try_into().unwrap(),
+        proof_validity_blocks: Zero::zero(),
+    );
+}
+
+#[test]
+fn test_get_auditor_public_key() {
     let mut test: Test = Default::default();
-    assert_eq!(test.privacy.get_compliance_public_key(), test.compliance.public_key);
+    assert_eq!(test.privacy.get_auditor_public_key(), test.auditor.public_key);
+}
+
+#[test]
+fn test_get_fee_amount() {
+    let mut test: Test = Default::default();
+    assert_eq!(test.privacy.get_fee_amount(), Zero::zero());
+    let fee_amount = DEFAULT_FEE_AMOUNT;
+    let fee_collector = DEFAULT_FEE_COLLECTOR;
+    test.privacy.set_fee_collector(:fee_collector);
+    test.privacy.set_fee_amount(:fee_amount);
+    assert_eq!(test.privacy.get_fee_amount(), fee_amount);
+}
+
+#[test]
+fn test_get_fee_collector() {
+    let mut test: Test = Default::default();
+    assert_eq!(test.privacy.get_fee_collector(), Zero::zero());
+    let fee_collector = DEFAULT_FEE_COLLECTOR;
+    test.privacy.set_fee_collector(:fee_collector);
+    assert_eq!(test.privacy.get_fee_collector(), fee_collector);
+}
+
+#[test]
+fn test_get_proof_validity_blocks() {
+    let mut test: Test = Default::default();
+    assert_eq!(test.privacy.get_proof_validity_blocks(), DEFAULT_PROOF_VALIDITY_BLOCKS);
+    let proof_validity_blocks = DEFAULT_PROOF_VALIDITY_BLOCKS + 100;
+    test.privacy.set_proof_validity_blocks(:proof_validity_blocks);
+    assert_eq!(test.privacy.get_proof_validity_blocks(), proof_validity_blocks);
 }
 
 #[test]
@@ -189,40 +239,35 @@ fn test_get_note() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     let token = test.new_token();
-    let token_address = token.contract_address();
-    let mut depositor = test.new_user();
+    let token_addr = token.contract_address();
     let amount = DEFAULT_AMOUNT;
-    user_1
-        .open_channel_with_token_e2e(
-            recipient: user_2, :token_address, outgoing_channel_index: 0, subchannel_index: 0,
-        );
+    user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
 
     // Create and verify encrypted note.
     let enc_note_input = user_1
-        .new_enc_note_with_generated_salt(recipient: user_2, :token_address, :amount, index: 0);
+        .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, :amount, index: 0);
     user_1.cheat_create_enc_note_e2e(create_note_input: enc_note_input);
     let (enc_note_id, expected_enc_note) = user_1
         .compute_enc_note(create_note_input: enc_note_input);
     assert_eq!(test.privacy.get_note(note_id: enc_note_id), expected_enc_note);
 
     // Create and verify empty open note.
+    let depositor = test.privacy.echo_executor;
     let open_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, token: token_address, index: 1, depositor: depositor.address,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 1, :depositor);
     user_1.cheat_create_open_note_e2e(create_note_input: open_note_input);
     let (open_note_id, expected_open_note) = user_1
         .compute_open_note(create_note_input: open_note_input);
     assert_eq!(test.privacy.get_note(note_id: open_note_id), expected_open_note);
 
     // Deposit to the existing open note and verify.
-    depositor.fund_and_deposit_to_open_note(:token, note_id: open_note_id, :amount);
+    test.privacy.fund_and_cheat_invoke_echo(:token, note_id: open_note_id, :amount);
     let filled_note = test.privacy.get_note(note_id: open_note_id);
-    let (salt, stored_amount) = unpacking(packed_value: filled_note.packed_value);
+    let (salt, stored_amount) = unpack(packed_value: filled_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount);
-    assert_eq!(filled_note.token, token_address);
-    assert_eq!(filled_note.depositor, depositor.address);
+    assert_eq!(filled_note.token, token_addr);
+    assert_eq!(filled_note.depositor, depositor);
 }
 
 #[test]
@@ -250,13 +295,13 @@ fn test_subchannel_exists() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
-    let subchannel_marker = user_1.compute_subchannel_marker(recipient: user_2, :token_address);
+    let token_addr = test.mock_new_token();
+    let subchannel_marker = user_1.compute_subchannel_marker(recipient: user_2, :token_addr);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_marker), false);
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
-    user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+    user_1.open_subchannel_e2e(recipient: user_2, :token_addr, index: 0);
     assert_eq!(test.privacy.subchannel_exists(:subchannel_marker), true);
 }
 
@@ -265,7 +310,7 @@ fn test_get_subchannel_info() {
     let mut test: Test = Default::default();
     let mut user_1 = test.new_user();
     let mut user_2 = test.new_user();
-    let token_address = test.mock_new_token();
+    let token_addr = test.mock_new_token();
     let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, index: 0);
     assert_eq!(
         test.privacy.get_subchannel_info(:subchannel_id),
@@ -274,9 +319,9 @@ fn test_get_subchannel_info() {
     user_1.set_viewing_key_e2e();
     user_2.set_viewing_key_e2e();
     user_1.open_channel_e2e(recipient: user_2, index: 0);
-    let salt = user_1.open_subchannel_e2e(recipient: user_2, :token_address, index: 0);
+    let salt = user_1.open_subchannel_e2e(recipient: user_2, :token_addr, index: 0);
     let expected_subchannel_info = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_address, index: 0, :salt);
+        .compute_enc_subchannel_info(recipient: user_2, :token_addr, index: 0, :salt);
     assert!(expected_subchannel_info.enc_token.is_non_zero());
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_id), expected_subchannel_info);
 }

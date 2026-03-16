@@ -23,7 +23,7 @@ export {
   compute_enc_amount_hash,
   compute_enc_token_hash,
   compute_enc_private_key_hash,
-  compute_enc_address_hash,
+  compute_enc_user_addr_hash,
   compute_enc_channel_key_hash,
   compute_enc_sender_addr_hash,
 } from "../utils/hashes.js";
@@ -33,6 +33,7 @@ export {
   ContractDiscoveryProvider,
   type PoolContractInterface,
 } from "../internal/contract-discovery.js";
+export { IndexerDiscoveryProvider } from "../internal/indexer-discovery.js";
 export {
   createConcurrencyProfiler,
   formatReport,
@@ -43,6 +44,8 @@ export {
 export {
   Devnet,
   createDevnetTestEnv,
+  type DevnetConfig,
   type DevnetEnvironment,
   type DevnetTestEnv,
+  type DevnetTestEnvConfig,
 } from "./devnet.js";

@@ -7,13 +7,14 @@ import {
   POOL_ADDRESS,
 } from "../helpers/test-fixtures.js";
 import { Open } from "../../src/interfaces.js";
-import { debugHint, derivePublicKey, isDebugEnabled, toBigInt } from "../../src/utils/index.js";
-import { compute_channel_key, compute_note_id } from "../../src/utils/hashes.js";
+import { debugHint, isDebugEnabled, toBigInt } from "../../src/utils/index.js";
 import { debugLog } from "../../src/utils/logging.js";
 import { toHex } from "../../src/utils/convert.js";
 import { MockSwapHelper } from "../../src/testing/contracts.js";
+import { Mocknet } from "../../src/testing/mocknet.js";
 
 describe("Private Transfers Integration", () => {
+  let mocknet: Mocknet;
   let testEnv: MockTestEnv;
 
   afterAll(() => {
@@ -24,6 +25,7 @@ describe("Private Transfers Integration", () => {
 
   beforeEach(() => {
     testEnv = createTestEnv();
+    mocknet = testEnv.mocknet;
   });
 
   // ============================================================================
@@ -31,7 +33,7 @@ describe("Private Transfers Integration", () => {
   // ============================================================================
   describe("Explicit Flow", () => {
     it("manual registration, channel setup, token setup, deposit, transfer, withdraw", async () => {
-      const { mocknet, env, transfers } = testEnv;
+      const { env, transfers } = testEnv;
       const { alice, bob } = transfers;
       const ace = toBigInt(env.ace);
 
@@ -103,7 +105,7 @@ describe("Private Transfers Integration", () => {
   // ============================================================================
   describe("Auto Setup Flow", () => {
     it("auto setup handles registration, channels, and token setup", async () => {
-      const { mocknet, env, transfers } = testEnv;
+      const { env, transfers } = testEnv;
       const { alice, bob } = transfers;
       const ace = toBigInt(env.ace);
       const bee = toBigInt(env.bee);
@@ -117,7 +119,7 @@ describe("Private Transfers Integration", () => {
         await alice
           .build(AUTO_ALL)
           .with(env.ace)
-            .deposit({ amount: 100n, recipient: env.alice.address })
+            .deposit({ amount: 100n })
             .transfer({ recipient: env.bob.address, amount: 50n })
             .surplusTo(env.alice.address, true)
           .with(env.bee)
@@ -138,7 +140,7 @@ describe("Private Transfers Integration", () => {
     });
 
     it("covers autoSelectNotes: all, autoDiscover: missing, registryConst, implicit surplus", async () => {
-      const { mocknet, env, transfers } = testEnv;
+      const { env, transfers } = testEnv;
       const { alice } = transfers;
       const ace = toBigInt(env.ace);
 
@@ -167,7 +169,7 @@ describe("Private Transfers Integration", () => {
       // Phase 2: Use registry with channels but WITHOUT notes
       // This tests autoDiscover: "missing" (discovers notes not in registry)
       const channelOnly = createEmptyRegistry();
-      const channel = (await alice.discoverChannels([env.alice.address])).channels.get(
+      const channel = (await alice.discoverChannels([env.alice.address])).channels!.get(
         env.alice.address
       )!;
       channelOnly.channels.set(env.alice.address, channel);
@@ -206,7 +208,7 @@ describe("Private Transfers Integration", () => {
     });
 
     it("implicit surplus: deposit without surplusTo creates note for self", async () => {
-      const { mocknet, env, transfers } = testEnv;
+      const { env, transfers } = testEnv;
       const { alice, bob } = transfers;
       const ace = toBigInt(env.ace);
 
@@ -237,6 +239,149 @@ describe("Private Transfers Integration", () => {
 
       expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(900n); // 1000 - 100
     });
+
+    it("channel index accounting: transfer to Bob, then Carol with registry, then David without registry", async () => {
+      const { env, transfers } = testEnv;
+      const { alice, bob, carol, david } = transfers;
+      const ace = toBigInt(env.ace);
+
+      // Register all users
+      mocknet.executeOutside(await bob.build().register().execute());
+      mocknet.executeOutside(await carol.build().register().execute());
+      mocknet.executeOutside(await david.build().register().execute());
+
+      // Alice deposits and transfers to Bob (creates outgoing channel index 0 to self, index 1 to Bob)
+      const registryAfterBob = mocknet.executeOutside(
+        await alice
+          .build(AUTO_ALL)
+          .with(env.ace)
+          .deposit({ amount: 100n })
+          .transfer({ recipient: env.bob.address, amount: 30n })
+          .surplusTo(env.alice.address)
+          .execute()
+      );
+
+      // Verify Bob got his transfer
+      const bobNotes = (await bob.discoverNotes()).notes.get(ace) ?? [];
+      expect(bobNotes.length).toBe(1);
+      expect(bobNotes[0].amount).toBe(30n);
+
+      // Alice transfers to Carol using the registry from step 1 (creates outgoing channel index 2 to Carol)
+      const registryAfterCarol = mocknet.executeOutside(
+        await alice
+          .build({
+            registry: registryAfterBob,
+            autoDiscover: { channels: "refresh", notes: "refresh" },
+            autoSetup: true,
+            autoSelectNotes: "naive",
+          })
+          .with(env.ace)
+          .transfer({ recipient: env.carol.address, amount: 20n })
+          .surplusTo(env.alice.address)
+          .execute()
+      );
+
+      // Verify Carol got her transfer
+      const carolNotes = (await carol.discoverNotes()).notes.get(ace) ?? [];
+      expect(carolNotes.length).toBe(1);
+      expect(carolNotes[0].amount).toBe(20n);
+
+      // Alice should have 50n remaining (100 - 30 - 20)
+      expect(registryAfterCarol.notes.get(ace)?.length).toBe(1);
+      expect(registryAfterCarol.notes.get(ace)?.[0].amount).toBe(50n);
+
+      // Now transfer to David WITHOUT passing a registry (fresh discovery)
+      // This tests that the channel index accounting is correct when discovering from scratch
+      // and creating a new channel to a completely new recipient
+      const finalRegistry = mocknet.executeOutside(
+        await alice
+          .build(AUTO_ALL) // Fresh discovery, no registry passed
+          .with(env.ace)
+          .transfer({ recipient: env.david.address, amount: 10n })
+          .surplusTo(env.alice.address)
+          .execute()
+      );
+
+      // Verify David got his transfer
+      const davidNotes = (await david.discoverNotes()).notes.get(ace) ?? [];
+      expect(davidNotes.length).toBe(1);
+      expect(davidNotes[0].amount).toBe(10n);
+
+      // Alice should have 40n remaining (50 - 10)
+      expect(finalRegistry.notes.get(ace)?.length).toBe(1);
+      expect(finalRegistry.notes.get(ace)?.[0].amount).toBe(40n);
+
+      // Final balance check
+      expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(900n); // 1000 - 100
+    });
+  });
+
+  // ============================================================================
+  // Deposit with explicit recipients
+  // ============================================================================
+  describe("Deposit with explicit recipients", () => {
+    it("deposits to bob and carol in same token", async () => {
+      const { env, transfers } = testEnv;
+      const { alice, bob, carol } = transfers;
+      const ace = toBigInt(env.ace);
+
+      mocknet.executeOutside(await bob.build().register().execute());
+      mocknet.executeOutside(await carol.build().register().execute());
+
+      // prettier-ignore
+      mocknet.executeOutside(
+        await alice
+          .build(AUTO_ALL)
+          .with(env.ace)
+            .deposit(
+              { amount: 30n, recipient: env.bob.address },
+              { amount: 50n, recipient: env.carol.address },
+            )
+          .execute()
+      );
+
+      const bobNotes = (await bob.discoverNotes()).notes.get(ace) ?? [];
+      expect(bobNotes.length).toBe(1);
+      expect(bobNotes[0].amount).toBe(30n);
+
+      const carolNotes = (await carol.discoverNotes()).notes.get(ace) ?? [];
+      expect(carolNotes.length).toBe(1);
+      expect(carolNotes[0].amount).toBe(50n);
+
+      expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(920n); // 1000 - 30 - 50
+    });
+
+    it("deposits to bob in ACE and carol in BEE", async () => {
+      const { env, transfers } = testEnv;
+      const { alice, bob, carol } = transfers;
+      const ace = toBigInt(env.ace);
+      const bee = toBigInt(env.bee);
+
+      mocknet.executeOutside(await bob.build().register().execute());
+      mocknet.executeOutside(await carol.build().register().execute());
+
+      // prettier-ignore
+      mocknet.executeOutside(
+        await alice
+          .build(AUTO_ALL)
+          .with(env.ace)
+            .deposit({ amount: 40n, recipient: env.bob.address })
+          .with(env.bee)
+            .deposit({ amount: 60n, recipient: env.carol.address })
+          .execute()
+      );
+
+      const bobAceNotes = (await bob.discoverNotes()).notes.get(ace) ?? [];
+      expect(bobAceNotes.length).toBe(1);
+      expect(bobAceNotes[0].amount).toBe(40n);
+
+      const carolBeeNotes = (await carol.discoverNotes()).notes.get(bee) ?? [];
+      expect(carolBeeNotes.length).toBe(1);
+      expect(carolBeeNotes[0].amount).toBe(60n);
+
+      expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(960n); // 1000 - 40
+      expect(env.contracts.get(bee).balanceOf(env.alice.address)).toBe(940n); // 1000 - 60
+    });
   });
 
   // ============================================================================
@@ -245,21 +390,13 @@ describe("Private Transfers Integration", () => {
   const SWAP_HELPER_ADDRESS = "0x53A2";
 
   it("swaps ACE for BEE via swap helper and open note", async () => {
-    const { mocknet, env, transfers } = testEnv;
+    const { env, transfers } = testEnv;
     const { alice } = transfers;
     const ace = toBigInt(env.ace);
     const bee = toBigInt(env.bee);
 
-    const swapHelper = new MockSwapHelper(SWAP_HELPER_ADDRESS, env.contracts);
+    const swapHelper = new MockSwapHelper(SWAP_HELPER_ADDRESS, env.contracts, POOL_ADDRESS);
     env.contracts.register(swapHelper);
-
-    const key = compute_channel_key(
-      env.alice.address,
-      env.alice.privateKey,
-      env.alice.address,
-      derivePublicKey(env.alice.privateKey)
-    );
-    const beeNoteId = compute_note_id(key, bee, 0);
 
     // 1. Setup self-channel and deposit ACE (autoSetup handles token subchannel setup)
     // prettier-ignore
@@ -267,15 +404,19 @@ describe("Private Transfers Integration", () => {
       await alice
         .build(AUTO_ALL)
         .with(env.ace)
-          .deposit({ amount: 100n, recipient: env.alice.address })
+          .deposit({ amount: 100n })
           .withdraw({ recipient: swapHelper.address, amount: 10n })
         .with(env.bee)
           .transfer({ recipient: env.alice.address, amount: Open, depositor: swapHelper.address })
         .done()
-        .call({
-          contractAddress: toHex(swapHelper.address),
-          entrypoint: "swap",
-          calldata: [ace, bee, 10n, POOL_ADDRESS, beeNoteId],
+        .invoke(({ openNotes }) => {
+          expect(openNotes.length).toBe(1);
+          expect(openNotes[0].token).toBe(bee);
+          expect(openNotes[0].depositor).toBe(toBigInt(swapHelper.address));
+          return {
+            contractAddress: toHex(swapHelper.address),
+            calldata: [ace, bee, 10n, openNotes[0].noteId],
+          };
         })
         .execute()
     );

@@ -28,6 +28,7 @@ export interface MocknetEnvironment {
   alice: MockAccount;
   bob: MockAccount;
   carol: MockAccount;
+  david: MockAccount;
   ace: string;
   bee: string;
   pool: MockPoolContract;
@@ -38,6 +39,7 @@ const ACCOUNTS = {
   alice: { address: 0xa11cen, privateKey: 12345n },
   bob: { address: 0xb0bn, privateKey: 67890n },
   carol: { address: 0xca201n, privateKey: 99999n },
+  david: { address: 0xda71dn, privateKey: 11111n },
 };
 
 const TOKENS = {
@@ -135,7 +137,7 @@ export class Mocknet {
     return new PrivateTransfers({
       // Mock account - only address is used
       account: { address: `0x${userAddress.toString(16)}` } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      viewingKeyProvider: { getViewingKey: () => viewingKey },
+      viewingKeyProvider: { getViewingKey: async () => viewingKey },
       provingProvider: new MockProofProvider(pool),
       discoveryProvider: new ContractDiscoveryProvider(pool),
       proofInvocationFactory: new MockProofInvocationFactory(),
@@ -154,7 +156,7 @@ export class Mocknet {
    * @returns The updated registry
    */
   executeOutside(result: ExecuteResult): PrivateRegistry {
-    this.pool.execute_actions(result.callAndProof.call.calldata as string[]);
+    this.pool.apply_actions(result.callAndProof.call.calldata as string[]);
     return result.registry;
   }
 }

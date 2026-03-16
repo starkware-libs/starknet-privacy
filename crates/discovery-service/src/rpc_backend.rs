@@ -1,11 +1,16 @@
 //! RPC-based implementation of the storage interface and chain state.
 
 use std::sync::Arc;
-use std::time::Duration;
 
 use async_trait::async_trait;
-use discovery_core::storage::{RawStorageAccess, StorageBackend, StorageError, StorageSnapshot};
-use starknet_core::types::{requests::GetStorageAtRequest, BlockId, BlockTag, Felt, StarknetError};
+use discovery_core::events_backend::RawEventAccess;
+use discovery_core::storage_backend::{
+    RawStorageAccess, StorageBackend, StorageError, StorageSnapshot,
+};
+use starknet_core::types::{
+    requests::GetStorageAtRequest, BlockId, BlockTag, EmittedEvent, EventFilter, Felt,
+    MaybePreConfirmedBlockWithTxHashes, StarknetError,
+};
 use starknet_providers::{
     jsonrpc::{HttpTransport, JsonRpcClient},
     Provider, ProviderError, ProviderRequestData, ProviderResponseData,
@@ -16,6 +21,7 @@ use tower::limit::concurrency::ConcurrencyLimitLayer;
 use url::Url;
 
 use crate::chain_state::{ChainHead, ChainState, ChainStateError};
+use crate::config::RpcConfig;
 
 /// Errors specific to the RPC backend.
 #[derive(Debug, Error)]
@@ -23,6 +29,9 @@ pub enum RpcBackendError {
     /// Failed to build the HTTP client.
     #[error("failed to build HTTP client: {0}")]
     HttpClientBuild(#[source] reqwest::Error),
+    /// Invalid RPC URL.
+    #[error("invalid RPC URL: {0}")]
+    InvalidUrl(#[source] url::ParseError),
     /// RPC request failed.
     #[error("RPC request failed: {0}")]
     Request(String),
@@ -37,69 +46,15 @@ impl From<RpcBackendError> for StorageError {
     }
 }
 
-/// Configuration for the connection pool.
-#[derive(Debug, Clone)]
-pub struct PoolConfig {
-    /// Maximum number of concurrent RPC requests.
-    pub max_concurrent_requests: usize,
-    /// Connection timeout in seconds.
-    pub connect_timeout_secs: u64,
-    /// Request timeout in seconds.
-    pub request_timeout_secs: u64,
-    /// Maximum idle connections per host.
-    pub pool_max_idle_per_host: usize,
-}
-
-impl Default for PoolConfig {
-    fn default() -> Self {
-        Self {
-            max_concurrent_requests: 10,
-            connect_timeout_secs: 30,
-            request_timeout_secs: 60,
-            pool_max_idle_per_host: 10,
-        }
-    }
-}
-
-const DEFAULT_RPC_URL: &str = "http://127.0.0.1:5050";
-
-/// Configuration for the RPC backend.
-#[derive(Debug, Clone)]
-pub struct RpcConfig {
-    /// URL of the StarkNet JSON-RPC endpoint.
-    pub rpc_url: Url,
-    /// Address of the privacy contract to read from.
-    pub contract_address: Felt,
-    /// Connection pool configuration.
-    pub pool_config: PoolConfig,
-}
-
-impl RpcConfig {
-    /// Creates a new RPC configuration with the given URL and contract address.
-    pub fn new(rpc_url: Url, contract_address: Felt) -> Self {
-        Self {
-            rpc_url,
-            contract_address,
-            pool_config: PoolConfig::default(),
-        }
-    }
-}
-
-impl Default for RpcConfig {
-    fn default() -> Self {
-        Self {
-            rpc_url: Url::parse(DEFAULT_RPC_URL).unwrap(),
-            contract_address: Felt::ZERO,
-            pool_config: PoolConfig::default(),
-        }
-    }
-}
-
 /// Inner state shared across clones of RpcBackend.
 struct RpcBackendInner {
     provider: JsonRpcClient<HttpTransport>,
-    contract_address: Felt,
     head: RwLock<Option<ChainHead>>,
+    max_batch_size: usize,
+    event_page_size: usize,
+    /// Maximum allowed block range for a single `get_events` query.
+    /// `0` means unlimited.
+    max_event_block_range: u64,
 }
 
 /// RPC-based storage backend that reads from a StarkNet node via JSON-RPC.
@@ -115,24 +70,26 @@ pub struct RpcBackend {
 impl RpcBackend {
     /// Creates a new RPC backend with the given configuration.
     pub fn new(config: RpcConfig) -> Result<Self, RpcBackendError> {
+        let rpc_url = Url::parse(&config.url).map_err(RpcBackendError::InvalidUrl)?;
+
         let client = reqwest::Client::builder()
-            .connect_timeout(Duration::from_secs(config.pool_config.connect_timeout_secs))
-            .timeout(Duration::from_secs(config.pool_config.request_timeout_secs))
-            .pool_max_idle_per_host(config.pool_config.pool_max_idle_per_host)
-            .connector_layer(ConcurrencyLimitLayer::new(
-                config.pool_config.max_concurrent_requests,
-            ))
+            .connect_timeout(config.connect_timeout)
+            .timeout(config.request_timeout)
+            .pool_max_idle_per_host(config.max_idle_per_host)
+            .connector_layer(ConcurrencyLimitLayer::new(config.max_concurrent_requests))
             .build()
             .map_err(RpcBackendError::HttpClientBuild)?;
 
-        let transport = HttpTransport::new_with_client(config.rpc_url, client);
+        let transport = HttpTransport::new_with_client(rpc_url, client);
         let provider = JsonRpcClient::new(transport);
 
         Ok(Self {
             inner: Arc::new(RpcBackendInner {
                 provider,
-                contract_address: config.contract_address,
                 head: RwLock::new(None),
+                max_batch_size: config.max_batch_size,
+                event_page_size: config.event_page_size,
+                max_event_block_range: config.max_event_block_range,
             }),
         })
     }
@@ -142,43 +99,29 @@ impl RpcBackend {
 impl StorageBackend for RpcBackend {
     type Snapshot = RpcSnapshot;
 
-    async fn snapshot(&self, block_id: Option<BlockId>) -> Result<Self::Snapshot, StorageError> {
+    async fn snapshot(&self, contract_address: Felt, block_id: Option<BlockId>) -> Self::Snapshot {
         let block_id = block_id.unwrap_or(BlockId::Tag(BlockTag::Latest));
-        Ok(RpcSnapshot {
+        RpcSnapshot {
             backend: self.clone(),
+            contract_address,
             block_id,
-        })
+        }
     }
 }
 
 /// Snapshot of storage at a specific block, accessed via RPC.
+#[derive(Clone)]
 pub struct RpcSnapshot {
     backend: RpcBackend,
+    contract_address: Felt,
     block_id: BlockId,
 }
 
-#[async_trait]
-impl RawStorageAccess for RpcSnapshot {
-    async fn read_slot(&self, slot: Felt) -> Result<Felt, StorageError> {
-        self.backend
-            .inner
-            .provider
-            .get_storage_at(self.backend.inner.contract_address, slot, self.block_id)
-            .await
-            .map_err(|e| RpcBackendError::Request(e.to_string()).into())
-    }
+impl RpcSnapshot {
+    /// Executes a single JSON-RPC batch request for the given slots.
+    async fn batch_read(&self, slots: &[Felt]) -> Result<Vec<Felt>, StorageError> {
+        let contract_address = self.contract_address;
 
-    async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError> {
-        if slots.is_empty() {
-            return Ok(vec![]);
-        }
-        if slots.len() == 1 {
-            return Ok(vec![self.read_slot(slots[0]).await?]);
-        }
-
-        let contract_address = self.backend.inner.contract_address;
-
-        // Build batch request
         let requests: Vec<ProviderRequestData> = slots
             .iter()
             .map(|&slot| {
@@ -190,16 +133,19 @@ impl RawStorageAccess for RpcSnapshot {
             })
             .collect();
 
-        // Execute batch
         let responses = self
             .backend
             .inner
             .provider
             .batch_requests(&requests)
             .await
-            .map_err(|e| RpcBackendError::Request(e.to_string()))?;
+            .map_err(|e| match &e {
+                ProviderError::StarknetError(StarknetError::ContractNotFound) => {
+                    StorageError::ContractNotFound
+                }
+                _ => StorageError::from(RpcBackendError::Request(e.to_string())),
+            })?;
 
-        // Extract results
         responses
             .into_iter()
             .map(|resp| match resp {
@@ -211,9 +157,132 @@ impl RawStorageAccess for RpcSnapshot {
 }
 
 #[async_trait]
+impl RawStorageAccess for RpcSnapshot {
+    async fn read_slot(&self, slot: Felt) -> Result<Felt, StorageError> {
+        self.backend
+            .inner
+            .provider
+            .get_storage_at(self.contract_address, slot, self.block_id)
+            .await
+            .map_err(|e| match &e {
+                ProviderError::StarknetError(StarknetError::ContractNotFound) => {
+                    StorageError::ContractNotFound
+                }
+                _ => RpcBackendError::Request(e.to_string()).into(),
+            })
+    }
+
+    async fn read_slots(&self, slots: Vec<Felt>) -> Result<Vec<Felt>, StorageError> {
+        if slots.is_empty() {
+            return Ok(vec![]);
+        }
+        if slots.len() == 1 {
+            return Ok(vec![self.read_slot(slots[0]).await?]);
+        }
+
+        let mut results = Vec::with_capacity(slots.len());
+        // TODO: consider provessing chunks concurrently
+        for chunk in slots.chunks(self.backend.inner.max_batch_size) {
+            let chunk_results = self.batch_read(chunk).await?;
+            results.extend(chunk_results);
+        }
+        Ok(results)
+    }
+}
+
+#[async_trait]
+impl RawEventAccess for RpcSnapshot {
+    async fn get_events(
+        &self,
+        keys: &[Vec<Felt>],
+        from_block: u64,
+        to_block: u64,
+    ) -> Result<Vec<EmittedEvent>, StorageError> {
+        let max_range = self.backend.inner.max_event_block_range;
+        if max_range > 0 {
+            let range = to_block.saturating_sub(from_block).saturating_add(1);
+            if range > max_range {
+                return Err(RpcBackendError::Request(format!(
+                    "event query block range {range} exceeds maximum {max_range}"
+                ))
+                .into());
+            }
+        }
+
+        // Strip trailing empty key vecs — they mean "wildcard" in our trait but
+        // some RPC implementations (e.g. devnet) treat them as "match nothing".
+        let trimmed_keys: Vec<Vec<Felt>> = {
+            let end = keys
+                .iter()
+                .rposition(|v| !v.is_empty())
+                .map_or(0, |i| i + 1);
+            keys[..end].to_vec()
+        };
+
+        let filter = EventFilter {
+            from_block: Some(BlockId::Number(from_block)),
+            to_block: Some(BlockId::Number(to_block)),
+            address: Some(self.contract_address),
+            keys: if trimmed_keys.is_empty() {
+                None
+            } else {
+                Some(trimmed_keys)
+            },
+        };
+
+        let mut all_events = Vec::new();
+        let mut continuation_token = None;
+
+        loop {
+            let page = self
+                .backend
+                .inner
+                .provider
+                .get_events(
+                    filter.clone(),
+                    continuation_token,
+                    self.backend.inner.event_page_size as u64,
+                )
+                .await
+                .map_err(|e| RpcBackendError::Request(e.to_string()))?;
+
+            all_events.reserve(page.events.len());
+            all_events.extend(page.events);
+
+            match page.continuation_token {
+                Some(token) => continuation_token = Some(token),
+                None => break,
+            }
+        }
+
+        Ok(all_events)
+    }
+}
+
+#[async_trait]
 impl ChainState for RpcBackend {
     async fn get_head(&self) -> Option<ChainHead> {
-        *self.inner.head.read().await
+        if let Some(head) = *self.inner.head.read().await {
+            return Some(head);
+        }
+
+        // Fallback: fetch latest block via RPC when WS subscription hasn't
+        // provided a head yet (e.g. WS not available on the node).
+        let block = self
+            .inner
+            .provider
+            .get_block_with_tx_hashes(BlockId::Tag(BlockTag::Latest))
+            .await
+            .ok()?;
+
+        match block {
+            MaybePreConfirmedBlockWithTxHashes::Block(head) => Some(ChainHead {
+                block_number: head.block_number,
+                block_hash: head.block_hash,
+                timestamp: head.timestamp,
+            }),
+            MaybePreConfirmedBlockWithTxHashes::PreConfirmedBlock(_) => None,
+        }
     }
 
     async fn set_head(&self, head: ChainHead) {
@@ -236,6 +305,10 @@ impl ChainState for RpcBackend {
 
 #[async_trait]
 impl StorageSnapshot for RpcSnapshot {
+    fn contract_address(&self) -> Felt {
+        self.contract_address
+    }
+
     fn block_id(&self) -> BlockId {
         self.block_id
     }

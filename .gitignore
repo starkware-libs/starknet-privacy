@@ -25,6 +25,7 @@ yarn-error.log*
 .pnpm-debug.log*
 
 # local env files
+.env
 .env.local
 .env.development.local
 .env.test.local
@@ -39,8 +40,12 @@ yarn-error.log*
 
 .history
 
+# TypeScript
+*.tsbuildinfo
+
 # Vite
 **/vite.config.ts.timestamp-*
+.vite/
 
 # run-rs
 data
@@ -79,3 +84,15 @@ __pycache__
 # claude code - keep local settings private, share skills and commands
 .claude/settings.local.json
 .claude/projects/
+
+# logs
+*.log
+
+# e2e predeployed accounts (legacy, replaced by .env ACCOUNTS var)
+accounts.json
+
+# demo app local env (contains private keys)
+demo/.env
+
+# e2e load test output
+e2e/results/

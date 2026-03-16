@@ -10,7 +10,8 @@ import privacy.notes.open_deposits
 theorem no_replay
     {crypto: Crypto} {rm: ReachableMemory crypto}
     {action: Action}
-    (h: action ∈ rm.actions) :
+    (h: action ∈ rm.actions)
+    (h_action: ∀ x, action ≠ .Withdraw x):
     ¬(run_action crypto action rm.m).success := by
   by_contra success
   cases action
@@ -44,3 +45,6 @@ theorem no_replay
     apply congrArg crypto.unpack at this
     simp only [crypto.unpack_pack, Prod.mk.injEq, true_and] at this
     exact open_deposit_imp.amount_nz this.symm
+  case Withdraw inp =>
+    have := h_action inp
+    contradiction

@@ -1,6 +1,5 @@
-use core::hash::{HashStateExTrait, HashStateTrait};
 use core::num::traits::Zero;
-use core::poseidon::{PoseidonTrait, poseidon_hash_span};
+use core::poseidon::poseidon_hash_span;
 use domain_separation::*;
 use starknet::ContractAddress;
 
@@ -42,7 +41,7 @@ pub mod domain_separation {
 /// Hashes a span of felt252 values.
 pub(crate) fn hash(data: Span<felt252>) -> felt252 {
     // TODO: Replace the hash function.
-    PoseidonTrait::new().update_with(poseidon_hash_span(data)).finalize()
+    poseidon_hash_span(data)
 }
 
 /// Computes the hash used to encrypt the private key in `EncPrivateKey`.
@@ -54,8 +53,8 @@ pub(crate) fn compute_enc_private_key_hash(shared_x: felt252) -> felt252 {
 
 /// Computes the hash used to encrypt the address in `EncUserAddr`.
 ///
-/// Returns `h(ENC_ADDRESS_TAG, shared_x)`
-pub(crate) fn compute_enc_address_hash(shared_x: felt252) -> felt252 {
+/// Returns `h(ENC_USER_ADDR_TAG, shared_x)`
+pub(crate) fn compute_enc_user_addr_hash(shared_x: felt252) -> felt252 {
     hash([ENC_USER_ADDR_TAG, shared_x].span())
 }
 

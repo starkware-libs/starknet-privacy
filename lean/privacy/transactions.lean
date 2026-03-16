@@ -1,3 +1,5 @@
 import privacy.transactions.immutability
 import privacy.transactions.transaction0
 import privacy.transactions.transactions
+import privacy.transactions.use_note
+import privacy.transactions.withdrawals

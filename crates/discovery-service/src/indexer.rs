@@ -1,7 +1,5 @@
 //! Indexer that subscribes to Starknet new heads via WebSocket.
 
-use std::time::Duration;
-
 use backoff::ExponentialBackoffBuilder;
 use backoff::{backoff::Backoff, ExponentialBackoff};
 use starknet::core::types::ConfirmedBlockId;
@@ -11,8 +9,7 @@ use tokio::sync::broadcast;
 use tracing::{error, info, warn};
 
 use crate::chain_state::{ChainHead, ChainState};
-
-const DEFAULT_WS_URL: &str = "ws://127.0.0.1:5050/ws";
+use crate::config::IndexerConfig;
 
 /// Errors that can occur during indexer operation.
 #[derive(Debug, Error)]
@@ -52,26 +49,6 @@ impl IndexerError {
                 | IndexerError::WebSocketSubscribe(_)
                 | IndexerError::WebSocketReceive(_)
         )
-    }
-}
-
-pub struct IndexerConfig {
-    pub ws_url: String,
-    pub connect_timeout: Duration,
-    pub backoff_initial_interval: Duration,
-    pub backoff_max_interval: Duration,
-    pub backoff_max_elapsed_time: Option<Duration>,
-}
-
-impl Default for IndexerConfig {
-    fn default() -> Self {
-        Self {
-            ws_url: DEFAULT_WS_URL.to_string(),
-            connect_timeout: Duration::from_secs(10),
-            backoff_initial_interval: Duration::from_secs(1),
-            backoff_max_interval: Duration::from_secs(60),
-            backoff_max_elapsed_time: None,
-        }
     }
 }
 
@@ -176,10 +153,16 @@ impl<C: ChainState> Indexer<C> {
                     }
                 }
                 _ = self.rx_shutdown.recv() => {
-                    subscription.unsubscribe().await?;
-                    info!("Unsubscribed from new heads");
-                    stream.close().await?;
-                    info!("Closed WebSocket connection");
+                    if let Err(err) = subscription.unsubscribe().await {
+                        error!(%err, "Failed to unsubscribe during shutdown");
+                    } else {
+                        info!("Unsubscribed from new heads");
+                    }
+                    if let Err(err) = stream.close().await {
+                        error!(%err, "Failed to close WebSocket during shutdown");
+                    } else {
+                        info!("Closed WebSocket connection");
+                    }
                     return Ok(());
                 }
             }

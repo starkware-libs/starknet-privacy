@@ -23,6 +23,7 @@ import type {
   ExecuteOptions,
   Note,
   PrivateRegistry,
+  StarknetAddressBigint,
   ViewingKey,
   Warning,
 } from "../interfaces.js";
@@ -32,10 +33,13 @@ import type { ClientAction } from "./client-actions.js";
 import { PoolSimulator } from "./pool-simulator.js";
 
 import { assert, isOpen, isOpenNote } from "../utils/validation.js";
+import { CallData } from "starknet";
 import type { BigNumberish } from "starknet";
 import { generateRandom, generateRandom120 } from "../utils/crypto.js";
 import { debugLog } from "../utils/logging.js";
 import { toHex } from "../utils/convert.js";
+import { compute_note_id } from "../utils/hashes.js";
+import { ReorgError } from "./indexer-discovery.js";
 
 export type CompileResult = {
   clientActions: ClientAction[];
@@ -52,7 +56,7 @@ type ClientActions = {
   createEncNotes: Extract<ClientAction, { type: "CreateEncNote" }>[];
   createOpenNotes: Extract<ClientAction, { type: "CreateOpenNote" }>[];
   withdraws: Extract<ClientAction, { type: "Withdraw" }>[];
-  followupCall?: Extract<ClientAction, { type: "FollowupCall" }>;
+  invoke?: Extract<ClientAction, { type: "InvokeExternal" }>;
 };
 
 // Enforces that input has no extra properties beyond what's expected for its type
@@ -65,23 +69,53 @@ type StrictClientAction<T extends ClientAction> = T extends {
     : never
   : never;
 
+function addOpenChannel(actions: Actions, recipient: StarknetAddressBigint) {
+  actions.openChannels ??= [];
+  // Check if recipient is already in openChannels to avoid duplicates
+  const alreadyQueued = actions.openChannels.some((a) => a.recipient === recipient);
+  if (!alreadyQueued) {
+    actions.openChannels.push({
+      recipient,
+    });
+  }
+}
+
 export class ActionCompiler {
   constructor(
     private userAddress: bigint,
     private userViewingKey: ViewingKey,
-    private discoveryProvider: DiscoveryProviderInterface
+    private discoveryProvider: DiscoveryProviderInterface,
+    private poolAddress: StarknetAddressBigint = 0n
   ) {}
 
   /**
    * Compile actions by resolving contexts, updating the registry, and producing ClientAction[].
    */
   async compile(actions: Actions, options?: ExecuteOptions): Promise<CompileResult> {
+    try {
+      return await this.compileOnce(actions, options);
+    } catch (e) {
+      if (e instanceof ReorgError) {
+        debugLog("compiler", "compile", "reorg detected", e);
+        // Reorg detected: clear stale registry state and retry from scratch.
+        if (options?.registry) {
+          options.registry.notes.clear();
+          options.registry.channels.clear();
+          delete options.registry.cursor;
+        }
+        return await this.compileOnce(actions, options);
+      }
+      throw e;
+    }
+  }
+
+  private async compileOnce(actions: Actions, options?: ExecuteOptions): Promise<CompileResult> {
     const registry_ = options?.registry ?? createEmptyRegistry();
     const registry = options?.registryConst ? this.cloneRegistry(registry_) : registry_;
     const recipientsNeeded = this.getRecipientsNeeded(actions);
 
     // Phase 1: Resolve recipient channels
-    const channels = await this.resolveRecipientChannels(
+    const { channels, total } = await this.resolveRecipientChannels(
       actions,
       options,
       registry,
@@ -94,7 +128,7 @@ export class ActionCompiler {
     debugLog("compiler", "compile", "post resolveNotes", registry?.notes?.size, actions);
 
     // create a pool to simulate the execution of the actions
-    const pool = this.createPool(toBigInt(this.userViewingKey), registry, channels);
+    const pool = this.createPool(toBigInt(this.userViewingKey), registry, channels, total);
 
     // Phase 3: Transform Actions to ClientAction[]
     const clientActions = this.transformToClientActions(actions, pool, recipientsNeeded, options);
@@ -154,9 +188,10 @@ export class ActionCompiler {
   private createPool(
     privateKey: bigint,
     registry?: PrivateRegistry,
-    channels?: AddressMap<Channel>
+    channels?: AddressMap<Channel>,
+    totalChannels?: number
   ): PoolSimulator {
-    const pool = new PoolSimulator(this.userAddress, privateKey);
+    const pool = new PoolSimulator(this.userAddress, privateKey, totalChannels ?? 0);
 
     debugLog("compiler", "setup discovered channels", channels);
 
@@ -202,7 +237,7 @@ export class ActionCompiler {
       createEncNotes: [],
       createOpenNotes: [],
       withdraws: [],
-      followupCall: undefined,
+      invoke: undefined,
     };
 
     debugLog("compiler", "transformToClientActions", actions);
@@ -216,23 +251,13 @@ export class ActionCompiler {
 
     if (actions.setViewingKey && options?.autoSetup) {
       // If registering, also open self-channel (it can't exist yet)
-      actions.openChannels ??= [];
-      actions.openChannels.push({
-        recipient: this.userAddress,
-      });
+      addOpenChannel(actions, this.userAddress);
     }
 
     for (const recipient of recipientsNeeded.keys()) {
       const channel = pool.getChannel(recipient);
       if (!channel?.key && options?.autoSetup) {
-        actions.openChannels ??= [];
-        // Check if recipient is already in openChannels to avoid duplicates
-        const alreadyQueued = actions.openChannels.some((a) => a.recipient === recipient);
-        if (!alreadyQueued) {
-          actions.openChannels.push({
-            recipient,
-          });
-        }
+        addOpenChannel(actions, recipient);
       } else {
         debugLog("compiler", "channel found", recipient, channel);
       }
@@ -269,8 +294,7 @@ export class ActionCompiler {
           type: "OpenChannel",
           input: {
             recipient_addr: action.recipient,
-            recipient_public_key: channel.publicKey as bigint,
-            index: seenRecipients.size - 1, // TODO: track outgoing channel index properly
+            index: pool.getNextChannelIndex(),
             random: generateRandom(),
             salt: generateRandom(),
           },
@@ -410,7 +434,7 @@ export class ActionCompiler {
         const input = {
           type: "Withdraw",
           input: {
-            withdrawal_target: action.recipient,
+            to_addr: action.recipient,
             token: action.token,
             amount: action.amount,
             random: generateRandom(),
@@ -422,16 +446,38 @@ export class ActionCompiler {
 
     // surpluses were handled in resolveNotes
 
-    // 8. FollowupCall
-    if (actions.followupCall) {
+    // 8. InvokeExternal
+    if (actions.invoke) {
+      const openNotes = clientActions.createOpenNotes.map((openNote) => {
+        const channelKey = pool.getChannel(openNote.input.recipient_addr)?.key;
+        assert(channelKey, () => `Missing channel key for open note recipient`);
+        return {
+          noteId: compute_note_id(channelKey, openNote.input.token, openNote.input.index),
+          token: openNote.input.token,
+          depositor: openNote.input.depositor,
+        };
+      });
+      const withdrawals = clientActions.withdraws.map((withdraw) => ({
+        recipient: withdraw.input.to_addr,
+        token: withdraw.input.token,
+        amount: withdraw.input.amount,
+      }));
+
+      const call = actions.invoke.callBuilder({
+        openNotes,
+        withdrawals,
+        poolAddress: this.poolAddress,
+      });
+      const calldata = CallData.compile(call.calldata ?? []).map((value) => toBigInt(value));
+
       const input = {
-        type: "FollowupCall",
+        type: "InvokeExternal",
         input: {
-          call: actions.followupCall.call,
+          contract_address: toBigInt(call.contractAddress),
+          calldata,
         },
       } as const; // typescipt magic
-
-      clientActions.followupCall = execute(input);
+      clientActions.invoke = execute(input);
     }
 
     return Object.values(clientActions)
@@ -447,19 +493,19 @@ export class ActionCompiler {
     options: ExecuteOptions | undefined,
     registry: PrivateRegistry,
     recipientsNeeded: AddressMap<boolean>
-  ): Promise<AddressMap<Channel> | undefined> {
+  ): Promise<{ channels: AddressMap<Channel> | undefined; total?: number }> {
     const recipientDiscoveryLevel = options?.autoDiscover?.channels;
 
     if (!recipientDiscoveryLevel) {
       // Allow discovery for OpenChannel actions as they require fetching the recipient's public key
       const hasOpenChannels = actions.openChannels && actions.openChannels.length > 0;
-      if (!hasOpenChannels) {
-        return undefined;
+      if (!hasOpenChannels && !options?.autoSetup) {
+        return { channels: undefined, total: undefined };
       }
     }
 
     // Determine which recipients to discover based on discovery level
-    let recipientsToDiscover: bigint[];
+    let recipientsToDiscover: StarknetAddressBigint[];
 
     if (recipientDiscoveryLevel === "refresh") {
       // Refresh: discover ALL recipients to get latest nonces
@@ -470,7 +516,7 @@ export class ActionCompiler {
     }
 
     if (recipientsToDiscover.length === 0) {
-      return undefined;
+      return { channels: undefined, total: undefined };
     }
 
     // Discover channels for all recipients that need discovery in a single call
@@ -481,7 +527,18 @@ export class ActionCompiler {
       recipientsToDiscover
     );
 
-    return channels;
+    // see if all recipients were discoveredall
+    if (this.allOpen(channels, recipientsToDiscover)) {
+      return { channels, total: undefined };
+    }
+
+    const { total } = await this.discoveryProvider.discoverChannels(
+      this.userAddress,
+      this.userViewingKey,
+      "total-only"
+    );
+
+    return { channels, total };
   }
 
   /**
@@ -663,5 +720,12 @@ export class ActionCompiler {
     }
 
     return { channels: clonedChannels, notes: clonedNotes };
+  }
+
+  private allOpen(
+    channels: AddressMap<Channel> | undefined,
+    recipients: StarknetAddressBigint[]
+  ): boolean {
+    return recipients.every((recipient) => channels?.get(recipient)?.key !== undefined);
   }
 }

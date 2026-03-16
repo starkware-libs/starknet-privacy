@@ -3,8 +3,8 @@
  *
  * This class provides:
  * 1. View methods with bigint params (matching Cairo contract felts)
- * 2. execute_view() returns MockServerAction[] for state mutations
- * 3. execute_actions() applies the mutations
+ * 2. compile_actions() returns MockServerAction[] for state mutations
+ * 3. apply_actions() applies the mutations
  * 4. snapshot()/restore() for validation pattern
  */
 
@@ -42,7 +42,6 @@ import {
 } from "../utils/hashes.js";
 
 import { toHex } from "../utils/convert.js";
-import { Call } from "starknet";
 import { ClientAction } from "../internal/client-actions.js";
 
 type OpenNote = {
@@ -64,7 +63,7 @@ type MockServerAction = {
 type EncryptedNote = { packed: bigint; token: StarknetAddressBigint; index: number };
 
 export type MockPoolContractSnapshot = {
-  publicKeys: Map<bigint, PublicKey>;
+  publicKeys: Map<StarknetAddressBigint, PublicKey>;
   channels: Map<string, EncChannelInfo[]>;
   channelMarkers: Set<Hash>;
   subchannels: Map<Hash, EncSubchannelInfo>;
@@ -72,7 +71,6 @@ export type MockPoolContractSnapshot = {
   notes: Map<Hash, EncryptedNote | OpenNote>;
   nullifiers: Set<Hash>;
   outgoingChannels: Map<bigint, EncOutgoingChannelInfo>;
-  outgoingChannelCounters: Map<bigint, number>;
 };
 
 class ChannelsMap extends AdvancedMap<
@@ -170,12 +168,24 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
 
   get_enc_private_key(_userAddr: StarknetAddressBigint): EncPrivateKey {
     // Mock doesn't store encrypted private keys
-    return { compliance_public_key: 0n, ephemeral_pubkey: 0n, enc_private_key: 0n };
+    return { auditor_public_key: 0n, ephemeral_pubkey: 0n, enc_private_key: 0n };
   }
 
-  get_compliance_public_key(): bigint {
-    // Mock returns dummy compliance key
+  get_auditor_public_key(): bigint {
+    // Mock returns dummy auditor key
     return 1n;
+  }
+
+  get_fee_amount(): bigint | number {
+    return 0n;
+  }
+
+  get_fee_collector(): bigint {
+    return 0n;
+  }
+
+  get_proof_validity_blocks(): bigint | number {
+    return 450n;
   }
 
   // ============ Helper Methods for Discovery ============
@@ -257,11 +267,11 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
    *
    * Pool-state actions are applied temporarily (required for assertions in subsequent
    * actions), then state is restored. Externally-modifying actions (Deposit, Withdraw,
-   * FollowupCall) are deferred and only applied when callbacks are replayed.
+   * InvokeExternal) are deferred and only applied when callbacks are replayed.
    *
    * Validates token totals if validateBalances is true.
    */
-  execute_view(
+  compile_actions(
     sender: StarknetAddressBigint,
     privateKey: bigint,
     clientActions: ClientAction[]
@@ -296,7 +306,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
   /**
    * Apply server actions to mutate state.
    */
-  execute_actions(actions: string[]): void {
+  apply_actions(actions: string[]): void {
     for (let i = 0; i < actions.length; i++) {
       assert(
         this.serverActions[i].type == actions[i],
@@ -315,7 +325,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     privateKey: bigint,
     ...clientActions: ClientAction[]
   ): string[] {
-    const actions = this.execute_view(sender, privateKey, clientActions);
+    const actions = this.compile_actions(sender, privateKey, clientActions);
     this.serverActions = actions;
     return this.serverActions.map((action) => action.type);
   }
@@ -342,12 +352,21 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     userAddress: StarknetAddressBigint,
     viewingKey: ViewingKey,
     address: StarknetAddressBigint,
+    index: number,
     channel: Channel
   ): void {
     this.publicKeys.set(address, channel.publicKey);
 
     if (!channel.key) return;
-    this.setChannel(userAddress, viewingKey, address, channel.publicKey, generateRandom()).apply();
+
+    this.setChannel(
+      userAddress,
+      viewingKey,
+      address,
+      channel.publicKey,
+      index,
+      generateRandom()
+    ).apply();
 
     for (const [token, nonces] of channel.tokens.entries()) {
       this.setToken(
@@ -421,7 +440,6 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       notes: notesSnapshot,
       nullifiers: new Set(this.nullifiers),
       outgoingChannels: new Map(this.outgoingChannels),
-      outgoingChannelCounters: new Map(this.outgoingChannelCounters.entries()),
     };
   }
 
@@ -443,9 +461,6 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     this.notes = new Map(s.notes);
     this.nullifiers = new Set(s.nullifiers);
     this.outgoingChannels = new Map(s.outgoingChannels);
-
-    this.outgoingChannelCounters.clear();
-    for (const [k, v] of s.outgoingChannelCounters) this.outgoingChannelCounters.set(k, v);
   }
 
   // ============ Private Methods ============
@@ -465,16 +480,23 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       case "SetViewingKey":
         return [this.register(sender, privateKey, action.input.random)];
 
-      case "OpenChannel":
+      case "OpenChannel": {
+        const recipientPublicKey = this.publicKeys.get(action.input.recipient_addr);
+        assert(
+          recipientPublicKey !== undefined,
+          () => `Recipient ${toHex(action.input.recipient_addr)} not registered — no public key`
+        );
         return [
           this.setChannel(
             sender,
             privateKey,
             action.input.recipient_addr,
-            action.input.recipient_public_key,
+            recipientPublicKey,
+            action.input.index,
             action.input.random
           ),
         ];
+      }
 
       case "OpenSubchannel":
         return [
@@ -532,12 +554,13 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
         ];
 
       case "Withdraw":
-        return [
-          this.withdraw(action.input.token, action.input.withdrawal_target, action.input.amount),
-        ];
+        return [this.withdraw(action.input.token, action.input.to_addr, action.input.amount)];
 
-      case "FollowupCall":
-        return [this.followupCall(action.input.call)];
+      case "InvokeExternal":
+        return [this.invoke(action.input.contract_address, action.input.calldata as bigint[])];
+
+      default:
+        throw new Error(`Unsupported action type in mock: ${(action as ClientAction).type}`);
     }
   }
 
@@ -562,6 +585,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     fromPrivateKey: ViewingKey,
     to: StarknetAddressBigint,
     toPublicKey: PublicKey,
+    index: number,
     random: bigint
   ): MockServerAction {
     this.assertRegistered(from);
@@ -578,24 +602,24 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       from
     );
 
-    const s = this.outgoingChannelCounters.get(from)!;
-    if (s > 0) {
+    assert(index >= 0, () => `Outgoing channel index must be non-negative: ${index}`);
+    if (index > 0) {
       const prevOutgoingChannelId = compute_outgoing_channel_id(
         from,
         toBigInt(fromPrivateKey),
-        s - 1
+        index - 1
       );
       assert(
         this.outgoingChannels.has(prevOutgoingChannelId),
-        () => `Outgoing channel index ${s} is not sequential for sender ${toHex(from)}`
+        () => `Outgoing channel index ${index} is not sequential for sender ${toHex(from)}`
       );
     }
-    const outgoingChannelId = compute_outgoing_channel_id(from, toBigInt(fromPrivateKey), s);
+    const outgoingChannelId = compute_outgoing_channel_id(from, toBigInt(fromPrivateKey), index);
     const outgoingSalt = generateRandom();
     const encOutgoingChannelInfo = encryptions.encryptOutgoingChannelInfo(
       from,
       toBigInt(fromPrivateKey),
-      s,
+      index,
       to,
       outgoingSalt
     );
@@ -613,7 +637,6 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
         this.channels.get({ address: to, publicKey: toPublicKey })!.push(channelInfo);
         this.channelMarkers.add(channelMarker);
         this.outgoingChannels.set(outgoingChannelId, encOutgoingChannelInfo);
-        this.outgoingChannelCounters.set(from, s + 1);
       },
     };
   }
@@ -812,11 +835,12 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     };
   }
 
-  private followupCall(call: Call): MockServerAction {
+  private invoke(contractAddress: StarknetAddressBigint, calldata: bigint[]): MockServerAction {
     return {
-      type: "FollowupCall",
+      type: "InvokeExternal",
       apply: () => {
-        this.contracts.call(call.contractAddress, call.entrypoint, call.calldata as unknown[]);
+        const entrypoint = "privacy_invoke";
+        this.contracts.call(contractAddress, entrypoint, calldata);
       },
       deferred: true,
     };

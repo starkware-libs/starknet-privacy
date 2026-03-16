@@ -34,9 +34,6 @@ theorem NoteImplies.from_scan_outgoing_notes_for_sender
   let Kbob := rm.m MemoryType.PublicKeys [addrbob]
 
   unfold scan_notes_for_channel at h_sn
-  simp only [List.mem_flatMap, List.mem_range] at h_sn
-  obtain ⟨i₀, i₀_lt, h_sn⟩ := h_sn
-  unfold scan_notes_for_channel_i₀ at h_sn
   simp only [List.mem_map, List.mem_range, Nat.lt_find_iff] at h_sn
   obtain ⟨i₁, h_sn, h_note_id⟩ := h_sn
 
@@ -66,7 +63,7 @@ theorem NoteImplies.scan_outgoing
 
   simp only [scan_outgoing_notes_for_sender, List.bind_eq_flatMap, List.mem_dedup, List.mem_flatMap,
     List.pure_def, List.mem_singleton]
-  refine ⟨inp.addrbob, ?_, inp.token, h_Kbob ▸ note_imp.subchannel.scan, inp.to_scanned_note crypto, ?_, ?_⟩
+  refine ⟨inp.addrbob, ?_, inp.token, h_Kbob ▸ note_imp.subchannel.scan_for_channel, inp.to_scanned_note crypto, ?_, ?_⟩
   · rw [note_imp.h_kalice]
     use outgoing_channels_are_discoverable note_imp.subchannel.channel.h_channel_exists
   · rw [h_Kbob]

@@ -1,18 +1,21 @@
+use core::poseidon::poseidon_hash_span;
 /// Reference hash generator for TypeScript SDK compatibility testing.
 ///
 /// This test is ignored by default. Run explicitly with:
 ///   snforge test generate_reference --include-ignored
 ///
 /// The output should be used to update: sdk/tests/fixtures/cairo-reference-data.json
+use privacy::actions::{ServerAction, WriteOnceInput};
+use privacy::hashes::domain_separation::*;
 use privacy::hashes::{
     compute_channel_key, compute_channel_marker, compute_enc_amount_hash,
     compute_enc_channel_key_hash, compute_enc_private_key_hash, compute_enc_recipient_addr_hash,
     compute_enc_sender_addr_hash, compute_enc_token_hash, compute_note_id, compute_nullifier,
     compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker,
-    domain_separation::*,
 };
+use privacy::utils::constants::{VIRTUAL_SNOS, VIRTUAL_SNOS0};
 use privacy::utils::{
-    decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
+    ProofFacts, decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
     encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
 };
 use snforge_std::map_entry_address;
@@ -31,7 +34,7 @@ const SHARED_X: felt252 = 0x9abc;
 // Additional inputs for encryption tests
 const EPHEMERAL_SECRET: felt252 = 0xabcd;
 const AMOUNT: u128 = 1000;
-const COMPLIANCE_PRIVATE_KEY: felt252 = 0x54321;
+const AUDITOR_PRIVATE_KEY: felt252 = 0x54321;
 const USER_ADDR: felt252 = 0x999;
 const USER_PRIVATE_KEY: felt252 = 0x888;
 
@@ -90,8 +93,8 @@ fn generate_reference_hashes() {
     let enc_note_amount = enc_note_packed_value(CHANNEL_KEY, token, INDEX, SALT, AMOUNT);
     let dec_note_amount = decode_note_amount(enc_note_amount, CHANNEL_KEY, token, INDEX);
 
-    // Derive compliance public key for ECDH tests
-    let compliance_public_key = derive_public_key(COMPLIANCE_PRIVATE_KEY);
+    // Derive auditor public key for ECDH tests
+    let auditor_public_key = derive_public_key(AUDITOR_PRIVATE_KEY);
     let user_addr = to_address(USER_ADDR);
 
     // Encrypt outgoing channel info
@@ -99,13 +102,13 @@ fn generate_reference_hashes() {
         sender, SENDER_PRIVATE_KEY, INDEX, recipient, SALT.into(),
     );
 
-    // Encrypt private key (for compliance)
+    // Encrypt private key (for auditor)
     let enc_private_key = encrypt_private_key(
-        EPHEMERAL_SECRET, compliance_public_key, USER_PRIVATE_KEY,
+        EPHEMERAL_SECRET, auditor_public_key, USER_PRIVATE_KEY,
     );
 
-    // Encrypt user address (for compliance)
-    let enc_user_addr = encrypt_user_addr(EPHEMERAL_SECRET, compliance_public_key, user_addr);
+    // Encrypt user address (for auditor)
+    let enc_user_addr = encrypt_user_addr(EPHEMERAL_SECRET, auditor_public_key, user_addr);
 
     // Print in format parseable by sdk/scripts/generate-cairo-refs.ts
     println!("=== CAIRO REFERENCE HASHES ===");
@@ -124,8 +127,8 @@ fn generate_reference_hashes() {
     println!("inputs.amount: {}", AMOUNT);
     println!("inputs.recipientPrivateKey: 0x{:x}", recipient_private_key);
     println!("inputs.recipientPublicKeyDerived: 0x{:x}", recipient_public_key_derived);
-    println!("inputs.compliancePrivateKey: 0x{:x}", COMPLIANCE_PRIVATE_KEY);
-    println!("inputs.compliancePublicKey: 0x{:x}", compliance_public_key);
+    println!("inputs.auditorPrivateKey: 0x{:x}", AUDITOR_PRIVATE_KEY);
+    println!("inputs.auditorPublicKey: 0x{:x}", auditor_public_key);
     println!("inputs.userAddr: 0x{:x}", USER_ADDR);
     println!("inputs.userPrivateKey: 0x{:x}", USER_PRIVATE_KEY);
 
@@ -201,8 +204,8 @@ fn generate_reference_storage_slots() {
     // Formula for simple vars: address = sn_keccak(variable_name)
 
     // --- Simple variables ---
-    // compliance_public_key - felt252 (simple variable, address = sn_keccak(name))
-    let compliance_public_key_slot = selector!("compliance_public_key");
+    // auditor_public_key - felt252 (simple variable, address = sn_keccak(name))
+    let auditor_public_key_slot = selector!("auditor_public_key");
 
     // public_key[user_addr] - Map<ContractAddress, felt252>
     let public_key_slot = map_entry_address(
@@ -215,7 +218,8 @@ fn generate_reference_storage_slots() {
     );
 
     // enc_private_key[user_addr] - Map<ContractAddress, EncPrivateKey>
-    // EncPrivateKey is a struct with 2 fields stored at consecutive addresses
+    // EncPrivateKey is a struct with 3 fields stored at consecutive addresses:
+    // auditor_public_key, ephemeral_pubkey, enc_private_key
     let enc_private_key_slot = map_entry_address(
         map_selector: selector!("enc_private_key"), keys: [SENDER].span(),
     );
@@ -256,11 +260,12 @@ fn generate_reference_storage_slots() {
     );
 
     // Flat output for discovery-core compatibility
-    println!("slots.compliancePublicKeyAddress: 0x{:x}", compliance_public_key_slot);
+    println!("slots.auditorPublicKeyAddress: 0x{:x}", auditor_public_key_slot);
     println!("slots.senderPublicKeyAddress: 0x{:x}", public_key_slot);
     println!("slots.recipientPublicKeyAddress: 0x{:x}", recipient_public_key_slot);
-    println!("slots.encPrivateKeyEphemeralAddress: 0x{:x}", enc_private_key_slot);
-    println!("slots.encPrivateKeyEncKeyAddress: 0x{:x}", enc_private_key_slot + 1);
+    println!("slots.encPrivateKeyAuditorPubKeyAddress: 0x{:x}", enc_private_key_slot);
+    println!("slots.encPrivateKeyEphemeralAddress: 0x{:x}", enc_private_key_slot + 1);
+    println!("slots.encPrivateKeyEncKeyAddress: 0x{:x}", enc_private_key_slot + 2);
     println!("slots.channelExistsAddress: 0x{:x}", channel_exists_slot);
     println!("slots.recipientChannelsBaseAddress: 0x{:x}", recipient_channels_base);
     println!("slots.recipientChannelsElementAddress: 0x{:x}", recipient_channels_element);
@@ -278,6 +283,102 @@ fn generate_reference_storage_slots() {
     println!("inputs.subchannelMarker: 0x{:x}", subchannel_marker);
     println!("inputs.noteId: 0x{:x}", note_id);
     println!("inputs.nullifier: 0x{:x}", nullifier);
+
+    println!("==============================");
+}
+
+/// ProofFacts test vector generator for TypeScript SDK compatibility testing.
+///
+/// This test produces the serialized ProofFacts and message hash that the
+/// contract's `validate_proof` expects, using known inputs. The TypeScript
+/// `buildProofFacts` function must produce identical output.
+///
+/// Run explicitly with:
+///   snforge test generate_reference_proof_facts --include-ignored
+#[test]
+#[ignore]
+fn generate_reference_proof_facts() {
+    // Known inputs
+    let pool_address: felt252 = 0xABCDE;
+    let pool_class_hash: felt252 =
+        0x12345; // Reference value for fixture; discovery-core may use for slot derivation
+    let base_block_number: u64 = 100;
+
+    // Build a minimal set of server actions with known serialization.
+    // WriteOnce is variant index 0 in the ServerAction enum.
+    let actions: Span<ServerAction> = [
+        ServerAction::WriteOnce(
+            WriteOnceInput { storage_address: 0x111, value: [0x222, 0x333].span() },
+        ),
+    ]
+        .span();
+
+    // Serialize actions the same way validate_proof does
+    let mut serialized_actions = array![];
+    actions.serialize(ref serialized_actions);
+
+    // Compute message hash with fixed pool_class_hash so the reference matches the SDK
+    // (production compute_message_hash uses get_class_hash_at_syscall(contract_address))
+    let mut l1_message_data: Array<felt252> = array![pool_address, 0];
+    let mut payload = array![];
+    pool_class_hash.serialize(ref payload);
+    actions.serialize(ref payload);
+    payload.serialize(ref l1_message_data);
+    let message_hash = poseidon_hash_span(l1_message_data.span());
+
+    // Build the full ProofFacts struct
+    let proof_facts = ProofFacts {
+        proof_version: 0,
+        program_variant: VIRTUAL_SNOS,
+        virtual_program_hash: 0,
+        starknet_os_output_version: VIRTUAL_SNOS0,
+        base_block_number,
+        base_block_hash: 0,
+        starknet_os_config_hash: 0,
+        message_to_l1_hashes: [message_hash].span(),
+    };
+
+    // Serialize the full ProofFacts struct
+    let mut serialized_proof_facts = array![];
+    proof_facts.serialize(ref serialized_proof_facts);
+
+    println!("=== PROOF FACTS ===");
+
+    // Inputs
+    println!("proofFacts.poolAddress: 0x{:x}", pool_address);
+    println!("proofFacts.poolClassHash: 0x{:x}", pool_class_hash);
+    println!("proofFacts.baseBlockNumber: {}", base_block_number);
+
+    // The serialized server actions (this is what proof.output contains in TS)
+    println!("proofFacts.serializedActionsLength: {}", serialized_actions.len());
+    let mut action_index = 0;
+    for felt in serialized_actions {
+        println!("proofFacts.serializedActions.{}: 0x{:x}", action_index, felt);
+        action_index += 1;
+    }
+
+    // The message hash
+    println!("proofFacts.messageHash: 0x{:x}", message_hash);
+
+    // The full serialized proof facts
+    println!("proofFacts.serializedLength: {}", serialized_proof_facts.len());
+    let mut proof_index = 0;
+    for felt in serialized_proof_facts {
+        println!("proofFacts.serialized.{}: 0x{:x}", proof_index, felt);
+        proof_index += 1;
+    }
+
+    // The full L2-to-L1 message payload: [class_hash, ...serialized_actions]
+    println!("proofFacts.messagePayloadLength: {}", payload.len());
+    let mut payload_index = 0;
+    for felt in payload {
+        println!("proofFacts.messagePayload.{}: 0x{:x}", payload_index, felt);
+        payload_index += 1;
+    }
+
+    // Also print the constants for verification
+    println!("proofFacts.virtualSnos: 0x{:x}", VIRTUAL_SNOS);
+    println!("proofFacts.virtualSnos0: 0x{:x}", VIRTUAL_SNOS0);
 
     println!("==============================");
 }
