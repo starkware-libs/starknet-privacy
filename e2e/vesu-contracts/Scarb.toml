@@ -1,0 +1,18 @@
+[package]
+name = "vesu_contracts"
+version = "0.1.0"
+edition = "2024_07"
+
+[dependencies]
+starknet = "2.11.4"
+vesu = { git = "https://github.com/vesuxyz/vesu-v2", rev = "e14d772" }
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
+build-external-contracts = [
+    "vesu::pool::Pool",
+    "vesu::pool_factory::PoolFactory",
+    "vesu::v_token::VToken",
+    "vesu::oracle::Oracle",
+]
