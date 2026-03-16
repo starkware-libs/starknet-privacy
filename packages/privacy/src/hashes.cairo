@@ -40,7 +40,6 @@ pub mod domain_separation {
 
 /// Hashes a span of felt252 values.
 pub(crate) fn hash(data: Span<felt252>) -> felt252 {
-    // TODO: Replace the hash function.
     poseidon_hash_span(data)
 }
 
