@@ -191,7 +191,7 @@ pub(crate) struct PrivacyCfg {
 }
 
 #[derive(Copy, Drop)]
-struct User {
+pub(crate) struct User {
     pub address: ContractAddress,
     pub privacy: PrivacyCfg,
     pub private_key: felt252,
@@ -1805,13 +1805,11 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         ]
     }
 
-    fn execute_actions_e2e(
-        self: @PrivacyCfg,
-        user_addr: ContractAddress,
-        user_private_key: felt252,
-        client_actions: Span<ClientAction>,
-    ) {
-        let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+    fn execute_actions_e2e(self: @PrivacyCfg, user: User, client_actions: Span<ClientAction>) {
+        let calls = self
+            .wrap_inputs_into_calls(
+                user_addr: user.address, user_private_key: user.private_key, :client_actions,
+            );
         let mut spy = spy_messages_to_l1();
         self.cheat_zero_resource_bounds();
         assert!(self.client.__validate__(calls: calls.clone()) == VALIDATED);

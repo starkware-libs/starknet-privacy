@@ -7,11 +7,81 @@ use privacy::actions::{
     SetViewingKeyInput, UseNoteInput, WithdrawInput,
 };
 use privacy::objects::OpenNoteDeposit;
-use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, UserTrait};
+use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, User, UserTrait};
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_channel_info, unpack};
 use snforge_std::TokenTrait;
+use starknet::ContractAddress;
 use starkware_utils_testing::test_utils::TokenHelperTrait;
+
+// Helper: Constants for e2e testing.
+const RANDOM: felt252 = 0x24a7f3e2b1c9d8e6f5a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e;
+const SALT: felt252 = 0x7f8e9d0c1b2a3948576e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b;
+const SALT_120: u128 = 0x1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c;
+
+/// Helper: Run a tx for registering a user.
+fn register_user_tx(ref test: Test, user: User) {
+    test.privacy.execute_actions_e2e(:user, client_actions: [set_viewing_key_action()].span());
+}
+
+/// Helper: SetViewingKey action.
+fn set_viewing_key_action() -> ClientAction {
+    ClientAction::SetViewingKey(SetViewingKeyInput { random: RANDOM })
+}
+
+/// Helper: OpenChannel action.
+fn open_channel_action(from: User, to: User, index: usize) -> ClientAction {
+    ClientAction::OpenChannel(
+        OpenChannelInput { recipient_addr: to.address, index, random: RANDOM, salt: SALT },
+    )
+}
+
+/// Helper: OpenSubchannel action.
+fn open_subchannel_action(
+    from: User, to: User, token_addr: ContractAddress, index: usize,
+) -> ClientAction {
+    ClientAction::OpenSubchannel(
+        OpenSubchannelInput {
+            recipient_addr: to.address,
+            recipient_public_key: to.public_key,
+            channel_key: from.compute_channel_key(recipient: to),
+            index,
+            token: token_addr,
+            salt: SALT,
+        },
+    )
+}
+
+/// Helper: Deposit action.
+fn deposit_action(token_addr: ContractAddress, amount: u128) -> ClientAction {
+    ClientAction::Deposit(DepositInput { token: token_addr, amount })
+}
+
+/// Helper: Withdraw action.
+fn withdraw_action(
+    to_addr: ContractAddress, token_addr: ContractAddress, amount: u128,
+) -> ClientAction {
+    ClientAction::Withdraw(WithdrawInput { to_addr, token: token_addr, amount, random: RANDOM })
+}
+
+/// Helper: UseNote action.
+fn use_note_action(channel_key: felt252, token: ContractAddress, index: usize) -> ClientAction {
+    ClientAction::UseNote(UseNoteInput { channel_key, token, index })
+}
+
+/// Helper: CreateEncNote input.
+fn create_enc_note_input(
+    to: User, token: ContractAddress, amount: u128, index: usize,
+) -> CreateEncNoteInput {
+    CreateEncNoteInput {
+        recipient_addr: to.address,
+        recipient_public_key: to.public_key,
+        token,
+        amount,
+        index,
+        salt: SALT_120,
+    }
+}
 
 /// Runs one full e2e flow step by step.
 #[test]
@@ -30,54 +100,28 @@ fn test_e2e_client_actions_one_by_one() {
     user_1.approve(:token, amount: amount_total.into());
 
     // 1. SetViewingKey (user_1)
-    let random_1 = user_1.get_random();
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
-            client_actions: [ClientAction::SetViewingKey(SetViewingKeyInput { random: random_1 })]
-                .span(),
-        );
+    register_user_tx(ref test, user_1);
     assert_eq!(user_1.get_public_key(), user_1.public_key);
-    assert_eq!(user_1.get_enc_private_key(), user_1.compute_enc_private_key(random: random_1));
+    assert_eq!(user_1.get_enc_private_key(), user_1.compute_enc_private_key(RANDOM));
 
     // 2. SetViewingKey (user_2)
-    let random_2 = user_2.get_random();
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_2.address,
-            user_private_key: user_2.private_key,
-            client_actions: [ClientAction::SetViewingKey(SetViewingKeyInput { random: random_2 })]
-                .span(),
-        );
+    register_user_tx(ref test, user_2);
     assert_eq!(user_2.get_public_key(), user_2.public_key);
-    assert_eq!(user_2.get_enc_private_key(), user_2.compute_enc_private_key(random: random_2));
+    assert_eq!(user_2.get_enc_private_key(), user_2.compute_enc_private_key(RANDOM));
 
     // 3. OpenChannel (user_1 -> user_2)
-    let random_ch = user_1.get_random();
-    let salt_ch: felt252 = user_1.get_salt().into();
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
-            client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_2.address, index: 0, random: random_ch, salt: salt_ch,
-                    },
-                )
-            ]
-                .span(),
+            user: user_1,
+            client_actions: [open_channel_action(from: user_1, to: user_2, index: 0),].span(),
         );
     let channel_marker = user_1.compute_channel_marker(recipient: user_2);
     let channel_key = user_1.compute_channel_key(recipient: user_2);
     assert!(test.privacy.channel_exists(:channel_marker));
     assert_eq!(user_2.get_num_of_channels(), 1);
     let expected_enc_channel_info = encrypt_channel_info(
-        ephemeral_secret: random_ch,
+        ephemeral_secret: RANDOM,
         recipient_public_key: user_2.public_key,
         :channel_key,
         sender_addr: user_1.address,
@@ -85,23 +129,12 @@ fn test_e2e_client_actions_one_by_one() {
     assert_eq!(user_2.get_channel_info(channel_index: 0), expected_enc_channel_info);
 
     // 4. OpenSubchannel (user_1 -> user_2, token)
-    let salt_sub: felt252 = user_1.get_salt().into();
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        channel_key,
-                        index: 0,
-                        token: token_addr,
-                        salt: salt_sub,
-                    },
-                )
+                open_subchannel_action(from: user_1, to: user_2, :token_addr, index: 0),
             ]
                 .span(),
         );
@@ -109,58 +142,36 @@ fn test_e2e_client_actions_one_by_one() {
     assert!(test.privacy.subchannel_exists(:subchannel_marker));
     let subchannel_id = user_1.compute_subchannel_id(recipient: user_2, index: 0);
     let expected_enc_subchannel_info = user_1
-        .compute_enc_subchannel_info(recipient: user_2, :token_addr, index: 0, salt: salt_sub);
+        .compute_enc_subchannel_info(recipient: user_2, :token_addr, index: 0, salt: SALT);
     assert_eq!(test.privacy.get_subchannel_info(:subchannel_id), expected_enc_subchannel_info);
 
     // 4b. OpenSubchannel (user_1 -> user_2, out_token) for CreateOpenNote + InvokeExternal later
-    let salt_sub_out: felt252 = user_1.get_salt().into();
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        channel_key,
-                        index: 1,
-                        token: out_token_addr,
-                        salt: salt_sub_out,
-                    },
-                )
+                open_subchannel_action(
+                    from: user_1, to: user_2, token_addr: out_token_addr, index: 1,
+                ),
             ]
                 .span(),
         );
 
     // 5. Deposit + CreateEncNote + CreateEncNote (user_1: deposit 100, create two notes of 50 each;
     // one tx so final balance is zero)
-    let salt_note_0 = user_1.get_salt();
-    let create_note_0 = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount: amount_half,
-        index: 0,
-        salt: salt_note_0,
-    };
-    let salt_note_1 = user_1.get_salt();
-    let create_note_1 = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount: amount_half,
-        index: 1,
-        salt: salt_note_1,
-    };
+    let create_note_0 = create_enc_note_input(
+        to: user_2, token: token_addr, amount: amount_half, index: 0,
+    );
+    let create_note_1 = create_enc_note_input(
+        to: user_2, token: token_addr, amount: amount_half, index: 1,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_addr, amount: amount_total }),
+                deposit_action(token_addr, amount_total),
                 ClientAction::CreateEncNote(create_note_0),
                 ClientAction::CreateEncNote(create_note_1),
             ]
@@ -174,23 +185,13 @@ fn test_e2e_client_actions_one_by_one() {
     assert_eq!(test.privacy.get_note(note_id: note_id_1), expected_note_1);
 
     // 7. UseNote + Withdraw half (user_2: spend note 0, withdraw to user_1)
-    let use_note_0 = UseNoteInput { channel_key, token: token_addr, index: 0 };
-    let withdraw_random_1 = user_2.get_random();
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_2.address,
-            user_private_key: user_2.private_key,
+            user: user_2,
             client_actions: [
-                ClientAction::UseNote(use_note_0),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user_1.address,
-                        token: token_addr,
-                        amount: amount_half,
-                        random: withdraw_random_1,
-                    },
-                ),
+                use_note_action(channel_key, token_addr, 0),
+                withdraw_action(user_1.address, token_addr, amount_half),
             ]
                 .span(),
         );
@@ -228,8 +229,7 @@ fn test_e2e_client_actions_one_by_one() {
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
                 ClientAction::CreateOpenNote(create_open_note_input),
                 ClientAction::InvokeExternal(echo_invoke),
@@ -250,23 +250,13 @@ fn test_e2e_client_actions_one_by_one() {
     assert_eq!(token.balance_of(address: test.privacy.mock_amm), Zero::zero());
 
     // 9. UseNote + Withdraw half (user_2: spend note 1, withdraw to user_1)
-    let use_note_1 = UseNoteInput { channel_key, token: token_addr, index: 1 };
-    let withdraw_random_2 = user_2.get_random();
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_2.address,
-            user_private_key: user_2.private_key,
+            user: user_2,
             client_actions: [
-                ClientAction::UseNote(use_note_1),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user_1.address,
-                        token: token_addr,
-                        amount: amount_half,
-                        random: withdraw_random_2,
-                    },
-                ),
+                use_note_action(channel_key, token_addr, 1),
+                withdraw_action(user_1.address, token_addr, amount_half),
             ]
                 .span(),
         );
@@ -289,64 +279,22 @@ fn test_e2e_deposit_create_note_for_other_user() {
     user_1.approve(:token, amount: amount.into());
 
     // Tx 1+2: register both users.
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_1.get_random() })
-            ]
-                .span(),
-        );
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_2.address,
-            user_private_key: user_2.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_2.get_random() })
-            ]
-                .span(),
-        );
+    register_user_tx(ref test, user_1);
+    register_user_tx(ref test, user_2);
 
     // Tx 3: open channel + subchannel from user_1 to user_2, then deposit and create note for
     // user_2 in the same transaction.
-    let channel_key = user_1.compute_channel_key(recipient: user_2);
-    let create_note = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount,
-        index: 0,
-        salt: user_1.get_salt(),
-    };
+    let create_note = create_enc_note_input(
+        to: user_2, token: token_addr, amount: amount, index: 0,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_2.address,
-                        index: 0,
-                        random: user_1.get_random(),
-                        salt: user_1.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        channel_key,
-                        index: 0,
-                        token: token_addr,
-                        salt: user_1.get_salt().into(),
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: token_addr, amount }),
-                ClientAction::CreateEncNote(create_note),
+                open_channel_action(from: user_1, to: user_2, index: 0),
+                open_subchannel_action(from: user_1, to: user_2, :token_addr, index: 0),
+                deposit_action(token_addr, amount), ClientAction::CreateEncNote(create_note),
             ]
                 .span(),
         );
@@ -369,54 +317,22 @@ fn test_e2e_transfer_same_channel_same_amount() {
     user.approve(:token, amount: amount.into());
 
     // Tx 1: register user.
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user.get_random() })
-            ]
-                .span(),
-        );
+    register_user_tx(ref test, user);
 
     let channel_key_self = user.compute_channel_key(recipient: user);
 
     // Tx 2: open self channel + subchannel, deposit, and create one note.
-    let create_note_0 = CreateEncNoteInput {
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_addr,
-        amount,
-        index: 0,
-        salt: user.get_salt(),
-    };
+    let create_note_0 = create_enc_note_input(
+        to: user, token: token_addr, amount: amount, index: 0,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
+            user: user,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user.address,
-                        index: 0,
-                        random: user.get_random(),
-                        salt: user.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key: channel_key_self,
-                        index: 0,
-                        token: token_addr,
-                        salt: user.get_salt().into(),
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: token_addr, amount }),
-                ClientAction::CreateEncNote(create_note_0),
+                open_channel_action(from: user, to: user, index: 0),
+                open_subchannel_action(from: user, to: user, :token_addr, index: 0),
+                deposit_action(token_addr, amount), ClientAction::CreateEncNote(create_note_0),
             ]
                 .span(),
         );
@@ -426,23 +342,15 @@ fn test_e2e_transfer_same_channel_same_amount() {
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 
     // Tx 3: use the note and recreate the same amount on the same channel.
-    let create_note_1 = CreateEncNoteInput {
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_addr,
-        amount,
-        index: 1,
-        salt: user.get_salt(),
-    };
+    let create_note_1 = create_enc_note_input(
+        to: user, token: token_addr, amount: amount, index: 1,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
+            user: user,
             client_actions: [
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 0 },
-                ),
+                use_note_action(channel_key_self, token_addr, 0),
                 ClientAction::CreateEncNote(create_note_1),
             ]
                 .span(),
@@ -475,85 +383,28 @@ fn test_e2e_merge_notes_from_multiple_channels() {
     user_3.approve(:token, amount: amount_3.into());
 
     // Tx 1-3: register all users.
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_1.get_random() })
-            ]
-                .span(),
-        );
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_2.address,
-            user_private_key: user_2.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_2.get_random() })
-            ]
-                .span(),
-        );
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_3.address,
-            user_private_key: user_3.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_3.get_random() })
-            ]
-                .span(),
-        );
+    register_user_tx(ref test, user_1);
+    register_user_tx(ref test, user_2);
+    register_user_tx(ref test, user_3);
 
     let channel_key_1_2 = user_1.compute_channel_key(recipient: user_2);
     let channel_key_3_2 = user_3.compute_channel_key(recipient: user_2);
-    let channel_key_2_self = user_2.compute_channel_key(recipient: user_2);
 
     // Tx 4: user_1 creates two notes for user_2 on the same channel.
-    let create_1_0 = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount: amount_1a,
-        index: 0,
-        salt: user_1.get_salt(),
-    };
-    let create_1_1 = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount: amount_1b,
-        index: 1,
-        salt: user_1.get_salt(),
-    };
+    let create_1_0 = create_enc_note_input(
+        to: user_2, token: token_addr, amount: amount_1a, index: 0,
+    );
+    let create_1_1 = create_enc_note_input(
+        to: user_2, token: token_addr, amount: amount_1b, index: 1,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_2.address,
-                        index: 0,
-                        random: user_1.get_random(),
-                        salt: user_1.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        channel_key: channel_key_1_2,
-                        index: 0,
-                        token: token_addr,
-                        salt: user_1.get_salt().into(),
-                    },
-                ),
-                ClientAction::Deposit(
-                    DepositInput { token: token_addr, amount: amount_1a + amount_1b },
-                ),
+                open_channel_action(from: user_1, to: user_2, index: 0),
+                open_subchannel_action(from: user_1, to: user_2, :token_addr, index: 0),
+                deposit_action(token_addr, amount_1a + amount_1b),
                 ClientAction::CreateEncNote(create_1_0), ClientAction::CreateEncNote(create_1_1),
             ]
                 .span(),
@@ -564,40 +415,17 @@ fn test_e2e_merge_notes_from_multiple_channels() {
     assert_eq!(test.privacy.get_note(note_id: note_id_1_1), note_1_1);
 
     // Tx 5: user_3 creates one note for user_2 on a different channel.
-    let create_3_0 = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount: amount_3,
-        index: 0,
-        salt: user_3.get_salt(),
-    };
+    let create_3_0 = create_enc_note_input(
+        to: user_2, token: token_addr, amount: amount_3, index: 0,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_3.address,
-            user_private_key: user_3.private_key,
+            user: user_3,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_2.address,
-                        index: 0,
-                        random: user_3.get_random(),
-                        salt: user_3.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        channel_key: channel_key_3_2,
-                        index: 0,
-                        token: token_addr,
-                        salt: user_3.get_salt().into(),
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: token_addr, amount: amount_3 }),
-                ClientAction::CreateEncNote(create_3_0),
+                open_channel_action(from: user_3, to: user_2, index: 0),
+                open_subchannel_action(from: user_3, to: user_2, :token_addr, index: 0),
+                deposit_action(token_addr, amount_3), ClientAction::CreateEncNote(create_3_0),
             ]
                 .span(),
         );
@@ -606,47 +434,19 @@ fn test_e2e_merge_notes_from_multiple_channels() {
     assert_eq!(token.balance_of(address: test.privacy.address), total_amount.into());
 
     // Tx 6: user_2 merges all three notes into one self note.
-    let create_merged = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount: total_amount,
-        index: 0,
-        salt: user_2.get_salt(),
-    };
+    let create_merged = create_enc_note_input(
+        to: user_2, token: token_addr, amount: total_amount, index: 0,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_2.address,
-            user_private_key: user_2.private_key,
+            user: user_2,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_2.address,
-                        index: 0,
-                        random: user_2.get_random(),
-                        salt: user_2.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        channel_key: channel_key_2_self,
-                        index: 0,
-                        token: token_addr,
-                        salt: user_2.get_salt().into(),
-                    },
-                ),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_1_2, token: token_addr, index: 0 },
-                ),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_1_2, token: token_addr, index: 1 },
-                ),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_3_2, token: token_addr, index: 0 },
-                ),
+                open_channel_action(from: user_2, to: user_2, index: 0),
+                open_subchannel_action(from: user_2, to: user_2, :token_addr, index: 0),
+                use_note_action(channel_key_1_2, token_addr, 0),
+                use_note_action(channel_key_1_2, token_addr, 1),
+                use_note_action(channel_key_3_2, token_addr, 0),
                 ClientAction::CreateEncNote(create_merged),
             ]
                 .span(),
@@ -680,53 +480,22 @@ fn test_e2e_split_one_note_into_two_self_notes() {
     user.approve(:token, amount: amount_total.into());
 
     // Tx 1: register user.
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user.get_random() })
-            ]
-                .span(),
-        );
+    register_user_tx(ref test, user);
 
     let channel_key_self = user.compute_channel_key(recipient: user);
 
     // Tx 2: open self channel + subchannel, deposit, and create one note.
-    let create_note_0 = CreateEncNoteInput {
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_addr,
-        amount: amount_total,
-        index: 0,
-        salt: user.get_salt(),
-    };
+    let create_note_0 = create_enc_note_input(
+        to: user, token: token_addr, amount: amount_total, index: 0,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
+            user: user,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user.address,
-                        index: 0,
-                        random: user.get_random(),
-                        salt: user.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key: channel_key_self,
-                        index: 0,
-                        token: token_addr,
-                        salt: user.get_salt().into(),
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: token_addr, amount: amount_total }),
+                open_channel_action(from: user, to: user, index: 0),
+                open_subchannel_action(from: user, to: user, :token_addr, index: 0),
+                deposit_action(token_addr, amount_total),
                 ClientAction::CreateEncNote(create_note_0),
             ]
                 .span(),
@@ -737,31 +506,18 @@ fn test_e2e_split_one_note_into_two_self_notes() {
     assert_eq!(token.balance_of(address: test.privacy.address), amount_total.into());
 
     // Tx 3: use the note and create two new notes for self.
-    let create_note_1 = CreateEncNoteInput {
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_addr,
-        amount: amount_1,
-        index: 1,
-        salt: user.get_salt(),
-    };
-    let create_note_2 = CreateEncNoteInput {
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_addr,
-        amount: amount_2,
-        index: 2,
-        salt: user.get_salt(),
-    };
+    let create_note_1 = create_enc_note_input(
+        to: user, token: token_addr, amount: amount_1, index: 1,
+    );
+    let create_note_2 = create_enc_note_input(
+        to: user, token: token_addr, amount: amount_2, index: 2,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
+            user: user,
             client_actions: [
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 0 },
-                ),
+                use_note_action(channel_key_self, token_addr, 0),
                 ClientAction::CreateEncNote(create_note_1),
                 ClientAction::CreateEncNote(create_note_2),
             ]
@@ -790,46 +546,18 @@ fn test_e2e_deposit_withdraw_flow() {
     user.approve(:token, amount: (2 * amount).into());
 
     // Tx 1: SetViewingKey, OpenChannel(self), OpenSubchannel, Deposit, CreateEncNote (to self)
-    let random = user.get_random();
-    let salt_ch: felt252 = user.get_salt().into();
-    let salt_sub: felt252 = user.get_salt().into();
-    let salt_note_0 = user.get_salt();
     let channel_key_self = user.compute_channel_key(recipient: user);
-    let create_note_0 = CreateEncNoteInput {
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_addr,
-        amount,
-        index: 0,
-        salt: salt_note_0,
-    };
+    let create_note_0 = create_enc_note_input(
+        to: user, token: token_addr, amount: amount, index: 0,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
+            user: user,
             client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random }),
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user.address,
-                        index: 0,
-                        random: user.get_random(),
-                        salt: salt_ch,
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key: channel_key_self,
-                        index: 0,
-                        token: token_addr,
-                        salt: salt_sub,
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: token_addr, amount }),
-                ClientAction::CreateEncNote(create_note_0),
+                set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
+                open_subchannel_action(from: user, to: user, :token_addr, index: 0),
+                deposit_action(token_addr, amount), ClientAction::CreateEncNote(create_note_0),
             ]
                 .span(),
         );
@@ -838,23 +566,15 @@ fn test_e2e_deposit_withdraw_flow() {
     assert_eq!(test.privacy.get_note(note_id: note_id_0), note_0);
 
     // Tx 2: Deposit + CreateEncNote (to self, index 1)
-    let salt_note_1 = user.get_salt();
-    let create_note_1 = CreateEncNoteInput {
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_addr,
-        amount,
-        index: 1,
-        salt: salt_note_1,
-    };
+    let create_note_1 = create_enc_note_input(
+        to: user, token: token_addr, amount: amount, index: 1,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
+            user: user,
             client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_addr, amount }),
-                ClientAction::CreateEncNote(create_note_1),
+                deposit_action(token_addr, amount), ClientAction::CreateEncNote(create_note_1),
             ]
                 .span(),
         );
@@ -863,24 +583,14 @@ fn test_e2e_deposit_withdraw_flow() {
     assert_eq!(test.privacy.get_note(note_id: note_id_1), note_1);
 
     // Tx 3: Use both notes + Withdraw
-    let use_0 = UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 0 };
-    let use_1 = UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 1 };
-    let withdraw_random = user.get_random();
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
+            user: user,
             client_actions: [
-                ClientAction::UseNote(use_0), ClientAction::UseNote(use_1),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user.address,
-                        token: token_addr,
-                        amount: 2 * amount,
-                        random: withdraw_random,
-                    },
-                ),
+                use_note_action(channel_key_self, token_addr, 0),
+                use_note_action(channel_key_self, token_addr, 1),
+                withdraw_action(user.address, token_addr, 2 * amount),
             ]
                 .span(),
         );
@@ -909,75 +619,26 @@ fn test_e2e_deposit_split_with_leftover_and_all_withdraw() {
     user_a.approve(:token, amount: amount_total.into());
 
     // Tx 1-3: register all users.
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_a.address,
-            user_private_key: user_a.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_a.get_random() })
-            ]
-                .span(),
-        );
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_b.address,
-            user_private_key: user_b.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_b.get_random() })
-            ]
-                .span(),
-        );
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_c.address,
-            user_private_key: user_c.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_c.get_random() })
-            ]
-                .span(),
-        );
+    register_user_tx(ref test, user_a);
+    register_user_tx(ref test, user_b);
+    register_user_tx(ref test, user_c);
 
     let channel_key_self = user_a.compute_channel_key(recipient: user_a);
     let channel_key_a_b = user_a.compute_channel_key(recipient: user_b);
     let channel_key_a_c = user_a.compute_channel_key(recipient: user_c);
 
     // Tx 4: open self channel+subchannel and deposit one note for user A.
-    let create_self_0 = CreateEncNoteInput {
-        recipient_addr: user_a.address,
-        recipient_public_key: user_a.public_key,
-        token: token_addr,
-        amount: amount_total,
-        index: 0,
-        salt: user_a.get_salt(),
-    };
+    let create_self_0 = create_enc_note_input(
+        to: user_a, token: token_addr, amount: amount_total, index: 0,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_a.address,
-            user_private_key: user_a.private_key,
+            user: user_a,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_a.address,
-                        index: 0,
-                        random: user_a.get_random(),
-                        salt: user_a.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_a.address,
-                        recipient_public_key: user_a.public_key,
-                        channel_key: channel_key_self,
-                        index: 0,
-                        token: token_addr,
-                        salt: user_a.get_salt().into(),
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: token_addr, amount: amount_total }),
+                open_channel_action(from: user_a, to: user_a, index: 0),
+                open_subchannel_action(from: user_a, to: user_a, :token_addr, index: 0),
+                deposit_action(token_addr, amount_total),
                 ClientAction::CreateEncNote(create_self_0),
             ]
                 .span(),
@@ -988,75 +649,25 @@ fn test_e2e_deposit_split_with_leftover_and_all_withdraw() {
     assert_eq!(token.balance_of(address: test.privacy.address), amount_total.into());
 
     // Tx 5: split the deposited note into notes for B, C, and leftover for A.
-    let create_for_b = CreateEncNoteInput {
-        recipient_addr: user_b.address,
-        recipient_public_key: user_b.public_key,
-        token: token_addr,
-        amount: amount_b,
-        index: 0,
-        salt: user_a.get_salt(),
-    };
-    let create_for_c = CreateEncNoteInput {
-        recipient_addr: user_c.address,
-        recipient_public_key: user_c.public_key,
-        token: token_addr,
-        amount: amount_c,
-        index: 0,
-        salt: user_a.get_salt(),
-    };
-    let create_self_1 = CreateEncNoteInput {
-        recipient_addr: user_a.address,
-        recipient_public_key: user_a.public_key,
-        token: token_addr,
-        amount: amount_self,
-        index: 1,
-        salt: user_a.get_salt(),
-    };
+    let create_for_b = create_enc_note_input(
+        to: user_b, token: token_addr, amount: amount_b, index: 0,
+    );
+    let create_for_c = create_enc_note_input(
+        to: user_c, token: token_addr, amount: amount_c, index: 0,
+    );
+    let create_self_1 = create_enc_note_input(
+        to: user_a, token: token_addr, amount: amount_self, index: 1,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_a.address,
-            user_private_key: user_a.private_key,
+            user: user_a,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_b.address,
-                        index: 1,
-                        random: user_a.get_random(),
-                        salt: user_a.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_c.address,
-                        index: 2,
-                        random: user_a.get_random(),
-                        salt: user_a.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_b.address,
-                        recipient_public_key: user_b.public_key,
-                        channel_key: channel_key_a_b,
-                        index: 0,
-                        token: token_addr,
-                        salt: user_a.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_c.address,
-                        recipient_public_key: user_c.public_key,
-                        channel_key: channel_key_a_c,
-                        index: 0,
-                        token: token_addr,
-                        salt: user_a.get_salt().into(),
-                    },
-                ),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 0 },
-                ),
+                open_channel_action(from: user_a, to: user_b, index: 1),
+                open_channel_action(from: user_a, to: user_c, index: 2),
+                open_subchannel_action(from: user_a, to: user_b, :token_addr, index: 0),
+                open_subchannel_action(from: user_a, to: user_c, :token_addr, index: 0),
+                use_note_action(channel_key_self, token_addr, 0),
                 ClientAction::CreateEncNote(create_for_b),
                 ClientAction::CreateEncNote(create_for_c),
                 ClientAction::CreateEncNote(create_self_1),
@@ -1078,20 +689,10 @@ fn test_e2e_deposit_split_with_leftover_and_all_withdraw() {
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_b.address,
-            user_private_key: user_b.private_key,
+            user: user_b,
             client_actions: [
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_a_b, token: token_addr, index: 0 },
-                ),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user_b.address,
-                        token: token_addr,
-                        amount: amount_b,
-                        random: user_b.get_random(),
-                    },
-                ),
+                use_note_action(channel_key_a_b, token_addr, 0),
+                withdraw_action(user_b.address, token_addr, amount_b),
             ]
                 .span(),
         );
@@ -1104,20 +705,10 @@ fn test_e2e_deposit_split_with_leftover_and_all_withdraw() {
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_c.address,
-            user_private_key: user_c.private_key,
+            user: user_c,
             client_actions: [
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_a_c, token: token_addr, index: 0 },
-                ),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user_c.address,
-                        token: token_addr,
-                        amount: amount_c,
-                        random: user_c.get_random(),
-                    },
-                ),
+                use_note_action(channel_key_a_c, token_addr, 0),
+                withdraw_action(user_c.address, token_addr, amount_c),
             ]
                 .span(),
         );
@@ -1130,20 +721,10 @@ fn test_e2e_deposit_split_with_leftover_and_all_withdraw() {
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_a.address,
-            user_private_key: user_a.private_key,
+            user: user_a,
             client_actions: [
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 1 },
-                ),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user_a.address,
-                        token: token_addr,
-                        amount: amount_self,
-                        random: user_a.get_random(),
-                    },
-                ),
+                use_note_action(channel_key_self, token_addr, 1),
+                withdraw_action(user_a.address, token_addr, amount_self),
             ]
                 .span(),
         );
@@ -1170,152 +751,66 @@ fn test_e2e_transfer_flow() {
 
     // Tx 1: SetViewingKey, OpenChannel(self), OpenSubchannel, Deposit, CreateEncNote (to self,
     // index 0)
-    let random_1 = user_1.get_random();
-    let salt_ch: felt252 = user_1.get_salt().into();
-    let salt_sub: felt252 = user_1.get_salt().into();
-    let create_0 = CreateEncNoteInput {
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        token: token_addr,
-        amount,
-        index: 0,
-        salt: user_1.get_salt(),
-    };
+    let create_0 = create_enc_note_input(to: user_1, token: token_addr, amount: amount, index: 0);
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: random_1 }),
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_1.address,
-                        index: 0,
-                        random: user_1.get_random(),
-                        salt: salt_ch,
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_1.address,
-                        recipient_public_key: user_1.public_key,
-                        channel_key: channel_key_self,
-                        index: 0,
-                        token: token_addr,
-                        salt: salt_sub,
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: token_addr, amount }),
-                ClientAction::CreateEncNote(create_0),
+                set_viewing_key_action(), open_channel_action(from: user_1, to: user_1, index: 0),
+                open_subchannel_action(from: user_1, to: user_1, :token_addr, index: 0),
+                deposit_action(token_addr, amount), ClientAction::CreateEncNote(create_0),
             ]
                 .span(),
         );
 
     // Tx 2: Deposit + CreateEncNote (to self, index 1)
-    let create_1 = CreateEncNoteInput {
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        token: token_addr,
-        amount,
-        index: 1,
-        salt: user_1.get_salt(),
-    };
+    let create_1 = create_enc_note_input(to: user_1, token: token_addr, amount: amount, index: 1);
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_addr, amount }),
-                ClientAction::CreateEncNote(create_1),
+                deposit_action(token_addr, amount), ClientAction::CreateEncNote(create_1),
             ]
                 .span(),
         );
 
     // Tx 3: Deposit + CreateEncNote (to self, index 2)
-    let create_2 = CreateEncNoteInput {
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        token: token_addr,
-        amount,
-        index: 2,
-        salt: user_1.get_salt(),
-    };
+    let create_2 = create_enc_note_input(to: user_1, token: token_addr, amount: amount, index: 2);
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_addr, amount }),
-                ClientAction::CreateEncNote(create_2),
+                deposit_action(token_addr, amount), ClientAction::CreateEncNote(create_2),
             ]
                 .span(),
         );
 
     // Tx 4: SetViewingKey (user_2)
-    let random_2 = user_2.get_random();
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_2.address,
-            user_private_key: user_2.private_key,
-            client_actions: [ClientAction::SetViewingKey(SetViewingKeyInput { random: random_2 })]
-                .span(),
-        );
+    register_user_tx(ref test, user_2);
 
     // Tx 5: First transfer — OpenChannel(user_1->user_2) at outgoing index 1, OpenSubchannel, Use
     // 2 notes (0,1), CreateEncNote for user_2, CreateEncNote for self (surplus)
     let channel_key_1_2 = user_1.compute_channel_key(recipient: user_2);
     let amt_to_2 = 60_u128;
     let surplus = 2 * amount - amt_to_2; // 140
-    let create_for_2_t1 = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount: amt_to_2,
-        index: 0,
-        salt: user_1.get_salt(),
-    };
-    let create_self_3 = CreateEncNoteInput {
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        token: token_addr,
-        amount: surplus,
-        index: 3,
-        salt: user_1.get_salt(),
-    };
+    let create_for_2_t1 = create_enc_note_input(
+        to: user_2, token: token_addr, amount: amt_to_2, index: 0,
+    );
+    let create_self_3 = create_enc_note_input(
+        to: user_1, token: token_addr, amount: surplus, index: 3,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_2.address,
-                        index: 1,
-                        random: user_1.get_random(),
-                        salt: user_1.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        channel_key: channel_key_1_2,
-                        index: 0,
-                        token: token_addr,
-                        salt: user_1.get_salt().into(),
-                    },
-                ),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 0 },
-                ),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 1 },
-                ),
+                open_channel_action(from: user_1, to: user_2, index: 1),
+                open_subchannel_action(from: user_1, to: user_2, :token_addr, index: 0),
+                use_note_action(channel_key_self, token_addr, 0),
+                use_note_action(channel_key_self, token_addr, 1),
                 ClientAction::CreateEncNote(create_for_2_t1),
                 ClientAction::CreateEncNote(create_self_3),
             ]
@@ -1334,34 +829,19 @@ fn test_e2e_transfer_flow() {
     // Create 2 notes for user_2 and for self
     let amt_to_2_t2 = 100_u128;
     let surplus_2 = amount + surplus - amt_to_2_t2; // 100 + 140 - 100 = 140
-    let create_for_2_t2 = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount: amt_to_2_t2,
-        index: 1,
-        salt: user_1.get_salt(),
-    };
-    let create_self_4 = CreateEncNoteInput {
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        token: token_addr,
-        amount: surplus_2,
-        index: 4,
-        salt: user_1.get_salt(),
-    };
+    let create_for_2_t2 = create_enc_note_input(
+        to: user_2, token: token_addr, amount: amt_to_2_t2, index: 1,
+    );
+    let create_self_4 = create_enc_note_input(
+        to: user_1, token: token_addr, amount: surplus_2, index: 4,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 2 },
-                ),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 3 },
-                ),
+                use_note_action(channel_key_self, token_addr, 2),
+                use_note_action(channel_key_self, token_addr, 3),
                 ClientAction::CreateEncNote(create_for_2_t2),
                 ClientAction::CreateEncNote(create_self_4),
             ]
@@ -1377,23 +857,15 @@ fn test_e2e_transfer_flow() {
     assert_eq!(test.privacy.get_note(note_id: note_id_4), note_4);
 
     // Tx 7: Third transfer — Use note (index 4 from prev tx), Create for user_2
-    let create_for_2_t3 = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount: surplus_2,
-        index: 2,
-        salt: user_1.get_salt(),
-    };
+    let create_for_2_t3 = create_enc_note_input(
+        to: user_2, token: token_addr, amount: surplus_2, index: 2,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_self, token: token_addr, index: 4 },
-                ),
+                use_note_action(channel_key_self, token_addr, 4),
                 ClientAction::CreateEncNote(create_for_2_t3),
             ]
                 .span(),
@@ -1405,48 +877,19 @@ fn test_e2e_transfer_flow() {
 
     // Tx 8: Self transfer — user_2 creates self channel, uses all 3 notes (from user_1->user_2),
     // creates single merged note to self (300)
-    let channel_key_2_self = user_2.compute_channel_key(recipient: user_2);
-    let create_merged = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: token_addr,
-        amount: 3 * amount,
-        index: 0,
-        salt: user_2.get_salt(),
-    };
+    let create_merged = create_enc_note_input(
+        to: user_2, token: token_addr, amount: 3 * amount, index: 0,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_2.address,
-            user_private_key: user_2.private_key,
+            user: user_2,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_2.address,
-                        index: 0,
-                        random: user_2.get_random(),
-                        salt: user_2.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        channel_key: channel_key_2_self,
-                        index: 0,
-                        token: token_addr,
-                        salt: user_2.get_salt().into(),
-                    },
-                ),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_1_2, token: token_addr, index: 0 },
-                ),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_1_2, token: token_addr, index: 1 },
-                ),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_1_2, token: token_addr, index: 2 },
-                ),
+                open_channel_action(from: user_2, to: user_2, index: 0),
+                open_subchannel_action(from: user_2, to: user_2, :token_addr, index: 0),
+                use_note_action(channel_key_1_2, token_addr, 0),
+                use_note_action(channel_key_1_2, token_addr, 1),
+                use_note_action(channel_key_1_2, token_addr, 2),
                 ClientAction::CreateEncNote(create_merged),
             ]
                 .span(),
@@ -1484,49 +927,21 @@ fn test_e2e_actions_twice() {
     user_1.approve(token: token_2, amount: amount_u256);
 
     // 1. user1 set viewing key
-    let random_1 = user_1.get_random();
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
-            client_actions: [ClientAction::SetViewingKey(SetViewingKeyInput { random: random_1 })]
-                .span(),
-        );
+    register_user_tx(ref test, user_1);
 
     // 2. user2 set viewing key
-    let random_2 = user_2.get_random();
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_2.address,
-            user_private_key: user_2.private_key,
-            client_actions: [ClientAction::SetViewingKey(SetViewingKeyInput { random: random_2 })]
-                .span(),
-        );
+    register_user_tx(ref test, user_2);
 
     let channel_key_self = user_1.compute_channel_key(recipient: user_1);
 
     // 3. user1: 2 open channels in one tx (self, user2)
-    let open_self = OpenChannelInput {
-        recipient_addr: user_1.address,
-        index: 0,
-        random: user_1.get_random(),
-        salt: user_1.get_salt().into(),
-    };
-    let open_2 = OpenChannelInput {
-        recipient_addr: user_2.address,
-        index: 1,
-        random: user_1.get_random(),
-        salt: user_1.get_salt().into(),
-    };
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::OpenChannel(open_self), ClientAction::OpenChannel(open_2),
+                open_channel_action(from: user_1, to: user_1, index: 0),
+                open_channel_action(from: user_1, to: user_2, index: 1),
             ]
                 .span(),
         );
@@ -1539,28 +954,13 @@ fn test_e2e_actions_twice() {
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_1.address,
-                        recipient_public_key: user_1.public_key,
-                        channel_key: channel_key_self,
-                        index: 0,
-                        token: token_1_addr,
-                        salt: user_1.get_salt().into(),
-                    },
+                open_subchannel_action(
+                    from: user_1, to: user_1, token_addr: token_1_addr, index: 0,
                 ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_1.address,
-                        recipient_public_key: user_1.public_key,
-                        channel_key: channel_key_self,
-                        index: 1,
-                        token: token_2_addr,
-                        salt: user_1.get_salt().into(),
-                    },
+                open_subchannel_action(
+                    from: user_1, to: user_1, token_addr: token_2_addr, index: 1,
                 ),
             ]
                 .span(),
@@ -1574,22 +974,15 @@ fn test_e2e_actions_twice() {
 
     // 5. user1: 2 deposit + 1 create enc note for token 1 (one tx; phase order: deposits then
     // create notes)
-    let create_t1_0 = CreateEncNoteInput {
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        token: token_1_addr,
-        amount,
-        index: 0,
-        salt: user_1.get_salt(),
-    };
+    let create_t1_0 = create_enc_note_input(
+        to: user_1, token: token_1_addr, amount: amount, index: 0,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_1_addr, amount: half }),
-                ClientAction::Deposit(DepositInput { token: token_1_addr, amount: half }),
+                deposit_action(token_1_addr, half), deposit_action(token_1_addr, half),
                 ClientAction::CreateEncNote(create_t1_0),
             ]
                 .span(),
@@ -1599,30 +992,19 @@ fn test_e2e_actions_twice() {
     assert_eq!(test.privacy.get_note(note_id: note_id_0), note_0);
 
     // 6. user1: 1 deposit + 2 create enc note for token 2 (one tx)
-    let create_t2_0 = CreateEncNoteInput {
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        token: token_2_addr,
-        amount: half,
-        index: 0,
-        salt: user_1.get_salt(),
-    };
-    let create_t2_1 = CreateEncNoteInput {
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        token: token_2_addr,
-        amount: half,
-        index: 1,
-        salt: user_1.get_salt(),
-    };
+    let create_t2_0 = create_enc_note_input(
+        to: user_1, token: token_2_addr, amount: half, index: 0,
+    );
+    let create_t2_1 = create_enc_note_input(
+        to: user_1, token: token_2_addr, amount: half, index: 1,
+    );
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::Deposit(DepositInput { token: token_2_addr, amount }),
-                ClientAction::CreateEncNote(create_t2_0), ClientAction::CreateEncNote(create_t2_1),
+                deposit_action(token_2_addr, amount), ClientAction::CreateEncNote(create_t2_0),
+                ClientAction::CreateEncNote(create_t2_1),
             ]
                 .span(),
         );
@@ -1670,8 +1052,7 @@ fn test_e2e_actions_twice() {
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
                 ClientAction::CreateOpenNote(create_open_note_1),
                 ClientAction::CreateOpenNote(create_open_note_2),
@@ -1688,26 +1069,11 @@ fn test_e2e_actions_twice() {
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
                 ClientAction::UseNote(use_t1_0),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user_1.address,
-                        token: token_1_addr,
-                        amount: half,
-                        random: user_1.get_random(),
-                    },
-                ),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user_1.address,
-                        token: token_1_addr,
-                        amount: half,
-                        random: user_1.get_random(),
-                    },
-                ),
+                withdraw_action(user_1.address, token_1_addr, half),
+                withdraw_action(user_1.address, token_1_addr, half),
             ]
                 .span(),
         );
@@ -1717,23 +1083,14 @@ fn test_e2e_actions_twice() {
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
 
     // 9. user1: use both notes token 2 + 1 withdraw (one tx)
-    let use_t2_0 = UseNoteInput { channel_key: channel_key_self, token: token_2_addr, index: 0 };
-    let use_t2_1 = UseNoteInput { channel_key: channel_key_self, token: token_2_addr, index: 1 };
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::UseNote(use_t2_0), ClientAction::UseNote(use_t2_1),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user_1.address,
-                        token: token_2_addr,
-                        amount,
-                        random: user_1.get_random(),
-                    },
-                ),
+                use_note_action(channel_key_self, token_2_addr, 0),
+                use_note_action(channel_key_self, token_2_addr, 1),
+                withdraw_action(user_1.address, token_2_addr, amount),
             ]
                 .span(),
         );
@@ -1765,59 +1122,17 @@ fn test_e2e_multi_action_multi_token_one_tx() {
 
     // Tx1: SetViewingKey + OpenChannel + 2 OpenSubchannel + 2 Deposit + 2 CreateEncNote (one tx;
     // phase order: account, channel, subchannel, subchannel, deposit, deposit, create, create)
-    let create_t1 = CreateEncNoteInput {
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_1_addr,
-        amount,
-        index: 0,
-        salt: user.get_salt(),
-    };
-    let create_t2 = CreateEncNoteInput {
-        recipient_addr: user.address,
-        recipient_public_key: user.public_key,
-        token: token_2_addr,
-        amount,
-        index: 0,
-        salt: user.get_salt(),
-    };
+    let create_t1 = create_enc_note_input(to: user, token: token_1_addr, amount: amount, index: 0);
+    let create_t2 = create_enc_note_input(to: user, token: token_2_addr, amount: amount, index: 0);
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
+            user: user,
             client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user.get_random() }),
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user.address,
-                        index: 0,
-                        random: user.get_random(),
-                        salt: user.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key: channel_key_self,
-                        index: 0,
-                        token: token_1_addr,
-                        salt: user.get_salt().into(),
-                    },
-                ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user.address,
-                        recipient_public_key: user.public_key,
-                        channel_key: channel_key_self,
-                        index: 1,
-                        token: token_2_addr,
-                        salt: user.get_salt().into(),
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: token_1_addr, amount }),
-                ClientAction::Deposit(DepositInput { token: token_2_addr, amount }),
+                set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
+                open_subchannel_action(from: user, to: user, token_addr: token_1_addr, index: 0),
+                open_subchannel_action(from: user, to: user, token_addr: token_2_addr, index: 1),
+                deposit_action(token_1_addr, amount), deposit_action(token_2_addr, amount),
                 ClientAction::CreateEncNote(create_t1), ClientAction::CreateEncNote(create_t2),
             ]
                 .span(),
@@ -1833,31 +1148,15 @@ fn test_e2e_multi_action_multi_token_one_tx() {
 
     // Tx2: multi-action, multi-token — UseNote(token_1) + UseNote(token_2) + Withdraw(token_1) +
     // Withdraw(token_2)
-    let use_t1 = UseNoteInput { channel_key: channel_key_self, token: token_1_addr, index: 0 };
-    let use_t2 = UseNoteInput { channel_key: channel_key_self, token: token_2_addr, index: 0 };
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user.address,
-            user_private_key: user.private_key,
+            user: user,
             client_actions: [
-                ClientAction::UseNote(use_t1), ClientAction::UseNote(use_t2),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user.address,
-                        token: token_1_addr,
-                        amount,
-                        random: user.get_random(),
-                    },
-                ),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: user.address,
-                        token: token_2_addr,
-                        amount,
-                        random: user.get_random(),
-                    },
-                ),
+                use_note_action(channel_key_self, token_1_addr, 0),
+                use_note_action(channel_key_self, token_2_addr, 0),
+                withdraw_action(user.address, token_1_addr, amount),
+                withdraw_action(user.address, token_2_addr, amount),
             ]
                 .span(),
         );
