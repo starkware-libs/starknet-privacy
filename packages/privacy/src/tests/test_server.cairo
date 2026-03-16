@@ -1,7 +1,8 @@
 use core::num::traits::Zero;
 use openzeppelin::security::ReentrancyGuardComponent::Errors as ReentrancyGuardErrors;
 use privacy::actions::{
-    AppendInput, InvokeInput, ServerAction, TransferFromInput, TransferToInput, WriteOnceInput,
+    AppendInput, InvokeInput, ServerAction, TransferFromInput, TransferToInput, UseNoteInput,
+    WriteOnceInput,
 };
 use privacy::errors::internal_errors;
 use privacy::objects::{EncOutgoingChannelInfo, Note, OpenNoteDeposit};
@@ -1967,4 +1968,194 @@ fn test_apply_actions_with_fee_assertions() {
     assert_eq!(strk_token.balance_of(address: caller), fee_amount.into());
     assert_eq!(strk_token.balance_of(address: fee_collector), Zero::zero());
     assert_eq!(strk_token.balance_of(address: privacy_address), Zero::zero());
+}
+
+/// Open note funded with a large amount, recipient splits it into enc notes for two others.
+/// Verifies the holder can spend an open note and fan out its value to multiple recipients.
+#[test]
+fn test_open_note_split_into_multiple_recipients() {
+    let mut test: Test = Default::default();
+    let mut user_a = test.new_user();
+    let mut user_b = test.new_user();
+    let mut user_c = test.new_user();
+    let mut user_d = test.new_user();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let amount_total = constants::DEFAULT_AMOUNT * 3;
+    let amount_c = constants::DEFAULT_AMOUNT;
+    let amount_d = amount_total - amount_c;
+
+    // Register all users and set up channels.
+    user_a.set_viewing_key_e2e();
+    user_b.set_viewing_key_e2e();
+    user_c.set_viewing_key_e2e();
+    user_d.set_viewing_key_e2e();
+    user_a.open_channel_with_token_e2e(recipient: user_b, :token_addr, outgoing_channel_index: 0);
+    user_b.open_channel_with_token_e2e(recipient: user_c, :token_addr, outgoing_channel_index: 0);
+    user_b.open_channel_with_token_e2e(recipient: user_d, :token_addr, outgoing_channel_index: 1);
+
+    // user_a creates open note for user_b and deposits via echo executor.
+    let open_note_input = user_a
+        .new_open_note_with_generated_random(recipient: user_b, :token_addr, index: 0);
+    let open_note_id = user_a
+        .create_and_deposit_to_open_note_e2e(
+            create_note_input: open_note_input, amount: amount_total, :token,
+        );
+    let (_, filled_amount) = unpack(
+        packed_value: test.privacy.get_note(note_id: open_note_id).packed_value,
+    );
+    assert_eq!(filled_amount, amount_total);
+    assert_eq!(token.balance_of(address: test.privacy.address), amount_total.into());
+
+    // user_b uses the open note and splits its value into enc notes for user_c and user_d.
+    let channel_key_a_b = user_a.compute_channel_key(recipient: user_b);
+    let use_open_note = UseNoteInput { channel_key: channel_key_a_b, token: token_addr, index: 0 };
+    let create_for_c = user_b
+        .new_enc_note_with_generated_salt(
+            recipient: user_c, :token_addr, amount: amount_c, index: 0,
+        );
+    let create_for_d = user_b
+        .new_enc_note_with_generated_salt(
+            recipient: user_d, :token_addr, amount: amount_d, index: 0,
+        );
+    let actions = user_b
+        .transfer(
+            notes_to_use: [use_open_note].span(),
+            notes_to_create: [create_for_c, create_for_d].span(),
+        );
+    test.privacy.apply_actions(:actions);
+    assert_eq!(token.balance_of(address: test.privacy.address), amount_total.into());
+
+    let nullifier = user_b.compute_nullifier(sender: user_a, :token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(:nullifier));
+    let (note_id_c, note_c) = user_b.compute_enc_note(create_note_input: create_for_c);
+    let (note_id_d, note_d) = user_b.compute_enc_note(create_note_input: create_for_d);
+    assert_eq!(test.privacy.get_note(note_id: note_id_c), note_c);
+    assert_eq!(test.privacy.get_note(note_id: note_id_d), note_d);
+    assert_eq!(token.balance_of(address: test.privacy.address), amount_total.into());
+}
+
+/// Two open notes funded by different depositors; both recipients transfer to a common
+/// recipient. Verifies independent depositors can fund separate notes and recipients spend them.
+#[test]
+fn test_open_note_multiple_depositors() {
+    let mut test: Test = Default::default();
+    let mut user_a = test.new_user();
+    let mut user_b = test.new_user();
+    let mut user_c = test.new_user();
+    let mut user_d = test.new_user();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let amount = constants::DEFAULT_AMOUNT;
+
+    // Register all users and set up channels.
+    user_a.set_viewing_key_e2e();
+    user_b.set_viewing_key_e2e();
+    user_c.set_viewing_key_e2e();
+    user_d.set_viewing_key_e2e();
+    user_a.open_channel_with_token_e2e(recipient: user_b, :token_addr, outgoing_channel_index: 0);
+    user_a.open_channel_with_token_e2e(recipient: user_c, :token_addr, outgoing_channel_index: 1);
+    user_b.open_channel_with_token_e2e(recipient: user_d, :token_addr, outgoing_channel_index: 0);
+    user_c.open_channel_with_token_e2e(recipient: user_d, :token_addr, outgoing_channel_index: 0);
+
+    // user_a creates two open notes for user_b and user_c, each deposited via echo executor.
+    let open_note_b_input = user_a
+        .new_open_note_with_generated_random(recipient: user_b, :token_addr, index: 0);
+    let open_note_c_input = user_a
+        .new_open_note_with_generated_random(recipient: user_c, :token_addr, index: 0);
+    let note_id_b = user_a
+        .create_and_deposit_to_open_note_e2e(create_note_input: open_note_b_input, :amount, :token);
+    let note_id_c = user_a
+        .create_and_deposit_to_open_note_e2e(create_note_input: open_note_c_input, :amount, :token);
+    let (_, amount_b_filled) = unpack(
+        packed_value: test.privacy.get_note(note_id: note_id_b).packed_value,
+    );
+    let (_, amount_c_filled) = unpack(
+        packed_value: test.privacy.get_note(note_id: note_id_c).packed_value,
+    );
+    assert_eq!(amount_b_filled, amount);
+    assert_eq!(amount_c_filled, amount);
+    assert_eq!(token.balance_of(address: test.privacy.address), (2 * amount).into());
+
+    // Both user_b and user_c transfer their open note value to user_d.
+    let channel_key_a_b = user_a.compute_channel_key(recipient: user_b);
+    let channel_key_a_c = user_a.compute_channel_key(recipient: user_c);
+    let create_b_to_d = user_b
+        .new_enc_note_with_generated_salt(recipient: user_d, :token_addr, :amount, index: 0);
+    let create_c_to_d = user_c
+        .new_enc_note_with_generated_salt(recipient: user_d, :token_addr, :amount, index: 0);
+    let actions_b = user_b
+        .transfer(
+            notes_to_use: [
+                UseNoteInput { channel_key: channel_key_a_b, token: token_addr, index: 0 }
+            ]
+                .span(),
+            notes_to_create: [create_b_to_d].span(),
+        );
+    test.privacy.apply_actions(actions: actions_b);
+    assert_eq!(token.balance_of(address: test.privacy.address), (2 * amount).into());
+    let actions_c = user_c
+        .transfer(
+            notes_to_use: [
+                UseNoteInput { channel_key: channel_key_a_c, token: token_addr, index: 0 }
+            ]
+                .span(),
+            notes_to_create: [create_c_to_d].span(),
+        );
+    test.privacy.apply_actions(actions: actions_c);
+    assert_eq!(token.balance_of(address: test.privacy.address), (2 * amount).into());
+
+    let nullifier_b = user_b.compute_nullifier(sender: user_a, :token_addr, index: 0);
+    let nullifier_c = user_c.compute_nullifier(sender: user_a, :token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_b));
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_c));
+    let (note_id_b_to_d, note_b_to_d) = user_b.compute_enc_note(create_note_input: create_b_to_d);
+    let (note_id_c_to_d, note_c_to_d) = user_c.compute_enc_note(create_note_input: create_c_to_d);
+    assert_eq!(test.privacy.get_note(note_id: note_id_b_to_d), note_b_to_d);
+    assert_eq!(test.privacy.get_note(note_id: note_id_c_to_d), note_c_to_d);
+    assert_eq!(token.balance_of(address: test.privacy.address), (2 * amount).into());
+}
+
+/// Same depositor funds multiple open notes for different recipients.
+/// Verifies a single depositor can sequentially fund several open notes.
+#[test]
+fn test_same_depositor_funds_multiple_open_notes() {
+    let mut test: Test = Default::default();
+    let mut user_a = test.new_user();
+    let mut user_b = test.new_user();
+    let mut user_c = test.new_user();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let amount_b = constants::DEFAULT_AMOUNT;
+    let amount_c = constants::DEFAULT_AMOUNT * 2;
+
+    // Register users and open channels for user_a to each recipient.
+    user_a.set_viewing_key_e2e();
+    user_b.set_viewing_key_e2e();
+    user_c.set_viewing_key_e2e();
+    user_a.open_channel_with_token_e2e(recipient: user_b, :token_addr, outgoing_channel_index: 0);
+    user_a.open_channel_with_token_e2e(recipient: user_c, :token_addr, outgoing_channel_index: 1);
+
+    // user_a creates two open notes both funded by the echo executor.
+    let open_note_b_input = user_a
+        .new_open_note_with_generated_random(recipient: user_b, :token_addr, index: 0);
+    let open_note_c_input = user_a
+        .new_open_note_with_generated_random(recipient: user_c, :token_addr, index: 0);
+    let note_id_b = user_a
+        .create_and_deposit_to_open_note_e2e(
+            create_note_input: open_note_b_input, amount: amount_b, :token,
+        );
+    assert_eq!(token.balance_of(address: test.privacy.address), amount_b.into());
+    let note_id_c = user_a
+        .create_and_deposit_to_open_note_e2e(
+            create_note_input: open_note_c_input, amount: amount_c, :token,
+        );
+    assert_eq!(token.balance_of(address: test.privacy.address), (amount_b + amount_c).into());
+
+    let filled_b = test.privacy.get_note(note_id: note_id_b);
+    let filled_c = test.privacy.get_note(note_id: note_id_c);
+    let (_, stored_amount_b) = unpack(packed_value: filled_b.packed_value);
+    let (_, stored_amount_c) = unpack(packed_value: filled_c.packed_value);
+    assert_eq!(stored_amount_b, amount_b);
+    assert_eq!(stored_amount_c, amount_c);
 }
