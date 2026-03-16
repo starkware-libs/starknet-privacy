@@ -15,13 +15,13 @@ import { join, dirname } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 import { constants } from "starknet";
-import { createPrivateTransfers } from "starknet-sdk";
+import { createPrivateTransfers } from "@starkware-libs/starknet-privacy-sdk";
 import {
   Devnet,
   type DevnetEnvironment,
   CallMockProofProvider,
   ContractDiscoveryProvider,
-} from "starknet-sdk/testing";
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "../..");

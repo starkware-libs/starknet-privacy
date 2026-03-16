@@ -1,7 +1,12 @@
 {
-  "name": "starknet-sdk",
+  "name": "@starkware-libs/starknet-privacy-sdk",
   "version": "0.1.0",
   "description": "TypeScript SDK layering custom flows on top of starknet.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/starkware-libs/starknet-privacy.git",
+    "directory": "sdk"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -22,6 +27,9 @@
       "import": "./dist/browser/starknet-sdk-testing.js",
       "default": "./dist/browser/starknet-sdk-testing.min.js"
     }
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "files": [
     "dist"

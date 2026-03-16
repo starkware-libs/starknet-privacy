@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Devnet } from "starknet-sdk/testing";
-import { createEmptyRegistry, AddressMap } from "starknet-sdk";
+import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
+import { createEmptyRegistry, AddressMap } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../src/harness.js";
 
 describe("E2E Reorg Recovery", () => {

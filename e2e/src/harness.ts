@@ -7,11 +7,11 @@ import {
   type DevnetEnvironment,
   CallMockProofProvider,
   IndexerDiscoveryProvider,
-} from "starknet-sdk/testing";
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 import {
   createPrivateTransfers,
   type PrivateTransfersInterface,
-} from "starknet-sdk";
+} from "@starkware-libs/starknet-privacy-sdk";
 import { IndexerClient, type IndexerSpawnConfig } from "./indexer-client.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

@@ -2,6 +2,24 @@
 
 TypeScript SDK for private transfers on Starknet.
 
+## Publishing
+
+To publish a release:
+
+1. Bump `version` in `package.json` to the desired release version
+2. Authenticate with GitHub Packages:
+   ```sh
+   echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN" >> ~/.npmrc
+   ```
+3. Build and publish:
+   ```sh
+   cd sdk
+   npm ci
+   npm run generate
+   npm run build
+   npm publish
+   ```
+
 ## Development
 
 ```bash

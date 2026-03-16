@@ -21,7 +21,7 @@
  *   npm run load-test-discovery -- --threads 4 --json > results/run-001.json
  */
 
-import { IndexerDiscoveryProvider } from "starknet-sdk/testing";
+import { IndexerDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
 interface AccountEntry {
   name: string;
   address: string;

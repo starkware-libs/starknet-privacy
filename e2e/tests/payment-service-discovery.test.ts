@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { constants } from "starknet";
-import type { DevnetEnvironment } from "starknet-sdk/testing";
+import type { DevnetEnvironment } from "@starkware-libs/starknet-privacy-sdk/testing";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Devnet, CallMockProofProvider, IndexerDiscoveryProvider } from "starknet-sdk/testing";
-import { createPrivateTransfers, type PrivateTransfersInterface } from "starknet-sdk";
+import { Devnet, CallMockProofProvider, IndexerDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
+import { createPrivateTransfers, type PrivateTransfersInterface } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../src/harness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
