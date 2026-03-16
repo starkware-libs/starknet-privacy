@@ -10,6 +10,8 @@
     "declare-class": "tsx --env-file=.env scripts/declare-class.ts",
     "load-test-discovery": "tsx --env-file=.env scripts/load-test-discovery.ts",
     "generate-dump": "tsx scripts/generate-dump.ts",
+    "setup-vesu": "tsx --env-file=.env scripts/setup-vesu.ts",
+    "setup-vesu-helper": "tsx --env-file=.env scripts/setup-vesu-helper.ts",
     "lint": "eslint src tests scripts --fix",
     "lint:check": "eslint src tests scripts",
     "typecheck": "tsc --noEmit"
