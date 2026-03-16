@@ -1364,3 +1364,438 @@ fn test_e2e_vesu_invoke() {
     assert_eq!(filled_amount, amount);
     assert_eq!(filled_underlying_note.token, underlying_token_addr);
 }
+
+/// Open note chain — A creates open note for B, depositor funds it, B transfers to C,
+/// C withdraws. Verifies an open note can seed a full multi-hop transfer chain.
+#[test]
+fn test_e2e_open_note_chain() {
+    let mut test: Test = Default::default();
+    let mut user_a = test.new_user();
+    let mut user_b = test.new_user();
+    let mut user_c = test.new_user();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let amount = 100_u128;
+    let echo_executor_addr = test.privacy.echo_executor;
+
+    // Tx 1-3: register all users.
+    user_a.register_e2e();
+    user_b.register_e2e();
+    user_c.register_e2e();
+
+    // Tx 4: user_a opens channel + subchannel to user_b, creates open note, and deposits via echo.
+    let channel_key_a_b = user_a.compute_channel_key(recipient: user_b);
+    let open_note_input = user_a
+        .new_open_note_with_generated_random(recipient: user_b, :token_addr, index: 0);
+    let (open_note_id, _) = user_a.compute_open_note(create_note_input: open_note_input);
+    let deposit = OpenNoteDeposit { note_id: open_note_id, token: token_addr, amount };
+    let echo_invoke_input = test.privacy.invoke_external_echo_deposits([deposit].span());
+    token.supply(address: echo_executor_addr, :amount);
+    token.approve(owner: echo_executor_addr, spender: test.privacy.address, amount: amount.into());
+    test
+        .privacy
+        .execute_actions_e2e(
+            user: user_a,
+            client_actions: [
+                ClientAction::OpenChannel(
+                    OpenChannelInput {
+                        recipient_addr: user_b.address,
+                        index: 0,
+                        random: user_a.get_random(),
+                        salt: user_a.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user_b.address,
+                        recipient_public_key: user_b.public_key,
+                        channel_key: channel_key_a_b,
+                        index: 0,
+                        token: token_addr,
+                        salt: user_a.get_salt().into(),
+                    },
+                ),
+                ClientAction::CreateOpenNote(open_note_input),
+                ClientAction::InvokeExternal(echo_invoke_input),
+            ]
+                .span(),
+        );
+    let filled_note = test.privacy.get_note(note_id: open_note_id);
+    let (open_note_salt, filled_amount) = unpack(packed_value: filled_note.packed_value);
+    assert_eq!(open_note_salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, amount);
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+
+    // Tx 5: user_b opens channel + subchannel to user_c, uses the open note, creates enc note for
+    // user_c.
+    let channel_key_b_c = user_b.compute_channel_key(recipient: user_c);
+    let create_b_to_c = CreateEncNoteInput {
+        recipient_addr: user_c.address,
+        recipient_public_key: user_c.public_key,
+        token: token_addr,
+        amount,
+        index: 0,
+        salt: user_b.get_salt(),
+    };
+    test
+        .privacy
+        .execute_actions_e2e(
+            user: user_b,
+            client_actions: [
+                ClientAction::OpenChannel(
+                    OpenChannelInput {
+                        recipient_addr: user_c.address,
+                        index: 0,
+                        random: user_b.get_random(),
+                        salt: user_b.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user_c.address,
+                        recipient_public_key: user_c.public_key,
+                        channel_key: channel_key_b_c,
+                        index: 0,
+                        token: token_addr,
+                        salt: user_b.get_salt().into(),
+                    },
+                ),
+                ClientAction::UseNote(
+                    UseNoteInput { channel_key: channel_key_a_b, token: token_addr, index: 0 },
+                ),
+                ClientAction::CreateEncNote(create_b_to_c),
+            ]
+                .span(),
+        );
+    let nullifier_b = user_b.compute_nullifier(sender: user_a, :token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_b));
+    let (note_id_b_c, note_b_c) = user_b.compute_enc_note(create_note_input: create_b_to_c);
+    assert_eq!(test.privacy.get_note(note_id: note_id_b_c), note_b_c);
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+
+    // Tx 6: user_c uses the enc note and withdraws.
+    test
+        .privacy
+        .execute_actions_e2e(
+            user: user_c,
+            client_actions: [
+                ClientAction::UseNote(
+                    UseNoteInput { channel_key: channel_key_b_c, token: token_addr, index: 0 },
+                ),
+                ClientAction::Withdraw(
+                    WithdrawInput {
+                        to_addr: user_c.address,
+                        token: token_addr,
+                        amount,
+                        random: user_c.get_random(),
+                    },
+                ),
+            ]
+                .span(),
+        );
+    let nullifier_c = user_c.compute_nullifier(sender: user_b, :token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_c));
+    assert_eq!(token.balance_of(address: user_c.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+}
+
+/// Open note round trip — depositor opens channel to user_a and creates open note for
+/// user_a (funded via echo executor), user_a transfers to user_b, user_b creates open note back
+/// for user_a (funded via echo executor), user_a withdraws.
+#[test]
+fn test_e2e_open_note_round_trip() {
+    let mut test: Test = Default::default();
+    let mut user_a = test.new_user();
+    let mut user_b = test.new_user();
+    let mut depositor = test.new_user();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let amount = 100_u128;
+    let echo_executor_addr = test.privacy.echo_executor;
+
+    // Tx 1-3: register all parties.
+    user_a.register_e2e();
+    user_b.register_e2e();
+    depositor.register_e2e();
+
+    // Tx 4: depositor opens channel + subchannel to user_a, creates open note, deposits via echo.
+    let channel_key_dep_a = depositor.compute_channel_key(recipient: user_a);
+    let open_note_1_input = depositor
+        .new_open_note_with_generated_random(recipient: user_a, :token_addr, index: 0);
+    let (note_1_id, _) = depositor.compute_open_note(create_note_input: open_note_1_input);
+    let deposit_1 = OpenNoteDeposit { note_id: note_1_id, token: token_addr, amount };
+    let echo_invoke_1 = test.privacy.invoke_external_echo_deposits([deposit_1].span());
+    token.supply(address: echo_executor_addr, :amount);
+    token.approve(owner: echo_executor_addr, spender: test.privacy.address, amount: amount.into());
+    test
+        .privacy
+        .execute_actions_e2e(
+            user: depositor,
+            client_actions: [
+                ClientAction::OpenChannel(
+                    OpenChannelInput {
+                        recipient_addr: user_a.address,
+                        index: 0,
+                        random: depositor.get_random(),
+                        salt: depositor.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user_a.address,
+                        recipient_public_key: user_a.public_key,
+                        channel_key: channel_key_dep_a,
+                        index: 0,
+                        token: token_addr,
+                        salt: depositor.get_salt().into(),
+                    },
+                ),
+                ClientAction::CreateOpenNote(open_note_1_input),
+                ClientAction::InvokeExternal(echo_invoke_1),
+            ]
+                .span(),
+        );
+    let filled_note_1 = test.privacy.get_note(note_id: note_1_id);
+    let (note_1_salt, note_1_amount) = unpack(packed_value: filled_note_1.packed_value);
+    assert_eq!(note_1_salt, OPEN_NOTE_SALT);
+    assert_eq!(note_1_amount, amount);
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+
+    // Tx 5: user_a opens channel + subchannel to user_b, uses note_1, creates enc note for user_b.
+    let channel_key_a_b = user_a.compute_channel_key(recipient: user_b);
+    let create_a_to_b = CreateEncNoteInput {
+        recipient_addr: user_b.address,
+        recipient_public_key: user_b.public_key,
+        token: token_addr,
+        amount,
+        index: 0,
+        salt: user_a.get_salt(),
+    };
+    test
+        .privacy
+        .execute_actions_e2e(
+            user: user_a,
+            client_actions: [
+                ClientAction::OpenChannel(
+                    OpenChannelInput {
+                        recipient_addr: user_b.address,
+                        index: 0,
+                        random: user_a.get_random(),
+                        salt: user_a.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user_b.address,
+                        recipient_public_key: user_b.public_key,
+                        channel_key: channel_key_a_b,
+                        index: 0,
+                        token: token_addr,
+                        salt: user_a.get_salt().into(),
+                    },
+                ),
+                ClientAction::UseNote(
+                    UseNoteInput { channel_key: channel_key_dep_a, token: token_addr, index: 0 },
+                ),
+                ClientAction::CreateEncNote(create_a_to_b),
+            ]
+                .span(),
+        );
+    let nullifier_a_1 = user_a.compute_nullifier(sender: depositor, :token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_a_1));
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+
+    // Tx 6: user_b opens channel + subchannel back to user_a, creates open note for user_a,
+    // uses enc note, withdraws, and deposits to the new open note via echo executor.
+    let channel_key_b_a = user_b.compute_channel_key(recipient: user_a);
+    let open_note_2_input = user_b
+        .new_open_note_with_generated_random(recipient: user_a, :token_addr, index: 0);
+    let (note_2_id, _) = user_b.compute_open_note(create_note_input: open_note_2_input);
+    let deposit_2 = OpenNoteDeposit { note_id: note_2_id, token: token_addr, amount };
+    let echo_invoke_2 = test.privacy.invoke_external_echo_deposits([deposit_2].span());
+    token.supply(address: echo_executor_addr, :amount);
+    token.approve(owner: echo_executor_addr, spender: test.privacy.address, amount: amount.into());
+    test
+        .privacy
+        .execute_actions_e2e(
+            user: user_b,
+            client_actions: [
+                ClientAction::OpenChannel(
+                    OpenChannelInput {
+                        recipient_addr: user_a.address,
+                        index: 0,
+                        random: user_b.get_random(),
+                        salt: user_b.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user_a.address,
+                        recipient_public_key: user_a.public_key,
+                        channel_key: channel_key_b_a,
+                        index: 0,
+                        token: token_addr,
+                        salt: user_b.get_salt().into(),
+                    },
+                ),
+                ClientAction::UseNote(
+                    UseNoteInput { channel_key: channel_key_a_b, token: token_addr, index: 0 },
+                ),
+                ClientAction::CreateOpenNote(open_note_2_input),
+                ClientAction::Withdraw(
+                    WithdrawInput {
+                        to_addr: user_b.address,
+                        token: token_addr,
+                        amount,
+                        random: user_b.get_random(),
+                    },
+                ),
+                ClientAction::InvokeExternal(echo_invoke_2),
+            ]
+                .span(),
+        );
+    let nullifier_b = user_b.compute_nullifier(sender: user_a, :token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_b));
+    let filled_note_2 = test.privacy.get_note(note_id: note_2_id);
+    let (note_2_salt, note_2_amount) = unpack(packed_value: filled_note_2.packed_value);
+    assert_eq!(note_2_salt, OPEN_NOTE_SALT);
+    assert_eq!(note_2_amount, amount);
+    assert_eq!(token.balance_of(address: user_b.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+
+    // Tx 7: user_a uses note_2 and withdraws.
+    test
+        .privacy
+        .execute_actions_e2e(
+            user: user_a,
+            client_actions: [
+                ClientAction::UseNote(
+                    UseNoteInput { channel_key: channel_key_b_a, token: token_addr, index: 0 },
+                ),
+                ClientAction::Withdraw(
+                    WithdrawInput {
+                        to_addr: user_a.address,
+                        token: token_addr,
+                        amount,
+                        random: user_a.get_random(),
+                    },
+                ),
+            ]
+                .span(),
+        );
+    let nullifier_a_2 = user_a.compute_nullifier(sender: user_b, :token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_a_2));
+    assert_eq!(token.balance_of(address: user_a.address), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+}
+
+/// Create open note and deposit to it in the same tx.
+/// The CreateOpenNote phase runs before InvokeExternal, so the note exists when the swap executor
+/// calls deposit_to_open_note.
+#[test]
+fn test_e2e_create_and_deposit_open_note_same_tx() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let in_token = test.new_token();
+    let out_token = test.new_token();
+    let in_token_addr = in_token.contract_address();
+    let out_token_addr = out_token.contract_address();
+    let amount = 100_u128;
+    let swap_executor_addr = test.privacy.swap_executor.address;
+
+    user.increase_token_balance(token: in_token, :amount);
+    user.approve(token: in_token, amount: amount.into());
+
+    // Tx 1: register user, open self channel + subchannel, deposit, create self note.
+    let channel_key_self = user.compute_channel_key(recipient: user);
+    let create_self_note = CreateEncNoteInput {
+        recipient_addr: user.address,
+        recipient_public_key: user.public_key,
+        token: in_token_addr,
+        amount,
+        index: 0,
+        salt: user.get_salt(),
+    };
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                ClientAction::SetViewingKey(SetViewingKeyInput { random: user.get_random() }),
+                ClientAction::OpenChannel(
+                    OpenChannelInput {
+                        recipient_addr: user.address,
+                        index: 0,
+                        random: user.get_random(),
+                        salt: user.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user.address,
+                        recipient_public_key: user.public_key,
+                        channel_key: channel_key_self,
+                        index: 0,
+                        token: in_token_addr,
+                        salt: user.get_salt().into(),
+                    },
+                ),
+                ClientAction::OpenSubchannel(
+                    OpenSubchannelInput {
+                        recipient_addr: user.address,
+                        recipient_public_key: user.public_key,
+                        channel_key: channel_key_self,
+                        index: 1,
+                        token: out_token_addr,
+                        salt: user.get_salt().into(),
+                    },
+                ),
+                ClientAction::Deposit(DepositInput { token: in_token_addr, amount }),
+                ClientAction::CreateEncNote(create_self_note),
+            ]
+                .span(),
+        );
+    assert_eq!(in_token.balance_of(address: test.privacy.address), amount.into());
+
+    // Tx 2: in one tx, create the open note for out_token AND deposit to it via swap executor.
+    // CreateOpenNote runs before InvokeExternal, so the note exists when the swap fires.
+    let open_note_input = user
+        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 0);
+    let (open_note_id, _) = user.compute_open_note(create_note_input: open_note_input);
+    let invoke_input = user
+        .invoke_external_mock_swap_executor_input(
+            in_token: in_token_addr, out_token: out_token_addr, :amount, note_id: open_note_id,
+        );
+    out_token.supply(address: test.privacy.mock_amm, :amount);
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                ClientAction::UseNote(
+                    UseNoteInput { channel_key: channel_key_self, token: in_token_addr, index: 0 },
+                ),
+                ClientAction::CreateOpenNote(open_note_input),
+                ClientAction::Withdraw(
+                    WithdrawInput {
+                        to_addr: swap_executor_addr,
+                        token: in_token_addr,
+                        amount,
+                        random: user.get_random(),
+                    },
+                ),
+                ClientAction::InvokeExternal(invoke_input),
+            ]
+                .span(),
+        );
+
+    let nullifier = user.compute_nullifier(sender: user, token_addr: in_token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(:nullifier));
+    let filled_note = test.privacy.get_note(note_id: open_note_id);
+    let (salt, filled_amount) = unpack(packed_value: filled_note.packed_value);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, amount);
+    assert_eq!(filled_note.token, out_token_addr);
+    assert_eq!(in_token.balance_of(address: test.privacy.address), Zero::zero());
+    assert_eq!(out_token.balance_of(address: test.privacy.address), amount.into());
+}
