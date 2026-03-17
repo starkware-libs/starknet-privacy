@@ -7,7 +7,7 @@ use privacy::actions::{
     SetViewingKeyInput, UseNoteInput, WithdrawInput,
 };
 use privacy::objects::OpenNoteDeposit;
-use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, User, UserTrait};
+use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait};
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_channel_info, unpack};
 use snforge_std::TokenTrait;
@@ -1351,4 +1351,121 @@ fn test_e2e_multi_action_multi_token_one_tx() {
     assert!(test.privacy.nullifier_exists(:nullifier));
     let nullifier = user.compute_nullifier(sender: user, token_addr: token_2_addr, index: 0);
     assert!(test.privacy.nullifier_exists(:nullifier));
+}
+
+/// Invokes Vesu Lending Helper (deposit underlying → vault, then withdraw vault → underlying).
+#[test]
+fn test_e2e_vesu_invoke() {
+    let mut test: Test = Default::default();
+    let vesu = test.deploy_vesu_components();
+    let mut user = test.new_user();
+    let underlying_token_addr = vesu.underlying_token.contract_address();
+    let vault_addr = vesu.vault;
+    let helper_addr = vesu.lending_helper;
+    let amount = 100_u128;
+
+    user.increase_token_balance(token: vesu.underlying_token, :amount);
+    user.approve(token: vesu.underlying_token, amount: amount.into());
+
+    let channel_key_self = user.compute_channel_key(recipient: user);
+
+    // Tx 1: SetViewingKey + OpenChannel(self) + OpenSubchannel(underlying) + Deposit +
+    // CreateEncNote (underlying, to self)
+    let create_note_0 = create_enc_note_input(
+        to: user, token: underlying_token_addr, amount: amount, index: 0,
+    );
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
+                open_subchannel_action(
+                    from: user, to: user, token_addr: underlying_token_addr, index: 0,
+                ),
+                deposit_action(token_addr: underlying_token_addr, amount: amount),
+                ClientAction::CreateEncNote(create_note_0),
+            ]
+                .span(),
+        );
+    assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), amount.into());
+    let (note_id_0, note_0) = user.compute_enc_note(create_note_input: create_note_0);
+    assert_eq!(test.privacy.get_note(note_id: note_id_0), note_0);
+
+    // Tx 2 (vesu deposit): UseNote + Withdraw(underlying to helper) + OpenSubchannel(vault) +
+    // CreateOpenNote(vault, depositor=helper) + InvokeExternal(vesu deposit)
+    let create_open_vault = user
+        .new_open_note_with_generated_random(
+            recipient: user, token_addr: vault_addr, index: 0, depositor: helper_addr,
+        );
+    let (open_note_vault_id, _) = user.compute_open_note(create_note_input: create_open_vault);
+    let invoke_deposit = vesu
+        .invoke_vesu_deposit_external_input(assets: amount, note_id: open_note_vault_id);
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                open_subchannel_action(from: user, to: user, token_addr: vault_addr, index: 1),
+                use_note_action(channel_key_self, token: underlying_token_addr, index: 0),
+                ClientAction::CreateOpenNote(create_open_vault),
+                withdraw_action(
+                    to_addr: helper_addr, token_addr: underlying_token_addr, amount: amount,
+                ),
+                ClientAction::InvokeExternal(invoke_deposit),
+            ]
+                .span(),
+        );
+    let nullifier_0 = user
+        .compute_nullifier(sender: user, token_addr: underlying_token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
+    assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), amount.into());
+    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: test.privacy.address), amount.into());
+    let filled_vault_note = test.privacy.get_note(note_id: open_note_vault_id);
+    let (filled_salt, filled_amount) = unpack(packed_value: filled_vault_note.packed_value);
+    assert_eq!(filled_salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, amount);
+    assert_eq!(filled_vault_note.token, vault_addr);
+    assert_eq!(filled_vault_note.depositor, helper_addr);
+
+    // Tx 3 (vesu withdraw): UseNote(vault) + CreateOpenNote(underlying, depositor=helper) +
+    // Withdraw(vault to helper) + InvokeExternal(vesu withdraw)
+    let create_open_underlying = user
+        .new_open_note_with_generated_random(
+            recipient: user, token_addr: underlying_token_addr, index: 1, depositor: helper_addr,
+        );
+    let (open_note_underlying_id, _) = user
+        .compute_open_note(create_note_input: create_open_underlying);
+    let invoke_withdraw = vesu
+        .invoke_vesu_withdraw_external_input(assets: amount, note_id: open_note_underlying_id);
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                use_note_action(channel_key_self, token: vault_addr, index: 0),
+                ClientAction::CreateOpenNote(create_open_underlying),
+                withdraw_action(to_addr: helper_addr, token_addr: vault_addr, amount: amount),
+                ClientAction::InvokeExternal(invoke_withdraw),
+            ]
+                .span(),
+        );
+    let nullifier_vault = user.compute_nullifier(sender: user, token_addr: vault_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_vault));
+    assert_eq!(vesu.vault_balance_of(address: test.privacy.address), 0);
+    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), amount.into());
+    let filled_underlying_note = test.privacy.get_note(note_id: open_note_underlying_id);
+    let (filled_salt, filled_amount) = unpack(packed_value: filled_underlying_note.packed_value);
+    assert_eq!(filled_salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, amount);
+    assert_eq!(filled_underlying_note.token, underlying_token_addr);
+    assert_eq!(filled_underlying_note.depositor, helper_addr);
 }

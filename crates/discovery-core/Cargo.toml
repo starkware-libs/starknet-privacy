@@ -7,10 +7,10 @@ edition = "2021"
 thiserror = "1.0"
 async-trait = "0.1"
 num-traits = "0.2"
-starknet-core = "0.16"
-starknet-crypto = "0.8"
+starknet-core = { package = "starknet-rust-core", git = "https://github.com/software-mansion/starknet-rust.git", rev = "7caedfe" }
+starknet-crypto = { package = "starknet-rust-crypto", git = "https://github.com/software-mansion/starknet-rust.git", rev = "7caedfe" }
 starknet-types-core = { version = "0.2", features = ["curve", "serde"] }
-starknet-providers = "0.16"
+starknet-providers = { package = "starknet-rust-providers", git = "https://github.com/software-mansion/starknet-rust.git", rev = "7caedfe" }
 tracing = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 url = "2"

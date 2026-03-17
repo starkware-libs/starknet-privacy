@@ -1,20 +1,18 @@
 # Privacy Pool Discovery Service
 
-The Privacy Pool Discovery Service is a dedicated indexing layer that enables wallets to efficiently discover encrypted channels and notes from the privacy pool smart contract. It maintains a hot cache of on-chain state and serves decrypted, filtered results to clients through a simple, paginated API.
+The Privacy Pool Discovery Service is a dedicated RPC-backed service that enables wallets to efficiently discover encrypted channels and notes from the privacy pool smart contract. It reads on-chain state via Starknet RPC and serves decrypted, filtered results to clients through a simple, paginated API.
 
-Core value: transform expensive on-chain storage reads into fast local database lookups with a simple, paginated API.
+Core value: offload expensive traversal, decryption, and nullifier filtering from clients into a shared, paginated API.
 
 ## Architecture
 - Discovery API: stateless HTTP API with cursor-based pagination.
 - Discovery engine: traversal logic, decryption, nullifier filtering.
-- Hot cache: SQLite database populated from on-chain storage diffs.
-- Indexer: ingests blocks from RPC and extracts storage diffs relevant to the pool contract.
-- RPC fallback (optional): direct reads during cold start or reorgs.
+- RPC backend: reads on-chain storage directly via a Starknet RPC connection pool with configurable concurrency limits.
 
 Detailed design specs: [`specs/`](specs/README.md)
 
 ## Key design decisions
-- Hybrid hot cache + RPC fallback: cache for most reads; RPC for ingestion and edge cases.
+- Stateless RPC reads: all on-chain state is read directly from the Starknet RPC node; no local database.
 - Per-request decryption keys: keys provided per request, never stored; decrypted data is request-scoped.
 - Bounded synchronous requests: capped read budget with cursor-based pagination.
 - Soft finality: operates against ACCEPTED_ON_L2 blocks; clients handle reorgs (reindex from scratch).
@@ -26,7 +24,6 @@ Detailed design specs: [`specs/`](specs/README.md)
 - `GET /health` — Health check with chain head lag reporting.
 
 ## Operational characteristics
-- Storage: SQLite WAL mode, append-only entries, snapshot support for cold start.
 - Security: TLS termination (planned), input validation, sensitive field filtering in logs.
 - Resilience: reorg detection via `last_known_block` / `block_ref`, RPC health monitoring, graceful backfill.
 - Compatibility: allowlisted contract, block-height-based layout versioning for upgrades.
@@ -41,12 +38,12 @@ Detailed design specs: [`specs/`](specs/README.md)
 - `INTERNAL_ERROR`: internal discovery error.
 
 ## Technology stack (target)
-Rust with Tokio runtime and Axum HTTP server. SQLite in WAL mode for storage. Packaged as static binaries (Linux x86, macOS ARM) and Docker image.
+Rust with Tokio runtime and Axum HTTP server. Packaged as static binaries (Linux x86, macOS ARM) and Docker image.
 
 ## Run
 From the repo root:
 ```bash
-cargo run -p discovery-service -- --log-level info
+RUST_LOG=info cargo run -p discovery-service
 ```
 
 ## Test

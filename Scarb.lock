@@ -147,6 +147,7 @@ dependencies = [
  "snforge_std",
  "starkware_utils",
  "starkware_utils_testing",
+ "vesu_lending_helper",
 ]
 
 [[package]]
@@ -180,4 +181,15 @@ dependencies = [
  "openzeppelin",
  "snforge_std",
  "starkware_utils",
+]
+
+[[package]]
+name = "vesu_lending_helper"
+version = "0.1.0"
+dependencies = [
+ "openzeppelin",
+ "privacy",
+ "snforge_std",
+ "starkware_utils",
+ "starkware_utils_testing",
 ]
