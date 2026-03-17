@@ -5,9 +5,9 @@ pub mod MockVesuVault {
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::token::erc20::{DefaultConfig, ERC20Component, ERC20HooksEmptyImpl};
-    use privacy::invoke_helpers::vesu_lending_helper::IVToken;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use vesu_lending_helper::vesu_lending_helper::IVToken;
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
 
@@ -75,9 +75,9 @@ pub mod MockVesuVaultNoop {
     use core::num::traits::Zero;
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::token::erc20::{DefaultConfig, ERC20Component, ERC20HooksEmptyImpl};
-    use privacy::invoke_helpers::vesu_lending_helper::IVToken;
     use starknet::ContractAddress;
     use starknet::storage::StoragePointerWriteAccess;
+    use vesu_lending_helper::vesu_lending_helper::IVToken;
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
 
@@ -139,10 +139,10 @@ pub mod MockVesuVaultOverflow {
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::token::erc20::{DefaultConfig, ERC20Component, ERC20HooksEmptyImpl};
-    use privacy::invoke_helpers::vesu_lending_helper::IVToken;
     use starknet::ContractAddress;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starkware_utils::constants::MAX_U128;
+    use vesu_lending_helper::vesu_lending_helper::IVToken;
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
 

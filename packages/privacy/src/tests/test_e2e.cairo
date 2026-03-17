@@ -7,9 +7,7 @@ use privacy::actions::{
     SetViewingKeyInput, UseNoteInput, WithdrawInput,
 };
 use privacy::objects::OpenNoteDeposit;
-use privacy::tests::utils_for_tests::{
-    PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuComponentsTrait,
-};
+use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait};
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_channel_info, unpack};
 use snforge_std::TokenTrait;

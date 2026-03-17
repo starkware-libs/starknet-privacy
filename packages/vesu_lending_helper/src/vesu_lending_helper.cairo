@@ -7,13 +7,12 @@
 //! ## Contract call details
 //!
 //! **Deposit** (underlying → shares): Calls `deposit(assets: u256, receiver: ContractAddress)` on
-//! the vault (`out_token`). Calldata: `[amount_low, amount_high, receiver]`. The vault pulls
-//! `in_token` (underlying) from the caller after prior approval.
+//! the vault (`out_token`). The vault pulls `in_token` (underlying) from the caller after prior
+//! approval.
 //!
 //! **Withdraw** (shares → underlying): Calls `withdraw(assets: u256, receiver: ContractAddress,
-//! owner: ContractAddress)`
-//! on the vault (`in_token`). Calldata: `[amount_low, amount_high, receiver, owner]`. Burns shares
-//! from `owner` and sends underlying to `receiver`.
+//! owner: ContractAddress)` on the vault (`in_token`). Burns shares from `owner` and sends
+//! underlying to `receiver`.
 
 use privacy::objects::OpenNoteDeposit;
 use starknet::ContractAddress;
@@ -147,6 +146,7 @@ pub mod VesuLendingHelper {
             let balance_before = out_erc20.balance_of(account: self_addr);
 
             // Execute operation.
+            // Return value (minted/burned shares) is ignored.
             match operation {
                 LendingOperation::Deposit => {
                     // Approve Vesu Token contract to spend `assets` of `in_token`.

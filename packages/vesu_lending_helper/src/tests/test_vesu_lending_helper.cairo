@@ -1,21 +1,20 @@
 use core::num::traits::Zero;
-use privacy::invoke_helpers::vesu_lending_helper::{LendingOperation, errors};
 use privacy::objects::OpenNoteDeposit;
-use privacy::tests::utils_for_tests::constants::DEFAULT_AMOUNT;
-use privacy::tests::utils_for_tests::{
-    Test, TestTrait, VesuComponentsTrait, deploy_mock_vesu_vault_noop,
-    deploy_mock_vesu_vault_overflow,
-};
 use snforge_std::TokenTrait;
 use starkware_utils::constants::MAX_U128;
 use starkware_utils_testing::test_utils::{TokenHelperTrait, assert_panic_with_felt_error};
+use vesu_lending_helper::tests::test_utils::{
+    VesuTrait, deploy_mock_vesu_vault_noop, deploy_mock_vesu_vault_overflow, deploy_vesu_components,
+};
+use vesu_lending_helper::vesu_lending_helper::{LendingOperation, errors};
+
+const DEFAULT_AMOUNT: u128 = 1_000_000_000_000_000_000;
 
 #[test]
 #[test_case(Zero::zero())]
 #[test_case(DEFAULT_AMOUNT)]
 fn test_privacy_invoke_deposit_withdraw(preexisting_balance: u128) {
-    let mut test: Test = Default::default();
-    let vesu = test.deploy_vesu_components();
+    let vesu = deploy_vesu_components();
     let amount = DEFAULT_AMOUNT;
     let note_id: felt252 = 'NOTE_ID';
 
@@ -65,8 +64,7 @@ fn test_privacy_invoke_deposit_withdraw(preexisting_balance: u128) {
 
 #[test]
 fn test_privacy_invoke_deposit_insufficient_balance() {
-    let mut test: Test = Default::default();
-    let vesu = test.deploy_vesu_components();
+    let vesu = deploy_vesu_components();
     let amount = DEFAULT_AMOUNT;
     let note_id: felt252 = 'NOTE_ID';
 
@@ -81,8 +79,7 @@ fn test_privacy_invoke_deposit_insufficient_balance() {
 
 #[test]
 fn test_privacy_invoke_assertions() {
-    let mut test: Test = Default::default();
-    let vesu = test.deploy_vesu_components();
+    let vesu = deploy_vesu_components();
     let amount = DEFAULT_AMOUNT;
     let note_id: felt252 = 'NOTE_ID';
     let deposit = LendingOperation::Deposit;
@@ -141,8 +138,7 @@ fn test_privacy_invoke_assertions() {
 
 #[test]
 fn test_privacy_invoke_zero_out_amount() {
-    let mut test: Test = Default::default();
-    let mut vesu = test.deploy_vesu_components();
+    let mut vesu = deploy_vesu_components();
     let amount = DEFAULT_AMOUNT;
     let note_id: felt252 = 'NOTE_ID';
 
@@ -159,8 +155,7 @@ fn test_privacy_invoke_zero_out_amount() {
 
 #[test]
 fn test_privacy_invoke_overflow() {
-    let mut test: Test = Default::default();
-    let mut vesu = test.deploy_vesu_components();
+    let mut vesu = deploy_vesu_components();
     let amount = DEFAULT_AMOUNT;
     let note_id: felt252 = 'NOTE_ID';
 
