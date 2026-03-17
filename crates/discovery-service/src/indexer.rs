@@ -2,7 +2,7 @@
 
 use backoff::ExponentialBackoffBuilder;
 use backoff::{backoff::Backoff, ExponentialBackoff};
-use starknet::core::types::ConfirmedBlockId;
+use starknet_core::types::ConfirmedBlockId;
 use starknet_tokio_tungstenite::{NewHeadsUpdate, TungsteniteStream};
 use thiserror::Error;
 use tokio::sync::broadcast;

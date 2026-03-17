@@ -89,7 +89,7 @@ fn test_set_auditor_public_key_flow() {
     let mut withdraw_spy_before = spy_events();
     user_1
         .withdraw_and_use_note_e2e(
-            to_addr: user_1.address, :token, :amount, channel_key: channel_key_1, index: 0,
+            to_addr: user_1.address, :token_addr, :amount, channel_key: channel_key_1, index: 0,
         );
     let withdraw_events_before = withdraw_spy_before
         .get_events()
@@ -145,7 +145,7 @@ fn test_set_auditor_public_key_flow() {
     let mut withdraw_spy_after = spy_events();
     user_2
         .withdraw_and_use_note_e2e(
-            to_addr: user_2.address, :token, :amount, channel_key: channel_key_2, index: 0,
+            to_addr: user_2.address, :token_addr, :amount, channel_key: channel_key_2, index: 0,
         );
     let withdraw_events_after = withdraw_spy_after
         .get_events()

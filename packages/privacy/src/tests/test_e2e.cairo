@@ -7,7 +7,7 @@ use privacy::actions::{
     SetViewingKeyInput, UseNoteInput, WithdrawInput,
 };
 use privacy::objects::OpenNoteDeposit;
-use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, User, UserTrait};
+use privacy::tests::utils_for_tests::{PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait};
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_channel_info, unpack};
 use snforge_std::TokenTrait;
@@ -65,8 +65,10 @@ fn withdraw_action(
 }
 
 /// Helper: UseNote action.
-fn use_note_action(channel_key: felt252, token: ContractAddress, index: usize) -> ClientAction {
-    ClientAction::UseNote(UseNoteInput { channel_key, token, index })
+fn use_note_action(
+    channel_key: felt252, token_addr: ContractAddress, index: usize,
+) -> ClientAction {
+    ClientAction::UseNote(UseNoteInput { channel_key, token: token_addr, index })
 }
 
 /// Helper: CreateEncNote input.
@@ -276,85 +278,42 @@ fn test_e2e_action_phases_in_correct_order() {
     let out_token = test.new_token();
     let in_token_addr = in_token.contract_address();
     let out_token_addr = out_token.contract_address();
-    let amount = 100_u128;
-    let total_amount = amount + amount;
+    let amount_a = 60_u128;
+    let amount_b = 140_u128;
+    let total_amount = amount_a + amount_b;
     let swap_executor_addr = test.privacy.swap_executor.address;
 
     user_1.increase_token_balance(token: in_token, amount: total_amount);
     user_1.approve(token: in_token, amount: total_amount.into());
 
     // Tx 1-2: register both users.
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_1.get_random() })
-            ]
-                .span(),
-        );
-    test
-        .privacy
-        .execute_actions_e2e(
-            user_addr: user_2.address,
-            user_private_key: user_2.private_key,
-            client_actions: [
-                ClientAction::SetViewingKey(SetViewingKeyInput { random: user_2.get_random() })
-            ]
-                .span(),
-        );
+    register_user_tx(ref test, user_1);
+    register_user_tx(ref test, user_2);
 
     let channel_key_self = user_1.compute_channel_key(recipient: user_1);
-    let create_self_note_0 = CreateEncNoteInput {
-        recipient_addr: user_1.address,
-        recipient_public_key: user_1.public_key,
-        token: in_token_addr,
-        amount,
-        index: 0,
-        salt: user_1.get_salt(),
-    };
+    let create_self_note_0 = create_enc_note_input(
+        to: user_1, token: in_token_addr, amount: amount_a, index: 0,
+    );
 
     // Tx 3: create one spendable self note for the later combined transaction.
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_1.address,
-                        index: 0,
-                        random: user_1.get_random(),
-                        salt: user_1.get_salt().into(),
-                    },
+                open_channel_action(from: user_1, to: user_1, index: 0),
+                open_subchannel_action(
+                    from: user_1, to: user_1, token_addr: in_token_addr, index: 0,
                 ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_1.address,
-                        recipient_public_key: user_1.public_key,
-                        channel_key: channel_key_self,
-                        index: 0,
-                        token: in_token_addr,
-                        salt: user_1.get_salt().into(),
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: in_token_addr, amount }),
+                deposit_action(token_addr: in_token_addr, amount: amount_a),
                 ClientAction::CreateEncNote(create_self_note_0),
             ]
                 .span(),
         );
 
-    let channel_key_1_2 = user_1.compute_channel_key(recipient: user_2);
-    let create_note_for_user_2 = CreateEncNoteInput {
-        recipient_addr: user_2.address,
-        recipient_public_key: user_2.public_key,
-        token: in_token_addr,
-        amount,
-        index: 0,
-        salt: user_1.get_salt(),
-    };
+    let create_note_for_user_2 = create_enc_note_input(
+        to: user_2, token: in_token_addr, amount: amount_a, index: 0,
+    );
     let create_open_note = user_1
         .new_open_note_with_generated_random(
             recipient: user_1, token_addr: out_token_addr, index: 0, depositor: swap_executor_addr,
@@ -364,60 +323,31 @@ fn test_e2e_action_phases_in_correct_order() {
         .invoke_external_mock_swap_executor_input(
             in_token: in_token_addr,
             out_token: out_token_addr,
-            amount: amount,
+            amount: amount_b,
             note_id: open_note_id,
         );
 
-    out_token.supply(address: test.privacy.mock_amm, amount: amount);
+    out_token.supply(address: test.privacy.mock_amm, amount: amount_b);
 
     // Tx 4: run the ordered phases together after the one-time registration setup.
     test
         .privacy
         .execute_actions_e2e(
-            user_addr: user_1.address,
-            user_private_key: user_1.private_key,
+            user: user_1,
             client_actions: [
-                ClientAction::OpenChannel(
-                    OpenChannelInput {
-                        recipient_addr: user_2.address,
-                        index: 1,
-                        random: user_1.get_random(),
-                        salt: user_1.get_salt().into(),
-                    },
+                open_channel_action(from: user_1, to: user_2, index: 1),
+                open_subchannel_action(
+                    from: user_1, to: user_2, token_addr: in_token_addr, index: 0,
                 ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_2.address,
-                        recipient_public_key: user_2.public_key,
-                        channel_key: channel_key_1_2,
-                        index: 0,
-                        token: in_token_addr,
-                        salt: user_1.get_salt().into(),
-                    },
+                open_subchannel_action(
+                    from: user_1, to: user_1, token_addr: out_token_addr, index: 1,
                 ),
-                ClientAction::OpenSubchannel(
-                    OpenSubchannelInput {
-                        recipient_addr: user_1.address,
-                        recipient_public_key: user_1.public_key,
-                        channel_key: channel_key_self,
-                        index: 1,
-                        token: out_token_addr,
-                        salt: user_1.get_salt().into(),
-                    },
-                ),
-                ClientAction::Deposit(DepositInput { token: in_token_addr, amount }),
-                ClientAction::UseNote(
-                    UseNoteInput { channel_key: channel_key_self, token: in_token_addr, index: 0 },
-                ),
+                deposit_action(token_addr: in_token_addr, amount: amount_b),
+                use_note_action(channel_key: channel_key_self, token_addr: in_token_addr, index: 0),
                 ClientAction::CreateEncNote(create_note_for_user_2),
                 ClientAction::CreateOpenNote(create_open_note),
-                ClientAction::Withdraw(
-                    WithdrawInput {
-                        to_addr: swap_executor_addr,
-                        token: in_token_addr,
-                        amount,
-                        random: user_1.get_random(),
-                    },
+                withdraw_action(
+                    to_addr: swap_executor_addr, token_addr: in_token_addr, amount: amount_b,
                 ),
                 ClientAction::InvokeExternal(invoke_input),
             ]
@@ -438,13 +368,13 @@ fn test_e2e_action_phases_in_correct_order() {
     assert_eq!(note_after_swap.token, out_token_addr);
     assert_eq!(note_after_swap.depositor, swap_executor_addr);
     assert_eq!(salt, OPEN_NOTE_SALT);
-    assert_eq!(filled_amount, amount);
+    assert_eq!(filled_amount, amount_b);
     assert_eq!(in_token.balance_of(address: user_1.address), Zero::zero());
-    assert_eq!(in_token.balance_of(address: test.privacy.address), amount.into());
-    assert_eq!(in_token.balance_of(address: test.privacy.mock_amm), amount.into());
+    assert_eq!(in_token.balance_of(address: test.privacy.address), amount_a.into());
+    assert_eq!(in_token.balance_of(address: test.privacy.mock_amm), amount_b.into());
     assert_eq!(in_token.balance_of(address: swap_executor_addr), Zero::zero());
     assert_eq!(out_token.balance_of(address: user_1.address), Zero::zero());
-    assert_eq!(out_token.balance_of(address: test.privacy.address), amount.into());
+    assert_eq!(out_token.balance_of(address: test.privacy.address), amount_b.into());
     assert_eq!(out_token.balance_of(address: test.privacy.mock_amm), Zero::zero());
     assert_eq!(out_token.balance_of(address: swap_executor_addr), Zero::zero());
 }
@@ -1351,4 +1281,121 @@ fn test_e2e_multi_action_multi_token_one_tx() {
     assert!(test.privacy.nullifier_exists(:nullifier));
     let nullifier = user.compute_nullifier(sender: user, token_addr: token_2_addr, index: 0);
     assert!(test.privacy.nullifier_exists(:nullifier));
+}
+
+/// Invokes Vesu Lending Helper (deposit underlying → vault, then withdraw vault → underlying).
+#[test]
+fn test_e2e_vesu_invoke() {
+    let mut test: Test = Default::default();
+    let vesu = test.deploy_vesu_components();
+    let mut user = test.new_user();
+    let underlying_token_addr = vesu.underlying_token.contract_address();
+    let vault_addr = vesu.vault;
+    let helper_addr = vesu.lending_helper;
+    let amount = 100_u128;
+
+    user.increase_token_balance(token: vesu.underlying_token, :amount);
+    user.approve(token: vesu.underlying_token, amount: amount.into());
+
+    let channel_key_self = user.compute_channel_key(recipient: user);
+
+    // Tx 1: SetViewingKey + OpenChannel(self) + OpenSubchannel(underlying) + Deposit +
+    // CreateEncNote (underlying, to self)
+    let create_note_0 = create_enc_note_input(
+        to: user, token: underlying_token_addr, amount: amount, index: 0,
+    );
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
+                open_subchannel_action(
+                    from: user, to: user, token_addr: underlying_token_addr, index: 0,
+                ),
+                deposit_action(token_addr: underlying_token_addr, amount: amount),
+                ClientAction::CreateEncNote(create_note_0),
+            ]
+                .span(),
+        );
+    assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), amount.into());
+    let (note_id_0, note_0) = user.compute_enc_note(create_note_input: create_note_0);
+    assert_eq!(test.privacy.get_note(note_id: note_id_0), note_0);
+
+    // Tx 2 (vesu deposit): UseNote + Withdraw(underlying to helper) + OpenSubchannel(vault) +
+    // CreateOpenNote(vault, depositor=helper) + InvokeExternal(vesu deposit)
+    let create_open_vault = user
+        .new_open_note_with_generated_random(
+            recipient: user, token_addr: vault_addr, index: 0, depositor: helper_addr,
+        );
+    let (open_note_vault_id, _) = user.compute_open_note(create_note_input: create_open_vault);
+    let invoke_deposit = vesu
+        .invoke_vesu_deposit_external_input(assets: amount, note_id: open_note_vault_id);
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                open_subchannel_action(from: user, to: user, token_addr: vault_addr, index: 1),
+                use_note_action(channel_key_self, token_addr: underlying_token_addr, index: 0),
+                ClientAction::CreateOpenNote(create_open_vault),
+                withdraw_action(
+                    to_addr: helper_addr, token_addr: underlying_token_addr, amount: amount,
+                ),
+                ClientAction::InvokeExternal(invoke_deposit),
+            ]
+                .span(),
+        );
+    let nullifier_0 = user
+        .compute_nullifier(sender: user, token_addr: underlying_token_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
+    assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), amount.into());
+    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: test.privacy.address), amount.into());
+    let filled_vault_note = test.privacy.get_note(note_id: open_note_vault_id);
+    let (filled_salt, filled_amount) = unpack(packed_value: filled_vault_note.packed_value);
+    assert_eq!(filled_salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, amount);
+    assert_eq!(filled_vault_note.token, vault_addr);
+    assert_eq!(filled_vault_note.depositor, helper_addr);
+
+    // Tx 3 (vesu withdraw): UseNote(vault) + CreateOpenNote(underlying, depositor=helper) +
+    // Withdraw(vault to helper) + InvokeExternal(vesu withdraw)
+    let create_open_underlying = user
+        .new_open_note_with_generated_random(
+            recipient: user, token_addr: underlying_token_addr, index: 1, depositor: helper_addr,
+        );
+    let (open_note_underlying_id, _) = user
+        .compute_open_note(create_note_input: create_open_underlying);
+    let invoke_withdraw = vesu
+        .invoke_vesu_withdraw_external_input(assets: amount, note_id: open_note_underlying_id);
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                use_note_action(channel_key_self, token_addr: vault_addr, index: 0),
+                ClientAction::CreateOpenNote(create_open_underlying),
+                withdraw_action(to_addr: helper_addr, token_addr: vault_addr, amount: amount),
+                ClientAction::InvokeExternal(invoke_withdraw),
+            ]
+                .span(),
+        );
+    let nullifier_vault = user.compute_nullifier(sender: user, token_addr: vault_addr, index: 0);
+    assert!(test.privacy.nullifier_exists(nullifier: nullifier_vault));
+    assert_eq!(vesu.vault_balance_of(address: test.privacy.address), 0);
+    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), amount.into());
+    let filled_underlying_note = test.privacy.get_note(note_id: open_note_underlying_id);
+    let (filled_salt, filled_amount) = unpack(packed_value: filled_underlying_note.packed_value);
+    assert_eq!(filled_salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, amount);
+    assert_eq!(filled_underlying_note.token, underlying_token_addr);
+    assert_eq!(filled_underlying_note.depositor, helper_addr);
 }

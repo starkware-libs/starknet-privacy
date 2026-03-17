@@ -22,7 +22,7 @@ use crate::discovery::cursor::SubchannelCursor;
 use crate::discovery::last_note_index::find_last_note_index;
 use crate::discovery::{DiscoveryError, COST_NOTE, COST_NOTE_PROBING};
 use crate::io_budget::IoBudget;
-use crate::privacy_pool::decryption::{decrypt_note_amount, unpack_note_amount, OPEN_NOTE_SALT};
+use crate::privacy_pool::decryption::{decrypt_packed_value, OPEN_NOTE_SALT};
 use crate::privacy_pool::felt_hex;
 use crate::privacy_pool::hashes::{compute_note_id, compute_nullifier};
 use crate::privacy_pool::types::SecretFelt;
@@ -294,12 +294,7 @@ fn decrypt_note(
     note_id: Felt,
     packed: Felt,
 ) -> DecryptedNote {
-    let (salt, enc_amount) = unpack_note_amount(packed);
-    let amount = if salt == OPEN_NOTE_SALT {
-        enc_amount
-    } else {
-        decrypt_note_amount(enc_amount, salt, channel_key, token, index)
-    };
+    let (amount, salt) = decrypt_packed_value(packed, channel_key, token, index);
     trace!(index, amount, salt, "unspent note found");
     DecryptedNote {
         sender_addr: Felt::ZERO, // set by the sync orchestrator after discovery

@@ -1,0 +1,39 @@
+# Discovery Service configuration
+# All sections and fields are optional — sensible defaults are used when omitted.
+# Env vars override matching fields: RPC_URL, WS_URL, API_HOST, RUST_LOG, SERVER_BUDGET.
+# Supports env var expansion: ${VAR} (required) or ${VAR:-default} (with fallback).
+#
+# Full spec: crates/discovery-service/specs/18-configuration.md
+
+[rpc]
+url = "http://127.0.0.1:5050"
+max_concurrent_requests = 10
+connect_timeout = 60
+request_timeout = 30
+max_idle_per_host = 10
+max_batch_size = 256
+event_page_size = 1024
+max_event_block_range = 0
+
+[indexer]
+ws_url = "ws://127.0.0.1:5050/ws"
+connect_timeout = 10
+backoff_initial_interval = 1
+backoff_max_interval = 60
+# backoff_max_elapsed_time = 300  # omit for infinite retries
+
+[api]
+host = "127.0.0.1:8080"
+health_max_lag_secs = 5
+request_timeout = 30
+
+[logging]
+level = "info"
+
+[limits]
+max_channels = 256
+max_subchannels_per_channel = 64
+max_outgoing_recipients = 64
+server_budget = 10000
+max_request_body_bytes = 102400
+public_key_cache_capacity = 10000
