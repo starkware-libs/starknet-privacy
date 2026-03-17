@@ -111,6 +111,23 @@ pub fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErr
             StatusCode::BAD_REQUEST,
             ApiErrorResponse::new(error_codes::INVALID_REQUEST, msg),
         ),
+        DiscoveryError::InsufficientBudget { needed, available } => {
+            warn!(
+                "Insufficient I/O budget: needed {}, available {}",
+                needed, available
+            );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
+            )
+        }
+        DiscoveryError::EventError(msg) => {
+            warn!("Event error: {}", msg);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
+            )
+        }
     }
 }
 
