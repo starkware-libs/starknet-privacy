@@ -1,6 +1,6 @@
 # Changelog
 
-## next
+## 0.14.2-RC.1
 
 ### Breaking
 

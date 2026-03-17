@@ -41,9 +41,23 @@ graph LR
 
 All components in a row are tested together. Use matching revisions when deploying.
 
-| sequencer | proving-utils | discovery-service | proving-service | starknet-privacy-sdk |
-|-----------|---------------|-------------------|-----------------|----------------------|
-| [`APOLLO-PRE-PROOF-DEMO-16`](https://github.com/starkware-libs/sequencer/releases/tag/APOLLO-PRE-PROOF-DEMO-16) | [`e16f9d0`](https://github.com/starkware-libs/proving-utils/commit/e16f9d027fb026f96bfd3aeed76b41a169372f81) | [`pr-510`](https://github.com/starkware-libs/starknet-privacy/pkgs/container/starknet-privacy%2Fdiscovery-service/701186259?tag=pr-510) | [`rev-5f29e09-e16f9d0`](https://github.com/starkware-libs/starknet-privacy/pkgs/container/starknet-privacy%2Fproving-service/703346885?tag=rev-5f29e09-e16f9d0) | [`0.1.0-dev.1`](https://github.com/starkware-libs/starknet-privacy/pkgs/npm/starknet-privacy-sdk/703792073) |
+| Component | Docs | Image / Tag |
+|-----------|------|-------------|
+| Sequencer Gateway | | `ghcr.io/starkware-libs/sequencer/sequencer:APOLLO-0.14.2-RC.1` |
+| Transaction Prover | [README](https://github.com/starkware-libs/sequencer/tree/avi/privacy/configmap-docs/crates/starknet_transaction_prover) | `us-central1-docker.pkg.dev/starkware-dev/sequencer/transaction-prover:PRIVACY-0.14.2-RC.1` |
+| Discovery Service | [README](deploy/discovery-service/README.md) | `ghcr.io/starkware-libs/starknet-privacy/discovery-service:PRIVACY-0.14.2-RC.1` |
+| Pathfinder* | [docs](https://eqlabs.github.io/pathfinder/getting-started/running-pathfinder) | `eqlabs/pathfinder:v0.22.0-beta.3` |
+| SDK | [README](sdk/README.md) | [`PRIVACY-0.14.2-RC.1`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.1) |
+
+\* For the transaction prover to work correctly with Pathfinder, set `PATHFINDER_STORAGE_STATE_TRIES=10000`.
+
+### Contracts
+
+| Contract | Docs | Tag | Class Hash |
+|----------|------|-----|------------|
+| Privacy Pool | [README](packages/privacy/README.md) | [`PRIVACY-0.14.2-RC.1`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.1) | `0x21a53b2cde0fbec5761793c09626fe6e53357d7856389711a8391d8468102e3` |
+| Ekubo Helper | | | |
+| Vesu Helper | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_helper) | [`PRIVACY-0.14.2-RC.1`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.1) | `0x1973a0ccabe1e1fc995bcac13c52300fc9953342293d3c15e878bdca84751a1` |
 
 ## Repository map
 
@@ -51,21 +65,15 @@ All components in a row are tested together. Use matching revisions when deployi
 |-----------|-------------|
 | [`packages/privacy/`](packages/privacy/) | Cairo smart contract ([README](packages/privacy/README.md)) |
 | [`crates/discovery-core/`](crates/discovery-core/) | Core discovery logic & cryptography ([README](crates/discovery-core/README.md)) |
-| [`crates/discovery-service/`](crates/discovery-service/) | HTTP indexing service with SQLite cache ([README](crates/discovery-service/README.md)) |
+| [`crates/discovery-service/`](crates/discovery-service/) | HTTP discovery service (RPC-backed) ([README](crates/discovery-service/README.md)) |
 | [`sdk/`](sdk/) | TypeScript SDK for private transfers ([README](sdk/README.md)) |
 | [`e2e/`](e2e/) | End-to-end tests & devnet fixture generation ([README](e2e/README.md)) |
 | [`deploy/discovery-service/`](deploy/discovery-service/) | Dockerfile & deployment ([README](deploy/discovery-service/README.md)) |
-| [`deploy/proving-service/`](deploy/proving-service/) | Dockerfile & deployment ([README](deploy/proving-service/README.md)) |
-| [`deploy/pathfinder/`](deploy/pathfinder/) | Pathfinder + fake L1 setup ([README](deploy/pathfinder/README.md)) |
 | [`lean/`](lean/) | Formal verification (Lean) |
 | [`demo/`](demo/) | Web demo application |
 | [`scripts/`](scripts/) | Utility scripts (devnet, deployment, etc.) |
 | [`docs/`](docs/) | Audit reports & security docs ([audit](docs/audit/README.md)) |
 | [`crates/discovery-service/specs/`](crates/discovery-service/specs/) | Discovery service specifications ([README](crates/discovery-service/specs/README.md)) |
-
-## Docker images
-
-See the deployment READMEs linked above for Dockerfiles, configuration, and run instructions. Images are published to `ghcr.io/starkware-libs/starknet-privacy/`.
 
 ## Prerequisites
 
