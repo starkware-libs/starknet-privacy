@@ -35,6 +35,15 @@ docker buildx build \
   -t discovery-service .
 ```
 
+## Machine specs
+
+| Spec | Value |
+|------|-------|
+| Machine type | n2-standard-4 |
+| CPU | 4 vCPUs |
+| Memory | ~16 GB |
+| Arch | amd64 |
+
 ## Configuration
 
 All settings can be provided via environment variables or a TOML config file (`--config path/to/config.toml`).

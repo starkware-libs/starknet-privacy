@@ -1,10 +1,19 @@
 # Pathfinder — Build & Deploy
 
-Temporarily using a custom Pathfinder build from [Docker Hub](https://hub.docker.com/r/eqlabs/pathfinder/tags):
+Using the Pathfinder build from [Docker Hub](https://hub.docker.com/r/eqlabs/pathfinder/tags):
 
 ```bash
-docker pull eqlabs/pathfinder:snapshot-cb5c42b005562fca59c2ef044e83aa1464d4f58f
+docker pull eqlabs/pathfinder:v0.22.0-beta.3
 ```
+
+## Machine specs
+
+| Spec | Value |
+|------|-------|
+| Machine type | n2-standard-4 |
+| CPU | 4 vCPUs |
+| Memory | ~16 GB |
+| Arch | amd64 |
 
 ## Configuration
 
@@ -27,7 +36,7 @@ docker run --rm \
   -e PATHFINDER_RPC_CUSTOM_VERSIONED_CONSTANTS_JSON_PATH=blockifier_versioned_constants_0_14_2.json \
   -v /path/to/blockifier_versioned_constants_0_14_2.json:/usr/share/pathfinder/blockifier_versioned_constants_0_14_2.json \
   -p 9545:9545 \
-  eqlabs/pathfinder:snapshot-cb5c42b005562fca59c2ef044e83aa1464d4f58f \
+  eqlabs/pathfinder:v0.22.0-beta.3 \
   --rpc.websocket.enabled \
   --rpc.batch-concurrency-limit 8
 ```
