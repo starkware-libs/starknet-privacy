@@ -73,7 +73,7 @@ export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
   };
 }
 
-export type RecipientsFilter<T = StarknetAddressBigint> = T[] | "all" | "total-only";
+export type RecipientsFilter<T = StarknetAddressBigint> = T[] | "all";
 
 export type ChannelCursor = {
   /** @internal */ blockId?: BlockIdentifier;

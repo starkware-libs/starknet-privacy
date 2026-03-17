@@ -218,57 +218,11 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     total?: number;
     cursor: ChannelCursor;
   }> {
-    if (recipients === "total-only") {
-      // For total-only, do a minimal outgoing sync to get the total channel count
-      const body: Record<string, unknown> = {
-        contract_address: toHex(this.contractAddress),
-        sender_address: toHex(address),
-        viewing_key: toHex(viewingKey),
-        cursor: { channel_discovery_complete: false },
-      };
-      const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
-      return { timestamp: resp.block_ref, total: resp.cursor.total_n_channels!, cursor: { total: resp.cursor.total_n_channels!, blockId: resp.block_ref } };
-    }
-
     const cursorMap = params?.cursor?.channels;
-    let apiCursor: ApiDiscoveryCursor;
-
-    if (recipients === "all") {
-      apiCursor = channelMapToApiCursor(cursorMap, false);
-    } else {
-      let allResolved = true;
-      const resolved = new Map<bigint, { key: bigint; publicKey: bigint }>();
-      for (const r of recipients) {
-        const rb = toBigInt(r);
-        const existing = cursorMap?.get(rb);
-        if (existing?.key) {
-          resolved.set(rb, { key: existing.key, publicKey: toBigInt(existing.publicKey) });
-        } else {
-          allResolved = false;
-        }
-      }
-
-      if (allResolved) {
-        // Targeted scan: skip channel discovery, only refresh subchannels
-        apiCursor = { channel_discovery_complete: true, channels: {} };
-        for (const [rb, info] of resolved) {
-          const existing = cursorMap?.get(rb);
-          const subchannels = existing
-            ? buildSubchannelCursors(
-                [...existing.tokens].map(([token, nonces]) => [token, nonces.noteNonce]),
-                null
-              )
-            : {};
-          apiCursor.channels![toHex(rb)] = {
-            channel_key: toHex(info.key),
-            subchannel_discovery_complete: false,
-            subchannels,
-          };
-        }
-      } else {
-        apiCursor = { channel_discovery_complete: false, channels: {} };
-      }
-    }
+    let apiCursor = channelMapToApiCursor(
+      cursorMap,
+      Array.isArray(recipients) ? recipients : undefined
+    );
 
     // Accumulate channel/subchannel data across all pagination pages.
     const createdChannelMap = new Map<string, { publicKey: bigint; channelKey: bigint }>();
@@ -279,6 +233,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     const nonCreatedChannelMap = new Map<string, { publicKey: bigint; channelKey: bigint }>();
     const lastKnownBlock = params?.cursor?.blockId as string | undefined;
     let blockRef: string | undefined;
+    let totalChannels: number | undefined;
 
     let complete = false;
     do {
@@ -300,6 +255,10 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
 
       blockRef = resp.block_ref;
+      // total_n_channels is only populated once channel discovery completes (final page)
+      if (resp.cursor.total_n_channels != null) {
+        totalChannels = resp.cursor.total_n_channels;
+      }
 
       accumulateOutgoingResponse(
         resp,
@@ -327,7 +286,12 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       }
     }
 
-    return { timestamp: blockRef!, channels, cursor: { channels, blockId: blockRef! } };
+    return {
+      timestamp: blockRef!,
+      channels,
+      total: totalChannels,
+      cursor: { channels, total: totalChannels, blockId: blockRef! },
+    };
   }
 
   async discoverRequirement(
@@ -416,10 +380,13 @@ export function notesCursorToApiCursor(
   };
   for (const [sender, icc] of cursor.incomingChannels) {
     const subchannels = buildSubchannelCursors(icc.noteIndexes, tokenFilter, icc.totalNoteCounts);
+    // Only mark complete when every filtered token already has a known subchannel —
+    // otherwise the server must scan for subchannels matching the desired tokens.
+    const subchannelDiscoveryComplete =
+      tokenFilter != null && [...tokenFilter].every((token) => icc.noteIndexes.has(token));
     apiCursor.channels![toHex(sender)] = {
       channel_key: toHex(icc.channelKey),
-      subchannel_discovery_complete:
-        tokenFilter != null && tokenFilter.size === Object.keys(subchannels).length,
+      subchannel_discovery_complete: subchannelDiscoveryComplete,
       last_subchannel_index: icc.subchannelIdIndex > 0 ? icc.subchannelIdIndex - 1 : undefined,
       subchannels,
     };
@@ -460,15 +427,19 @@ export function apiCursorToNotesCursor(
 /** Converts SDK `AddressMap<Channel>` → API cursor for an outgoing sync request. */
 export function channelMapToApiCursor(
   channels: AddressMap<ChannelInterface> | undefined,
-  channelDiscoveryComplete: boolean
+  recipientFilter?: StarknetAddressBigint[]
 ): ApiDiscoveryCursor {
   const apiCursor: ApiDiscoveryCursor = {
-    channel_discovery_complete: channelDiscoveryComplete,
+    channel_discovery_complete: false,
     channels: {},
   };
   if (channels) {
+    const allowedRecipients = recipientFilter
+      ? new Set(recipientFilter.map((r) => toBigInt(r)))
+      : null;
     for (const [recipient, channel] of channels) {
       if (!channel.key) continue;
+      if (allowedRecipients && !allowedRecipients.has(recipient)) continue;
       const subchannels = buildSubchannelCursors(
         [...channel.tokens].map(([token, nonces]) => [token, nonces.noteNonce]),
         null

@@ -496,48 +496,28 @@ export class ActionCompiler {
     const recipientDiscoveryLevel = options?.autoDiscover?.channels;
 
     if (!recipientDiscoveryLevel) {
-      // Allow discovery for OpenChannel actions as they require fetching the recipient's public key
+      // OpenChannel actions require fetching the recipient's public key even
+      // without an explicit autoDiscover policy.
       const hasOpenChannels = actions.openChannels && actions.openChannels.length > 0;
       if (!hasOpenChannels && !options?.autoSetup) {
         return { channels: undefined, total: undefined };
       }
     }
 
-    // Determine which recipients to discover based on discovery level
-    let recipientsToDiscover: StarknetAddressBigint[];
-
-    if (recipientDiscoveryLevel === "refresh") {
-      // Refresh: discover ALL recipients to get latest nonces
-      recipientsToDiscover = [...recipientsNeeded.keys()];
-    } else {
-      // None or 'missing': only discover recipients not in registry
-      recipientsToDiscover = [...recipientsNeeded.keys()].filter(
-        (r) => !registry.channelCursor?.channels?.has(r)
-      );
-    }
-
+    const recipientsToDiscover = [...recipientsNeeded.keys()];
     if (recipientsToDiscover.length === 0) {
       return { channels: undefined, total: undefined };
     }
 
-    // Discover channels for all recipients that need discovery in a single call
-    // discoverChannels computes channel keys and returns current nonce state
-    const { channels } = await this.discoveryProvider.discoverChannels(
+    const { channels, total, cursor } = await this.discoveryProvider.discoverChannels(
       this.userAddress,
       this.userViewingKey,
-      recipientsToDiscover
+      recipientsToDiscover,
+      {
+        cursor: recipientDiscoveryLevel === "missing" ? registry.channelCursor : undefined,
+      }
     );
-
-    // see if all recipients were discoveredall
-    if (this.allOpen(channels, recipientsToDiscover)) {
-      return { channels, total: undefined };
-    }
-
-    const { total } = await this.discoveryProvider.discoverChannels(
-      this.userAddress,
-      this.userViewingKey,
-      "total-only"
-    );
+    registry.applyDiscoveredChannels(cursor);
 
     return { channels, total };
   }
@@ -715,12 +695,4 @@ export class ActionCompiler {
       cloned.notes.set(addr, [...notes]);
     }
     return cloned;
-  }
-
-  private allOpen(
-    channels: AddressMap<Channel> | undefined,
-    recipients: StarknetAddressBigint[]
-  ): boolean {
-    return recipients.every((recipient) => channels?.get(recipient)?.key !== undefined);
-  }
-}
+  }}

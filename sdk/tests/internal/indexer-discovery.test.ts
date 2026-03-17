@@ -402,22 +402,30 @@ describe("IndexerDiscoveryProvider", () => {
       expect(requestBody.recipients).toBeUndefined();
     });
 
-    it("returns total from total_n_channels for 'total-only' recipients filter", async () => {
+    it("returns total from total_n_channels in outgoing sync response for all recipients", async () => {
       const provider = createProvider();
       mockFetchJson({
         body: outgoingSyncResponse({
+          channels: [channelEntry(RECIPIENT_ADDR, PUBLIC_KEY_1, CHANNEL_KEY_1)],
+          subchannels: [{ recipient_addr: RECIPIENT_ADDR, token: TOKEN_ADDR, last_note_index: 0 }],
           cursor: {
-            channel_discovery_complete: true,
-            last_channel_index: 4,
+            ...completeCursor({
+              [RECIPIENT_ADDR]: {
+                channel_key: CHANNEL_KEY_1,
+                subchannels: {
+                  [TOKEN_ADDR]: { note_discovery_complete: true, last_note_index: 0 },
+                },
+              },
+            }),
             total_n_channels: 5,
           },
         }),
       });
 
-      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "total-only");
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
 
       expect(result.total).toBe(5);
-      expect(result.channels).toBeUndefined();
+      expect(result.channels).toBeDefined();
     });
 
     it("prefers real channels over precomputed channels for the same recipient", async () => {

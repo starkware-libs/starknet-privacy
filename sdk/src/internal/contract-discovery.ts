@@ -255,28 +255,25 @@ class ChannelsDiscovery {
     total?: number;
     cursor: ChannelCursor;
   }> {
-    if (this.recipients == "all" || this.recipients == "total-only") {
+    if (this.recipients === "all") {
       void scan(
         async (s) => {
           const encOutgoingChannelInfo = await this.pool.get_outgoing_channel_info(
             compute_outgoing_channel_id(this.address, toBigInt(this.viewingKey), s)
           );
           if (toBigInt(encOutgoingChannelInfo.salt) === 0n) return false;
-          if (this.recipients !== "total-only") {
-            const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
-              encOutgoingChannelInfo,
-              this.address,
-              this.viewingKey,
-              s
-            );
-            void this.tracker.add(this.discoverChannel(recipientAddr));
-          }
+          const { recipientAddr } = encryptions.decryptOutgoingChannelInfo(
+            encOutgoingChannelInfo,
+            this.address,
+            this.viewingKey,
+            s
+          );
+          void this.tracker.add(this.discoverChannel(recipientAddr));
           this.total = Math.max(this.total ?? 0, s + 1);
           return true;
         },
         this.total ?? 0,
-        this.tracker,
-        this.recipients === "total-only"
+        this.tracker
       );
     } else {
       for (const recipient of this.recipients) {
