@@ -4,15 +4,13 @@ use privacy::actions::{
     AppendInput, InvokeInput, ServerAction, TransferFromInput, TransferToInput, WriteOnceInput,
 };
 use privacy::errors::internal_errors;
-use privacy::invoke_helpers::vesu_lending_helper::errors as vesu_errors;
 use privacy::objects::{EncOutgoingChannelInfo, Note, OpenNoteDeposit};
 use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, InvokeExternalInputIntoServerActionTrait, NoteZero,
-    PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuComponentsTrait, constants,
-    deploy_mock_echo_with_salt, deploy_mock_reentrancy, deploy_mock_return_garbage,
-    deploy_mock_return_trailing_garbage, deploy_mock_swap_executor, deploy_mock_vesu_vault_noop,
-    invoke_mock_swap_executor_input,
+    PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuTrait, constants, deploy_mock_echo_with_salt,
+    deploy_mock_reentrancy, deploy_mock_return_garbage, deploy_mock_return_trailing_garbage,
+    deploy_mock_swap_executor, deploy_mock_vesu_vault_noop, invoke_mock_swap_executor_input,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{
@@ -32,6 +30,7 @@ use starkware_utils_testing::test_utils::{
     TokenHelperTrait, advance_block_number_global, assert_expected_event_emitted,
     assert_panic_with_error, assert_panic_with_felt_error,
 };
+use vesu_lending_helper::vesu_lending_helper::errors as vesu_errors;
 
 #[test]
 fn test_set_viewing_key_multiple_users() {

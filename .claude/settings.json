@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(for f:*)",
+      "Bash(do)",
+      "Bash(sed -i 's/VesuComponentsImpl/VesuImpl/g; s/VesuComponentsTrait/VesuTrait/g; s/VesuComponents/Vesu/g' \"$f\")",
+      "Bash(done)"
+    ]
+  }
+}
