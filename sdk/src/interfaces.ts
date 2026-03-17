@@ -53,7 +53,7 @@ export type StarknetAddressBigint = bigint;
 
 // Import and re-export from internal channel
 import { Witness, Channel, PrivateRegistry } from "./internal/channel.js";
-import type { ChannelCursor, NotesCursor, RecipientsFilter, RegistryUpdate } from "./internal/channel.js";
+import type { ChannelCursor, NotesCursor, RegistryUpdate } from "./internal/channel.js";
 import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-010";
 export { Witness, Channel, PrivateRegistry };
 export type { NotesCursor as DiscoveryCursor };
@@ -384,12 +384,14 @@ export interface PrivateTransfersInterface {
   }>;
 
   /**
-   * Discover channels for one or more recipients
+   * Discover channels for one or more recipients.
+   * Omit `recipients` to discover all outgoing channels.
+   * Pass an array for specific recipients (server also precomputes channels for them).
    */
-  discoverChannels(
-    recipients: RecipientsFilter<StarknetAddress>,
-    params?: { cursor?: ChannelCursor }
-  ): Promise<{
+  discoverChannels(params?: {
+    recipients?: StarknetAddress[];
+    cursor?: ChannelCursor;
+  }): Promise<{
     timestamp: BlockIdentifier;
     channels?: AddressMap<Channel>;
     total?: number;
@@ -616,13 +618,13 @@ export interface DiscoveryProviderInterface {
 
   /**
    * Discover channels for one or more recipients.
-   * Pass "all" to discover all outgoing channels by iterating through the outgoing channel map.
+   * Omit `recipients` to discover all outgoing channels.
+   * Pass an array for specific recipients (server also precomputes channels for them).
    */
   discoverChannels(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipients: RecipientsFilter,
-    params?: { cursor?: ChannelCursor }
+    params?: { recipients?: StarknetAddressBigint[]; cursor?: ChannelCursor }
   ): Promise<{
     timestamp: BlockIdentifier;
     channels?: AddressMap<Channel>;

@@ -170,7 +170,7 @@ describe("Private Transfers Integration", () => {
       // Phase 2: Use registry with channels but WITHOUT notes
       // This tests autoDiscover: "missing" (discovers notes not in registry)
       const channelOnly = new PrivateRegistry();
-      const channel = (await alice.discoverChannels([env.alice.address])).channels!.get(
+      const channel = (await alice.discoverChannels({ recipients: [env.alice.address] })).channels!.get(
         env.alice.address
       )!;
       channelOnly.channelCursor = { channels: new AddressMap() };

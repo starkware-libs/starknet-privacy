@@ -12,12 +12,7 @@ import { toHex } from "../../utils/convert.js";
 import { AddressMap } from "../../utils/maps.js";
 import { AbstractDiscoveryProvider } from "../abstract-discovery.js";
 import { Channel, Witness } from "../channel.js";
-import type {
-  ChannelCursor,
-  IncomingChannelCursor,
-  NotesCursor,
-  RecipientsFilter,
-} from "../channel.js";
+import type { ChannelCursor, IncomingChannelCursor, NotesCursor } from "../channel.js";
 
 /** Thrown when the indexer reports a block reorg (HTTP 409, BLOCK_REORGED). */
 export class ReorgError extends Error {
@@ -210,18 +205,17 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
   async discoverChannels(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    recipients: RecipientsFilter,
-    params?: { cursor?: ChannelCursor }
+    params?: { recipients?: StarknetAddressBigint[]; cursor?: ChannelCursor }
   ): Promise<{
     timestamp: BlockIdentifier;
     channels?: AddressMap<ChannelInterface>;
     total?: number;
     cursor: ChannelCursor;
   }> {
-    const cursorMap = params?.cursor?.channels;
+    const recipients = params?.recipients;
     let apiCursor = channelMapToApiCursor(
-      cursorMap,
-      Array.isArray(recipients) ? recipients : undefined
+      params?.cursor?.channels,
+      recipients
     );
 
     // Accumulate channel/subchannel data across all pagination pages.
@@ -248,7 +242,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       } else if (lastKnownBlock) {
         body.last_known_block = lastKnownBlock;
       }
-      if (recipients !== "all") {
+      if (recipients !== undefined) {
         body.recipients = recipients.map((r) => toHex(r));
       }
 
@@ -279,7 +273,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       nonCreatedChannelMap
     );
 
-    if (recipients !== "all") {
+    if (recipients !== undefined) {
       const requested = new Set(recipients.map((r) => toBigInt(r)));
       for (const key of [...channels.keys()]) {
         if (!requested.has(key)) channels.delete(key);

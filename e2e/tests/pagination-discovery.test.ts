@@ -88,10 +88,9 @@ describe("Discovery pagination with small budget", () => {
     });
 
     // full discovery: exercises multi-round pagination and returns total
-    const { channels, total } = await aliceTransfers.discoverChannels([
-      de.alice.address,
-      de.bob.address,
-    ]);
+    const { channels, total } = await aliceTransfers.discoverChannels({
+      recipients: [de.alice.address, de.bob.address],
+    });
     expect(total).toBe(2); // self-channel + Bob
     expect(channels).toBeDefined();
     expect(channels!.size).toBe(2);

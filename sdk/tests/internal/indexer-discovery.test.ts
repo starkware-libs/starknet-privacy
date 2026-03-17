@@ -292,7 +292,7 @@ describe("IndexerDiscoveryProvider", () => {
   });
 
   describe("discoverChannels", () => {
-    it("returns channels for 'all' recipients on a single page", async () => {
+    it("returns channels for all recipients on a single page", async () => {
       const provider = createProvider();
       const fetchMock = mockFetchJson({
         body: outgoingSyncResponse({
@@ -309,7 +309,7 @@ describe("IndexerDiscoveryProvider", () => {
         }),
       });
 
-      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY);
 
       expect(fetchMock).toHaveBeenCalledOnce();
       expect(result.timestamp).toBe(BLOCK_REF);
@@ -324,7 +324,7 @@ describe("IndexerDiscoveryProvider", () => {
       expect(tokenNonces!.noteNonce).toBe(3); // last_note_index 2 + 1
     });
 
-    it("paginates 'all' recipients across 2 pages and merges", async () => {
+    it("paginates all recipients across 2 pages and merges", async () => {
       const provider = createProvider();
       const fetchMock = mockFetchJson(
         {
@@ -354,7 +354,7 @@ describe("IndexerDiscoveryProvider", () => {
         }
       );
 
-      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY);
 
       expect(fetchMock).toHaveBeenCalledTimes(2);
       expect(result.channels!.has(BigInt(RECIPIENT_ADDR))).toBe(true);
@@ -377,10 +377,9 @@ describe("IndexerDiscoveryProvider", () => {
         }),
       });
 
-      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, [
-        BigInt(RECIPIENT_ADDR),
-        BigInt(RECIPIENT_ADDR_2),
-      ]);
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, {
+        recipients: [BigInt(RECIPIENT_ADDR), BigInt(RECIPIENT_ADDR_2)],
+      });
 
       const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(requestBody.recipients).toBeDefined();
@@ -390,13 +389,13 @@ describe("IndexerDiscoveryProvider", () => {
       expect(result.channels!.has(BigInt(RECIPIENT_ADDR_2))).toBe(true);
     });
 
-    it("does not send recipients field for 'all' filter", async () => {
+    it("does not send recipients field when recipients is undefined", async () => {
       const provider = createProvider();
       const fetchMock = mockFetchJson({
         body: outgoingSyncResponse(),
       });
 
-      await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY);
 
       const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(requestBody.recipients).toBeUndefined();
@@ -422,7 +421,7 @@ describe("IndexerDiscoveryProvider", () => {
         }),
       });
 
-      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY);
 
       expect(result.total).toBe(5);
       expect(result.channels).toBeDefined();
@@ -446,7 +445,7 @@ describe("IndexerDiscoveryProvider", () => {
         }),
       });
 
-      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY);
 
       const channel = result.channels!.get(BigInt(RECIPIENT_ADDR));
       expect(channel).toBeDefined();
@@ -511,7 +510,7 @@ describe("IndexerDiscoveryProvider", () => {
       const provider = createProvider();
       const fetchMock = mockFetchJson({ body: outgoingSyncResponse() });
 
-      await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "all");
+      await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY);
 
       const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
       expect(requestBody.contract_address).toBe("0x123");

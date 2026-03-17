@@ -25,7 +25,7 @@ import { SetupRequirement } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { toBigInt } from "../utils/crypto.js";
 import { PrivateTransfersBuilderImpl } from "./builders.js";
-import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./channel.js";
+import type { ChannelCursor, NotesCursor } from "./channel.js";
 
 /**
  * Abstract base class that implements the common functionality for PrivateTransfers.
@@ -60,22 +60,24 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
   }
 
   /**
-   * Discover channels for one or more recipients
+   * Discover channels for one or more recipients.
+   * Omit `recipients` to discover all outgoing channels.
    */
-
   async discoverChannels(
-    recipients: RecipientsFilter<StarknetAddress>,
-    params?: { cursor?: ChannelCursor }
+    params: {
+      recipients?: StarknetAddress[];
+      cursor?: ChannelCursor;
+    } = {}
   ): Promise<{
     timestamp: BlockIdentifier;
     channels?: AddressMap<Channel>;
     total?: number;
   }> {
+    const { recipients, ...rest } = params;
     return this.discoveryProvider.discoverChannels(
       this.user,
       await this.getViewingKey(),
-      Array.isArray(recipients) ? recipients.map(toBigInt) : recipients,
-      params
+      { recipients: recipients?.map(toBigInt), ...rest }
     );
   }
 

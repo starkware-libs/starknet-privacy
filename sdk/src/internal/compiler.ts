@@ -512,8 +512,8 @@ export class ActionCompiler {
     const { channels, total, cursor } = await this.discoveryProvider.discoverChannels(
       this.userAddress,
       this.userViewingKey,
-      recipientsToDiscover,
       {
+        recipients: recipientsToDiscover,
         cursor: recipientDiscoveryLevel === "missing" ? registry.channelCursor : undefined,
       }
     );

@@ -196,7 +196,7 @@ describe("Parallel Discovery", () => {
 
     // Discover channels for Alice (outgoing channels to all recipients)
     const recipientAddresses = recipients.map((r) => r.address);
-    await discovery.discoverChannels(aliceAddress, aliceKey, recipientAddresses);
+    await discovery.discoverChannels(aliceAddress, aliceKey, { recipients: recipientAddresses });
 
     const report = profiler.getReport();
     console.log("\n" + formatReport(report));
