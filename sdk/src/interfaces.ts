@@ -52,12 +52,12 @@ export enum SetupRequirement {
 export type StarknetAddressBigint = bigint;
 
 // Import and re-export from internal channel
-import { Witness, Channel } from "./internal/channel.js";
-import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./internal/channel.js";
+import { Witness, Channel, PrivateRegistry } from "./internal/channel.js";
+import type { ChannelCursor, NotesCursor, RecipientsFilter, RegistryUpdate } from "./internal/channel.js";
 import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-010";
-export { Witness, Channel };
+export { Witness, Channel, PrivateRegistry };
 export type { NotesCursor as DiscoveryCursor };
-export type { NotesCursor, ChannelCursor };
+export type { NotesCursor, ChannelCursor, RegistryUpdate };
 
 export type Note = {
   readonly id: NoteId;
@@ -242,26 +242,6 @@ export type AutoDiscoveryOptions = {
  * - 'naive': Select first notes until balance is non negative (may create surplus)
  */
 export type AutoSelectionStrategy = "all" | "naive" /*| "exact"*/; //
-
-/**
- * Registry holding the user's private state: cursors and notes.
- * Passed to execute() for context resolution and updated with new state.
- */
-export type PrivateRegistry = {
-  /** Cursor for incoming notes discovery */
-  notesCursor?: NotesCursor;
-  /** Cursor for outgoing channels discovery */
-  channelCursor?: ChannelCursor;
-  /** Notes by token address */
-  notes: AddressMap<Note[]>;
-};
-
-/** Create an empty private registry */
-export function createEmptyRegistry(): PrivateRegistry {
-  return {
-    notes: new AddressMap<Note[]>(() => []),
-  };
-}
 
 /**
  * Block reference for proving. Passed as block_id to the proving service.

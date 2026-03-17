@@ -2,7 +2,6 @@
 import { Mocknet, type MocknetEnvironment } from "../../src/testing/mocknet.js";
 import { MockPoolContract } from "../../src/testing/mock-pool-contract.js";
 import {
-  createEmptyRegistry,
   ExecuteOptions,
   ExecuteResult,
   PrivateRegistry,
@@ -74,7 +73,7 @@ export async function setupSelfChannel(
   executeOutside(await user.build().setup(userAddress).execute());
 
   let channel = (await user.discoverChannels([userAddress])).channels!.get(userAddress)!;
-  const registry = createEmptyRegistry();
+  const registry = new PrivateRegistry();
   registry.channelCursor = { channels: new AddressMap() };
   registry.channelCursor.channels!.set(userAddress, channel);
 
@@ -110,7 +109,7 @@ export async function setupRecipientChannel(
   let channel = (await sender.discoverChannels([recipientAddress])).channels!.get(
     recipientAddress
   )!;
-  const registry = createEmptyRegistry();
+  const registry = new PrivateRegistry();
   registry.channelCursor = { channels: new AddressMap() };
   registry.channelCursor.channels!.set(recipientAddress, channel);
 
@@ -124,4 +123,4 @@ export async function setupRecipientChannel(
 }
 
 // Re-export commonly used utilities
-export { createEmptyRegistry };
+export { PrivateRegistry };

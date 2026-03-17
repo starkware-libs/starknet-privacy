@@ -211,12 +211,12 @@ const result = await transfers.build({
 
 ## Registry management
 
-The `PrivateRegistry` holds the user's private state: unspent notes and discovery cursors. Create one with `createEmptyRegistry()` and pass it through `ExecuteOptions`.
+The `PrivateRegistry` holds the user's private state: unspent notes and discovery cursors. Create one with `new PrivateRegistry()` and pass it through `ExecuteOptions`.
 
 ```typescript
-import { createEmptyRegistry } from "starknet-sdk";
+import { PrivateRegistry } from "starknet-sdk";
 
-const registry = createEmptyRegistry();
+const registry = new PrivateRegistry();
 
 // The registry is updated in-place after each execute()
 const result = await transfers.build({
@@ -287,7 +287,7 @@ The wallet sends `callAndProof` in a transaction to the contract's `execute_acti
 
 **`Channel`** — A communication channel to a recipient, holding a shared key and per-token nonces.
 
-**`PrivateRegistry`** — The user's local state: unspent notes and discovery cursors for incremental sync. Create with `createEmptyRegistry()`.
+**`PrivateRegistry`** — The user's local state: unspent notes and discovery cursors for incremental sync. Create with `new PrivateRegistry()`.
 
 **`AddressMap<V>`** — A `Map` that normalizes Starknet addresses for consistent key lookup.
 

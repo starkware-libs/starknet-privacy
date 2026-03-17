@@ -1,7 +1,7 @@
 import { describe, expect, it, beforeEach, afterAll } from "vitest";
 import {
   createTestEnv,
-  createEmptyRegistry,
+  PrivateRegistry,
   AUTO_ALL,
   MockTestEnv,
   POOL_ADDRESS,
@@ -169,7 +169,7 @@ describe("Private Transfers Integration", () => {
 
       // Phase 2: Use registry with channels but WITHOUT notes
       // This tests autoDiscover: "missing" (discovers notes not in registry)
-      const channelOnly = createEmptyRegistry();
+      const channelOnly = new PrivateRegistry();
       const channel = (await alice.discoverChannels([env.alice.address])).channels!.get(
         env.alice.address
       )!;

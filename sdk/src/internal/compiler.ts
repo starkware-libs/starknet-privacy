@@ -22,12 +22,11 @@ import type {
   DiscoveryProviderInterface,
   ExecuteOptions,
   Note,
-  PrivateRegistry,
   StarknetAddressBigint,
   ViewingKey,
   Warning,
 } from "../interfaces.js";
-import { Channel, createEmptyRegistry, WarningCode } from "../interfaces.js";
+import { Channel, PrivateRegistry, WarningCode } from "../interfaces.js";
 import { AddressMap, AdvancedMap, toBigInt } from "../utils/index.js";
 import type { ClientAction } from "./client-actions.js";
 import { PoolSimulator } from "./pool-simulator.js";
@@ -110,7 +109,7 @@ export class ActionCompiler {
   }
 
   private async compileOnce(actions: Actions, options?: ExecuteOptions): Promise<CompileResult> {
-    const registry_ = options?.registry ?? createEmptyRegistry();
+    const registry_ = options?.registry ?? new PrivateRegistry();
     const registry = options?.registryConst ? this.cloneRegistry(registry_) : registry_;
     const recipientsNeeded = this.getRecipientsNeeded(actions);
 
@@ -709,17 +708,13 @@ export class ActionCompiler {
   }
 
   private cloneRegistry(registry: PrivateRegistry): PrivateRegistry {
-    // Clone notes
-    const clonedNotes = new AddressMap<Note[]>(() => []);
+    const cloned = new PrivateRegistry();
+    cloned.notesCursor = registry.notesCursor;
+    cloned.channelCursor = registry.channelCursor;
     for (const [addr, notes] of registry.notes.entries()) {
-      clonedNotes.set(addr, [...notes]);
+      cloned.notes.set(addr, [...notes]);
     }
-
-    return {
-      notesCursor: registry.notesCursor,
-      channelCursor: registry.channelCursor,
-      notes: clonedNotes,
-    };
+    return cloned;
   }
 
   private allOpen(

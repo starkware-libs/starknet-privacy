@@ -272,6 +272,7 @@ describe("IndexerDiscoveryProvider", () => {
         channelKey: BigInt(CHANNEL_KEY_1),
         subchannelIdIndex: 0,
         noteIndexes: new AddressMap<number>([[BigInt(TOKEN_ADDR), 1]]),
+        totalNoteCounts: new AddressMap<number>([[BigInt(TOKEN_ADDR), 1]]),
       });
       const previousCursor: NotesCursor = {
         blockId: BLOCK_REF,
