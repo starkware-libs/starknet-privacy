@@ -146,17 +146,18 @@ export class Mocknet {
   }
 
   /**
-   * Execute the actions from a CallAndProof result.
-   * This applies the state changes to the mock pool.
+   * Execute the actions from a CallAndProof result and apply state updates to the registry.
    *
-   * In real Starknet, this would be done by sending the transaction to the network.
-   * In mocknet, we execute the actions directly on the pool.
+   * In real Starknet, this would be done by sending the transaction to the network
+   * and calling registry.applyExecuteResult only after confirmed success.
+   * In mocknet, execution always succeeds so we apply immediately.
    *
-   * @param result - The ExecuteResult from PrivateTransfers.execute()
-   * @returns The updated registry
+   * If no registry is provided, state updates are discarded (useful for setup-only calls like register).
    */
-  executeOutside(result: ExecuteResult): PrivateRegistry {
+  executeOutside(result: ExecuteResult, registry?: PrivateRegistry): void {
     this.pool.apply_actions(result.callAndProof.call.calldata as string[]);
-    return result.registry;
+    if (registry) {
+      registry.applyExecuteResult(result.registryUpdate);
+    }
   }
 }

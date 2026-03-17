@@ -213,10 +213,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     cursor: ChannelCursor;
   }> {
     const recipients = params?.recipients;
-    let apiCursor = channelMapToApiCursor(
-      params?.cursor?.channels,
-      recipients
-    );
+    let apiCursor = channelMapToApiCursor(params?.cursor?.channels, recipients);
 
     // Accumulate channel/subchannel data across all pagination pages.
     const createdChannelMap = new Map<string, { publicKey: bigint; channelKey: bigint }>();

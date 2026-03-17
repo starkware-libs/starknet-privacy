@@ -268,10 +268,8 @@ export type ExecuteOptions = {
   autoSetup?: boolean;
   /** If defined, auto select notes from registry. **/
   autoSelectNotes?: AutoSelectionStrategy;
-  /** Registry for context/notes lookup. Updated during execute unless registryConst is true. */
+  /** Registry for context/notes lookup. Discovery updates are applied in-place. */
   registry?: PrivateRegistry;
-  /** If true, registry is not mutated; a new one is returned instead */
-  registryConst?: boolean;
   /** If defined, use the given block id for proving */
   provingBlockId?: ProvingBlockId;
 };
@@ -285,19 +283,18 @@ export enum WarningCode {
   USER_LINKAGE = "USER_LINKAGE",
 }
 /**
- * Result of execute, including the call/proof and updated registry.
+ * Result of execute.
  */
 export type ExecuteResult = {
   callAndProof: CallAndProof;
-  /** Updated registry (new object if registryConst was true, same object otherwise) */
-  registry: PrivateRegistry;
-
+  /** Post-execution state for optimistic registry update. Apply via `registry.applyExecuteResult()`. */
+  registryUpdate: RegistryUpdate;
   warnings: Warning[];
 };
 
 export type ProofInvocationResult = {
   invocation: ProofInvocation;
-  registry: PrivateRegistry;
+  registryUpdate: RegistryUpdate;
   warnings: Warning[];
 };
 

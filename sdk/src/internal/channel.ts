@@ -73,7 +73,6 @@ export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
   };
 }
 
-
 export type ChannelCursor = {
   /** @internal */ blockId?: BlockIdentifier;
   /** @internal */ channels?: AddressMap<Channel>;
@@ -183,6 +182,18 @@ export class PrivateRegistry {
       this.channelCursor = cursor;
     } else {
       mergeChannelCursor(this.channelCursor, cursor);
+    }
+  }
+
+  /** Apply post-execution optimistic update (channels and notes, without touching cursors). */
+  applyExecuteResult(update: RegistryUpdate): void {
+    for (const [address, channel] of update.channels) {
+      this.channelCursor ??= {};
+      this.channelCursor.channels ??= new AddressMap<Channel>();
+      this.channelCursor.channels.set(address, channel);
+    }
+    for (const [token, tokenNotes] of update.notes) {
+      this.notes.set(token, tokenNotes);
     }
   }
 }

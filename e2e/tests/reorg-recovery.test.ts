@@ -69,7 +69,7 @@ describe("E2E Reorg Recovery", () => {
     // Second operation: withdraw triggers a deficit, forcing note discovery.
     // Note discovery sends the fake cursor → indexer returns 409 →
     // ReorgError → compiler clears registry → retries from scratch → succeeds.
-    const { registry: updatedRegistry } = await transfers.alice
+    const { registryUpdate } = await transfers.alice
       .build({
         autoDiscover: { notes: "refresh", channels: "refresh" },
         autoSelectNotes: "naive",
@@ -83,10 +83,11 @@ describe("E2E Reorg Recovery", () => {
     // Verify recovery succeeded:
     // - No error thrown (reorg was handled internally)
     // - Registry notesCursor was cleared and re-populated with a valid blockId
-    expect(updatedRegistry.notesCursor).toBeDefined();
+    // (the compiler clears and re-discovers, so registry.notesCursor is updated)
+    expect(registry.notesCursor).toBeDefined();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    expect((updatedRegistry.notesCursor as any).blockId).not.toBe("0xdeadbeef");
-    // - Notes were re-discovered (Alice has a 50 STRK change note)
-    expect(updatedRegistry.notes.size).toBeGreaterThanOrEqual(1);
+    expect((registry.notesCursor as any).blockId).not.toBe("0xdeadbeef");
+    // - Notes were re-discovered (registryUpdate has Alice's change note)
+    expect(registryUpdate.notes.size).toBeGreaterThanOrEqual(1);
   });
 });

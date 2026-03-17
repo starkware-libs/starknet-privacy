@@ -61,7 +61,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     );
 
     // Compile actions
-    const { clientActions, registry, warnings } = await compiler.compile(actions, options);
+    const { clientActions, registryUpdate, warnings } = await compiler.compile(actions, options);
 
     // Create invocation for proving
     const details = this.params.provingProvider.getDefaultDetails();
@@ -72,11 +72,14 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       details
     );
 
-    return { invocation, registry, warnings };
+    return { invocation, registryUpdate, warnings };
   }
 
   async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
-    const { invocation, registry, warnings } = await this.createProofInvocation(actions, options);
+    const { invocation, registryUpdate, warnings } = await this.createProofInvocation(
+      actions,
+      options
+    );
 
     // Get proof from provider (block id only when provided in options)
     const proof = await this.params.provingProvider.prove(invocation, options?.provingBlockId);
@@ -99,7 +102,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
         },
         proof,
       },
-      registry,
+      registryUpdate,
       warnings,
     };
   }
