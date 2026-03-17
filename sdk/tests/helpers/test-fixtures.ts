@@ -7,7 +7,6 @@ import {
   PrivateRegistry,
   PrivateTransfersInterface,
 } from "../../src/interfaces.js";
-import { AddressMap } from "../../src/utils/maps.js";
 
 export const POOL_ADDRESS = 0x1n;
 
@@ -66,22 +65,18 @@ export async function setupSelfChannel(
 ): Promise<PrivateRegistry> {
   const executeOutside = (result: ExecuteResult) => {
     pool.apply_actions(result.callAndProof.call.calldata as string[]);
-    return result.registry;
   };
 
   executeOutside(await user.build().register().execute());
   executeOutside(await user.build().setup(userAddress).execute());
 
-  let channel = (await user.discoverChannels({ recipients: [userAddress] })).channels!.get(userAddress)!;
   const registry = new PrivateRegistry();
-  registry.channelCursor = { channels: new AddressMap() };
-  registry.channelCursor.channels!.set(userAddress, channel);
+  await user.discoverChannels({ registry, level: "refresh", recipients: [userAddress] });
 
   executeOutside(await user.build({ registry }).with(token).setup(userAddress).execute());
 
   // Refresh channel to include token info
-  channel = (await user.discoverChannels({ recipients: [userAddress] })).channels!.get(userAddress)!;
-  registry.channelCursor.channels!.set(userAddress, channel);
+  await user.discoverChannels({ registry, level: "refresh", recipients: [userAddress] });
 
   return registry;
 }
@@ -97,7 +92,6 @@ export async function setupRecipientChannel(
 ): Promise<PrivateRegistry> {
   const executeOutside = (result: ExecuteResult) => {
     pool.apply_actions(result.callAndProof.call.calldata as string[]);
-    return result.registry;
   };
 
   // Recipient must be registered first
@@ -106,20 +100,20 @@ export async function setupRecipientChannel(
   // Sender sets up channel to recipient
   executeOutside(await sender.build().setup(recipientAddress).execute());
 
-  let channel = (await sender.discoverChannels({ recipients: [recipientAddress] })).channels!.get(
-    recipientAddress
-  )!;
   const registry = new PrivateRegistry();
-  registry.channelCursor = { channels: new AddressMap() };
-  registry.channelCursor.channels!.set(recipientAddress, channel);
+  await sender.discoverChannels({ registry, level: "refresh", recipients: [recipientAddress] });
 
   executeOutside(await sender.build({ registry }).with(token).setup(recipientAddress).execute());
 
   // Refresh channel to include token info
-  channel = (await sender.discoverChannels({ recipients: [recipientAddress] })).channels!.get(recipientAddress)!;
-  registry.channelCursor.channels!.set(recipientAddress, channel);
+  await sender.discoverChannels({ registry, level: "refresh", recipients: [recipientAddress] });
 
   return registry;
+}
+
+/** Shorthand for verification-only discovery: fresh registry, full rescan. */
+export function freshDiscover() {
+  return { registry: new PrivateRegistry(), level: "refresh" as const };
 }
 
 // Re-export commonly used utilities

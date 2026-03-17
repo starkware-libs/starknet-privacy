@@ -7,7 +7,6 @@ import {
   POOL_ADDRESS,
 } from "../helpers/test-fixtures.js";
 import { Open } from "../../src/interfaces.js";
-import { AddressMap } from "../../src/utils/maps.js";
 import { debugHint, isDebugEnabled, toBigInt } from "../../src/utils/index.js";
 import { debugLog } from "../../src/utils/logging.js";
 import { toHex } from "../../src/utils/convert.js";
@@ -168,13 +167,13 @@ describe("Private Transfers Integration", () => {
       );
 
       // Phase 2: Use registry with channels but WITHOUT notes
-      // This tests autoDiscover: "missing" (discovers notes not in registry)
+      // This tests autoDiscover: "missing" for notes (discovers notes not in registry)
       const channelOnly = new PrivateRegistry();
-      const channel = (await alice.discoverChannels({ recipients: [env.alice.address] })).channels!.get(
-        env.alice.address
-      )!;
-      channelOnly.channelCursor = { channels: new AddressMap() };
-      channelOnly.channelCursor.channels!.set(env.alice.address, channel);
+      await alice.discoverChannels({
+        registry: channelOnly,
+        level: "refresh",
+        recipients: [env.alice.address],
+      });
 
       // Deposit 30n with:
       // - autoSelectNotes: "all" (sweeps ALL notes, not just enough for deficit)

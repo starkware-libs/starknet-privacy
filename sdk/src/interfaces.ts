@@ -220,9 +220,9 @@ export type Actions = {
 
 /**
  * Discovery level controls when/whether to call the discovery service.
- * - 'none': Never call discovery. Missing data → error.
- * - 'missing': Only discover when data is missing from registry. Trust existing registry contents.
- * - 'refresh': Always discover. Use registry as optimization hint.
+ * - undefined: No discovery.
+ * - 'missing': Discover with existing cursor (skip already-known data).
+ * - 'refresh': Discover from scratch (empty cursor, full rescan).
  */
 export type DiscoveryLevel = "missing" | "refresh";
 
@@ -230,8 +230,14 @@ export type DiscoveryLevel = "missing" | "refresh";
  * Options for automatic discovery during execute.
  */
 export type AutoDiscoveryOptions = {
-  /** Discovery level for notes. 'all' means discover all tokens regardless if used in the actions */
-  notes?: DiscoveryLevel | "all";
+  /**
+   * Discovery level for notes.
+   * - 'missing': Discover with existing cursor (skip already-scanned data).
+   * - 'refresh': Discover from scratch (empty cursor, full rescan).
+   *
+   * Token filter defaults to tokens referenced in the current actions.
+   */
+  notes?: DiscoveryLevel;
   /** Discovery level for recipient channels (includes self) */
   channels?: DiscoveryLevel;
 };
@@ -375,22 +381,39 @@ export interface PrivateTransfersInterface {
   ): Promise<SetupRequirement>;
 
   /**
-   * Discover unspent notes per token
+   * Discover unspent notes per token.
    *
+   * When `registry` is provided, uses `registry.notesCursor` to seed the
+   * discovery cursor and updates the registry in-place after discovery:
+   * - `"missing"`: incremental — sends existing cursor, appends newly
+   *   discovered notes to existing ones.
+   * - `"refresh"`: full rescan — ignores cursor, replaces notes per token.
+   *
+   * When `registry` is omitted, returns raw results without side effects.
    */
-  discoverNotes(params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }): Promise<{
+  discoverNotes(params?: {
+    registry?: PrivateRegistry;
+    level?: DiscoveryLevel;
+    tokens?: StarknetAddressBigint[];
+  }): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
+    cursor: NotesCursor;
   }>;
 
   /**
    * Discover channels for one or more recipients.
    * Omit `recipients` to discover all outgoing channels.
    * Pass an array for specific recipients (server also precomputes channels for them).
+   *
+   * When `registry` is provided, uses `registry.channelCursor` to seed
+   * the discovery cursor and merges the result back in-place.
+   * When `registry` is omitted, returns raw results without side effects.
    */
   discoverChannels(params?: {
+    registry?: PrivateRegistry;
+    level?: DiscoveryLevel;
     recipients?: StarknetAddress[];
-    cursor?: ChannelCursor;
   }): Promise<{
     timestamp: BlockIdentifier;
     channels?: AddressMap<Channel>;

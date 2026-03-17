@@ -19,9 +19,9 @@
 import type {
   Actions,
   Amount,
+  DiscoveryLevel,
   DiscoveryProviderInterface,
   ExecuteOptions,
-  Note,
   StarknetAddressBigint,
   ViewingKey,
   Warning,
@@ -121,8 +121,15 @@ export class ActionCompiler {
       recipientsNeeded
     );
 
-    // Phase 2: Resolve notes (discover and/or auto-select)
-    await this.resolveNotes(actions, registry, options);
+    // Phase 2a: Discover notes (update registry)
+    const notesDiscoveryLevel = options?.autoDiscover?.notes;
+    if (notesDiscoveryLevel) {
+      const actionTokens = this.getActionTokens(actions);
+      await this.discoverNotes(registry, notesDiscoveryLevel, actionTokens);
+    }
+
+    // Phase 2b: Resolve notes (select from registry, handle surpluses)
+    this.resolveNotes(actions, registry, options);
 
     debugLog("compiler", "compile", "post resolveNotes", registry?.notes?.size, actions);
 
@@ -182,6 +189,16 @@ export class ActionCompiler {
       }
     }
     return recipientsNeeded;
+  }
+
+  private getActionTokens(actions: Actions): StarknetAddressBigint[] {
+    const tokens = new Set<bigint>();
+    for (const d of actions.deposits ?? []) tokens.add(d.token);
+    for (const u of actions.useNotes ?? []) tokens.add(u.token);
+    for (const w of actions.withdraws ?? []) tokens.add(w.token);
+    for (const c of actions.createNotes ?? []) tokens.add(c.token);
+    for (const s of actions.surpluses ?? []) tokens.add(s.token);
+    return [...tokens];
   }
 
   private createPool(
@@ -523,13 +540,40 @@ export class ActionCompiler {
   }
 
   /**
-   * Resolve notes by discovering and/or auto-selecting from registry.
+   * Discover notes and update registry. Token filter controls which tokens to fetch;
+   * undefined means all tokens.
    */
-  private async resolveNotes(
+  private async discoverNotes(
+    registry: PrivateRegistry,
+    notesDiscoveryLevel: DiscoveryLevel,
+    tokenFilter?: StarknetAddressBigint[]
+  ): Promise<void> {
+    const tokensToDiscover = tokenFilter ?? undefined;
+
+    debugLog("compiler", "discovering notes", tokensToDiscover);
+
+    if (!tokensToDiscover || tokensToDiscover.length > 0) {
+      const { notes, cursor } = await this.discoveryProvider.discoverNotes(
+        this.userAddress,
+        this.userViewingKey,
+        {
+          cursor: notesDiscoveryLevel === "missing" ? registry.notesCursor : undefined,
+          tokens: tokensToDiscover,
+        }
+      );
+      registry.applyDiscoveredNotes(notesDiscoveryLevel, notes, cursor);
+    }
+  }
+
+  /**
+   * Resolve note selection: compute balances, auto-select notes from registry,
+   * and create surplus/change actions.
+   */
+  private resolveNotes(
     actions: Actions,
     registry: PrivateRegistry,
     options?: ExecuteOptions
-  ): Promise<void> {
+  ): void {
     if (!actions.surpluses && !options?.autoSelectNotes) return;
 
     // Calculate token balances (inputs - outputs)
@@ -584,47 +628,6 @@ export class ActionCompiler {
         if (!isOpen(c.amount)) {
           update(c.token, -c.amount);
         }
-      }
-    }
-
-    const notesDiscoveryLevel = options?.autoDiscover?.notes;
-    // discover notes if requested
-    if (notesDiscoveryLevel !== undefined) {
-      const tokensToDiscover = (() => {
-        if (notesDiscoveryLevel === "all") return undefined;
-        return [...balances.entries()]
-          .filter(([token, balance]) => {
-            // Case 1: We have a deficit (negative balance), so we need inputs.
-            const hasDeficit = balance < 0n;
-
-            // Case 2: We want to sweep all funds (autoSelectNotes="all") into a surplus recipient.
-            // Even if balance is 0, we check if we should fetch notes to dump them.
-            const isSweeping =
-              options?.autoSelectNotes === "all" && // assume 'all' means the user wants to always "compress" their notes even if balance is 0
-              actions.surpluses?.some((s) => s.token === token);
-
-            if (!hasDeficit && !isSweeping) return false;
-
-            // Finally, check if discovery is actually needed (forced refresh or missing from registry)
-            return notesDiscoveryLevel === "refresh" || !registry.notes.has(token);
-          })
-          .map(([token]) => token);
-      })();
-
-      debugLog("compiler", "discovering notes", tokensToDiscover);
-
-      if (!tokensToDiscover || tokensToDiscover.length > 0) {
-        const { notes, cursor } = await this.discoveryProvider.discoverNotes(
-          this.userAddress,
-          this.userViewingKey,
-          { cursor: registry.notesCursor, tokens: tokensToDiscover }
-        );
-
-        // Replace registry notes (don't merge - some may have been spent)
-        for (const [token, discoveredNotes] of notes.entries()) {
-          registry.notes.set(token, discoveredNotes);
-        }
-        registry.notesCursor = cursor;
       }
     }
 
