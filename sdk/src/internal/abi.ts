@@ -485,6 +485,20 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "struct",
+    "name": "privacy::events::EncNoteCreated",
+    "members": [
+      {
+        "name": "note_id",
+        "type": "core::felt252"
+      },
+      {
+        "name": "packed_value",
+        "type": "core::felt252"
+      }
+    ]
+  },
+  {
+    "type": "struct",
     "name": "privacy::events::NoteUsed",
     "members": [
       {
@@ -542,6 +556,10 @@ export const PrivacyPoolABI = [
       {
         "name": "EmitOpenNoteCreated",
         "type": "privacy::events::OpenNoteCreated"
+      },
+      {
+        "name": "EmitEncNoteCreated",
+        "type": "privacy::events::EncNoteCreated"
       },
       {
         "name": "EmitNoteUsed",
@@ -657,26 +675,6 @@ export const PrivacyPoolABI = [
           {
             "name": "actions",
             "type": "core::array::Span::<privacy::actions::ServerAction>"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "deposit_to_open_note",
-        "inputs": [
-          {
-            "name": "note_id",
-            "type": "core::felt252"
-          },
-          {
-            "name": "token",
-            "type": "core::starknet::contract_address::ContractAddress"
-          },
-          {
-            "name": "amount",
-            "type": "core::integer::u128"
           }
         ],
         "outputs": [],
@@ -2462,6 +2460,23 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "event",
+    "name": "privacy::events::EncNoteCreated",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "note_id",
+        "type": "core::felt252",
+        "kind": "key"
+      },
+      {
+        "name": "packed_value",
+        "type": "core::felt252",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
     "name": "privacy::events::OpenNoteDeposited",
     "kind": "struct",
     "members": [
@@ -2593,6 +2608,11 @@ export const PrivacyPoolABI = [
       {
         "name": "OpenNoteCreated",
         "type": "privacy::events::OpenNoteCreated",
+        "kind": "nested"
+      },
+      {
+        "name": "EncNoteCreated",
+        "type": "privacy::events::EncNoteCreated",
         "kind": "nested"
       },
       {

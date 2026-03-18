@@ -15,3 +15,9 @@ export type { RateLimitOptions } from "./utils/rate-limiter.js";
 export type { DiscoveryOptions } from "./internal/contract-discovery.js";
 export { IndexerDiscoveryProvider } from "./internal/indexer-discovery.js";
 export type { DiscoveryHealthResponse } from "./internal/indexer-discovery.js";
+export { PaymasterService } from "./internal/paymaster/service.js";
+export type { PaymasterServiceConfig } from "./internal/paymaster/service.js";
+export {
+  estimatePaymasterFee,
+  estimateServerActionCounts,
+} from "./internal/paymaster/fee-estimator.js";

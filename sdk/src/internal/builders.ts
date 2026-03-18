@@ -10,6 +10,7 @@ import {
   type Note,
   type OpenChannelAction,
   type OpenTokenChannelAction,
+  type PreviewResult,
   type PrivateTransfersBuilder,
   type ProofInvocationResult,
   type Actions,
@@ -138,6 +139,10 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
     return this.parentBuilder;
   }
 
+  async preview(options?: ExecuteOptions): Promise<PreviewResult> {
+    return this.parentBuilder.preview(options);
+  }
+
   async execute(options?: ExecuteOptions): Promise<ExecuteResult> {
     return this.parentBuilder.execute(options);
   }
@@ -260,6 +265,11 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     };
 
     return { actions, mergedOptions };
+  }
+
+  async preview(options?: ExecuteOptions): Promise<PreviewResult> {
+    const { actions, mergedOptions } = this.collectActionsAndOptions(options);
+    return this.transfers.preview(actions, mergedOptions);
   }
 
   async execute(options?: ExecuteOptions): Promise<ExecuteResult> {

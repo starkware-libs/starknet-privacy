@@ -6,10 +6,13 @@ import type {
   Actions,
   ExecuteOptions,
   ExecuteResult,
+  FeeProviderInterface,
+  PreviewResult,
   ProofProviderInterface,
   DiscoveryProviderInterface,
   ViewingKeyProvider,
   StarknetAddress,
+  StarknetAddressBigint,
   ProofInvocationResult,
 } from "../interfaces.js";
 import type { Account, TypedContractV2 } from "starknet";
@@ -19,6 +22,32 @@ import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toBigInt, toHex } from "../utils/convert.js";
+import { estimatePaymasterFee } from "./paymaster/fee-estimator.js";
+
+/**
+ * Resolve the fee token: explicit paymasterFeeToken, or the first token in the actions.
+ * Throws if neither is available.
+ */
+function resolveFeeToken(options: ExecuteOptions, actions: Actions): StarknetAddressBigint {
+  if (options.paymasterFeeToken !== undefined) {
+    return toBigInt(options.paymasterFeeToken);
+  }
+
+  const firstToken =
+    actions.deposits?.[0]?.token ??
+    actions.useNotes?.[0]?.token ??
+    actions.createNotes?.[0]?.token ??
+    actions.withdraws?.[0]?.token;
+
+  if (firstToken !== undefined) {
+    return firstToken;
+  }
+
+  throw new Error(
+    "autoPaymaster is enabled but no fee token could be determined. " +
+      "Set paymasterFeeToken in execute options, or include at least one token operation."
+  );
+}
 
 // Export the specific typed contract type for the Privacy Pool
 export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
@@ -32,19 +61,22 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       discoveryProvider: DiscoveryProviderInterface;
       proofInvocationFactory: ProofInvocationFactoryInterface;
       poolContractAddress: StarknetAddress;
+      feeProvider?: FeeProviderInterface;
     }
   ) {
     super(params.account.address, params.viewingKeyProvider, params.discoveryProvider);
   }
 
-  private async getCompiler(): Promise<ActionCompiler> {
-    const viewingKey = await this.params.viewingKeyProvider.getViewingKey();
-    return new ActionCompiler(
-      this.user,
-      viewingKey,
-      this.params.discoveryProvider,
-      toBigInt(this.params.poolContractAddress)
-    );
+  async preview(actions: Actions, options?: ExecuteOptions): Promise<PreviewResult> {
+    if (!options?.autoPaymaster || !this.params.feeProvider) {
+      return { actions, fee: 0n };
+    }
+
+    const feeToken = resolveFeeToken(options, actions);
+    const feeSchedule = await this.params.feeProvider.getFeeQuote(feeToken);
+    const fee = estimatePaymasterFee(actions, feeSchedule, options.autoSetup);
+
+    return { actions, fee, feeSchedule };
   }
 
   async createProofInvocation(
@@ -76,6 +108,10 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
   }
 
   async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
+    if (options?.autoPaymaster) {
+      await this.injectPaymasterFee(actions, options);
+    }
+
     const { invocation, registry, warnings } = await this.createProofInvocation(actions, options);
 
     // Get proof from provider (block id only when provided in options)
@@ -102,5 +138,29 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       registry,
       warnings,
     };
+  }
+
+  /**
+   * Estimate the paymaster fee and inject a fee withdrawal into the actions.
+   * Mutates `actions.withdraws` before compilation so autoSelectNotes accounts for the fee.
+   */
+  private async injectPaymasterFee(actions: Actions, options: ExecuteOptions): Promise<void> {
+    if (!this.params.feeProvider) {
+      throw new Error(
+        "autoPaymaster is enabled but no feeProvider is configured. " +
+          "Pass a feeProvider (or PaymasterConfig) when creating PrivateTransfers."
+      );
+    }
+
+    const feeToken = resolveFeeToken(options, actions);
+    const feeSchedule = await this.params.feeProvider.getFeeQuote(feeToken);
+    const fee = estimatePaymasterFee(actions, feeSchedule, options.autoSetup);
+
+    actions.withdraws ??= [];
+    actions.withdraws.push({
+      recipient: toBigInt(feeSchedule.feeRecipient),
+      token: feeToken,
+      amount: fee,
+    });
   }
 }

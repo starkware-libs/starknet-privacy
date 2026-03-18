@@ -13,6 +13,7 @@ import type {
   ExecuteOptions,
   ExecuteResult,
   Note,
+  PreviewResult,
   PrivateTransfersBuilder,
   PrivateTransfersInterface,
   ProofInvocationResult,
@@ -96,6 +97,11 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
   build(options?: ExecuteOptions): PrivateTransfersBuilder {
     return new PrivateTransfersBuilderImpl(this, this.user, options);
   }
+
+  /**
+   * Preview actions and estimated fee - must be implemented by subclasses
+   */
+  abstract preview(actions: Actions, options?: ExecuteOptions): Promise<PreviewResult>;
 
   /**
    * Execute raw actions - must be implemented by subclasses

@@ -288,6 +288,10 @@ export type ExecuteOptions = {
   registryConst?: boolean;
   /** If defined, use the given block id for proving */
   provingBlockId?: ProvingBlockId;
+  /** If true, use the paymaster to sponsor and submit the transaction. Requires feeProvider. */
+  autoPaymaster?: boolean;
+  /** Token to pay paymaster fees in. Defaults to the first token in the actions if not specified. */
+  paymasterFeeToken?: StarknetAddress;
 };
 
 export type Warning = {
@@ -313,6 +317,18 @@ export type ProofInvocationResult = {
   invocation: ProofInvocation;
   registry: PrivateRegistry;
   warnings: Warning[];
+};
+
+/**
+ * Lightweight preview of what execute() will do, without compilation or proving.
+ */
+export type PreviewResult = {
+  /** Raw actions as collected by the builder (before compilation) */
+  actions: Actions;
+  /** Estimated paymaster fee (0n if autoPaymaster is not enabled) */
+  fee: bigint;
+  /** Fee schedule used for estimation (undefined if autoPaymaster is not enabled) */
+  feeSchedule?: FeeSchedule;
 };
 
 /**
@@ -412,6 +428,12 @@ export interface PrivateTransfersInterface {
   ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
 
   /**
+   * Lightweight preview: returns the collected actions and estimated paymaster fee
+   * without compiling, discovering, or proving.
+   */
+  preview(actions: Actions, options?: ExecuteOptions): Promise<PreviewResult>;
+
+  /**
    * Execute raw actions. The implementation:
    * 1. Compiles actions (resolves contexts from registry, openChannels, autoSetup, or discovery)
    * 2. Validates the compiled actions
@@ -487,6 +509,9 @@ export interface TokenOperationsBuilder {
 
   /** End the token-specific operations and return the builder */
   done(): PrivateTransfersBuilder;
+
+  /** Preview actions and estimated fee without compiling or proving */
+  preview(options?: ExecuteOptions): Promise<PreviewResult>;
 
   /** Execute all queued operations */
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
@@ -586,6 +611,9 @@ export interface PrivateTransfersBuilder {
   /** Start token-specific operations with callback (block style, prettier-friendly) */
   with(token: StarknetAddress, ops: (t: TokenOperationsBuilder) => void): this;
 
+  /** Preview actions and estimated fee without compiling or proving */
+  preview(options?: ExecuteOptions): Promise<PreviewResult>;
+
   /** Execute all queued operations and return the results */
   execute(options?: ExecuteOptions): Promise<ExecuteResult>;
 
@@ -602,6 +630,51 @@ export type ProofInvocation = INVOKE_TXN_V3;
  */
 export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
   chainId: constants.StarknetChainId;
+};
+
+// ============ Fee Provider Types ============
+
+/**
+ * Fee schedule (rate card) returned by the paymaster.
+ * All fee amounts are string-encoded integers in the fee token's smallest unit.
+ */
+export type FeeSchedule = {
+  feeRecipient: string;
+  baseFee: string;
+  perAction: {
+    writeOnce: string;
+    append: string;
+    transferFrom: string;
+    transferTo: string;
+    emitViewingKeySet: string;
+    emitWithdrawal: string;
+    emitDeposit: string;
+    emitOpenNoteCreated: string;
+    emitEncNoteCreated: string;
+    emitNoteUsed: string;
+    invoke: Record<string, string>;
+  };
+  gasPrice: string;
+  validUntil: number;
+};
+
+/**
+ * Fee provider contract — provides fee schedules for paymaster fee estimation.
+ * Backed by PaymasterService (production) or MockFeeProvider (tests).
+ */
+export interface FeeProviderInterface {
+  getFeeQuote(token: StarknetAddress): Promise<FeeSchedule>;
+}
+
+/**
+ * Config for creating a production fee provider (PaymasterService).
+ * Use this when you want the factory to instantiate the paymaster from a URL instead of passing an instance.
+ */
+export type PaymasterConfig = {
+  /** Base URL of the paymaster service (e.g. https://paymaster.example.com). */
+  url: string;
+  /** Request timeout in ms. Default 30_000. */
+  requestTimeoutMs?: number;
 };
 
 ////// The following are more likely to change /////////

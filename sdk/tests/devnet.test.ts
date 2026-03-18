@@ -9,10 +9,53 @@ import { describe, it, beforeAll, beforeEach, afterAll, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { hash } from "starknet";
+import { CallData, constants, hash } from "starknet";
 import { Devnet, createDevnetTestEnv, type DevnetTestEnv } from "../src/testing/index.js";
 import { SimplePrivateTransfersImpl } from "../src/simple-private-transfers.js";
 import { debugLog } from "../src/utils/logging.js";
+import { PrivacyPoolABI } from "../src/internal/abi.js";
+import { estimateServerActionCounts } from "../src/internal/paymaster/fee-estimator.js";
+import { createPrivateTransfers } from "../src/factory.js";
+import { Open, type Actions } from "../src/interfaces.js";
+import { toBigInt } from "../src/utils/index.js";
+import { CallMockProofProvider } from "../src/testing/mock-proving.js";
+import { ContractDiscoveryProvider } from "../src/internal/contract-discovery.js";
+
+/** ABI variant name (PascalCase) → estimator key (camelCase) */
+const SERVER_ACTION_VARIANT_TO_KEY: Record<string, string> = {
+  WriteOnce: "writeOnce",
+  Append: "append",
+  TransferFrom: "transferFrom",
+  TransferTo: "transferTo",
+  EmitViewingKeySet: "emitViewingKeySet",
+  EmitWithdrawal: "emitWithdrawal",
+  EmitDeposit: "emitDeposit",
+  EmitOpenNoteCreated: "emitOpenNoteCreated",
+  EmitEncNoteCreated: "emitEncNoteCreated",
+  EmitNoteUsed: "emitNoteUsed",
+  Invoke: "invoke",
+};
+
+/**
+ * Count server action types from the raw L2-to-L1 message payload.
+ * Payload format: [class_hash, ...serialized_span_of_server_actions]
+ */
+function countServerActionsFromPayload(messagePayload: string[]): Record<string, number> {
+  const serverActionsCalldata = messagePayload.slice(1);
+  const decoder = new CallData(PrivacyPoolABI);
+  const decoded = decoder.decodeParameters(
+    "core::array::Span::<privacy::actions::ServerAction>",
+    serverActionsCalldata
+  ) as unknown[];
+
+  const counts: Record<string, number> = {};
+  for (const action of decoded) {
+    const variant = (action as { activeVariant(): string }).activeVariant();
+    const key = SERVER_ACTION_VARIANT_TO_KEY[variant] ?? variant;
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return counts;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -38,7 +81,7 @@ describe("Devnet Integration", () => {
 
   beforeAll(async () => {
     try {
-      devnet = new Devnet();
+      devnet = new Devnet({ userAccounts: 3 });
       testEnv = await createDevnetTestEnv(devnet);
     } catch (e) {
       if (e instanceof Error) {
@@ -213,4 +256,228 @@ describe("Devnet Integration", () => {
     const strkAfter = strkNotes.reduce((sum, note) => sum + note.amount, 0n);
     expect(strkAfter - strkBefore).toBe(depositAmount - swapAmount);
   }, 120000);
+
+  describe("fee estimator: server action counts match compile_actions", () => {
+    /**
+     * Compare estimated server action counts against actual counts from
+     * the contract's compile_actions output.
+     *
+     * The estimator always includes +1 TransferTo + +1 EmitWithdrawal for
+     * the fee withdrawal. Since these tests don't use autoPaymaster, subtract
+     * that self-cost before comparing.
+     *
+     * Invoke is handled separately: the estimator doesn't count it in
+     * ServerActionCounts (it uses per-executor lookup in FeeSchedule), but the
+     * contract emits exactly 1 Invoke ServerAction per InvokeExternal client action.
+     */
+    function assertServerActionCounts(
+      actions: Actions,
+      messagePayload: string[],
+      expectedInvokeCount = 0
+    ) {
+      const estimated: Record<string, number> = estimateServerActionCounts(actions, false);
+      estimated.transferTo -= 1;
+      estimated.emitWithdrawal -= 1;
+      if (expectedInvokeCount > 0) {
+        estimated.invoke = expectedInvokeCount;
+      }
+
+      const actual = countServerActionsFromPayload(messagePayload);
+
+      for (const [key, expectedCount] of Object.entries(estimated)) {
+        expect(
+          actual[key] ?? 0,
+          `${key}: estimated ${expectedCount}, actual ${actual[key] ?? 0}`
+        ).toBe(expectedCount);
+      }
+      for (const [key, actualCount] of Object.entries(actual)) {
+        expect(estimated[key] ?? 0, `unexpected action type ${key} with count ${actualCount}`).toBe(
+          actualCount
+        );
+      }
+    }
+
+    it("SetViewingKey + OpenChannel + OpenSubchannel + Deposit + CreateEncNote", async () => {
+      const { env } = testEnv;
+      const charlie = env.extraAccounts[0];
+      const chainId = constants.StarknetChainId.SN_SEPOLIA;
+
+      const charlieTransfers = createPrivateTransfers({
+        account: charlie,
+        viewingKeyProvider: { getViewingKey: async () => toBigInt("0xC4A") },
+        provingProvider: new CallMockProofProvider(env.provider, chainId),
+        discoveryProvider: new ContractDiscoveryProvider(env.privacy),
+        poolContractAddress: env.privacy.address,
+      });
+
+      // Fund Charlie with STRK and approve the privacy pool
+      await env.admin.execute({
+        contractAddress: env.strk,
+        entrypoint: "transfer",
+        calldata: [charlie.address, 200n, 0n],
+      });
+      await charlie.execute({
+        contractAddress: env.strk,
+        entrypoint: "approve",
+        calldata: [env.privacy.address, 200n, 0n],
+      });
+
+      // Build: register + open channel to Alice + open subchannel + deposit + transfer to Alice
+      const strkToken = toBigInt(env.strk);
+      const aliceAddress = toBigInt(env.alice.address);
+
+      const result = await charlieTransfers
+        .build({
+          autoRegister: true,
+          autoSetup: true,
+          autoDiscover: { notes: "refresh", channels: "refresh" },
+        })
+        .with(env.strk)
+        .deposit({ amount: 100n })
+        .transfer({ recipient: env.alice.address, amount: 30n })
+        .surplusTo(charlie.address)
+        .execute();
+
+      // The builder + autoSetup produces these actions before compilation:
+      // setViewingKey, openChannels (self + alice), openTokenChannels (self + alice),
+      // deposits, createNotes (to alice + change to self)
+      // Build the equivalent explicit Actions for the estimator.
+      const actions: Actions = {
+        setViewingKey: {},
+        openChannels: [{ recipient: toBigInt(charlie.address) }, { recipient: aliceAddress }],
+        openTokenChannels: [
+          { recipient: toBigInt(charlie.address), token: strkToken },
+          { recipient: aliceAddress, token: strkToken },
+        ],
+        deposits: [{ token: strkToken, amount: 100n }],
+        createNotes: [
+          { recipient: aliceAddress, token: strkToken, amount: 30n },
+          { recipient: toBigInt(charlie.address), token: strkToken, amount: 70n },
+        ],
+      };
+
+      assertServerActionCounts(actions, result.callAndProof.proof.output);
+
+      const receipt = await devnet.executeOutside(result.callAndProof);
+      expect(receipt.isReverted()).toBe(false);
+    });
+
+    it("UseNote + Withdraw + CreateEncNote (change)", async () => {
+      const { env, transfers } = testEnv;
+      const strkToken = toBigInt(env.strk);
+
+      const { notes } = await transfers.alice.discoverNotes();
+      const strkNotes = notes.get(env.strk) ?? [];
+      expect(strkNotes.length).toBeGreaterThan(0);
+      const note = strkNotes[0];
+
+      const withdrawAmount = 10n;
+      const changeAmount = note.amount - withdrawAmount;
+      const aliceAddress = toBigInt(transfers.alice.user);
+
+      const actions: Actions = {
+        useNotes: [{ token: strkToken, note }],
+        withdraws: [{ recipient: aliceAddress, token: strkToken, amount: withdrawAmount }],
+        createNotes: [{ recipient: aliceAddress, token: strkToken, amount: changeAmount }],
+      };
+
+      const result = await transfers.alice
+        .build()
+        .with(env.strk)
+        .inputs(note)
+        .withdraw({ amount: withdrawAmount })
+        .transfer({ recipient: transfers.alice.user, amount: changeAmount })
+        .execute();
+
+      assertServerActionCounts(actions, result.callAndProof.proof.output);
+
+      const receipt = await devnet.executeOutside(result.callAndProof);
+      expect(receipt.isReverted()).toBe(false);
+    });
+
+    it("UseNote + Withdraw + CreateOpenNote + Invoke", async () => {
+      const { env, transfers } = testEnv;
+
+      // Deploy mock AMM and executor for invoke testing
+      const mockAmmClass = JSON.parse(readFileSync(MOCK_AMM_CLASS, "utf8"));
+      const mockAmmCompiled = JSON.parse(readFileSync(MOCK_AMM_COMPILED, "utf8"));
+      const mockAmmDeclare = await env.admin.declare({
+        contract: mockAmmClass,
+        casm: mockAmmCompiled,
+        compiledClassHash: hash.computeCompiledClassHash(mockAmmCompiled),
+      });
+      const mockAmmDeploy = await env.admin.deployContract({
+        classHash: mockAmmDeclare.class_hash,
+        constructorCalldata: [],
+        salt: "0x201",
+      });
+
+      const mockExecutorClass = JSON.parse(readFileSync(MOCK_EXECUTOR_CLASS, "utf8"));
+      const mockExecutorCompiled = JSON.parse(readFileSync(MOCK_EXECUTOR_COMPILED, "utf8"));
+      const mockExecutorDeclare = await env.admin.declare({
+        contract: mockExecutorClass,
+        casm: mockExecutorCompiled,
+        compiledClassHash: hash.computeCompiledClassHash(mockExecutorCompiled),
+      });
+      const mockExecutorDeploy = await env.admin.deployContract({
+        classHash: mockExecutorDeclare.class_hash,
+        constructorCalldata: [mockAmmDeploy.contract_address, hash.getSelectorFromName("swap")],
+        salt: "0x202",
+      });
+      const executorAddress = mockExecutorDeploy.contract_address;
+
+      // Fund the AMM with ETH for the swap
+      const swapAmount = 5n;
+      await env.admin.execute({
+        contractAddress: env.eth,
+        entrypoint: "transfer",
+        calldata: [mockAmmDeploy.contract_address, swapAmount, 0n],
+      });
+
+      // Alice needs a STRK note. Discover current notes.
+      const { notes } = await transfers.alice.discoverNotes();
+      const strkNotes = notes.get(env.strk) ?? [];
+      expect(strkNotes.length).toBeGreaterThan(0);
+      const note = strkNotes[0];
+      expect(note.amount).toBeGreaterThan(swapAmount);
+
+      const strkToken = toBigInt(env.strk);
+      const ethToken = toBigInt(env.eth);
+      const aliceAddress = toBigInt(transfers.alice.user);
+      const executorAddressBigInt = toBigInt(executorAddress);
+      const changeAmount = note.amount - swapAmount;
+
+      // Build the swap: useNote + withdraw to executor + createOpenNote for ETH + invoke + change
+      const alice = new SimplePrivateTransfersImpl(transfers.alice);
+
+      // SimplePrivateTransfersImpl.swap does: useNote, withdraw, createOpenNote, invoke, surplus
+      const result = await alice.swap(env.strk, swapAmount, env.eth, executorAddress);
+
+      // Build equivalent explicit actions for the estimator
+      const actions: Actions = {
+        useNotes: [{ token: strkToken, note }],
+        createNotes: [
+          {
+            recipient: aliceAddress,
+            token: ethToken,
+            amount: Open,
+            depositor: executorAddressBigInt,
+          },
+          { recipient: aliceAddress, token: strkToken, amount: changeAmount },
+        ],
+        withdraws: [{ recipient: executorAddressBigInt, token: strkToken, amount: swapAmount }],
+        invoke: {
+          callBuilder: () => ({
+            contractAddress: executorAddress,
+            calldata: [],
+          }),
+        },
+      };
+
+      assertServerActionCounts(actions, result.callAndProof.proof.output, 1);
+
+      const receipt = await devnet.executeOutside(result.callAndProof);
+      expect(receipt.isReverted()).toBe(false);
+    }, 120000);
+  });
 });
