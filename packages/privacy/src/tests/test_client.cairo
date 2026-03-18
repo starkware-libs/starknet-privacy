@@ -4329,7 +4329,12 @@ fn test_validate_assertions() {
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
+    // Catch NON_ZERO_CALLER.
+    let result = user.safe_validate(client_actions: [].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_CALLER);
+
     // Catch INVALID_TX_VERSION.
+    test.privacy.cheat_zero_caller_address();
     cheat_transaction_version(
         contract_address: user.privacy.address,
         version: Zero::zero(),
@@ -4339,11 +4344,13 @@ fn test_validate_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_TX_VERSION);
 
     // Catch NON_ZERO_TIP.
+    test.privacy.cheat_zero_caller_address();
     cheat_tip(contract_address: user.privacy.address, tip: 1, span: CheatSpan::TargetCalls(1));
     let result = user.safe_validate(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_TIP);
 
     // Catch NON_ZERO_RESOURCE_PRICE.
+    test.privacy.cheat_zero_caller_address();
     let result = user.safe_validate(client_actions: [].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_RESOURCE_PRICE);
 }

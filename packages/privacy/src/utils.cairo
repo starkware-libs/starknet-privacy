@@ -463,7 +463,18 @@ pub(crate) fn compute_message_hash(
     poseidon_hash_span(l1_message_data.span())
 }
 
-pub(crate) fn assert_valid_tx_version(tx_version: felt252) {
+/// Asserts that the call originates from the OS.
+///
+/// Enforced by requiring:
+/// - a zero caller address, and
+/// - a V3 transaction version (including its estimation variant).
+///
+/// During fee estimation, the tx version is offset by `ESTIMATION_BASE_TX_VERSION`
+/// (e.g. 2^128 + 3) to distinguish simulated execution from real transactions.
+/// Both forms are accepted.
+pub(crate) fn assert_valid_os_call(caller_address: ContractAddress, tx_version: felt252) {
+    assert(caller_address.is_zero(), errors::NON_ZERO_CALLER);
+    // Allow canonical V3 or its estimation variant (base offset + V3).
     assert(
         tx_version == TX_V3 || tx_version == ESTIMATION_BASE_TX_VERSION + TX_V3,
         errors::INVALID_TX_VERSION,

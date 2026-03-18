@@ -1778,6 +1778,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         client_actions: Span<ClientAction>,
     ) -> felt252 {
         let calls = self.wrap_inputs_into_calls(:user_addr, :user_private_key, :client_actions);
+        self.cheat_zero_caller_address();
         self.cheat_zero_resource_bounds();
         self.client.__validate__(:calls)
     }
@@ -1947,6 +1948,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
                 user_addr: user.address, user_private_key: user.private_key, :client_actions,
             );
         let mut spy = spy_messages_to_l1();
+        self.cheat_zero_caller_address();
         self.cheat_zero_resource_bounds();
         assert!(self.client.__validate__(calls: calls.clone()) == VALIDATED);
         self.cheat_zero_caller_address();

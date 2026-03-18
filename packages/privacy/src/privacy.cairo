@@ -25,7 +25,7 @@ pub mod Privacy {
         INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
     };
     use privacy::utils::{
-        ProofFacts, assert_valid_signature, assert_valid_tx_version, compute_message_hash,
+        ProofFacts, assert_valid_os_call, assert_valid_signature, compute_message_hash,
         decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
         encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
         encrypt_user_addr, extract_compile_actions_inputs,
@@ -48,7 +48,7 @@ pub mod Privacy {
     };
     use starknet::{
         ContractAddress, SyscallResultTrait, VALIDATED, get_caller_address, get_contract_address,
-        get_execution_info, get_tx_info,
+        get_execution_info,
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -60,10 +60,10 @@ pub mod Privacy {
     component!(path: PausableComponent, storage: pausable, event: PausableEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
-    component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
+    component!(path: AccessControlComponent, storage: access_control, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(
-        path: ReentrancyGuardComponent, storage: reentrancyguard, event: ReentrancyGuardEvent,
+        path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent,
     );
 
     #[storage]
@@ -75,11 +75,11 @@ pub mod Privacy {
         #[substorage(v0)]
         roles: RolesComponent::Storage,
         #[substorage(v0)]
-        accesscontrol: AccessControlComponent::Storage,
+        access_control: AccessControlComponent::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
         #[substorage(v0)]
-        reentrancyguard: ReentrancyGuardComponent::Storage,
+        reentrancy_guard: ReentrancyGuardComponent::Storage,
         /// Map of recipient_addr to a list of their encrypted channels.
         recipient_channels: Map<ContractAddress, Vec<EncChannelInfo>>,
         /// Map of outgoing-channel ids to their encrypted recipient addresses.
@@ -162,9 +162,12 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
         fn __validate__(self: @ContractState, calls: Array<Call>) -> felt252 {
-            let tx_info = get_tx_info();
+            let execution_info = get_execution_info();
+            let tx_info = execution_info.tx_info;
+            assert_valid_os_call(
+                caller_address: execution_info.caller_address, tx_version: tx_info.version,
+            );
             // Ensure that the effective fee of the transaction is zero.
-            assert_valid_tx_version(tx_version: tx_info.version);
             assert(tx_info.tip.is_zero(), errors::NON_ZERO_TIP);
             for resource_bounds in tx_info.resource_bounds {
                 assert(
@@ -175,12 +178,12 @@ pub mod Privacy {
         }
 
         fn __execute__(ref self: ContractState, calls: Array<Call>) {
+            self.reentrancy_guard.start();
             let execution_info = get_execution_info();
             let tx_info = execution_info.tx_info;
-            // Ensure that the current call is the first of the transaction,
-            // (by checking that the caller address is zero and disabling V0 meta tx syscalls).
-            assert(execution_info.caller_address.is_zero(), errors::NON_ZERO_CALLER);
-            assert_valid_tx_version(tx_version: tx_info.version);
+            assert_valid_os_call(
+                caller_address: execution_info.caller_address, tx_version: tx_info.version,
+            );
 
             let (user_addr, user_private_key, client_actions) = extract_compile_actions_inputs(
                 :calls, contract_address: execution_info.contract_address,
@@ -191,6 +194,7 @@ pub mod Privacy {
             send_message_to_server(
                 :server_actions, contract_address: execution_info.contract_address,
             );
+            self.reentrancy_guard.end();
         }
 
         fn compile_actions(
@@ -718,12 +722,12 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
         fn apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
-            self.reentrancyguard.start();
+            self.reentrancy_guard.start();
             self.pausable.assert_not_paused();
             self.validate_proof(:actions);
             self.collect_fee();
             self._apply_actions(:actions);
-            self.reentrancyguard.end();
+            self.reentrancy_guard.end();
         }
     }
 
@@ -887,17 +891,17 @@ pub mod Privacy {
             assert(token == note_token, errors::TOKEN_MISMATCH);
             assert(depositor == note_depositor, errors::DEPOSITOR_MISMATCH);
 
+            // Write the new `packed_value` (OPEN_NOTE_SALT, amount) to storage.
+            let new_packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
+            assert(new_packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
+            note_entry.packed_value.write(new_packed_value);
+
             checked_transfer_from(
                 token_address: token,
                 sender: depositor,
                 recipient: get_contract_address(),
                 amount: amount.into(),
             );
-
-            // Write the new `packed_value` (OPEN_NOTE_SALT, amount) to storage.
-            let new_packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
-            assert(new_packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
-            note_entry.packed_value.write(new_packed_value);
 
             self.emit(events::OpenNoteDeposited { depositor, token, note_id, amount });
         }
