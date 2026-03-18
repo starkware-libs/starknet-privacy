@@ -3551,6 +3551,10 @@ fn test_execute_set_viewing_key() {
         expected_event_selector: @selector!("ViewingKeySet"),
         expected_event_name: "ViewingKeySet",
     );
+
+    // Try to apply the same action again.
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -3621,6 +3625,10 @@ fn test_execute_open_channel() {
         test.privacy.get_outgoing_channel_info(outgoing_channel_id: expected_outgoing_channel_id),
         expected_enc_outgoing_channel_info,
     );
+
+    // Try to apply the same action again.
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -3685,6 +3693,10 @@ fn test_execute_open_subchannel() {
         test.privacy.get_subchannel_info(subchannel_id: expected_subchannel_id),
         expected_enc_subchannel_info,
     );
+
+    // Try to apply the same action again.
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -3734,6 +3746,12 @@ fn test_execute_deposit_create_note() {
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+
+    // Try to apply the same action again.
+    user_1.increase_token_balance(:token, :amount);
+    user_1.approve(:token, amount: amount.into());
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -3802,6 +3820,10 @@ fn test_execute_use_note_create_note() {
     test.privacy.apply_actions(:actions);
     assert!(test.privacy.nullifier_exists(:nullifier));
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
+
+    // Try to apply the same action again.
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -3881,6 +3903,10 @@ fn test_execute_use_note_withdraw() {
     assert!(test.privacy.nullifier_exists(:nullifier));
     assert_eq!(token.balance_of(address: user_1.address), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+
+    // Try to apply the same action again.
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -4053,6 +4079,10 @@ fn test_execute_use_note_swap() {
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
     );
+
+    // Try to apply the same action again.
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
 
 #[test]
@@ -5669,7 +5699,12 @@ fn test_execute_create_open_note() {
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
     );
+
+    // Try to apply the same action again.
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NON_ZERO_VALUE);
 }
+
 
 #[test]
 fn test_create_open_and_enc_notes_same_tx() {

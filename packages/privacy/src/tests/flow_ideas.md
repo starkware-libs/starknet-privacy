@@ -1,14 +1,5 @@
 # Flow Ideas
 
-## Deposit
-4. Call server deposit twice with the same input.
-
-## Transfer
-5. Call server transfer twice with the same input.
-
-## Withdraw
-3. Call server withdraw twice with the same input.
-
 ## Open note
 2. Split from open note: create open note -> deposit large amount -> use to create multiple output notes for different recipients.
 3. Open note chain: User A creates open note for User B -> Depositor deposits -> User B transfers to User C -> User C withdraws.
@@ -26,12 +17,3 @@
 - After each `apply_actions` call, verify internal (privacy) balances.
 - Try to modularize flows, so we can share modules across different flows (i.e. merging notes, depositing to a single note).
 - Use test parameters to create multiple similar tests at once.
-
-# Set auditor public key
-- register+withdraw (enc with auditor pub key), set auditor pub key, register+withdraw, test its the right auditor key + right encryption (try to decrypt) for both before and after the set.
-
-# General
-- Test actions phases (all actions together in the correct order)
-
-## Set proof validity blocks
-- set and validate proof.

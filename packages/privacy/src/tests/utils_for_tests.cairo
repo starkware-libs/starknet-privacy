@@ -2263,6 +2263,18 @@ pub(crate) fn invoke_mock_swap_executor_input(
     InvokeInput { contract_address: swap_executor, calldata: calldata.span() }
 }
 
+pub(crate) fn _decrypt_private_key(
+    enc_private_key: EncPrivateKey, auditor_private_key: felt252,
+) -> felt252 {
+    // Find shared point.
+    let shared_x = _find_shared_x(
+        ephemeral_pubkey: enc_private_key.ephemeral_pubkey, private_key: auditor_private_key,
+    );
+
+    // Decrypt private key.
+    enc_private_key.enc_private_key - compute_enc_private_key_hash(:shared_x)
+}
+
 /// Returns private_key decrypted from the given `enc_private_key` and
 /// the auditor's `private_key`.
 pub(crate) fn decrypt_private_key(
@@ -2272,13 +2284,7 @@ pub(crate) fn decrypt_private_key(
     assert_eq!(
         enc_private_key.auditor_public_key, derive_public_key(private_key: auditor_private_key),
     );
-    // Find shared point.
-    let shared_x = _find_shared_x(
-        ephemeral_pubkey: enc_private_key.ephemeral_pubkey, private_key: auditor_private_key,
-    );
-
-    // Decrypt private key.
-    enc_private_key.enc_private_key - compute_enc_private_key_hash(:shared_x)
+    _decrypt_private_key(:enc_private_key, :auditor_private_key)
 }
 
 /// Returns (channel_key, sender_addr) decrypted from the given `enc_channel_info` and
