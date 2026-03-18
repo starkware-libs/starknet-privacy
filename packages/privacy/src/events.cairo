@@ -49,9 +49,6 @@ pub struct AuditorPublicKeySet {
 pub struct OpenNoteCreated {
     /// Encrypted recipient address (the note owner). Can be decrypted by the auditor.
     pub enc_recipient_addr: EncUserAddr,
-    /// Address allowed to deposit into the note.
-    #[key]
-    pub depositor: ContractAddress,
     /// The token address.
     #[key]
     pub token: ContractAddress,

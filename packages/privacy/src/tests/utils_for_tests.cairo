@@ -73,11 +73,11 @@ use vesu_lending_helper::vesu_lending_helper::{
 
 pub impl NoteZero of Zero<Note> {
     fn zero() -> Note {
-        Note { packed_value: Zero::zero(), token: Zero::zero(), depositor: Zero::zero() }
+        Note { packed_value: Zero::zero(), token: Zero::zero() }
     }
 
     fn is_zero(self: @Note) -> bool {
-        (*self.packed_value).is_zero() && (*self.token).is_zero() && (*self.depositor).is_zero()
+        (*self.packed_value).is_zero() && (*self.token).is_zero()
     }
 
     fn is_non_zero(self: @Note) -> bool {
@@ -130,9 +130,7 @@ pub(crate) impl CreateOpenNoteInputIntoServerActionImpl of CreateOpenNoteInputIn
         [
             to_write_once_action(storage_address: storage_path, value: note),
             ServerAction::EmitOpenNoteCreated(
-                events::OpenNoteCreated {
-                    enc_recipient_addr, depositor: note.depositor, token: note.token, note_id,
-                },
+                events::OpenNoteCreated { enc_recipient_addr, token: note.token, note_id },
             ),
         ]
             .span()
@@ -760,7 +758,7 @@ pub(crate) impl UserImpl of UserTrait {
         (note_id, actions)
     }
 
-    /// Fund the depositor, create an open note, and deposit to it in a single `apply_actions`
+    /// Fund the echo executor, create an open note, and deposit to it in a single `apply_actions`
     /// call. Returns the note ID.
     fn create_and_deposit_to_open_note_e2e(
         self: @User, create_note_input: CreateOpenNoteInput, amount: u128, token: Token,
@@ -854,7 +852,7 @@ pub(crate) impl UserImpl of UserTrait {
             salt: create_note_input.salt,
             amount: create_note_input.amount,
         );
-        (note_id, Note { packed_value, token: Zero::zero(), depositor: Zero::zero() })
+        (note_id, Note { packed_value, token: Zero::zero() })
     }
 
     /// Computes the note ID and Note for a given CreateOpenNoteInput.
@@ -878,14 +876,7 @@ pub(crate) impl UserImpl of UserTrait {
             :channel_key, token: create_note_input.token, index: create_note_input.index,
         );
         let packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
-        (
-            note_id,
-            Note {
-                packed_value,
-                token: create_note_input.token,
-                depositor: create_note_input.depositor,
-            },
-        )
+        (note_id, Note { packed_value, token: create_note_input.token })
     }
 
     fn compute_enc_user_addr(self: @User, random: felt252) -> EncUserAddr {
@@ -974,32 +965,22 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     fn new_open_note(
-        self: @User,
-        recipient: User,
-        token_addr: ContractAddress,
-        index: usize,
-        depositor: ContractAddress,
-        random: felt252,
+        self: @User, recipient: User, token_addr: ContractAddress, index: usize, random: felt252,
     ) -> CreateOpenNoteInput {
         CreateOpenNoteInput {
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             token: token_addr,
             index,
-            depositor,
             random,
         }
     }
 
     fn new_open_note_with_generated_random(
-        ref self: User,
-        recipient: User,
-        token_addr: ContractAddress,
-        index: usize,
-        depositor: ContractAddress,
+        ref self: User, recipient: User, token_addr: ContractAddress, index: usize,
     ) -> CreateOpenNoteInput {
         let random = self.get_random();
-        self.new_open_note(:recipient, :token_addr, :index, :depositor, :random)
+        self.new_open_note(:recipient, :token_addr, :index, :random)
     }
 
     fn deposit_and_create_note_e2e(ref self: User, token: Token, amount: u128) {
@@ -1393,12 +1374,6 @@ pub(crate) impl TestImpl of TestTrait {
         ('TOKEN_ADDRESS' + self.nonce.into()).try_into().unwrap()
     }
 
-    /// Mock function to generate a new depositor address.
-    fn mock_new_depositor(ref self: Test) -> ContractAddress {
-        self.nonce += 1;
-        ('DEPOSITOR' + self.nonce.into()).try_into().unwrap()
-    }
-
     /// Mock function to generate a new auditor encrypted private key.
     fn mock_new_enc_private_key(ref self: Test) -> EncPrivateKey {
         self.nonce += 1;
@@ -1451,8 +1426,7 @@ pub(crate) impl TestImpl of TestTrait {
         let note_id = 'NOTE_ID' + self.nonce.into();
         let packed_value = 'PACKED_VALUE' + amount.into() + self.nonce.into();
         let token = self.mock_new_token();
-        let depositor = self.mock_new_depositor();
-        (note_id, Note { packed_value, token, depositor })
+        (note_id, Note { packed_value, token })
     }
 
     /// Mock function to generate a new nullifier.
