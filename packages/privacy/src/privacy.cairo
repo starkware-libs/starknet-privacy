@@ -603,8 +603,7 @@ pub mod Privacy {
 
             token_balances.subtract_balance(:token, :amount);
 
-            // Only `packed_value` needs to be written to storage, `token` and `depositor` are
-            // initialized to zero.
+            // Only `packed_value` needs to be written to storage, `token` is initialized to zero.
             array![
                 to_write_once_action(:storage_address, value: packed_value),
                 ServerAction::EmitEncNoteCreated(events::EncNoteCreated { note_id, packed_value }),
@@ -622,7 +621,7 @@ pub mod Privacy {
         ) -> Array<ServerAction> {
             input.assert_valid();
             let CreateOpenNoteInput {
-                recipient_addr, recipient_public_key, token, index, depositor, random,
+                recipient_addr, recipient_public_key, token, index, random,
             } = input;
 
             // Validate and compute note values.
@@ -636,7 +635,7 @@ pub mod Privacy {
                     :index,
                 );
 
-            let note = open_note(:token, :depositor);
+            let note = open_note(:token);
             assert(note.packed_value.is_non_zero(), internal_errors::ZERO_NOTE_VALUE);
 
             // Encrypt the recipient address for the auditor.
@@ -649,7 +648,7 @@ pub mod Privacy {
             array![
                 to_write_once_action(:storage_address, value: note),
                 ServerAction::EmitOpenNoteCreated(
-                    events::OpenNoteCreated { enc_recipient_addr, depositor, token, note_id },
+                    events::OpenNoteCreated { enc_recipient_addr, token, note_id },
                 ),
             ]
         }
@@ -869,8 +868,8 @@ pub mod Privacy {
             deposits
         }
 
-        /// Applies a single deposit to an open note. Verifies the input depositor matches the
-        /// note's depositor. Used when applying the span returned by an Invoke.
+        /// Applies a single deposit to an open note. Used when applying the span returned by an
+        /// Invoke.
         fn _deposit_to_open_note(
             ref self: ContractState, depositor: ContractAddress, deposit: OpenNoteDeposit,
         ) {
@@ -880,16 +879,13 @@ pub mod Privacy {
 
             // Read the Note from storage and assert it exists.
             let note_entry = self.notes.entry(note_id);
-            let Note {
-                packed_value, token: note_token, depositor: note_depositor,
-            } = note_entry.read();
+            let Note { packed_value, token: note_token } = note_entry.read();
             assert(packed_value.is_non_zero(), errors::NOTE_NOT_FOUND);
 
             let (salt, current_amount) = unpack(:packed_value);
             assert(salt == OPEN_NOTE_SALT, errors::NOTE_NOT_OPEN);
             assert(current_amount.is_zero(), errors::NOTE_ALREADY_DEPOSITED);
             assert(token == note_token, errors::TOKEN_MISMATCH);
-            assert(depositor == note_depositor, errors::DEPOSITOR_MISMATCH);
 
             // Write the new `packed_value` (OPEN_NOTE_SALT, amount) to storage.
             let new_packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);

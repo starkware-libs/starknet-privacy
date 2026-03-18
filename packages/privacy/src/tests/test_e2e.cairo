@@ -202,14 +202,11 @@ fn test_e2e_client_actions_one_by_one() {
     assert_eq!(token.balance_of(address: user_1.address), amount_half.into());
     assert_eq!(token.balance_of(address: test.privacy.address), amount_half.into());
 
-    // 8. CreateOpenNote + InvokeExternal(echo) (user_1: open note for user_2, depositor =
-    // echo_executor, deposited to via echo executor in the same tx)
+    // 8. CreateOpenNote + InvokeExternal(echo) (user_1: open note for user_2, deposited to via
+    // echo executor in the same tx)
     let create_open_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2,
-            token_addr: out_token_addr,
-            index: 0,
-            depositor: test.privacy.echo_executor,
+            recipient: user_2, token_addr: out_token_addr, index: 0,
         );
     let (open_note_id, _) = user_1.compute_open_note(create_note_input: create_open_note_input);
 
@@ -240,7 +237,6 @@ fn test_e2e_client_actions_one_by_one() {
         );
     let note_after_deposit = test.privacy.get_note(note_id: open_note_id);
     assert_eq!(note_after_deposit.token, out_token_addr);
-    assert_eq!(note_after_deposit.depositor, test.privacy.echo_executor);
     let (salt, stored_amount) = unpack(packed_value: note_after_deposit.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount_half);
@@ -316,7 +312,7 @@ fn test_e2e_action_phases_in_correct_order() {
     );
     let create_open_note = user_1
         .new_open_note_with_generated_random(
-            recipient: user_1, token_addr: out_token_addr, index: 0, depositor: swap_executor_addr,
+            recipient: user_1, token_addr: out_token_addr, index: 0,
         );
     let (open_note_id, _) = user_1.compute_open_note(create_note_input: create_open_note);
     let invoke_input = user_1
@@ -366,7 +362,6 @@ fn test_e2e_action_phases_in_correct_order() {
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_self_0));
     assert_eq!(test.privacy.get_note(note_id: note_id_1_2_0), note_1_2_0);
     assert_eq!(note_after_swap.token, out_token_addr);
-    assert_eq!(note_after_swap.depositor, swap_executor_addr);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(filled_amount, amount_b);
     assert_eq!(in_token.balance_of(address: user_1.address), Zero::zero());
@@ -1129,19 +1124,9 @@ fn test_e2e_actions_twice() {
 
     // 7. user1: 2 create open note (one tx)
     let create_open_note_1 = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_1,
-            token_addr: token_1_addr,
-            index: 1,
-            depositor: test.privacy.echo_executor,
-        );
+        .new_open_note_with_generated_random(recipient: user_1, token_addr: token_1_addr, index: 1);
     let create_open_note_2 = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_1,
-            token_addr: token_1_addr,
-            index: 2,
-            depositor: test.privacy.echo_executor,
-        );
+        .new_open_note_with_generated_random(recipient: user_1, token_addr: token_1_addr, index: 2);
     let (open_id_1, open_note_1) = user_1
         .compute_open_note_with_amount(create_note_input: create_open_note_1, amount: half);
     let (open_id_2, open_note_2) = user_1
@@ -1323,11 +1308,9 @@ fn test_e2e_vesu_invoke() {
     assert_eq!(test.privacy.get_note(note_id: note_id_0), note_0);
 
     // Tx 2 (vesu deposit): UseNote + Withdraw(underlying to helper) + OpenSubchannel(vault) +
-    // CreateOpenNote(vault, depositor=helper) + InvokeExternal(vesu deposit)
+    // CreateOpenNote(vault) + InvokeExternal(vesu deposit)
     let create_open_vault = user
-        .new_open_note_with_generated_random(
-            recipient: user, token_addr: vault_addr, index: 0, depositor: helper_addr,
-        );
+        .new_open_note_with_generated_random(recipient: user, token_addr: vault_addr, index: 0);
     let (open_note_vault_id, _) = user.compute_open_note(create_note_input: create_open_vault);
     let invoke_deposit = vesu
         .invoke_vesu_deposit_external_input(assets: amount, note_id: open_note_vault_id);
@@ -1360,13 +1343,12 @@ fn test_e2e_vesu_invoke() {
     assert_eq!(filled_salt, OPEN_NOTE_SALT);
     assert_eq!(filled_amount, amount);
     assert_eq!(filled_vault_note.token, vault_addr);
-    assert_eq!(filled_vault_note.depositor, helper_addr);
 
-    // Tx 3 (vesu withdraw): UseNote(vault) + CreateOpenNote(underlying, depositor=helper) +
+    // Tx 3 (vesu withdraw): UseNote(vault) + CreateOpenNote(underlying) +
     // Withdraw(vault to helper) + InvokeExternal(vesu withdraw)
     let create_open_underlying = user
         .new_open_note_with_generated_random(
-            recipient: user, token_addr: underlying_token_addr, index: 1, depositor: helper_addr,
+            recipient: user, token_addr: underlying_token_addr, index: 1,
         );
     let (open_note_underlying_id, _) = user
         .compute_open_note(create_note_input: create_open_underlying);
@@ -1397,5 +1379,4 @@ fn test_e2e_vesu_invoke() {
     assert_eq!(filled_salt, OPEN_NOTE_SALT);
     assert_eq!(filled_amount, amount);
     assert_eq!(filled_underlying_note.token, underlying_token_addr);
-    assert_eq!(filled_underlying_note.depositor, helper_addr);
 }

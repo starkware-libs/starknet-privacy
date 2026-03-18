@@ -406,7 +406,6 @@ export class ActionCompiler {
               recipient_public_key: channel.publicKey as bigint,
               token: action.token,
               index: channel.tokens.get(action.token)!.noteNonce,
-              depositor: action.depositor,
               random: generateRandom(),
             },
           } as const; // typescipt magic
@@ -454,7 +453,6 @@ export class ActionCompiler {
         return {
           noteId: compute_note_id(channelKey, openNote.input.token, openNote.input.index),
           token: openNote.input.token,
-          depositor: openNote.input.depositor,
         };
       });
       const withdrawals = clientActions.withdraws.map((withdraw) => ({

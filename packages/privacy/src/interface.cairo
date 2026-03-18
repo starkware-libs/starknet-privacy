@@ -202,8 +202,6 @@ pub trait IClient<T> {
     /// - [`ZERO_RECIPIENT_PUBLIC_KEY`](privacy::errors::ZERO_RECIPIENT_PUBLIC_KEY): Thrown if the
     /// recipient public key is zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
-    /// - [`ZERO_DEPOSITOR`](privacy::errors::ZERO_DEPOSITOR): Thrown if the depositor address is
-    /// zero.
     /// - [`ZERO_RANDOM`](privacy::errors::ZERO_RANDOM): Thrown if the random value is zero.
     /// - [`SUBCHANNEL_NOT_FOUND`](privacy::errors::SUBCHANNEL_NOT_FOUND): Thrown if the subchannel
     /// does not exist.
@@ -526,8 +524,6 @@ pub trait IServer<T> {
     ///   has already been deposited to.
     ///   - [`TOKEN_MISMATCH`](privacy::errors::TOKEN_MISMATCH): Thrown if `token` does not match
     ///   the note's token.
-    ///   - [`DEPOSITOR_MISMATCH`](privacy::errors::DEPOSITOR_MISMATCH): Thrown if `depositor` does
-    ///   not match the note's depositor.
     ///   - `INSUFFICIENT_BALANCE`: Thrown if the depositor has insufficient token balance (from
     ///   ERC20 contract).
     ///   - `INSUFFICIENT_ALLOWANCE`: Thrown if the depositor has insufficient token allowance (from
@@ -619,8 +615,8 @@ pub trait IViews<T> {
 
     /// Returns the note for a given note id.
     ///
-    /// The [`Note`](privacy::objects::Note) struct contains `packed_value` (salt and amount),
-    /// `token`, and `depositor` (zero for encrypted notes).
+    /// The [`Note`](privacy::objects::Note) struct contains `packed_value` (salt and amount) and
+    /// `token` (zero for encrypted notes).
     ///
     /// #### Parameters
     /// - `note_id` (`felt252`): The id of the note.
