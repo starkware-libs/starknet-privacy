@@ -42,7 +42,6 @@ pub struct Deposit {
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct AuditorPublicKeySet {
     /// The auditor public key.
-    #[key]
     pub auditor_public_key: felt252,
 }
 
@@ -95,20 +94,17 @@ pub struct NoteUsed {
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct FeeAmountSet {
     /// The fee amount in FRI per `apply_actions` call.
-    #[key]
     pub fee_amount: u128,
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct FeeCollectorSet {
     /// The address that receives the fee.
-    #[key]
     pub fee_collector: ContractAddress,
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct ProofValidityBlocksSet {
     /// The number of blocks that a proof is valid for.
-    #[key]
     pub proof_validity_blocks: u64,
 }
