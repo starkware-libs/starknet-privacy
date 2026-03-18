@@ -41,12 +41,12 @@ graph LR
 
 All components in a row are tested together. Use matching revisions when deploying.
 
-| Component | Docs | Image / Tag |
+| Component | Docs | Tag |
 |-----------|------|-------------|
-| Sequencer Gateway | | `ghcr.io/starkware-libs/sequencer/sequencer:APOLLO-0.14.2-RC.1` |
-| Transaction Prover | [README](https://github.com/starkware-libs/sequencer/tree/avi/privacy/configmap-docs/crates/starknet_transaction_prover) | `us-central1-docker.pkg.dev/starkware-dev/sequencer/transaction-prover:PRIVACY-0.14.2-RC.1` |
-| Discovery Service | [README](deploy/discovery-service/README.md) | `ghcr.io/starkware-libs/starknet-privacy/discovery-service:PRIVACY-0.14.2-RC.1` |
-| Pathfinder* | [docs](https://eqlabs.github.io/pathfinder/getting-started/running-pathfinder) | `eqlabs/pathfinder:v0.22.0-beta.3` |
+| Sequencer | | [`APOLLO-0.14.2-RC.1`](https://github.com/starkware-libs/sequencer/releases/tag/APOLLO-0.14.2-RC.1) |
+| Transaction Prover | [README](https://github.com/starkware-libs/sequencer/tree/avi/privacy/configmap-docs/crates/starknet_transaction_prover) | [`ghcr.io/starkware-libs/starknet-privacy/transaction-prover:PRIVACY-0.14.2-RC.1`](https://github.com/starkware-libs/sequencer/pkgs/container/starknet-privacy%2Ftransaction-prover/743671200?tag=PRIVACY-0.14.2-RC.1) |
+| Discovery Service | [README](deploy/discovery-service/README.md) | [`ghcr.io/starkware-libs/starknet-privacy/discovery-service:PRIVACY-0.14.2-RC.1`](https://github.com/starkware-libs/starknet-privacy/pkgs/container/starknet-privacy%2Fdiscovery-service/742029660?tag=PRIVACY-0.14.2-RC.1) |
+| Pathfinder* | [docs](https://eqlabs.github.io/pathfinder/getting-started/running-pathfinder) | [`eqlabs/pathfinder:v0.22.0-beta.3`](https://hub.docker.com/layers/eqlabs/pathfinder/v0.22.0-beta.3/images/sha256-a71b220d6786ea3685a6755e68cf3d2d715ecb2c740abb8eb30c75f0b84bd5bd) |
 | SDK | [README](sdk/README.md) | [`PRIVACY-0.14.2-RC.1`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.1) |
 
 \* For the transaction prover to work correctly with Pathfinder, set `PATHFINDER_STORAGE_STATE_TRIES=10000`.
