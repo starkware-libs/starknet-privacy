@@ -156,10 +156,6 @@ export const PrivacyPoolABI = [
         "type": "core::integer::u32"
       },
       {
-        "name": "depositor",
-        "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
         "name": "random",
         "type": "core::felt252"
       }
@@ -741,10 +737,6 @@ export const PrivacyPoolABI = [
       },
       {
         "name": "token",
-        "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
-        "name": "depositor",
         "type": "core::starknet::contract_address::ContractAddress"
       }
     ]
@@ -2442,11 +2434,6 @@ export const PrivacyPoolABI = [
         "name": "enc_recipient_addr",
         "type": "privacy::objects::EncUserAddr",
         "kind": "data"
-      },
-      {
-        "name": "depositor",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "key"
       },
       {
         "name": "token",

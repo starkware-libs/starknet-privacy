@@ -103,7 +103,6 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
           token: this.token,
           recipient: toBigInt(output.recipient),
           amount: Open,
-          depositor: toBigInt(output.depositor),
         });
       } else {
         this.createNotes.push({

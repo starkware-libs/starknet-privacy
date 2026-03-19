@@ -253,9 +253,7 @@ fn test_get_note() {
 
     // Create and verify deposited open note.
     let open_note_input = user_1
-        .new_open_note_with_generated_random(
-            recipient: user_2, :token_addr, index: 1, depositor: test.privacy.echo_executor,
-        );
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 1);
     user_1.create_and_deposit_to_open_note_e2e(create_note_input: open_note_input, :amount, :token);
     let (open_note_id, _) = user_1.compute_open_note(create_note_input: open_note_input);
     let deposited_note = test.privacy.get_note(note_id: open_note_id);
@@ -263,7 +261,6 @@ fn test_get_note() {
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(stored_amount, amount);
     assert_eq!(deposited_note.token, token_addr);
-    assert_eq!(deposited_note.depositor, test.privacy.echo_executor);
 }
 
 #[test]

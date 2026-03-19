@@ -40,7 +40,6 @@ export type CreateOpenNoteInput = {
   recipient_public_key: bigint;
   token: StarknetAddressBigint;
   index: number;
-  depositor: StarknetAddressBigint;
   random: bigint;
 };
 

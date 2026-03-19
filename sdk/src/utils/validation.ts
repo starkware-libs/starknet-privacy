@@ -1,11 +1,5 @@
 import { num } from "starknet";
-import type {
-  Amount,
-  PrivateRecipient,
-  StarknetAddress,
-  StarknetAddressBigint,
-  ViewingKey,
-} from "../interfaces.js";
+import type { Amount, PrivateRecipient, StarknetAddress, ViewingKey } from "../interfaces.js";
 import { All, MAX_VIEWING_KEY, Open } from "../interfaces.js";
 
 // ============ Validation Utilities ============
@@ -64,7 +58,7 @@ export function isOpen(value: Amount | Open): value is Open {
  */
 export function isOpenNote<T extends { amount: Amount | Open }>(
   obj: T
-): obj is T & { amount: Open; depositor: StarknetAddressBigint } {
+): obj is T & { amount: Open } {
   return isOpen(obj.amount);
 }
 

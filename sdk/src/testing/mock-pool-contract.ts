@@ -48,7 +48,6 @@ type OpenNote = {
   r: bigint;
   amount: Amount;
   token: StarknetAddressBigint;
-  depositor: StarknetAddressBigint;
 };
 
 type MockServerAction = {
@@ -140,18 +139,17 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
   get_note(noteId: bigint): {
     packed_value: bigint;
     token: StarknetAddressBigint;
-    depositor: StarknetAddressBigint;
   } {
     const note = this.notes.get(noteId);
-    if (!note) return { packed_value: 0n, token: 0n, depositor: 0n };
+    if (!note) return { packed_value: 0n, token: 0n };
     if ("packed" in note) {
-      // Encrypted note: token/depositor are zero in the Note struct (privacy)
-      return { packed_value: note.packed, token: 0n, depositor: 0n };
+      // Encrypted note: token is zero in the Note struct (privacy)
+      return { packed_value: note.packed, token: 0n };
     }
-    // Open note: packed_value = (OPEN_NOTE_SALT << 128) | amount, token/depositor are non-zero
+    // Open note: packed_value = (OPEN_NOTE_SALT << 128) | amount, token is non-zero
     const OPEN_NOTE_SALT = 1n;
     const packedValue = (OPEN_NOTE_SALT << 128n) | (note.amount as bigint);
-    return { packed_value: packedValue, token: note.token, depositor: note.depositor };
+    return { packed_value: packedValue, token: note.token };
   }
 
   channel_exists(channelMarker: bigint): boolean {
@@ -342,7 +340,6 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     assert(note.r == 1n, () => `Note ${toHex(noteId)} is not open`);
     assert(note.token == token, () => `Note ${toHex(noteId)} is not for token ${token}`);
     assert(note.amount == 0n, () => `Note ${toHex(noteId)} has already been filled`);
-    assert(note.depositor == from, () => `Note ${toHex(noteId)} is not for depositor ${from}`);
     note.amount = amount;
   }
 
@@ -384,7 +381,6 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
           r: 1n,
           amount: 0n,
           token,
-          depositor: 0n,
         });
       }
     }
@@ -403,7 +399,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     this.notes.set(
       note.id as bigint,
       note.open
-        ? { r: 1n, amount: note.amount, token, depositor: toBigInt(note.depositor!) }
+        ? { r: 1n, amount: note.amount, token }
         : {
             packed: encryptions.encryptNoteAmount(
               note.witness.channelKey,
@@ -548,8 +544,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
             action.input.recipient_addr,
             action.input.recipient_public_key,
             action.input.token,
-            action.input.index,
-            action.input.depositor
+            action.input.index
           ),
         ];
 
@@ -774,8 +769,7 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     to: StarknetAddressBigint,
     toPublicKey: PublicKey,
     token: StarknetAddressBigint,
-    index: number,
-    depositor: StarknetAddressBigint
+    index: number
   ): MockServerAction {
     const channelKey = compute_channel_key(
       sender,
@@ -798,10 +792,9 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
 
     const noteId = compute_note_id(channelKey, token, index);
     assert(!this.notes.has(noteId), () => `Note ${noteId} already exists`);
-    assert(depositor !== 0n, () => `Depositor cannot be zero`);
 
     // Open note: r=1n marker, amount=0n (to be filled by depositor), token
-    const noteData: OpenNote = { r: 1n, amount: 0n, token, depositor };
+    const noteData: OpenNote = { r: 1n, amount: 0n, token };
 
     return {
       type: "CreateOpenNote",

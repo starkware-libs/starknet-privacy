@@ -27,7 +27,6 @@ export type EncOutgoingChannelInfo = {
 export type NoteData = {
   packed_value: BigNumberish;
   token: BigNumberish;
-  depositor: BigNumberish;
 };
 
 export type EncPrivateKey = {

@@ -66,7 +66,6 @@ export type Note = {
   readonly viewingKey?: ViewingKey; // in case the viewing key is different than the privacy pool's.
   readonly sender: StarknetAddress;
   readonly open?: boolean;
-  readonly depositor?: StarknetAddress;
 };
 
 /** Unique identifier for a note, used for semi-transparent (preprepared) notes */
@@ -172,7 +171,7 @@ export type UseNoteAction = {
 export type CreateNoteAction = {
   recipient: StarknetAddressBigint;
   token: StarknetAddressBigint;
-} & ({ amount: Amount } | { amount: Open; depositor: StarknetAddressBigint });
+} & ({ amount: Amount } | { amount: Open });
 
 export type WithdrawAction = {
   recipient: StarknetAddressBigint;
@@ -189,7 +188,6 @@ export type SurplusAction = {
 export type InvokeOpenNote = {
   noteId: NoteId;
   token: StarknetAddressBigint;
-  depositor: StarknetAddressBigint;
 };
 
 export type InvokeWithdrawal = {
@@ -459,7 +457,7 @@ export interface PrivateTransfersInterface {
  */
 export type TransferOutput = { recipient: StarknetAddress } & (
   | { amount: Amount }
-  | { amount: Open; depositor: StarknetAddress }
+  | { amount: Open }
 );
 export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
 export type DepositInput = { recipient?: StarknetAddress; amount: Amount };
