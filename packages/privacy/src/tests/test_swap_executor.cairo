@@ -33,13 +33,9 @@ fn test_privacy_invoke_basic(preexisting_balance: u128) {
             outgoing_channel_index: 0,
         );
 
-    // Create an open note with swap_executor as depositor.
     let create_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2,
-            token_addr: output_token.contract_address(),
-            index: 0,
-            depositor: test.privacy.swap_executor.address,
+            recipient: user_2, token_addr: output_token.contract_address(), index: 0,
         );
     user_1.cheat_create_open_note(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
@@ -250,13 +246,9 @@ fn test_privacy_invoke_caller_not_privacy_contract() {
             outgoing_channel_index: 0,
         );
 
-    // Create an open note with swap_executor as depositor.
     let create_note_input = user_1
         .new_open_note_with_generated_random(
-            recipient: user_2,
-            token_addr: output_token.contract_address(),
-            index: 0,
-            depositor: test.privacy.swap_executor.address,
+            recipient: user_2, token_addr: output_token.contract_address(), index: 0,
         );
     user_1.cheat_create_open_note(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
@@ -292,5 +284,4 @@ fn test_privacy_invoke_caller_not_privacy_contract() {
     assert_eq!(salt_after, OPEN_NOTE_SALT);
     assert_eq!(amount_after, 0);
     assert_eq!(note_after.token, output_token.contract_address());
-    assert_eq!(note_after.depositor, test.privacy.swap_executor.address);
 }

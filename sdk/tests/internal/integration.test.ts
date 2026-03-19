@@ -407,12 +407,11 @@ describe("Private Transfers Integration", () => {
           .deposit({ amount: 100n })
           .withdraw({ recipient: swapHelper.address, amount: 10n })
         .with(env.bee)
-          .transfer({ recipient: env.alice.address, amount: Open, depositor: swapHelper.address })
+          .transfer({ recipient: env.alice.address, amount: Open })
         .done()
         .invoke(({ openNotes }) => {
           expect(openNotes.length).toBe(1);
           expect(openNotes[0].token).toBe(bee);
-          expect(openNotes[0].depositor).toBe(toBigInt(swapHelper.address));
           return {
             contractAddress: toHex(swapHelper.address),
             calldata: [ace, bee, 10n, openNotes[0].noteId],

@@ -224,7 +224,6 @@ class NotesDiscovery {
       witness: { channelKey, nonce: index, r: salt },
       sender,
       open: isOpenNote,
-      depositor: isOpenNote ? noteData.depositor : undefined,
     });
 
     const m = this.cursor!.incomingChannels.get(sender)!.noteIndexes.get(token)!;
