@@ -110,6 +110,12 @@ export type ProofProviderConfig = {
   requestTimeoutMs?: number;
   /** Default block identifier for proving when not provided in execute options. Default "latest". */
   blockIdentifier?: ProvingBlockId;
+  /**
+   * Optional RPC node URL used only to fetch the pool nonce (cached; use invalidateProofNonceCache() after nonce errors).
+   * The pool contract address is taken from the enclosing createPrivateTransfers call.
+   * When set, the nonce is fetched once and cached; call invalidateProofNonceCache() to force a refresh.
+   */
+  nodeUrl?: string;
 };
 
 /**
@@ -436,6 +442,12 @@ export interface PrivateTransfersInterface {
     provingBlockId?: ProvingBlockId
   ): Promise<ExecuteResult>;
 
+  /**
+   * Clear the cached pool nonce so the next createProofInvocation/execute fetches a fresh one.
+   * Call this before retrying after a submission failure caused by a stale nonce.
+   */
+  invalidateProofNonceCache(): void;
+
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
 }
@@ -621,10 +633,12 @@ export type ProofInvocationFactoryDetails = AccountInvocationsFactoryDetails & {
  * Operator API contract — the proving service must implement this surface.
  */
 export interface ProofProviderInterface {
-  /** Get the default factory details for creating proof invocations. */
-  getDefaultDetails(): ProofInvocationFactoryDetails;
+  /** Get the default factory details for creating proof invocations. May fetch and cache the pool nonce when configured with a nodeUrl. */
+  getDefaultDetails(): Promise<ProofInvocationFactoryDetails>;
   /** Prove the given invocation against the given block id. If no block id is provided, use the default block identifier defined in the provider. */
   prove(invocation: ProofInvocation, blockIdentifier?: ProvingBlockId): Promise<Proof>;
+  /** Clear the cached nonce so the next getDefaultDetails() fetches a fresh one. Optional — only providers that cache nonce need to implement this. */
+  invalidateNonceCache?(): void;
 }
 
 export interface DiscoveryProviderInterface {
