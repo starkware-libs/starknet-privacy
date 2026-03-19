@@ -35,6 +35,9 @@ import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./channel.js"
 export abstract class AbstractPrivateTransfers implements PrivateTransfersInterface {
   readonly user: StarknetAddressBigint;
 
+  /** No-op in base; override in subclass when using a provider that caches nonce. */
+  invalidateProofNonceCache(): void {}
+
   constructor(
     userAddress: StarknetAddress,
     protected readonly viewingKeyProvider: ViewingKeyProvider,
