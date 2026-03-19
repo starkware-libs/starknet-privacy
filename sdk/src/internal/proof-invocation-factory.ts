@@ -136,6 +136,9 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     ]);
     const compiledCalldata = compileExecuteCalldata(poolAddressHex, executeViewCalldata);
 
+    const nonce = BigInt(details.nonce ?? PROOF_INVOCATION_NONCE);
+    const detailsWithNonce = { ...details, nonce };
+
     // Sign the transaction using details from the proof provider
     // signTransaction internally calls getExecuteCalldata which wraps the call
     // into Array<Call> format — the same layout as compiledCalldata. So we pass
@@ -151,7 +154,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
       {
         walletAddress: poolAddressHex,
         cairoVersion: "1",
-        ...details,
+        ...detailsWithNonce,
       } as V3InvocationsSignerDetails
     );
 
@@ -160,8 +163,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
       contractAddress: poolAddressHex,
       calldata: compiledCalldata,
       signature,
-      nonce: details.nonce ?? PROOF_INVOCATION_NONCE,
-      ...details,
+      ...detailsWithNonce,
     });
   }
 

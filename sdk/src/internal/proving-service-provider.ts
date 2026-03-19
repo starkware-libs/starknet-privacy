@@ -3,11 +3,14 @@
  */
 
 import type { constants } from "starknet";
+import { RpcProvider } from "starknet";
 import type {
   Proof,
+  ProofInvocationFactoryDetails,
   ProvingBlockId,
   ProofInvocation,
   ProofProviderInterface,
+  StarknetAddress,
 } from "../interfaces.js";
 import { toHex } from "../utils/convert.js";
 import { getDefaultProofDetails } from "./proof-invocation-factory.js";
@@ -24,6 +27,16 @@ export type ProvingServiceProofProviderOptions = {
    */
   // TODO: Change default to latest-verifiable.
   blockIdentifier?: ProvingBlockId;
+  /**
+   * Optional RPC node URL used to fetch the pool nonce (cached; use invalidateNonceCache() after nonce errors).
+   * Requires `poolAddress` to be set. When both are provided, getDefaultDetails() returns details with the
+   * fetched nonce; no provider on account or factory needed.
+   */
+  nodeUrl?: string;
+  /**
+   * Pool contract address used for nonce fetching. Required when `nodeUrl` is set.
+   */
+  poolAddress?: StarknetAddress;
 };
 
 /**
@@ -36,6 +49,9 @@ export type ProvingServiceProofProviderOptions = {
 export class ProvingServiceProofProvider implements ProofProviderInterface {
   private readonly provingService: ProvingService;
   private readonly blockIdentifier: ProvingBlockId;
+  private readonly nonceProvider: RpcProvider | null;
+  private readonly poolAddressHex: string | null;
+  private cachedNonce: bigint | null = null;
 
   constructor(
     provingServiceUrl: string,
@@ -47,10 +63,33 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
       requestTimeoutMs: options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
     });
     this.blockIdentifier = options.blockIdentifier ?? "latest";
+    if (options.nodeUrl != null) {
+      if (options.poolAddress == null) {
+        throw new Error("ProvingServiceProofProvider: nodeUrl requires poolAddress to be set");
+      }
+      this.nonceProvider = new RpcProvider({ nodeUrl: options.nodeUrl });
+      this.poolAddressHex = toHex(options.poolAddress);
+    } else {
+      this.nonceProvider = null;
+      this.poolAddressHex = null;
+    }
   }
 
-  getDefaultDetails() {
-    return getDefaultProofDetails(this.chainId);
+  invalidateNonceCache(): void {
+    this.cachedNonce = null;
+  }
+
+  async getDefaultDetails(): Promise<ProofInvocationFactoryDetails> {
+    const base = getDefaultProofDetails(this.chainId);
+    if (this.nonceProvider == null || this.poolAddressHex == null) {
+      return base;
+    }
+    if (this.cachedNonce == null) {
+      this.cachedNonce = BigInt(
+        await this.nonceProvider.getNonceForAddress(this.poolAddressHex, "latest")
+      );
+    }
+    return { ...base, nonce: this.cachedNonce };
   }
 
   async prove(invocation: ProofInvocation, blockIdentifier?: ProvingBlockId): Promise<Proof> {
