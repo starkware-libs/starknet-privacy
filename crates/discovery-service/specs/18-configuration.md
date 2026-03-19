@@ -28,8 +28,8 @@ All sections and fields are optional. Supports env var expansion: `${VAR}` (requ
 [rpc]
 url = "http://127.0.0.1:5050"
 max_concurrent_requests = 10
-connect_timeout = 30        # seconds
-request_timeout = 60        # seconds
+connect_timeout = 60        # seconds
+request_timeout = 30        # seconds
 max_idle_per_host = 10
 max_batch_size = 256        # max storage slots per JSON-RPC batch request
 event_page_size = 1024      # max events per starknet_getEvents page (spec max: 1024)
@@ -46,6 +46,11 @@ backoff_max_interval = 60
 host = "127.0.0.1:8080"
 health_max_lag_secs = 5
 request_timeout = 30        # seconds
+
+[api.tls]
+cert_path = "/etc/ssl/cert.pem"
+key_path = "/etc/ssl/key.pem"
+handshake_timeout = 10  # seconds, default 10
 
 [logging]
 level = "info"
@@ -71,6 +76,10 @@ These env vars override the corresponding config file values at runtime:
 | `API_HOST` | `api.host` | `127.0.0.1:8080` |
 | `RUST_LOG` | `logging.level` | `info` |
 | `SERVER_BUDGET` | `limits.server_budget` | `10000` |
+| `TLS_CERT_PATH` | `api.tls.cert_path` | — (TLS disabled) |
+| `TLS_KEY_PATH` | `api.tls.key_path` | — (TLS disabled) |
+
+Both `TLS_CERT_PATH` and `TLS_KEY_PATH` must be set together. Setting only one is a configuration error.
 
 RPC pool settings, indexer timeouts, and validation limits (except server budget) have no env var — configurable only via file.
 

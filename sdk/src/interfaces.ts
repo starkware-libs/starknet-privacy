@@ -421,7 +421,18 @@ export interface PrivateTransfersInterface {
   /**
    * Return the transaction to be proven so it can be sent independently to the prover
    */
-  createProofInvocation(actions: Actions, options?: ExecuteOptions): Promise<ProofInvocationResult>;
+  createProofInvocation(
+    actions: Actions,
+    options?: Omit<ExecuteOptions, "provingBlockId">
+  ): Promise<ProofInvocationResult>;
+
+  /**
+   * Execute a pre-built proof invocation: prove it and return the call+proof ready for submission.
+   */
+  executeWithInvocation(
+    invocation: ProofInvocationResult,
+    provingBlockId?: ProvingBlockId
+  ): Promise<ExecuteResult>;
 
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
