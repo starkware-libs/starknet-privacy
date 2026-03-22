@@ -60,7 +60,7 @@ use starkware_utils::components::pausable::interface::{
 use starkware_utils_testing::test_utils::{
     Deployable, TokenConfig, TokenHelperTrait, cheat_caller_address_once, generic_load,
     set_account_as_app_governor, set_account_as_app_role_admin, set_account_as_security_agent,
-    set_account_as_token_admin,
+    set_account_as_security_governor,
 };
 use vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
 use vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
@@ -156,8 +156,8 @@ pub(crate) mod constants {
 pub(crate) struct Roles {
     pub governance_admin: ContractAddress,
     pub security_agent: ContractAddress,
+    pub security_governor: ContractAddress,
     pub app_role_admin: ContractAddress,
-    pub token_admin: ContractAddress,
     pub app_governor: ContractAddress,
 }
 
@@ -166,8 +166,8 @@ impl DefaultRolesImpl of Default<Roles> {
         Roles {
             governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
             security_agent: 'SECURITY_AGENT'.try_into().unwrap(),
+            security_governor: 'SECURITY_GOVERNOR'.try_into().unwrap(),
             app_role_admin: 'APP_ROLE_ADMIN'.try_into().unwrap(),
-            token_admin: 'TOKEN_ADMIN'.try_into().unwrap(),
             app_governor: 'APP_GOVERNOR'.try_into().unwrap(),
         }
     }
@@ -1808,7 +1808,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     fn set_auditor_public_key(self: @PrivacyCfg, auditor_public_key: felt252) {
         cheat_caller_address_once(
-            contract_address: *self.address, caller_address: *self.roles.token_admin,
+            contract_address: *self.address, caller_address: *self.roles.security_governor,
         );
         self.admin.set_auditor_public_key(:auditor_public_key);
     }
@@ -2086,8 +2086,8 @@ fn _set_privacy_roles(contract: ContractAddress, roles: Roles) -> Roles {
     set_account_as_app_role_admin(
         :contract, account: roles.app_role_admin, governance_admin: roles.governance_admin,
     );
-    set_account_as_token_admin(
-        :contract, account: roles.token_admin, app_role_admin: roles.app_role_admin,
+    set_account_as_security_governor(
+        :contract, account: roles.security_governor, security_admin: roles.governance_admin,
     );
     set_account_as_app_governor(
         :contract, account: roles.app_governor, app_role_admin: roles.app_role_admin,
