@@ -27,7 +27,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     private readonly chainId: constants.StarknetChainId
   ) {}
 
-  getDefaultDetails() {
+  async getDefaultDetails() {
     return getDefaultProofDetails(this.chainId);
   }
 
@@ -92,7 +92,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     // Compute transaction hash using the same parameters as the signer.
     // invocation.calldata is already the __execute__ calldata (Array<Call> wrapping
     // compile_actions), so use it directly — no re-wrapping via getExecuteCalldata.
-    const details = this.getDefaultDetails();
+    const details = await this.getDefaultDetails();
     const txHash = hash.calculateInvokeTransactionHash({
       senderAddress: num.toHex(invocation.sender_address),
       version: details.version as ETransactionVersion3,
