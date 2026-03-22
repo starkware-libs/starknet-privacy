@@ -454,7 +454,7 @@ fn test_set_fee_amount_and_collector_flow() {
     assert_eq!(strk_token.balance_of(address: privacy_address), Zero::zero());
 
     // No fee configured yet, so apply_actions succeeds unfunded and moves no STRK.
-    test.privacy.safe_apply_actions_as_unfunded(actions: actions, :caller).unwrap();
+    test.privacy.safe_apply_actions_as_unfunded(:actions, :caller).unwrap();
     assert_eq!(strk_token.balance_of(address: caller), Zero::zero());
     assert_eq!(strk_token.balance_of(address: fee_collector_1), Zero::zero());
     assert_eq!(strk_token.balance_of(address: fee_collector_2), Zero::zero());
@@ -490,7 +490,7 @@ fn test_set_fee_amount_and_collector_flow() {
 
     // Setting fee amount back to zero disables fee collection.
     test.privacy.set_fee_amount(0);
-    test.privacy.safe_apply_actions_as_unfunded(actions: actions, :caller).unwrap();
+    test.privacy.safe_apply_actions_as_unfunded(:actions, :caller).unwrap();
     assert_eq!(strk_token.balance_of(address: caller), Zero::zero());
     assert_eq!(strk_token.balance_of(address: fee_collector_1), fee_amount_1.into());
     assert_eq!(

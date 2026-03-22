@@ -1830,7 +1830,7 @@ fn test_apply_invoke_vesu_open_note_deposit_assertions() {
     // Catch NOTE_NOT_OPEN
     let create_note_input = user
         .new_enc_note_with_generated_salt(
-            recipient: user, token_addr: vault_addr, amount: amount, index: 0,
+            recipient: user, token_addr: vault_addr, :amount, index: 0,
         );
     user.cheat_create_enc_note_e2e(:create_note_input);
     let (note_id_enc, _) = user.compute_enc_note(:create_note_input);
