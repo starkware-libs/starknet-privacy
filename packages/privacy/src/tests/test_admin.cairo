@@ -53,15 +53,18 @@ fn test_set_auditor_public_key() {
 fn test_set_auditor_public_key_assertions() {
     let mut test: Test = Default::default();
 
-    // Catch ONLY_TOKEN_ADMIN.
+    // Catch ONLY_SECURITY_GOVERNOR.
     let result = test
         .privacy
         .safe_set_auditor_public_key(auditor_public_key: test.auditor.public_key);
-    assert_panic_with_error(:result, expected_error: AccessErrors::ONLY_TOKEN_ADMIN.describe());
+    assert_panic_with_error(
+        :result, expected_error: AccessErrors::ONLY_SECURITY_GOVERNOR.describe(),
+    );
 
     // Catch ZERO_AUDITOR_PUBLIC_KEY.
     cheat_caller_address_once(
-        contract_address: test.privacy.address, caller_address: test.privacy.roles.token_admin,
+        contract_address: test.privacy.address,
+        caller_address: test.privacy.roles.security_governor,
     );
     let result = test.privacy.safe_set_auditor_public_key(auditor_public_key: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AUDITOR_PUBLIC_KEY);

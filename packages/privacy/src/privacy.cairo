@@ -969,13 +969,11 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl AdminImpl of IAdmin<ContractState> {
         fn set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
-            // TODO: Change to the real role.
-            self.roles.only_token_admin();
+            self.roles.only_security_governor();
             self._set_auditor_public_key(:auditor_public_key);
         }
 
         fn set_fee_amount(ref self: ContractState, fee_amount: u128) {
-            // TODO: Change to real role.
             self.roles.only_app_governor();
             if fee_amount.is_non_zero() {
                 assert(self.fee_collector.read().is_non_zero(), errors::ZERO_FEE_COLLECTOR);
@@ -985,7 +983,6 @@ pub mod Privacy {
         }
 
         fn set_fee_collector(ref self: ContractState, fee_collector: ContractAddress) {
-            // TODO: Change to real role.
             self.roles.only_app_governor();
             if self.fee_amount.read().is_non_zero() {
                 assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
@@ -995,7 +992,6 @@ pub mod Privacy {
         }
 
         fn set_proof_validity_blocks(ref self: ContractState, proof_validity_blocks: u64) {
-            // TODO: Change to real role.
             self.roles.only_app_governor();
             self._set_proof_validity_blocks(:proof_validity_blocks);
         }
