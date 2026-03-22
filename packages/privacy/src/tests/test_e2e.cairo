@@ -392,9 +392,7 @@ fn test_e2e_deposit_create_note_for_other_user() {
 
     // Tx 3: open channel + subchannel from user_1 to user_2, then deposit and create note for
     // user_2 in the same transaction.
-    let create_note = create_enc_note_input(
-        to: user_2, token: token_addr, amount: amount, index: 0,
-    );
+    let create_note = create_enc_note_input(to: user_2, token: token_addr, :amount, index: 0);
     test
         .privacy
         .execute_actions_e2e(
@@ -408,7 +406,7 @@ fn test_e2e_deposit_create_note_for_other_user() {
         );
 
     let (note_id, expected_note) = user_1.compute_enc_note(create_note_input: create_note);
-    assert_eq!(test.privacy.get_note(note_id: note_id), expected_note);
+    assert_eq!(test.privacy.get_note(:note_id), expected_note);
     assert_eq!(token.balance_of(address: user_1.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
@@ -430,13 +428,11 @@ fn test_e2e_transfer_same_channel_same_amount() {
     let channel_key_self = user.compute_channel_key(recipient: user);
 
     // Tx 2: open self channel + subchannel, deposit, and create one note.
-    let create_note_0 = create_enc_note_input(
-        to: user, token: token_addr, amount: amount, index: 0,
-    );
+    let create_note_0 = create_enc_note_input(to: user, token: token_addr, :amount, index: 0);
     test
         .privacy
         .execute_actions_e2e(
-            user: user,
+            :user,
             client_actions: [
                 open_channel_action(from: user, to: user, index: 0),
                 open_subchannel_action(from: user, to: user, :token_addr, index: 0),
@@ -450,13 +446,11 @@ fn test_e2e_transfer_same_channel_same_amount() {
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 
     // Tx 3: use the note and recreate the same amount on the same channel.
-    let create_note_1 = create_enc_note_input(
-        to: user, token: token_addr, amount: amount, index: 1,
-    );
+    let create_note_1 = create_enc_note_input(to: user, token: token_addr, :amount, index: 1);
     test
         .privacy
         .execute_actions_e2e(
-            user: user,
+            :user,
             client_actions: [
                 use_note_action(channel_key_self, token_addr, 0),
                 ClientAction::CreateEncNote(create_note_1),
@@ -464,7 +458,7 @@ fn test_e2e_transfer_same_channel_same_amount() {
                 .span(),
         );
 
-    let nullifier_0 = user.compute_nullifier(sender: user, token_addr: token_addr, index: 0);
+    let nullifier_0 = user.compute_nullifier(sender: user, :token_addr, index: 0);
     let (note_id_1, note_1) = user.compute_enc_note(create_note_input: create_note_1);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
     assert_eq!(test.privacy.get_note(note_id: note_id_1), note_1);
@@ -560,9 +554,9 @@ fn test_e2e_merge_notes_from_multiple_channels() {
                 .span(),
         );
 
-    let nullifier_1_0 = user_2.compute_nullifier(sender: user_1, token_addr: token_addr, index: 0);
-    let nullifier_1_1 = user_2.compute_nullifier(sender: user_1, token_addr: token_addr, index: 1);
-    let nullifier_3_0 = user_2.compute_nullifier(sender: user_3, token_addr: token_addr, index: 0);
+    let nullifier_1_0 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 0);
+    let nullifier_1_1 = user_2.compute_nullifier(sender: user_1, :token_addr, index: 1);
+    let nullifier_3_0 = user_2.compute_nullifier(sender: user_3, :token_addr, index: 0);
     let (merged_note_id, merged_note) = user_2.compute_enc_note(create_note_input: create_merged);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_1_0));
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_1_1));
@@ -599,7 +593,7 @@ fn test_e2e_split_one_note_into_two_self_notes() {
     test
         .privacy
         .execute_actions_e2e(
-            user: user,
+            :user,
             client_actions: [
                 open_channel_action(from: user, to: user, index: 0),
                 open_subchannel_action(from: user, to: user, :token_addr, index: 0),
@@ -623,7 +617,7 @@ fn test_e2e_split_one_note_into_two_self_notes() {
     test
         .privacy
         .execute_actions_e2e(
-            user: user,
+            :user,
             client_actions: [
                 use_note_action(channel_key_self, token_addr, 0),
                 ClientAction::CreateEncNote(create_note_1),
@@ -632,7 +626,7 @@ fn test_e2e_split_one_note_into_two_self_notes() {
                 .span(),
         );
 
-    let nullifier_0 = user.compute_nullifier(sender: user, token_addr: token_addr, index: 0);
+    let nullifier_0 = user.compute_nullifier(sender: user, :token_addr, index: 0);
     let (note_id_1, note_1) = user.compute_enc_note(create_note_input: create_note_1);
     let (note_id_2, note_2) = user.compute_enc_note(create_note_input: create_note_2);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
@@ -655,13 +649,11 @@ fn test_e2e_deposit_withdraw_flow() {
 
     // Tx 1: SetViewingKey, OpenChannel(self), OpenSubchannel, Deposit, CreateEncNote (to self)
     let channel_key_self = user.compute_channel_key(recipient: user);
-    let create_note_0 = create_enc_note_input(
-        to: user, token: token_addr, amount: amount, index: 0,
-    );
+    let create_note_0 = create_enc_note_input(to: user, token: token_addr, :amount, index: 0);
     test
         .privacy
         .execute_actions_e2e(
-            user: user,
+            :user,
             client_actions: [
                 set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
                 open_subchannel_action(from: user, to: user, :token_addr, index: 0),
@@ -674,13 +666,11 @@ fn test_e2e_deposit_withdraw_flow() {
     assert_eq!(test.privacy.get_note(note_id: note_id_0), note_0);
 
     // Tx 2: Deposit + CreateEncNote (to self, index 1)
-    let create_note_1 = create_enc_note_input(
-        to: user, token: token_addr, amount: amount, index: 1,
-    );
+    let create_note_1 = create_enc_note_input(to: user, token: token_addr, :amount, index: 1);
     test
         .privacy
         .execute_actions_e2e(
-            user: user,
+            :user,
             client_actions: [
                 deposit_action(token_addr, amount), ClientAction::CreateEncNote(create_note_1),
             ]
@@ -694,7 +684,7 @@ fn test_e2e_deposit_withdraw_flow() {
     test
         .privacy
         .execute_actions_e2e(
-            user: user,
+            :user,
             client_actions: [
                 use_note_action(channel_key_self, token_addr, 0),
                 use_note_action(channel_key_self, token_addr, 1),
@@ -782,8 +772,7 @@ fn test_e2e_deposit_split_with_leftover_and_all_withdraw() {
             ]
                 .span(),
         );
-    let nullifier_self_0 = user_a
-        .compute_nullifier(sender: user_a, token_addr: token_addr, index: 0);
+    let nullifier_self_0 = user_a.compute_nullifier(sender: user_a, :token_addr, index: 0);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_self_0));
     let (note_id_b, note_b) = user_a.compute_enc_note(create_note_input: create_for_b);
     let (note_id_c, note_c) = user_a.compute_enc_note(create_note_input: create_for_c);
@@ -804,7 +793,7 @@ fn test_e2e_deposit_split_with_leftover_and_all_withdraw() {
             ]
                 .span(),
         );
-    let nullifier_b = user_b.compute_nullifier(sender: user_a, token_addr: token_addr, index: 0);
+    let nullifier_b = user_b.compute_nullifier(sender: user_a, :token_addr, index: 0);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_b));
     assert_eq!(token.balance_of(address: user_b.address), amount_b.into());
     assert_eq!(token.balance_of(address: test.privacy.address), (amount_c + amount_self).into());
@@ -820,7 +809,7 @@ fn test_e2e_deposit_split_with_leftover_and_all_withdraw() {
             ]
                 .span(),
         );
-    let nullifier_c = user_c.compute_nullifier(sender: user_a, token_addr: token_addr, index: 0);
+    let nullifier_c = user_c.compute_nullifier(sender: user_a, :token_addr, index: 0);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_c));
     assert_eq!(token.balance_of(address: user_c.address), amount_c.into());
     assert_eq!(token.balance_of(address: test.privacy.address), amount_self.into());
@@ -836,8 +825,7 @@ fn test_e2e_deposit_split_with_leftover_and_all_withdraw() {
             ]
                 .span(),
         );
-    let nullifier_self_1 = user_a
-        .compute_nullifier(sender: user_a, token_addr: token_addr, index: 1);
+    let nullifier_self_1 = user_a.compute_nullifier(sender: user_a, :token_addr, index: 1);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_self_1));
     assert_eq!(token.balance_of(address: user_a.address), amount_self.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
@@ -859,7 +847,7 @@ fn test_e2e_transfer_flow() {
 
     // Tx 1: SetViewingKey, OpenChannel(self), OpenSubchannel, Deposit, CreateEncNote (to self,
     // index 0)
-    let create_0 = create_enc_note_input(to: user_1, token: token_addr, amount: amount, index: 0);
+    let create_0 = create_enc_note_input(to: user_1, token: token_addr, :amount, index: 0);
     test
         .privacy
         .execute_actions_e2e(
@@ -873,7 +861,7 @@ fn test_e2e_transfer_flow() {
         );
 
     // Tx 2: Deposit + CreateEncNote (to self, index 1)
-    let create_1 = create_enc_note_input(to: user_1, token: token_addr, amount: amount, index: 1);
+    let create_1 = create_enc_note_input(to: user_1, token: token_addr, :amount, index: 1);
     test
         .privacy
         .execute_actions_e2e(
@@ -885,7 +873,7 @@ fn test_e2e_transfer_flow() {
         );
 
     // Tx 3: Deposit + CreateEncNote (to self, index 2)
-    let create_2 = create_enc_note_input(to: user_1, token: token_addr, amount: amount, index: 2);
+    let create_2 = create_enc_note_input(to: user_1, token: token_addr, :amount, index: 2);
     test
         .privacy
         .execute_actions_e2e(
@@ -1082,9 +1070,7 @@ fn test_e2e_actions_twice() {
 
     // 5. user1: 2 deposit + 1 create enc note for token 1 (one tx; phase order: deposits then
     // create notes)
-    let create_t1_0 = create_enc_note_input(
-        to: user_1, token: token_1_addr, amount: amount, index: 0,
-    );
+    let create_t1_0 = create_enc_note_input(to: user_1, token: token_1_addr, :amount, index: 0);
     test
         .privacy
         .execute_actions_e2e(
@@ -1220,12 +1206,12 @@ fn test_e2e_multi_action_multi_token_one_tx() {
 
     // Tx1: SetViewingKey + OpenChannel + 2 OpenSubchannel + 2 Deposit + 2 CreateEncNote (one tx;
     // phase order: account, channel, subchannel, subchannel, deposit, deposit, create, create)
-    let create_t1 = create_enc_note_input(to: user, token: token_1_addr, amount: amount, index: 0);
-    let create_t2 = create_enc_note_input(to: user, token: token_2_addr, amount: amount, index: 0);
+    let create_t1 = create_enc_note_input(to: user, token: token_1_addr, :amount, index: 0);
+    let create_t2 = create_enc_note_input(to: user, token: token_2_addr, :amount, index: 0);
     test
         .privacy
         .execute_actions_e2e(
-            user: user,
+            :user,
             client_actions: [
                 set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
                 open_subchannel_action(from: user, to: user, token_addr: token_1_addr, index: 0),
@@ -1249,7 +1235,7 @@ fn test_e2e_multi_action_multi_token_one_tx() {
     test
         .privacy
         .execute_actions_e2e(
-            user: user,
+            :user,
             client_actions: [
                 use_note_action(channel_key_self, token_1_addr, 0),
                 use_note_action(channel_key_self, token_2_addr, 0),
@@ -1287,7 +1273,7 @@ fn test_e2e_vesu_invoke() {
     // Tx 1: SetViewingKey + OpenChannel(self) + OpenSubchannel(underlying) + Deposit +
     // CreateEncNote (underlying, to self)
     let create_note_0 = create_enc_note_input(
-        to: user, token: underlying_token_addr, amount: amount, index: 0,
+        to: user, token: underlying_token_addr, :amount, index: 0,
     );
     test
         .privacy
@@ -1298,7 +1284,7 @@ fn test_e2e_vesu_invoke() {
                 open_subchannel_action(
                     from: user, to: user, token_addr: underlying_token_addr, index: 0,
                 ),
-                deposit_action(token_addr: underlying_token_addr, amount: amount),
+                deposit_action(token_addr: underlying_token_addr, :amount),
                 ClientAction::CreateEncNote(create_note_0),
             ]
                 .span(),
@@ -1322,9 +1308,7 @@ fn test_e2e_vesu_invoke() {
                 open_subchannel_action(from: user, to: user, token_addr: vault_addr, index: 1),
                 use_note_action(channel_key_self, token_addr: underlying_token_addr, index: 0),
                 ClientAction::CreateOpenNote(create_open_vault),
-                withdraw_action(
-                    to_addr: helper_addr, token_addr: underlying_token_addr, amount: amount,
-                ),
+                withdraw_action(to_addr: helper_addr, token_addr: underlying_token_addr, :amount),
                 ClientAction::InvokeExternal(invoke_deposit),
             ]
                 .span(),
@@ -1361,7 +1345,7 @@ fn test_e2e_vesu_invoke() {
             client_actions: [
                 use_note_action(channel_key_self, token_addr: vault_addr, index: 0),
                 ClientAction::CreateOpenNote(create_open_underlying),
-                withdraw_action(to_addr: helper_addr, token_addr: vault_addr, amount: amount),
+                withdraw_action(to_addr: helper_addr, token_addr: vault_addr, :amount),
                 ClientAction::InvokeExternal(invoke_withdraw),
             ]
                 .span(),
