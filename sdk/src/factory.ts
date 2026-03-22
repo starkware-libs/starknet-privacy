@@ -77,6 +77,8 @@ export function createPrivateTransfers(params: {
     ? new ProvingServiceProofProvider(params.provingProvider.url, params.provingProvider.chainId, {
         requestTimeoutMs: params.provingProvider.requestTimeoutMs,
         blockIdentifier: params.provingProvider.blockIdentifier,
+        nodeUrl: params.provingProvider.nodeUrl,
+        poolAddress: params.poolContractAddress,
       })
     : params.provingProvider;
 

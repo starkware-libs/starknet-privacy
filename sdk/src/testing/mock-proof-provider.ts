@@ -26,7 +26,7 @@ import { buildMessagePayload } from "../utils/proof-facts.js";
 export class MockProofProvider implements ProofProviderInterface {
   constructor(private pool: MockPoolContract) {}
 
-  getDefaultDetails() {
+  async getDefaultDetails() {
     return getDefaultProofDetails(constants.StarknetChainId.SN_SEPOLIA);
   }
 
