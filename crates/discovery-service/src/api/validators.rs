@@ -195,7 +195,7 @@ pub async fn validate_viewing_key<S: StorageSnapshot>(
             .await
             .map_err(|storage_error| match storage_error {
                 StorageError::ContractNotFound => (
-                    StatusCode::NOT_FOUND,
+                    StatusCode::BAD_REQUEST,
                     ApiErrorResponse::new(
                         error_codes::CONTRACT_NOT_FOUND,
                         "Contract not found at the configured address",

@@ -219,7 +219,7 @@ async fn test_incoming_sync_contract_not_found() {
 
     let (status, error) = indexer.incoming_sync_error(&request).await.unwrap();
 
-    assert_eq!(status, 404);
+    assert_eq!(status, 400);
     assert_eq!(error.error.code, "CONTRACT_NOT_FOUND");
 
     indexer.signal_shutdown().unwrap();
