@@ -17,7 +17,6 @@ All error responses follow a consistent structure:
 **HTTP status codes:**
 
 - `400` - Client errors (invalid input, validation failures)
-- `404` - Resource not found
 - `409` - Conflict (reorg detected)
 - `429` - Rate limited
 - `500` - Internal server error
@@ -30,6 +29,7 @@ All error responses follow a consistent structure:
 | `INVALID_REQUEST` | 400 | No | Malformed request body or missing required fields |
 | `MAX_READS_EXCEEDED` | 400 | No | Requested `max_reads` exceeds allowed maximum |
 | `DECRYPTION_FAILED` | 400 | No | Provided key could not decrypt channel/note data. Generic message only — channel index and internal error details are logged server-side, not exposed to the client |
+| `CONTRACT_NOT_FOUND` | 400 | No | Contract not found at the provided address |
 | `BLOCK_REORGED` | 409 | Yes | `last_known_block` was reorged out; client should re-sync |
 | `RATE_LIMITED` | 429 | Yes | Too many requests. `Retry-After` header is set by the reverse proxy, not the service itself |
 | `SERVICE_UNAVAILABLE` | 503 | Yes | Service is starting up or no chain head available. `Retry-After` header, if present, is set by the reverse proxy |

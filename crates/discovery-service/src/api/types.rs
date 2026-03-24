@@ -76,7 +76,7 @@ pub fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErr
             if matches!(storage_err, StorageError::ContractNotFound) {
                 warn!("Contract not found during discovery");
                 (
-                    StatusCode::NOT_FOUND,
+                    StatusCode::BAD_REQUEST,
                     ApiErrorResponse::new(
                         error_codes::CONTRACT_NOT_FOUND,
                         "Contract not found at the configured address",
