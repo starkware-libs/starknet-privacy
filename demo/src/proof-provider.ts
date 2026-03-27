@@ -24,7 +24,7 @@ export class NoValidateProofProvider implements ProofProviderInterface {
     this.delegate = new CallMockProofProvider(provider, chainId);
   }
 
-  getDefaultDetails(): ProofInvocationFactoryDetails {
+  async getDefaultDetails(): Promise<ProofInvocationFactoryDetails> {
     return this.delegate.getDefaultDetails();
   }
 

@@ -3,79 +3,66 @@ import { constants, hash, num, type RpcProvider } from "starknet";
 
 export type PoolEntry = {
   address: string;
+  blockNumber: number;
   isDefault: boolean;
-  isNewest?: boolean;
 };
 
-const ACTIVE_POOL_STORAGE_KEY = "privacy-demo:active-pool";
+export type SearchProgress = {
+  scannedBlocks: number;
+  totalBlocks: number;
+  percent: number;
+  /** Estimated seconds remaining, or null if not enough data */
+  estimatedSecondsRemaining: number | null;
+};
+
+export type SearchState = {
+  results: PoolEntry[];
+  progress: SearchProgress;
+  done: boolean;
+};
+
 const UDC_ADDRESS = constants.UDC.ADDRESS;
 const CONTRACT_DEPLOYED_SELECTOR = hash.getSelectorFromName("ContractDeployed");
 const CHUNK_SIZE = 1024;
+const STORAGE_KEY = "poolSelection";
 
-function loadStoredAddress(): string | null {
+type StoredSelection = {
+  defaultAddress: string;
+  classHash: string;
+  selectedAddress: string;
+};
+
+function loadStoredAddress(
+  defaultAddress: string,
+  classHash: string,
+): string {
   try {
-    return localStorage.getItem(ACTIVE_POOL_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function persistActiveAddress(address: string): void {
-  localStorage.setItem(ACTIVE_POOL_STORAGE_KEY, address);
-}
-
-async function fetchPoolAddresses(
-  provider: RpcProvider,
-  poolClassHash: string,
-): Promise<string[]> {
-  const addresses: string[] = [];
-  let continuationToken: string | undefined;
-  const normalizedClassHash = num.toHex(poolClassHash);
-
-  do {
-    const response = await provider.getEvents({
-      address: UDC_ADDRESS,
-      keys: [[CONTRACT_DEPLOYED_SELECTOR]],
-      chunk_size: CHUNK_SIZE,
-      ...(continuationToken ? { continuation_token: continuationToken } : {}),
-    });
-
-    for (const event of response.events) {
-      // ContractDeployed data: [address, deployer, unique, classHash, calldata_len, ...calldata, salt]
-      const eventClassHash = event.data[3];
-      if (eventClassHash && num.toHex(eventClassHash) === normalizedClassHash) {
-        addresses.push(event.data[0]);
-      }
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return defaultAddress;
+    const stored: StoredSelection = JSON.parse(raw);
+    if (
+      stored.defaultAddress === defaultAddress &&
+      stored.classHash === classHash
+    ) {
+      return stored.selectedAddress;
     }
-
-    continuationToken = response.continuation_token;
-  } while (continuationToken);
-
-  return addresses;
+    return defaultAddress;
+  } catch {
+    return defaultAddress;
+  }
 }
 
-function buildPoolList(
-  eventAddresses: string[],
-  defaultPoolAddress: string,
-): PoolEntry[] {
-  const defaultEntry: PoolEntry = { address: defaultPoolAddress, isDefault: true };
-
-  // Most recent first (events come chronologically, reverse for recency)
-  const reversed = [...eventAddresses].reverse();
-  const pools: PoolEntry[] = [];
-  const seen = new Set<string>();
-
-  for (const address of reversed) {
-    const normalized = address.toLowerCase();
-    if (normalized === defaultPoolAddress.toLowerCase()) continue;
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-    pools.push({ address, isDefault: false, isNewest: pools.length === 0 });
+function saveSelection(
+  defaultAddress: string,
+  classHash: string,
+  selectedAddress: string,
+): void {
+  try {
+    const value: StoredSelection = { defaultAddress, classHash, selectedAddress };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+  } catch {
+    // localStorage unavailable
   }
-
-  // Default pool always at the bottom as fallback
-  pools.push(defaultEntry);
-  return pools;
 }
 
 export function usePoolSelector(
@@ -83,72 +70,149 @@ export function usePoolSelector(
   defaultPoolAddress: string,
   poolClassHash: string,
 ) {
-  const defaultEntry: PoolEntry = { address: defaultPoolAddress, isDefault: true };
-  const storedAddress = loadStoredAddress();
-
-  // Active address resolves immediately: localStorage value or default — no waiting for fetch
-  const [activeAddress, setActiveAddress] = useState<string>(
-    storedAddress ?? defaultPoolAddress,
+  const [activeAddress, setActiveAddress] = useState(() =>
+    loadStoredAddress(defaultPoolAddress, poolClassHash),
   );
-  const [pools, setPools] = useState<PoolEntry[]>(() => {
-    if (storedAddress && storedAddress !== defaultPoolAddress) {
-      return [{ address: storedAddress, isDefault: false }, defaultEntry];
-    }
-    return [defaultEntry];
-  });
-  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState<SearchState | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Track optimistic additions (from deploys) so they survive the background fetch
-  const optimisticEntries = useRef<PoolEntry[]>([]);
-
-  // Background fetch — populates the dropdown but does not change the active selection
   useEffect(() => {
+    const stored = loadStoredAddress(defaultPoolAddress, poolClassHash);
+    setActiveAddress(stored);
+    stopSearch();
+  }, [defaultPoolAddress, poolClassHash]);
+
+  const persist = useCallback(
+    (address: string) => {
+      saveSelection(defaultPoolAddress, poolClassHash, address);
+    },
+    [defaultPoolAddress, poolClassHash],
+  );
+
+  const selectPool = useCallback(
+    (address: string) => {
+      setActiveAddress(address);
+      persist(address);
+    },
+    [persist],
+  );
+
+  const addPool = useCallback(
+    (entry: PoolEntry) => {
+      setActiveAddress(entry.address);
+      persist(entry.address);
+    },
+    [persist],
+  );
+
+  const stopSearch = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
+
+  const searchPools = useCallback(async () => {
     if (!provider) return;
 
-    let cancelled = false;
-    setLoading(true);
+    stopSearch();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
-    fetchPoolAddresses(provider, poolClassHash)
-      .then((addresses) => {
-        if (cancelled) return;
-        const fetched = buildPoolList(addresses, defaultPoolAddress);
+    const normalizedClassHash = num.toHex(poolClassHash);
+    const latestBlock = await provider.getBlockNumber();
+    const seen = new Set<string>();
+    const results: PoolEntry[] = [];
+    const startTime = Date.now();
+    let scannedBlocks = 0;
 
-        const fetchedNormalized = new Set(
-          fetched.map((pool) => pool.address.toLowerCase()),
+    setSearch({
+      results: [],
+      progress: { scannedBlocks: 0, totalBlocks: latestBlock, percent: 0, estimatedSecondsRemaining: null },
+      done: false,
+    });
+
+    let continuationToken: string | undefined;
+
+    try {
+      do {
+        if (controller.signal.aborted) return;
+
+        const response = await provider.getEvents({
+          address: UDC_ADDRESS,
+          keys: [[CONTRACT_DEPLOYED_SELECTOR]],
+          chunk_size: CHUNK_SIZE,
+          ...(continuationToken ? { continuation_token: continuationToken } : {}),
+        });
+
+        for (const event of response.events) {
+          const eventClassHash = event.data[3];
+          if (eventClassHash && num.toHex(eventClassHash) === normalizedClassHash) {
+            const address = event.data[0];
+            const normalized = address.toLowerCase();
+            if (!seen.has(normalized)) {
+              seen.add(normalized);
+              results.push({
+                address,
+                blockNumber: event.block_number ?? 0,
+                isDefault: normalized === defaultPoolAddress.toLowerCase(),
+              });
+            }
+          }
+        }
+
+        // Estimate progress from the last event's block number
+        const lastEventBlock = response.events.length > 0
+          ? (response.events[response.events.length - 1].block_number ?? scannedBlocks)
+          : scannedBlocks;
+        scannedBlocks = Math.max(scannedBlocks, lastEventBlock);
+
+        const percent = latestBlock > 0
+          ? Math.min(100, Math.round((scannedBlocks / latestBlock) * 100))
+          : 0;
+        const elapsedSeconds = (Date.now() - startTime) / 1000;
+        const estimatedSecondsRemaining =
+          percent > 0 && percent < 100
+            ? Math.round((elapsedSeconds / percent) * (100 - percent))
+            : null;
+
+        if (!controller.signal.aborted) {
+          setSearch({
+            results: [...results].reverse(),
+            progress: { scannedBlocks, totalBlocks: latestBlock, percent, estimatedSecondsRemaining },
+            done: false,
+          });
+        }
+
+        continuationToken = response.continuation_token;
+      } while (continuationToken);
+
+      if (!controller.signal.aborted) {
+        setSearch({
+          results: [...results].reverse(),
+          progress: { scannedBlocks: latestBlock, totalBlocks: latestBlock, percent: 100, estimatedSecondsRemaining: null },
+          done: true,
+        });
+      }
+    } catch {
+      if (!controller.signal.aborted) {
+        setSearch((previous) =>
+          previous ? { ...previous, done: true } : null,
         );
-        const pendingOptimistic = optimisticEntries.current.filter(
-          (entry) => !fetchedNormalized.has(entry.address.toLowerCase()),
-        );
+      }
+    }
+  }, [provider, poolClassHash, defaultPoolAddress, stopSearch]);
 
-        setPools([...pendingOptimistic, ...fetched]);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setPools([...optimisticEntries.current, defaultEntry]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+  const closeSearch = useCallback(() => {
+    stopSearch();
+    setSearch(null);
+  }, [stopSearch]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [provider, poolClassHash, defaultPoolAddress]);
-
-  const activePool = pools.find((pool) => pool.address === activeAddress)
-    ?? { address: activeAddress, isDefault: activeAddress === defaultPoolAddress };
-
-  const selectPool = useCallback((address: string) => {
-    setActiveAddress(address);
-    persistActiveAddress(address);
-  }, []);
-
-  const addPool = useCallback((entry: PoolEntry) => {
-    optimisticEntries.current = [entry, ...optimisticEntries.current];
-    setPools((previous) => [entry, ...previous]);
-    setActiveAddress(entry.address);
-    persistActiveAddress(entry.address);
-  }, []);
-
-  return { pools, activePool, selectPool, addPool, loading };
+  return {
+    activeAddress,
+    search,
+    selectPool,
+    addPool,
+    searchPools,
+    stopSearch,
+    closeSearch,
+  };
 }
