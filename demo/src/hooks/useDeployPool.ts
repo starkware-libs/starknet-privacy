@@ -1,38 +1,49 @@
 import { useState, useCallback, useMemo } from "react";
 import { Account, type RpcProvider } from "starknet";
-import type { AppConfig } from "../config.ts";
-import { DEPLOY_RESOURCE_BOUNDS } from "../starknet.ts";
+import type { AccountConfig, AppConfig } from "../config.ts";
 
-export function useDeployPool(provider: RpcProvider | undefined, config: AppConfig) {
+
+export function useDeployPool(
+  provider: RpcProvider | undefined,
+  config: AppConfig,
+  accounts: AccountConfig[],
+) {
   const [deploying, setDeploying] = useState(false);
   const [deployError, setDeployError] = useState<string | null>(null);
 
+  const adminConfig = useMemo(() => accounts.find((a) => a.admin), [accounts]);
+
   const adminAccount = useMemo(() => {
-    if (!provider) return undefined;
+    if (!provider || !adminConfig) return undefined;
     return new Account({
       provider,
-      address: config.adminAddress,
-      signer: config.adminKey,
+      address: adminConfig.address,
+      signer: adminConfig.privateKey,
       cairoVersion: "1",
     });
-  }, [provider, config.adminAddress, config.adminKey]);
+  }, [provider, adminConfig]);
 
   const deploy = useCallback(async (): Promise<{ address: string; txHash: string }> => {
-    if (!adminAccount || !provider) throw new Error("Provider not ready");
+    if (!adminAccount || !adminConfig || !provider) throw new Error("Provider not ready");
     setDeploying(true);
     setDeployError(null);
 
     try {
       const salt = `0x${Date.now().toString(16)}`;
       const constructorCalldata = [
-        config.adminAddress,
+        adminConfig.address,
         config.compliancePublicKey,
         config.proofValidityBlocks,
       ];
 
+      const deployFee = await adminAccount.estimateDeployFee({
+        classHash: config.poolClassHash,
+        constructorCalldata,
+        salt,
+      });
       const deployResult = await adminAccount.deployContract(
         { classHash: config.poolClassHash, constructorCalldata, salt },
-        { tip: 0n, resourceBounds: DEPLOY_RESOURCE_BOUNDS },
+        { tip: 0n, resourceBounds: deployFee.resourceBounds },
       );
 
       const receipt = await provider.waitForTransaction(deployResult.transaction_hash);
@@ -51,7 +62,7 @@ export function useDeployPool(provider: RpcProvider | undefined, config: AppConf
     } finally {
       setDeploying(false);
     }
-  }, [adminAccount, provider, config]);
+  }, [adminAccount, adminConfig, provider, config]);
 
   return { deploying, deployError, deploy };
 }

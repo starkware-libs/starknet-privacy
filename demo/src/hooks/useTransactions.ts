@@ -1,16 +1,18 @@
 import { useState, useCallback, useMemo } from "react";
 import { Account, type RpcProvider } from "starknet";
 import type { PrivateTransfersInterface } from "starknet-sdk";
-import type { AppConfig } from "../config.ts";
-import {
-  ERC20_RESOURCE_BOUNDS,
-  POOL_RESOURCE_BOUNDS,
-} from "../starknet.ts";
+import type { AccountConfig, AppConfig } from "../config.ts";
+
+function base64ByteLength(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return (base64.length * 3) / 4 - padding;
+}
 
 export type TransactionStatus = {
   pending: boolean;
   lastTxHash: string | null;
   lastError: string | null;
+  proofSizeBytes: number | null;
 };
 
 export function useTransactions(
@@ -19,28 +21,32 @@ export function useTransactions(
   activeAddress: string | undefined,
   poolAddress: string,
   config: AppConfig,
+  accounts: AccountConfig[],
   onSuccess: () => void,
 ) {
   const [status, setStatus] = useState<TransactionStatus>({
     pending: false,
     lastTxHash: null,
     lastError: null,
+    proofSizeBytes: null,
   });
 
   const adminAccount = useMemo(() => {
     if (!provider) return undefined;
+    const admin = accounts.find((a) => a.admin);
+    if (!admin) return undefined;
     return new Account({
       provider,
-      address: config.adminAddress,
-      signer: config.adminKey,
+      address: admin.address,
+      signer: admin.privateKey,
       cairoVersion: "1",
     });
-  }, [provider, config.adminAddress, config.adminKey]);
+  }, [provider, accounts]);
 
   const userAccount = useMemo(() => {
     if (!provider || !activeAddress) return undefined;
     // Find the private key for active address from config
-    const accountConfig = config.accounts.find(
+    const accountConfig = accounts.find(
       (a) => a.address === activeAddress,
     );
     if (!accountConfig) return undefined;
@@ -50,21 +56,26 @@ export function useTransactions(
       signer: accountConfig.privateKey,
       cairoVersion: "1",
     });
-  }, [provider, activeAddress, config.accounts]);
+  }, [provider, activeAddress, accounts]);
 
   const execute = useCallback(
-    async (action: string, fn: () => Promise<string>) => {
+    async (action: string, fn: () => Promise<{ txHash: string; proofSizeBytes?: number }>) => {
       console.log(`[${action}] starting...`);
-      setStatus({ pending: true, lastTxHash: null, lastError: null });
+      setStatus({ pending: true, lastTxHash: null, lastError: null, proofSizeBytes: null });
       try {
-        const txHash = await fn();
-        console.log(`[${action}] confirmed: ${txHash}`);
-        setStatus({ pending: false, lastTxHash: txHash, lastError: null });
+        const result = await fn();
+        console.log(`[${action}] confirmed: ${result.txHash}`);
+        setStatus({
+          pending: false,
+          lastTxHash: result.txHash,
+          lastError: null,
+          proofSizeBytes: result.proofSizeBytes ?? null,
+        });
         onSuccess();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`[${action}] failed:`, err);
-        setStatus({ pending: false, lastTxHash: null, lastError: `${action}: ${message}` });
+        setStatus({ pending: false, lastTxHash: null, lastError: `${action}: ${message}`, proofSizeBytes: null });
       }
     },
     [onSuccess],
@@ -84,15 +95,14 @@ export function useTransactions(
           .register()
           .execute({ provingBlockId });
         console.log("[Register] callAndProof built, submitting tx...");
+        const proofDetails = callAndProof.proof.proofFacts?.length
+          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
+          : {};
 
+        const registerFee = await userAccount.estimateInvokeFee(callAndProof.call, proofDetails);
         const executeTx = await userAccount.execute(callAndProof.call, {
-          resourceBounds: POOL_RESOURCE_BOUNDS,
-          ...(callAndProof.proof.proofFacts?.length
-            ? {
-                proofFacts: callAndProof.proof.proofFacts,
-                proof: callAndProof.proof.data,
-              }
-            : {}),
+          resourceBounds: registerFee.resourceBounds,
+          ...proofDetails,
         });
         console.log(`[Register] tx: ${executeTx.transaction_hash}`);
         const receipt = await provider.waitForTransaction(
@@ -101,7 +111,10 @@ export function useTransactions(
         if (!receipt.isSuccess()) {
           throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
         }
-        return executeTx.transaction_hash;
+        const proofSizeBytes = callAndProof.proof.data
+          ? base64ByteLength(callAndProof.proof.data)
+          : undefined;
+        return { txHash: executeTx.transaction_hash, proofSizeBytes };
       }),
     [userAccount, transfers, provider, execute],
   );
@@ -112,17 +125,18 @@ export function useTransactions(
         if (!adminAccount || !activeAddress || !provider)
           throw new Error("Not ready");
         console.log(`[Mint] amount=${amount} to=${activeAddress}`);
-        const tx = await adminAccount.execute(
-          {
-            contractAddress: config.tokenAddress,
-            entrypoint: "permissionedMint",
-            calldata: [activeAddress, amount.toString(), "0"],
-          },
-          { resourceBounds: ERC20_RESOURCE_BOUNDS },
-        );
+        const mintCall = {
+          contractAddress: config.tokenAddress,
+          entrypoint: "permissionedMint",
+          calldata: [activeAddress, amount.toString(), "0"],
+        };
+        const mintFee = await adminAccount.estimateInvokeFee(mintCall);
+        const tx = await adminAccount.execute(mintCall, {
+          resourceBounds: mintFee.resourceBounds,
+        });
         console.log(`[Mint] tx submitted: ${tx.transaction_hash}`);
         await provider.waitForTransaction(tx.transaction_hash);
-        return tx.transaction_hash;
+        return { txHash: tx.transaction_hash };
       }),
     [adminAccount, activeAddress, provider, config.tokenAddress, execute],
   );
@@ -136,14 +150,15 @@ export function useTransactions(
         console.log(`[Deposit] amount=${amount} recipient=${activeAddress}`);
 
         // Approve pool to spend tokens
-        const approveTx = await userAccount.execute(
-          {
-            contractAddress: config.tokenAddress,
-            entrypoint: "approve",
-            calldata: [poolAddress, amount.toString(), "0"],
-          },
-          { resourceBounds: ERC20_RESOURCE_BOUNDS },
-        );
+        const approveCall = {
+          contractAddress: config.tokenAddress,
+          entrypoint: "approve",
+          calldata: [poolAddress, amount.toString(), "0"],
+        };
+        const approveFee = await userAccount.estimateInvokeFee(approveCall);
+        const approveTx = await userAccount.execute(approveCall, {
+          resourceBounds: approveFee.resourceBounds,
+        });
         console.log(`[Deposit] approve tx: ${approveTx.transaction_hash}`);
         await provider.waitForTransaction(approveTx.transaction_hash);
 
@@ -160,15 +175,14 @@ export function useTransactions(
           )
           .execute({ provingBlockId });
         console.log("[Deposit] callAndProof built, submitting pool tx...");
+        const depositProofDetails = callAndProof.proof.proofFacts?.length
+          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
+          : {};
 
+        const depositFee = await userAccount.estimateInvokeFee(callAndProof.call, depositProofDetails);
         const executeTx = await userAccount.execute(callAndProof.call, {
-          resourceBounds: POOL_RESOURCE_BOUNDS,
-          ...(callAndProof.proof.proofFacts?.length
-            ? {
-                proofFacts: callAndProof.proof.proofFacts,
-                proof: callAndProof.proof.data,
-              }
-            : {}),
+          resourceBounds: depositFee.resourceBounds,
+          ...depositProofDetails,
         });
         console.log(`[Deposit] pool tx: ${executeTx.transaction_hash}`);
         const receipt = await provider.waitForTransaction(
@@ -177,7 +191,10 @@ export function useTransactions(
         if (!receipt.isSuccess()) {
           throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
         }
-        return executeTx.transaction_hash;
+        const proofSizeBytes = callAndProof.proof.data
+          ? base64ByteLength(callAndProof.proof.data)
+          : undefined;
+        return { txHash: executeTx.transaction_hash, proofSizeBytes };
       }),
     [userAccount, transfers, provider, activeAddress, config, execute],
   );
@@ -202,15 +219,14 @@ export function useTransactions(
           )
           .execute({ provingBlockId });
         console.log("[Withdraw] callAndProof built, submitting pool tx...");
+        const withdrawProofDetails = callAndProof.proof.proofFacts?.length
+          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
+          : {};
 
+        const withdrawFee = await userAccount.estimateInvokeFee(callAndProof.call, withdrawProofDetails);
         const executeTx = await userAccount.execute(callAndProof.call, {
-          resourceBounds: POOL_RESOURCE_BOUNDS,
-          ...(callAndProof.proof.proofFacts?.length
-            ? {
-                proofFacts: callAndProof.proof.proofFacts,
-                proof: callAndProof.proof.data,
-              }
-            : {}),
+          resourceBounds: withdrawFee.resourceBounds,
+          ...withdrawProofDetails,
         });
         console.log(`[Withdraw] pool tx: ${executeTx.transaction_hash}`);
         const receipt = await provider.waitForTransaction(
@@ -219,7 +235,10 @@ export function useTransactions(
         if (!receipt.isSuccess()) {
           throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
         }
-        return executeTx.transaction_hash;
+        const proofSizeBytes = callAndProof.proof.data
+          ? base64ByteLength(callAndProof.proof.data)
+          : undefined;
+        return { txHash: executeTx.transaction_hash, proofSizeBytes };
       }),
     [userAccount, transfers, provider, activeAddress, config, execute],
   );
@@ -245,15 +264,14 @@ export function useTransactions(
           )
           .execute({ provingBlockId });
         console.log("[Transfer] callAndProof built, submitting pool tx...");
+        const transferProofDetails = callAndProof.proof.proofFacts?.length
+          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
+          : {};
 
+        const transferFee = await userAccount.estimateInvokeFee(callAndProof.call, transferProofDetails);
         const executeTx = await userAccount.execute(callAndProof.call, {
-          resourceBounds: POOL_RESOURCE_BOUNDS,
-          ...(callAndProof.proof.proofFacts?.length
-            ? {
-                proofFacts: callAndProof.proof.proofFacts,
-                proof: callAndProof.proof.data,
-              }
-            : {}),
+          resourceBounds: transferFee.resourceBounds,
+          ...transferProofDetails,
         });
         console.log(`[Transfer] pool tx: ${executeTx.transaction_hash}`);
         const receipt = await provider.waitForTransaction(
@@ -262,7 +280,10 @@ export function useTransactions(
         if (!receipt.isSuccess()) {
           throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
         }
-        return executeTx.transaction_hash;
+        const proofSizeBytes = callAndProof.proof.data
+          ? base64ByteLength(callAndProof.proof.data)
+          : undefined;
+        return { txHash: executeTx.transaction_hash, proofSizeBytes };
       }),
     [userAccount, transfers, provider, activeAddress, config, execute],
   );

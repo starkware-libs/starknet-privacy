@@ -75,7 +75,7 @@ export function PoolSelector({
         )}
       </div>
 
-      <span className="pool-selector-label">Address:</span>
+      <span className="pool-selector-label">Address:{loading && <span className="chip">scanning...</span>}</span>
       <div className="pool-selector-value">
         <select
           value={activePool.address}
@@ -87,8 +87,8 @@ export function PoolSelector({
             </option>
           ))}
         </select>
-        <button type="button" disabled={loading || deploying} onClick={onDeploy}>
-          {loading ? "Loading..." : deploying ? "Deploying..." : "Deploy New Pool"}
+        <button type="button" disabled={deploying} onClick={onDeploy}>
+          {deploying ? "Deploying..." : "Deploy New Pool"}
         </button>
         <button
           type="button"

@@ -1,4 +1,4 @@
-import { Account, RpcProvider, type constants } from "starknet";
+import { Account, RpcProvider } from "starknet";
 import {
   createPrivateTransfers,
   ProvingServiceProofProvider,
@@ -57,26 +57,3 @@ export async function getErc20Balance(
   });
   return BigInt(result[0]);
 }
-
-// Resource bounds for integration sepolia (2x headroom over actual prices)
-const L2_GAS_PRICE = 16_000_000_000n;
-const L1_GAS_PRICE = 1_000_000_000_000n;
-const L1_DATA_GAS_PRICE = 2_000n;
-
-export const ERC20_RESOURCE_BOUNDS = {
-  l2_gas: { max_amount: 2_000_000n, max_price_per_unit: L2_GAS_PRICE },
-  l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
-  l1_data_gas: { max_amount: 640n, max_price_per_unit: L1_DATA_GAS_PRICE },
-};
-
-export const POOL_RESOURCE_BOUNDS = {
-  l2_gas: { max_amount: 100_000_000n, max_price_per_unit: L2_GAS_PRICE },
-  l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
-  l1_data_gas: { max_amount: 5_000n, max_price_per_unit: L1_DATA_GAS_PRICE },
-};
-
-export const DEPLOY_RESOURCE_BOUNDS = {
-  l2_gas: { max_amount: 4_000_000n, max_price_per_unit: L2_GAS_PRICE },
-  l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
-  l1_data_gas: { max_amount: 3_500n, max_price_per_unit: L1_DATA_GAS_PRICE },
-};

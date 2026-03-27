@@ -7,22 +7,9 @@ export type PoolEntry = {
   isNewest?: boolean;
 };
 
-const ACTIVE_POOL_STORAGE_KEY = "privacy-demo:active-pool";
 const UDC_ADDRESS = constants.UDC.ADDRESS;
 const CONTRACT_DEPLOYED_SELECTOR = hash.getSelectorFromName("ContractDeployed");
 const CHUNK_SIZE = 1024;
-
-function loadStoredAddress(): string | null {
-  try {
-    return localStorage.getItem(ACTIVE_POOL_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function persistActiveAddress(address: string): void {
-  localStorage.setItem(ACTIVE_POOL_STORAGE_KEY, address);
-}
 
 async function fetchPoolAddresses(
   provider: RpcProvider,
@@ -84,18 +71,9 @@ export function usePoolSelector(
   poolClassHash: string,
 ) {
   const defaultEntry: PoolEntry = { address: defaultPoolAddress, isDefault: true };
-  const storedAddress = loadStoredAddress();
 
-  // Active address resolves immediately: localStorage value or default — no waiting for fetch
-  const [activeAddress, setActiveAddress] = useState<string>(
-    storedAddress ?? defaultPoolAddress,
-  );
-  const [pools, setPools] = useState<PoolEntry[]>(() => {
-    if (storedAddress && storedAddress !== defaultPoolAddress) {
-      return [{ address: storedAddress, isDefault: false }, defaultEntry];
-    }
-    return [defaultEntry];
-  });
+  const [activeAddress, setActiveAddress] = useState<string>(defaultPoolAddress);
+  const [pools, setPools] = useState<PoolEntry[]>([defaultEntry]);
   const [loading, setLoading] = useState(false);
 
   // Track optimistic additions (from deploys) so they survive the background fetch
@@ -140,14 +118,12 @@ export function usePoolSelector(
 
   const selectPool = useCallback((address: string) => {
     setActiveAddress(address);
-    persistActiveAddress(address);
   }, []);
 
   const addPool = useCallback((entry: PoolEntry) => {
     optimisticEntries.current = [entry, ...optimisticEntries.current];
     setPools((previous) => [entry, ...previous]);
     setActiveAddress(entry.address);
-    persistActiveAddress(entry.address);
   }, []);
 
   return { pools, activePool, selectPool, addPool, loading };

@@ -126,6 +126,50 @@ h3 {
   opacity: 0.7;
 }
 
+.account-selector-import {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.account-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.import-toggle {
+  background: #21262d;
+  border-color: #30363d;
+  color: #8b949e;
+  font-size: 12px;
+}
+
+.import-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.import-textarea {
+  background: #0d1117;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  resize: vertical;
+  width: 100%;
+}
+
+.import-form button {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 3px 12px;
+}
+
 select {
   background: #0d1117;
   color: #c9d1d9;
@@ -245,6 +289,12 @@ input[type="number"] {
 .status-bar .success code {
   font-size: 12px;
   word-break: break-all;
+}
+
+.status-bar .proof-size {
+  color: #8b949e;
+  font-size: 11px;
+  margin-left: 10px;
 }
 
 .error {
