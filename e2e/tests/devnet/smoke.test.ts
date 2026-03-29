@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { constants } from "starknet";
-import { Devnet, CallMockProofProvider, IndexerDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
-import { createPrivateTransfers, SetupRequirement } from "@starkware-libs/starknet-privacy-sdk";
-import { createE2eTestEnv, type E2eTestEnv } from "../src/harness.js";
+import {
+  Devnet,
+  CallMockProofProvider,
+  IndexerDiscoveryProvider,
+} from "@starkware-libs/starknet-privacy-sdk/testing";
+import {
+  createPrivateTransfers,
+  SetupRequirement,
+} from "@starkware-libs/starknet-privacy-sdk";
+import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 
 describe("E2E Smoke", () => {
   let devnet: Devnet;
@@ -29,7 +36,10 @@ describe("E2E Smoke", () => {
     });
 
     // Register bob
-    const { callAndProof: bobReg } = await transfers.bob.build().register().execute();
+    const { callAndProof: bobReg } = await transfers.bob
+      .build()
+      .register()
+      .execute();
     await devnet.executeOutside(bobReg);
 
     // Alice: deposit 100 STRK + transfer 50 to bob
@@ -51,16 +61,26 @@ describe("E2E Smoke", () => {
     await fetch(devnet.url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "devnet_createBlock",
+      }),
     });
     await env.indexer.waitForNewLog("New block #", 15_000);
 
     // Verify discovery via IndexerDiscoveryProvider (exercises SDK → indexer end-to-end)
-    const indexerDiscovery = new IndexerDiscoveryProvider(env.indexer.apiUrl, de.privacy.address);
+    const indexerDiscovery = new IndexerDiscoveryProvider(
+      env.indexer.apiUrl,
+      de.privacy.address,
+    );
     const aliceIndexer = createPrivateTransfers({
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
-      provingProvider: new CallMockProofProvider(de.provider, constants.StarknetChainId.SN_SEPOLIA),
+      provingProvider: new CallMockProofProvider(
+        de.provider,
+        constants.StarknetChainId.SN_SEPOLIA,
+      ),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
     });
@@ -72,7 +92,10 @@ describe("E2E Smoke", () => {
     expect(strkNotes!.length).toBeGreaterThanOrEqual(1);
     expect(strkNotes![0].amount).toBe(50n); // Alice's change note
 
-    const { channels } = await aliceIndexer.discoverChannels([de.alice.address, de.bob.address]);
+    const { channels } = await aliceIndexer.discoverChannels([
+      de.alice.address,
+      de.bob.address,
+    ]);
     expect(channels).toBeDefined();
     expect(channels!.size).toBeGreaterThanOrEqual(2); // self-channel + Bob
     expect(channels!.has(BigInt(de.alice.address))).toBe(true);
@@ -85,7 +108,10 @@ describe("E2E Smoke", () => {
     const bobIndexer = createPrivateTransfers({
       account: de.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
-      provingProvider: new CallMockProofProvider(de.provider, constants.StarknetChainId.SN_SEPOLIA),
+      provingProvider: new CallMockProofProvider(
+        de.provider,
+        constants.StarknetChainId.SN_SEPOLIA,
+      ),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
     });

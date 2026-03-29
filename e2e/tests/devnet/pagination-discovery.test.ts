@@ -4,9 +4,9 @@ import {
   Devnet,
   CallMockProofProvider,
   IndexerDiscoveryProvider,
-} from "starknet-sdk/testing";
-import { createPrivateTransfers } from "starknet-sdk";
-import { createE2eTestEnv, type E2eTestEnv } from "../src/harness.js";
+} from "@starkware-libs/starknet-privacy-sdk/testing";
+import { createPrivateTransfers } from "@starkware-libs/starknet-privacy-sdk";
+import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 
 describe("Discovery pagination with small budget", () => {
   let devnet: Devnet;

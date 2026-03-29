@@ -1,0 +1,71 @@
+name: E2E Devnet Tests
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'e2e/**'
+      - '.github/workflows/e2e-devnet.yaml'
+  push:
+    branches: [main]
+    paths:
+      - 'e2e/**'
+      - '.github/workflows/e2e-devnet.yaml'
+
+env:
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_TERM_COLOR: always
+
+jobs:
+  devnet:
+    name: E2E Devnet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Rust
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+
+      # Node
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            sdk/package-lock.json
+            e2e/package-lock.json
+
+      # Scarb (for Cairo contract build)
+      - uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: "2.15.1"
+
+      # Devnet binary
+      - name: Install starknet-devnet
+        run: |
+          curl -L https://github.com/starkware-libs/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-19/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
+          chmod +x /usr/local/bin/starknet-devnet
+
+      # Build Cairo contracts (both profiles: release for e2e harness, dev for SDK devnet helper)
+      - name: Build contracts
+        run: |
+          scarb --profile release build -p privacy
+          scarb build -p privacy
+
+      # Build discovery service (release — e2e spawns from target/release/)
+      - name: Build discovery service
+        run: cargo build --release -p discovery-service
+
+      # Build SDK (e2e depends on it via file: link)
+      - name: Build SDK
+        run: cd sdk && npm ci && npm run build
+
+      # Install e2e deps + run devnet tests
+      - name: Install e2e dependencies
+        run: cd e2e && npm ci
+      - name: Run devnet tests
+        run: cd e2e && npm run test:devnet

@@ -26,6 +26,16 @@ const COMPILED_CONTRACT_PATH = join(
   "target/release/privacy_Privacy.compiled_contract_class.json",
 );
 
+// Hardcoded resource bounds for DECLARE transactions.
+// Full nodes (e.g. Juno) may use an outdated universal Sierra compiler that
+// fails to compile newer Sierra versions, causing estimateFee to error out.
+// By providing explicit bounds we skip the fee estimation RPC call entirely.
+const DECLARE_RESOURCE_BOUNDS = {
+  l2_gas: { max_amount: 200_000n, max_price_per_unit: 100_000_000_000n },
+  l1_gas: { max_amount: 30_000n, max_price_per_unit: 100_000_000_000n },
+  l1_data_gas: { max_amount: 500_000n, max_price_per_unit: 100_000_000n },
+};
+
 /**
  * Declare the privacy pool contract class on-chain.
  * Loads sierra + casm artifacts from target/release/, computes the class hash,
@@ -49,15 +59,32 @@ export async function declarePoolClass(
     await adminAccount.getClass(classHash);
     console.log("[declare] class already declared:", classHash);
     return classHash;
-  } catch {
-    // Not declared yet — proceed
+  } catch (error: unknown) {
+    // CLASS_HASH_NOT_FOUND means we need to declare — any other error is unexpected
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("not found") && !message.includes("CLASS_HASH")) {
+      console.error("[declare] unexpected error checking class:", message);
+      throw error;
+    }
   }
 
+  const bounds = resourceBounds ?? DECLARE_RESOURCE_BOUNDS;
   console.log("[declare] submitting DECLARE for class hash:", classHash);
-  const response = await adminAccount.declare(
-    { contract: contractClass, casm: compiledContract },
-    { tip: 0n, ...(resourceBounds ? { resourceBounds } : {}) },
-  );
+  let response;
+  try {
+    response = await adminAccount.declare(
+      { contract: contractClass, casm: compiledContract },
+      { tip: 0n, resourceBounds: bounds },
+    );
+  } catch (error: unknown) {
+    const cause =
+      error instanceof Error
+        ? (error as Error & { cause?: unknown }).cause
+        : undefined;
+    console.error("[declare] DECLARE failed:", error);
+    if (cause) console.error("[declare] cause:", cause);
+    throw error;
+  }
   const receipt = await adminAccount.waitForTransaction(
     response.transaction_hash,
   );

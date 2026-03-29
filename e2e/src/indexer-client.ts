@@ -60,7 +60,7 @@ export class IndexerClient {
     const binary =
       config.binary ??
       process.env.DISCOVERY_SERVICE_BIN ??
-      path.join(__dirname, "../../target/debug/discovery-service");
+      path.join(__dirname, "../../target/release/discovery-service");
 
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),

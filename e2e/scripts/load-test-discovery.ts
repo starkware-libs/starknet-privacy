@@ -7,7 +7,7 @@
  * and pagination round-trip stats.
  *
  * Reads env vars:
- *   VITE_INDEXER_URL, POOL_ADDRESS, TOKEN_ADDRESS, ACCOUNTS
+ *   VITE_INDEXER_URL, VITE_POOL_ADDRESS, VITE_TOKEN_ADDRESS, ACCOUNTS
  *
  * CLI args:
  *   --threads <n>        Number of concurrent workers (default: 4)
@@ -178,8 +178,8 @@ async function main(): Promise<void> {
   const jsonMode = parseBooleanFlag(cliArgs, "--json");
 
   const indexerUrl = requireEnv("VITE_INDEXER_URL");
-  const poolAddress = requireEnv("POOL_ADDRESS");
-  const token = requireEnv("TOKEN_ADDRESS");
+  const poolAddress = requireEnv("VITE_POOL_ADDRESS");
+  const token = requireEnv("VITE_TOKEN_ADDRESS");
   const accounts: AccountEntry[] = JSON.parse(requireEnv("ACCOUNTS"));
   const account = findAccount(accounts, accountName);
 

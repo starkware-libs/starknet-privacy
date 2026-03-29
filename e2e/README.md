@@ -7,22 +7,26 @@ End-to-end tests and fixture generation for the privacy pool.
 1. Install the patched starknet-devnet (see [SDK README](../sdk/README.md#starknet-devnet) for instructions)
 2. Build the privacy contract: `scarb --profile release build`
 3. Build the SDK: `cd sdk && npm run build`
-4. Build the discovery service: `cargo build -p discovery-service`
+4. Build the discovery service: `cargo build --release -p discovery-service`
 5. Install e2e dependencies: `npm install`
 
 ## Tests
 
 ```bash
-npm test
+npm test              # run all tests
+npm run test:devnet   # devnet tests only
+npm run test:integration  # integration tests only
 ```
 
-### Smoke (`tests/smoke.test.ts`)
+### Devnet tests (`tests/devnet/`)
+
+#### Smoke (`tests/devnet/smoke.test.ts`)
 
 Minimal end-to-end flow: deploys the privacy pool contract, starts the indexer,
 and verifies that a single deposit + transfer is discoverable via the indexer.
 Uses the default 2-account devnet (Alice and Bob) with a single token (STRK).
 
-### Payment Service Discovery (`tests/payment-service-discovery.test.ts`)
+#### Payment Service Discovery (`tests/devnet/payment-service-discovery.test.ts`)
 
 Stress test for paginated indexer discovery. Alice acts as a payment service
 interacting with 9 users across 2 tokens (STRK and ETH) over 7 rounds of
@@ -35,12 +39,28 @@ Verifies:
 - Every user discovers their own notes
 - Every user discovers their channel to Alice
 
-### Reorg Recovery (`tests/reorg-recovery.test.ts`)
+#### Reorg Recovery (`tests/devnet/reorg-recovery.test.ts`)
 
 Verifies that the SDK handles indexer reorg responses gracefully. Injects a
 fake cursor with an invalid block ID, triggering an HTTP 409 (BLOCK_REORGED)
 from the indexer. The SDK should clear the registry and retry from scratch
 without surfacing the error to the caller.
+
+#### Pagination Discovery (`tests/devnet/pagination-discovery.test.ts`)
+
+Tests paginated discovery across multiple channels and tokens.
+
+### Integration tests (`tests/integration/`)
+
+#### Privacy StarkNet integration (`tests/integration/privacy-starknet-integration.test.ts`)
+
+Tests against a real (non-devnet) StarkNet deployment on integration sepolia.
+Declares the contract class from built artifacts (no-op if already declared),
+deploys a fresh pool instance, spawns the discovery service indexer, and runs
+preflight and deposit flows via the SDK.
+
+Requires network access, built contract artifacts (`scarb --profile release build`),
+and a `.env` file with account credentials.
 
 ## Scripts
 
@@ -77,41 +97,32 @@ changes and must be re-declared on the target network before deploying new insta
 # 1. Rebuild the contract (release profile — no debug info, full inlining)
 scarb --profile release build
 
-# 2. Declare (reads RPC_URL and ACCOUNTS from .env)
+# 2. Declare (reads VITE_RPC_URL and admin from ACCOUNTS in .env)
 npm run declare-class
 ```
 
 The script computes the class hash locally, checks whether it's already declared on-chain,
 and submits a DECLARE v3 transaction if needed. On success it prints the new class hash —
-update `POOL_CLASS_HASH` in `.env` to match.
+update `VITE_POOL_CLASS_HASH` in `.env` to match.
 
-## Privacy StarkNet integration (`tests/privacy-starknet-integration.test.ts`)
-
-Tests against a real (non-devnet) StarkNet deployment on integration sepolia.
-Declares the contract class from built artifacts (no-op if already declared),
-deploys a fresh pool instance, spawns the discovery service indexer, and runs
-preflight and deposit flows via the SDK.
-
-Requires network access, built contract artifacts (`scarb --profile release build`),
-and a `.env` file with account credentials.
-
-### Setting up `.env`
+## Setting up `.env`
 
 1. Copy the example file: `cp .env.example .env`
 2. Fill in real values from the shared team document (search for "PrivacyDummyAccount")
 
-The `ACCOUNTS` env var is a JSON array of account entries:
+The `ACCOUNTS` env var is a JSON array of all accounts (admin + users).
+The admin account must have `"admin": true`:
 
 ```json
 [
-  {"name": "admin", "address": "0x...", "privateKey": "0x...", "viewingKey": "0x..."},
-  {"name": "alice", "address": "0x...", "privateKey": "0x...", "viewingKey": "0x..."}
+  {"name": "admin", "address": "0x...", "privateKey": "0x...", "viewingKey": "0x0", "salt": "0x...", "admin": true},
+  {"name": "alice", "address": "0x...", "privateKey": "0x...", "viewingKey": "0x...", "salt": "0x..."}
 ]
 ```
 
-The test uses `admin` as the minter (OZ account) and `alice` as the privacy account.
-`alice` uses the `PrivacyDummyAccount` class (trivial signer, no signature required).
+The integration test uses the admin account as the minter (OZ account) and `alice` as
+the privacy account.
 
 ```bash
-npx vitest run tests/privacy-starknet-integration.test.ts
+npx vitest run tests/integration/privacy-starknet-integration.test.ts
 ```

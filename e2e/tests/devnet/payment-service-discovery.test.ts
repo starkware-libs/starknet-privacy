@@ -3,12 +3,19 @@ import { constants } from "starknet";
 import type { DevnetEnvironment } from "@starkware-libs/starknet-privacy-sdk/testing";
 import path from "path";
 import { fileURLToPath } from "url";
-import { Devnet, CallMockProofProvider, IndexerDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
-import { createPrivateTransfers, type PrivateTransfersInterface } from "@starkware-libs/starknet-privacy-sdk";
-import { createE2eTestEnv, type E2eTestEnv } from "../src/harness.js";
+import {
+  Devnet,
+  CallMockProofProvider,
+  IndexerDiscoveryProvider,
+} from "@starkware-libs/starknet-privacy-sdk/testing";
+import {
+  createPrivateTransfers,
+  type PrivateTransfersInterface,
+} from "@starkware-libs/starknet-privacy-sdk";
+import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const INDEXER_LOG = path.join(__dirname, "../indexer-discovery.log");
+const INDEXER_LOG = path.join(__dirname, "../../indexer-discovery.log");
 
 /**
  * Stress test: payment service discovery with ~94 notes across many channels.
@@ -34,7 +41,10 @@ describe("Payment Service Discovery", () => {
 
     const { env: de } = env;
     const chainId = constants.StarknetChainId.SN_SEPOLIA;
-    const indexerDiscovery = new IndexerDiscoveryProvider(env.indexer.apiUrl, de.privacy.address);
+    const indexerDiscovery = new IndexerDiscoveryProvider(
+      env.indexer.apiUrl,
+      de.privacy.address,
+    );
 
     users = [de.bob, ...de.extraAccounts];
     aliceTransfers = env.transfers.alice;
@@ -99,7 +109,9 @@ describe("Payment Service Discovery", () => {
     for (const user of users) {
       round1.transfer({ recipient: user.address, amount: 50n });
     }
-    const { callAndProof: r1 } = await round1.surplusTo(de.alice.address).execute();
+    const { callAndProof: r1 } = await round1
+      .surplusTo(de.alice.address)
+      .execute();
     await devnet.executeOutside(r1);
 
     // --- Round 2: Alice deposits ETH, transfers to 9 users (10 notes) ---
@@ -113,7 +125,9 @@ describe("Payment Service Discovery", () => {
     for (const user of users) {
       round2.transfer({ recipient: user.address, amount: 50n });
     }
-    const { callAndProof: r2 } = await round2.surplusTo(de.alice.address).execute();
+    const { callAndProof: r2 } = await round2
+      .surplusTo(de.alice.address)
+      .execute();
     await devnet.executeOutside(r2);
 
     // --- Round 3: Each user deposits 100 STRK + transfers 60 to Alice (18 notes) ---
@@ -196,9 +210,13 @@ describe("Payment Service Discovery", () => {
     await fetch(devnet.url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "devnet_createBlock",
+      }),
     });
-    await env.indexer.waitForNewLog("New block #", 30_000);
+    await env.indexer.waitForNewLog("New block #", 60_000);
   });
 
   afterAll(async () => {
@@ -208,7 +226,10 @@ describe("Payment Service Discovery", () => {
 
   it("alice discovers notes across multiple senders and tokens", async () => {
     const { env: de } = env;
-    const indexerDiscovery = new IndexerDiscoveryProvider(env.indexer.apiUrl, de.privacy.address);
+    const indexerDiscovery = new IndexerDiscoveryProvider(
+      env.indexer.apiUrl,
+      de.privacy.address,
+    );
     const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
     const aliceDiscover = createPrivateTransfers({
@@ -234,7 +255,10 @@ describe("Payment Service Discovery", () => {
 
   it("alice discovers outgoing channels to all 9 users", async () => {
     const { env: de } = env;
-    const indexerDiscovery = new IndexerDiscoveryProvider(env.indexer.apiUrl, de.privacy.address);
+    const indexerDiscovery = new IndexerDiscoveryProvider(
+      env.indexer.apiUrl,
+      de.privacy.address,
+    );
     const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
     const aliceDiscover = createPrivateTransfers({
@@ -258,7 +282,10 @@ describe("Payment Service Discovery", () => {
 
   it("every user can discover their own notes", async () => {
     const { env: de } = env;
-    const indexerDiscovery = new IndexerDiscoveryProvider(env.indexer.apiUrl, de.privacy.address);
+    const indexerDiscovery = new IndexerDiscoveryProvider(
+      env.indexer.apiUrl,
+      de.privacy.address,
+    );
     const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
     for (let i = 0; i < users.length; i++) {
@@ -282,7 +309,10 @@ describe("Payment Service Discovery", () => {
 
   it("every user discovers their channel to alice", async () => {
     const { env: de } = env;
-    const indexerDiscovery = new IndexerDiscoveryProvider(env.indexer.apiUrl, de.privacy.address);
+    const indexerDiscovery = new IndexerDiscoveryProvider(
+      env.indexer.apiUrl,
+      de.privacy.address,
+    );
     const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
     for (let i = 0; i < users.length; i++) {
@@ -294,7 +324,9 @@ describe("Payment Service Discovery", () => {
         poolContractAddress: de.privacy.address,
       });
 
-      const { channels } = await userDiscover.discoverChannels([de.alice.address]);
+      const { channels } = await userDiscover.discoverChannels([
+        de.alice.address,
+      ]);
       expect(channels).toBeDefined();
       expect(channels!.has(BigInt(de.alice.address))).toBe(true);
     }

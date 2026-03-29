@@ -2,8 +2,8 @@
  * Declare the privacy pool contract class on a live network (e.g. Sepolia).
  *
  * Reads env vars:
- *   RPC_URL   — JSON-RPC endpoint
- *   ACCOUNTS  — JSON array; uses the "admin" entry for signing
+ *   VITE_RPC_URL        — JSON-RPC endpoint
+ *   ACCOUNTS       — JSON array of accounts (admin has "admin": true)
  *
  * Loads sierra + casm artifacts from target/release/ and submits a DECLARE v3 tx.
  *
@@ -37,24 +37,13 @@ interface AccountEntry {
   name: string;
   address: string;
   privateKey: string;
-  viewingKey: string;
+  admin?: boolean;
 }
 
-// Resource bounds for DECLARE on Sepolia — the sierra payload is large (~25k felts),
-// so l1_data_gas needs a generous allowance.
-const L2_GAS_PRICE = 16_000_000_000n;
-const L1_GAS_PRICE = 1_000_000_000_000n;
-const L1_DATA_GAS_PRICE = 2_000n;
-const DECLARE_RESOURCE_BOUNDS = {
-  l2_gas: { max_amount: 4_000_000_000n, max_price_per_unit: L2_GAS_PRICE },
-  l1_gas: { max_amount: 1n, max_price_per_unit: L1_GAS_PRICE },
-  l1_data_gas: { max_amount: 25_000n, max_price_per_unit: L1_DATA_GAS_PRICE },
-};
-
-const rpcUrl = requireEnv("RPC_URL");
-const accounts: AccountEntry[] = JSON.parse(requireEnv("ACCOUNTS"));
-const admin = accounts.find((account) => account.name === "admin");
-if (!admin) throw new Error('No "admin" entry found in ACCOUNTS env var');
+const rpcUrl = requireEnv("VITE_RPC_URL");
+const allAccounts: AccountEntry[] = JSON.parse(requireEnv("ACCOUNTS"));
+const admin = allAccounts.find((a) => a.admin);
+if (!admin) throw new Error("No admin account (admin: true) found in ACCOUNTS");
 
 const provider = new RpcProvider({ nodeUrl: rpcUrl });
 const adminAccount = new Account({
@@ -77,17 +66,22 @@ console.log("Class hash:", classHash);
 try {
   await provider.getClass(classHash);
   console.log("Class already declared on-chain — nothing to do.");
-  console.log("Update POOL_CLASS_HASH in .env to:", classHash);
+  console.log("Update VITE_POOL_CLASS_HASH in .env to:", classHash);
   process.exit(0);
 } catch {
   // getClass throws when the class doesn't exist — proceed with declaration
 }
 
+console.log("Estimating fee...");
+const feeEstimate = await adminAccount.estimateDeclareFee({
+  contract: contractClass,
+  casm: compiledContract,
+});
 console.log("Submitting DECLARE transaction...");
 try {
   const response = await adminAccount.declare(
     { contract: contractClass, casm: compiledContract },
-    { resourceBounds: DECLARE_RESOURCE_BOUNDS, tip: 0n },
+    { resourceBounds: feeEstimate.resourceBounds, tip: 1n },
   );
 
   console.log("Transaction hash:", response.transaction_hash);
@@ -111,7 +105,7 @@ try {
     };
     if (rpcError.code === 51) {
       console.log("Class already declared — nothing to do.");
-      console.log("Update POOL_CLASS_HASH in .env to:", classHash);
+      console.log("Update VITE_POOL_CLASS_HASH in .env to:", classHash);
     } else {
       console.error("RPC error code:", rpcError.code);
       console.error(
