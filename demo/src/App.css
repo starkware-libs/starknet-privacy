@@ -401,6 +401,55 @@ input[type="number"] {
   margin-left: 10px;
 }
 
+.timeline-button {
+  float: right;
+  padding: 1px 8px;
+  font-size: 11px;
+}
+
+.timeline-popup {
+  min-width: 600px;
+  max-width: 800px;
+}
+
+.timeline-table {
+  width: 100%;
+}
+
+.timeline-table th {
+  font-size: 11px;
+  color: #8b949e;
+  text-align: left;
+}
+
+.timeline-label {
+  white-space: nowrap;
+  color: #c9d1d9;
+}
+
+.timeline-duration {
+  white-space: nowrap;
+  text-align: right;
+  color: #8b949e;
+  font-size: 12px;
+  padding-right: 12px;
+}
+
+.timeline-bar-cell {
+  width: 40%;
+}
+
+.timeline-bar {
+  height: 8px;
+  background: #1f6feb;
+  border-radius: 2px;
+  min-width: 2px;
+}
+
+.timeline-bar-root {
+  background: #238636;
+}
+
 .error {
   color: #f85149;
   margin-bottom: 8px;

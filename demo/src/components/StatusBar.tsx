@@ -1,4 +1,6 @@
+import { useState } from "react";
 import type { TransactionStatus } from "../hooks/useTransactions.ts";
+import { TimelinePopup } from "./TimelinePopup.tsx";
 
 function formatProofSize(bytes: number): string {
   if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(2)} MB`;
@@ -11,6 +13,8 @@ type Props = {
 };
 
 export function StatusBar({ status }: Props) {
+  const [showTimeline, setShowTimeline] = useState(false);
+
   if (!status.pending && !status.lastTxHash && !status.lastError) return null;
 
   return (
@@ -26,6 +30,17 @@ export function StatusBar({ status }: Props) {
       )}
       {status.lastError && (
         <span className="error">Error: {status.lastError}</span>
+      )}
+      {status.timeline && (
+        <button
+          className="pool-action-button timeline-button"
+          onClick={() => setShowTimeline(true)}
+        >
+          Timeline
+        </button>
+      )}
+      {showTimeline && status.timeline && (
+        <TimelinePopup timeline={status.timeline} onClose={() => setShowTimeline(false)} />
       )}
     </div>
   );
