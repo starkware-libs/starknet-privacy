@@ -7,6 +7,13 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+/// Error returned when a budget consumption fails.
+#[derive(Debug)]
+pub struct InsufficientBudgetError {
+    pub needed: usize,
+    pub available: usize,
+}
+
 /// Thread-safe I/O budget counter.
 ///
 /// Used to limit the number of storage operations during discovery.
@@ -51,6 +58,18 @@ impl IoBudget {
     pub fn reclaim(&self, count: usize) {
         if count > 0 {
             self.remaining.fetch_add(count, Ordering::SeqCst);
+        }
+    }
+
+    /// Atomically consumes `count` from the budget, returning an error if insufficient.
+    pub fn try_consume(&self, count: usize) -> Result<(), InsufficientBudgetError> {
+        if self.consume(count) {
+            Ok(())
+        } else {
+            Err(InsufficientBudgetError {
+                needed: count,
+                available: self.remaining(),
+            })
         }
     }
 
