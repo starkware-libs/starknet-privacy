@@ -10,8 +10,9 @@
  * previous chunk's state.
  *
  * Reads env vars:
- *   RPC_URL, TOKEN_ADDRESS, CHAIN_ID, POOL_ADDRESS,
- *   VITE_PROVING_SERVICE_URL, VITE_INDEXER_URL, ACCOUNTS
+ *   VITE_RPC_URL, VITE_TOKEN_ADDRESS, VITE_CHAIN_ID, VITE_POOL_ADDRESS,
+ *   VITE_PROVING_SERVICE_URL, VITE_INDEXER_URL,
+ *   ACCOUNTS
  *
  * CLI args:
  *   --mode <deposit|transfer>  Operation mode (default: deposit)
@@ -44,6 +45,7 @@ interface AccountEntry {
   address: string;
   privateKey: string;
   viewingKey: string;
+  admin?: boolean;
 }
 
 function requireEnv(name: string): string {
@@ -82,7 +84,14 @@ function findAccount(accounts: AccountEntry[], name: string): AccountEntry {
     (account) => account.name.toLowerCase() === name.toLowerCase(),
   );
   if (!entry)
-    throw new Error(`Account "${name}" not found in ACCOUNTS env var`);
+    throw new Error(`Account "${name}" not found in ACCOUNTS`);
+  return entry;
+}
+
+function findAdmin(accounts: AccountEntry[]): AccountEntry {
+  const entry = accounts.find((a) => a.admin);
+  if (!entry)
+    throw new Error("No admin account (admin: true) found in ACCOUNTS");
   return entry;
 }
 
@@ -101,15 +110,14 @@ const recipientName = parseStringArg(cliArgs, "--recipient", "Charlie");
 const numIterations = Math.ceil(totalOperations / chunkSize);
 const totalAmount = BigInt(totalOperations) * operationAmount;
 
-const RPC = requireEnv("RPC_URL");
-const TOKEN = requireEnv("TOKEN_ADDRESS");
-const CHAIN_ID = requireEnv("CHAIN_ID") as constants.StarknetChainId;
-const POOL_ADDRESS = requireEnv("POOL_ADDRESS");
+const RPC = requireEnv("VITE_RPC_URL");
+const TOKEN = requireEnv("VITE_TOKEN_ADDRESS");
+const CHAIN_ID = requireEnv("VITE_CHAIN_ID") as constants.StarknetChainId;
+const POOL_ADDRESS = requireEnv("VITE_POOL_ADDRESS");
 const PROVING_SERVICE_URL = requireEnv("VITE_PROVING_SERVICE_URL");
 const INDEXER_URL = requireEnv("VITE_INDEXER_URL");
 const accounts: AccountEntry[] = JSON.parse(requireEnv("ACCOUNTS"));
-
-const admin = findAccount(accounts, "admin");
+const admin = findAdmin(accounts);
 const alice = findAccount(accounts, "alice");
 
 const L2_GAS_PRICE = 16_000_000_000n;

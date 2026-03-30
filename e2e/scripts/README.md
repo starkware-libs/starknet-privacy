@@ -1,6 +1,32 @@
-# Load Testing Scripts
+# E2E Scripts
 
 ## Scripts
+
+### `pull-env.ts`
+
+Pulls environment variables from the Vercel preview environment and writes a
+local `.env` file with backend URLs rewritten for direct access.
+
+```bash
+npm run pull-env
+```
+
+**What it does:**
+
+1. Runs `npx vercel pull --yes --environment=preview` (appends `--token` if `VERCEL_TOKEN` is set)
+2. Reads `.vercel/.env.preview.local`
+3. Extracts `VITE_*` and `WS_URL` lines, strips surrounding quotes from values
+4. Rewrites backend URLs using `BACKEND_*` vars:
+   - `VITE_INDEXER_URL` → `BACKEND_INDEXER_URL`
+   - `VITE_PROVING_SERVICE_URL` → `BACKEND_PROVER_URL`
+   - `VITE_RPC_URL` → `BACKEND_RPC_URL` + path (strips `/api` prefix)
+5. Writes to `.env` (override with `OUT_FILE` env var)
+
+**Requirements:**
+
+- Vercel CLI authentication, or `VERCEL_TOKEN` env var
+- `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` env vars (or a linked Vercel project via `.vercel/project.json`)
+
 
 ### `load-test-discovery.ts`
 

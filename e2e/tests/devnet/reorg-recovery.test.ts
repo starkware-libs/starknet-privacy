@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
-import { createEmptyRegistry, AddressMap } from "@starkware-libs/starknet-privacy-sdk";
-import { createE2eTestEnv, type E2eTestEnv } from "../src/harness.js";
+import {
+  createEmptyRegistry,
+  AddressMap,
+} from "@starkware-libs/starknet-privacy-sdk";
+import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 
 describe("E2E Reorg Recovery", () => {
   let devnet: Devnet;
@@ -21,7 +24,11 @@ describe("E2E Reorg Recovery", () => {
     await fetch(devnet.url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "devnet_createBlock",
+      }),
     });
   }
 
@@ -36,7 +43,10 @@ describe("E2E Reorg Recovery", () => {
     });
 
     // Register bob
-    const { callAndProof: bobReg } = await transfers.bob.build().register().execute();
+    const { callAndProof: bobReg } = await transfers.bob
+      .build()
+      .register()
+      .execute();
     await devnet.executeOutside(bobReg);
 
     // Alice: deposit 100 STRK + transfer 50 to bob
@@ -63,8 +73,11 @@ describe("E2E Reorg Recovery", () => {
     // which will respond with HTTP 409 (BLOCK_REORGED).
     // NotesCursor fields are @internal (stripped from .d.ts), so we cast through `any`.
     const registry = createEmptyRegistry();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    registry.cursor = { blockId: "0xdeadbeef", incomingChannels: new AddressMap() } as any;
+    registry.cursor = {
+      blockId: "0xdeadbeef",
+      incomingChannels: new AddressMap(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any;
 
     // Second operation: withdraw triggers a deficit, forcing note discovery.
     // Note discovery sends the fake cursor → indexer returns 409 →

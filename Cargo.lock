@@ -595,6 +595,7 @@ dependencies = [
  "dotenv",
  "expect-test",
  "flate2",
+ "futures-util",
  "libc",
  "moka",
  "nix",
