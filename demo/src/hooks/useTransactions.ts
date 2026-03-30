@@ -1,7 +1,13 @@
 import { useState, useCallback, useMemo } from "react";
-import { Account, type RpcProvider } from "starknet";
+import { Account, TransactionFinalityStatus, type RpcProvider } from "starknet";
 import type { PrivateTransfersInterface } from "starknet-sdk";
 import type { AccountConfig, AppConfig } from "../config.ts";
+import { Timeline } from "../timeline.ts";
+
+const WAIT_OPTIONS = {
+  successStates: [TransactionFinalityStatus.PRE_CONFIRMED],
+  retryInterval: 100,
+};
 
 function base64ByteLength(base64: string): number {
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
@@ -13,6 +19,7 @@ export type TransactionStatus = {
   lastTxHash: string | null;
   lastError: string | null;
   proofSizeBytes: number | null;
+  timeline: Timeline | null;
 };
 
 export function useTransactions(
@@ -29,6 +36,7 @@ export function useTransactions(
     lastTxHash: null,
     lastError: null,
     proofSizeBytes: null,
+    timeline: null,
   });
 
   const adminAccount = useMemo(() => {
@@ -45,7 +53,6 @@ export function useTransactions(
 
   const userAccount = useMemo(() => {
     if (!provider || !activeAddress) return undefined;
-    // Find the private key for active address from config
     const accountConfig = accounts.find(
       (a) => a.address === activeAddress,
     );
@@ -59,23 +66,23 @@ export function useTransactions(
   }, [provider, activeAddress, accounts]);
 
   const execute = useCallback(
-    async (action: string, fn: () => Promise<{ txHash: string; proofSizeBytes?: number }>) => {
-      console.log(`[${action}] starting...`);
-      setStatus({ pending: true, lastTxHash: null, lastError: null, proofSizeBytes: null });
+    async (action: string, fn: (tl: Timeline) => Promise<{ txHash: string; proofSizeBytes?: number }>) => {
+      const timeline = new Timeline();
+      setStatus({ pending: true, lastTxHash: null, lastError: null, proofSizeBytes: null, timeline: null });
       try {
-        const result = await fn();
-        console.log(`[${action}] confirmed: ${result.txHash}`);
+        const result = await timeline.step(action, () => fn(timeline));
         setStatus({
           pending: false,
           lastTxHash: result.txHash,
           lastError: null,
           proofSizeBytes: result.proofSizeBytes ?? null,
+          timeline,
         });
         onSuccess();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`[${action}] failed:`, err);
-        setStatus({ pending: false, lastTxHash: null, lastError: `${action}: ${message}`, proofSizeBytes: null });
+        setStatus({ pending: false, lastTxHash: null, lastError: `${action}: ${message}`, proofSizeBytes: null, timeline });
       }
     },
     [onSuccess],
@@ -83,34 +90,36 @@ export function useTransactions(
 
   const register = useCallback(
     () =>
-      execute("Register", async () => {
+      execute("Register", async (tl) => {
         if (!userAccount || !transfers || !provider)
           throw new Error("Not ready");
 
-        console.log("[Register] registering account in privacy pool...");
+        const provingBlockId = await tl.step("Get block number",
+          () => provider.getBlockNumber(),
+        ) - 10;
 
-        const provingBlockId = await provider.getBlockNumber() - 10;
-        const { callAndProof } = await transfers
-          .build()
-          .register()
-          .execute({ provingBlockId });
-        console.log("[Register] callAndProof built, submitting tx...");
+        const { callAndProof } = await tl.step("SDK build + prove", () =>
+          transfers.build().register().execute({ provingBlockId }),
+        );
+
         const proofDetails = callAndProof.proof.proofFacts?.length
           ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
           : {};
 
-        const registerFee = await userAccount.estimateInvokeFee(callAndProof.call, proofDetails);
-        const executeTx = await userAccount.execute(callAndProof.call, {
-          resourceBounds: registerFee.resourceBounds,
-          ...proofDetails,
-        });
-        console.log(`[Register] tx: ${executeTx.transaction_hash}`);
-        const receipt = await provider.waitForTransaction(
-          executeTx.transaction_hash,
+        const executeTx = await tl.step("Estimate + submit", () =>
+          userAccount.execute(callAndProof.call, {
+            tip: 0n,
+            ...proofDetails,
+          }),
         );
-        if (!receipt.isSuccess()) {
-          throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        }
+
+        await tl.step("Wait for receipt", () =>
+          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
+        ).then((receipt) => {
+          if (!receipt.isSuccess())
+            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
+        });
+
         const proofSizeBytes = callAndProof.proof.data
           ? base64ByteLength(callAndProof.proof.data)
           : undefined;
@@ -121,21 +130,24 @@ export function useTransactions(
 
   const mint = useCallback(
     (amount: bigint) =>
-      execute("Mint", async () => {
+      execute("Mint", async (tl) => {
         if (!adminAccount || !activeAddress || !provider)
           throw new Error("Not ready");
-        console.log(`[Mint] amount=${amount} to=${activeAddress}`);
+
         const mintCall = {
           contractAddress: config.tokenAddress,
           entrypoint: "permissionedMint",
           calldata: [activeAddress, amount.toString(), "0"],
         };
-        const mintFee = await adminAccount.estimateInvokeFee(mintCall);
-        const tx = await adminAccount.execute(mintCall, {
-          resourceBounds: mintFee.resourceBounds,
-        });
-        console.log(`[Mint] tx submitted: ${tx.transaction_hash}`);
-        await provider.waitForTransaction(tx.transaction_hash);
+
+        const tx = await tl.step("Estimate + submit", () =>
+          adminAccount.execute(mintCall, { tip: 0n }),
+        );
+
+        await tl.step("Wait for receipt", () =>
+          provider.waitForTransaction(tx.transaction_hash, WAIT_OPTIONS),
+        );
+
         return { txHash: tx.transaction_hash };
       }),
     [adminAccount, activeAddress, provider, config.tokenAddress, execute],
@@ -143,98 +155,108 @@ export function useTransactions(
 
   const deposit = useCallback(
     (amount: bigint) =>
-      execute("Deposit", async () => {
+      execute("Deposit", async (tl) => {
         if (!userAccount || !transfers || !provider || !activeAddress)
           throw new Error("Not ready");
 
-        console.log(`[Deposit] amount=${amount} recipient=${activeAddress}`);
-
-        // Approve pool to spend tokens
-        const approveCall = {
-          contractAddress: config.tokenAddress,
-          entrypoint: "approve",
-          calldata: [poolAddress, amount.toString(), "0"],
-        };
-        const approveFee = await userAccount.estimateInvokeFee(approveCall);
-        const approveTx = await userAccount.execute(approveCall, {
-          resourceBounds: approveFee.resourceBounds,
+        await tl.step("Approve", async () => {
+          const approveCall = {
+            contractAddress: config.tokenAddress,
+            entrypoint: "approve",
+            calldata: [poolAddress, amount.toString(), "0"],
+          };
+          const approveTx = await tl.step("Estimate + submit", () =>
+            userAccount.execute(approveCall, { tip: 0n }),
+          );
+          await tl.step("Wait for receipt", () =>
+            provider.waitForTransaction(approveTx.transaction_hash, WAIT_OPTIONS),
+          );
         });
-        console.log(`[Deposit] approve tx: ${approveTx.transaction_hash}`);
-        await provider.waitForTransaction(approveTx.transaction_hash);
 
-        // Build and execute deposit
-        const provingBlockId = await provider.getBlockNumber() - 10;
-        const { callAndProof } = await transfers
-          .build({
-            autoRegister: true,
-            autoSetup: true,
-            autoDiscover: { notes: "refresh", channels: "refresh" },
-          })
-          .with(config.tokenAddress, (t) =>
-            t.deposit({ amount, recipient: activeAddress }),
-          )
-          .execute({ provingBlockId });
-        console.log("[Deposit] callAndProof built, submitting pool tx...");
+        const provingBlockId = await tl.step("Get block number",
+          () => provider.getBlockNumber(),
+        ) - 10;
+
+        const { callAndProof } = await tl.step("SDK build + prove", () =>
+          transfers
+            .build({
+              autoRegister: true,
+              autoSetup: true,
+              autoDiscover: { notes: "refresh", channels: "refresh" },
+            })
+            .with(config.tokenAddress, (t) =>
+              t.deposit({ amount, recipient: activeAddress }),
+            )
+            .execute({ provingBlockId }),
+        );
+
         const depositProofDetails = callAndProof.proof.proofFacts?.length
           ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
           : {};
 
-        const depositFee = await userAccount.estimateInvokeFee(callAndProof.call, depositProofDetails);
-        const executeTx = await userAccount.execute(callAndProof.call, {
-          resourceBounds: depositFee.resourceBounds,
-          ...depositProofDetails,
-        });
-        console.log(`[Deposit] pool tx: ${executeTx.transaction_hash}`);
-        const receipt = await provider.waitForTransaction(
-          executeTx.transaction_hash,
+        const executeTx = await tl.step("Estimate + submit", () =>
+          userAccount.execute(callAndProof.call, {
+            tip: 0n,
+            ...depositProofDetails,
+          }),
         );
-        if (!receipt.isSuccess()) {
-          throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        }
+
+        await tl.step("Wait for receipt", () =>
+          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
+        ).then((receipt) => {
+          if (!receipt.isSuccess())
+            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
+        });
+
         const proofSizeBytes = callAndProof.proof.data
           ? base64ByteLength(callAndProof.proof.data)
           : undefined;
         return { txHash: executeTx.transaction_hash, proofSizeBytes };
       }),
-    [userAccount, transfers, provider, activeAddress, config, execute],
+    [userAccount, transfers, provider, activeAddress, config, poolAddress, execute],
   );
 
   const withdraw = useCallback(
     (amount: bigint) =>
-      execute("Withdraw", async () => {
+      execute("Withdraw", async (tl) => {
         if (!userAccount || !transfers || !provider || !activeAddress)
           throw new Error("Not ready");
 
-        console.log(`[Withdraw] amount=${amount} recipient=${activeAddress}`);
+        const provingBlockId = await tl.step("Get block number",
+          () => provider.getBlockNumber(),
+        ) - 10;
 
-        const provingBlockId = await provider.getBlockNumber() - 10;
-        const { callAndProof } = await transfers
-          .build({
-            autoDiscover: { notes: "refresh", channels: "refresh" },
-            autoSelectNotes: "naive",
-          })
-          .surplusTo(activeAddress)
-          .with(config.tokenAddress, (t) =>
-            t.withdraw({ amount, recipient: activeAddress }),
-          )
-          .execute({ provingBlockId });
-        console.log("[Withdraw] callAndProof built, submitting pool tx...");
+        const { callAndProof } = await tl.step("SDK build + prove", () =>
+          transfers
+            .build({
+              autoDiscover: { notes: "refresh", channels: "refresh" },
+              autoSelectNotes: "naive",
+            })
+            .surplusTo(activeAddress)
+            .with(config.tokenAddress, (t) =>
+              t.withdraw({ amount, recipient: activeAddress }),
+            )
+            .execute({ provingBlockId }),
+        );
+
         const withdrawProofDetails = callAndProof.proof.proofFacts?.length
           ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
           : {};
 
-        const withdrawFee = await userAccount.estimateInvokeFee(callAndProof.call, withdrawProofDetails);
-        const executeTx = await userAccount.execute(callAndProof.call, {
-          resourceBounds: withdrawFee.resourceBounds,
-          ...withdrawProofDetails,
-        });
-        console.log(`[Withdraw] pool tx: ${executeTx.transaction_hash}`);
-        const receipt = await provider.waitForTransaction(
-          executeTx.transaction_hash,
+        const executeTx = await tl.step("Estimate + submit", () =>
+          userAccount.execute(callAndProof.call, {
+            tip: 0n,
+            ...withdrawProofDetails,
+          }),
         );
-        if (!receipt.isSuccess()) {
-          throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        }
+
+        await tl.step("Wait for receipt", () =>
+          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
+        ).then((receipt) => {
+          if (!receipt.isSuccess())
+            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
+        });
+
         const proofSizeBytes = callAndProof.proof.data
           ? base64ByteLength(callAndProof.proof.data)
           : undefined;
@@ -245,41 +267,46 @@ export function useTransactions(
 
   const transfer = useCallback(
     (recipient: string, amount: bigint) =>
-      execute("Transfer", async () => {
+      execute("Transfer", async (tl) => {
         if (!userAccount || !transfers || !provider || !activeAddress)
           throw new Error("Not ready");
 
-        console.log(`[Transfer] amount=${amount} recipient=${recipient}`);
+        const provingBlockId = await tl.step("Get block number",
+          () => provider.getBlockNumber(),
+        ) - 10;
 
-        const provingBlockId = await provider.getBlockNumber() - 10;
-        const { callAndProof } = await transfers
-          .build({
-            autoSetup: true,
-            autoDiscover: { notes: "refresh", channels: "refresh" },
-            autoSelectNotes: "naive",
-          })
-          .surplusTo(activeAddress)
-          .with(config.tokenAddress, (t) =>
-            t.transfer({ recipient, amount }),
-          )
-          .execute({ provingBlockId });
-        console.log("[Transfer] callAndProof built, submitting pool tx...");
+        const { callAndProof } = await tl.step("SDK build + prove", () =>
+          transfers
+            .build({
+              autoSetup: true,
+              autoDiscover: { notes: "refresh", channels: "refresh" },
+              autoSelectNotes: "naive",
+            })
+            .surplusTo(activeAddress)
+            .with(config.tokenAddress, (t) =>
+              t.transfer({ recipient, amount }),
+            )
+            .execute({ provingBlockId }),
+        );
+
         const transferProofDetails = callAndProof.proof.proofFacts?.length
           ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
           : {};
 
-        const transferFee = await userAccount.estimateInvokeFee(callAndProof.call, transferProofDetails);
-        const executeTx = await userAccount.execute(callAndProof.call, {
-          resourceBounds: transferFee.resourceBounds,
-          ...transferProofDetails,
-        });
-        console.log(`[Transfer] pool tx: ${executeTx.transaction_hash}`);
-        const receipt = await provider.waitForTransaction(
-          executeTx.transaction_hash,
+        const executeTx = await tl.step("Estimate + submit", () =>
+          userAccount.execute(callAndProof.call, {
+            tip: 0n,
+            ...transferProofDetails,
+          }),
         );
-        if (!receipt.isSuccess()) {
-          throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        }
+
+        await tl.step("Wait for receipt", () =>
+          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
+        ).then((receipt) => {
+          if (!receipt.isSuccess())
+            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
+        });
+
         const proofSizeBytes = callAndProof.proof.data
           ? base64ByteLength(callAndProof.proof.data)
           : undefined;
