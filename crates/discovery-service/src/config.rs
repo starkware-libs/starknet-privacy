@@ -153,6 +153,10 @@ pub struct ValidationLimits {
     pub cursor_limits: CursorLimits,
     /// Maximum number of recipients in an outgoing sync filter.
     pub max_outgoing_recipients: usize,
+    /// Maximum number of subchannels in a history cursor.
+    pub max_history_subchannels: usize,
+    /// Maximum number of transactions per history request.
+    pub max_history_transactions: usize,
     /// Server-controlled I/O budget per request.
     pub server_budget: usize,
     /// Maximum request body size in bytes.
@@ -166,6 +170,8 @@ impl Default for ValidationLimits {
         Self {
             cursor_limits: CursorLimits::default(),
             max_outgoing_recipients: 64,
+            max_history_subchannels: 256,
+            max_history_transactions: 100,
             server_budget: 10_000,
             max_request_body_bytes: 102_400,
             public_key_cache_capacity: 10_000,
