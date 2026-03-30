@@ -4,6 +4,7 @@ import { createServer } from "net";
 import { createWriteStream, type WriteStream } from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { E2E_TIMEOUTS } from "./timeouts.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -108,8 +109,8 @@ export class IndexerClient {
   }
 
   async waitUntilReady(rpcUrl: string): Promise<void> {
-    await this.waitForLog("API server listening", 15_000);
-    await this.waitForLog("Subscribed to new heads", 15_000);
+    await this.waitForLog("API server listening", E2E_TIMEOUTS.indexerLog);
+    await this.waitForLog("Subscribed to new heads", E2E_TIMEOUTS.indexerLog);
 
     // Create a block so the indexer processes at least one
     await fetch(rpcUrl, {
@@ -118,7 +119,7 @@ export class IndexerClient {
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
     });
 
-    await this.waitForLog("New block #", 10_000);
+    await this.waitForLog("New block #", E2E_TIMEOUTS.indexerLog);
   }
 
   async healthCheck(): Promise<Record<string, unknown>> {
@@ -126,8 +127,22 @@ export class IndexerClient {
     return resp.json() as Promise<Record<string, unknown>>;
   }
 
-  shutdown(): void {
+  async shutdown(): Promise<void> {
     this.logStream?.end();
+
+    if (!this.child.pid || this.child.exitCode !== null) return;
+
+    const exitPromise = new Promise<void>((resolve) => {
+      this.child.on("exit", () => resolve());
+    });
+
     this.child.kill("SIGINT");
+
+    const timer = setTimeout(() => {
+      this.child.kill("SIGKILL");
+    }, E2E_TIMEOUTS.processExit);
+
+    await exitPromise;
+    clearTimeout(timer);
   }
 }
