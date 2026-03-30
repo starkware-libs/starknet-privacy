@@ -23,12 +23,12 @@ const config = loadConfig();
 export function App() {
   const [classHash, setClassHash] = useState(config.poolClassHash);
 
-  const { accounts, activeIndex, activeAccount, setActiveIndex } =
-    useAccounts(config.accounts);
+  const { accounts, activeIndex, activeAccount, setActiveIndex, importAccounts } =
+    useAccounts();
 
   const provider = useMemo(() => createProvider(config.rpcUrl), []);
 
-  const { pools, activePool, selectPool, addPool, loading: poolsLoading } =
+  const { activeAddress: poolAddress, search, selectPool, addPool, searchPools, stopSearch, closeSearch } =
     usePoolSelector(provider, config.poolAddress, classHash);
 
   const configWithClassHash = useMemo(
@@ -36,12 +36,12 @@ export function App() {
     [classHash],
   );
 
-  const { deploying, deployError, deploy } = useDeployPool(provider, configWithClassHash);
+  const { deploying, deployError, deploy } = useDeployPool(provider, configWithClassHash, accounts);
 
   const handleDeploy = useCallback(async () => {
     try {
       const result = await deploy();
-      addPool({ address: result.address, isDefault: false });
+      addPool({ address: result.address, blockNumber: 0, isDefault: false });
     } catch {
       // Error is already captured in deployError state
     }
@@ -54,15 +54,15 @@ export function App() {
 
   const transfers = useMemo(() => {
     if (!account || !activeAccount) return undefined;
-    return createTransfers(provider, account, activeAccount, activePool.address, config);
-  }, [provider, account, activeAccount, activePool.address]);
+    return createTransfers(provider, account, activeAccount, poolAddress, config);
+  }, [provider, account, activeAccount, poolAddress]);
 
   const { state, loading, error, refresh } = usePrivateState(
     provider,
     transfers,
     activeAccount,
     accounts,
-    activePool.address,
+    poolAddress,
     config,
   );
 
@@ -74,8 +74,9 @@ export function App() {
     provider,
     transfers,
     activeAccount?.address,
-    activePool.address,
+    poolAddress,
     config,
+    accounts,
     refresh,
   );
 
@@ -83,8 +84,9 @@ export function App() {
     provider,
     transfers,
     activeAccount?.address,
-    activePool.address,
+    poolAddress,
     config,
+    accounts,
     refresh,
   );
 
@@ -100,13 +102,15 @@ export function App() {
         <ServiceHealthBar health={serviceHealth} />
       </div>
       <PoolSelector
-        pools={pools}
-        activePool={activePool}
-        loading={poolsLoading}
+        activeAddress={poolAddress}
+        search={search}
         deploying={deploying}
         deployError={deployError}
         classHash={classHash}
         onSelect={selectPool}
+        onSearch={searchPools}
+        onStopSearch={stopSearch}
+        onCloseSearch={closeSearch}
         onDeploy={handleDeploy}
         onClassHashChange={setClassHash}
       />
@@ -114,51 +118,56 @@ export function App() {
         accounts={accounts}
         activeIndex={activeIndex}
         onSelect={setActiveIndex}
+        onSave={importAccounts}
       />
-      <StatusBar status={activeView === "actions" ? status : builderStatus} />
-      <div className="main-layout">
-        <InfoPanel
-          state={state}
-          loading={loading}
-          error={error}
-          onRefresh={refresh}
-        />
-        <div className="action-panel">
-          <div className="view-toggle">
-            <button
-              className={activeView === "actions" ? "active" : ""}
-              onClick={() => setActiveView("actions")}
-            >
-              Actions
-            </button>
-            <button
-              className={activeView === "builder" ? "active" : ""}
-              onClick={() => setActiveView("builder")}
-            >
-              Builder
-            </button>
+      {activeAccount && (
+        <>
+          <StatusBar status={activeView === "actions" ? status : builderStatus} />
+          <div className="main-layout">
+            <InfoPanel
+              state={state}
+              loading={loading}
+              error={error}
+              onRefresh={refresh}
+            />
+            <div className="action-panel">
+              <div className="view-toggle">
+                <button
+                  className={activeView === "actions" ? "active" : ""}
+                  onClick={() => setActiveView("actions")}
+                >
+                  Actions
+                </button>
+                <button
+                  className={activeView === "builder" ? "active" : ""}
+                  onClick={() => setActiveView("builder")}
+                >
+                  Builder
+                </button>
+              </div>
+              {activeView === "actions" ? (
+                <ActionPanel
+                  pending={status.pending}
+                  activeAddress={activeAccount.address}
+                  otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
+                  onRegister={register}
+                  onMint={mint}
+                  onDeposit={deposit}
+                  onWithdraw={withdraw}
+                  onTransfer={transfer}
+                />
+              ) : (
+                <TransactionBuilder
+                  pending={builderStatus.pending}
+                  activeAddress={activeAccount.address}
+                  otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
+                  onExecute={executeBatch}
+                />
+              )}
+            </div>
           </div>
-          {activeView === "actions" ? (
-            <ActionPanel
-              pending={status.pending}
-              activeAddress={activeAccount!.address}
-              otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
-              onRegister={register}
-              onMint={mint}
-              onDeposit={deposit}
-              onWithdraw={withdraw}
-              onTransfer={transfer}
-            />
-          ) : (
-            <TransactionBuilder
-              pending={builderStatus.pending}
-              activeAddress={activeAccount!.address}
-              otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
-              onExecute={executeBatch}
-            />
-          )}
-        </div>
-      </div>
+        </>
+      )}
       <footer className="app-footer">
         Built by Starkware &middot; Docs{" "}
         <a href="https://github.com/starkware-libs/starknet-privacy" target="_blank" rel="noreferrer">

@@ -1,14 +1,16 @@
 import { useState } from "react";
-import type { PoolEntry } from "../hooks/usePoolSelector.ts";
+import type { SearchState } from "../hooks/usePoolSelector.ts";
 
 type Props = {
-  pools: PoolEntry[];
-  activePool: PoolEntry;
-  loading: boolean;
+  activeAddress: string;
+  search: SearchState | null;
   deploying: boolean;
   deployError: string | null;
   classHash: string;
   onSelect: (address: string) => void;
+  onSearch: () => void;
+  onStopSearch: () => void;
+  onCloseSearch: () => void;
   onDeploy: () => void;
   onClassHashChange: (hash: string) => void;
 };
@@ -19,42 +21,58 @@ function truncateHash(hex: string): string {
 }
 
 export function PoolSelector({
-  pools,
-  activePool,
-  loading,
+  activeAddress,
+  search,
   deploying,
   deployError,
   classHash,
   onSelect,
+  onSearch,
+  onStopSearch,
+  onCloseSearch,
   onDeploy,
   onClassHashChange,
 }: Props) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [editingClassHash, setEditingClassHash] = useState(false);
+  const [classHashDraft, setClassHashDraft] = useState("");
+  const [editingAddress, setEditingAddress] = useState(false);
+  const [addressDraft, setAddressDraft] = useState("");
+
+  const applyAddress = () => {
+    if (addressDraft.trim()) {
+      onSelect(addressDraft.trim());
+      setEditingAddress(false);
+    }
+  };
+
+  const handleApplyResult = (address: string) => {
+    onStopSearch();
+    onSelect(address);
+    onCloseSearch();
+  };
 
   return (
     <div className="pool-selector-grid">
       <span className="pool-selector-label">Class hash:</span>
       <div className="pool-selector-value">
-        {editing ? (
+        {editingClassHash ? (
           <>
             <input
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
+              value={classHashDraft}
+              onChange={(event) => setClassHashDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  onClassHashChange(draft);
-                  setEditing(false);
+                  onClassHashChange(classHashDraft);
+                  setEditingClassHash(false);
                 }
-                if (event.key === "Escape") setEditing(false);
+                if (event.key === "Escape") setEditingClassHash(false);
               }}
               autoFocus
             />
             <button
               onClick={() => {
-                onClassHashChange(draft);
-                setEditing(false);
+                onClassHashChange(classHashDraft);
+                setEditingClassHash(false);
               }}
             >
               Apply
@@ -65,11 +83,19 @@ export function PoolSelector({
             <code>{truncateHash(classHash)}</code>
             <button
               onClick={() => {
-                setDraft(classHash);
-                setEditing(true);
+                setClassHashDraft(classHash);
+                setEditingClassHash(true);
               }}
             >
               Change
+            </button>
+            <button
+              type="button"
+              className="pool-action-button"
+              onClick={onSearch}
+              disabled={search !== null && !search.done}
+            >
+              Scan deployments
             </button>
           </>
         )}
@@ -77,32 +103,103 @@ export function PoolSelector({
 
       <span className="pool-selector-label">Address:</span>
       <div className="pool-selector-value">
-        <select
-          value={activePool.address}
-          onChange={(event) => onSelect(event.target.value)}
-        >
-          {pools.map((pool) => (
-            <option key={pool.address} value={pool.address}>
-              {truncateHash(pool.address)}{pool.isDefault ? " (default)" : pool.isNewest ? " (newest)" : ""}
-            </option>
-          ))}
-        </select>
-        <button type="button" disabled={loading || deploying} onClick={onDeploy}>
-          {loading ? "Loading..." : deploying ? "Deploying..." : "Deploy New Pool"}
-        </button>
-        <button
-          type="button"
-          className="copy-button"
-          onClick={() => {
-            navigator.clipboard.writeText(activePool.address);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
-        >
-          {copied ? "Copied" : "Copy"}
-        </button>
-        {deployError && <span className="error">{deployError}</span>}
+        {editingAddress ? (
+          <>
+            <input
+              value={addressDraft}
+              onChange={(event) => setAddressDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") applyAddress();
+                if (event.key === "Escape") setEditingAddress(false);
+              }}
+              placeholder="0x..."
+              autoFocus
+            />
+            <button onClick={applyAddress}>Apply</button>
+            <button onClick={() => setEditingAddress(false)}>Cancel</button>
+          </>
+        ) : (
+          <>
+            <code>{truncateHash(activeAddress)}</code>
+            <button
+              onClick={() => {
+                setAddressDraft(activeAddress);
+                setEditingAddress(true);
+              }}
+            >
+              Change
+            </button>
+            <button type="button" className="pool-action-button" disabled={deploying} onClick={onDeploy}>
+              {deploying ? "Deploying..." : "Re-deploy"}
+            </button>
+            {deployError && <span className="error">{deployError}</span>}
+          </>
+        )}
       </div>
+
+      {search && (
+        <div className="search-popup-overlay" onClick={onCloseSearch}>
+          <div className="search-popup" onClick={(event) => event.stopPropagation()}>
+            <div className="search-popup-header">
+              <span>Pool deployments</span>
+              <div className="search-popup-header-actions">
+                {!search.done && (
+                  <button className="pool-action-button" onClick={onStopSearch}>Stop</button>
+                )}
+                <button className="pool-action-button" onClick={onCloseSearch}>Close</button>
+              </div>
+            </div>
+            <div className="search-progress">
+              <div className="search-progress-bar">
+                <div
+                  className="search-progress-fill"
+                  style={{ width: `${search.progress.percent}%` }}
+                />
+              </div>
+              <span className="search-progress-text">
+                {search.done
+                  ? `Done — ${search.results.length} pool${search.results.length !== 1 ? "s" : ""} found`
+                  : `${search.progress.percent}% scanned`
+                    + (search.progress.estimatedSecondsRemaining !== null
+                      ? ` — ~${search.progress.estimatedSecondsRemaining}s remaining`
+                      : "")}
+              </span>
+            </div>
+            {search.results.length > 0 ? (
+              <table className="search-results-table">
+                <thead>
+                  <tr>
+                    <th>Address</th>
+                    <th>Block</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {search.results.map((pool) => (
+                    <tr
+                      key={pool.address}
+                      className={pool.address === activeAddress ? "search-result-active" : ""}
+                    >
+                      <td><code>{truncateHash(pool.address)}</code></td>
+                      <td>{pool.blockNumber.toLocaleString()}</td>
+                      <td className="search-result-apply">
+                        <button
+                          className="pool-action-button"
+                          onClick={() => handleApplyResult(pool.address)}
+                        >
+                          Apply
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : search.done ? (
+              <div className="empty">No pools found for this class hash</div>
+            ) : null}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

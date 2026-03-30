@@ -58,6 +58,110 @@ h3 {
   gap: 8px;
 }
 
+.pool-action-button {
+  background: #21262d;
+  border-color: #30363d;
+  color: #8b949e;
+}
+
+.pool-action-button:hover:not(:disabled) {
+  background: #30363d;
+}
+
+.search-popup-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.search-popup {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 16px;
+  min-width: 500px;
+  max-width: 700px;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.search-popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #58a6ff;
+}
+
+.search-popup-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.search-progress {
+  margin-bottom: 12px;
+}
+
+.search-progress-bar {
+  height: 4px;
+  background: #21262d;
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.search-progress-fill {
+  height: 100%;
+  background: #238636;
+  transition: width 0.3s ease;
+}
+
+.search-progress-text {
+  font-size: 11px;
+  color: #8b949e;
+}
+
+.search-results-table {
+  width: 100%;
+}
+
+.search-results-table th {
+  color: #8b949e;
+  font-size: 11px;
+}
+
+.search-results-table td {
+  font-size: 12px;
+}
+
+.search-results-table code {
+  color: #c9d1d9;
+}
+
+.search-result-active td {
+  color: #3fb950;
+}
+
+.search-result-apply {
+  width: 1px;
+  white-space: nowrap;
+}
+
+.search-result-apply button {
+  visibility: hidden;
+  font-size: 11px;
+  padding: 1px 8px;
+}
+
+tr:hover .search-result-apply button {
+  visibility: visible;
+}
+
 .pool-selector-value code {
   color: #c9d1d9;
   font-size: 13px;
@@ -124,6 +228,50 @@ h3 {
   margin-left: 4px;
   color: inherit;
   opacity: 0.7;
+}
+
+.account-selector-import {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.account-selector-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.import-toggle {
+  background: #21262d;
+  border-color: #30363d;
+  color: #8b949e;
+  font-size: 12px;
+}
+
+.import-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+}
+
+.import-textarea {
+  background: #0d1117;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  border-radius: 4px;
+  padding: 8px;
+  font-family: inherit;
+  font-size: 12px;
+  resize: vertical;
+  width: 100%;
+}
+
+.import-form button {
+  align-self: flex-start;
+  font-size: 12px;
+  padding: 3px 12px;
 }
 
 select {
@@ -245,6 +393,12 @@ input[type="number"] {
 .status-bar .success code {
   font-size: 12px;
   word-break: break-all;
+}
+
+.status-bar .proof-size {
+  color: #8b949e;
+  font-size: 11px;
+  margin-left: 10px;
 }
 
 .error {

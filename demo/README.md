@@ -17,6 +17,17 @@ cp .env.example .env    # edit with real addresses and keys
 npm install
 ```
 
+### Pull environment from Vercel
+
+If you have access to the Vercel project, pull the preview environment directly:
+
+```bash
+cd demo
+npx tsx ../e2e/scripts/pull-env.ts
+```
+
+This creates `.env` with all required variables, rewriting backend URLs for local use.
+
 ### Environment variables
 
 | Variable | Description |
@@ -30,7 +41,6 @@ npm install
 | `VITE_CHAIN_ID` | StarkNet chain ID (hex) |
 | `VITE_ADMIN_ADDRESS` | Admin/minter account address |
 | `VITE_ADMIN_KEY` | Admin account private key |
-| `VITE_ACCOUNTS` | JSON array of user accounts (see `.env.example`) |
 
 ## Running
 
@@ -43,12 +53,13 @@ Open http://localhost:5173.
 
 ### Verify
 
-1. Select an account from the dropdown
-2. Click **Refresh** — transparent and private balances appear
-3. **Mint** tokens → transparent balance increases
-4. **Deposit** → private balance increases, note appears in the notes table
-5. **Transfer** → new outgoing channel appears
-6. **Withdraw** → private balance decreases, transparent increases
+1. Click **Import** and paste a JSON array of accounts: `[{"name":"Alice","address":"0x...","privateKey":"0x...","viewingKey":"0x..."}]`
+2. Select an account tab
+3. Click **Refresh** — transparent and private balances appear
+4. **Mint** tokens → transparent balance increases
+5. **Deposit** → private balance increases, note appears in the notes table
+6. **Transfer** → new outgoing channel appears
+7. **Withdraw** → private balance decreases, transparent increases
 
 ## Architecture
 
