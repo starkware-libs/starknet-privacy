@@ -208,16 +208,7 @@ describe("Payment Service Discovery", () => {
     }
 
     // --- Sync indexer ---
-    await fetch(devnet.url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "devnet_createBlock",
-      }),
-    });
-    await env.indexer.waitForNewLog("New block #", 4 * E2E_TIMEOUTS.indexerLog);
+    await env.indexer.waitForBlock(devnet.url, 4 * E2E_TIMEOUTS.indexerLog);
   });
 
   afterAll(async () => {

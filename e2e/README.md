@@ -105,6 +105,11 @@ The script computes the class hash locally, checks whether it's already declared
 and submits a DECLARE v3 transaction if needed. On success it prints the new class hash —
 update `VITE_POOL_CLASS_HASH` in `.env` to match.
 
+> **Note:** This manual step is only needed for operational use in the integration environment
+> (e.g., deploying pool instances outside of tests, or updating `POOL_CLASS_HASH` for scripts).
+> E2e tests — both devnet-based and `privacy-starknet-integration` — declare the class
+> internally from built artifacts and do not depend on `POOL_CLASS_HASH`.
+
 ## Setting up `.env`
 
 1. Copy the example file: `cp .env.example .env`

@@ -11,6 +11,7 @@ import {
   createPrivateTransfers,
   ProvingServiceProofProvider,
   SetupRequirement,
+  type HistoryTransaction,
 } from "@starkware-libs/starknet-privacy-sdk";
 import { declarePoolClass } from "../../src/harness.js";
 
@@ -270,5 +271,107 @@ describe("Privacy StarkNet integration", () => {
       console.error("Transaction reverted:", JSON.stringify(receipt, null, 2));
     }
     expect(receipt.isSuccess()).toBe(true);
+  }, 300_000);
+
+  it("fetches history after deposit", async () => {
+    const aliceAddress = BigInt(alice.address);
+    const aliceViewingKey = BigInt(alice.viewingKey);
+
+    // Poll until the indexer has processed the deposit block
+    const deadline = Date.now() + 90_000;
+    let notesResult = await discovery.discoverNotes(
+      aliceAddress,
+      aliceViewingKey,
+    );
+    while (notesResult.notes.size === 0) {
+      if (Date.now() > deadline)
+        throw new Error("Timeout waiting for indexer to process deposit");
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      notesResult = await discovery.discoverNotes(
+        aliceAddress,
+        aliceViewingKey,
+      );
+    }
+
+    const { channels } = await discovery.discoverChannels(
+      aliceAddress,
+      aliceViewingKey,
+      "all",
+    );
+
+    const historyPage = await discovery.fetchHistory(
+      aliceAddress,
+      notesResult.cursor,
+      { channels },
+      { maxTransactions: 10 },
+    );
+
+    expect(historyPage.blockRef).toBeDefined();
+    expect(historyPage.transactions.length).toBeGreaterThan(0);
+
+    const allDeposits = historyPage.transactions.flatMap(
+      (transaction) => transaction.deposits,
+    );
+    expect(
+      allDeposits.find(
+        (deposit) =>
+          deposit.amount === 100n && deposit.token === BigInt(TOKEN),
+      ),
+    ).toBeDefined();
+  }, 300_000);
+
+  it("paginates history", async () => {
+    const aliceAddress = BigInt(alice.address);
+    const aliceViewingKey = BigInt(alice.viewingKey);
+
+    const { cursor: notesCursor } = await discovery.discoverNotes(
+      aliceAddress,
+      aliceViewingKey,
+    );
+    const { channels } = await discovery.discoverChannels(
+      aliceAddress,
+      aliceViewingKey,
+      "all",
+    );
+    const channelCursor = { channels };
+
+    const allTransactions: HistoryTransaction[] = [];
+    const firstPage = await discovery.fetchHistory(
+      aliceAddress,
+      notesCursor,
+      channelCursor,
+      { maxTransactions: 1 },
+    );
+    allTransactions.push(...firstPage.transactions);
+
+    let historyCursor = firstPage.cursor;
+    let blockRef: string | undefined = firstPage.blockRef;
+    const MAX_PAGES = 5;
+    let pageCount = 1;
+
+    while (!historyCursor.historyComplete && pageCount < MAX_PAGES) {
+      const page = await discovery.fetchHistory(
+        aliceAddress,
+        notesCursor,
+        channelCursor,
+        { maxTransactions: 1, historyCursor, blockRef },
+      );
+      allTransactions.push(...page.transactions);
+      historyCursor = page.cursor;
+      blockRef = page.blockRef;
+      pageCount++;
+    }
+
+    expect(allTransactions.length).toBeGreaterThan(0);
+
+    const allDeposits = allTransactions.flatMap(
+      (transaction) => transaction.deposits,
+    );
+    expect(
+      allDeposits.find(
+        (deposit) =>
+          deposit.amount === 100n && deposit.token === BigInt(TOKEN),
+      ),
+    ).toBeDefined();
   }, 300_000);
 });
