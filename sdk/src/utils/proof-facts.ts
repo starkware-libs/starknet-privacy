@@ -27,7 +27,7 @@ const VIRTUAL_SNOS0 = shortStringToFelt("VIRTUAL_SNOS0");
 
 // Allowed virtual OS program hash from blockifier versioned constants.
 // Source: https://github.com/starkware-libs/sequencer/blob/586b07b38d87f608b632e5795071d31317faf6c4/crates/blockifier/resources/blockifier_versioned_constants_0_14_2.json
-const VIRTUAL_PROGRAM_HASH = "0x6972cfa5c07f702981678547574e239a24ad8bb53cc081ad738ccb10839fd1a";
+const VIRTUAL_PROGRAM_HASH = "0x3e98c2d7703b03a7edb73ed7f075f97f1dcbaa8f717cdf6e1a57bf058265473";
 
 // STRK fee token address — same on all Starknet networks (mainnet, sepolia, devnet).
 const STRK_FEE_TOKEN_ADDRESS = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";

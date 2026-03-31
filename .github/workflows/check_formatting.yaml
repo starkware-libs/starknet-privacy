@@ -11,15 +11,20 @@ jobs:
       - uses: actions/checkout@v4
       - uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.15.0"
+          scarb-version: "2.17.0-rc.4"
+
+      - uses: software-mansion/setup-universal-sierra-compiler@v1
+        with:
+          universal-sierra-compiler-version: "v2.8.0-rc.0"
 
       - name: Check formatting
         run: |
           scarb fmt -w --check
 
+      # TODO: remove SCARB_IGNORE_CAIRO_VERSION once openzeppelin upgrades to Cairo >=2.17
       - name: Check unused imports and variables
         run: |
-          output=$(scarb build -t 2>&1)
+          output=$(SCARB_IGNORE_CAIRO_VERSION=true scarb build -t 2>&1)
           matches=$(echo "$output" | grep -E "warn: Unused import|warn\[E0001\]: Unused variable" -A 2 || true)
           if [ -n "$matches" ]; then
             echo "Unused imports or variables detected:"
