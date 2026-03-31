@@ -5,6 +5,10 @@
       "path": ".",
     },
     {
+      "name": "elliptic-proxy (npm)",
+      "path": "elliptic-proxy",
+    },
+    {
       "name": "sdk (npm)",
       "path": "sdk",
     },
