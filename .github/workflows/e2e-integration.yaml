@@ -22,11 +22,17 @@ jobs:
       # Scarb (for Cairo contract build)
       - uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.15.1"
+          scarb-version: "2.17.0-rc.4"
+
+      - uses: software-mansion/setup-universal-sierra-compiler@v1
+        with:
+          universal-sierra-compiler-version: "v2.8.0-rc.0"
 
       # Build Cairo contracts (release for class hash + artifacts)
       - name: Build contracts
         run: scarb --profile release build -p privacy
+        env:
+          SCARB_IGNORE_CAIRO_VERSION: "true"
 
       # Build SDK (e2e depends on it via file: link)
       - name: Build SDK

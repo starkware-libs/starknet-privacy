@@ -26,16 +26,6 @@ const COMPILED_CONTRACT_PATH = join(
   "target/release/privacy_Privacy.compiled_contract_class.json",
 );
 
-// Hardcoded resource bounds for DECLARE transactions.
-// Full nodes (e.g. Juno) may use an outdated universal Sierra compiler that
-// fails to compile newer Sierra versions, causing estimateFee to error out.
-// By providing explicit bounds we skip the fee estimation RPC call entirely.
-const DECLARE_RESOURCE_BOUNDS = {
-  l2_gas: { max_amount: 200_000n, max_price_per_unit: 100_000_000_000n },
-  l1_gas: { max_amount: 30_000n, max_price_per_unit: 100_000_000_000n },
-  l1_data_gas: { max_amount: 500_000n, max_price_per_unit: 100_000_000n },
-};
-
 /**
  * Declare the privacy pool contract class on-chain.
  * Loads sierra + casm artifacts from target/release/, computes the class hash,
@@ -43,11 +33,6 @@ const DECLARE_RESOURCE_BOUNDS = {
  */
 export async function declarePoolClass(
   adminAccount: Account,
-  resourceBounds?: {
-    l2_gas: { max_amount: bigint; max_price_per_unit: bigint };
-    l1_gas: { max_amount: bigint; max_price_per_unit: bigint };
-    l1_data_gas: { max_amount: bigint; max_price_per_unit: bigint };
-  },
 ): Promise<string> {
   const contractClass = JSON.parse(readFileSync(CONTRACT_CLASS_PATH, "utf8"));
   const compiledContract = JSON.parse(
@@ -68,21 +53,43 @@ export async function declarePoolClass(
     }
   }
 
-  const bounds = resourceBounds ?? DECLARE_RESOURCE_BOUNDS;
+  console.log("[declare] estimating declare fee...");
+  const declarePayload = { contract: contractClass, casm: compiledContract };
+  const feeEstimate = await adminAccount.estimateDeclareFee(declarePayload);
+
   console.log("[declare] submitting DECLARE for class hash:", classHash);
   let response;
   try {
-    response = await adminAccount.declare(
-      { contract: contractClass, casm: compiledContract },
-      { tip: 0n, resourceBounds: bounds },
-    );
+    response = await adminAccount.declare(declarePayload, {
+      tip: 0n,
+      resourceBounds: feeEstimate.resourceBounds,
+    });
   } catch (error: unknown) {
-    const cause =
-      error instanceof Error
-        ? (error as Error & { cause?: unknown }).cause
-        : undefined;
-    console.error("[declare] DECLARE failed:", error);
-    if (cause) console.error("[declare] cause:", cause);
+    // Code 51 = class already declared (race with another tx)
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as Error & { code: number }).code === 51
+    ) {
+      console.log("[declare] class already declared:", classHash);
+      return classHash;
+    }
+    // Extract useful info without dumping the full sierra payload
+    if (error instanceof Error && "code" in error) {
+      const rpcError = error as Error & {
+        code: number;
+        baseError?: unknown;
+      };
+      console.error("[declare] RPC error code:", rpcError.code);
+      console.error(
+        "[declare] RPC error:",
+        rpcError.message.split(" with params")[0],
+      );
+      if (rpcError.baseError)
+        console.error("[declare] details:", JSON.stringify(rpcError.baseError));
+    } else {
+      console.error("[declare] DECLARE failed:", error);
+    }
     throw error;
   }
   const receipt = await adminAccount.waitForTransaction(
