@@ -55,15 +55,15 @@ All components in a row are tested together. Use matching revisions when deployi
 
 | Contract | Docs | Tag | Class Hash |
 |----------|------|-----|------------|
-| Privacy Pool | [README](packages/privacy/README.md) | [`PRIVACY-0.14.2-RC.1`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.1) | `0x21a53b2cde0fbec5761793c09626fe6e53357d7856389711a8391d8468102e3` |
+| Privacy Pool | [README](packages/privacy/README.md) · [API docs](https://starkware-libs.github.io/starknet-privacy/privacy/) | [`PRIVACY-0.14.2-RC.1`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.1) | `0x21a53b2cde0fbec5761793c09626fe6e53357d7856389711a8391d8468102e3` |
 | Ekubo Helper | | | |
-| Vesu Helper | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_helper) | [`PRIVACY-0.14.2-RC.1`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.1) | `0x1973a0ccabe1e1fc995bcac13c52300fc9953342293d3c15e878bdca84751a1` |
+| Vesu Helper | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_helper) · [API docs](https://starkware-libs.github.io/starknet-privacy/vesu_lending_helper/) | [`PRIVACY-0.14.2-RC.1`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.1) | `0x1973a0ccabe1e1fc995bcac13c52300fc9953342293d3c15e878bdca84751a1` |
 
 ## Repository map
 
 | Directory | Description |
 |-----------|-------------|
-| [`packages/privacy/`](packages/privacy/) | Cairo smart contract ([README](packages/privacy/README.md)) |
+| [`packages/privacy/`](packages/privacy/) | Cairo smart contract ([README](packages/privacy/README.md), [API docs](https://starkware-libs.github.io/starknet-privacy/privacy/)) |
 | [`crates/discovery-core/`](crates/discovery-core/) | Core discovery logic & cryptography ([README](crates/discovery-core/README.md)) |
 | [`crates/discovery-service/`](crates/discovery-service/) | HTTP discovery service (RPC-backed) ([README](crates/discovery-service/README.md)) |
 | [`sdk/`](sdk/) | TypeScript SDK for private transfers ([README](sdk/README.md)) |
