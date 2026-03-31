@@ -1,0 +1,15 @@
+.git
+.gitignore
+node_modules/
+src/
+tests/
+*.ts
+!dist/**/*.js
+!dist/**/*.d.ts
+tsconfig.json
+vitest.config.ts
+eslint.config.js
+.prettierrc
+plan.md
+design.md
+README.md
