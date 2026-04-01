@@ -1,8 +1,15 @@
 // src/proxy.ts
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { RpcAction, validateRpcRequest } from "./rpc.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./config.js";
 
-export function createHandler(maxBodyBytes = DEFAULT_MAX_BODY_BYTES) {
+export interface HandlerOptions {
+  maxBodyBytes?: number;
+}
+
+export function createHandler(options: HandlerOptions = {}) {
+  const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+
   return async (req: IncomingMessage, res: ServerResponse) => {
     if (req.url === "/health" && req.method === "GET") {
       res.writeHead(200, { "content-type": "application/json" });
@@ -33,9 +40,20 @@ export function createHandler(maxBodyBytes = DEFAULT_MAX_BODY_BYTES) {
       return;
     }
 
-    // JSON-RPC handling added by subsequent branches
+    const verdict = validateRpcRequest(body.toString());
+
+    if (verdict.action === RpcAction.Error) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(verdict.response));
+      return;
+    }
+
+    // Interceptors added by subsequent branches.
+    // For now, all valid requests are allowed.
     res.writeHead(200, { "content-type": "application/json" });
-    res.end(body);
+    res.end(
+      JSON.stringify({ jsonrpc: "2.0", id: verdict.requestId, result: {} })
+    );
   };
 }
 
