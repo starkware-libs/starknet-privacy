@@ -3,6 +3,7 @@ import {
   Account,
   RpcProvider,
   OutsideExecutionVersion,
+
   type constants,
   type OutsideExecutionOptions,
 } from "starknet";
@@ -109,7 +110,7 @@ describe("Privacy StarkNet integration", () => {
         salt: deploymentSalt,
       },
       {
-        tip: 100n,
+        tip: 0n,
         resourceBounds: deployFee.resourceBounds,
       },
     );
@@ -174,7 +175,7 @@ describe("Privacy StarkNet integration", () => {
     const mintFee = await adminAccount.estimateInvokeFee(mintCall);
     log("submitting mint tx...");
     const mintTx = await adminAccount.execute(mintCall, {
-      tip: 10_000n,
+      tip: 0n,
       resourceBounds: mintFee.resourceBounds,
     });
     log(`mint tx: ${mintTx.transaction_hash}, waiting...`);
@@ -193,7 +194,7 @@ describe("Privacy StarkNet integration", () => {
     const approveFee = await aliceAccount.estimateInvokeFee(approveCall);
     log("submitting approve tx...");
     const approveTx = await aliceAccount.execute(approveCall, {
-      tip: 10_000n,
+      tip: 0n,
       resourceBounds: approveFee.resourceBounds,
     });
     log(`approve tx: ${approveTx.transaction_hash}, waiting...`);
@@ -257,7 +258,7 @@ describe("Privacy StarkNet integration", () => {
     const executeTx = await adminAccount.executeFromOutside(
       outsideTransaction,
       {
-        tip: 10_000n,
+        tip: 0n,
         proofFacts: callAndProof.proof.proofFacts,
         proof: callAndProof.proof.data,
       },

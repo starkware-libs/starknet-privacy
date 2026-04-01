@@ -237,6 +237,48 @@ const { timestamp, channels, total } = await transfers.discoverChannels("all", {
 // channels: AddressMap<Channel> — channels keyed by recipient address
 ```
 
+### Transaction history
+
+Fetch paginated transaction history and classify raw events into user-facing actions. Requires notes and channels to be discovered first.
+
+```typescript
+import { classifyTransaction } from "@starkware-libs/starknet-privacy-sdk";
+
+const { notes, cursor: notesCursor } = await transfers.discoverNotes();
+const { channels } = await transfers.discoverChannels("all");
+
+const page = await discovery.fetchHistory(
+  userAddress,
+  notesCursor,
+  { channels },
+  { maxTransactions: 10 },
+);
+
+for (const tx of page.transactions) {
+  const { actions } = classifyTransaction(tx);
+  for (const action of actions) {
+    switch (action.type) {
+      case "deposit":       // { fromAddress, token, amount }
+      case "withdrawal":    // { toAddress, token, amount }
+      case "transferSent":  // { toAddress, token, amount, noteCount }
+      case "transferReceived": // { fromAddress, token, amount, noteCount }
+      case "swap":          // { executor, sent: SwapLeg[], received: SwapLeg[] }
+      case "transferSelf":  // { token, amount, noteCount }
+    }
+  }
+}
+
+// Paginate with the returned cursor
+if (!page.cursor.historyComplete) {
+  const nextPage = await discovery.fetchHistory(
+    userAddress,
+    notesCursor,
+    { channels },
+    { maxTransactions: 10, historyCursor: page.cursor, blockRef: page.blockRef },
+  );
+}
+```
+
 ## Execute result
 
 Every `execute()` call returns:
@@ -414,7 +456,7 @@ sequenceDiagram
 
 ## Starknet Devnet
 
-SDK tests use a [custom fork of starknet-devnet](https://github.com/starkware-libs/starknet-devnet) that includes a blockifier version supporting the new transaction version with proofs. Install from the `APOLLO-PRE-PROOF-DEMO-19` release:
+SDK tests use a [custom fork of starknet-devnet](https://github.com/starkware-libs/starknet-devnet) that includes a blockifier version supporting the new transaction version with proofs. Install from the `PRIVACY-0.14.2-RC.2` release:
 
 If you have a previous asdf installation of starknet-devnet, remove it first:
 
@@ -426,13 +468,13 @@ Then install from the release:
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/starkware-libs/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-19/starknet-devnet-aarch64-apple-darwin.tar.gz -o /tmp/starknet-devnet.tar.gz
+curl -L https://github.com/starkware-libs/starknet-devnet/releases/download/PRIVACY-0.14.2-RC.2/starknet-devnet-aarch64-apple-darwin.tar.gz -o /tmp/starknet-devnet.tar.gz
 sudo tar -xzf /tmp/starknet-devnet.tar.gz -C /usr/local/bin
 sudo chmod +x /usr/local/bin/starknet-devnet
 rm /tmp/starknet-devnet.tar.gz
 
 # Linux (x86_64)
-curl -L https://github.com/starkware-libs/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-19/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz -o /tmp/starknet-devnet.tar.gz
+curl -L https://github.com/starkware-libs/starknet-devnet/releases/download/PRIVACY-0.14.2-RC.2/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz -o /tmp/starknet-devnet.tar.gz
 sudo tar -xzf /tmp/starknet-devnet.tar.gz -C /usr/local/bin
 sudo chmod +x /usr/local/bin/starknet-devnet
 rm /tmp/starknet-devnet.tar.gz

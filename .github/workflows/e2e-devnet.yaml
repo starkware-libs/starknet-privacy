@@ -42,19 +42,26 @@ jobs:
       # Scarb (for Cairo contract build)
       - uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.15.1"
+          scarb-version: "2.17.0-rc.4"
 
       # Devnet binary
       - name: Install starknet-devnet
         run: |
-          curl -L https://github.com/starkware-libs/starknet-devnet/releases/download/APOLLO-PRE-PROOF-DEMO-19/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
+          curl -L https://github.com/starkware-libs/starknet-devnet/releases/download/PRIVACY-0.14.2-RC.2/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
           chmod +x /usr/local/bin/starknet-devnet
+
+      - uses: software-mansion/setup-universal-sierra-compiler@v1
+        with:
+          universal-sierra-compiler-version: "v2.8.0-rc.0"
 
       # Build Cairo contracts (both profiles: release for e2e harness, dev for SDK devnet helper)
       - name: Build contracts
         run: |
           scarb --profile release build -p privacy
           scarb build -p privacy
+        # TODO: remove SCARB_IGNORE_CAIRO_VERSION once openzeppelin upgrades to Cairo >=2.17
+        env:
+          SCARB_IGNORE_CAIRO_VERSION: "true"
 
       # Build discovery service (release — e2e spawns from target/release/)
       - name: Build discovery service

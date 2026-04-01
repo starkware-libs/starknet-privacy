@@ -1,11 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.14.2-RC.2
 
 ### Added
 
-- `invalidateProofNonceCache()` on `PrivateTransfersInterface` to clear the cached pool nonce and force a fresh fetch on the next call — recovery path for nonce errors (#663)
+- History endpoint support via `IndexerDiscoveryProvider.fetchHistory()` for paginated transaction history (#641)
+- Classify history events into user-facing actions: deposits, withdrawals, transfers (#637)
+- `invalidateProofNonceCache()` on `PrivateTransfersInterface` to clear the cached pool nonce and force a fresh fetch on the next call (#663)
 - `nodeUrl` option on `ProofProviderConfig` to enable pool nonce fetching and caching in `ProvingServiceProofProvider` (#663)
+- Execution continuation on previously created invocation (#643)
+
+### Changed
+
+- Remove `depositor` from Note storage layout (#661)
+- Upgrade Scarb to 2.17.0-rc.4 (Sierra 1.8.0)
 
 ## 0.14.2-RC.1
 
