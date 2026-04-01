@@ -1,14 +1,14 @@
 // tests/proxy.test.ts
 import { describe, it, expect, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
-import { createHandler } from "../src/proxy.js";
+import { createHandler, type HandlerOptions } from "../src/proxy.js";
 
 let server: Server;
 let serverPort: number;
 
-function startServer(maxBodyBytes?: number): Promise<void> {
+function startServer(options?: HandlerOptions): Promise<void> {
   return new Promise((resolve) => {
-    const handler = createHandler(maxBodyBytes);
+    const handler = createHandler(options);
     server = createServer(handler);
     server.listen(0, "127.0.0.1", () => {
       const addr = server.address();
@@ -20,6 +20,23 @@ function startServer(maxBodyBytes?: number): Promise<void> {
 
 function serverUrl(path: string): string {
   return `http://127.0.0.1:${serverPort}${path}`;
+}
+
+function sampleInvokeV3(): Record<string, unknown> {
+  return {
+    type: "INVOKE",
+    version: "0x3",
+    sender_address: "0x123",
+    calldata: ["0x1"],
+    signature: ["0x2"],
+    nonce: "0x0",
+    resource_bounds: {},
+    tip: "0x0",
+    paymaster_data: [],
+    account_deployment_data: [],
+    nonce_data_availability_mode: "L1",
+    fee_data_availability_mode: "L1",
+  };
 }
 
 afterEach(async () => {
@@ -38,7 +55,7 @@ describe("handler", () => {
   });
 
   it("returns 413 when request body exceeds maxBodyBytes", async () => {
-    await startServer(10);
+    await startServer({ maxBodyBytes: 10 });
     const response = await fetch(serverUrl("/"), {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -64,15 +81,39 @@ describe("handler", () => {
     expect(response.status).toBe(405);
   });
 
-  it("accepts JSON-RPC POST and echoes body", async () => {
+  it("returns JSON-RPC error for invalid RPC request", async () => {
     await startServer();
-    const body = { jsonrpc: "2.0", id: 1, method: "test" };
     const response = await fetch(serverUrl("/"), {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "unknown_method",
+      }),
     });
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(body);
+    const body = await response.json();
+    expect(body.error.code).toBe(-32601);
+  });
+
+  it("returns success for valid starknet_checkTransaction", async () => {
+    await startServer();
+    const response = await fetch(serverUrl("/"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "starknet_checkTransaction",
+        params: ["latest", sampleInvokeV3()],
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {},
+    });
   });
 });
