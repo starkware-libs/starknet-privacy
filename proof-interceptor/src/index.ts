@@ -7,6 +7,7 @@ import { setupGracefulShutdown } from "./shutdown.js";
 const config = loadConfig();
 const handler = createHandler({
   maxBodyBytes: config.maxBodyBytes,
+  interceptors: [],
 });
 const server = await startServer(config, handler);
 setupGracefulShutdown(server);
