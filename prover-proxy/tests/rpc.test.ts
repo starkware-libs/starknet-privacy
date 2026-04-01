@@ -73,12 +73,15 @@ describe("validateRpcRequest", () => {
   });
 
   describe("starknet_proveTransaction", () => {
-    it("forwards valid INVOKE V3 transaction", () => {
+    it("forwards valid INVOKE V3 transaction with request id", () => {
       const result = validateRpcRequest(
         rpcBody("starknet_proveTransaction", ["latest", sampleInvokeV3()]),
         defaultOptions
       );
-      expect(result.action).toBe(RpcAction.ForwardAsIs);
+      expect(result.action).toBe(RpcAction.ForwardWithInterceptors);
+      if (result.action === RpcAction.ForwardWithInterceptors) {
+        expect(result.requestId).toBe(1);
+      }
     });
 
     it("forwards with block hash", () => {
@@ -89,7 +92,7 @@ describe("validateRpcRequest", () => {
         ]),
         defaultOptions
       );
-      expect(result.action).toBe(RpcAction.ForwardAsIs);
+      expect(result.action).toBe(RpcAction.ForwardWithInterceptors);
     });
 
     it("forwards with block number", () => {
@@ -100,7 +103,7 @@ describe("validateRpcRequest", () => {
         ]),
         defaultOptions
       );
-      expect(result.action).toBe(RpcAction.ForwardAsIs);
+      expect(result.action).toBe(RpcAction.ForwardWithInterceptors);
     });
 
     it("rejects pending block with BLOCK_NOT_FOUND (24)", () => {

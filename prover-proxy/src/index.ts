@@ -8,6 +8,7 @@ const config = loadConfig();
 const handler = createProxyHandler(config.upstreamUrl, {
   forwardUnknownMethods: config.forwardUnknownMethods,
   maxBodyBytes: config.maxBodyBytes,
+  interceptors: [],
 });
 const server = await startServer(config, handler);
 setupGracefulShutdown(server);
