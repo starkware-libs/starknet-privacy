@@ -1,13 +1,22 @@
 // src/proxy.ts
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { RpcAction, validateRpcRequest } from "./rpc.js";
+import {
+  runInterceptors,
+  type TransactionInterceptor,
+} from "./interceptor.js";
+import { jsonRpcError } from "./types.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./config.js";
 
+const TRANSACTION_REJECTED = 10000;
+
 export interface HandlerOptions {
+  interceptors?: TransactionInterceptor[];
   maxBodyBytes?: number;
 }
 
 export function createHandler(options: HandlerOptions = {}) {
+  const interceptors = options.interceptors ?? [];
   const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
 
   return async (req: IncomingMessage, res: ServerResponse) => {
@@ -48,8 +57,26 @@ export function createHandler(options: HandlerOptions = {}) {
       return;
     }
 
-    // Interceptors added by subsequent branches.
-    // For now, all valid requests are allowed.
+    const interceptorVerdict = await runInterceptors(
+      interceptors,
+      verdict.transaction
+    );
+
+    if (interceptorVerdict.action === "block") {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify(
+          jsonRpcError(
+            verdict.requestId,
+            TRANSACTION_REJECTED,
+            "Transaction rejected",
+            interceptorVerdict.reason
+          )
+        )
+      );
+      return;
+    }
+
     res.writeHead(200, { "content-type": "application/json" });
     res.end(
       JSON.stringify({ jsonrpc: "2.0", id: verdict.requestId, result: {} })
