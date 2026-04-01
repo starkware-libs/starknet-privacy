@@ -1,9 +1,12 @@
 // src/config.ts
 
+const DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024; // 5 MB
+
 export interface Config {
   upstreamUrl: string;
   host: string;
   port: number;
+  forwardUnknownMethods: boolean;
   maxBodyBytes: number;
   tls?: {
     certPath: string;
@@ -29,6 +32,7 @@ export function loadConfig(): Config {
     upstreamUrl: requiredEnv("UPSTREAM_URL"),
     host: process.env.HOST ?? "0.0.0.0",
     port,
+    forwardUnknownMethods: process.env.FORWARD_UNKNOWN_METHODS === "true",
     maxBodyBytes,
   };
 

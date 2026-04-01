@@ -1,5 +1,6 @@
 // src/proxy.ts
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { RpcAction, validateRpcRequest, type RpcHandlerOptions } from "./rpc.js";
 
 const DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024; // 5 MB, matching apollo_http_server
 
@@ -15,11 +16,16 @@ const HOP_BY_HOP_HEADERS = new Set([
   "host",
 ]);
 
+export interface ProxyOptions extends RpcHandlerOptions {
+  maxBodyBytes?: number;
+}
+
 export function createProxyHandler(
   upstreamUrl: string,
-  maxBodyBytes = DEFAULT_MAX_BODY_BYTES
+  options: ProxyOptions = { forwardUnknownMethods: false }
 ) {
   const upstream = upstreamUrl.replace(/\/+$/, "");
+  const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
 
   return async (req: IncomingMessage, res: ServerResponse) => {
     if (req.url === "/health" && req.method === "GET") {
@@ -45,8 +51,36 @@ export function createProxyHandler(
       return;
     }
 
-    const targetUrl = upstream + (req.url ?? "/");
+    // JSON-RPC POST: validate before forwarding
+    if (req.method === "POST" && isJsonContent(req)) {
+      const verdict = validateRpcRequest(body.toString(), options);
 
+      if (verdict.action === RpcAction.Error) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(verdict.response));
+        return;
+      }
+
+      // Forward the raw JSON-RPC body to upstream
+      try {
+        const upstreamResponse = await forwardToUpstream(upstream, body);
+        res.writeHead(upstreamResponse.status, {
+          "content-type": "application/json",
+        });
+        res.end(upstreamResponse.body);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(
+          JSON.stringify({ error: "upstream_unreachable", message })
+        );
+        res.writeHead(502, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "bad gateway" }));
+      }
+      return;
+    }
+
+    // Non-JSON-RPC: forward as-is
+    const targetUrl = upstream + (req.url ?? "/");
     const forwardHeaders: Record<string, string> = {};
     for (const [key, value] of Object.entries(req.headers)) {
       if (typeof value === "string" && !HOP_BY_HOP_HEADERS.has(key)) {
@@ -82,6 +116,23 @@ export function createProxyHandler(
   };
 }
 
+interface UpstreamResponse {
+  status: number;
+  body: string;
+}
+
+async function forwardToUpstream(
+  upstream: string,
+  body: Buffer
+): Promise<UpstreamResponse> {
+  const response = await fetch(upstream, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: new Uint8Array(body),
+  });
+  return { status: response.status, body: await response.text() };
+}
+
 function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -105,4 +156,9 @@ function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
       if (!exceeded) reject(error);
     });
   });
+}
+
+function isJsonContent(req: IncomingMessage): boolean {
+  const contentType = req.headers["content-type"] ?? "";
+  return contentType.includes("application/json");
 }
