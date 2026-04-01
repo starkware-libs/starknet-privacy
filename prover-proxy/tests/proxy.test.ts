@@ -1,7 +1,7 @@
 // tests/proxy.test.ts
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
-import { createProxyHandler } from "../src/proxy.js";
+import { createProxyHandler, type ProxyOptions } from "../src/proxy.js";
 
 let upstream: Server;
 let upstreamPort: number;
@@ -24,9 +24,15 @@ function startUpstream(
   });
 }
 
-function startProxy(upstreamUrl: string, maxBodyBytes?: number): Promise<void> {
+function startProxy(
+  upstreamUrl: string,
+  options?: Partial<ProxyOptions>
+): Promise<void> {
   return new Promise((resolve) => {
-    const handler = createProxyHandler(upstreamUrl, maxBodyBytes);
+    const handler = createProxyHandler(upstreamUrl, {
+      forwardUnknownMethods: false,
+      ...options,
+    });
     proxy = createServer(handler);
     proxy.listen(0, "127.0.0.1", () => {
       const addr = proxy.address();
@@ -64,7 +70,7 @@ describe("proxy", () => {
     expect(await response.json()).toEqual({ hello: "world" });
   });
 
-  it("forwards POST body to upstream", async () => {
+  it("forwards non-JSON POST body to upstream", async () => {
     let receivedBody = "";
     await startUpstream(async (req, res) => {
       const chunks: Buffer[] = [];
@@ -77,12 +83,59 @@ describe("proxy", () => {
 
     const response = await fetch(proxyUrl("/"), {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ data: "test" }),
+      headers: { "content-type": "text/plain" },
+      body: "raw data",
     });
 
     expect(response.status).toBe(200);
-    expect(receivedBody).toBe('{"data":"test"}');
+    expect(receivedBody).toBe("raw data");
+  });
+
+  it("forwards valid JSON-RPC request to upstream", async () => {
+    let receivedBody = "";
+    await startUpstream(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(chunk as Buffer);
+      receivedBody = Buffer.concat(chunks).toString();
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0.10.1" }));
+    });
+    await startProxy(`http://127.0.0.1:${upstreamPort}`);
+
+    const rpcRequest = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "starknet_specVersion",
+    };
+    const response = await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(rpcRequest),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result).toBe("0.10.1");
+    // Verify upstream received the original request
+    expect(JSON.parse(receivedBody)).toEqual(rpcRequest);
+  });
+
+  it("returns JSON-RPC error for unknown method without forwarding", async () => {
+    await startProxy("http://127.0.0.1:1"); // upstream doesn't matter
+
+    const response = await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "unknown_method",
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.error.code).toBe(-32601);
   });
 
   it("forwards request headers (excluding hop-by-hop)", async () => {
@@ -151,7 +204,7 @@ describe("proxy", () => {
       res.writeHead(200);
       res.end("ok");
     });
-    await startProxy(`http://127.0.0.1:${upstreamPort}`, 10);
+    await startProxy(`http://127.0.0.1:${upstreamPort}`, { maxBodyBytes: 10 });
 
     const response = await fetch(proxyUrl("/"), {
       method: "POST",
