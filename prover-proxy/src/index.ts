@@ -5,6 +5,9 @@ import { startServer } from "./server.js";
 import { setupGracefulShutdown } from "./shutdown.js";
 
 const config = loadConfig();
-const handler = createProxyHandler(config.upstreamUrl, config.maxBodyBytes);
+const handler = createProxyHandler(config.upstreamUrl, {
+  forwardUnknownMethods: config.forwardUnknownMethods,
+  maxBodyBytes: config.maxBodyBytes,
+});
 const server = await startServer(config, handler);
 setupGracefulShutdown(server);
