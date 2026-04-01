@@ -3,6 +3,7 @@ import {
   jsonRpcError,
   type JsonRpcRequest,
   type JsonRpcErrorResponse,
+  type ProveTxnV3,
 } from "./types.js";
 
 // Error codes matching the real starknet_transaction_prover
@@ -13,11 +14,17 @@ const UNSUPPORTED_TX_VERSION = 61;
 
 export enum RpcAction {
   ForwardAsIs = "forward_as_is",
+  ForwardWithInterceptors = "forward_with_interceptors",
   Error = "error",
 }
 
 export type RpcVerdict =
   | { action: RpcAction.ForwardAsIs }
+  | {
+      action: RpcAction.ForwardWithInterceptors;
+      transaction: ProveTxnV3;
+      requestId: string | number | null;
+    }
   | { action: RpcAction.Error; response: JsonRpcErrorResponse };
 
 export interface RpcHandlerOptions {
@@ -25,8 +32,9 @@ export interface RpcHandlerOptions {
 }
 
 /**
- * Validates a JSON-RPC request body. Returns either "forward" (send raw body
- * to upstream) or an error response to return to the caller.
+ * Validates a JSON-RPC request body. Returns ForwardAsIs (send raw body to
+ * upstream), ForwardWithInterceptors (forward with parsed transaction for
+ * interceptors), or Error (return error response to the caller).
  */
 export function validateRpcRequest(
   body: string,
@@ -146,6 +154,9 @@ function validateProveTransaction(request: JsonRpcRequest): RpcVerdict {
     };
   }
 
-  // Valid INVOKE V3 — forward to upstream prover
-  return { action: RpcAction.ForwardAsIs };
+  return {
+    action: RpcAction.ForwardWithInterceptors,
+    transaction: transaction as unknown as ProveTxnV3,
+    requestId: request.id,
+  };
 }

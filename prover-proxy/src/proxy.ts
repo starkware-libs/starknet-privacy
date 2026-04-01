@@ -1,8 +1,16 @@
 // src/proxy.ts
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { RpcAction, validateRpcRequest, type RpcHandlerOptions } from "./rpc.js";
+import {
+  RpcAction,
+  validateRpcRequest,
+  type RpcHandlerOptions,
+} from "./rpc.js";
+import { runInterceptors, type TransactionInterceptor } from "./interceptor.js";
+import { jsonRpcError } from "./types.js";
+import { DEFAULT_MAX_BODY_BYTES } from "./config.js";
 
-const DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024; // 5 MB, matching apollo_http_server
+const TRANSACTION_REJECTED = 10000;
+const DEFAULT_UPSTREAM_TIMEOUT_MS = 30_000;
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -17,15 +25,26 @@ const HOP_BY_HOP_HEADERS = new Set([
 ]);
 
 export interface ProxyOptions extends RpcHandlerOptions {
+  interceptors?: TransactionInterceptor[];
   maxBodyBytes?: number;
+  upstreamTimeoutMs?: number;
+}
+
+interface UpstreamResponse {
+  status: number;
+  body: string;
+  error?: unknown;
 }
 
 export function createProxyHandler(
   upstreamUrl: string,
   options: ProxyOptions = { forwardUnknownMethods: false }
 ) {
-  const upstream = upstreamUrl.replace(/\/+$/, "");
+  const upstreamBaseUrl = upstreamUrl.replace(/\/+$/, "");
+  const interceptors = options.interceptors ?? [];
   const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+  const upstreamTimeoutMs =
+    options.upstreamTimeoutMs ?? DEFAULT_UPSTREAM_TIMEOUT_MS;
 
   return async (req: IncomingMessage, res: ServerResponse) => {
     if (req.url === "/health" && req.method === "GET") {
@@ -61,9 +80,80 @@ export function createProxyHandler(
         return;
       }
 
-      // Forward the raw JSON-RPC body to upstream
+      if (verdict.action === RpcAction.ForwardWithInterceptors) {
+        // Fire upstream request in parallel with interceptors for latency.
+        // If the interceptor rejects, we abort the in-flight upstream request.
+        const abortController = new AbortController();
+        const upstreamPromise = forwardToUpstream(
+          upstreamBaseUrl,
+          body,
+          abortController.signal,
+          upstreamTimeoutMs
+        ).catch((error) => {
+          if (
+            error instanceof Error &&
+            error.name === "AbortError" &&
+            abortController.signal.aborted
+          ) {
+            return null;
+          }
+          return { status: 502, body: "", error } as UpstreamResponse;
+        });
+        const interceptorVerdict = await runInterceptors(
+          interceptors,
+          verdict.transaction
+        );
+
+        if (interceptorVerdict.action === "stop") {
+          console.error(
+            JSON.stringify({ error: "transaction_rejected" })
+          );
+          abortController.abort();
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify(
+              jsonRpcError(
+                verdict.requestId,
+                TRANSACTION_REJECTED,
+                "Transaction rejected",
+                interceptorVerdict.reason
+              )
+            )
+          );
+          return;
+        }
+
+        // Interceptors passed — return upstream result.
+        // upstreamResponse is never null here: abort only fires on the
+        // "stop" branch above, and .catch converts non-abort errors to
+        // an UpstreamResponse with an error field.
+        const upstreamResponse = (await upstreamPromise)!;
+        if (upstreamResponse.error) {
+          const message =
+            upstreamResponse.error instanceof Error
+              ? upstreamResponse.error.message
+              : String(upstreamResponse.error);
+          console.error(
+            JSON.stringify({ error: "upstream_unreachable", message })
+          );
+          res.writeHead(502, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "bad gateway" }));
+        } else {
+          res.writeHead(upstreamResponse.status, {
+            "content-type": "application/json",
+          });
+          res.end(upstreamResponse.body);
+        }
+        return;
+      }
+
+      // forward (specVersion, unknown methods when allowed)
       try {
-        const upstreamResponse = await forwardToUpstream(upstream, body);
+        const upstreamResponse = await forwardToUpstream(
+          upstreamBaseUrl,
+          body,
+          AbortSignal.timeout(upstreamTimeoutMs)
+        );
         res.writeHead(upstreamResponse.status, {
           "content-type": "application/json",
         });
@@ -80,14 +170,14 @@ export function createProxyHandler(
     }
 
     // Non-JSON-RPC: forward as-is
-    const targetUrl = upstream + (req.url ?? "/");
-    const forwardHeaders: Record<string, string> = {};
+    const targetUrl = upstreamBaseUrl + (req.url ?? "/");
+    const forwardHeaders = new Headers();
     for (const [key, value] of Object.entries(req.headers)) {
-      if (HOP_BY_HOP_HEADERS.has(key)) continue;
-      if (typeof value === "string") {
-        forwardHeaders[key] = value;
-      } else if (Array.isArray(value) && value.length > 0) {
-        forwardHeaders[key] = value.join(", ");
+      if (value === undefined || HOP_BY_HOP_HEADERS.has(key)) continue;
+      if (Array.isArray(value)) {
+        for (const entry of value) forwardHeaders.append(key, entry);
+      } else {
+        forwardHeaders.set(key, value);
       }
     }
 
@@ -97,6 +187,7 @@ export function createProxyHandler(
         method: req.method ?? "GET",
         headers: forwardHeaders,
         body: body.length > 0 ? new Uint8Array(body) : undefined,
+        signal: AbortSignal.timeout(upstreamTimeoutMs),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -119,19 +210,24 @@ export function createProxyHandler(
   };
 }
 
-interface UpstreamResponse {
-  status: number;
-  body: string;
-}
-
 async function forwardToUpstream(
   upstream: string,
-  body: Buffer
+  body: Buffer,
+  signal?: AbortSignal,
+  timeoutMs?: number
 ): Promise<UpstreamResponse> {
+  const signals = [
+    signal,
+    timeoutMs ? AbortSignal.timeout(timeoutMs) : null,
+  ].filter(Boolean) as AbortSignal[];
+  const combinedSignal =
+    signals.length > 0 ? AbortSignal.any(signals) : undefined;
+
   const response = await fetch(upstream, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: new Uint8Array(body),
+    signal: combinedSignal,
   });
   return { status: response.status, body: await response.text() };
 }

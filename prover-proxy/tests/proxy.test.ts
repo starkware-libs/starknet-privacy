@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import { createProxyHandler, type ProxyOptions } from "../src/proxy.js";
+import type { TransactionInterceptor } from "../src/interceptor.js";
 
 let upstream: Server;
 let upstreamPort: number;
@@ -44,6 +45,39 @@ function startProxy(
 
 function proxyUrl(path: string): string {
   return `http://127.0.0.1:${proxyPort}${path}`;
+}
+
+function proveRequest(): object {
+  return {
+    jsonrpc: "2.0",
+    id: 1,
+    method: "starknet_proveTransaction",
+    params: [
+      "latest",
+      {
+        type: "INVOKE",
+        version: "0x3",
+        sender_address: "0x123",
+        calldata: ["0x1"],
+        signature: ["0x2"],
+        nonce: "0x0",
+        resource_bounds: {},
+        tip: "0x0",
+        paymaster_data: [],
+        account_deployment_data: [],
+        nonce_data_availability_mode: "L1",
+        fee_data_availability_mode: "L1",
+      },
+    ],
+  };
+}
+
+function rpcPost(url: string, body: object): Promise<Response> {
+  return fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 afterEach(async () => {
@@ -107,30 +141,21 @@ describe("proxy", () => {
       id: 1,
       method: "starknet_specVersion",
     };
-    const response = await fetch(proxyUrl("/"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(rpcRequest),
-    });
+    const response = await rpcPost(proxyUrl("/"), rpcRequest);
 
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.result).toBe("0.10.1");
-    // Verify upstream received the original request
     expect(JSON.parse(receivedBody)).toEqual(rpcRequest);
   });
 
   it("returns JSON-RPC error for unknown method without forwarding", async () => {
-    await startProxy("http://127.0.0.1:1"); // upstream doesn't matter
+    await startProxy("http://127.0.0.1:1");
 
-    const response = await fetch(proxyUrl("/"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "unknown_method",
-      }),
+    const response = await rpcPost(proxyUrl("/"), {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "unknown_method",
     });
 
     expect(response.status).toBe(200);
@@ -186,6 +211,18 @@ describe("proxy", () => {
     expect(await response.json()).toEqual({ status: "ok" });
   });
 
+  it("returns 413 when body exceeds maxBodyBytes", async () => {
+    await startProxy("http://127.0.0.1:1", { maxBodyBytes: 10 });
+
+    const response = await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ data: "x".repeat(100) }),
+    });
+    expect(response.status).toBe(413);
+    expect(await response.json()).toEqual({ error: "payload too large" });
+  });
+
   it("preserves upstream URL path", async () => {
     let receivedUrl = "";
     await startUpstream((req, res) => {
@@ -198,21 +235,111 @@ describe("proxy", () => {
     await fetch(proxyUrl("/api/v1/resource?key=value"));
     expect(receivedUrl).toBe("/api/v1/resource?key=value");
   });
+});
 
-  it("returns 413 when request body exceeds maxBodyBytes", async () => {
+describe("proxy with interceptors", () => {
+  it("forwards proveTransaction when interceptor allows", async () => {
     await startUpstream((_req, res) => {
-      res.writeHead(200);
-      res.end("ok");
-    });
-    await startProxy(`http://127.0.0.1:${upstreamPort}`, { maxBodyBytes: 10 });
-
-    const response = await fetch(proxyUrl("/"), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ data: "this body is definitely longer than ten bytes" }),
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result: { proof: "abc" } })
+      );
     });
 
-    expect(response.status).toBe(413);
-    expect(await response.json()).toEqual({ error: "payload too large" });
+    const allowAll: TransactionInterceptor = {
+      intercept: async () => ({ action: "continue" }),
+    };
+    await startProxy(`http://127.0.0.1:${upstreamPort}`, {
+      interceptors: [allowAll],
+    });
+
+    const response = await rpcPost(proxyUrl("/"), proveRequest());
+    const body = await response.json();
+    expect(body.result).toEqual({ proof: "abc" });
+  });
+
+  it("returns 10000 when interceptor rejects", async () => {
+    await startUpstream((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result: { proof: "abc" } })
+      );
+    });
+
+    const blocker: TransactionInterceptor = {
+      intercept: async () => ({ action: "stop", reason: "sanctioned" }),
+    };
+    await startProxy(`http://127.0.0.1:${upstreamPort}`, {
+      interceptors: [blocker],
+    });
+
+    const response = await rpcPost(proxyUrl("/"), proveRequest());
+    const body = await response.json();
+    expect(body.error.code).toBe(10000);
+    expect(body.error.message).toBe("Transaction rejected");
+    expect(body.error.data).toBe("sanctioned");
+    expect(body.id).toBe(1);
+  });
+
+  it("does not run interceptors for starknet_specVersion", async () => {
+    let interceptorCalled = false;
+    await startUpstream((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0.10.1" }));
+    });
+
+    const spy: TransactionInterceptor = {
+      intercept: async () => {
+        interceptorCalled = true;
+        return { action: "stop", reason: "should not be called" };
+      },
+    };
+    await startProxy(`http://127.0.0.1:${upstreamPort}`, {
+      interceptors: [spy],
+    });
+
+    const response = await rpcPost(proxyUrl("/"), {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "starknet_specVersion",
+    });
+    const body = await response.json();
+    expect(body.result).toBe("0.10.1");
+    expect(interceptorCalled).toBe(false);
+  });
+
+  it("returns 502 when upstream fails while interceptors pass", async () => {
+    // Upstream is unreachable (port 1) — interceptor passes
+    const allowAll: TransactionInterceptor = {
+      intercept: async () => ({ action: "continue" }),
+    };
+    await startProxy("http://127.0.0.1:1", { interceptors: [allowAll] });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await rpcPost(proxyUrl("/"), proveRequest());
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "bad gateway" });
+    spy.mockRestore();
+  });
+
+  it("returns 10000 when interceptor throws", async () => {
+    await startUpstream((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }));
+    });
+
+    const thrower: TransactionInterceptor = {
+      intercept: async () => {
+        throw new Error("network timeout");
+      },
+    };
+    await startProxy(`http://127.0.0.1:${upstreamPort}`, {
+      interceptors: [thrower],
+    });
+
+    const response = await rpcPost(proxyUrl("/"), proveRequest());
+    const body = await response.json();
+    expect(body.error.code).toBe(10000);
+    expect(body.error.data).toBe("network timeout");
   });
 });
