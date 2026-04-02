@@ -387,6 +387,9 @@ input[type="number"] {
   margin-top: 4px;
   font-size: 12px;
   padding: 3px 9px;
+}
+
+.action-row button {
   margin-left: 6px;
 }
 
@@ -897,9 +900,12 @@ input[type="number"] {
 }
 
 .explorer-link {
+  display: block;
   color: #58a6ff;
   text-decoration: none;
   font-size: 12px;
+  padding-left: 52px;
+  padding-bottom: 8px;
 }
 
 .explorer-link:hover {
@@ -993,6 +999,12 @@ input[type="number"] {
   min-width: 70px;
 }
 
+.swap-row-label {
+  flex-shrink: 0;
+  color: #8b949e;
+  font-size: 13px;
+}
+
 .swap-flip-container {
   display: flex;
   justify-content: center;
@@ -1018,8 +1030,9 @@ input[type="number"] {
 }
 
 .swap-submit {
+  display: block;
   width: 100%;
-  margin-top: 4px;
+  margin-top: 8px;
   padding: 3px 9px;
 }
 

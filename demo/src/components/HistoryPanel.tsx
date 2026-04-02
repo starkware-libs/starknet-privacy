@@ -118,32 +118,32 @@ export function HistoryPanel({
             </div>
 
             {expanded && (
-              <ul className="history-row-details">
-                {transaction.actions.map((action, actionIndex) => (
-                  <li key={actionIndex} className="history-action">
-                    {action.label}
-                    {action.noteCount !== undefined && (
-                      <span className="note-count">
-                        {" "}
-                        ({action.noteCount}{" "}
-                        {action.noteCount === 1 ? "note" : "notes"})
-                      </span>
-                    )}
-                  </li>
-                ))}
+              <>
+                <ul className="history-row-details">
+                  {transaction.actions.map((action, actionIndex) => (
+                    <li key={actionIndex} className="history-action">
+                      {action.label}
+                      {action.noteCount !== undefined && (
+                        <span className="note-count">
+                          {" "}
+                          ({action.noteCount}{" "}
+                          {action.noteCount === 1 ? "note" : "notes"})
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
                 {explorerUrl && (
-                  <li className="history-action">
-                    <a
-                      className="explorer-link"
-                      href={`${explorerUrl.replace(/\/$/, "")}/tx/${transaction.fullTransactionHash}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      View on explorer ↗
-                    </a>
-                  </li>
+                  <a
+                    className="explorer-link"
+                    href={`${explorerUrl.replace(/\/$/, "")}/tx/${transaction.fullTransactionHash}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View in explorer ↗
+                  </a>
                 )}
-              </ul>
+              </>
             )}
           </div>
         );

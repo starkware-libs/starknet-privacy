@@ -21,14 +21,14 @@ export function formatAmount(value: bigint, decimals?: number): string {
   return fractionStr ? `${wholeFormatted}.${fractionStr}` : wholeFormatted;
 }
 
-const SUPERSCRIPT_DIGITS = "\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079";
+const SUBSCRIPT_DIGITS = "\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089";
 
-function toSuperscript(value: number): string {
-  return value.toString().split("").map((digit) => SUPERSCRIPT_DIGITS[Number(digit)]).join("");
+function toSubscript(value: number): string {
+  return value.toString().split("").map((digit) => SUBSCRIPT_DIGITS[Number(digit)]).join("");
 }
 
 /** Format a bigint token amount with capped fractional digits.
- *  Falls back to multiplication notation (e.g. 1×10⁻⁵) for values too small to show within maxFraction. */
+ *  For values too small to show within maxFraction, uses subscript zero-count: 0.0₁₂34 */
 export function formatTokenAmount(rawAmount: bigint, decimals: number, maxFraction = 4): string {
   if (rawAmount === 0n) return "0";
   if (decimals === 0) return rawAmount.toLocaleString("en-US");
@@ -46,15 +46,12 @@ export function formatTokenAmount(rawAmount: bigint, decimals: number, maxFracti
     return `${wholePart.toLocaleString("en-US")}.${fractionTrimmed}`;
   }
 
-  // Significant digits are beyond maxFraction — use multiplication notation
+  // Significant digits are beyond maxFraction — use subscript zero-count notation
+  // e.g. 0.000000000000000050 → 0.0₁₅50
   if (wholePart === 0n) {
     const leadingZeros = fractionFull.match(/^0*/)![0].length;
-    const significant = fractionFull.slice(leadingZeros).replace(/0+$/, "");
-    const exponent = leadingZeros + 1;
-    const mantissa = significant.length > 1
-      ? `${significant[0]}.${significant.slice(1, 4).replace(/0+$/, "")}`
-      : significant;
-    return `${mantissa}\u00b710\u207b${toSuperscript(exponent)}`;
+    const significant = fractionFull.slice(leadingZeros).replace(/0+$/, "").slice(0, maxFraction);
+    return `0.0${toSubscript(leadingZeros - 1)}${significant}`;
   }
 
   return wholePart.toLocaleString("en-US");

@@ -425,5 +425,131 @@ export function useTransactions(
     [userAccount, transfers, provider, activeAddress, config.ekubo, execute],
   );
 
-  return { status, register, mint, deposit, withdraw, transfer, swap };
+  const vesuSupply = useCallback(
+    (token: string, vTokenAddress: string, amount: string) =>
+      execute("Vesu Supply", async (tl) => {
+        if (!userAccount || !transfers || !provider || !activeAddress)
+          throw new Error("Not ready");
+        if (!config.vesu) throw new Error("Vesu config not set");
+        const rawAmount = scaleAmount(token, amount);
+        const { helperAddress } = config.vesu;
+
+        const provingBlockId = await tl.step("Get block number",
+          () => provider.getBlockNumber(),
+        ) - 10;
+
+        const { callAndProof } = await tl.step("SDK build + prove", () =>
+          transfers
+            .build({
+              autoSetup: true,
+              autoSelectNotes: "all",
+              autoDiscover: { notes: "refresh", channels: "refresh" },
+            })
+            .with(token)
+            .withdraw({ recipient: helperAddress, amount: rawAmount })
+            .surplusTo(activeAddress, false)
+            .with(vTokenAddress)
+            .transfer({ recipient: activeAddress, amount: Open })
+            .done()
+            .invoke((args) => ({
+              contractAddress: helperAddress,
+              calldata: [
+                0n,           // LendingOperation::Deposit
+                token,        // in_token (underlying)
+                vTokenAddress, // out_token (vToken)
+                rawAmount,    // assets (u256 low)
+                0n,           // assets (u256 high)
+                args.openNotes[0].noteId,
+              ],
+            }))
+            .execute({ provingBlockId }),
+        );
+
+        const proofDetails = callAndProof.proof.proofFacts?.length
+          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
+          : {};
+
+        const executeTx = await tl.step("Estimate + submit", () =>
+          userAccount.execute(callAndProof.call, { tip: 0n, ...proofDetails }),
+        );
+
+        await tl.step("Wait for receipt", () =>
+          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
+        ).then((receipt) => {
+          if (!receipt.isSuccess())
+            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
+        });
+
+        const proofSizeBytes = callAndProof.proof.data
+          ? base64ByteLength(callAndProof.proof.data)
+          : undefined;
+        return { txHash: executeTx.transaction_hash, proofSizeBytes };
+      }),
+    [userAccount, transfers, provider, activeAddress, config.vesu, execute],
+  );
+
+  const vesuWithdraw = useCallback(
+    (token: string, vTokenAddress: string, amount: string) =>
+      execute("Vesu Withdraw", async (tl) => {
+        if (!userAccount || !transfers || !provider || !activeAddress)
+          throw new Error("Not ready");
+        if (!config.vesu) throw new Error("Vesu config not set");
+        const rawAmount = scaleAmount(token, amount);
+        const { helperAddress } = config.vesu;
+
+        const provingBlockId = await tl.step("Get block number",
+          () => provider.getBlockNumber(),
+        ) - 10;
+
+        const { callAndProof } = await tl.step("SDK build + prove", () =>
+          transfers
+            .build({
+              autoSetup: true,
+              autoSelectNotes: "all",
+              autoDiscover: { notes: "refresh", channels: "refresh" },
+            })
+            .with(vTokenAddress)
+            .withdraw({ recipient: helperAddress, amount: rawAmount })
+            .surplusTo(activeAddress, false)
+            .with(token)
+            .transfer({ recipient: activeAddress, amount: Open })
+            .done()
+            .invoke((args) => ({
+              contractAddress: helperAddress,
+              calldata: [
+                1n,           // LendingOperation::Withdraw
+                vTokenAddress, // in_token (vToken)
+                token,        // out_token (underlying)
+                rawAmount,    // assets (u256 low)
+                0n,           // assets (u256 high)
+                args.openNotes[0].noteId,
+              ],
+            }))
+            .execute({ provingBlockId }),
+        );
+
+        const proofDetails = callAndProof.proof.proofFacts?.length
+          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
+          : {};
+
+        const executeTx = await tl.step("Estimate + submit", () =>
+          userAccount.execute(callAndProof.call, { tip: 0n, ...proofDetails }),
+        );
+
+        await tl.step("Wait for receipt", () =>
+          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
+        ).then((receipt) => {
+          if (!receipt.isSuccess())
+            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
+        });
+
+        const proofSizeBytes = callAndProof.proof.data
+          ? base64ByteLength(callAndProof.proof.data)
+          : undefined;
+        return { txHash: executeTx.transaction_hash, proofSizeBytes };
+      }),
+    [userAccount, transfers, provider, activeAddress, config.vesu, execute],
+  );
+
+  return { status, register, mint, deposit, withdraw, transfer, swap, vesuSupply, vesuWithdraw };
 }
