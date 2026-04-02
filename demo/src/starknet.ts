@@ -69,6 +69,34 @@ export async function getErc20Balance(
   return BigInt(result[0]);
 }
 
+/** ERC-4626 preview_deposit: given assets, returns estimated shares minted. */
+export async function previewDeposit(
+  provider: RpcProvider,
+  vTokenAddress: string,
+  assets: bigint,
+): Promise<bigint> {
+  const result = await provider.callContract({
+    contractAddress: vTokenAddress,
+    entrypoint: "preview_deposit",
+    calldata: [assets.toString(), "0"],
+  });
+  return BigInt(result[0]);
+}
+
+/** ERC-4626 preview_redeem: given shares, returns estimated underlying assets. */
+export async function previewRedeem(
+  provider: RpcProvider,
+  vTokenAddress: string,
+  shares: bigint,
+): Promise<bigint> {
+  const result = await provider.callContract({
+    contractAddress: vTokenAddress,
+    entrypoint: "preview_redeem",
+    calldata: [shares.toString(), "0"],
+  });
+  return BigInt(result[0]);
+}
+
 export type TokenMetadata = {
   name: string;
   symbol: string;

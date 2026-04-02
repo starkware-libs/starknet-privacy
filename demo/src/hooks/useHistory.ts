@@ -193,6 +193,9 @@ function buildDisplayMaps(
   if (config.ekubo) {
     executorNames.set(BigInt(config.ekubo.executorAddress), "ekubo swap");
   }
+  if (config.vesu) {
+    executorNames.set(BigInt(config.vesu.helperAddress), "vesu swap");
+  }
   return { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames };
 }
 

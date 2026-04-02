@@ -30,6 +30,16 @@ export type EkuboConfig = {
   swapTokens: TokenConfig[];
 };
 
+export type VesuVault = {
+  tokenConfig: TokenConfig;
+  vTokenAddress: string;
+};
+
+export type VesuConfig = {
+  helperAddress: string;
+  vaults: VesuVault[];
+};
+
 export type AppConfig = {
   rpcUrl: string;
   indexerUrl: string;
@@ -45,6 +55,7 @@ export type AppConfig = {
   feederGatewayUrl?: string;
   explorerUrl?: string;
   ekubo?: EkuboConfig;
+  vesu?: VesuConfig;
 };
 
 function requireEnv(key: string): string {
@@ -91,6 +102,28 @@ function parseEkuboConfig(tokens: TokenConfig[]): EkuboConfig | undefined {
   };
 }
 
+function parseVesuConfig(tokens: TokenConfig[]): VesuConfig | undefined {
+  const helperAddress = import.meta.env.VITE_VESU_LENDING_HELPER_ADDRESS as string | undefined;
+  if (!helperAddress) return undefined;
+
+  const raw = requireEnv("VITE_VESU");
+  let parsed: { vaults: { token: string; vTokenAddress: string }[] };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("VITE_VESU must be valid JSON");
+  }
+
+  const tokenByName = new Map(tokens.map((t) => [t.name, t]));
+  const vaults = parsed.vaults.map((vault) => {
+    const tokenConfig = tokenByName.get(vault.token);
+    if (!tokenConfig) throw new Error(`VITE_VESU vaults: unknown token "${vault.token}"`);
+    return { tokenConfig, vTokenAddress: vault.vTokenAddress };
+  });
+
+  return { helperAddress, vaults };
+}
+
 export function loadConfig(): AppConfig {
   const tokensRaw = requireEnv("VITE_TOKENS");
   let tokens: TokenConfig[];
@@ -114,5 +147,6 @@ export function loadConfig(): AppConfig {
     feederGatewayUrl: import.meta.env.VITE_FEEDER_GATEWAY_URL as string | undefined,
     explorerUrl: import.meta.env.VITE_EXPLORER_URL as string | undefined,
     ekubo: parseEkuboConfig(tokens),
+    vesu: parseVesuConfig(tokens),
   };
 }
