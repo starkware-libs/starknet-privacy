@@ -1,8 +1,6 @@
 # Elliptic Proxy
 
-A GCP Cloud Function that proxies requests to the [Elliptic API](https://www.elliptic.co/), swapping partner credentials for real Elliptic credentials. Partners authenticate with their own HMAC keys; the proxy verifies, rate-limits, re-signs, and forwards to Elliptic.
-
-> **TODO:** Response scoring is not yet implemented — all successful upstream responses currently return `{ blocked: true }`. Rule-based scoring is planned for a subsequent change.
+A GCP Cloud Function that proxies requests to the [Elliptic API](https://www.elliptic.co/), swapping partner credentials for real Elliptic credentials. Partners authenticate with their own HMAC keys; the proxy verifies, rate-limits, re-signs, forwards to Elliptic, and scores the response to return a blocked/allowed verdict.
 
 ## Request flow
 
@@ -14,7 +12,7 @@ Partner → Cloud Function → Elliptic API
             ├─ Rate limit (per-partner, per-minute)
             ├─ Re-sign with real Elliptic credentials
             ├─ Forward to Elliptic
-            └─ Return { blocked: true } (TODO: rule-based scoring)
+            └─ Score response → { blocked: true/false }
 ```
 
 ## Configuration
@@ -36,6 +34,7 @@ The secret value must be a JSON string with this structure:
   "rateLimitPerMinute": 100,
   "maxBodyBytes": 10240,
   "configCacheTtlSeconds": 300,
+  "blockedCacheTtlSeconds": 3600,
   "partners": {
     "partner-name": "<base64-encoded-partner-secret>"
   }
@@ -51,6 +50,7 @@ The secret value must be a JSON string with this structure:
 | `rateLimitPerMinute` | Per-partner rate limit (requests per minute) |
 | `maxBodyBytes` | Max request body size |
 | `configCacheTtlSeconds` | How long to cache the config before re-reading from Secret Manager (seconds) |
+| `blockedCacheTtlSeconds` | How long to cache blocked address verdicts (seconds) |
 | `partners.<name>` | Partner HMAC secret (base64-encoded). The key is the partner name, sent in `x-access-key` |
 
 ### Generating partner secrets

@@ -18,7 +18,7 @@ Partner → Cloud Function → Elliptic API
          5. Check rate limit
          6. Re-sign with real Elliptic key + secret
          7. Forward address to Elliptic for screening
-         8. Return { blocked: true } (TODO: rule-based scoring)
+         8. Score Elliptic response and return blocked/allowed verdict
 ```
 
 ## Configuration
@@ -39,6 +39,7 @@ re-reads it according to `configCacheTtlSeconds`.
   "rateLimitPerMinute": 100,
   "maxBodyBytes": 10240,
   "configCacheTtlSeconds": 300,
+  "blockedCacheTtlSeconds": 3600,
   "partners": {
     "partner-a": "issued-hmac-secret-base64",
     "partner-b": "issued-hmac-secret-base64"
@@ -57,6 +58,7 @@ re-reads it according to `configCacheTtlSeconds`.
 | `rateLimitPerMinute` | Global per-partner rate limit |
 | `maxBodyBytes` | Max request body size |
 | `configCacheTtlSeconds` | How often the proxy re-reads config from Secret Manager (seconds) |
+| `blockedCacheTtlSeconds` | How long to cache blocked address verdicts (seconds) |
 | `partners.<name>` | Partner HMAC secret (base64). The key is the partner name, sent in `x-access-key` |
 
 ## Authentication
