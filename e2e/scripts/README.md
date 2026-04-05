@@ -1,5 +1,66 @@
 # E2E Scripts
 
+## Integration Environment Setup
+
+Setup scripts deploy contracts to the integration Starknet environment. Each script is **idempotent** — it skips already-declared classes and already-deployed contracts. Run them in order since later scripts depend on addresses from earlier ones.
+
+### Prerequisites
+
+```bash
+# Build contract artifacts
+cd e2e/vesu-contracts && scarb build       # MockAsset, Vesu Pool, PoolFactory, VToken, Oracle, mock oracles
+scarb build                                 # Privacy pool + VesuLendingHelper (from repo root)
+```
+
+Note: `vesu-contracts/` requires Scarb 2.11.4 (pinned in its `.tool-versions`). The repo root uses Scarb 2.17.0-rc.4.
+
+### Setup order
+
+Run from `e2e/` with `.env` populated (RPC_URL, ACCOUNTS, etc.):
+
+```bash
+# 1. Deploy shared test tokens (USD + BTC)
+npm run setup-tokens
+# → outputs USD_TOKEN_ADDRESS, BTC_TOKEN_ADDRESS — add to .env
+
+# 2. Deploy Vesu lending infrastructure
+npm run setup-vesu
+# → outputs VESU_POOL_ADDRESS, VESU_ORACLE_ADDRESS, USD_VTOKEN_ADDRESS, etc. — add to .env
+
+# 3. Deploy VesuLendingHelper (requires privacy pool artifacts from `scarb build`)
+npm run setup-vesu-helper
+# → outputs VESU_LENDING_HELPER_ADDRESS — add to .env
+```
+
+After each script, copy the printed env vars into `e2e/.env`. See `.env.example` for the full list.
+
+### Idempotency and re-runs
+
+- Class declarations and UDC deploys are fully idempotent (skip if already on-chain)
+- Oracle and pool creation use `deploy_syscall` with deterministic addresses — they can't be re-created from the same factory. Set `VESU_ORACLE_ADDRESS` and `VESU_POOL_ADDRESS` in `.env` to skip these steps on re-run
+- Liquidity seeding and price setting always run (safe to repeat)
+
+### Script details
+
+| Script              | What it does                                                                                                         | Depends on                                                                  |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `setup-tokens`      | Declares + deploys MockAsset (minimal ERC-20 with `mint`), deploys USD and BTC instances                             | `vesu-contracts/` build artifacts                                           |
+| `setup-vesu`        | Declares Vesu classes, deploys PoolFactory + mock oracles, creates Oracle + Pool with USD/BTC pairs, seeds liquidity | `vesu-contracts/` build artifacts, `USD_TOKEN_ADDRESS`, `BTC_TOKEN_ADDRESS` |
+| `setup-vesu-helper` | Declares + deploys stateless VesuLendingHelper                                                                       | Privacy pool build artifacts (`target/dev/`)                                |
+
+### Shared helpers (`helpers.ts`)
+
+All setup scripts import from `helpers.ts`:
+
+- `declareClass` — idempotent class declaration with automatic `l1_data_gas` scaling for large contracts
+- `deployDeterministic` — UDC deploy with precomputed address check
+- `executeAndWait` — execute + wait for receipt + assert success
+- `setupAdmin` — creates provider + admin account from env vars
+
+---
+
+## Load Testing Scripts
+
 ## Scripts
 
 ### `pull-env.ts`
@@ -197,11 +258,11 @@ for ts in data.get('timeSeries', []):
 
 ### Current reference values
 
-| Node | Metric | Peak IOPS | Context |
-|------|--------|-----------|---------|
-| Juno | read | 32.8 | 1125 notes, 64 threads, pd-ssd |
-| Juno | write | 10.1 | same |
-| Pathfinder | read | 0.7 | 1125 notes, 32 threads, pd-ssd |
-| Pathfinder | write | 13.2 | same |
+| Node       | Metric | Peak IOPS | Context                        |
+| ---------- | ------ | --------- | ------------------------------ |
+| Juno       | read   | 32.8      | 1125 notes, 64 threads, pd-ssd |
+| Juno       | write  | 10.1      | same                           |
+| Pathfinder | read   | 0.7       | 1125 notes, 32 threads, pd-ssd |
+| Pathfinder | write  | 13.2      | same                           |
 
 Both nodes serve reads almost entirely from cache at this state size.

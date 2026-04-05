@@ -9,5 +9,6 @@ export default defineConfig({
     hookTimeout: E2E_TIMEOUTS.hook,
     testTimeout: E2E_TIMEOUTS.test,
     env: loadEnv("", process.cwd(), ""),
+    setupFiles: ["./src/vitest-setup.ts"],
   },
 });
