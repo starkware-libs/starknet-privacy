@@ -1,26 +1,26 @@
 // tests/proxy.test.ts
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import { createHandler, type HandlerOptions } from "../src/proxy.js";
 import type { TransactionInterceptor } from "../src/interceptor.js";
 
-let server: Server;
-let serverPort: number;
+let proxy: Server;
+let proxyPort: number;
 
-function startServer(options?: HandlerOptions): Promise<void> {
+function startProxy(options?: Partial<HandlerOptions>): Promise<void> {
   return new Promise((resolve) => {
     const handler = createHandler(options);
-    server = createServer(handler);
-    server.listen(0, "127.0.0.1", () => {
-      const addr = server.address();
-      serverPort = typeof addr === "object" && addr !== null ? addr.port : 0;
+    proxy = createServer(handler);
+    proxy.listen(0, "127.0.0.1", () => {
+      const addr = proxy.address();
+      proxyPort = typeof addr === "object" && addr !== null ? addr.port : 0;
       resolve();
     });
   });
 }
 
-function serverUrl(path: string): string {
-  return `http://127.0.0.1:${serverPort}${path}`;
+function proxyUrl(path: string): string {
+  return `http://127.0.0.1:${proxyPort}${path}`;
 }
 
 function checkRequest(): object {
@@ -58,22 +58,57 @@ function rpcPost(url: string, body: object): Promise<Response> {
 
 afterEach(async () => {
   await new Promise<void>((resolve) => {
-    if (!server) return resolve();
-    server.close(() => resolve());
+    if (!proxy) return resolve();
+    proxy.close(() => resolve());
   });
 });
 
 describe("handler", () => {
   it("responds to /health with 200", async () => {
-    await startServer();
-    const response = await fetch(serverUrl("/health"));
+    await startProxy();
+
+    const response = await fetch(proxyUrl("/health"));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: "ok" });
   });
 
+  it("returns JSON-RPC error for unknown method", async () => {
+    await startProxy();
+
+    const response = await rpcPost(proxyUrl("/"), {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "unknown_method",
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.error.code).toBe(-32601);
+  });
+
+  it("returns 400 for non-JSON POST body", async () => {
+    await startProxy();
+
+    const response = await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: "raw data",
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it("returns 400 for non-POST request", async () => {
+    await startProxy();
+
+    const response = await fetch(proxyUrl("/some/path"));
+    expect(response.status).toBe(400);
+  });
+
   it("returns 413 when body exceeds maxBodyBytes", async () => {
-    await startServer({ maxBodyBytes: 10 });
-    const response = await fetch(serverUrl("/"), {
+    await startProxy({ maxBodyBytes: 10 });
+
+    const response = await fetch(proxyUrl("/"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ data: "x".repeat(100) }),
@@ -82,75 +117,93 @@ describe("handler", () => {
     expect(await response.json()).toEqual({ error: "payload too large" });
   });
 
-  it("returns 405 for GET requests to non-health endpoints", async () => {
-    await startServer();
-    const response = await fetch(serverUrl("/"));
-    expect(response.status).toBe(405);
-  });
+  it("returns specVersion result for starknet_specVersion", async () => {
+    await startProxy();
 
-  it("returns 405 for non-JSON POST", async () => {
-    await startServer();
-    const response = await fetch(serverUrl("/"), {
-      method: "POST",
-      headers: { "content-type": "text/plain" },
-      body: "hello",
-    });
-    expect(response.status).toBe(405);
-  });
-
-  it("returns JSON-RPC error for unknown method", async () => {
-    await startServer();
-    const response = await rpcPost(serverUrl("/"), {
+    const response = await rpcPost(proxyUrl("/"), {
       jsonrpc: "2.0",
       id: 1,
-      method: "unknown_method",
+      method: "starknet_specVersion",
     });
+
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body.error.code).toBe(-32601);
-  });
-
-  it("returns success for valid starknet_checkTransaction", async () => {
-    await startServer();
-    const response = await rpcPost(serverUrl("/"), checkRequest());
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      jsonrpc: "2.0",
-      id: 1,
-      result: {},
-    });
+    expect(body.result).toBe("0.10.1");
   });
 });
 
 describe("handler with interceptors", () => {
-  it("returns success when interceptor allows", async () => {
+  it("returns allowed result when interceptor allows", async () => {
     const allowAll: TransactionInterceptor = {
-      name: "test-allow",
+      name: "allow-all",
       intercept: async () => ({ action: "allow" }),
     };
-    await startServer({ interceptors: [allowAll] });
+    await startProxy({ interceptors: [allowAll] });
 
-    const response = await rpcPost(serverUrl("/"), checkRequest());
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      jsonrpc: "2.0",
-      id: 1,
-      result: {},
-    });
+    const response = await rpcPost(proxyUrl("/"), checkRequest());
+    const body = await response.json();
+    expect(body.result).toEqual({ allowed: true });
+    expect(body.id).toBe(1);
   });
 
   it("returns 10000 when interceptor blocks", async () => {
     const blocker: TransactionInterceptor = {
-      name: "test-blocker",
+      name: "blocker",
       intercept: async () => ({ action: "block", reason: "sanctioned" }),
     };
-    await startServer({ interceptors: [blocker] });
+    await startProxy({ interceptors: [blocker] });
 
-    const response = await rpcPost(serverUrl("/"), checkRequest());
+    const response = await rpcPost(proxyUrl("/"), checkRequest());
     const body = await response.json();
     expect(body.error.code).toBe(10000);
     expect(body.error.message).toBe("Transaction rejected");
     expect(body.error.data).toBe("sanctioned");
     expect(body.id).toBe(1);
+  });
+
+  it("does not run interceptors for starknet_specVersion", async () => {
+    let interceptorCalled = false;
+    const spy: TransactionInterceptor = {
+      name: "spy",
+      intercept: async () => {
+        interceptorCalled = true;
+        return { action: "block", reason: "should not be called" };
+      },
+    };
+    await startProxy({ interceptors: [spy] });
+
+    const response = await rpcPost(proxyUrl("/"), {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "starknet_specVersion",
+    });
+    const body = await response.json();
+    expect(body.result).toBe("0.10.1");
+    expect(interceptorCalled).toBe(false);
+  });
+
+  it("returns 10000 when interceptor throws", async () => {
+    const thrower: TransactionInterceptor = {
+      name: "thrower",
+      intercept: async () => {
+        throw new Error("network timeout");
+      },
+    };
+    await startProxy({ interceptors: [thrower] });
+
+    const response = await rpcPost(proxyUrl("/"), checkRequest());
+    const body = await response.json();
+    expect(body.error.code).toBe(10000);
+    expect(body.error.data).toBe("network timeout");
+  });
+
+  it("returns allowed result with no interceptors configured", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await startProxy();
+
+    const response = await rpcPost(proxyUrl("/"), checkRequest());
+    const body = await response.json();
+    expect(body.result).toEqual({ allowed: true });
+    spy.mockRestore();
   });
 });
