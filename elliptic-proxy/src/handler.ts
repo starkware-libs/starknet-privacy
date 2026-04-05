@@ -8,7 +8,7 @@ import type { Config } from "./config.js";
 import { authenticateRequest, type AuthResult } from "./auth.js";
 import { RateLimiter } from "./rate-limit.js";
 import { BlockedAddressCache } from "./cache.js";
-import { scoreResponse } from "./scoring.js";
+import { scoreResponse, type ScoringResult } from "./scoring.js";
 import type { ForwardResponse } from "./elliptic.js";
 
 export interface ConfigSource {
@@ -133,7 +133,9 @@ export function createHandler(
     if (blockedCache.isBlocked(address)) {
       sendResponse(200, JSON.stringify({ blocked: true }), {
         partner: partnerName,
+        result: "cached",
         cached: true,
+        cacheSize: blockedCache.size,
       });
       return;
     }
@@ -156,6 +158,8 @@ export function createHandler(
       );
       sendResponse(503, JSON.stringify({ error: "service unavailable" }), {
         partner: partnerName,
+        result: "error",
+        errorType: "network",
       });
       return;
     }
@@ -167,17 +171,18 @@ export function createHandler(
         JSON.stringify({
           error: "upstream_error",
           ellipticStatus: result.status,
-          address,
         })
       );
       sendResponse(502, JSON.stringify({ error: "upstream error" }), {
         partner: partnerName,
+        result: "error",
+        errorType: "upstream_non_2xx",
         ellipticStatus: result.status,
       });
       return;
     }
 
-    const scoringResult = scoreResponse(result.body);
+    const scoringResult: ScoringResult = scoreResponse(result.body);
     if (scoringResult.reason === "malformed_json") {
       console.error(
         JSON.stringify({
@@ -188,18 +193,29 @@ export function createHandler(
       );
       sendResponse(502, JSON.stringify({ error: "upstream error" }), {
         partner: partnerName,
+        result: "error",
+        errorType: "malformed_json",
         ellipticStatus: result.status,
       });
       return;
     }
 
-    if (scoringResult.blocked) {
+    const blocked = scoringResult.blocked;
+    if (blocked) {
       blockedCache.markBlocked(address);
     }
 
     sendResponse(200, JSON.stringify({ blocked: scoringResult.blocked }), {
       partner: partnerName,
       ellipticStatus: result.status,
+      ellipticLatencyMs: result.durationMs,
+      result: blocked ? "blocked" : "allowed",
+      scoringReason: scoringResult.reason,
+      triggeringRuleIds:
+        scoringResult.triggeringRuleIds.length > 0
+          ? scoringResult.triggeringRuleIds
+          : undefined,
+      cacheSize: blockedCache.size,
     });
   };
 }

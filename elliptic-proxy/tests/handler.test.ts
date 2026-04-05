@@ -288,6 +288,7 @@ describe("createHandler", () => {
       }),
     });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const handler = createHandler(configLoader, mockForward);
     const req = makeRequest();
     const res = makeResponse();
@@ -298,6 +299,18 @@ describe("createHandler", () => {
     expect(mockForward).toHaveBeenCalledWith(
       expect.objectContaining({ address: "0xabc123" })
     );
+
+    const logCall = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.status === 200 && parsed.result === "blocked";
+    });
+    expect(logCall).toBeDefined();
+    const logData = JSON.parse(logCall![0] as string);
+    expect(logData.scoringReason).toBe("rule_triggered");
+    expect(logData.triggeringRuleIds).toContain(
+      "1f86dce1-166a-4749-a5df-3972fae7635a"
+    );
+    logSpy.mockRestore();
   });
 
   it("returns not blocked for clean Elliptic response", async () => {
@@ -312,6 +325,7 @@ describe("createHandler", () => {
       }),
     });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const handler = createHandler(configLoader, mockForward);
     const req = makeRequest({}, "0xc1ea0");
     const res = makeResponse();
@@ -319,6 +333,15 @@ describe("createHandler", () => {
 
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body)).toEqual({ blocked: false });
+
+    const logCall = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.status === 200 && parsed.result === "allowed";
+    });
+    expect(logCall).toBeDefined();
+    const logData = JSON.parse(logCall![0] as string);
+    expect(logData.scoringReason).toBe("clean");
+    logSpy.mockRestore();
   });
 
   it("returns 503 when forward throws a network error", async () => {
@@ -384,6 +407,7 @@ describe("createHandler", () => {
       }),
     });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const handler = createHandler(configLoader, mockForward);
 
     const res1 = makeResponse();
@@ -394,11 +418,19 @@ describe("createHandler", () => {
 
     // Second request: same address should return cached result
     mockForward.mockReset();
+    logSpy.mockClear();
     const res2 = makeResponse();
     await handler(makeRequest({}, "0xcacbed"), res2);
     expect(res2.statusCode).toBe(200);
     expect(JSON.parse(res2.body)).toEqual({ blocked: true });
     expect(mockForward).not.toHaveBeenCalled();
+
+    const cachedLog = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.result === "cached";
+    });
+    expect(cachedLog).toBeDefined();
+    logSpy.mockRestore();
   });
 
   it("does not cache address as blocked on Elliptic error", async () => {
