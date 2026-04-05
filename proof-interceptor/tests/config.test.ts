@@ -7,7 +7,13 @@ describe("loadConfig", () => {
 
   beforeEach(() => {
     process.env = { ...originalEnv };
+    // Remove env vars that would affect tests
     delete process.env.UPSTREAM_URL;
+    delete process.env.PORT;
+    delete process.env.HOST;
+    delete process.env.MAX_BODY_BYTES;
+    delete process.env.TLS_CERT_PATH;
+    delete process.env.TLS_KEY_PATH;
   });
 
   it("loads config from env vars", () => {

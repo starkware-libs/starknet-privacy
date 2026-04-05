@@ -19,7 +19,7 @@ export enum RpcAction {
 }
 
 export type RpcVerdict =
-  | { action: RpcAction.ForwardAsIs }
+  | { action: RpcAction.ForwardAsIs; requestId: string | number | null }
   | {
       action: RpcAction.CheckWithInterceptors;
       transaction: ProveTxnV3;
@@ -28,9 +28,9 @@ export type RpcVerdict =
   | { action: RpcAction.Error; response: JsonRpcErrorResponse };
 
 /**
- * Validates a JSON-RPC request body. Returns ForwardAsIs (send raw body to
- * upstream), CheckWithInterceptors (run interceptors then check the transaction),
- * or Error (return error response to the caller).
+ * Validates a JSON-RPC request body. Returns ForwardAsIs (for
+ * starknet_specVersion), CheckWithInterceptors (parsed transaction for
+ * interceptors), or Error (return error response to the caller).
  */
 export function validateRpcRequest(body: string): RpcVerdict {
   let request: JsonRpcRequest;
@@ -71,7 +71,7 @@ export function validateRpcRequest(body: string): RpcVerdict {
 
   switch (request.method) {
     case "starknet_specVersion":
-      return { action: RpcAction.ForwardAsIs };
+      return { action: RpcAction.ForwardAsIs, requestId: request.id };
 
     case "starknet_checkTransaction":
       return validateCheckTransaction(request);

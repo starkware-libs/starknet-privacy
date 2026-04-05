@@ -326,29 +326,51 @@ function makeConfig(overrides?: Partial<ScreeningConfig>): ScreeningConfig {
 }
 
 describe("ScreeningInterceptor", () => {
-  it("returns allow when elliptic-proxy says not blocked", async () => {
+  it("returns continue when elliptic-proxy says not blocked", async () => {
     await startMockEllipticProxy((_req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ blocked: false }));
     });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict).toEqual({ action: "allow" });
+
+    const logCall = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.screening === "complete";
+    });
+    expect(logCall).toBeDefined();
+    const logData = JSON.parse(logCall![0] as string);
+    expect(logData.result).toBe("allowed");
+    expect(logData.attempts).toBe(1);
+    expect(typeof logData.screeningLatencyMs).toBe("number");
+    logSpy.mockRestore();
   });
 
-  it("returns block when elliptic-proxy says blocked", async () => {
+  it("returns stop when elliptic-proxy says blocked", async () => {
     await startMockEllipticProxy((_req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ blocked: true }));
     });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
       expect(verdict.reason).toContain("0xaaa111");
     }
+
+    const logCall = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.screening === "complete";
+    });
+    expect(logCall).toBeDefined();
+    const logData = JSON.parse(logCall![0] as string);
+    expect(logData.result).toBe("blocked");
+    logSpy.mockRestore();
   });
 
   it("sends correct HMAC-signed request", async () => {
@@ -386,23 +408,30 @@ describe("ScreeningInterceptor", () => {
     expect(receivedHeaders["x-access-sign"]).toBe(hmac.digest("base64"));
   });
 
-  it("returns block with unavailable reason on network error (fail-closed)", async () => {
+  it("returns stop with unavailable reason on network error (fail-closed)", async () => {
     const config = makeConfig({
       ellipticProxyUrl: "http://127.0.0.1:1",
       timeoutMs: 1000,
     });
 
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(config);
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
       expect(verdict.reason).toContain("screening unavailable");
     }
-    spy.mockRestore();
+
+    const errorCall = errorSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.error === "screening_failed";
+    });
+    expect(errorCall).toBeDefined();
+    expect(JSON.parse(errorCall![0] as string).attempts).toBe(1);
+    errorSpy.mockRestore();
   });
 
-  it("returns allow on network error when fail-open", async () => {
+  it("returns continue on network error when fail-open", async () => {
     const config = makeConfig({
       ellipticProxyUrl: "http://127.0.0.1:1",
       timeoutMs: 1000,
@@ -416,7 +445,7 @@ describe("ScreeningInterceptor", () => {
     spy.mockRestore();
   });
 
-  it("returns block with unavailable reason on non-200 response (fail-closed)", async () => {
+  it("returns stop with unavailable reason on non-200 response (fail-closed)", async () => {
     await startMockEllipticProxy((_req, res) => {
       res.writeHead(500);
       res.end("internal error");
@@ -445,13 +474,22 @@ describe("ScreeningInterceptor", () => {
       }
     });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig({ maxRetries: 2 }));
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict).toEqual({ action: "allow" });
     expect(requestCount).toBe(3);
+
+    const logCall = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.screening === "complete";
+    });
+    expect(logCall).toBeDefined();
+    expect(JSON.parse(logCall![0] as string).attempts).toBe(3);
+    logSpy.mockRestore();
   });
 
-  it("allows when calldata has no extractable address", async () => {
+  it("continues when calldata has no extractable address", async () => {
     const transaction = sampleTransaction(["0x0"]);
     const interceptor = new ScreeningInterceptor(
       makeConfig({ ellipticProxyUrl: "http://127.0.0.1:1" })
