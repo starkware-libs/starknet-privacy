@@ -38,6 +38,7 @@ import { IndexerDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/t
 import {
   createPrivateTransfers,
   ProvingServiceProofProvider,
+  type CallAndProof,
   type TokenOperationsBuilder,
 } from "@starkware-libs/starknet-privacy-sdk";
 interface AccountEntry {
@@ -154,10 +155,7 @@ async function submitOutsideExecution(
   provider: RpcProvider,
   aliceAccount: Account,
   adminAccount: Account,
-  callAndProof: {
-    call: unknown;
-    proof: { proofFacts?: unknown; data?: unknown };
-  },
+  callAndProof: CallAndProof,
 ): Promise<{ transactionHash: string; blockNumber: number | undefined }> {
   const nowSeconds = Math.floor(Date.now() / 1000);
   const callOptions: OutsideExecutionOptions = {

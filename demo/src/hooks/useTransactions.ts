@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef } from "react";
 import { Account, TransactionFinalityStatus, type RpcProvider } from "starknet";
 import type { PrivateTransfersInterface } from "starknet-sdk";
 import type { AccountConfig, AppConfig } from "../config.ts";
@@ -29,7 +29,8 @@ export function useTransactions(
   poolAddress: string,
   config: AppConfig,
   accounts: AccountConfig[],
-  onSuccess: () => void,
+  onSettled: () => void,
+  onBalancesChanged?: () => Promise<void>,
 ) {
   const [status, setStatus] = useState<TransactionStatus>({
     pending: false,
@@ -38,6 +39,11 @@ export function useTransactions(
     proofSizeBytes: null,
     timeline: null,
   });
+
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
+  const onBalancesChangedRef = useRef(onBalancesChanged);
+  onBalancesChangedRef.current = onBalancesChanged;
 
   const adminAccount = useMemo(() => {
     if (!provider) return undefined;
@@ -78,14 +84,15 @@ export function useTransactions(
           proofSizeBytes: result.proofSizeBytes ?? null,
           timeline,
         });
-        onSuccess();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`[${action}] failed:`, err);
         setStatus({ pending: false, lastTxHash: null, lastError: `${action}: ${message}`, proofSizeBytes: null, timeline });
+      } finally {
+        onSettledRef.current();
       }
     },
-    [onSuccess],
+    [],
   );
 
   const register = useCallback(
@@ -148,6 +155,7 @@ export function useTransactions(
           provider.waitForTransaction(tx.transaction_hash, WAIT_OPTIONS),
         );
 
+        if (onBalancesChangedRef.current) await onBalancesChangedRef.current();
         return { txHash: tx.transaction_hash };
       }),
     [adminAccount, activeAddress, provider, config.tokenAddress, execute],

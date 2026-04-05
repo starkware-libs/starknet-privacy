@@ -48,7 +48,7 @@ h3 {
 }
 
 .pool-selector-label {
-  color: #8b949e;
+  color: #c9d1d9;
   white-space: nowrap;
 }
 
@@ -290,12 +290,28 @@ select {
   gap: 12px;
 }
 
-.info-panel,
+.island,
 .action-panel {
   background: #161b22;
   border: 1px solid #30363d;
   border-radius: 4px;
   padding: 12px;
+}
+
+.island-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.island-header h2 {
+  margin: 0;
+}
+
+.island-header button {
+  font-size: 11px;
+  padding: 2px 8px;
 }
 
 table {
@@ -566,10 +582,43 @@ input[type="number"] {
   min-width: auto;
 }
 
-.balances,
+.balances {
+  margin-top: 16px;
+}
+
+.tab-section {
+  margin-top: 16px;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 24px;
+  border-bottom: 1px solid #30363d;
+  margin-bottom: 12px;
+}
+
+.tab {
+  padding: 4px 0 8px;
+  margin: 0 0 -1px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8b949e;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.tab:hover {
+  color: #c9d1d9;
+}
+
+.tab-active {
+  color: #58a6ff;
+  border-bottom-color: #58a6ff;
+}
+
 .notes-section,
 .channels-section {
-  margin-top: 16px;
+  margin-top: 8px;
 }
 
 .notes-section h3 {
@@ -607,6 +656,69 @@ input[type="number"] {
 .channel-card-sep {
   color: #30363d;
   margin: 0 6px;
+}
+
+.channel-card table {
+  table-layout: fixed;
+}
+
+.channel-card table col.col-note-id {
+  width: 50%;
+}
+
+.channel-card table col.col-amount {
+  width: 30%;
+}
+
+.channel-card table col.col-index {
+  width: 20%;
+}
+
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.cards-grid .channel-card {
+  margin-bottom: 0;
+}
+
+.token-subgroup {
+  margin-top: 16px;
+}
+
+.token-subgroup:first-child {
+  margin-top: 0;
+}
+
+.token-subgroup-header {
+  font-size: 12px;
+  margin-bottom: 4px;
+  line-height: 1.6;
+}
+
+.self-label {
+  color: #58a6ff;
+}
+
+.inline-copy-button {
+  background: none;
+  border: none;
+  color: #484f58;
+  cursor: pointer;
+  padding: 0 2px;
+  margin-left: 4px;
+  font-size: 12px;
+  line-height: 1;
+  vertical-align: middle;
+}
+
+.inline-copy-button:hover,
+.inline-copy-button:hover:not(:disabled) {
+  color: #c9d1d9;
+  background: none;
+  transform: scale(1.3);
 }
 
 .pagination {
@@ -654,6 +766,134 @@ input[type="number"] {
 .health-detail {
   color: #8b949e;
   font-size: 11px;
+}
+
+.history-section {
+  margin-top: 8px;
+}
+
+.history-row {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow: hidden;
+}
+
+.history-row:last-of-type {
+  margin-bottom: 0;
+}
+
+.history-row-expanded {
+  border-color: #58a6ff44;
+}
+
+.history-row-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  color: #c9d1d9;
+}
+
+.history-row-summary:hover {
+  background: #1c2128;
+}
+
+.history-expand-icon {
+  color: #8b949e;
+  font-size: 10px;
+  flex-shrink: 0;
+  width: 12px;
+}
+
+.history-field {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.history-label {
+  color: #8b949e;
+}
+
+.history-value {
+  color: #c9d1d9;
+}
+
+.history-timestamp {
+  color: #c9d1d9;
+}
+
+.history-balance-field {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.balance-positive {
+  color: #3fb950;
+  font-weight: 600;
+}
+
+.balance-negative {
+  color: #f85149;
+  font-weight: 600;
+}
+
+.history-chips-field {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.history-row-details {
+  margin: 0;
+  padding: 8px 14px 12px 52px;
+  border-top: 1px solid #21262d;
+  list-style: disc;
+}
+
+.history-action {
+  font-size: 12px;
+  padding: 2px 0;
+  color: #c9d1d9;
+}
+
+.history-action::marker {
+  color: #8b949e;
+}
+
+.explorer-link {
+  color: #58a6ff;
+  text-decoration: none;
+  font-size: 12px;
+}
+
+.explorer-link:hover {
+  text-decoration: underline;
+}
+
+.note-count {
+  color: #8b949e;
+  font-size: 11px;
+}
+
+.load-more {
+  width: 100%;
+  margin-top: 8px;
+  background: #21262d;
+  border-color: #30363d;
+  color: #c9d1d9;
+}
+
+.load-more:hover:not(:disabled) {
+  background: #30363d;
 }
 
 .app-footer {

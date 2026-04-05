@@ -22,6 +22,7 @@ export type AppConfig = {
   provingServiceUrl?: string;
   gatewayUrl?: string;
   feederGatewayUrl?: string;
+  explorerUrl?: string;
 };
 
 function requireEnv(key: string): string {
@@ -46,5 +47,6 @@ export function loadConfig(): AppConfig {
       | undefined,
     gatewayUrl: import.meta.env.VITE_GATEWAY_URL as string | undefined,
     feederGatewayUrl: import.meta.env.VITE_FEEDER_GATEWAY_URL as string | undefined,
+    explorerUrl: import.meta.env.VITE_EXPLORER_URL as string | undefined,
   };
 }
