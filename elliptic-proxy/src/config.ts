@@ -10,6 +10,7 @@ export interface Config {
   rateLimitPerMinute: number;
   maxBodyBytes: number;
   configCacheTtlSeconds: number;
+  blockedCacheTtlSeconds: number;
   partners: Record<string, string>; // partner name -> HMAC secret
 }
 
@@ -101,6 +102,7 @@ function validateConfig(raw: unknown): Config {
     rateLimitPerMinute: requirePositiveNumber(root, "rateLimitPerMinute"),
     maxBodyBytes: requirePositiveNumber(root, "maxBodyBytes"),
     configCacheTtlSeconds: requirePositiveNumber(root, "configCacheTtlSeconds"),
+    blockedCacheTtlSeconds: requirePositiveNumber(root, "blockedCacheTtlSeconds"),
     partners: root.partners as Record<string, string>,
   };
 }
