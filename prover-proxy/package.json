@@ -24,6 +24,8 @@
     "vitest": "^3.2.1"
   },
   "dependencies": {
-    "@starknet-io/types-js": "^0.10.2"
+    "@starknet-io/types-js": "^0.10.2",
+    "@starkware-libs/starknet-privacy-sdk": "file:../sdk",
+    "starknet": "^9.4.2"
   }
 }
