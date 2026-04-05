@@ -22,9 +22,7 @@ export function startServer(
   return new Promise((resolve) => {
     server.listen(config.port, config.host, () => {
       const protocol = config.tls ? "https" : "http";
-      console.log(
-        `Listening on ${protocol}://${config.host}:${config.port}`
-      );
+      console.log(`Listening on ${protocol}://${config.host}:${config.port}`);
       resolve(server);
     });
   });

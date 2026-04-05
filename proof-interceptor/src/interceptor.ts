@@ -1,9 +1,7 @@
 // src/interceptor.ts
 import type { ProveTxnV3 } from "./types.js";
 
-export type Verdict =
-  | { action: "allow" }
-  | { action: "block"; reason: string };
+export type Verdict = { action: "allow" } | { action: "block"; reason: string };
 
 export interface TransactionInterceptor {
   name: string;
@@ -23,9 +21,7 @@ export async function runInterceptors(
   const promises = interceptors.map((interceptor) =>
     interceptor.intercept(transaction).catch((error): Verdict => {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(
-        JSON.stringify({ error: "interceptor_error", message })
-      );
+      console.error(JSON.stringify({ error: "interceptor_error", message }));
       return { action: "block", reason: message };
     })
   );
