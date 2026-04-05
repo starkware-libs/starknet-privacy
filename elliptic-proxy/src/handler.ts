@@ -7,6 +7,8 @@ import type {
 import type { Config } from "./config.js";
 import { authenticateRequest, type AuthResult } from "./auth.js";
 import { RateLimiter } from "./rate-limit.js";
+import { BlockedAddressCache } from "./cache.js";
+import { scoreResponse } from "./scoring.js";
 import type { ForwardResponse } from "./elliptic.js";
 
 export interface ConfigSource {
@@ -31,7 +33,9 @@ export function createHandler(
   configSource: ConfigSource,
   forward: Forwarder
 ): HttpFunction {
-  const rateLimiter = new RateLimiter();
+  let rateLimiter: RateLimiter | null = null;
+  let blockedCache: BlockedAddressCache | null = null;
+  let currentCacheTtlMs = 0;
 
   return async (req: Request, res: Response) => {
     const startTime = Date.now();
@@ -63,6 +67,13 @@ export function createHandler(
       );
       sendResponse(503, JSON.stringify({ error: "service unavailable" }));
       return;
+    }
+
+    if (!rateLimiter) rateLimiter = new RateLimiter();
+    const newCacheTtlMs = config.blockedCacheTtlSeconds * 1000;
+    if (!blockedCache || newCacheTtlMs !== currentCacheTtlMs) {
+      blockedCache = new BlockedAddressCache(newCacheTtlMs);
+      currentCacheTtlMs = newCacheTtlMs;
     }
 
     const authResult = authenticateRequest(req, config);
@@ -105,6 +116,27 @@ export function createHandler(
       return;
     }
 
+    // StarkNet addresses: "0x" + up to 64 hex chars
+    const MAX_ADDRESS_LENGTH = 66;
+    if (
+      address.length > MAX_ADDRESS_LENGTH ||
+      !/^0x[0-9a-fA-F]+$/.test(address)
+    ) {
+      sendResponse(400, JSON.stringify({ error: "invalid address format" }), {
+        partner: partnerName,
+      });
+      return;
+    }
+
+    // Check cache first — blocked addresses skip the Elliptic call
+    if (blockedCache.isBlocked(address)) {
+      sendResponse(200, JSON.stringify({ blocked: true }), {
+        partner: partnerName,
+        cached: true,
+      });
+      return;
+    }
+
     let result: ForwardResponse;
     try {
       result = await forward({
@@ -123,28 +155,31 @@ export function createHandler(
       );
       sendResponse(503, JSON.stringify({ error: "service unavailable" }), {
         partner: partnerName,
-        reason: "upstream_request_failed",
       });
       return;
     }
 
+    // Only score successful Elliptic responses — non-2xx indicates an upstream
+    // error and must not be interpreted as a screening result.
     if (result.status < 200 || result.status >= 300) {
       console.error(
         JSON.stringify({
           error: "upstream_error",
           ellipticStatus: result.status,
+          address,
         })
       );
       sendResponse(502, JSON.stringify({ error: "upstream error" }), {
         partner: partnerName,
-        reason: "upstream_non_2xx",
         ellipticStatus: result.status,
       });
       return;
     }
 
-    // TODO: Replace hardcoded response with rule-based scoring (see design doc branch 5)
-    const blocked = true;
+    const blocked = scoreResponse(result.body).blocked;
+    if (blocked) {
+      blockedCache.markBlocked(address);
+    }
 
     sendResponse(200, JSON.stringify({ blocked }), {
       partner: partnerName,
