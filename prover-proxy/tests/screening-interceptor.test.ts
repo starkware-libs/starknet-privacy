@@ -293,9 +293,21 @@ describe("ScreeningInterceptor", () => {
       res.end(JSON.stringify({ blocked: false }));
     });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict).toEqual({ action: "continue" });
+
+    const logCall = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.screening === "complete";
+    });
+    expect(logCall).toBeDefined();
+    const logData = JSON.parse(logCall![0] as string);
+    expect(logData.result).toBe("allowed");
+    expect(logData.attempts).toBe(1);
+    expect(typeof logData.screeningLatencyMs).toBe("number");
+    logSpy.mockRestore();
   });
 
   it("returns stop when elliptic-proxy says blocked", async () => {
@@ -304,12 +316,22 @@ describe("ScreeningInterceptor", () => {
       res.end(JSON.stringify({ blocked: true }));
     });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("stop");
     if (verdict.action === "stop") {
       expect(verdict.reason).toContain("0xaaa111");
     }
+
+    const logCall = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.screening === "complete";
+    });
+    expect(logCall).toBeDefined();
+    const logData = JSON.parse(logCall![0] as string);
+    expect(logData.result).toBe("blocked");
+    logSpy.mockRestore();
   });
 
   it("sends correct HMAC-signed request", async () => {
@@ -353,14 +375,21 @@ describe("ScreeningInterceptor", () => {
       timeoutMs: 1000,
     });
 
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(config);
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("stop");
     if (verdict.action === "stop") {
       expect(verdict.reason).toContain("screening unavailable");
     }
-    spy.mockRestore();
+
+    const errorCall = errorSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.error === "screening_failed";
+    });
+    expect(errorCall).toBeDefined();
+    expect(JSON.parse(errorCall![0] as string).attempts).toBe(1);
+    errorSpy.mockRestore();
   });
 
   it("returns continue on network error when fail-open", async () => {
@@ -406,10 +435,19 @@ describe("ScreeningInterceptor", () => {
       }
     });
 
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig({ maxRetries: 2 }));
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict).toEqual({ action: "continue" });
     expect(requestCount).toBe(3);
+
+    const logCall = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.screening === "complete";
+    });
+    expect(logCall).toBeDefined();
+    expect(JSON.parse(logCall![0] as string).attempts).toBe(3);
+    logSpy.mockRestore();
   });
 
   it("continues when calldata has no extractable address", async () => {

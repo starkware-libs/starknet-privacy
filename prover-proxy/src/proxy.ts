@@ -53,8 +53,21 @@ export function createProxyHandler(
       return;
     }
 
+    const startTime = Date.now();
+    function logRequest(fields: object) {
+      console.log(
+        JSON.stringify({
+          method: req.method,
+          url: req.url,
+          ...fields,
+          latencyMs: Date.now() - startTime,
+        })
+      );
+    }
+
     const declaredLength = parseInt(req.headers["content-length"] ?? "", 10);
     if (!Number.isNaN(declaredLength) && declaredLength > maxBodyBytes) {
+      logRequest({ error: "payload_too_large" });
       res.writeHead(413, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "payload too large" }));
       req.destroy();
@@ -65,6 +78,7 @@ export function createProxyHandler(
     try {
       body = await readBody(req, maxBodyBytes);
     } catch {
+      logRequest({ error: "payload_too_large" });
       res.writeHead(413, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "payload too large" }));
       return;
@@ -75,6 +89,7 @@ export function createProxyHandler(
       const verdict = validateRpcRequest(body.toString(), options);
 
       if (verdict.action === RpcAction.Error) {
+        logRequest({ rpcAction: "error" });
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(verdict.response));
         return;
@@ -108,6 +123,10 @@ export function createProxyHandler(
           console.error(
             JSON.stringify({ error: "transaction_rejected" })
           );
+          logRequest({
+            rpcAction: "forward_with_interceptors",
+            interceptorVerdict: "stop",
+          });
           abortController.abort();
           res.writeHead(200, { "content-type": "application/json" });
           res.end(
@@ -136,9 +155,19 @@ export function createProxyHandler(
           console.error(
             JSON.stringify({ error: "upstream_unreachable", message })
           );
+          logRequest({
+            rpcAction: "forward_with_interceptors",
+            interceptorVerdict: "continue",
+            upstreamStatus: 502,
+          });
           res.writeHead(502, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "bad gateway" }));
         } else {
+          logRequest({
+            rpcAction: "forward_with_interceptors",
+            interceptorVerdict: "continue",
+            upstreamStatus: upstreamResponse.status,
+          });
           res.writeHead(upstreamResponse.status, {
             "content-type": "application/json",
           });
@@ -154,6 +183,10 @@ export function createProxyHandler(
           body,
           AbortSignal.timeout(upstreamTimeoutMs)
         );
+        logRequest({
+          rpcAction: "forward_as_is",
+          upstreamStatus: upstreamResponse.status,
+        });
         res.writeHead(upstreamResponse.status, {
           "content-type": "application/json",
         });
@@ -163,6 +196,7 @@ export function createProxyHandler(
         console.error(
           JSON.stringify({ error: "upstream_unreachable", message })
         );
+        logRequest({ rpcAction: "forward_as_is", upstreamStatus: 502 });
         res.writeHead(502, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "bad gateway" }));
       }
@@ -192,10 +226,16 @@ export function createProxyHandler(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(JSON.stringify({ error: "upstream_unreachable", message }));
+      logRequest({ rpcAction: "passthrough", upstreamStatus: 502 });
       res.writeHead(502, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "bad gateway" }));
       return;
     }
+
+    logRequest({
+      rpcAction: "passthrough",
+      upstreamStatus: upstreamResponse.status,
+    });
 
     const responseHeaders: Record<string, string> = {};
     upstreamResponse.headers.forEach((value, key) => {
