@@ -19,6 +19,7 @@ describe("integration: full request flow", () => {
       rateLimitPerMinute: 100,
       maxBodyBytes: 10240,
       configCacheTtlSeconds: 300,
+      blockedCacheTtlSeconds: 300,
       partners: { "integration-partner": partnerSecret },
     };
 
@@ -46,7 +47,10 @@ describe("integration: full request flow", () => {
 
     const mockForward = vi.fn().mockResolvedValue({
       status: 200,
-      body: '{"some":"elliptic-response"}',
+      body: JSON.stringify({
+        process_status: "complete",
+        evaluation_detail: { source: [], destination: [] },
+      }),
       durationMs: 0,
     });
 
@@ -75,7 +79,7 @@ describe("integration: full request flow", () => {
     await handler(req, res as unknown as Parameters<typeof handler>[1]);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ blocked: true });
+    expect(JSON.parse(res.body)).toEqual({ blocked: false });
     expect(mockForward).toHaveBeenCalledWith(
       expect.objectContaining({ address: "0xabc123" })
     );

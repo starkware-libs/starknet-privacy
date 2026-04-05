@@ -109,6 +109,7 @@ describe("authenticateRequest timestamp validation", () => {
     rateLimitPerMinute: 100,
     maxBodyBytes: 10240,
     configCacheTtlSeconds: 300,
+    blockedCacheTtlSeconds: 300,
     partners: { "test-partner": partnerSecret },
   };
 
