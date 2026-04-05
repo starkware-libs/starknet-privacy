@@ -27,7 +27,10 @@ function allowAll(): TransactionInterceptor {
 }
 
 function blockWith(reason: string): TransactionInterceptor {
-  return { name: "blocker", intercept: async () => ({ action: "block", reason }) };
+  return {
+    name: "blocker",
+    intercept: async () => ({ action: "block", reason }),
+  };
 }
 
 function delayedAllow(delayMs: number): TransactionInterceptor {
