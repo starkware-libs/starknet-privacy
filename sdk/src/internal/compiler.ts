@@ -667,6 +667,19 @@ export class ActionCompiler {
         }
       }
 
+      // Guard against insufficient balance: if still in deficit after auto-selection,
+      // the prover would fail with NEGATIVE_INTERMEDIATE_BALANCE. Fail fast here instead.
+      if (balance < 0n) {
+        const totalAvailable = (registry.notes.get(token) ?? []).reduce(
+          (sum, note) => sum + note.amount,
+          0n
+        );
+        throw new Error(
+          `Insufficient balance for token ${toHex(token)}: ` +
+            `need ${-balance} more (total available: ${totalAvailable})`
+        );
+      }
+
       // If surplus (after adding notes or initially), create change note
       if (balance > 0n) {
         let surplusAction = actions.surpluses?.find((s) => s.token === token);
