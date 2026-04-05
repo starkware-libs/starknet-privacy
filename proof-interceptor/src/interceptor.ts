@@ -24,19 +24,17 @@ export async function runInterceptors(
     interceptor.intercept(transaction).catch((error): Verdict => {
       const message = error instanceof Error ? error.message : String(error);
       console.error(
-        JSON.stringify({
-          error: "interceptor_error",
-          interceptor: interceptor.name,
-          message,
-        })
+        JSON.stringify({ error: "interceptor_error", message })
       );
       return { action: "block", reason: message };
     })
   );
 
+  // Race: first "block" wins immediately; if all allow, Promise.all resolves
   const blockPromises = promises.map(async (promise) => {
     const verdict = await promise;
     if (verdict.action === "block") return verdict;
+    // Never resolve — only blocks participate in the race
     return new Promise<Verdict>(() => {});
   });
 

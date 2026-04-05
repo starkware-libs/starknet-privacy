@@ -58,25 +58,25 @@ describe("validateRpcRequest", () => {
     });
   });
 
-  describe("unknown method", () => {
-    it("returns error -32601 for unknown method", () => {
-      const result = validateRpcRequest(rpcBody("starknet_unknownMethod"));
-      expect(result.action).toBe(RpcAction.Error);
-      if (result.action === RpcAction.Error) {
-        expect(result.response.error.code).toBe(-32601);
-      }
+  describe("starknet_specVersion", () => {
+    it("forwards starknet_specVersion", () => {
+      const result = validateRpcRequest(rpcBody("starknet_specVersion"));
+      expect(result.action).toBe(RpcAction.ForwardAsIs);
     });
   });
 
   describe("starknet_checkTransaction", () => {
-    it("accepts valid INVOKE V3 transaction", () => {
+    it("checks valid INVOKE V3 transaction with request id", () => {
       const result = validateRpcRequest(
         rpcBody("starknet_checkTransaction", ["latest", sampleInvokeV3()])
       );
       expect(result.action).toBe(RpcAction.CheckWithInterceptors);
+      if (result.action === RpcAction.CheckWithInterceptors) {
+        expect(result.requestId).toBe(1);
+      }
     });
 
-    it("accepts with block hash", () => {
+    it("checks with block hash", () => {
       const result = validateRpcRequest(
         rpcBody("starknet_checkTransaction", [
           { block_hash: "0xabc" },
@@ -86,7 +86,7 @@ describe("validateRpcRequest", () => {
       expect(result.action).toBe(RpcAction.CheckWithInterceptors);
     });
 
-    it("accepts with block number", () => {
+    it("checks with block number", () => {
       const result = validateRpcRequest(
         rpcBody("starknet_checkTransaction", [
           { block_number: 42 },
@@ -142,9 +142,7 @@ describe("validateRpcRequest", () => {
     });
 
     it("rejects missing params", () => {
-      const result = validateRpcRequest(
-        rpcBody("starknet_checkTransaction")
-      );
+      const result = validateRpcRequest(rpcBody("starknet_checkTransaction"));
       expect(result.action).toBe(RpcAction.Error);
       if (result.action === RpcAction.Error) {
         expect(result.response.error.code).toBe(-32600);
@@ -178,6 +176,26 @@ describe("validateRpcRequest", () => {
       expect(result.action).toBe(RpcAction.Error);
       if (result.action === RpcAction.Error) {
         expect(result.response.error.code).toBe(-32600);
+      }
+    });
+  });
+
+  describe("unknown methods", () => {
+    it("rejects unknown method", () => {
+      const result = validateRpcRequest(rpcBody("starknet_unknownMethod"));
+      expect(result.action).toBe(RpcAction.Error);
+      if (result.action === RpcAction.Error) {
+        expect(result.response.error.code).toBe(-32601);
+      }
+    });
+
+    it("rejects starknet_proveTransaction as unknown method", () => {
+      const result = validateRpcRequest(
+        rpcBody("starknet_proveTransaction", ["latest", sampleInvokeV3()])
+      );
+      expect(result.action).toBe(RpcAction.Error);
+      if (result.action === RpcAction.Error) {
+        expect(result.response.error.code).toBe(-32601);
       }
     });
   });

@@ -6,17 +6,20 @@ import {
   type ProveTxnV3,
 } from "./types.js";
 
+// Error codes matching the real starknet_transaction_prover
 const INVALID_REQUEST = -32600;
 const METHOD_NOT_FOUND = -32601;
 const BLOCK_NOT_FOUND = 24;
 const UNSUPPORTED_TX_VERSION = 61;
 
 export enum RpcAction {
+  ForwardAsIs = "forward_as_is",
   CheckWithInterceptors = "check_with_interceptors",
   Error = "error",
 }
 
 export type RpcVerdict =
+  | { action: RpcAction.ForwardAsIs }
   | {
       action: RpcAction.CheckWithInterceptors;
       transaction: ProveTxnV3;
@@ -24,6 +27,11 @@ export type RpcVerdict =
     }
   | { action: RpcAction.Error; response: JsonRpcErrorResponse };
 
+/**
+ * Validates a JSON-RPC request body. Returns ForwardAsIs (send raw body to
+ * upstream), CheckWithInterceptors (run interceptors then check the transaction),
+ * or Error (return error response to the caller).
+ */
 export function validateRpcRequest(body: string): RpcVerdict {
   let request: JsonRpcRequest;
   try {
@@ -57,14 +65,23 @@ export function validateRpcRequest(body: string): RpcVerdict {
     };
   }
 
-  if (request.method !== "starknet_checkTransaction") {
-    return {
-      action: RpcAction.Error,
-      response: jsonRpcError(request.id, METHOD_NOT_FOUND, "Method not found"),
-    };
-  }
+  switch (request.method) {
+    case "starknet_specVersion":
+      return { action: RpcAction.ForwardAsIs };
 
-  return validateCheckTransaction(request);
+    case "starknet_checkTransaction":
+      return validateCheckTransaction(request);
+
+    default:
+      return {
+        action: RpcAction.Error,
+        response: jsonRpcError(
+          request.id,
+          METHOD_NOT_FOUND,
+          "Method not found"
+        ),
+      };
+  }
 }
 
 function validateCheckTransaction(request: JsonRpcRequest): RpcVerdict {

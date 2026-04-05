@@ -1,10 +1,10 @@
 // src/proxy.ts
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { RpcAction, validateRpcRequest } from "./rpc.js";
 import {
-  runInterceptors,
-  type TransactionInterceptor,
-} from "./interceptor.js";
+  RpcAction,
+  validateRpcRequest,
+} from "./rpc.js";
+import { runInterceptors, type TransactionInterceptor } from "./interceptor.js";
 import { jsonRpcError } from "./types.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./config.js";
 
@@ -44,8 +44,8 @@ export function createHandler(options: HandlerOptions = {}) {
     }
 
     if (req.method !== "POST" || !isJsonContent(req)) {
-      res.writeHead(405, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: "method not allowed" }));
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "only JSON-RPC POST requests are supported" }));
       return;
     }
 
@@ -57,12 +57,28 @@ export function createHandler(options: HandlerOptions = {}) {
       return;
     }
 
+    if (verdict.action === RpcAction.ForwardAsIs) {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: null,
+          result: "0.10.1",
+        })
+      );
+      return;
+    }
+
+    // CheckWithInterceptors: run interceptors and return allow/block
     const interceptorVerdict = await runInterceptors(
       interceptors,
       verdict.transaction
     );
 
     if (interceptorVerdict.action === "block") {
+      console.error(
+        JSON.stringify({ error: "transaction_rejected" })
+      );
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify(
@@ -79,7 +95,11 @@ export function createHandler(options: HandlerOptions = {}) {
 
     res.writeHead(200, { "content-type": "application/json" });
     res.end(
-      JSON.stringify({ jsonrpc: "2.0", id: verdict.requestId, result: {} })
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: verdict.requestId,
+        result: { allowed: true },
+      })
     );
   };
 }
