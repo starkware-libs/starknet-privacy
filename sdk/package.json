@@ -26,6 +26,10 @@
     "./browser/testing": {
       "import": "./dist/browser/starknet-sdk-testing.js",
       "default": "./dist/browser/starknet-sdk-testing.min.js"
+    },
+    "./abi": {
+      "import": "./dist/internal/abi.js",
+      "types": "./dist/internal/abi.d.ts"
     }
   },
   "publishConfig": {

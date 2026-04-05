@@ -64,4 +64,20 @@ describe("loadConfig", () => {
     const config = loadConfig();
     expect(config.maxBodyBytes).toBe(1048576);
   });
+
+  it("throws when PORT is not a valid integer", () => {
+    process.env.UPSTREAM_URL = "http://localhost:3000";
+    process.env.PORT = "abc";
+
+    expect(() => loadConfig()).toThrow("PORT must be a valid integer");
+  });
+
+  it("throws when MAX_BODY_BYTES is not a valid integer", () => {
+    process.env.UPSTREAM_URL = "http://localhost:3000";
+    process.env.MAX_BODY_BYTES = "notanumber";
+
+    expect(() => loadConfig()).toThrow(
+      "MAX_BODY_BYTES must be a valid integer"
+    );
+  });
 });

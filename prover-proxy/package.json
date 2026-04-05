@@ -23,6 +23,7 @@
     "vitest": "^3.2.1"
   },
   "dependencies": {
+    "@starkware-libs/starknet-privacy-sdk": "file:../sdk",
     "starknet": "^9.4.2"
   }
 }
