@@ -150,8 +150,6 @@ pub trait IClient<T> {
     /// address is zero.
     /// - [`ZERO_RECIPIENT_PUBLIC_KEY`](privacy::errors::ZERO_RECIPIENT_PUBLIC_KEY): Thrown if the
     /// recipient public key is zero.
-    /// - [`ZERO_CHANNEL_KEY`](privacy::errors::ZERO_CHANNEL_KEY): Thrown if the channel key is
-    /// zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
     /// - [`ZERO_SALT`](privacy::errors::ZERO_SALT): Thrown if the salt is zero.
     /// - [`INVALID_CHANNEL`](privacy::errors::INVALID_CHANNEL): Thrown if the channel does not
@@ -166,8 +164,6 @@ pub trait IClient<T> {
     /// - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if the deposit amount is zero.
     ///
     /// **Errors for [`UseNote`](privacy::actions::ClientAction::UseNote) action:**
-    /// - [`ZERO_CHANNEL_KEY`](privacy::errors::ZERO_CHANNEL_KEY): Thrown if the channel key is
-    /// zero.
     /// - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if the token address is zero.
     /// - [`SUBCHANNEL_NOT_FOUND`](privacy::errors::SUBCHANNEL_NOT_FOUND): Thrown if the subchannel
     /// does not exist.

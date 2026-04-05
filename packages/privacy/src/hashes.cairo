@@ -181,7 +181,7 @@ pub(crate) fn compute_subchannel_marker(
 }
 
 /// Computes the note id.
-/// Assumes `channel_key` and `token` are not zero.
+/// Assumes `token` is not zero.
 /// Includes a reserved zero placeholder for forward compatibility, occupying the position of a
 /// future hash component without affecting current behavior.
 ///
@@ -193,7 +193,7 @@ pub(crate) fn compute_note_id(
 }
 
 /// Computes the hash used to encrypt the note amount.
-/// Assumes `channel_key` and `token` are not zero.
+/// Assumes `token` is not zero.
 ///
 /// Returns `h(ENC_AMOUNT_TAG, channel_key, token, index, 0, salt)`.
 pub(crate) fn compute_enc_amount_hash(
@@ -205,7 +205,7 @@ pub(crate) fn compute_enc_amount_hash(
 }
 
 /// Computes the nullifier.
-/// Assumes `channel_key`, `token`, and `owner_private_key` are not zero.
+/// Assumes `token` and `owner_private_key` are not zero.
 /// Includes a reserved zero placeholder to match the note_id hash layout.
 ///
 /// `nullifier = h(NULLIFIER_TAG, channel_key, token, index, 0, owner_private_key)`
