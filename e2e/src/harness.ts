@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 import { constants, hash, type Account } from "starknet";
+import { repoRoot } from "./utils.js";
 import {
   Devnet,
   type DevnetEnvironment,
@@ -14,15 +14,12 @@ import {
 } from "@starkware-libs/starknet-privacy-sdk";
 import { IndexerClient, type IndexerSpawnConfig } from "./indexer-client.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = join(__dirname, "../..");
-
 const CONTRACT_CLASS_PATH = join(
-  repoRoot,
+  repoRoot(),
   "target/release/privacy_Privacy.contract_class.json",
 );
 const COMPILED_CONTRACT_PATH = join(
-  repoRoot,
+  repoRoot(),
   "target/release/privacy_Privacy.compiled_contract_class.json",
 );
 
@@ -31,9 +28,7 @@ const COMPILED_CONTRACT_PATH = join(
  * Loads sierra + casm artifacts from target/release/, computes the class hash,
  * and submits DECLARE if not already declared. Returns the class hash.
  */
-export async function declarePoolClass(
-  adminAccount: Account,
-): Promise<string> {
+export async function declarePoolClass(adminAccount: Account): Promise<string> {
   const contractClass = JSON.parse(readFileSync(CONTRACT_CLASS_PATH, "utf8"));
   const compiledContract = JSON.parse(
     readFileSync(COMPILED_CONTRACT_PATH, "utf8"),
