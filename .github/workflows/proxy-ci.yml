@@ -33,3 +33,39 @@ jobs:
         run: npm run lint
       - if: steps.filter.outputs.changed == 'true'
         run: npm test
+
+  prover-proxy:
+    name: prover-proxy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            changed:
+              - 'prover-proxy/**'
+              - 'elliptic-proxy/**'
+              - 'sdk/src/internal/abi.ts'
+      - uses: actions/setup-node@v4
+        if: steps.filter.outputs.changed == 'true'
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: prover-proxy/package-lock.json
+      - name: Build SDK (prover-proxy depends on ABI)
+        if: steps.filter.outputs.changed == 'true'
+        working-directory: sdk
+        run: npm ci && npm run build
+      - name: Install
+        if: steps.filter.outputs.changed == 'true'
+        working-directory: prover-proxy
+        run: npm ci
+      - name: Lint
+        if: steps.filter.outputs.changed == 'true'
+        working-directory: prover-proxy
+        run: npm run lint
+      - name: Test
+        if: steps.filter.outputs.changed == 'true'
+        working-directory: prover-proxy
+        run: npm test
