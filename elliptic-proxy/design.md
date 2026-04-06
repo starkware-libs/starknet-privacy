@@ -14,8 +14,8 @@ Partner → Cloud Function → Elliptic API
          1. Extract x-access-key, x-access-sign, x-access-timestamp
          2. Look up partner by name (x-access-key = partner name)
          3. Verify partner's HMAC signature
-         4. Check rate limit
-         5. Check request body size limit
+         4. Check request body size limit
+         5. Check rate limit
          6. Re-sign with real Elliptic key + secret
          7. Forward address to Elliptic for screening
          8. Return { blocked: true } (TODO: rule-based scoring)

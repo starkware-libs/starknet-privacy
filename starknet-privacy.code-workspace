@@ -9,6 +9,10 @@
       "path": "elliptic-proxy",
     },
     {
+      "name": "proof-interceptor (npm)",
+      "path": "proof-interceptor",
+    },
+    {
       "name": "sdk (npm)",
       "path": "sdk",
     },
