@@ -9,6 +9,10 @@
       "path": "elliptic-proxy",
     },
     {
+      "name": "prover-proxy (npm)",
+      "path": "prover-proxy",
+    },
+    {
       "name": "sdk (npm)",
       "path": "sdk",
     },
