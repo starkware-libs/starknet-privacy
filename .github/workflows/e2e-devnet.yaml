@@ -47,7 +47,7 @@ jobs:
       # Devnet binary
       - name: Install starknet-devnet
         run: |
-          curl -L https://github.com/starkware-libs/starknet-devnet/releases/download/PRIVACY-0.14.2-RC.2/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
+          curl -L https://github.com/0xSpaceShard/starknet-devnet/releases/download/v0.8.0-rc.0/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
           chmod +x /usr/local/bin/starknet-devnet
 
       - uses: software-mansion/setup-universal-sierra-compiler@v1

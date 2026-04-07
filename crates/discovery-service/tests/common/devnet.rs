@@ -68,6 +68,8 @@ impl DevnetClient {
                 "1",
                 "--gas-price-fri",
                 "1",
+                "--proof-mode",
+                "none",
             ])
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
