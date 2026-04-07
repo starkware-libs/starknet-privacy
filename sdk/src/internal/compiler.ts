@@ -114,16 +114,11 @@ export class ActionCompiler {
     const registry = options?.registryConst ? this.cloneRegistry(registry_) : registry_;
     const recipientsNeeded = this.getRecipientsNeeded(actions);
 
-    // Phase 1: Resolve recipient channels
-    const { channels, total } = await this.resolveRecipientChannels(
-      actions,
-      options,
-      registry,
-      recipientsNeeded
-    );
-
-    // Phase 2: Resolve notes (discover and/or auto-select)
-    await this.resolveNotes(actions, registry, options);
+    // Resolve channels and notes concurrently (they are independent)
+    const [{ channels, total }] = await Promise.all([
+      this.resolveRecipientChannels(actions, options, registry, recipientsNeeded),
+      this.resolveNotes(actions, registry, options),
+    ]);
 
     debugLog("compiler", "compile", "post resolveNotes", registry?.notes?.size, actions);
 
