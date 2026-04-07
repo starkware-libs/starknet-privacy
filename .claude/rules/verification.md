@@ -12,6 +12,7 @@
 **SDK verification checklist (from `sdk/`):**
 - `npm run lint` - formatting (prettier), lints (eslint), and type-check (tsc) in one command
 - If lint fails on formatting or auto-fixable eslint issues, run `npm run format` to fix them
+- Update `sdk/CHANGELOG.md` under the `## Unreleased` section (Added/Changed/Fixed/Breaking). Check git tags (`git tag --sort=-v:refname | head -5`) to confirm which versions are already released — never add entries to released versions.
 
 ## E2E integration gate
 
