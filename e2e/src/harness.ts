@@ -36,7 +36,7 @@ export async function declarePoolClass(adminAccount: Account): Promise<string> {
   const classHash = hash.computeContractClassHash(contractClass);
 
   try {
-    await adminAccount.getClass(classHash);
+    await adminAccount.provider.getClass(classHash);
     console.log("[declare] class already declared:", classHash);
     return classHash;
   } catch (error: unknown) {
@@ -87,7 +87,7 @@ export async function declarePoolClass(adminAccount: Account): Promise<string> {
     }
     throw error;
   }
-  const receipt = await adminAccount.waitForTransaction(
+  const receipt = await adminAccount.provider.waitForTransaction(
     response.transaction_hash,
   );
   if (!receipt.isSuccess()) {

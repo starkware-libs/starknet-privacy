@@ -11,17 +11,12 @@ import {
   CompiledContract,
   constants,
   Contract,
-  DeclareContractPayload,
-  DeclareContractResponse,
   EDataAvailabilityMode,
   ETransactionVersion,
-  extractContractHashes,
   hash,
-  isSierra,
   OutsideExecutionOptions,
   OutsideExecutionVersion,
   RpcProvider,
-  stark,
   UniversalDetails,
   waitForTransactionOptions,
   type GetTransactionReceiptResponse,
@@ -43,7 +38,6 @@ import { PrivacyPoolABI } from "../internal/abi.js";
 import type { PrivacyPoolContract } from "../internal/private-transfers.js";
 import { debugLog } from "../utils/logging.js";
 import { AddressMap } from "../utils/maps.js";
-import assert from "assert";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -92,55 +86,13 @@ export interface DevnetEnvironment {
   provider: RpcProvider;
 }
 
-/**
- * Declare a contract without calling getStarknetVersion (see https://github.com/starknet-io/starknet.js/issues/1561)
- * Requires compiledClassHash to be provided in the payload
- */
-async function declareWithoutVersionCheck(
-  account: Account,
-  payload: DeclareContractPayload,
-  details: UniversalDetails = {}
-): Promise<DeclareContractResponse> {
-  assert(isSierra(payload.contract), "Contract is not a Sierra contract");
-
-  assert(payload.compiledClassHash, "compiledClassHash is required to skip version check");
-
-  const declareContractPayload = extractContractHashes(payload, undefined);
-
-  const accountInvocations = await account.accountInvocationsFactory(
-    [{ type: "DECLARE", payload: declareContractPayload }],
-    {
-      ...stark.v3Details(details),
-      versions: [ETransactionVersion.V3],
-      nonce: details.nonce,
-      skipValidate: false,
-    }
-  );
-
-  const declaration = accountInvocations[0];
-
-  return account.declareContract(
-    {
-      senderAddress: declaration.senderAddress,
-      signature: declaration.signature,
-      contract: declaration.contract,
-      compiledClassHash: declaration.compiledClassHash,
-    },
-    {
-      ...stark.v3Details(details),
-      nonce: declaration.nonce,
-      resourceBounds: declaration.resourceBounds,
-      version: declaration.version,
-    }
-  );
-}
-
 export class Devnet {
   private devnet?: StarknetDevnet;
   private provider?: RpcProvider;
   public setup?: DevnetEnvironment;
   private accountNonces = new AddressMap<number>(() => 0);
   private config: Required<DevnetConfig>;
+  private exitHandler?: () => void;
 
   constructor(config?: DevnetConfig) {
     this.config = { userAccounts: Math.max(config?.userAccounts ?? 2, 2) };
@@ -184,10 +136,25 @@ export class Devnet {
       "TESTNET",
     ];
 
-    // Spawn a devnet instance on a random free port using the system-installed binary
+    // Spawn a devnet instance on a random free port using the system-installed binary.
+    // keepAlive: true skips the npm package's registerCleanup() which installs a global
+    // uncaughtException handler that calls process.exit(1) — fatal in Vitest fork workers.
     this.devnet = await StarknetDevnet.spawnInstalled({
       args: devnetArgs,
+      keepAlive: true,
     });
+
+    // Safety-net: kill devnet on unexpected process exit.
+    // Uses the "exit" event (synchronous, no process.exit call) — safe in Vitest workers.
+    const spawnedProcess = (
+      this.devnet as unknown as { process: import("child_process").ChildProcess }
+    ).process;
+    this.exitHandler = () => {
+      if (spawnedProcess.pid && spawnedProcess.exitCode === null) {
+        spawnedProcess.kill("SIGKILL");
+      }
+    };
+    process.on("exit", this.exitHandler);
 
     console.log(`Devnet running at: ${this.devnet.provider.url}`);
 
@@ -198,9 +165,6 @@ export class Devnet {
       batch: 0,
       chainId: "0x534e5f5345504f4c4941",
     });
-    this.provider.channel.getStarknetVersion = async () => "0.14.1"; // TODO:
-    //(this.provider as any).chainId =
-
     // Get predeployed accounts using JSON-RPC directly
     const response = await fetch(this.devnet.provider.url, {
       method: "POST",
@@ -332,9 +296,7 @@ export class Devnet {
               debugLog("devnet", "account", `${prop} with nonce ${currentNonce}`);
               this.accountNonces.set(address, currentNonce + 1);
 
-              return prop === "declare"
-                ? declareWithoutVersionCheck(target, payload as DeclareContractPayload, details)
-                : value.call(target, payload, details);
+              return value.call(target, payload, details);
             };
             break;
           //case "getChainId":
@@ -437,7 +399,10 @@ export class Devnet {
       this.devnet as unknown as { process: import("child_process").ChildProcess }
     ).process;
 
-    if (!childProcess.pid || childProcess.exitCode !== null) return;
+    if (!childProcess.pid || childProcess.exitCode !== null) {
+      this.removeExitHandler();
+      return;
+    }
 
     const exitPromise = new Promise<void>((resolve) => {
       childProcess.on("exit", () => resolve());
@@ -451,6 +416,14 @@ export class Devnet {
 
     await exitPromise;
     clearTimeout(timer);
+    this.removeExitHandler();
+  }
+
+  private removeExitHandler(): void {
+    if (this.exitHandler) {
+      process.removeListener("exit", this.exitHandler);
+      this.exitHandler = undefined;
+    }
   }
 }
 

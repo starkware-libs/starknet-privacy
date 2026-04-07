@@ -13,7 +13,7 @@ import type {
   V3InvocationsSignerDetails,
 } from "starknet";
 import type { constants } from "starknet";
-import { CallData, ETransactionVersion, hash, RpcChannel, TransactionType } from "starknet";
+import { CallData, ETransactionVersion, hash, stark } from "starknet";
 
 import { serializeClientActions } from "./serialization.js";
 import { PrivacyPoolABI } from "./abi.js";
@@ -134,7 +134,9 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
       user.viewingKey,
       cairoActions,
     ]);
-    const compiledCalldata = compileExecuteCalldata(poolAddressHex, executeViewCalldata);
+    const compiledCalldata = compileExecuteCalldata(poolAddressHex, executeViewCalldata).map((v) =>
+      toHex(v)
+    );
 
     const nonce = BigInt(details.nonce ?? PROOF_INVOCATION_NONCE);
     const detailsWithNonce = { ...details, nonce };
@@ -158,13 +160,38 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
       } as V3InvocationsSignerDetails
     );
 
-    return RpcChannel.prototype.buildTransaction({
-      type: TransactionType.INVOKE,
-      contractAddress: poolAddressHex,
+    const rb = detailsWithNonce.resourceBounds ?? {
+      l1_gas: { max_amount: 0n, max_price_per_unit: 0n },
+      l2_gas: { max_amount: 0n, max_price_per_unit: 0n },
+      l1_data_gas: { max_amount: 0n, max_price_per_unit: 0n },
+    };
+    return {
+      type: "INVOKE",
+      sender_address: poolAddressHex,
       calldata: compiledCalldata,
-      signature,
-      ...detailsWithNonce,
-    });
+      signature: stark.formatSignature(signature),
+      nonce: toHex(detailsWithNonce.nonce ?? 0n),
+      resource_bounds: {
+        l1_gas: {
+          max_amount: toHex(rb.l1_gas.max_amount),
+          max_price_per_unit: toHex(rb.l1_gas.max_price_per_unit),
+        },
+        l2_gas: {
+          max_amount: toHex(rb.l2_gas.max_amount),
+          max_price_per_unit: toHex(rb.l2_gas.max_price_per_unit),
+        },
+        l1_data_gas: {
+          max_amount: toHex(rb.l1_data_gas?.max_amount ?? 0n),
+          max_price_per_unit: toHex(rb.l1_data_gas?.max_price_per_unit ?? 0n),
+        },
+      },
+      tip: toHex(detailsWithNonce.tip ?? 0n),
+      paymaster_data: (detailsWithNonce.paymasterData ?? []).map((x) => toHex(x)),
+      account_deployment_data: (detailsWithNonce.accountDeploymentData ?? []).map((x) => toHex(x)),
+      nonce_data_availability_mode: detailsWithNonce.nonceDataAvailabilityMode ?? "L1",
+      fee_data_availability_mode: detailsWithNonce.feeDataAvailabilityMode ?? "L1",
+      version: "0x3",
+    };
   }
 
   parseOutput(output: string[]): CallResult {

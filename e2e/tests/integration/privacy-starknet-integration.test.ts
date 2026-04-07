@@ -254,7 +254,7 @@ describe("Privacy StarkNet integration", () => {
       callAndProof.call,
       OutsideExecutionVersion.V2,
     );
-    log("submitting executeFromOutside (fee estimation + proof)...");
+    log("submitting executeFromOutside...");
     const executeTx = await adminAccount.executeFromOutside(
       outsideTransaction,
       {

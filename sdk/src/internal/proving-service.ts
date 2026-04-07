@@ -3,8 +3,8 @@
  * Structured similarly to starknet's RpcProvider.
  */
 
-import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-09";
 import type { BlockIdentifier } from "starknet";
+import type { ProofInvocation } from "../interfaces.js";
 import { z } from "zod";
 
 /** Default request timeout: 30s (proofs typically take a few seconds). */
@@ -105,7 +105,7 @@ export class ProvingService {
 
   async proveTransaction(
     blockId: BlockIdentifier,
-    transaction: INVOKE_TXN_V3
+    transaction: ProofInvocation
   ): Promise<ProveTransactionResult> {
     const blockIdParam =
       typeof blockId === "number" || typeof blockId === "bigint"
