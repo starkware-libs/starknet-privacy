@@ -134,6 +134,8 @@ export class Devnet {
       "request", // Enable devnet_dump RPC (no-op unless explicitly called)
       "--chain-id",
       "TESTNET",
+      "--proof-mode",
+      "none",
     ];
 
     // Spawn a devnet instance on a random free port using the system-installed binary.
@@ -375,6 +377,18 @@ export class Devnet {
       execute_before: now_seconds + 3600,
     };
 
+    // Advance the chain so the proof block is old enough for on-chain validation.
+    // starknet_proveTransaction embeds the latest block in proof_facts; the
+    // blockifier requires proof_block ≤ current_block - STORED_BLOCK_HASH_BUFFER (10).
+    const rpcUrl = this.devnet!.provider.url;
+    for (let blockIndex = 0; blockIndex < 10; blockIndex++) {
+      await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
+      });
+    }
+
     const outsideTransaction = await this.setup.admin.getOutsideTransaction(
       callOptions,
       callAndProof.call,
@@ -383,8 +397,14 @@ export class Devnet {
 
     const response = await this.setup.admin.executeFromOutside(outsideTransaction, {
       proofFacts: callAndProof.proof.proofFacts,
+      proof: callAndProof.proof.data,
     });
-    return this.provider!.waitForTransaction(response.transaction_hash);
+    const receipt = await this.provider!.waitForTransaction(response.transaction_hash);
+    if (!receipt.isSuccess()) {
+      const reason = (receipt as { revert_reason?: string }).revert_reason ?? "unknown";
+      throw new Error(`executeOutside reverted: ${reason}`);
+    }
+    return receipt;
   }
 
   /**

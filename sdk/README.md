@@ -587,7 +587,7 @@ sequenceDiagram
 
 ## Starknet Devnet
 
-SDK tests use a [custom fork of starknet-devnet](https://github.com/starkware-libs/starknet-devnet) that includes a blockifier version supporting the new transaction version with proofs. Install from the `PRIVACY-0.14.2-RC.2` release:
+SDK tests use [starknet-devnet](https://github.com/0xSpaceShard/starknet-devnet) v0.8.0-rc.3 (Starknet v0.14.2, RPC v0.10.1). Install from the release:
 
 If you have a previous asdf installation of starknet-devnet, remove it first:
 
@@ -599,13 +599,13 @@ Then install from the release:
 
 ```bash
 # macOS (Apple Silicon)
-curl -L https://github.com/starkware-libs/starknet-devnet/releases/download/PRIVACY-0.14.2-RC.2/starknet-devnet-aarch64-apple-darwin.tar.gz -o /tmp/starknet-devnet.tar.gz
+curl -L https://github.com/0xSpaceShard/starknet-devnet/releases/download/v0.8.0-rc.3/starknet-devnet-aarch64-apple-darwin.tar.gz -o /tmp/starknet-devnet.tar.gz
 sudo tar -xzf /tmp/starknet-devnet.tar.gz -C /usr/local/bin
 sudo chmod +x /usr/local/bin/starknet-devnet
 rm /tmp/starknet-devnet.tar.gz
 
 # Linux (x86_64)
-curl -L https://github.com/starkware-libs/starknet-devnet/releases/download/PRIVACY-0.14.2-RC.2/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz -o /tmp/starknet-devnet.tar.gz
+curl -L https://github.com/0xSpaceShard/starknet-devnet/releases/download/v0.8.0-rc.3/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz -o /tmp/starknet-devnet.tar.gz
 sudo tar -xzf /tmp/starknet-devnet.tar.gz -C /usr/local/bin
 sudo chmod +x /usr/local/bin/starknet-devnet
 rm /tmp/starknet-devnet.tar.gz
