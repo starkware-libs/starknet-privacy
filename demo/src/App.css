@@ -371,13 +371,20 @@ input[type="number"] {
   width: 100px;
 }
 
+.config-island {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #30363d;
+}
+
 .action-form {
   margin-bottom: 12px;
   padding-bottom: 12px;
   border-bottom: 1px solid #21262d;
 }
 
-.action-form:last-child {
+.action-form:last-child,
+.action-form:has(+ .config-island) {
   border-bottom: none;
   margin-bottom: 0;
   padding-bottom: 0;
