@@ -6,6 +6,7 @@ const chipLabel: Record<string, string> = {
   transferReceived: "transfer in",
   transferSelf: "reorganize",
   transferSent: "transfer out",
+  fee: "paymaster",
 };
 
 function actionChipLabel(action: ActionDisplay): string {
@@ -104,7 +105,11 @@ export function HistoryPanel({
               <span className="history-field history-chips-field">
                 {[
                   ...new Set(transaction.actions.map((action) => action.type)),
-                ].map((type) => {
+                ].filter((type) => {
+                  if (type !== "withdrawal") return true;
+                  const withdrawals = transaction.actions.filter((a) => a.type === "withdrawal");
+                  return withdrawals.some((a) => !a.isFee);
+                }).map((type) => {
                   const action = transaction.actions.find(
                     (a) => a.type === type,
                   )!;

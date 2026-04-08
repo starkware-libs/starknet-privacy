@@ -8,6 +8,11 @@
 - `ProofInvocation` type now imports `INVOKE_TXN_V3` from `@starknet-io/starknet-types-0101` (was `@starknet-io/starknet-types-010`)
 - Removed `@starknet-io/starknet-types-09` direct dependency (now resolved transitively via starknet)
 
+### Added
+
+- `fee` action type in `classifyTransaction` for withdrawals to fee recipients (e.g. paymaster forwarder), distinct from regular withdrawals
+- `ClassifyOptions.feeRecipients` parameter on `classifyTransaction` to identify fee recipient addresses
+
 ### Changed
 
 - Switch devnet testing from `ProvingServiceProofProvider` to `CallMockProofProvider` with `--proof-mode none` (proofFacts validated, proof ignored)
@@ -15,6 +20,8 @@
 - `ProofInvocationFactory` builds `INVOKE_TXN_V3` manually instead of using `RpcChannel.prototype.buildTransaction()` (removed in v10)
 - `ProvingService.proveTransaction()` parameter type changed from `INVOKE_TXN_V3` to `ProofInvocation` (same underlying type)
 - Remove devnet `getStarknetVersion` monkey-patch and `declareWithoutVersionCheck` workaround (starknet.js#1561 resolved in v10)
+- Fee withdrawals no longer prevent `transferSelf` (reorganization) detection
+- Fee withdrawals are excluded from incoming transfer actions (receiver doesn't see sender's fee)
 
 ## 0.14.2-RC.2
 

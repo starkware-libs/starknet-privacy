@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import {
   classifyTransaction,
+  type ClassifyOptions,
   type PrivateRegistry,
   type HistoryCursor,
   type HistoryAction,
@@ -18,6 +19,7 @@ export type ActionDisplay = {
   chipClass: string;
   chipLabel?: string;
   noteCount?: number;
+  isFee?: boolean;
 };
 
 export type BalanceUpdate = {
@@ -41,7 +43,7 @@ function formatActionLabel(
   tokenNameByAddress: Map<bigint, string>,
   tokenDecimalsByAddress: Map<bigint, number>,
   executorNames: Map<bigint, string>,
-): { label: string; chipClass: string; chipLabel?: string } {
+): { label: string; chipClass: string; chipLabel?: string; isFee?: boolean } {
   const tokenName = (token: bigint) =>
     tokenNameByAddress.get(token) ?? truncateAddress(token.toString(16));
   const resolveName = (address: bigint) =>
@@ -55,13 +57,17 @@ function formatActionLabel(
         label: `Deposited ${fmtAmount(action.amount, action.token)} ${tokenName(action.token)}`,
         chipClass: "chip-ok",
       };
-    case "withdrawal": {
-      const toName = resolveName(action.toAddress);
+    case "withdrawal":
       return {
-        label: `Withdrew ${fmtAmount(action.amount, action.token)} ${tokenName(action.token)} to ${toName}`,
+        label: `Withdrew ${fmtAmount(action.amount, action.token)} ${tokenName(action.token)} to ${resolveName(action.toAddress)}`,
         chipClass: "chip-no",
       };
-    }
+    case "fee":
+      return {
+        label: `Withdrew ${fmtAmount(action.amount, action.token)} ${tokenName(action.token)} to paymaster`,
+        chipClass: "chip",
+        isFee: true,
+      };
     case "transferSent": {
       const name =
         nameByAddress.get(action.toAddress) ??
@@ -122,6 +128,12 @@ function computeBalanceUpdates(
             (netByToken.get(action.token) ?? 0n) - action.amount,
           );
         }
+        break;
+      case "fee":
+        netByToken.set(
+          action.token,
+          (netByToken.get(action.token) ?? 0n) - action.amount,
+        );
         break;
       case "transferSent":
         netByToken.set(
@@ -206,6 +218,7 @@ const ACTION_ORDER: Record<string, number> = {
   transferSent: 3,
   swap: 4,
   withdrawal: 5,
+  fee: 6,
 };
 
 function toDisplayTransactions(
@@ -215,12 +228,16 @@ function toDisplayTransactions(
   tokenNameByAddress: Map<bigint, string>,
   tokenDecimalsByAddress: Map<bigint, number>,
   executorNames: Map<bigint, string>,
+  paymasterForwarderAddress: bigint | undefined,
 ): TransactionDisplay[] {
+  const classifyOptions: ClassifyOptions | undefined = paymasterForwarderAddress
+    ? { feeRecipients: [paymasterForwarderAddress] }
+    : undefined;
   return rawTransactions.map((transaction) => {
-    const classified = classifyTransaction(transaction);
+    const classified = classifyTransaction(transaction, classifyOptions);
     const actions: ActionDisplay[] = classified.actions
       .map((action) => {
-        const { label, chipClass, chipLabel } = formatActionLabel(
+        const { label, chipClass, chipLabel, isFee } = formatActionLabel(
           action,
           nameByAddress,
           tokenNameByAddress,
@@ -228,7 +245,7 @@ function toDisplayTransactions(
           executorNames,
         );
         const noteCount = "noteCount" in action ? action.noteCount : undefined;
-        return { type: action.type, label, chipClass, chipLabel, noteCount };
+        return { type: action.type, label, chipClass, chipLabel, noteCount, isFee };
       })
       .sort(
         (a, b) => (ACTION_ORDER[a.type] ?? 99) - (ACTION_ORDER[b.type] ?? 99),
@@ -341,6 +358,7 @@ export function useHistory(
         tokenNameByAddress,
         tokenDecimalsByAddress,
         executorNames,
+        config.paymasterForwarderAddress ? BigInt(config.paymasterForwarderAddress) : undefined,
       );
       if (provider) {
         newTransactions = await resolveTimestamps(provider, newTransactions);
@@ -392,6 +410,7 @@ export function useHistory(
         tokenNameByAddress,
         tokenDecimalsByAddress,
         executorNames,
+        config.paymasterForwarderAddress ? BigInt(config.paymasterForwarderAddress) : undefined,
       );
       if (provider) {
         freshTransactions = await resolveTimestamps(provider, freshTransactions);

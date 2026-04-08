@@ -1,18 +1,100 @@
 import { useState, useCallback, useMemo, useRef } from "react";
 import { Account, TransactionFinalityStatus, type RpcProvider } from "starknet";
-import { Open, type PrivateTransfersInterface } from "starknet-sdk";
+import { Open, type PrivateTransfersInterface, type PrivateTransfersBuilder } from "starknet-sdk";
 import type { AccountConfig, AppConfig } from "../config.ts";
 import { Timeline } from "../timeline.ts";
 import { toRawAmount } from "../format.ts";
+import {
+  type FeeAction,
+  type FeeMode,
+  paymasterBuildApplyAction,
+  paymasterExecuteApplyAction,
+  toPaymasterCall,
+} from "../paymaster.ts";
 
 const WAIT_OPTIONS = {
   successStates: [TransactionFinalityStatus.PRE_CONFIRMED],
   retryInterval: 100,
 };
 
+function getFeeMode(config: AppConfig): FeeMode {
+  return { mode: "sponsored_private", pool_fee_token: config.paymasterFeeToken!, tip: "normal" };
+}
+
 function base64ByteLength(base64: string): number {
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
   return (base64.length * 3) / 4 - padding;
+}
+
+async function fetchPaymasterFee(
+  config: AppConfig, timeline: Timeline, poolAddress: string,
+): Promise<FeeAction | undefined> {
+  if (!config.paymasterUrl) return undefined;
+  return (await timeline.step("Get paymaster fee", () =>
+    paymasterBuildApplyAction(config.paymasterUrl!, poolAddress, getFeeMode(config), config.avnuApiKey),
+  )).fee_action;
+}
+
+function addFeeWithdraw(builder: PrivateTransfersBuilder, feeAction: FeeAction | undefined): void {
+  if (feeAction) {
+    builder.with(feeAction.token, (t) =>
+      t.withdraw({ amount: BigInt(feeAction.amount), recipient: feeAction.recipient }),
+    );
+  }
+}
+
+async function buildProveSubmit(
+  builder: PrivateTransfersBuilder,
+  feeAction: FeeAction | undefined,
+  transfers: PrivateTransfersInterface,
+  config: AppConfig,
+  timeline: Timeline,
+  userAccount: Account,
+  provider: RpcProvider,
+  provingBlockId: number,
+): Promise<{ txHash: string; proofSizeBytes?: number }> {
+  addFeeWithdraw(builder, feeAction);
+
+  const invocation = await timeline.step("Build transaction", () =>
+    builder.createProofInvocation({ provingBlockId }),
+  );
+  const { callAndProof } = await timeline.step("Prove", () =>
+    transfers.executeWithInvocation(invocation, provingBlockId),
+  );
+
+  let txHash: string;
+  if (feeAction) {
+    txHash = (await timeline.step("Submit via paymaster", () =>
+      paymasterExecuteApplyAction(
+        config.paymasterUrl!,
+        toPaymasterCall(callAndProof.call),
+        callAndProof.proof.data,
+        callAndProof.proof.proofFacts,
+        getFeeMode(config),
+        config.avnuApiKey,
+      ),
+    )).transaction_hash;
+  } else {
+    const proofDetails = callAndProof.proof.proofFacts?.length
+      ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
+      : {};
+    // execute() estimates fee internally; splitting estimate+submit would double RPC calls
+    txHash = (await timeline.step("Estimate + submit", () =>
+      userAccount.execute(callAndProof.call, { tip: 0n, ...proofDetails }),
+    )).transaction_hash;
+  }
+
+  await timeline.step("Wait for receipt", () =>
+    provider.waitForTransaction(txHash, WAIT_OPTIONS),
+  ).then((receipt) => {
+    if (!receipt.isSuccess())
+      throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
+  });
+
+  const proofSizeBytes = callAndProof.proof.data
+    ? base64ByteLength(callAndProof.proof.data)
+    : undefined;
+  return { txHash, proofSizeBytes };
 }
 
 export type TransactionStatus = {
@@ -87,7 +169,7 @@ export function useTransactions(
   const execute = useCallback(
     async (action: string, fn: (tl: Timeline) => Promise<{ txHash: string; proofSizeBytes?: number }>) => {
       const timeline = new Timeline();
-      setStatus({ pending: true, action, lastTxHash: null, lastError: null, proofSizeBytes: null, timeline: null });
+      setStatus({ pending: true, action, lastTxHash: null, lastError: null, proofSizeBytes: null, timeline });
       try {
         const result = await timeline.step(action, () => fn(timeline));
         setStatus({
@@ -119,34 +201,10 @@ export function useTransactions(
           () => provider.getBlockNumber(),
         ) - 10;
 
-        const { callAndProof } = await tl.step("SDK build + prove", () =>
-          transfers.build().register().execute({ provingBlockId }),
-        );
-
-        const proofDetails = callAndProof.proof.proofFacts?.length
-          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
-          : {};
-
-        const executeTx = await tl.step("Estimate + submit", () =>
-          userAccount.execute(callAndProof.call, {
-            tip: 0n,
-            ...proofDetails,
-          }),
-        );
-
-        await tl.step("Wait for receipt", () =>
-          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
-        ).then((receipt) => {
-          if (!receipt.isSuccess())
-            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        });
-
-        const proofSizeBytes = callAndProof.proof.data
-          ? base64ByteLength(callAndProof.proof.data)
-          : undefined;
-        return { txHash: executeTx.transaction_hash, proofSizeBytes };
+        const builder = transfers.build().register();
+        return buildProveSubmit(builder, undefined, transfers, config, tl, userAccount, provider, provingBlockId);
       }),
-    [userAccount, transfers, provider, execute],
+    [userAccount, transfers, provider, config, execute],
   );
 
   const mint = useCallback(
@@ -202,41 +260,16 @@ export function useTransactions(
           () => provider.getBlockNumber(),
         ) - 10;
 
-        const { callAndProof } = await tl.step("SDK build + prove", () =>
-          transfers
-            .build({
-              autoRegister: true,
-              autoSetup: true,
-              autoDiscover: { notes: "refresh", channels: "refresh" },
-            })
-            .with(token, (t) =>
-              t.deposit({ amount: rawAmount, recipient: activeAddress }),
-            )
-            .execute({ provingBlockId }),
-        );
-
-        const depositProofDetails = callAndProof.proof.proofFacts?.length
-          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
-          : {};
-
-        const executeTx = await tl.step("Estimate + submit", () =>
-          userAccount.execute(callAndProof.call, {
-            tip: 0n,
-            ...depositProofDetails,
-          }),
-        );
-
-        await tl.step("Wait for receipt", () =>
-          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
-        ).then((receipt) => {
-          if (!receipt.isSuccess())
-            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        });
-
-        const proofSizeBytes = callAndProof.proof.data
-          ? base64ByteLength(callAndProof.proof.data)
-          : undefined;
-        return { txHash: executeTx.transaction_hash, proofSizeBytes };
+        const builder = transfers
+          .build({
+            autoRegister: true,
+            autoSetup: true,
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+          })
+          .with(token, (t) =>
+            t.deposit({ amount: rawAmount, recipient: activeAddress }),
+          );
+        return buildProveSubmit(builder, undefined, transfers, config, tl, userAccount, provider, provingBlockId);
       }),
     [userAccount, transfers, provider, activeAddress, config, poolAddress, execute],
   );
@@ -247,48 +280,24 @@ export function useTransactions(
         if (!userAccount || !transfers || !provider || !activeAddress)
           throw new Error("Not ready");
         const rawAmount = scaleAmount(token, amount);
+        const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
 
         const provingBlockId = await tl.step("Get block number",
           () => provider.getBlockNumber(),
         ) - 10;
 
-        const { callAndProof } = await tl.step("SDK build + prove", () =>
-          transfers
-            .build({
-              autoDiscover: { notes: "refresh", channels: "refresh" },
-              autoSelectNotes: "naive",
-            })
-            .surplusTo(activeAddress)
-            .with(token, (t) =>
-              t.withdraw({ amount: rawAmount, recipient: activeAddress }),
-            )
-            .execute({ provingBlockId }),
-        );
-
-        const withdrawProofDetails = callAndProof.proof.proofFacts?.length
-          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
-          : {};
-
-        const executeTx = await tl.step("Estimate + submit", () =>
-          userAccount.execute(callAndProof.call, {
-            tip: 0n,
-            ...withdrawProofDetails,
-          }),
-        );
-
-        await tl.step("Wait for receipt", () =>
-          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
-        ).then((receipt) => {
-          if (!receipt.isSuccess())
-            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        });
-
-        const proofSizeBytes = callAndProof.proof.data
-          ? base64ByteLength(callAndProof.proof.data)
-          : undefined;
-        return { txHash: executeTx.transaction_hash, proofSizeBytes };
+        const builder = transfers
+          .build({
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+            autoSelectNotes: "naive",
+          })
+          .surplusTo(activeAddress)
+          .with(token, (t) =>
+            t.withdraw({ amount: rawAmount, recipient: activeAddress }),
+          );
+        return buildProveSubmit(builder, feeAction, transfers, config, tl, userAccount, provider, provingBlockId);
       }),
-    [userAccount, transfers, provider, activeAddress, execute],
+    [userAccount, transfers, provider, activeAddress, config, poolAddress, execute],
   );
 
   const transfer = useCallback(
@@ -297,49 +306,25 @@ export function useTransactions(
         if (!userAccount || !transfers || !provider || !activeAddress)
           throw new Error("Not ready");
         const rawAmount = scaleAmount(token, amount);
+        const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
 
         const provingBlockId = await tl.step("Get block number",
           () => provider.getBlockNumber(),
         ) - 10;
 
-        const { callAndProof } = await tl.step("SDK build + prove", () =>
-          transfers
-            .build({
-              autoSetup: true,
-              autoDiscover: { notes: "refresh", channels: "refresh" },
-              autoSelectNotes: "naive",
-            })
-            .surplusTo(activeAddress)
-            .with(token, (t) =>
-              t.transfer({ recipient, amount: rawAmount }),
-            )
-            .execute({ provingBlockId }),
-        );
-
-        const transferProofDetails = callAndProof.proof.proofFacts?.length
-          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
-          : {};
-
-        const executeTx = await tl.step("Estimate + submit", () =>
-          userAccount.execute(callAndProof.call, {
-            tip: 0n,
-            ...transferProofDetails,
-          }),
-        );
-
-        await tl.step("Wait for receipt", () =>
-          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
-        ).then((receipt) => {
-          if (!receipt.isSuccess())
-            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        });
-
-        const proofSizeBytes = callAndProof.proof.data
-          ? base64ByteLength(callAndProof.proof.data)
-          : undefined;
-        return { txHash: executeTx.transaction_hash, proofSizeBytes };
+        const builder = transfers
+          .build({
+            autoSetup: true,
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+            autoSelectNotes: "naive",
+          })
+          .surplusTo(activeAddress)
+          .with(token, (t) =>
+            t.transfer({ recipient, amount: rawAmount }),
+          );
+        return buildProveSubmit(builder, feeAction, transfers, config, tl, userAccount, provider, provingBlockId);
       }),
-    [userAccount, transfers, provider, activeAddress, execute],
+    [userAccount, transfers, provider, activeAddress, config, poolAddress, execute],
   );
 
   const swap = useCallback(
@@ -355,74 +340,52 @@ export function useTransactions(
           poolToken0, poolToken1, poolFee, tickSpacing, extension, skipAhead,
         } = config.ekubo;
 
+        const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+
         const provingBlockId = await tl.step("Get block number",
           () => provider.getBlockNumber(),
         ) - 10;
 
-        const { callAndProof } = await tl.step("SDK build + prove", () =>
-          transfers
-            .build({
-              autoSetup: true,
-              autoSelectNotes: "all",
-              autoDiscover: { notes: "refresh", channels: "refresh" },
-            })
-            .with(fromToken)
-            .withdraw({ recipient: executorAddress, amount: rawAmount })
-            .surplusTo(activeAddress, false)
-            .with(toToken)
-            .transfer({ recipient: activeAddress, amount: Open })
-            .done()
-            .invoke((args) => {
-              const openNote = args.openNotes[0];
-              if (!openNote) {
-                throw new Error("Expected one open note for swap invocation");
-              }
-              return {
-                contractAddress: executorAddress,
-                calldata: [
-                  routerAddress,
-                  fromToken,
-                  rawAmount,  // i129 mag
-                  0n,         // i129 sign (positive = sell)
-                  poolToken0,
-                  poolToken1,
-                  poolFee,
-                  tickSpacing,
-                  extension,
-                  0n,         // minimum_received (low)
-                  0n,         // minimum_received (high)
-                  skipAhead,
-                  openNote.noteId,
-                ],
-              };
-            })
-            .execute({ provingBlockId }),
-        );
-
-        const swapProofDetails = callAndProof.proof.proofFacts?.length
-          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
-          : {};
-
-        const executeTx = await tl.step("Estimate + submit", () =>
-          userAccount.execute(callAndProof.call, {
-            tip: 0n,
-            ...swapProofDetails,
-          }),
-        );
-
-        await tl.step("Wait for receipt", () =>
-          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
-        ).then((receipt) => {
-          if (!receipt.isSuccess())
-            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        });
-
-        const proofSizeBytes = callAndProof.proof.data
-          ? base64ByteLength(callAndProof.proof.data)
-          : undefined;
-        return { txHash: executeTx.transaction_hash, proofSizeBytes };
+        const builder = transfers
+          .build({
+            autoSetup: true,
+            autoSelectNotes: "all",
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+          })
+          .surplusTo(activeAddress)
+          .with(fromToken)
+          .withdraw({ recipient: executorAddress, amount: rawAmount })
+          .surplusTo(activeAddress, false)
+          .with(toToken)
+          .transfer({ recipient: activeAddress, amount: Open })
+          .done()
+          .invoke((args) => {
+            const openNote = args.openNotes[0];
+            if (!openNote) {
+              throw new Error("Expected one open note for swap invocation");
+            }
+            return {
+              contractAddress: executorAddress,
+              calldata: [
+                routerAddress,
+                fromToken,
+                rawAmount,  // i129 mag
+                0n,         // i129 sign (positive = sell)
+                poolToken0,
+                poolToken1,
+                poolFee,
+                tickSpacing,
+                extension,
+                0n,         // minimum_received (low)
+                0n,         // minimum_received (high)
+                skipAhead,
+                openNote.noteId,
+              ],
+            };
+          });
+        return buildProveSubmit(builder, feeAction, transfers, config, tl, userAccount, provider, provingBlockId);
       }),
-    [userAccount, transfers, provider, activeAddress, config.ekubo, execute],
+    [userAccount, transfers, provider, activeAddress, config, poolAddress, execute],
   );
 
   const vesuSupply = useCallback(
@@ -434,58 +397,39 @@ export function useTransactions(
         const rawAmount = scaleAmount(token, amount);
         const { helperAddress } = config.vesu;
 
+        const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+
         const provingBlockId = await tl.step("Get block number",
           () => provider.getBlockNumber(),
         ) - 10;
 
-        const { callAndProof } = await tl.step("SDK build + prove", () =>
-          transfers
-            .build({
-              autoSetup: true,
-              autoSelectNotes: "all",
-              autoDiscover: { notes: "refresh", channels: "refresh" },
-            })
-            .with(token)
-            .withdraw({ recipient: helperAddress, amount: rawAmount })
-            .surplusTo(activeAddress, false)
-            .with(vTokenAddress)
-            .transfer({ recipient: activeAddress, amount: Open })
-            .done()
-            .invoke((args) => ({
-              contractAddress: helperAddress,
-              calldata: [
-                0n,           // LendingOperation::Deposit
-                token,        // in_token (underlying)
-                vTokenAddress, // out_token (vToken)
-                rawAmount,    // assets (u256 low)
-                0n,           // assets (u256 high)
-                args.openNotes[0].noteId,
-              ],
-            }))
-            .execute({ provingBlockId }),
-        );
-
-        const proofDetails = callAndProof.proof.proofFacts?.length
-          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
-          : {};
-
-        const executeTx = await tl.step("Estimate + submit", () =>
-          userAccount.execute(callAndProof.call, { tip: 0n, ...proofDetails }),
-        );
-
-        await tl.step("Wait for receipt", () =>
-          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
-        ).then((receipt) => {
-          if (!receipt.isSuccess())
-            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        });
-
-        const proofSizeBytes = callAndProof.proof.data
-          ? base64ByteLength(callAndProof.proof.data)
-          : undefined;
-        return { txHash: executeTx.transaction_hash, proofSizeBytes };
+        const builder = transfers
+          .build({
+            autoSetup: true,
+            autoSelectNotes: "all",
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+          })
+          .surplusTo(activeAddress)
+          .with(token)
+          .withdraw({ recipient: helperAddress, amount: rawAmount })
+          .surplusTo(activeAddress, false)
+          .with(vTokenAddress)
+          .transfer({ recipient: activeAddress, amount: Open })
+          .done()
+          .invoke((args) => ({
+            contractAddress: helperAddress,
+            calldata: [
+              0n,           // LendingOperation::Deposit
+              token,        // in_token (underlying)
+              vTokenAddress, // out_token (vToken)
+              rawAmount,    // assets (u256 low)
+              0n,           // assets (u256 high)
+              args.openNotes[0].noteId,
+            ],
+          }));
+        return buildProveSubmit(builder, feeAction, transfers, config, tl, userAccount, provider, provingBlockId);
       }),
-    [userAccount, transfers, provider, activeAddress, config.vesu, execute],
+    [userAccount, transfers, provider, activeAddress, config, poolAddress, execute],
   );
 
   const vesuWithdraw = useCallback(
@@ -497,58 +441,39 @@ export function useTransactions(
         const rawAmount = scaleAmount(token, amount);
         const { helperAddress } = config.vesu;
 
+        const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+
         const provingBlockId = await tl.step("Get block number",
           () => provider.getBlockNumber(),
         ) - 10;
 
-        const { callAndProof } = await tl.step("SDK build + prove", () =>
-          transfers
-            .build({
-              autoSetup: true,
-              autoSelectNotes: "all",
-              autoDiscover: { notes: "refresh", channels: "refresh" },
-            })
-            .with(vTokenAddress)
-            .withdraw({ recipient: helperAddress, amount: rawAmount })
-            .surplusTo(activeAddress, false)
-            .with(token)
-            .transfer({ recipient: activeAddress, amount: Open })
-            .done()
-            .invoke((args) => ({
-              contractAddress: helperAddress,
-              calldata: [
-                1n,           // LendingOperation::Withdraw
-                vTokenAddress, // in_token (vToken)
-                token,        // out_token (underlying)
-                rawAmount,    // assets (u256 low)
-                0n,           // assets (u256 high)
-                args.openNotes[0].noteId,
-              ],
-            }))
-            .execute({ provingBlockId }),
-        );
-
-        const proofDetails = callAndProof.proof.proofFacts?.length
-          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
-          : {};
-
-        const executeTx = await tl.step("Estimate + submit", () =>
-          userAccount.execute(callAndProof.call, { tip: 0n, ...proofDetails }),
-        );
-
-        await tl.step("Wait for receipt", () =>
-          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
-        ).then((receipt) => {
-          if (!receipt.isSuccess())
-            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
-        });
-
-        const proofSizeBytes = callAndProof.proof.data
-          ? base64ByteLength(callAndProof.proof.data)
-          : undefined;
-        return { txHash: executeTx.transaction_hash, proofSizeBytes };
+        const builder = transfers
+          .build({
+            autoSetup: true,
+            autoSelectNotes: "all",
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+          })
+          .surplusTo(activeAddress)
+          .with(vTokenAddress)
+          .withdraw({ recipient: helperAddress, amount: rawAmount })
+          .surplusTo(activeAddress, false)
+          .with(token)
+          .transfer({ recipient: activeAddress, amount: Open })
+          .done()
+          .invoke((args) => ({
+            contractAddress: helperAddress,
+            calldata: [
+              1n,           // LendingOperation::Withdraw
+              vTokenAddress, // in_token (vToken)
+              token,        // out_token (underlying)
+              rawAmount,    // assets (u256 low)
+              0n,           // assets (u256 high)
+              args.openNotes[0].noteId,
+            ],
+          }));
+        return buildProveSubmit(builder, feeAction, transfers, config, tl, userAccount, provider, provingBlockId);
       }),
-    [userAccount, transfers, provider, activeAddress, config.vesu, execute],
+    [userAccount, transfers, provider, activeAddress, config, poolAddress, execute],
   );
 
   return { status, register, mint, deposit, withdraw, transfer, swap, vesuSupply, vesuWithdraw };

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createEmptyRegistry } from "starknet-sdk";
 import { formatChainId } from "./format.ts";
-import { loadConfig } from "./config.ts";
+import { loadConfig, initPaymasterForwarder } from "./config.ts";
 import { createProvider, createAccount, createTransfers } from "./starknet.ts";
 import { useAccounts } from "./hooks/useAccounts.ts";
 import { usePoolSelector } from "./hooks/usePoolSelector.ts";
@@ -24,8 +24,19 @@ import "./App.css";
 
 const config = loadConfig();
 
+initPaymasterForwarder(config);
+
 export function App() {
   const [classHash, setClassHash] = useState(config.poolClassHash);
+  const [paymasterEnabled, setPaymasterEnabled] = useState(() => {
+    const stored = localStorage.getItem("paymasterEnabled");
+    return stored !== null ? stored === "true" : true;
+  });
+
+  const togglePaymaster = useCallback((enabled: boolean) => {
+    setPaymasterEnabled(enabled);
+    localStorage.setItem("paymasterEnabled", String(enabled));
+  }, []);
 
   const { accounts, activeIndex, activeAccount, setActiveIndex, importAccounts } =
     useAccounts();
@@ -38,6 +49,11 @@ export function App() {
   const configWithClassHash = useMemo(
     () => ({ ...config, poolClassHash: classHash }),
     [classHash],
+  );
+
+  const effectiveConfig = useMemo(
+    () => paymasterEnabled ? config : { ...config, paymasterUrl: undefined },
+    [paymasterEnabled],
   );
 
   const { deploying, deployError, deploy } = useDeployPool(provider, configWithClassHash, accounts);
@@ -113,7 +129,7 @@ export function App() {
     transfers,
     activeAccount?.address,
     poolAddress,
-    config,
+    effectiveConfig,
     accounts,
     refreshAll,
     refreshBalances,
@@ -124,7 +140,7 @@ export function App() {
     transfers,
     activeAccount?.address,
     poolAddress,
-    config,
+    effectiveConfig,
     accounts,
     refreshAll,
   );
@@ -234,6 +250,24 @@ export function App() {
                   onVesuSupply={vesuSupply}
                   onVesuWithdraw={vesuWithdraw}
                 />
+              )}
+              {config.paymasterUrl && (
+                <div className="config-island">
+                  <h3>Config</h3>
+                  <label className="builder-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={paymasterEnabled}
+                      onChange={(e) => togglePaymaster(e.target.checked)}
+                    />
+                    Paymaster
+                    {config.paymasterFeeToken && (
+                      <span className="chip">
+                        {config.tokens.find((t) => t.address === config.paymasterFeeToken)?.name ?? "?"}
+                      </span>
+                    )}
+                  </label>
+                </div>
               )}
             </div>
           </div>

@@ -1,4 +1,5 @@
 import type { constants } from "starknet";
+import { paymasterBuildApplyAction } from "./paymaster.ts";
 
 export type AccountConfig = {
   name: string;
@@ -56,6 +57,10 @@ export type AppConfig = {
   explorerUrl?: string;
   ekubo?: EkuboConfig;
   vesu?: VesuConfig;
+  paymasterUrl?: string;
+  paymasterFeeToken?: string;
+  avnuApiKey?: string;
+  paymasterForwarderAddress?: string;
 };
 
 function requireEnv(key: string): string {
@@ -148,5 +153,24 @@ export function loadConfig(): AppConfig {
     explorerUrl: import.meta.env.VITE_EXPLORER_URL as string | undefined,
     ekubo: parseEkuboConfig(tokens),
     vesu: parseVesuConfig(tokens),
+    paymasterUrl: import.meta.env.VITE_PAYMASTER_URL as string | undefined,
+    paymasterFeeToken: import.meta.env.VITE_PAYMASTER_FEE_TOKEN as string | undefined,
+    avnuApiKey: import.meta.env.VITE_AVNU_API_KEY as string | undefined,
   };
+}
+
+/** Fetch the paymaster forwarder address once and store it in the config. */
+export async function initPaymasterForwarder(config: AppConfig): Promise<void> {
+  if (!config.paymasterUrl || !config.paymasterFeeToken || config.paymasterForwarderAddress) return;
+  try {
+    const { fee_action } = await paymasterBuildApplyAction(
+      config.paymasterUrl,
+      config.poolAddress,
+      { mode: "sponsored_private", pool_fee_token: config.paymasterFeeToken, tip: "normal" },
+      config.avnuApiKey,
+    );
+    config.paymasterForwarderAddress = fee_action.recipient;
+  } catch (err) {
+    console.warn("Failed to fetch paymaster forwarder address:", err);
+  }
 }
