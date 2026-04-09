@@ -1,5 +1,5 @@
 // tests/config.test.ts
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { loadConfig } from "../src/config.js";
 
 describe("loadConfig", () => {
@@ -14,13 +14,18 @@ describe("loadConfig", () => {
     delete process.env.MAX_BODY_BYTES;
     delete process.env.TLS_CERT_PATH;
     delete process.env.TLS_KEY_PATH;
+    delete process.env.ARCHIVAL_GCS_BUCKET;
+    delete process.env.ARCHIVAL_BLOCKING;
   });
 
   it("loads config from env vars", () => {
     process.env.HOST = "0.0.0.0";
     process.env.PORT = "9090";
 
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const config = loadConfig();
+    spy.mockRestore();
+
     expect(config.host).toBe("0.0.0.0");
     expect(config.port).toBe(9090);
     expect(config.maxBodyBytes).toBe(5 * 1024 * 1024);
@@ -31,7 +36,10 @@ describe("loadConfig", () => {
     delete process.env.HOST;
     delete process.env.PORT;
 
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const config = loadConfig();
+    spy.mockRestore();
+
     expect(config.host).toBe("0.0.0.0");
     expect(config.port).toBe(8080);
   });
@@ -40,7 +48,10 @@ describe("loadConfig", () => {
     process.env.TLS_CERT_PATH = "/path/to/cert.pem";
     process.env.TLS_KEY_PATH = "/path/to/key.pem";
 
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const config = loadConfig();
+    spy.mockRestore();
+
     expect(config.tls).toEqual({
       certPath: "/path/to/cert.pem",
       keyPath: "/path/to/key.pem",
@@ -57,7 +68,10 @@ describe("loadConfig", () => {
   it("reads maxBodyBytes from MAX_BODY_BYTES env var", () => {
     process.env.MAX_BODY_BYTES = "1048576";
 
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const config = loadConfig();
+    spy.mockRestore();
+
     expect(config.maxBodyBytes).toBe(1048576);
   });
 
@@ -116,5 +130,37 @@ describe("loadConfig", () => {
     delete process.env.SCREENING_POOL_ADDRESS;
 
     expect(() => loadConfig()).toThrow("SCREENING_POOL_ADDRESS");
+  });
+
+  it("logs error when ARCHIVAL_GCS_BUCKET is not set", () => {
+    delete process.env.ARCHIVAL_GCS_BUCKET;
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const config = loadConfig();
+    expect(config.archival).toBeUndefined();
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("archival_disabled")
+    );
+    spy.mockRestore();
+  });
+
+  it("loads archival config when ARCHIVAL_GCS_BUCKET is set", () => {
+    process.env.ARCHIVAL_GCS_BUCKET = "my-bucket";
+    process.env.ARCHIVAL_GCS_KEY_FILE = "/path/to/key.json";
+
+    const config = loadConfig();
+    expect(config.archival).toEqual({
+      gcsBucket: "my-bucket",
+      gcsKeyFilePath: "/path/to/key.json",
+    });
+  });
+
+  it("loads archival config without key file", () => {
+    process.env.ARCHIVAL_GCS_BUCKET = "my-bucket";
+    delete process.env.ARCHIVAL_GCS_KEY_FILE;
+
+    const config = loadConfig();
+    expect(config.archival?.gcsBucket).toBe("my-bucket");
+    expect(config.archival?.gcsKeyFilePath).toBeUndefined();
   });
 });

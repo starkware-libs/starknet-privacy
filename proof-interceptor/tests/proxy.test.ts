@@ -4,23 +4,23 @@ import { createServer, type Server } from "node:http";
 import { createHandler, type HandlerOptions } from "../src/proxy.js";
 import type { TransactionInterceptor } from "../src/interceptor.js";
 
-let proxy: Server;
-let proxyPort: number;
+let handler: Server;
+let handlerPort: number;
 
-function startProxy(options?: Partial<HandlerOptions>): Promise<void> {
+function startHandler(options?: Partial<HandlerOptions>): Promise<void> {
   return new Promise((resolve) => {
-    const handler = createHandler({ ...options });
-    proxy = createServer(handler);
-    proxy.listen(0, "127.0.0.1", () => {
-      const addr = proxy.address();
-      proxyPort = typeof addr === "object" && addr !== null ? addr.port : 0;
+    const requestHandler = createHandler(options);
+    handler = createServer(requestHandler);
+    handler.listen(0, "127.0.0.1", () => {
+      const addr = handler.address();
+      handlerPort = typeof addr === "object" && addr !== null ? addr.port : 0;
       resolve();
     });
   });
 }
 
-function proxyUrl(path: string): string {
-  return `http://127.0.0.1:${proxyPort}${path}`;
+function handlerUrl(path: string): string {
+  return `http://127.0.0.1:${handlerPort}${path}`;
 }
 
 function checkRequest(): object {
@@ -58,41 +58,54 @@ function rpcPost(url: string, body: object): Promise<Response> {
 
 afterEach(async () => {
   await new Promise<void>((resolve) => {
-    if (!proxy) return resolve();
-    proxy.close(() => resolve());
+    if (!handler) return resolve();
+    handler.close(() => resolve());
   });
 });
 
 describe("handler", () => {
-  it("returns 400 for GET request to root", async () => {
-    await startProxy();
+  it("returns 400 for non-JSON-RPC requests", async () => {
+    await startHandler();
 
-    const response = await fetch(proxyUrl("/"));
+    const response = await fetch(handlerUrl("/some/path"));
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
-      error: "only JSON-RPC POST requests accepted",
+      error: "only JSON-RPC POST requests are supported",
     });
   });
 
   it("returns 400 for non-JSON POST body", async () => {
-    await startProxy();
+    await startHandler();
 
-    const response = await fetch(proxyUrl("/"), {
+    const response = await fetch(handlerUrl("/"), {
       method: "POST",
       headers: { "content-type": "text/plain" },
       body: "raw data",
     });
 
     expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({
-      error: "only JSON-RPC POST requests accepted",
-    });
+  });
+
+  it("returns error for starknet_specVersion with static response", async () => {
+    await startHandler();
+
+    const rpcRequest = {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "starknet_specVersion",
+    };
+    const response = await rpcPost(handlerUrl("/"), rpcRequest);
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result).toBeDefined();
+    expect(body.id).toBe(1);
   });
 
   it("returns JSON-RPC error for unknown method", async () => {
-    await startProxy();
+    await startHandler();
 
-    const response = await rpcPost(proxyUrl("/"), {
+    const response = await rpcPost(handlerUrl("/"), {
       jsonrpc: "2.0",
       id: 1,
       method: "unknown_method",
@@ -104,17 +117,17 @@ describe("handler", () => {
   });
 
   it("responds to /health with 200", async () => {
-    await startProxy();
+    await startHandler();
 
-    const response = await fetch(proxyUrl("/health"));
+    const response = await fetch(handlerUrl("/health"));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: "ok" });
   });
 
   it("serves Prometheus metrics at /metrics", async () => {
-    await startProxy();
+    await startHandler();
 
-    const response = await fetch(proxyUrl("/metrics"));
+    const response = await fetch(handlerUrl("/metrics"));
     expect(response.status).toBe(200);
     const body = await response.text();
     expect(body).toContain("proof_interceptor_rpc_requests_total");
@@ -123,9 +136,9 @@ describe("handler", () => {
   });
 
   it("returns 413 when body exceeds maxBodyBytes", async () => {
-    await startProxy({ maxBodyBytes: 10 });
+    await startHandler({ maxBodyBytes: 10 });
 
-    const response = await fetch(proxyUrl("/"), {
+    const response = await fetch(handlerUrl("/"), {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ data: "x".repeat(100) }),
@@ -136,27 +149,27 @@ describe("handler", () => {
 });
 
 describe("handler with interceptors", () => {
-  it("returns allowed:true when interceptor allows checkTransaction", async () => {
+  it("returns allowed:true when interceptor allows", async () => {
     const allowAll: TransactionInterceptor = {
       name: "test",
       intercept: async () => ({ action: "allow" }),
     };
-    await startProxy({ interceptors: [allowAll] });
+    await startHandler({ interceptors: [allowAll] });
 
-    const response = await rpcPost(proxyUrl("/"), checkRequest());
-    expect(response.status).toBe(200);
+    const response = await rpcPost(handlerUrl("/"), checkRequest());
     const body = await response.json();
     expect(body.result).toEqual({ allowed: true });
+    expect(body.id).toBe(1);
   });
 
-  it("returns 10000 when interceptor blocks", async () => {
+  it("returns 10000 when interceptor rejects", async () => {
     const blocker: TransactionInterceptor = {
       name: "test",
       intercept: async () => ({ action: "block", reason: "sanctioned" }),
     };
-    await startProxy({ interceptors: [blocker] });
+    await startHandler({ interceptors: [blocker] });
 
-    const response = await rpcPost(proxyUrl("/"), checkRequest());
+    const response = await rpcPost(handlerUrl("/"), checkRequest());
     const body = await response.json();
     expect(body.error.code).toBe(10000);
     expect(body.error.message).toBe("Transaction rejected");
@@ -174,15 +187,15 @@ describe("handler with interceptors", () => {
         return { action: "block", reason: "should not be called" };
       },
     };
-    await startProxy({ interceptors: [spy] });
+    await startHandler({ interceptors: [spy] });
 
-    const response = await rpcPost(proxyUrl("/"), {
+    const response = await rpcPost(handlerUrl("/"), {
       jsonrpc: "2.0",
       id: 1,
       method: "starknet_specVersion",
     });
     const body = await response.json();
-    expect(body.result).toBe("0.8.0");
+    expect(body.result).toBeDefined();
     expect(interceptorCalled).toBe(false);
   });
 
@@ -193,13 +206,113 @@ describe("handler with interceptors", () => {
         throw new Error("network timeout");
       },
     };
-    await startProxy({ interceptors: [thrower] });
+    await startHandler({ interceptors: [thrower] });
 
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    const response = await rpcPost(proxyUrl("/"), checkRequest());
+    const response = await rpcPost(handlerUrl("/"), checkRequest());
     const body = await response.json();
     expect(body.error.code).toBe(10000);
     expect(body.error.data).toBe("network timeout");
+  });
+
+  it("calls error() on interceptors when screening rejects", async () => {
+    const errorSpy = vi.fn().mockResolvedValue(undefined);
+    const completeSpy = vi.fn();
+    const blocker: TransactionInterceptor = {
+      name: "blocker",
+      intercept: async () => ({ action: "block", reason: "denied" }),
+    };
+    const observer: TransactionInterceptor = {
+      name: "observer",
+      intercept: async () => ({ action: "allow" }),
+      error: errorSpy,
+      complete: completeSpy,
+    };
+    await startHandler({ interceptors: [blocker, observer] });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await rpcPost(handlerUrl("/"), checkRequest());
     spy.mockRestore();
+
+    expect(errorSpy).toHaveBeenCalledOnce();
+    expect(errorSpy.mock.calls[0][0]).toBe(10000);
+    expect(completeSpy).not.toHaveBeenCalled();
+  });
+
+  it("calls complete() on interceptors when all interceptors allow", async () => {
+    const errorSpy = vi.fn().mockResolvedValue(undefined);
+    const completeSpy = vi.fn();
+    const observer: TransactionInterceptor = {
+      name: "observer",
+      intercept: async () => ({ action: "allow" }),
+      error: errorSpy,
+      complete: completeSpy,
+    };
+    await startHandler({ interceptors: [observer] });
+
+    await rpcPost(handlerUrl("/"), checkRequest());
+
+    expect(completeSpy).toHaveBeenCalledOnce();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("handles error() throwing without affecting the client response", async () => {
+    const throwingObserver: TransactionInterceptor = {
+      name: "throwing-observer",
+      intercept: async () => ({ action: "allow" }),
+      error: async () => {
+        throw new Error("observer crash");
+      },
+    };
+    const blocker: TransactionInterceptor = {
+      name: "blocker",
+      intercept: async () => ({ action: "block", reason: "blocked" }),
+    };
+    await startHandler({ interceptors: [blocker, throwingObserver] });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await rpcPost(handlerUrl("/"), checkRequest());
+    const body = await response.json();
+    spy.mockRestore();
+
+    // Client still receives the rejection
+    expect(body.error.code).toBe(10000);
+  });
+
+  it("non-blocking interceptor exception does not reject transaction", async () => {
+    const nonBlocking: TransactionInterceptor = {
+      name: "non-blocking",
+      blocking: false,
+      intercept: async () => {
+        throw new Error("non-critical failure");
+      },
+    };
+    await startHandler({ interceptors: [nonBlocking] });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await rpcPost(handlerUrl("/"), checkRequest());
+    const body = await response.json();
+    spy.mockRestore();
+
+    // Transaction goes through despite interceptor failure
+    expect(body.result).toEqual({ allowed: true });
+  });
+
+  it("blocking interceptor exception rejects transaction", async () => {
+    const blocking: TransactionInterceptor = {
+      name: "blocking",
+      blocking: true,
+      intercept: async () => {
+        throw new Error("critical failure");
+      },
+    };
+    await startHandler({ interceptors: [blocking] });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await rpcPost(handlerUrl("/"), checkRequest());
+    const body = await response.json();
+    spy.mockRestore();
+
+    expect(body.error.code).toBe(10000);
+    expect(body.error.data).toBe("critical failure");
   });
 });

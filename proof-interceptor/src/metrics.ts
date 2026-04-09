@@ -53,18 +53,18 @@ export const requestDuration = new Histogram({
   registers: [registry],
 });
 
-export const screeningDuration = new Histogram({
-  name: "proof_interceptor_screening_duration_seconds",
-  help: "Elliptic-proxy screening call latency by result",
-  labelNames: ["result"] as const,
-  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
-  registers: [registry],
-});
-
 export const interceptorDuration = new Histogram({
   name: "proof_interceptor_interceptor_duration_seconds",
   help: "Per-interceptor execution latency",
   labelNames: ["interceptor", "verdict"] as const,
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  registers: [registry],
+});
+
+export const screeningDuration = new Histogram({
+  name: "proof_interceptor_screening_duration_seconds",
+  help: "Elliptic-proxy screening call latency by result",
+  labelNames: ["result"] as const,
   buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
   registers: [registry],
 });

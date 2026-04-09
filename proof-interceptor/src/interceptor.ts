@@ -2,13 +2,17 @@
 import type { ProveTxnV3 } from "./types.js";
 import { interceptorVerdicts, interceptorDuration } from "./metrics.js";
 
-export type Verdict =
-  | { action: "allow" }
-  | { action: "block"; reason: string };
+export type Verdict = { action: "allow" } | { action: "block"; reason: string };
 
 export interface TransactionInterceptor {
   name: string;
   intercept(transaction: ProveTxnV3): Promise<Verdict>;
+  /** If true (default), exceptions from intercept() become "block". If false, they become "allow". */
+  blocking?: boolean;
+  /** Called with the error code and the same transaction passed to intercept(). */
+  error?(code: number, transaction: ProveTxnV3): Promise<void>;
+  /** Called on the success path to clean up per-transaction state. */
+  complete?(transaction: ProveTxnV3): void;
 }
 
 /**
@@ -29,8 +33,18 @@ export async function runInterceptors(
       verdict = await interceptor.intercept(transaction);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(JSON.stringify({ error: "interceptor_error", message }));
-      verdict = { action: "block", reason: message };
+      console.error(
+        JSON.stringify({
+          error: "interceptor_error",
+          interceptor: interceptor.name,
+          message,
+        })
+      );
+      // Non-blocking interceptors swallow exceptions as "allow"
+      verdict =
+        (interceptor.blocking ?? true)
+          ? { action: "block", reason: message }
+          : { action: "allow" };
     }
     const durationSeconds = (Date.now() - startTime) / 1000;
 
@@ -59,4 +73,42 @@ export async function runInterceptors(
   );
 
   return Promise.race([...blockPromises, allAllow]);
+}
+
+/**
+ * Calls error() on all interceptors that implement it.
+ * Exceptions from individual error() handlers are logged but not propagated.
+ */
+export async function notifyInterceptorError(
+  interceptors: TransactionInterceptor[],
+  code: number,
+  transaction: ProveTxnV3
+): Promise<void> {
+  await Promise.all(
+    interceptors
+      .filter((interceptor) => interceptor.error)
+      .map((interceptor) =>
+        interceptor.error!(code, transaction).catch((error) => {
+          console.error(
+            JSON.stringify({
+              error: "interceptor_error_handler_failed",
+              interceptor: interceptor.name,
+              message: String(error),
+            })
+          );
+        })
+      )
+  );
+}
+
+/**
+ * Calls complete() on all interceptors that implement it, to clean up per-transaction state.
+ */
+export function notifyInterceptorComplete(
+  interceptors: TransactionInterceptor[],
+  transaction: ProveTxnV3
+): void {
+  for (const interceptor of interceptors) {
+    interceptor.complete?.(transaction);
+  }
 }

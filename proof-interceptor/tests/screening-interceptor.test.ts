@@ -408,7 +408,7 @@ describe("ScreeningInterceptor", () => {
     expect(receivedHeaders["x-access-sign"]).toBe(hmac.digest("base64"));
   });
 
-  it("returns stop with unavailable reason on network error (fail-closed)", async () => {
+  it("returns block with unavailable reason on network error (fail-closed)", async () => {
     const config = makeConfig({
       ellipticProxyUrl: "http://127.0.0.1:1",
       timeoutMs: 1000,
@@ -445,7 +445,7 @@ describe("ScreeningInterceptor", () => {
     spy.mockRestore();
   });
 
-  it("returns stop with unavailable reason on non-200 response (fail-closed)", async () => {
+  it("returns block with unavailable reason on non-200 response (fail-closed)", async () => {
     await startMockEllipticProxy((_req, res) => {
       res.writeHead(500);
       res.end("internal error");
@@ -489,7 +489,7 @@ describe("ScreeningInterceptor", () => {
     logSpy.mockRestore();
   });
 
-  it("continues when calldata has no extractable address", async () => {
+  it("allows when calldata has no extractable address", async () => {
     const transaction = sampleTransaction(["0x0"]);
     const interceptor = new ScreeningInterceptor(
       makeConfig({ ellipticProxyUrl: "http://127.0.0.1:1" })

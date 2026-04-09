@@ -1,7 +1,12 @@
 // src/proxy.ts
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { RpcAction, validateRpcRequest } from "./rpc.js";
-import { runInterceptors, type TransactionInterceptor } from "./interceptor.js";
+import {
+  runInterceptors,
+  notifyInterceptorError,
+  notifyInterceptorComplete,
+  type TransactionInterceptor,
+} from "./interceptor.js";
 import { jsonRpcError } from "./types.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./config.js";
 import {
@@ -74,11 +79,14 @@ export function createHandler(options: HandlerOptions = {}) {
       return;
     }
 
-    // Only accept JSON-RPC POST requests
+    // Only JSON-RPC POST requests are handled
     if (req.method !== "POST" || !isJsonContent(req)) {
-      finishRequest("error", { error: "non_json_rpc_request" });
+      errorsTotal.inc({ type: "invalid_request" });
+      finishRequest("error", { error: "invalid_request" });
       res.writeHead(400, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: "only JSON-RPC POST requests accepted" }));
+      res.end(
+        JSON.stringify({ error: "only JSON-RPC POST requests are supported" })
+      );
       return;
     }
 
@@ -104,6 +112,11 @@ export function createHandler(options: HandlerOptions = {}) {
       );
 
       if (interceptorVerdict.action === "block") {
+        await notifyInterceptorError(
+          interceptors,
+          TRANSACTION_REJECTED,
+          verdict.transaction
+        );
         console.error(JSON.stringify({ error: "transaction_rejected" }));
         finishRequest("check_with_interceptors", {
           rpcAction: "check_with_interceptors",
@@ -123,7 +136,7 @@ export function createHandler(options: HandlerOptions = {}) {
         return;
       }
 
-      // All interceptors allowed the transaction
+      notifyInterceptorComplete(interceptors, verdict.transaction);
       finishRequest("check_with_interceptors", {
         rpcAction: "check_with_interceptors",
         interceptorVerdict: "allow",
@@ -139,15 +152,16 @@ export function createHandler(options: HandlerOptions = {}) {
       return;
     }
 
-    // ForwardAsIs: only starknet_specVersion reaches here
+    // ForwardAsIs: starknet_specVersion — no upstream in interceptor mode
+    // Return a static response indicating spec version support
     rpcRequestsTotal.inc({ action: "forward_as_is", method: "" });
     finishRequest("forward_as_is", { rpcAction: "forward_as_is" });
     res.writeHead(200, { "content-type": "application/json" });
     res.end(
       JSON.stringify({
         jsonrpc: "2.0",
-        id: (JSON.parse(body.toString()) as { id?: unknown }).id ?? null,
-        result: "0.8.0",
+        id: (JSON.parse(body.toString()) as { id: unknown }).id ?? null,
+        result: "0.8.1",
       })
     );
   };
