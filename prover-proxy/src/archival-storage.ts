@@ -1,6 +1,6 @@
 import { Storage } from "@google-cloud/storage";
 
-export type ArchivalFileType = "viewingkey" | "sender" | "denied";
+export type ArchivalFileType = "viewingkey" | "sender";
 
 export interface ArchivalStorageConfig {
   bucket: string;
@@ -46,25 +46,9 @@ export function parseArchivalFile(data: Buffer): ParsedArchivalFile {
 }
 
 /**
- * Patches the type field in an archival file's header (e.g., to mark as "denied").
- * Returns a new Buffer with the updated header and the same body.
- */
-export function patchFileType(data: Buffer, newType: ArchivalFileType): Buffer {
-  const newlineIndex = data.indexOf(0x0a);
-  if (newlineIndex === -1) throw new Error("Invalid archival file: no header");
-  const header = data.subarray(0, newlineIndex).toString("utf-8");
-  const commaIndex = header.indexOf(",");
-  if (commaIndex === -1)
-    throw new Error("Invalid archival file: malformed header");
-  const publicKeyHex = header.slice(commaIndex + 1);
-  const newHeader = Buffer.from(`${newType},${publicKeyHex}\n`);
-  return Buffer.concat([newHeader, data.subarray(newlineIndex + 1)]);
-}
-
-/**
  * Uploads an encrypted archival file to GCS.
  * Path: <bucket>/<YYYY-MM-DD>/<txHash>.enc
- * Returns the object path for later patching.
+ * Returns the object path (without extension) for denial markers.
  */
 export async function uploadArchivalFile(
   config: ArchivalStorageConfig,
@@ -87,20 +71,16 @@ export async function uploadArchivalFile(
 }
 
 /**
- * Downloads a file from GCS, patches its type, and re-uploads it.
- * Used to mark denied transactions after screening completes.
+ * Deletes an archived transaction file from GCS.
+ * Called when a transaction is denied or fails — no point keeping it.
  */
-export async function patchArchivalType(
+export async function deleteArchivalFile(
   config: ArchivalStorageConfig,
-  objectPath: string,
-  newType: ArchivalFileType
+  objectPath: string
 ): Promise<void> {
   const storage = config.keyFilePath
     ? new Storage({ keyFilename: config.keyFilePath })
     : new Storage();
 
-  const file = storage.bucket(config.bucket).file(objectPath);
-  const [content] = await file.download();
-  const patched = patchFileType(content, newType);
-  await file.save(patched, { resumable: false });
+  await storage.bucket(config.bucket).file(objectPath).delete();
 }

@@ -1,6 +1,8 @@
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import nacl from "tweetnacl";
+import { CallData } from "starknet";
+import { PrivacyPoolABI } from "@starkware-libs/starknet-privacy-sdk/abi";
 
 // @ts-expect-error — tweetnacl-sealedbox-js has no type declarations
 import sealedbox from "tweetnacl-sealedbox-js";
@@ -8,28 +10,52 @@ import sealedbox from "tweetnacl-sealedbox-js";
 const HKDF_SALT = "starknet-privacy-archival";
 const HKDF_INFO = "x25519-key";
 
+const ACTIONS_TYPE =
+  "core::array::Span::<privacy::actions::ClientAction>" as const;
+const callDataDecoder = new CallData(PrivacyPoolABI);
+
 export interface EncryptionSeed {
   type: "viewingkey" | "sender";
   seed: string;
 }
 
 /**
+ * Validates that the inner calldata (after user_addr and viewing_key) decodes
+ * as privacy pool client actions via the contract ABI.
+ */
+function isPrivacyPoolCalldata(innerCalldata: string[]): boolean {
+  if (innerCalldata.length < 3) return false;
+  try {
+    callDataDecoder.decodeParameters(ACTIONS_TYPE, innerCalldata.slice(2));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Extracts the encryption seed from transaction calldata.
- * For privacy pool transactions (single-call, calldata[0]==="0x1", inner len >= 2),
- * uses the viewing key (inner calldata[1]).
+ *
+ * For privacy pool transactions — single-call (calldata[0]==="0x1") whose
+ * inner calldata successfully ABI-decodes as privacy pool actions — uses
+ * the viewing key at inner calldata index 1 (calldata[5]).
+ *
  * Otherwise falls back to senderAddress.
  */
 export function extractEncryptionSeed(
   calldata: string[],
-  senderAddress?: string
+  senderAddress: string
 ): EncryptionSeed {
-  if (calldata.length >= 6 && calldata[0] === "0x1") {
-    const innerLen = parseInt(calldata[3], 16);
-    if (!Number.isNaN(innerLen) && innerLen >= 2) {
-      return { type: "viewingkey", seed: calldata[5] };
+  if (calldata.length >= 7 && calldata[0] === "0x1") {
+    const innerCalldataLength = parseInt(calldata[3], 16);
+    if (!Number.isNaN(innerCalldataLength) && innerCalldataLength >= 3) {
+      const innerCalldata = calldata.slice(4, 4 + innerCalldataLength);
+      if (isPrivacyPoolCalldata(innerCalldata)) {
+        return { type: "viewingkey", seed: innerCalldata[1] };
+      }
     }
   }
-  return { type: "sender", seed: senderAddress ?? "0x0" };
+  return { type: "sender", seed: senderAddress };
 }
 
 /**

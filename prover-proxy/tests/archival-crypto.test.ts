@@ -7,27 +7,31 @@ import {
   decryptArchival,
 } from "../src/archival-crypto.js";
 
+// ABI-valid privacy pool calldata (matches screening test format):
+// [0]=call_count, [1]=contract, [2]=selector, [3]=inner_len,
+// [4]=user_addr, [5]=viewing_key, [6]=action_count, [7]=variant, [8]=token, [9]=amount
+const VIEWING_KEY = "0xbbb222";
+const privacyPoolCalldata = [
+  "0x1",
+  "0xpool",
+  "0xsel",
+  "0x6",
+  "0xaaa111",
+  VIEWING_KEY,
+  "0x1",
+  "0x5", // Deposit variant
+  "0xdead",
+  "0x64",
+];
+
 describe("extractEncryptionSeed", () => {
-  it("extracts viewing key from privacy pool calldata", () => {
-    // Privacy pool calldata layout:
-    // [0]=call_count "0x1", [1]=contract, [2]=selector, [3]=inner_len,
-    // [4]=user_addr, [5]=viewing_key, [6..]=actions
-    const calldata = [
-      "0x1",
-      "0xpool",
-      "0xsel",
-      "0x3",
-      "0xuser",
-      "0xdeadbeef",
-      "0x0",
-    ];
-    const result = extractEncryptionSeed(calldata);
+  it("extracts viewing key from ABI-valid privacy pool calldata", () => {
+    const result = extractEncryptionSeed(privacyPoolCalldata, "0xsender");
     expect(result.type).toBe("viewingkey");
-    expect(result.seed).toBe("0xdeadbeef");
+    expect(result.seed).toBe(VIEWING_KEY);
   });
 
-  it("falls back to sender address for non-privacy-pool calldata", () => {
-    // Multi-call or short calldata — not a privacy pool tx
+  it("falls back to sender address for multi-call calldata", () => {
     const calldata = ["0x2", "0xaddr"];
     const result = extractEncryptionSeed(calldata, "0xsender");
     expect(result.type).toBe("sender");
@@ -36,6 +40,23 @@ describe("extractEncryptionSeed", () => {
 
   it("falls back to sender address when inner calldata is too short", () => {
     const calldata = ["0x1", "0xpool", "0xsel", "0x1", "0xonly"];
+    const result = extractEncryptionSeed(calldata, "0xsender");
+    expect(result.type).toBe("sender");
+    expect(result.seed).toBe("0xsender");
+  });
+
+  it("falls back to sender when calldata does not ABI-decode as privacy pool", () => {
+    // Single call with inner_len=4 but actions that can't decode (invalid variant tag)
+    const calldata = [
+      "0x1",
+      "0xpool",
+      "0xsel",
+      "0x4",
+      "0xuser",
+      "0xdeadbeef",
+      "0x1", // 1 action
+      "0xff", // invalid variant index — not a valid ClientAction
+    ];
     const result = extractEncryptionSeed(calldata, "0xsender");
     expect(result.type).toBe("sender");
     expect(result.seed).toBe("0xsender");

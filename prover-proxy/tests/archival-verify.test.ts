@@ -80,20 +80,4 @@ describe("verifyFile", () => {
     const result = verifyFile(Buffer.from(file), keyMap);
     expect(result.status).toBe("decrypt_failed");
   });
-
-  it("verifies denied type files with matching key", () => {
-    const viewingKey = "0xdeadbeef";
-    const pair = deriveKeyPair(viewingKey);
-    const publicKeyHex = bytesToHex(pair.publicKey);
-    const plaintext = '{"type":"INVOKE"}';
-    const encrypted = encryptForArchival(
-      new TextEncoder().encode(plaintext),
-      pair.publicKey
-    );
-    const file = formatArchivalFile("denied", publicKeyHex, encrypted);
-
-    const keyMap = buildKeyMap([viewingKey]);
-    const result = verifyFile(Buffer.from(file), keyMap);
-    expect(result.status).toBe("ok");
-  });
 });

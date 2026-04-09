@@ -24,15 +24,18 @@ const makeTransaction = (
     ...overrides,
   }) as unknown as ProveTxnV3;
 
-// Valid hex calldata for privacy pool transactions
+// ABI-valid privacy pool calldata (Deposit action, decodable by PrivacyPoolABI)
 const privacyPoolCalldata = [
   "0x1",
   "0xaaa",
   "0xbbb",
-  "0x3",
-  "0xccc",
-  "0xdeadbeef",
-  "0x0",
+  "0x6",
+  "0xaaa111",
+  "0xbbb222",
+  "0x1",
+  "0x5", // Deposit variant
+  "0xdead",
+  "0x64",
 ];
 // Non-privacy-pool calldata (multi-call)
 const multiCalldata = ["0x2", "0xfff"];
@@ -95,12 +98,12 @@ describe("ArchivalInterceptor", () => {
     expect(verdict.action).toBe("continue");
   });
 
-  it("error() waits for upload and patches file to denied", async () => {
+  it("error() waits for upload and deletes the file", async () => {
     vi.spyOn(storage, "uploadArchivalFile").mockResolvedValue(
       "2026-04-09/0xabc.enc"
     );
-    const patchSpy = vi
-      .spyOn(storage, "patchArchivalType")
+    const deleteSpy = vi
+      .spyOn(storage, "deleteArchivalFile")
       .mockResolvedValue(undefined);
     const interceptor = new ArchivalInterceptor({ bucket: "test-bucket" });
     const transaction = makeTransaction(privacyPoolCalldata);
@@ -108,11 +111,10 @@ describe("ArchivalInterceptor", () => {
     await interceptor.intercept(transaction);
     await interceptor.error(10000, transaction);
 
-    expect(patchSpy).toHaveBeenCalledOnce();
-    expect(patchSpy).toHaveBeenCalledWith(
+    expect(deleteSpy).toHaveBeenCalledOnce();
+    expect(deleteSpy).toHaveBeenCalledWith(
       { bucket: "test-bucket" },
-      "2026-04-09/0xabc.enc",
-      "denied"
+      "2026-04-09/0xabc.enc"
     );
   });
 
@@ -121,8 +123,8 @@ describe("ArchivalInterceptor", () => {
       new Error("GCS down")
     );
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const patchSpy = vi
-      .spyOn(storage, "patchArchivalType")
+    const deleteSpy = vi
+      .spyOn(storage, "deleteArchivalFile")
       .mockResolvedValue(undefined);
     const interceptor = new ArchivalInterceptor({ bucket: "test-bucket" });
     const transaction = makeTransaction(privacyPoolCalldata);
@@ -130,11 +132,11 @@ describe("ArchivalInterceptor", () => {
     await interceptor.intercept(transaction);
     await interceptor.error(10000, transaction);
 
-    // No patch attempt since upload failed (nothing to patch)
-    expect(patchSpy).not.toHaveBeenCalled();
+    // No delete since upload failed (nothing to delete)
+    expect(deleteSpy).not.toHaveBeenCalled();
   });
 
-  it("handles concurrent transactions — error() patches the correct file", async () => {
+  it("handles concurrent transactions — error() deletes the correct file", async () => {
     let uploadCallCount = 0;
     vi.spyOn(storage, "uploadArchivalFile").mockImplementation(
       async (_config, txHash) => {
@@ -142,8 +144,8 @@ describe("ArchivalInterceptor", () => {
         return `2026-04-09/${txHash}.enc`;
       }
     );
-    const patchSpy = vi
-      .spyOn(storage, "patchArchivalType")
+    const deleteSpy = vi
+      .spyOn(storage, "deleteArchivalFile")
       .mockResolvedValue(undefined);
     const interceptor = new ArchivalInterceptor({ bucket: "test-bucket" });
 
@@ -158,10 +160,10 @@ describe("ArchivalInterceptor", () => {
     // Only tx1 is denied
     await interceptor.error(10000, tx1);
 
-    expect(patchSpy).toHaveBeenCalledOnce();
-    // Verify it patched tx1's file, not tx2's
-    const [, patchedPath] = patchSpy.mock.calls[0];
-    expect(patchedPath).toContain(".enc");
+    expect(deleteSpy).toHaveBeenCalledOnce();
+    // Verify it deleted tx1's file, not tx2's
+    const [, deletedPath] = deleteSpy.mock.calls[0];
+    expect(deletedPath).toContain(".enc");
 
     // tx2 succeeds — clean up
     interceptor.complete(tx2);

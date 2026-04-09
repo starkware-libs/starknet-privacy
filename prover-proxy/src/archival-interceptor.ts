@@ -1,5 +1,5 @@
 // src/archival-interceptor.ts
-import { hash, num } from "starknet";
+import { createHash } from "node:crypto";
 import type { ProveTxnV3 } from "./types.js";
 import type { TransactionInterceptor, Verdict } from "./interceptor.js";
 import {
@@ -10,7 +10,7 @@ import {
 import {
   formatArchivalFile,
   uploadArchivalFile,
-  patchArchivalType,
+  deleteArchivalFile,
   type ArchivalStorageConfig,
 } from "./archival-storage.js";
 
@@ -21,12 +21,11 @@ function bytesToHex(bytes: Uint8Array): string {
 }
 
 function computeTxFingerprint(transaction: ProveTxnV3): string {
-  const parts = [
-    transaction.sender_address,
-    transaction.nonce,
-    ...(transaction.calldata?.slice(0, 8) ?? []),
-  ];
-  return num.toHex(hash.computePoseidonHashOnElements(parts.map(BigInt)));
+  return createHash("sha256")
+    .update(transaction.sender_address)
+    .update(transaction.nonce)
+    .update((transaction.calldata ?? []).join(","))
+    .digest("hex");
 }
 
 export class ArchivalInterceptor implements TransactionInterceptor {
@@ -84,19 +83,17 @@ export class ArchivalInterceptor implements TransactionInterceptor {
 
     const objectPath = await uploadPromise;
     this.pendingUploads.delete(txFingerprint);
-    if (!objectPath) return; // Upload failed — nothing to patch
+    if (!objectPath) return; // Upload failed — nothing to delete
 
-    await patchArchivalType(this.storageConfig, objectPath, "denied").catch(
-      (error) => {
-        console.error(
-          JSON.stringify({
-            error: "archival_denial_patch_failed",
-            code,
-            message: String(error),
-          })
-        );
-      }
-    );
+    await deleteArchivalFile(this.storageConfig, objectPath).catch((error) => {
+      console.error(
+        JSON.stringify({
+          error: "archival_delete_failed",
+          code,
+          message: String(error),
+        })
+      );
+    });
   }
 
   complete(transaction: ProveTxnV3): void {

@@ -23,9 +23,7 @@ export type VerifyResult =
   | { status: "decrypt_failed" }
   | { status: "invalid_json" };
 
-export function buildKeyMap(
-  viewingKeys: string[]
-): Map<string, Uint8Array> {
+export function buildKeyMap(viewingKeys: string[]): Map<string, Uint8Array> {
   const keyMap = new Map<string, Uint8Array>();
   for (const key of viewingKeys) {
     const pair = deriveKeyPair(key);
