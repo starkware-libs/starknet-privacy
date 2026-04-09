@@ -59,6 +59,9 @@ Precedence: env var > config file > code default.
 | `SERVER_BUDGET` | `limits.server_budget` | `10000` |
 | `TLS_CERT_PATH` | `api.tls.cert_path` | — (TLS disabled) |
 | `TLS_KEY_PATH` | `api.tls.key_path` | — (TLS disabled) |
+| `OHTTP_ENABLED` | `ohttp.enabled` | `false` |
+| `OHTTP_KEY` | — | — (required when OHTTP enabled) |
+| — | `ohttp.key_cache_max_age_secs` | `3600` |
 
 Other settings (RPC pool, indexer timeouts, cursor limits) can only be configured via the TOML file.
 

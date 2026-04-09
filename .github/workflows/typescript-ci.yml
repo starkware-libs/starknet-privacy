@@ -60,8 +60,9 @@ jobs:
       - name: Install starknet-foundry via asdf
         uses: asdf-vm/actions/install@v3
         with:
+          asdf_branch: v0.14.1
           tool_versions: |
-            starknet-foundry nightly-2026-02-03
+            starknet-foundry nightly-2026-02-20
 
       - name: Regenerate Cairo contract artifacts
         run: npm run generate
