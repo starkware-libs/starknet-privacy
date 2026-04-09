@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { RpcProvider } from "starknet";
 import {
   SetupRequirement,
@@ -13,7 +13,6 @@ import {
 import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
 import type { AppConfig, AccountConfig } from "../config.ts";
 import { getErc20Balance } from "../starknet.ts";
-import type { TokenMetadataMap } from "./useTokenMetadata.ts";
 
 export type NoteDisplay = {
   id: string;
@@ -59,6 +58,7 @@ export type TokenBalance = {
   name: string;
   address: string;
   decimals: number;
+  fee: boolean;
   transparent: bigint;
   private: bigint;
   noteCount: number;
@@ -67,8 +67,6 @@ export type TokenBalance = {
 export type PrivateState = {
   isRegistered: boolean | null;
   tokenBalances: TokenBalance[];
-  feeTokenBalance: bigint;
-  feeTokenAddress: string;
   notes: NoteDisplay[];
   incomingCards: IncomingChannelCard[];
   outgoingCards: OutgoingChannelCard[];
@@ -77,8 +75,6 @@ export type PrivateState = {
 const EMPTY_STATE: PrivateState = {
   isRegistered: null,
   tokenBalances: [],
-  feeTokenBalance: 0n,
-  feeTokenAddress: "",
   notes: [],
   incomingCards: [],
   outgoingCards: [],
@@ -108,15 +104,10 @@ export function usePrivateState(
   poolAddress: string,
   config: AppConfig,
   registry: PrivateRegistry,
-  tokenMetadata: TokenMetadataMap,
 ) {
   const [state, setState] = useState<PrivateState>(EMPTY_STATE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  // Use ref so refresh callback doesn't re-trigger when metadata loads
-  const tokenMetadataRef = useRef(tokenMetadata);
-  tokenMetadataRef.current = tokenMetadata;
 
   useEffect(() => {
     setState(EMPTY_STATE);
@@ -129,14 +120,14 @@ export function usePrivateState(
 
     try {
       const indexer = new IndexerDiscoveryProvider(config.indexerUrl, poolAddress);
-      const [tokenBalance, feeTokenBalance, notesResult, channelsResult, requirement] =
+      const tokenBigInts = config.tokens.map((t) => BigInt(t.address));
+
+      const [notesResult, channelsResult, requirement, ...transparentBalances] =
         await Promise.all([
-          getErc20Balance(provider, config.tokenAddress, account.address, "pre_confirmed"),
-          getErc20Balance(provider, config.feeTokenAddress, account.address, "pre_confirmed"),
           indexer.discoverNotes(
             BigInt(account.address),
             BigInt(account.viewingKey),
-            { cursor: registry.cursor, tokens: [BigInt(config.tokenAddress)] },
+            { cursor: registry.cursor, tokens: tokenBigInts },
           ),
           indexer.discoverChannels(
             BigInt(account.address),
@@ -148,36 +139,34 @@ export function usePrivateState(
             BigInt(account.address),
             BigInt(account.viewingKey),
             BigInt(account.address),
-            BigInt(config.tokenAddress),
+            BigInt(config.tokens[0].address),
+          ),
+          ...config.tokens.map((t) =>
+            getErc20Balance(provider, t.address, account.address, "pre_confirmed"),
           ),
         ]);
       const isRegistered = requirement !== SetupRequirement.Register;
 
       registry.cursor = notesResult.cursor;
       if (channelsResult.channels) registry.channels = channelsResult.channels;
-
-      const meta = tokenMetadataRef.current.get(config.tokenAddress);
-      const tokenName = meta?.symbol ?? "Token";
-      const tokenDecimals = meta?.decimals ?? 0;
-
-      const tokenNotes = notesResult.notes.get(BigInt(config.tokenAddress)) ?? [];
       registry.notes = notesResult.notes;
-      const privateBalance = tokenNotes.reduce(
-        (sum: bigint, note: Note) => sum + note.amount,
-        0n,
-      );
 
-      // Note amounts in the privacy pool are already in human-readable units
-      // (e.g. 50 for 50 STRK), NOT raw ERC20 units (50 * 10^18).
-      // Only transparent ERC20 balances need decimal scaling.
-      const tokenBalances: TokenBalance[] = [{
-        name: tokenName,
-        address: config.tokenAddress,
-        decimals: tokenDecimals,
-        transparent: tokenBalance,
-        private: privateBalance,
-        noteCount: tokenNotes.length,
-      }];
+      const tokenBalances: TokenBalance[] = config.tokens.map((tokenConfig, index) => {
+        const tokenNotes = notesResult.notes.get(BigInt(tokenConfig.address)) ?? [];
+        const privateBalance = tokenNotes.reduce(
+          (sum: bigint, note: Note) => sum + note.amount,
+          0n,
+        );
+        return {
+          name: tokenConfig.name,
+          address: tokenConfig.address,
+          decimals: tokenConfig.decimals,
+          fee: tokenConfig.fee ?? false,
+          transparent: transparentBalances[index],
+          private: privateBalance,
+          noteCount: tokenNotes.length,
+        };
+      });
 
       const nameByAddress = new Map<bigint, string>();
       for (const acc of allAccounts) {
@@ -185,26 +174,30 @@ export function usePrivateState(
         nameByAddress.set(accAddress, accAddress === BigInt(account.address) ? "Self" : acc.name);
       }
 
-      const tokenAddressBigInt = BigInt(config.tokenAddress);
-      const notes: NoteDisplay[] = tokenNotes.map((note: Note) => {
-        const witness = readWitness(note.witness);
-        const senderBigInt = toBigInt(note.sender);
-        const noteIdBigInt = toBigInt(note.id);
-        return {
-          id: formatBigInt(noteIdBigInt),
-          rawId: noteIdBigInt,
-          amount: note.amount,
-          decimals: tokenDecimals,
-          token: truncateAddress(tokenAddressBigInt.toString(16)),
-          tokenName,
-          sender: truncateAddress(senderBigInt.toString(16)),
-          senderName: nameByAddress.get(senderBigInt) ?? null,
-          channelKey: formatBigInt(witness.channelKey),
-          rawChannelKey: `0x${witness.channelKey.toString(16)}`,
-          nonce: witness.nonce,
-          open: note.open ?? false,
-        };
-      });
+      const notes: NoteDisplay[] = [];
+      for (const tokenConfig of config.tokens) {
+        const tokenAddressBigInt = BigInt(tokenConfig.address);
+        const tokenNotes = notesResult.notes.get(tokenAddressBigInt) ?? [];
+        for (const note of tokenNotes) {
+          const witness = readWitness(note.witness);
+          const senderBigInt = toBigInt(note.sender);
+          const noteIdBigInt = toBigInt(note.id);
+          notes.push({
+            id: formatBigInt(noteIdBigInt),
+            rawId: noteIdBigInt,
+            amount: note.amount,
+            decimals: tokenConfig.decimals,
+            token: truncateAddress(tokenAddressBigInt.toString(16)),
+            tokenName: tokenConfig.name,
+            sender: truncateAddress(senderBigInt.toString(16)),
+            senderName: nameByAddress.get(senderBigInt) ?? null,
+            channelKey: formatBigInt(witness.channelKey),
+            rawChannelKey: `0x${witness.channelKey.toString(16)}`,
+            nonce: witness.nonce,
+            open: note.open ?? false,
+          });
+        }
+      }
 
       // Build incoming cards: group notes by sender, then by token
       const bySender = new Map<string, NoteDisplay[]>();
@@ -262,17 +255,17 @@ export function usePrivateState(
       });
 
       // Build outgoing cards
+      const tokenNameByBigInt = new Map(
+        config.tokens.map((t) => [BigInt(t.address), t.name]),
+      );
       const outgoingCards: OutgoingChannelCard[] = [];
       for (const [recipient, channel] of channelsResult.channels) {
         const internal = readChannel(channel);
         const tokens: OutgoingChannelCard["tokens"] = [];
         for (const [tokenAddr, tokenChannel] of internal.tokens) {
-          const tokenMeta = tokenMetadataRef.current.get(
-            `0x${tokenAddr.toString(16)}`,
-          );
           tokens.push({
             tokenAddress: truncateAddress(tokenAddr.toString(16)),
-            tokenName: tokenMeta?.symbol ?? truncateAddress(tokenAddr.toString(16)),
+            tokenName: tokenNameByBigInt.get(tokenAddr) ?? truncateAddress(tokenAddr.toString(16)),
             noteNonce: tokenChannel.noteNonce,
           });
         }
@@ -296,8 +289,6 @@ export function usePrivateState(
       setState({
         isRegistered,
         tokenBalances,
-        feeTokenBalance,
-        feeTokenAddress: config.feeTokenAddress,
         notes,
         incomingCards,
         outgoingCards,
@@ -312,25 +303,32 @@ export function usePrivateState(
 
   const refreshBalances = useCallback(async () => {
     if (!provider || !account) return;
-    const meta = tokenMetadataRef.current.get(config.tokenAddress);
-    const tokenDecimals = meta?.decimals ?? 0;
-    const tokenName = meta?.symbol ?? "Token";
-    const [tokenBalance, feeTokenBalance] = await Promise.all([
-      getErc20Balance(provider, config.tokenAddress, account.address, "pre_confirmed"),
-      getErc20Balance(provider, config.feeTokenAddress, account.address, "pre_confirmed"),
-    ]);
+    const transparentBalances = await Promise.all(
+      config.tokens.map((t) =>
+        getErc20Balance(provider, t.address, account.address, "pre_confirmed"),
+      ),
+    );
+    const balanceByAddress = new Map(
+      config.tokens.map((t, index) => [t.address, transparentBalances[index]]),
+    );
     setState((previous) => ({
       ...previous,
-      feeTokenBalance,
       tokenBalances: previous.tokenBalances.length > 0
-        ? previous.tokenBalances.map((tb) =>
-            tb.address === config.tokenAddress
-              ? { ...tb, transparent: tokenBalance }
-              : tb,
-          )
-        : [{ name: tokenName, address: config.tokenAddress, decimals: tokenDecimals, transparent: tokenBalance, private: 0n, noteCount: 0 }],
+        ? previous.tokenBalances.map((tb) => ({
+            ...tb,
+            transparent: balanceByAddress.get(tb.address) ?? tb.transparent,
+          }))
+        : config.tokens.map((t, index) => ({
+            name: t.name,
+            address: t.address,
+            decimals: t.decimals,
+            fee: t.fee ?? false,
+            transparent: transparentBalances[index],
+            private: 0n,
+            noteCount: 0,
+          })),
     }));
-  }, [provider, account, config.tokenAddress, config.feeTokenAddress]);
+  }, [provider, account, config.tokens]);
 
   return { state, loading, error, refresh, refreshBalances };
 }

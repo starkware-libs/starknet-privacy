@@ -2,6 +2,24 @@ import { useState } from "react";
 import type { TransactionStatus } from "../hooks/useTransactions.ts";
 import { TimelinePopup } from "./TimelinePopup.tsx";
 
+function CopyButton({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="inline-copy-button"
+      title={copied ? "Copied!" : "Copy full error"}
+      onClick={() => {
+        void navigator.clipboard.writeText(value);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? "\u2713" : "\u29C9"}
+    </button>
+  );
+}
+
 function formatProofSize(bytes: number): string {
   if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(2)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -29,9 +47,12 @@ export function StatusBar({ status }: Props) {
         </span>
       )}
       {status.lastError && (
-        <span className="error">Error: {status.lastError}</span>
+        <span className="error">
+          Error <CopyButton value={status.lastError} />
+          <code className="status-error-detail">{status.lastError}</code>
+        </span>
       )}
-      {status.timeline && (
+      {status.timeline && !status.lastError && (
         <button
           className="pool-action-button timeline-button"
           onClick={() => setShowTimeline(true)}

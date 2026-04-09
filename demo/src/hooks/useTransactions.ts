@@ -1,8 +1,9 @@
 import { useState, useCallback, useMemo, useRef } from "react";
 import { Account, TransactionFinalityStatus, type RpcProvider } from "starknet";
-import type { PrivateTransfersInterface } from "starknet-sdk";
+import { Open, type PrivateTransfersInterface } from "starknet-sdk";
 import type { AccountConfig, AppConfig } from "../config.ts";
 import { Timeline } from "../timeline.ts";
+import { toRawAmount } from "../format.ts";
 
 const WAIT_OPTIONS = {
   successStates: [TransactionFinalityStatus.PRE_CONFIRMED],
@@ -16,6 +17,7 @@ function base64ByteLength(base64: string): number {
 
 export type TransactionStatus = {
   pending: boolean;
+  action: string | null;
   lastTxHash: string | null;
   lastError: string | null;
   proofSizeBytes: number | null;
@@ -34,6 +36,7 @@ export function useTransactions(
 ) {
   const [status, setStatus] = useState<TransactionStatus>({
     pending: false,
+    action: null,
     lastTxHash: null,
     lastError: null,
     proofSizeBytes: null,
@@ -71,14 +74,25 @@ export function useTransactions(
     });
   }, [provider, activeAddress, accounts]);
 
+  const decimalsByToken = useMemo(
+    () => new Map(config.tokens.map((t) => [t.address, t.decimals])),
+    [config.tokens],
+  );
+
+  function scaleAmount(token: string, humanAmount: string): bigint {
+    const decimals = decimalsByToken.get(token) ?? 0;
+    return toRawAmount(humanAmount, decimals);
+  }
+
   const execute = useCallback(
     async (action: string, fn: (tl: Timeline) => Promise<{ txHash: string; proofSizeBytes?: number }>) => {
       const timeline = new Timeline();
-      setStatus({ pending: true, lastTxHash: null, lastError: null, proofSizeBytes: null, timeline: null });
+      setStatus({ pending: true, action, lastTxHash: null, lastError: null, proofSizeBytes: null, timeline: null });
       try {
         const result = await timeline.step(action, () => fn(timeline));
         setStatus({
           pending: false,
+          action,
           lastTxHash: result.txHash,
           lastError: null,
           proofSizeBytes: result.proofSizeBytes ?? null,
@@ -87,7 +101,7 @@ export function useTransactions(
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`[${action}] failed:`, err);
-        setStatus({ pending: false, lastTxHash: null, lastError: `${action}: ${message}`, proofSizeBytes: null, timeline });
+        setStatus({ pending: false, action, lastTxHash: null, lastError: `${action}: ${message}`, proofSizeBytes: null, timeline });
       } finally {
         onSettledRef.current();
       }
@@ -136,15 +150,17 @@ export function useTransactions(
   );
 
   const mint = useCallback(
-    (amount: bigint) =>
+    (token: string, amount: string) =>
       execute("Mint", async (tl) => {
         if (!adminAccount || !activeAddress || !provider)
           throw new Error("Not ready");
+        const rawAmount = scaleAmount(token, amount);
 
+        const tokenConfig = config.tokens.find((t) => t.address === token);
         const mintCall = {
-          contractAddress: config.tokenAddress,
-          entrypoint: "permissionedMint",
-          calldata: [activeAddress, amount.toString(), "0"],
+          contractAddress: token,
+          entrypoint: tokenConfig?.mintEntrypoint ?? "permissionedMint",
+          calldata: [activeAddress, rawAmount.toString(), "0"],
         };
 
         const tx = await tl.step("Estimate + submit", () =>
@@ -158,20 +174,21 @@ export function useTransactions(
         if (onBalancesChangedRef.current) await onBalancesChangedRef.current();
         return { txHash: tx.transaction_hash };
       }),
-    [adminAccount, activeAddress, provider, config.tokenAddress, execute],
+    [adminAccount, activeAddress, provider, execute],
   );
 
   const deposit = useCallback(
-    (amount: bigint) =>
+    (token: string, amount: string) =>
       execute("Deposit", async (tl) => {
         if (!userAccount || !transfers || !provider || !activeAddress)
           throw new Error("Not ready");
+        const rawAmount = scaleAmount(token, amount);
 
         await tl.step("Approve", async () => {
           const approveCall = {
-            contractAddress: config.tokenAddress,
+            contractAddress: token,
             entrypoint: "approve",
-            calldata: [poolAddress, amount.toString(), "0"],
+            calldata: [poolAddress, rawAmount.toString(), "0"],
           };
           const approveTx = await tl.step("Estimate + submit", () =>
             userAccount.execute(approveCall, { tip: 0n }),
@@ -192,8 +209,8 @@ export function useTransactions(
               autoSetup: true,
               autoDiscover: { notes: "refresh", channels: "refresh" },
             })
-            .with(config.tokenAddress, (t) =>
-              t.deposit({ amount, recipient: activeAddress }),
+            .with(token, (t) =>
+              t.deposit({ amount: rawAmount, recipient: activeAddress }),
             )
             .execute({ provingBlockId }),
         );
@@ -225,10 +242,11 @@ export function useTransactions(
   );
 
   const withdraw = useCallback(
-    (amount: bigint) =>
+    (token: string, amount: string) =>
       execute("Withdraw", async (tl) => {
         if (!userAccount || !transfers || !provider || !activeAddress)
           throw new Error("Not ready");
+        const rawAmount = scaleAmount(token, amount);
 
         const provingBlockId = await tl.step("Get block number",
           () => provider.getBlockNumber(),
@@ -241,8 +259,8 @@ export function useTransactions(
               autoSelectNotes: "naive",
             })
             .surplusTo(activeAddress)
-            .with(config.tokenAddress, (t) =>
-              t.withdraw({ amount, recipient: activeAddress }),
+            .with(token, (t) =>
+              t.withdraw({ amount: rawAmount, recipient: activeAddress }),
             )
             .execute({ provingBlockId }),
         );
@@ -270,14 +288,15 @@ export function useTransactions(
           : undefined;
         return { txHash: executeTx.transaction_hash, proofSizeBytes };
       }),
-    [userAccount, transfers, provider, activeAddress, config, execute],
+    [userAccount, transfers, provider, activeAddress, execute],
   );
 
   const transfer = useCallback(
-    (recipient: string, amount: bigint) =>
+    (token: string, recipient: string, amount: string) =>
       execute("Transfer", async (tl) => {
         if (!userAccount || !transfers || !provider || !activeAddress)
           throw new Error("Not ready");
+        const rawAmount = scaleAmount(token, amount);
 
         const provingBlockId = await tl.step("Get block number",
           () => provider.getBlockNumber(),
@@ -291,8 +310,8 @@ export function useTransactions(
               autoSelectNotes: "naive",
             })
             .surplusTo(activeAddress)
-            .with(config.tokenAddress, (t) =>
-              t.transfer({ recipient, amount }),
+            .with(token, (t) =>
+              t.transfer({ recipient, amount: rawAmount }),
             )
             .execute({ provingBlockId }),
         );
@@ -320,8 +339,91 @@ export function useTransactions(
           : undefined;
         return { txHash: executeTx.transaction_hash, proofSizeBytes };
       }),
-    [userAccount, transfers, provider, activeAddress, config, execute],
+    [userAccount, transfers, provider, activeAddress, execute],
   );
 
-  return { status, register, mint, deposit, withdraw, transfer };
+  const swap = useCallback(
+    (fromToken: string, toToken: string, amount: string) =>
+      execute("Swap", async (tl) => {
+        if (!userAccount || !transfers || !provider || !activeAddress)
+          throw new Error("Not ready");
+        if (!config.ekubo) throw new Error("Ekubo config not set");
+        const rawAmount = scaleAmount(fromToken, amount);
+
+        const {
+          executorAddress, routerAddress,
+          poolToken0, poolToken1, poolFee, tickSpacing, extension, skipAhead,
+        } = config.ekubo;
+
+        const provingBlockId = await tl.step("Get block number",
+          () => provider.getBlockNumber(),
+        ) - 10;
+
+        const { callAndProof } = await tl.step("SDK build + prove", () =>
+          transfers
+            .build({
+              autoSetup: true,
+              autoSelectNotes: "all",
+              autoDiscover: { notes: "refresh", channels: "refresh" },
+            })
+            .with(fromToken)
+            .withdraw({ recipient: executorAddress, amount: rawAmount })
+            .surplusTo(activeAddress, false)
+            .with(toToken)
+            .transfer({ recipient: activeAddress, amount: Open })
+            .done()
+            .invoke((args) => {
+              const openNote = args.openNotes[0];
+              if (!openNote) {
+                throw new Error("Expected one open note for swap invocation");
+              }
+              return {
+                contractAddress: executorAddress,
+                calldata: [
+                  routerAddress,
+                  fromToken,
+                  rawAmount,  // i129 mag
+                  0n,         // i129 sign (positive = sell)
+                  poolToken0,
+                  poolToken1,
+                  poolFee,
+                  tickSpacing,
+                  extension,
+                  0n,         // minimum_received (low)
+                  0n,         // minimum_received (high)
+                  skipAhead,
+                  openNote.noteId,
+                ],
+              };
+            })
+            .execute({ provingBlockId }),
+        );
+
+        const swapProofDetails = callAndProof.proof.proofFacts?.length
+          ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
+          : {};
+
+        const executeTx = await tl.step("Estimate + submit", () =>
+          userAccount.execute(callAndProof.call, {
+            tip: 0n,
+            ...swapProofDetails,
+          }),
+        );
+
+        await tl.step("Wait for receipt", () =>
+          provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
+        ).then((receipt) => {
+          if (!receipt.isSuccess())
+            throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
+        });
+
+        const proofSizeBytes = callAndProof.proof.data
+          ? base64ByteLength(callAndProof.proof.data)
+          : undefined;
+        return { txHash: executeTx.transaction_hash, proofSizeBytes };
+      }),
+    [userAccount, transfers, provider, activeAddress, config.ekubo, execute],
+  );
+
+  return { status, register, mint, deposit, withdraw, transfer, swap };
 }

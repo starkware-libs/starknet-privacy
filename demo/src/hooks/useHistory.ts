@@ -11,12 +11,12 @@ import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-dis
 import type { RpcProvider } from "starknet";
 import type { AppConfig, AccountConfig } from "../config.ts";
 import { formatTokenAmount, truncateAddress } from "../format.ts";
-import type { TokenMetadataMap } from "./useTokenMetadata.ts";
 
 export type ActionDisplay = {
   type: HistoryAction["type"];
   label: string;
   chipClass: string;
+  chipLabel?: string;
   noteCount?: number;
 };
 
@@ -40,7 +40,8 @@ function formatActionLabel(
   nameByAddress: Map<bigint, string>,
   tokenNameByAddress: Map<bigint, string>,
   tokenDecimalsByAddress: Map<bigint, number>,
-): { label: string; chipClass: string } {
+  executorNames: Map<bigint, string>,
+): { label: string; chipClass: string; chipLabel?: string } {
   const tokenName = (token: bigint) =>
     tokenNameByAddress.get(token) ?? truncateAddress(token.toString(16));
   const resolveName = (address: bigint) =>
@@ -80,7 +81,8 @@ function formatActionLabel(
       };
     }
     case "swap": {
-      const executor = truncateAddress(action.executor.toString(16));
+      const executorLabel = executorNames.get(action.executor)
+        ?? truncateAddress(action.executor.toString(16));
       const sentParts = action.sent.map(
         (leg) => `${fmtAmount(leg.amount, leg.token)} ${tokenName(leg.token)}`,
       );
@@ -88,8 +90,9 @@ function formatActionLabel(
         (leg) => `${fmtAmount(leg.amount, leg.token)} ${tokenName(leg.token)}`,
       );
       return {
-        label: `Swapped ${sentParts.join(", ")} for ${receivedParts.join(", ")} via ${executor}`,
-        chipClass: "chip",
+        label: `Swapped ${sentParts.join(", ")} for ${receivedParts.join(", ")} via ${executorLabel}`,
+        chipClass: "chip-swap",
+        chipLabel: executorNames.has(action.executor) ? executorLabel : undefined,
       };
     }
     case "transferSelf":
@@ -165,11 +168,11 @@ function buildDisplayMaps(
   account: AccountConfig,
   allAccounts: AccountConfig[],
   config: AppConfig,
-  tokenMetadata: TokenMetadataMap,
 ): {
   nameByAddress: Map<bigint, string>;
   tokenNameByAddress: Map<bigint, string>;
   tokenDecimalsByAddress: Map<bigint, number>;
+  executorNames: Map<bigint, string>;
 } {
   const nameByAddress = new Map<bigint, string>();
   for (const acc of allAccounts) {
@@ -179,14 +182,18 @@ function buildDisplayMaps(
       accAddress === BigInt(account.address) ? "self" : acc.name.toLowerCase(),
     );
   }
-  const tokenMeta = tokenMetadata.get(config.tokenAddress);
   const tokenNameByAddress = new Map<bigint, string>();
-  tokenNameByAddress.set(BigInt(config.tokenAddress), tokenMeta?.symbol ?? "Token");
-  tokenNameByAddress.set(BigInt(config.feeTokenAddress), "STRK");
   const tokenDecimalsByAddress = new Map<bigint, number>();
-  tokenDecimalsByAddress.set(BigInt(config.tokenAddress), tokenMeta?.decimals ?? 0);
-  tokenDecimalsByAddress.set(BigInt(config.feeTokenAddress), 18);
-  return { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress };
+  for (const token of config.tokens) {
+    const addr = BigInt(token.address);
+    tokenNameByAddress.set(addr, token.name);
+    tokenDecimalsByAddress.set(addr, token.decimals);
+  }
+  const executorNames = new Map<bigint, string>();
+  if (config.ekubo) {
+    executorNames.set(BigInt(config.ekubo.executorAddress), "ekubo swap");
+  }
+  return { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames };
 }
 
 const ACTION_ORDER: Record<string, number> = {
@@ -204,19 +211,21 @@ function toDisplayTransactions(
   nameByAddress: Map<bigint, string>,
   tokenNameByAddress: Map<bigint, string>,
   tokenDecimalsByAddress: Map<bigint, number>,
+  executorNames: Map<bigint, string>,
 ): TransactionDisplay[] {
   return rawTransactions.map((transaction) => {
     const classified = classifyTransaction(transaction);
     const actions: ActionDisplay[] = classified.actions
       .map((action) => {
-        const { label, chipClass } = formatActionLabel(
+        const { label, chipClass, chipLabel } = formatActionLabel(
           action,
           nameByAddress,
           tokenNameByAddress,
           tokenDecimalsByAddress,
+          executorNames,
         );
         const noteCount = "noteCount" in action ? action.noteCount : undefined;
-        return { type: action.type, label, chipClass, noteCount };
+        return { type: action.type, label, chipClass, chipLabel, noteCount };
       })
       .sort(
         (a, b) => (ACTION_ORDER[a.type] ?? 99) - (ACTION_ORDER[b.type] ?? 99),
@@ -263,15 +272,11 @@ export function useHistory(
   account: AccountConfig | undefined,
   allAccounts: AccountConfig[],
   registry: PrivateRegistry,
-  tokenMetadata: TokenMetadataMap,
 ) {
   const [transactions, setTransactions] = useState<TransactionDisplay[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [historyComplete, setHistoryComplete] = useState(false);
-
-  const tokenMetadataRef = useRef(tokenMetadata);
-  tokenMetadataRef.current = tokenMetadata;
 
   const historyCursorRef = useRef<HistoryCursor | undefined>(undefined);
   const blockRefValue = useRef<string | undefined>(undefined);
@@ -321,11 +326,10 @@ export function useHistory(
       blockRefValue.current = page.blockRef;
       setHistoryComplete(page.cursor.historyComplete);
 
-      const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress } = buildDisplayMaps(
+      const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames } = buildDisplayMaps(
         account,
         allAccounts,
         config,
-        tokenMetadataRef.current,
       );
       let newTransactions = toDisplayTransactions(
         page.transactions,
@@ -333,6 +337,7 @@ export function useHistory(
         nameByAddress,
         tokenNameByAddress,
         tokenDecimalsByAddress,
+        executorNames,
       );
       if (provider) {
         newTransactions = await resolveTimestamps(provider, newTransactions);
@@ -372,11 +377,10 @@ export function useHistory(
 
       if (page.transactions.length === 0) return;
 
-      const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress } = buildDisplayMaps(
+      const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames } = buildDisplayMaps(
         account,
         allAccounts,
         config,
-        tokenMetadataRef.current,
       );
       let freshTransactions = toDisplayTransactions(
         page.transactions,
@@ -384,6 +388,7 @@ export function useHistory(
         nameByAddress,
         tokenNameByAddress,
         tokenDecimalsByAddress,
+        executorNames,
       );
       if (provider) {
         freshTransactions = await resolveTimestamps(provider, freshTransactions);
