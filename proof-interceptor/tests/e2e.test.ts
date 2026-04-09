@@ -233,6 +233,6 @@ describe("e2e: proof-interceptor → elliptic-proxy → mock Elliptic API", () =
       method: "starknet_specVersion",
     });
     const body = await response.json();
-    expect(body.result).toBe("0.10.1");
+    expect(body.result).toBe("0.8.0");
   });
 });

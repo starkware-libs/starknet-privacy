@@ -59,24 +59,14 @@ describe("validateRpcRequest", () => {
   });
 
   describe("starknet_specVersion", () => {
-    it("returns ForwardAsIs for starknet_specVersion", () => {
+    it("forwards starknet_specVersion", () => {
       const result = validateRpcRequest(rpcBody("starknet_specVersion"));
       expect(result.action).toBe(RpcAction.ForwardAsIs);
-    });
-
-    it("preserves request id for starknet_specVersion", () => {
-      const result = validateRpcRequest(
-        rpcBody("starknet_specVersion", undefined, { id: "my-id" })
-      );
-      expect(result.action).toBe(RpcAction.ForwardAsIs);
-      if (result.action === RpcAction.ForwardAsIs) {
-        expect(result.requestId).toBe("my-id");
-      }
     });
   });
 
   describe("starknet_checkTransaction", () => {
-    it("returns CheckWithInterceptors for valid INVOKE V3 transaction", () => {
+    it("validates valid INVOKE V3 transaction with request id", () => {
       const result = validateRpcRequest(
         rpcBody("starknet_checkTransaction", ["latest", sampleInvokeV3()])
       );
@@ -86,7 +76,7 @@ describe("validateRpcRequest", () => {
       }
     });
 
-    it("accepts block hash", () => {
+    it("validates with block hash", () => {
       const result = validateRpcRequest(
         rpcBody("starknet_checkTransaction", [
           { block_hash: "0xabc" },
@@ -96,7 +86,7 @@ describe("validateRpcRequest", () => {
       expect(result.action).toBe(RpcAction.CheckWithInterceptors);
     });
 
-    it("accepts block number", () => {
+    it("validates with block number", () => {
       const result = validateRpcRequest(
         rpcBody("starknet_checkTransaction", [
           { block_number: 42 },
@@ -191,7 +181,7 @@ describe("validateRpcRequest", () => {
   });
 
   describe("unknown methods", () => {
-    it("rejects unknown method with METHOD_NOT_FOUND (-32601)", () => {
+    it("rejects unknown method", () => {
       const result = validateRpcRequest(rpcBody("starknet_unknownMethod"));
       expect(result.action).toBe(RpcAction.Error);
       if (result.action === RpcAction.Error) {
@@ -203,9 +193,11 @@ describe("validateRpcRequest", () => {
   describe("request id preservation", () => {
     it("preserves string id in error response", () => {
       const result = validateRpcRequest(
-        rpcBody("starknet_checkTransaction", ["pending", sampleInvokeV3()], {
-          id: "my-request-id",
-        })
+        rpcBody(
+          "starknet_checkTransaction",
+          ["pending", sampleInvokeV3()],
+          { id: "my-request-id" }
+        )
       );
       expect(result.action).toBe(RpcAction.Error);
       if (result.action === RpcAction.Error) {
