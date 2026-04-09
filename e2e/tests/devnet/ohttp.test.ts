@@ -11,7 +11,7 @@ import {
 } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 
-// Deterministic 32-byte X25519 private key for testing (hex-encoded).
+// Deterministic 32-byte P-256 IKM seed for testing (hex-encoded).
 const OHTTP_TEST_KEY =
   "0101010101010101010101010101010101010101010101010101010101010101";
 

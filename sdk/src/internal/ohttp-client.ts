@@ -6,7 +6,7 @@
  */
 
 import { OHTTPClient, KeyConfig } from "ohttp-ts";
-import { CipherSuite, KEM_DHKEM_X25519_HKDF_SHA256, KDF_HKDF_SHA256, AEAD_AES_128_GCM } from "hpke";
+import { CipherSuite, KEM_DHKEM_P256_HKDF_SHA256, KDF_HKDF_SHA256, AEAD_AES_128_GCM } from "hpke";
 import { ReorgError } from "./errors.js";
 
 /** HTTP 409 — the discovery service returns this exclusively for block reorgs (BLOCK_REORGED). */
@@ -142,7 +142,7 @@ export class OhttpClient {
       throw new Error("OHTTP key config response contained no key configurations");
     }
     const publicKeyConfig = publicKeyConfigs[0];
-    const suite = new CipherSuite(KEM_DHKEM_X25519_HKDF_SHA256, KDF_HKDF_SHA256, AEAD_AES_128_GCM);
+    const suite = new CipherSuite(KEM_DHKEM_P256_HKDF_SHA256, KDF_HKDF_SHA256, AEAD_AES_128_GCM);
     this.ohttpClient = new OHTTPClient(suite, publicKeyConfig);
   }
 
