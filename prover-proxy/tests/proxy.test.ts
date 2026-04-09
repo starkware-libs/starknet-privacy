@@ -211,6 +211,17 @@ describe("proxy", () => {
     expect(await response.json()).toEqual({ status: "ok" });
   });
 
+  it("serves Prometheus metrics at /metrics", async () => {
+    await startProxy("http://127.0.0.1:1");
+
+    const response = await fetch(proxyUrl("/metrics"));
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain("prover_proxy_rpc_requests_total");
+    expect(body).toContain("prover_proxy_request_duration_seconds");
+    expect(body).toContain("prover_proxy_in_flight_requests");
+  });
+
   it("returns 413 when body exceeds maxBodyBytes", async () => {
     await startProxy("http://127.0.0.1:1", { maxBodyBytes: 10 });
 
@@ -247,6 +258,7 @@ describe("proxy with interceptors", () => {
     });
 
     const allowAll: TransactionInterceptor = {
+      name: "test",
       intercept: async () => ({ action: "continue" }),
     };
     await startProxy(`http://127.0.0.1:${upstreamPort}`, {
@@ -267,6 +279,7 @@ describe("proxy with interceptors", () => {
     });
 
     const blocker: TransactionInterceptor = {
+      name: "test",
       intercept: async () => ({ action: "stop", reason: "sanctioned" }),
     };
     await startProxy(`http://127.0.0.1:${upstreamPort}`, {
@@ -289,6 +302,7 @@ describe("proxy with interceptors", () => {
     });
 
     const spy: TransactionInterceptor = {
+      name: "test",
       intercept: async () => {
         interceptorCalled = true;
         return { action: "stop", reason: "should not be called" };
@@ -311,6 +325,7 @@ describe("proxy with interceptors", () => {
   it("returns 502 when upstream fails while interceptors pass", async () => {
     // Upstream is unreachable (port 1) — interceptor passes
     const allowAll: TransactionInterceptor = {
+      name: "test",
       intercept: async () => ({ action: "continue" }),
     };
     await startProxy("http://127.0.0.1:1", { interceptors: [allowAll] });
@@ -329,6 +344,7 @@ describe("proxy with interceptors", () => {
     });
 
     const thrower: TransactionInterceptor = {
+      name: "test",
       intercept: async () => {
         throw new Error("network timeout");
       },

@@ -8,6 +8,15 @@ import {
 import { runInterceptors, type TransactionInterceptor } from "./interceptor.js";
 import { jsonRpcError } from "./types.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./config.js";
+import {
+  registry,
+  rpcRequestsTotal,
+  requestDuration,
+  upstreamResponses,
+  upstreamDuration,
+  errorsTotal,
+  inFlightRequests,
+} from "./metrics.js";
 
 const TRANSACTION_REJECTED = 10000;
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 30_000;
@@ -53,8 +62,19 @@ export function createProxyHandler(
       return;
     }
 
+    if (req.url === "/metrics" && req.method === "GET") {
+      const metricsBody = await registry.metrics();
+      res.writeHead(200, { "content-type": registry.contentType });
+      res.end(metricsBody);
+      return;
+    }
+
+    inFlightRequests.inc();
     const startTime = Date.now();
-    function logRequest(fields: object) {
+    function finishRequest(rpcAction: string, fields: object) {
+      const durationSeconds = (Date.now() - startTime) / 1000;
+      inFlightRequests.dec();
+      requestDuration.observe({ action: rpcAction }, durationSeconds);
       console.log(
         JSON.stringify({
           method: req.method,
@@ -67,7 +87,8 @@ export function createProxyHandler(
 
     const declaredLength = parseInt(req.headers["content-length"] ?? "", 10);
     if (!Number.isNaN(declaredLength) && declaredLength > maxBodyBytes) {
-      logRequest({ error: "payload_too_large" });
+      errorsTotal.inc({ type: "payload_too_large" });
+      finishRequest("error", { error: "payload_too_large" });
       res.writeHead(413, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "payload too large" }));
       req.destroy();
@@ -78,7 +99,8 @@ export function createProxyHandler(
     try {
       body = await readBody(req, maxBodyBytes);
     } catch {
-      logRequest({ error: "payload_too_large" });
+      errorsTotal.inc({ type: "payload_too_large" });
+      finishRequest("error", { error: "payload_too_large" });
       res.writeHead(413, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "payload too large" }));
       return;
@@ -89,16 +111,23 @@ export function createProxyHandler(
       const verdict = validateRpcRequest(body.toString(), options);
 
       if (verdict.action === RpcAction.Error) {
-        logRequest({ rpcAction: "error" });
+        rpcRequestsTotal.inc({ action: "error", method: "" });
+        finishRequest("error", { rpcAction: "error" });
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify(verdict.response));
         return;
       }
 
       if (verdict.action === RpcAction.ForwardWithInterceptors) {
+        rpcRequestsTotal.inc({
+          action: "forward_with_interceptors",
+          method: "starknet_proveTransaction",
+        });
+
         // Fire upstream request in parallel with interceptors for latency.
         // If the interceptor rejects, we abort the in-flight upstream request.
         const abortController = new AbortController();
+        const upstreamStart = Date.now();
         const upstreamPromise = forwardToUpstream(
           upstreamBaseUrl,
           body,
@@ -120,10 +149,8 @@ export function createProxyHandler(
         );
 
         if (interceptorVerdict.action === "stop") {
-          console.error(
-            JSON.stringify({ error: "transaction_rejected" })
-          );
-          logRequest({
+          console.error(JSON.stringify({ error: "transaction_rejected" }));
+          finishRequest("forward_with_interceptors", {
             rpcAction: "forward_with_interceptors",
             interceptorVerdict: "stop",
           });
@@ -147,6 +174,7 @@ export function createProxyHandler(
         // "stop" branch above, and .catch converts non-abort errors to
         // an UpstreamResponse with an error field.
         const upstreamResponse = (await upstreamPromise)!;
+        const upstreamMs = (Date.now() - upstreamStart) / 1000;
         if (upstreamResponse.error) {
           const message =
             upstreamResponse.error instanceof Error
@@ -155,7 +183,9 @@ export function createProxyHandler(
           console.error(
             JSON.stringify({ error: "upstream_unreachable", message })
           );
-          logRequest({
+          errorsTotal.inc({ type: "upstream_unreachable" });
+          upstreamDuration.observe(upstreamMs);
+          finishRequest("forward_with_interceptors", {
             rpcAction: "forward_with_interceptors",
             interceptorVerdict: "continue",
             upstreamStatus: 502,
@@ -163,7 +193,11 @@ export function createProxyHandler(
           res.writeHead(502, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "bad gateway" }));
         } else {
-          logRequest({
+          upstreamResponses.inc({
+            status_code: String(upstreamResponse.status),
+          });
+          upstreamDuration.observe(upstreamMs);
+          finishRequest("forward_with_interceptors", {
             rpcAction: "forward_with_interceptors",
             interceptorVerdict: "continue",
             upstreamStatus: upstreamResponse.status,
@@ -177,13 +211,19 @@ export function createProxyHandler(
       }
 
       // forward (specVersion, unknown methods when allowed)
+      rpcRequestsTotal.inc({ action: "forward_as_is", method: "" });
+      const forwardStart = Date.now();
       try {
         const upstreamResponse = await forwardToUpstream(
           upstreamBaseUrl,
           body,
           AbortSignal.timeout(upstreamTimeoutMs)
         );
-        logRequest({
+        upstreamResponses.inc({
+          status_code: String(upstreamResponse.status),
+        });
+        upstreamDuration.observe((Date.now() - forwardStart) / 1000);
+        finishRequest("forward_as_is", {
           rpcAction: "forward_as_is",
           upstreamStatus: upstreamResponse.status,
         });
@@ -196,7 +236,12 @@ export function createProxyHandler(
         console.error(
           JSON.stringify({ error: "upstream_unreachable", message })
         );
-        logRequest({ rpcAction: "forward_as_is", upstreamStatus: 502 });
+        errorsTotal.inc({ type: "upstream_unreachable" });
+        upstreamDuration.observe((Date.now() - forwardStart) / 1000);
+        finishRequest("forward_as_is", {
+          rpcAction: "forward_as_is",
+          upstreamStatus: 502,
+        });
         res.writeHead(502, { "content-type": "application/json" });
         res.end(JSON.stringify({ error: "bad gateway" }));
       }
@@ -215,6 +260,7 @@ export function createProxyHandler(
       }
     }
 
+    const passthroughStart = Date.now();
     let upstreamResponse: Response;
     try {
       upstreamResponse = await fetch(targetUrl, {
@@ -226,13 +272,20 @@ export function createProxyHandler(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(JSON.stringify({ error: "upstream_unreachable", message }));
-      logRequest({ rpcAction: "passthrough", upstreamStatus: 502 });
+      errorsTotal.inc({ type: "upstream_unreachable" });
+      upstreamDuration.observe((Date.now() - passthroughStart) / 1000);
+      finishRequest("passthrough", {
+        rpcAction: "passthrough",
+        upstreamStatus: 502,
+      });
       res.writeHead(502, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "bad gateway" }));
       return;
     }
 
-    logRequest({
+    upstreamResponses.inc({ status_code: String(upstreamResponse.status) });
+    upstreamDuration.observe((Date.now() - passthroughStart) / 1000);
+    finishRequest("passthrough", {
       rpcAction: "passthrough",
       upstreamStatus: upstreamResponse.status,
     });

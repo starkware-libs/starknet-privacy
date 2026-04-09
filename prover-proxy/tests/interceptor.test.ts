@@ -22,16 +22,17 @@ const sampleTransaction = {
   fee_data_availability_mode: "L1",
 } as unknown as ProveTxnV3;
 
-function allowAll(): TransactionInterceptor {
-  return { intercept: async () => ({ action: "continue" }) };
+function allowAll(name = "test"): TransactionInterceptor {
+  return { name, intercept: async () => ({ action: "continue" }) };
 }
 
-function blockWith(reason: string): TransactionInterceptor {
-  return { intercept: async () => ({ action: "stop", reason }) };
+function blockWith(reason: string, name = "test"): TransactionInterceptor {
+  return { name, intercept: async () => ({ action: "stop", reason }) };
 }
 
 function delayedContinue(delayMs: number): TransactionInterceptor {
   return {
+    name: "delayed",
     intercept: () =>
       new Promise<Verdict>((resolve) =>
         setTimeout(() => resolve({ action: "continue" }), delayMs)
@@ -41,6 +42,7 @@ function delayedContinue(delayMs: number): TransactionInterceptor {
 
 function delayedStop(delayMs: number, reason: string): TransactionInterceptor {
   return {
+    name: "delayed",
     intercept: () =>
       new Promise<Verdict>((resolve) =>
         setTimeout(() => resolve({ action: "stop", reason }), delayMs)
@@ -50,6 +52,7 @@ function delayedStop(delayMs: number, reason: string): TransactionInterceptor {
 
 function throwing(message: string): TransactionInterceptor {
   return {
+    name: "thrower",
     intercept: async () => {
       throw new Error(message);
     },
@@ -64,7 +67,7 @@ describe("runInterceptors", () => {
 
   it("returns continue when all interceptors allow", async () => {
     const result = await runInterceptors(
-      [allowAll(), allowAll(), allowAll()],
+      [allowAll("a"), allowAll("b"), allowAll("c")],
       sampleTransaction
     );
     expect(result.action).toBe("continue");
@@ -123,6 +126,7 @@ describe("runInterceptors", () => {
   it("passes the transaction to each interceptor", async () => {
     let receivedTransaction: ProveTxnV3 | null = null;
     const capturing: TransactionInterceptor = {
+      name: "capturing",
       intercept: async (tx) => {
         receivedTransaction = tx;
         return { action: "continue" };
