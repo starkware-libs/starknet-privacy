@@ -34,10 +34,7 @@ export class ArchivalInterceptor implements TransactionInterceptor {
   readonly blocking: boolean;
   private readonly storageConfig: ArchivalStorageConfig;
   /** Per-transaction upload promises, keyed by fingerprint. Supports concurrent requests. */
-  private readonly pendingUploads = new Map<
-    string,
-    Promise<string | null>
-  >();
+  private readonly pendingUploads = new Map<string, Promise<string | null>>();
 
   constructor(storageConfig: ArchivalStorageConfig, blocking = false) {
     this.storageConfig = storageConfig;

@@ -152,10 +152,7 @@ describe("ArchivalInterceptor", () => {
     const tx2 = makeTransaction(privacyPoolCalldata, { nonce: "0x1" });
 
     // Both intercept() calls run concurrently
-    await Promise.all([
-      interceptor.intercept(tx1),
-      interceptor.intercept(tx2),
-    ]);
+    await Promise.all([interceptor.intercept(tx1), interceptor.intercept(tx2)]);
     expect(uploadCallCount).toBe(2);
 
     // Only tx1 is denied

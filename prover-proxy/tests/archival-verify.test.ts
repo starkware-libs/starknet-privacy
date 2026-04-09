@@ -40,7 +40,11 @@ describe("verifyFile", () => {
   });
 
   it("skips sender type files", () => {
-    const file = formatArchivalFile("sender", "aa".repeat(32), new Uint8Array([1]));
+    const file = formatArchivalFile(
+      "sender",
+      "aa".repeat(32),
+      new Uint8Array([1])
+    );
     const result = verifyFile(Buffer.from(file), new Map());
     expect(result.status).toBe("skipped_sender");
   });

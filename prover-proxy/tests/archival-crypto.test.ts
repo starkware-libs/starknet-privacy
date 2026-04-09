@@ -68,7 +68,11 @@ describe("encrypt and decrypt round-trip", () => {
     const encrypted = encryptForArchival(plaintext, pair.publicKey);
     expect(encrypted.length).toBeGreaterThan(plaintext.length);
 
-    const decrypted = decryptArchival(encrypted, pair.publicKey, pair.secretKey);
+    const decrypted = decryptArchival(
+      encrypted,
+      pair.publicKey,
+      pair.secretKey
+    );
     expect(decrypted).not.toBeNull();
     expect(Buffer.from(decrypted!).toString()).toBe(plaintext.toString());
   });
@@ -76,8 +80,15 @@ describe("encrypt and decrypt round-trip", () => {
   it("fails to decrypt with wrong key", () => {
     const pair1 = deriveKeyPair("0xaaa");
     const pair2 = deriveKeyPair("0xbbb");
-    const encrypted = encryptForArchival(Buffer.from("secret"), pair1.publicKey);
-    const decrypted = decryptArchival(encrypted, pair1.publicKey, pair2.secretKey);
+    const encrypted = encryptForArchival(
+      Buffer.from("secret"),
+      pair1.publicKey
+    );
+    const decrypted = decryptArchival(
+      encrypted,
+      pair1.publicKey,
+      pair2.secretKey
+    );
     expect(decrypted).toBeNull();
   });
 });

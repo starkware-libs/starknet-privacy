@@ -1,7 +1,7 @@
 import { hkdf } from "@noble/hashes/hkdf.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import nacl from "tweetnacl";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+
 // @ts-expect-error — tweetnacl-sealedbox-js has no type declarations
 import sealedbox from "tweetnacl-sealedbox-js";
 
@@ -65,7 +65,10 @@ export function decryptArchival(
   publicKey: Uint8Array,
   secretKey: Uint8Array
 ): Uint8Array | null {
-  return (sealedbox.open(ciphertext, publicKey, secretKey) as Uint8Array | null) ?? null;
+  return (
+    (sealedbox.open(ciphertext, publicKey, secretKey) as Uint8Array | null) ??
+    null
+  );
 }
 
 function hexToBytes(hex: string): Uint8Array {

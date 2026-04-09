@@ -43,7 +43,11 @@ export function validateRpcRequest(
   let request: JsonRpcRequest;
   try {
     const parsed: unknown = JSON.parse(body);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      Array.isArray(parsed)
+    ) {
       return {
         action: RpcAction.Error,
         response: jsonRpcError(null, INVALID_REQUEST, "Invalid Request"),
