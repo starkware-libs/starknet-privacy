@@ -54,7 +54,7 @@ export type StarknetAddressBigint = bigint;
 // Import and re-export from internal channel
 import { Witness, Channel } from "./internal/channel.js";
 import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./internal/channel.js";
-import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-010";
+import type { INVOKE_TXN_V3 } from "@starknet-io/starknet-types-0101";
 export { Witness, Channel };
 export type { NotesCursor as DiscoveryCursor };
 
