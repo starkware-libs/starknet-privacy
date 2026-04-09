@@ -4,6 +4,11 @@ import { CallData } from "starknet";
 import { PrivacyPoolABI } from "@starkware-libs/starknet-privacy-sdk/abi";
 import type { TransactionInterceptor, Verdict } from "./interceptor.js";
 import type { ProveTxnV3 } from "./types.js";
+import {
+  screeningResults,
+  screeningRetries,
+  screeningDuration,
+} from "./metrics.js";
 
 export interface ScreeningConfig {
   ellipticProxyUrl: string;
@@ -124,6 +129,7 @@ export class ScreeningInterceptor implements TransactionInterceptor {
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
       finalAttempt = attempt;
       if (attempt > 0) {
+        screeningRetries.inc();
         const backoffMs = exponentialBackoff(attempt);
         const remainingMs = deadline - Date.now();
         if (remainingMs <= 0) break;
@@ -138,12 +144,15 @@ export class ScreeningInterceptor implements TransactionInterceptor {
         const callStart = Date.now();
         const blocked = await this.callEllipticProxy(address, perCallTimeout);
         const result: ScreenResult = blocked ? "blocked" : "allowed";
+        const screeningLatencyMs = Date.now() - callStart;
+        screeningResults.inc({ result });
+        screeningDuration.observe({ result }, screeningLatencyMs / 1000);
         console.log(
           JSON.stringify({
             screening: "complete",
             result,
             attempts: attempt + 1,
-            screeningLatencyMs: Date.now() - callStart,
+            screeningLatencyMs,
           })
         );
         return result;
@@ -162,7 +171,9 @@ export class ScreeningInterceptor implements TransactionInterceptor {
     );
 
     // fail-closed by default: if we can't screen, block the transaction
-    return this.config.failOpen ? "allowed" : "unavailable";
+    const failResult = this.config.failOpen ? "allowed" : "unavailable";
+    screeningResults.inc({ result: failResult });
+    return failResult;
   }
 
   private async callEllipticProxy(
