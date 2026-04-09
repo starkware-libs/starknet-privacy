@@ -9,6 +9,7 @@ import type { constants, ETransactionVersion3, ProviderInterface } from "starkne
 import { EDAMode, encode, hash, num, stark } from "starknet";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js";
+import { ProvingServiceError } from "../internal/proving-service.js";
 import { buildProofFacts, buildMessagePayload } from "../utils/proof-facts.js";
 import { toBigInt } from "../utils/convert.js";
 import { extractExecuteViewCalldata } from "../internal/proof-invocation-factory.js";
@@ -119,7 +120,11 @@ export class CallMockProofProvider implements ProofProviderInterface {
 
     // Check result equals VALIDATED ('VALID' as felt252)
     if (toBigInt(result[0]) !== VALIDATED) {
-      throw new Error(`Signature validation failed: expected ${VALIDATED}, got ${result[0]}`);
+      throw new ProvingServiceError(
+        55,
+        "Account validation failed",
+        `Signature validation failed: expected ${VALIDATED}, got ${result[0]}`
+      );
     }
   }
 }
