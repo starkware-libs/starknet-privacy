@@ -51,6 +51,13 @@ This creates `.env` with all required variables, rewriting backend URLs for loca
 | `VITE_EKUBO_ROUTER_ADDRESS` | Ekubo Router contract address (passed to executor) |
 | `VITE_EKUBO_POOL` | Pool key + params as JSON: `token0`, `token1`, `fee`, `tickSpacing`, `extension`, `skipAhead`. Token addresses must match entries in `VITE_TOKENS` |
 
+**Vesu lending (optional — all required if `VITE_VESU_LENDING_HELPER_ADDRESS` is set):**
+
+| Variable | Description |
+|----------|-------------|
+| `VITE_VESU_LENDING_HELPER_ADDRESS` | Vesu lending helper contract address |
+| `VITE_VESU` | Vaults as JSON. Token names must match entries in `VITE_TOKENS` |
+
 ## Running
 
 ```bash

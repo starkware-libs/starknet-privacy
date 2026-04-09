@@ -108,7 +108,7 @@ export function App() {
     refresh();
   }, [refresh]);
 
-  const { status, register, mint, deposit, withdraw, transfer, swap } = useTransactions(
+  const { status, register, mint, deposit, withdraw, transfer, swap, vesuSupply, vesuWithdraw } = useTransactions(
     provider,
     transfers,
     activeAccount?.address,
@@ -189,7 +189,7 @@ export function App() {
                 >
                   Builder
                 </button>
-                {config.ekubo && (
+                {(config.ekubo || config.vesu) && (
                   <button
                     className={activeView === "defi" ? "active" : ""}
                     onClick={() => setActiveView("defi")}
@@ -221,15 +221,18 @@ export function App() {
                   onExecute={executeBatch}
                 />
               )}
-              {activeView === "defi" && config.ekubo && (
+              {activeView === "defi" && (
                 <DefiPanel
                   pending={status.pending}
                   pendingAction={status.action}
                   tokens={config.tokens}
-                  swapTokens={config.ekubo.swapTokens}
+                  swapTokens={config.ekubo?.swapTokens}
                   provider={provider}
                   ekubo={config.ekubo}
+                  vesu={config.vesu}
                   onSwap={swap}
+                  onVesuSupply={vesuSupply}
+                  onVesuWithdraw={vesuWithdraw}
                 />
               )}
             </div>
