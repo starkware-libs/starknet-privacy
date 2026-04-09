@@ -12,6 +12,7 @@ import { toHex } from "../utils/convert.js";
 import { AddressMap } from "../utils/maps.js";
 import { AbstractDiscoveryProvider } from "./abstract-discovery.js";
 import { Channel, Witness } from "./channel.js";
+import { OhttpClient } from "./ohttp-client.js";
 import type {
   ChannelCursor,
   IncomingChannelCursor,
@@ -105,11 +106,21 @@ export type DiscoveryHealthResponse = {
 };
 
 export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
+  private readonly ohttpClient?: OhttpClient;
+
   constructor(
     private readonly apiUrl: string,
-    private readonly contractAddress: StarknetAddress
+    private readonly contractAddress: StarknetAddress,
+    options?: { ohttp?: boolean | { relayUrl?: string; publicKeyConfig?: Uint8Array } }
   ) {
     super();
+    if (options?.ohttp) {
+      const ohttpOptions =
+        typeof options.ohttp === "object"
+          ? { relayUrl: options.ohttp.relayUrl, publicKeyConfig: options.ohttp.publicKeyConfig }
+          : undefined;
+      this.ohttpClient = new OhttpClient(apiUrl, ohttpOptions);
+    }
   }
 
   async isHealthy(): Promise<boolean> {
@@ -380,6 +391,9 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
   }
 
   private async post<T>(path: string, body: unknown): Promise<T> {
+    if (this.ohttpClient) {
+      return this.ohttpClient.post<T>(path, body);
+    }
     const resp = await fetch(`${this.apiUrl}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
