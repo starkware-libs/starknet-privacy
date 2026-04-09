@@ -59,7 +59,7 @@ describe("validateRpcRequest", () => {
   });
 
   describe("starknet_checkTransaction", () => {
-    it("validates valid INVOKE V3 transaction with request id", () => {
+    it("checks valid INVOKE V3 transaction with request id", () => {
       const result = validateRpcRequest(
         rpcBody("starknet_checkTransaction", ["latest", sampleInvokeV3()])
       );
@@ -69,7 +69,7 @@ describe("validateRpcRequest", () => {
       }
     });
 
-    it("validates with block hash", () => {
+    it("checks with block hash", () => {
       const result = validateRpcRequest(
         rpcBody("starknet_checkTransaction", [
           { block_hash: "0xabc" },
@@ -79,7 +79,7 @@ describe("validateRpcRequest", () => {
       expect(result.ok).toBe(true);
     });
 
-    it("validates with block number", () => {
+    it("checks with block number", () => {
       const result = validateRpcRequest(
         rpcBody("starknet_checkTransaction", [
           { block_number: 42 },
