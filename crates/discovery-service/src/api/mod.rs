@@ -19,7 +19,11 @@ use tower_http::cors::CorsLayer;
 use tower_http::timeout::TimeoutLayer;
 use tracing::info;
 
+use tower::Layer;
+use tower_ohttp::{OhttpGateway, OhttpLayer};
+
 use crate::chain_state::ChainState;
+use crate::config::OhttpConfig;
 use crate::config::{ApiServerConfig, ValidationLimits};
 use crate::public_key_cache::PublicKeyCache;
 
@@ -38,6 +42,8 @@ pub struct ApiServer<B> {
     rx_shutdown: broadcast::Receiver<()>,
     config: ApiServerConfig,
     backend: B,
+    ohttp_gateway: Option<Arc<OhttpGateway>>,
+    ohttp_config: OhttpConfig,
 }
 
 /// Errors that can occur in the API server.
@@ -65,11 +71,19 @@ where
     B::Snapshot: RawEventAccess + Clone + Send + Sync + 'static,
 {
     /// Creates a new API server.
-    pub fn new(config: ApiServerConfig, rx_shutdown: broadcast::Receiver<()>, backend: B) -> Self {
+    pub fn new(
+        config: ApiServerConfig,
+        rx_shutdown: broadcast::Receiver<()>,
+        backend: B,
+        ohttp_gateway: Option<Arc<OhttpGateway>>,
+        ohttp_config: OhttpConfig,
+    ) -> Self {
         Self {
             rx_shutdown,
             config,
             backend,
+            ohttp_gateway,
+            ohttp_config,
         }
     }
 
@@ -84,7 +98,7 @@ where
             validation_limits: self.config.validation_limits.clone(),
         });
 
-        let app = Router::new()
+        let api_router = Router::new()
             .route("/health", get(health_handler::<B>))
             .route("/v1/sync/incoming_state", post(incoming_sync_handler::<B>))
             .route("/v1/sync/outgoing_state", post(outgoing_sync_handler::<B>))
@@ -93,6 +107,29 @@ where
                 post(preflight_check_handler::<B>),
             )
             .route("/v1/history", post(history_handler::<B>))
+            .with_state(app_state);
+
+        // Conditionally add OHTTP envelope encryption.
+        // The OhttpLayer wraps a clone of the API router and is installed as
+        // the fallback service. Unmatched paths (e.g. `POST /` from a relay)
+        // hit the fallback, which decapsulates the OHTTP envelope and re-routes
+        // the inner request through the cloned router. Matched plaintext
+        // requests bypass OHTTP entirely.
+        let app = if let Some(gateway) = &self.ohttp_gateway {
+            let ohttp_layer = OhttpLayer::new(
+                gateway.clone(),
+                self.config.validation_limits.max_request_body_bytes,
+                self.ohttp_config.key_cache_max_age_secs,
+                axum::body::Body::new,
+            );
+            let ohttp_service = ohttp_layer.layer(api_router.clone());
+            info!("OHTTP envelope encryption enabled");
+            api_router.fallback_service(ohttp_service)
+        } else {
+            api_router
+        };
+
+        let app = app
             .layer(CorsLayer::permissive())
             .layer(DefaultBodyLimit::max(
                 self.config.validation_limits.max_request_body_bytes,
@@ -100,8 +137,7 @@ where
             .layer(TimeoutLayer::with_status_code(
                 axum::http::StatusCode::REQUEST_TIMEOUT,
                 self.config.request_timeout,
-            ))
-            .with_state(app_state);
+            ));
 
         let tcp_listener = TcpListener::bind(&self.config.host)
             .await
@@ -164,5 +200,86 @@ where
 
         info!("API server has shut down");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod ohttp_layer_tests {
+    use axum::body::Body;
+    use axum::http::{header, Request, StatusCode};
+    use axum::response::IntoResponse;
+    use axum::routing::post;
+    use axum::Router;
+    use http_body_util::BodyExt;
+    use tower::{Layer, ServiceExt};
+    use tower_ohttp::test_utils::{
+        decapsulate_bhttp_response, encapsulate_bhttp_request, test_gateway,
+    };
+    use tower_ohttp::OhttpLayer;
+
+    const BODY_LIMIT: usize = 102_400;
+    const KEY_CACHE_SECS: u64 = 3600;
+
+    async fn echo_handler(body: axum::body::Bytes) -> impl IntoResponse {
+        (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "application/json")],
+            body,
+        )
+    }
+
+    fn test_router() -> Router {
+        let gateway = test_gateway();
+        let ohttp_layer = OhttpLayer::new(gateway, BODY_LIMIT, KEY_CACHE_SECS, Body::new);
+        let api_router = Router::new().route("/v1/echo", post(echo_handler));
+        let ohttp_service = ohttp_layer.layer(api_router.clone());
+        api_router.fallback_service(ohttp_service)
+    }
+
+    #[tokio::test]
+    async fn ohttp_round_trip_through_axum_router() {
+        let app = test_router();
+        let gateway = test_gateway();
+
+        let json_body = br#"{"viewing_key":"0xabc"}"#;
+        let (encapsulated, client_response) =
+            encapsulate_bhttp_request(&gateway, "POST", "/v1/echo", json_body, &[]);
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/")
+            .header(header::CONTENT_TYPE, "message/ohttp-req")
+            .body(Body::from(encapsulated))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(header::CONTENT_TYPE).unwrap(),
+            "message/ohttp-res"
+        );
+
+        let encrypted_body = response.into_body().collect().await.unwrap().to_bytes();
+        let decapsulated = decapsulate_bhttp_response(client_response, &encrypted_body);
+        assert_eq!(decapsulated.status, 200);
+        assert_eq!(decapsulated.body, json_body);
+    }
+
+    #[tokio::test]
+    async fn plaintext_request_passes_through() {
+        let app = test_router();
+
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/echo")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(br#"{"hello":"world"}"#.to_vec()))
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        assert_eq!(body.as_ref(), br#"{"hello":"world"}"#);
     }
 }

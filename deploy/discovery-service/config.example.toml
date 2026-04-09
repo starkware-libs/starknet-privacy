@@ -36,6 +36,10 @@ request_timeout = 30
 [logging]
 level = "info"
 
+# [ohttp]
+# enabled = true
+# key_cache_max_age_secs = 3600
+
 [limits]
 max_channels = 256
 max_subchannels_per_channel = 64

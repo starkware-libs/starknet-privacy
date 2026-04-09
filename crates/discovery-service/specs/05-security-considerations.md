@@ -49,7 +49,7 @@ The following vectors have been identified and mitigated:
 | Vector | Severity | Status |
 |--------|----------|--------|
 | Unbounded task spawning from `cursor.channels` / `cursor.subchannels` HashMaps — each entry spawns a tokio task, attacker can pack ~50K entries in a 2MB body | CRITICAL | mitigated by body size limit (C1) |
-| No explicit request body size limit — Axum 2MB default is ~4000× larger than a legitimate request | CRITICAL | DONE — `DefaultBodyLimit` configurable via `max_request_body_bytes` (default 100KB) |
+| No explicit request body size limit — Axum 2MB default is ~4000× larger than a legitimate request | CRITICAL | DONE — `DefaultBodyLimit` configurable via `max_request_body_bytes` (default 100KB). OHTTP-encapsulated requests enforce the same limit via `http_body_util::Limited` inside the OHTTP layer (returns 413 before decapsulation). |
 | No HTTP-level request timeout — slow RPC responses block worker threads up to 100min per request | HIGH | DONE — `TimeoutLayer` configurable via `api.request_timeout` (default 30s) |
 | HashMap deserialization memory spike from large cursors | MEDIUM | mitigated by body size limit |
 | `max_reads: 0` accepted, wastes snapshot creation | LOW | DONE — `min_server_budget()` clamp (minimum 67 with default config, derived from full discovery pipeline costs) |
@@ -67,11 +67,13 @@ The following request fields are validated by the service:
 
 ## 5.5 Privacy Model
 
-Users trust the service operator. The operator can observe:
+Users trust the service operator with request content. The operator can observe:
 
 - Which recipients are active and when.
 - How many channels, subchannels, and notes each recipient has.
 - Token addresses used per channel.
 - Timing of sync activity.
 
-This metadata exposure is accepted given the trust model. Users requiring stronger privacy guarantees should run their own instance.
+**With OHTTP and a privacy relay** (see [20-ohttp-integration.md](20-ohttp-integration.md)), the operator can no longer correlate this content with client IP addresses. The relay sees the client IP but cannot read the encrypted request; the operator sees the decrypted request but not the client IP. This eliminates IP-level metadata correlation.
+
+OHTTP does not protect against traffic analysis, content-level metadata (which the operator already observes), or relay-operator collusion. Users requiring stronger privacy guarantees should run their own instance.

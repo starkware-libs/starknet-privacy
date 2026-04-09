@@ -185,6 +185,30 @@ pub struct LoggingConfig {
     pub level: Option<String>,
 }
 
+/// Configuration for Oblivious HTTP (OHTTP) envelope encryption.
+///
+/// When enabled, the service accepts `message/ohttp-req` requests and
+/// returns `message/ohttp-res` responses. The HPKE private key is loaded
+/// from the `OHTTP_KEY` environment variable (hex-encoded, 32 bytes).
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct OhttpConfig {
+    /// Enable OHTTP support. When false, the service only accepts plain JSON.
+    pub enabled: bool,
+    /// Cache-Control max-age for the `/ohttp-keys` endpoint, in seconds.
+    /// Clients cache the key config for this duration before re-fetching.
+    pub key_cache_max_age_secs: u64,
+}
+
+impl Default for OhttpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            key_cache_max_age_secs: 3600,
+        }
+    }
+}
+
 /// Top-level service configuration deserialized from TOML.
 /// Omitted fields get defaults from `#[serde(default)]` on each struct.
 #[derive(Debug, Default, Deserialize)]
@@ -195,6 +219,7 @@ pub struct ServiceConfig {
     pub api: ApiServerConfig,
     pub logging: LoggingConfig,
     pub limits: ValidationLimits,
+    pub ohttp: OhttpConfig,
 }
 
 impl ServiceConfig {
@@ -225,6 +250,10 @@ impl ServiceConfig {
             }
         }
 
+        if let Ok(v) = std::env::var("OHTTP_ENABLED") {
+            self.ohttp.enabled = v == "true" || v == "1";
+        }
+
         let cert_path = std::env::var("TLS_CERT_PATH").ok();
         let key_path = std::env::var("TLS_KEY_PATH").ok();
         match (cert_path, key_path) {
@@ -247,7 +276,7 @@ impl ServiceConfig {
     /// Defaults were already applied at deserialization time via `#[serde(default)]`,
     /// so this just injects `limits` into `api`.
     /// Must be called after `apply_env_overrides()`.
-    pub fn build_configs(mut self) -> (RpcConfig, IndexerConfig, ApiServerConfig) {
+    pub fn build_configs(mut self) -> (RpcConfig, IndexerConfig, ApiServerConfig, OhttpConfig) {
         let min_budget = min_server_budget(self.limits.cursor_limits.max_note_log_index);
         if self.limits.server_budget < min_budget {
             warn!(
@@ -258,7 +287,7 @@ impl ServiceConfig {
             self.limits.server_budget = min_budget;
         }
         self.api.validation_limits = self.limits;
-        (self.rpc, self.indexer, self.api)
+        (self.rpc, self.indexer, self.api, self.ohttp)
     }
 }
 
@@ -424,7 +453,7 @@ host = "127.0.0.1:8080"
     fn test_build_configs_uses_component_defaults() {
         let config = ServiceConfig::default();
 
-        let (rpc, idx, api) = config.build_configs();
+        let (rpc, idx, api, _) = config.build_configs();
 
         let rpc_defaults = RpcConfig::default();
         assert_eq!(rpc.url, rpc_defaults.url);
@@ -448,7 +477,7 @@ host = "127.0.0.1:8080"
         let min_budget = min_server_budget(config.limits.cursor_limits.max_note_log_index);
         config.limits.server_budget = 1;
 
-        let (_, _, api) = config.build_configs();
+        let (_, _, api, _) = config.build_configs();
 
         assert_eq!(
             api.validation_limits.server_budget, min_budget,
@@ -462,7 +491,7 @@ host = "127.0.0.1:8080"
         let min_budget = min_server_budget(config.limits.cursor_limits.max_note_log_index);
         config.limits.server_budget = min_budget;
 
-        let (_, _, api) = config.build_configs();
+        let (_, _, api, _) = config.build_configs();
 
         assert_eq!(api.validation_limits.server_budget, min_budget);
     }
@@ -472,7 +501,7 @@ host = "127.0.0.1:8080"
         let mut config = ServiceConfig::default();
         config.limits.server_budget = 200;
 
-        let (_, _, api) = config.build_configs();
+        let (_, _, api, _) = config.build_configs();
 
         assert_eq!(api.validation_limits.server_budget, 200);
     }
@@ -485,7 +514,7 @@ host = "127.0.0.1:8080"
         config.api.host = "0.0.0.0:3000".to_string();
         config.limits.server_budget = 200;
 
-        let (_rpc, idx, api) = config.build_configs();
+        let (_rpc, idx, api, _) = config.build_configs();
 
         assert_eq!(idx.connect_timeout, Duration::from_secs(42));
         assert_eq!(api.host, "0.0.0.0:3000");
