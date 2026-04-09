@@ -49,17 +49,17 @@ re-reads it according to `configCacheTtlSeconds`.
 
 ### Configuration fields
 
-| Field | Description |
-|-------|-------------|
-| `elliptic.url` | Elliptic API base URL |
-| `elliptic.key` | Real Elliptic API key |
-| `elliptic.secret` | Real Elliptic HMAC secret (base64) |
-| `elliptic.timeoutMs` | Timeout for upstream Elliptic requests (ms) |
-| `rateLimitPerMinute` | Global per-partner rate limit |
-| `maxBodyBytes` | Max request body size |
-| `configCacheTtlSeconds` | How often the proxy re-reads config from Secret Manager (seconds) |
-| `blockedCacheTtlSeconds` | How long to cache blocked address verdicts (seconds) |
-| `partners.<name>` | Partner HMAC secret (base64). The key is the partner name, sent in `x-access-key` |
+| Field                    | Description                                                                       |
+| ------------------------ | --------------------------------------------------------------------------------- |
+| `elliptic.url`           | Elliptic API base URL                                                             |
+| `elliptic.key`           | Real Elliptic API key                                                             |
+| `elliptic.secret`        | Real Elliptic HMAC secret (base64)                                                |
+| `elliptic.timeoutMs`     | Timeout for upstream Elliptic requests (ms)                                       |
+| `rateLimitPerMinute`     | Global per-partner rate limit                                                     |
+| `maxBodyBytes`           | Max request body size                                                             |
+| `configCacheTtlSeconds`  | How often the proxy re-reads config from Secret Manager (seconds)                 |
+| `blockedCacheTtlSeconds` | How long to cache blocked address verdicts (seconds)                              |
+| `partners.<name>`        | Partner HMAC secret (base64). The key is the partner name, sent in `x-access-key` |
 
 ## Authentication
 
@@ -79,6 +79,7 @@ signature = HMAC-SHA256(
 ```
 
 The proxy:
+
 1. Looks up the partner's HMAC secret by name (`x-access-key` header value)
 2. Recomputes the HMAC using the partner's secret and verifies it matches
    `x-access-sign`
@@ -96,15 +97,15 @@ The proxy:
 
 ## Error Handling
 
-| Condition | Response |
-|-----------|----------|
-| Missing/invalid `x-access-key` | `401 Unauthorized` |
-| Bad HMAC signature | `401 Unauthorized` |
-| Rate limit exceeded | `429 Too Many Requests` |
-| Body exceeds `maxBodyBytes` | `413 Payload Too Large` |
+| Condition                              | Response                  |
+| -------------------------------------- | ------------------------- |
+| Missing/invalid `x-access-key`         | `401 Unauthorized`        |
+| Bad HMAC signature                     | `401 Unauthorized`        |
+| Rate limit exceeded                    | `429 Too Many Requests`   |
+| Body exceeds `maxBodyBytes`            | `413 Payload Too Large`   |
 | Config unavailable from Secret Manager | `503 Service Unavailable` |
-| Elliptic network error | `503 Service Unavailable` |
-| Elliptic non-2xx response | `502 Upstream Error` |
+| Elliptic network error                 | `503 Service Unavailable` |
+| Elliptic non-2xx response              | `502 Upstream Error`      |
 
 ## Project Structure
 

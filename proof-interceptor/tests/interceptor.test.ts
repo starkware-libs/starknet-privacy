@@ -5,7 +5,14 @@ import {
   type TransactionInterceptor,
   type Verdict,
 } from "../src/interceptor.js";
+import { errorsTotal } from "../src/metrics.js";
 import type { ProveTxnV3 } from "../src/types.js";
+
+async function errorsTotalValue(type: string): Promise<number> {
+  const data = await errorsTotal.get();
+  const sample = data.values.find((entry) => entry.labels.type === type);
+  return sample?.value ?? 0;
+}
 
 const sampleTransaction = {
   type: "INVOKE",
@@ -22,20 +29,17 @@ const sampleTransaction = {
   fee_data_availability_mode: "L1",
 } as unknown as ProveTxnV3;
 
-function allowAll(): TransactionInterceptor {
-  return { name: "allow-all", intercept: async () => ({ action: "allow" }) };
+function allowAll(name = "test"): TransactionInterceptor {
+  return { name, intercept: async () => ({ action: "allow" }) };
 }
 
-function blockWith(reason: string): TransactionInterceptor {
-  return {
-    name: "blocker",
-    intercept: async () => ({ action: "block", reason }),
-  };
+function blockWith(reason: string, name = "test"): TransactionInterceptor {
+  return { name, intercept: async () => ({ action: "block", reason }) };
 }
 
 function delayedAllow(delayMs: number): TransactionInterceptor {
   return {
-    name: "delayed-allow",
+    name: "delayed",
     intercept: () =>
       new Promise<Verdict>((resolve) =>
         setTimeout(() => resolve({ action: "allow" }), delayMs)
@@ -45,7 +49,7 @@ function delayedAllow(delayMs: number): TransactionInterceptor {
 
 function delayedBlock(delayMs: number, reason: string): TransactionInterceptor {
   return {
-    name: "delayed-block",
+    name: "delayed",
     intercept: () =>
       new Promise<Verdict>((resolve) =>
         setTimeout(() => resolve({ action: "block", reason }), delayMs)
@@ -70,7 +74,7 @@ describe("runInterceptors", () => {
 
   it("returns allow when all interceptors allow", async () => {
     const result = await runInterceptors(
-      [allowAll(), allowAll(), allowAll()],
+      [allowAll("a"), allowAll("b"), allowAll("c")],
       sampleTransaction
     );
     expect(result.action).toBe("allow");
@@ -95,7 +99,8 @@ describe("runInterceptors", () => {
     expect(result.action).toBe("block");
   });
 
-  it("treats thrown errors as block", async () => {
+  it("treats thrown errors as block and increments errors_total", async () => {
+    const before = await errorsTotalValue("interceptor_error");
     const result = await runInterceptors(
       [throwing("connection failed")],
       sampleTransaction
@@ -104,6 +109,8 @@ describe("runInterceptors", () => {
       action: "block",
       reason: "connection failed",
     });
+    const after = await errorsTotalValue("interceptor_error");
+    expect(after).toBe(before + 1);
   });
 
   it("returns block immediately on first block (does not wait for slow interceptors)", async () => {

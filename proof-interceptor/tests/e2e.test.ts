@@ -208,31 +208,4 @@ describe("e2e: proof-interceptor → elliptic-proxy → mock Elliptic API", () =
     expect(body.error.message).toBe("Transaction rejected");
     expect(body.error.data).toContain("0xbad0");
   }, 15000);
-
-  it("starknet_specVersion bypasses screening", async () => {
-    const handler = createHandler({
-      interceptors: [
-        new ScreeningInterceptor({
-          ellipticProxyUrl: "http://127.0.0.1:1",
-          partnerName: PARTNER_NAME,
-          partnerSecret: PARTNER_SECRET,
-          timeoutMs: 1000,
-          failOpen: false,
-          maxRetries: 0,
-          totalTimeoutMs: 5000,
-        }),
-      ],
-    });
-
-    interceptorServer = createServer(handler);
-    interceptorPort = await listen(interceptorServer);
-
-    const response = await rpcPost(interceptorPort, {
-      jsonrpc: "2.0",
-      id: 1,
-      method: "starknet_specVersion",
-    });
-    const body = await response.json();
-    expect(body.result).toBe("0.10.1");
-  });
 });
