@@ -23,6 +23,17 @@ Detailed design specs: [`specs/`](specs/README.md)
 - `POST /v1/sync/preflight_check` — Non-paginated readiness check for a (sender, recipient, token) tuple. Returns registration, channel, and subchannel existence flags.
 - `GET /health` — Health check with chain head lag reporting.
 
+## OHTTP (Oblivious HTTP)
+
+When enabled, the service supports Oblivious HTTP (RFC 9458) for IP-metadata privacy. A privacy relay (e.g. Cloudflare Privacy Gateway) sits between the client and the service: the relay sees the client IP but not the request content; the service sees the request content but not the client IP.
+
+- `GET /ohttp-keys` — server's HPKE public key configuration.
+- `POST /` — OHTTP gateway endpoint; all API endpoints are accessible through this single endpoint. The target path is encrypted inside the request payload.
+
+Enable with `OHTTP_ENABLED=true` and `OHTTP_KEY=<hex-encoded 32-byte P-256 IKM seed>`.
+
+See [spec 20](specs/20-ohttp-integration.md) for details.
+
 ## Operational characteristics
 - Security: TLS termination (planned), input validation, sensitive field filtering in logs.
 - Resilience: reorg detection via `last_known_block` / `block_ref`, RPC health monitoring, graceful backfill.
@@ -36,6 +47,9 @@ Detailed design specs: [`specs/`](specs/README.md)
 - `RPC_UNAVAILABLE`: upstream RPC is unavailable.
 - `SERVICE_UNAVAILABLE`: retry with exponential backoff.
 - `INTERNAL_ERROR`: internal discovery error.
+- `OHTTP_DECAPSULATION_FAILED`: invalid OHTTP envelope (422).
+- `OHTTP_INVALID_FORMAT`: malformed Binary HTTP message (422).
+- `OHTTP_BODY_TOO_LARGE`: request body exceeds size limit (413).
 
 ## Technology stack (target)
 Rust with Tokio runtime and Axum HTTP server. Packaged as static binaries (Linux x86, macOS ARM) and Docker image.

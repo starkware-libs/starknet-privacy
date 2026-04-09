@@ -28,6 +28,7 @@ url = "2"
 
 # HTTP
 axum = "0.8"
+http-body-util = "0.1"
 reqwest = { version = "0.13", features = ["json"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
 rustls-pemfile = "2"
@@ -39,6 +40,7 @@ tower-http = { version = "0.6", features = ["cors", "timeout"] }
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+hex = "0.4"
 
 # Error handling
 thiserror = "2"
@@ -46,6 +48,10 @@ backoff = { version = "0.4", features = ["tokio"] }
 
 # Crypto
 starknet-crypto = { package = "starknet-rust-crypto", git = "https://github.com/software-mansion/starknet-rust.git", rev = "7caedfe" }
+
+# OHTTP (RFC 9458) and Binary HTTP (RFC 9292)
+ohttp = { version = "0.7", default-features = false, features = ["rust-hpke", "client", "server"] }
+bhttp = "0.7"
 
 # Cache
 moka = { version = "0.12", features = ["sync"] }

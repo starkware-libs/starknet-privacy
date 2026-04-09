@@ -11,6 +11,7 @@ pub mod api;
 pub mod chain_state;
 pub mod config;
 pub mod indexer;
+pub mod ohttp;
 pub mod public_key_cache;
 pub mod rpc_backend;
 pub mod shutdown;
