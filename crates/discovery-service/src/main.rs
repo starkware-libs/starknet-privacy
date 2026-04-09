@@ -3,9 +3,12 @@
 use std::path::PathBuf;
 
 use clap::Parser;
+use std::sync::Arc;
+
 use discovery_service::api::ApiServer;
 use discovery_service::config::ServiceConfig;
 use discovery_service::indexer::Indexer;
+use discovery_service::ohttp::gateway::OhttpGateway;
 use discovery_service::rpc_backend::RpcBackend;
 use discovery_service::shutdown::Shutdown;
 use tokio::task::JoinHandle;
@@ -65,12 +68,31 @@ async fn main() {
     let shutdown = Shutdown::default();
 
     // Build component configs from the unified service config
-    let (rpc_config, indexer_config, api_server_config) = config.build_configs();
+    let (rpc_config, indexer_config, api_server_config, ohttp_config) = config.build_configs();
+
+    // Initialize OHTTP key manager if enabled.
+    let ohttp_gateway = if ohttp_config.enabled {
+        match OhttpGateway::from_env() {
+            Ok(manager) => Some(Arc::new(manager)),
+            Err(error) => {
+                eprintln!("Failed to initialize OHTTP: {error}");
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
 
     let rpc_backend = RpcBackend::new(rpc_config).expect("Failed to create RPC backend");
 
     let mut indexer = Indexer::new(indexer_config, shutdown.subscribe(), rpc_backend.clone());
-    let mut api_server = ApiServer::new(api_server_config, shutdown.subscribe(), rpc_backend);
+    let mut api_server = ApiServer::new(
+        api_server_config,
+        shutdown.subscribe(),
+        rpc_backend,
+        ohttp_gateway,
+        ohttp_config,
+    );
 
     let indexer_handle = tokio::spawn(async move { indexer.run().await });
     let api_server_handle = tokio::spawn(async move { api_server.run().await });
