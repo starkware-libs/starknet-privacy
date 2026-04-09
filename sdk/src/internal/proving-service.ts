@@ -10,6 +10,34 @@ import { z } from "zod";
 /** Default request timeout: 30s (proofs typically take a few seconds). */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
+/**
+ * Structured error from the proving service JSON-RPC endpoint.
+ *
+ * The `code` field is a numeric JSON-RPC error code that callers can switch on:
+ *
+ * **Prover codes (Starknet RPC v0.10):**
+ * - `24`    — Block not found
+ * - `55`    — Account validation failed
+ * - `61`    — Unsupported transaction version
+ * - `1000`  — Invalid transaction input
+ * - `-32005` — Service busy (retry later)
+ * - `-32603` — Internal prover error
+ *
+ * **Proxy interceptor codes (1xxxx range):**
+ * - `10000` — Transaction rejected (e.g. screening/compliance)
+ */
+export class ProvingServiceError extends Error {
+  override readonly name = "ProvingServiceError";
+
+  constructor(
+    public readonly code: number,
+    message: string,
+    public readonly data?: string
+  ) {
+    super(data ? `${message}: ${data}` : message);
+  }
+}
+
 // TODO: Support "latest-verifiable" and { blocksBack: number } server-side; then accept them here and pass through.
 // Current server only supports block_id: "latest" | { block_number: N } | { block_hash: "0x..." }.
 
@@ -87,8 +115,7 @@ export class ProvingService {
 
     if (json.error) {
       const { code, message, data } = json.error;
-      const detail = typeof data === "string" ? `${message}: ${data}` : message;
-      throw new Error(`Proving service error (code ${code}) ${detail}`);
+      throw new ProvingServiceError(code, message, typeof data === "string" ? data : undefined);
     }
 
     const result = json.result;

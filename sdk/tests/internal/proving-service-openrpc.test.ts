@@ -10,7 +10,11 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it, vi, beforeAll, afterEach } from "vitest";
 import { Ajv } from "ajv";
-import { ProvingService, type MessageToL1 } from "../../src/internal/proving-service.js";
+import {
+  ProvingService,
+  ProvingServiceError,
+  type MessageToL1,
+} from "../../src/internal/proving-service.js";
 
 const PROVER_URL = "https://prover.test";
 
@@ -450,7 +454,7 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
   });
 
   describe("getSpecVersion / proveTransaction — RPC and HTTP unhappy", () => {
-    it("proveTransaction throws when response is JSON-RPC error (e.g. block not found)", async () => {
+    it("proveTransaction throws ProvingServiceError on JSON-RPC error (e.g. block not found)", async () => {
       vi.spyOn(globalThis, "fetch").mockResolvedValue({
         ok: true,
         status: 200,
@@ -465,9 +469,70 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       } as Response);
 
       const service = new ProvingService({ baseUrl: PROVER_URL });
-      await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
-        /Proving service error \(code 24\)/
+      const error = await service
+        .proveTransaction("latest", MINIMAL_INVOKE_TX)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ProvingServiceError);
+      expect((error as ProvingServiceError).code).toBe(24);
+      expect((error as ProvingServiceError).message).toBe("Block not found");
+      expect((error as ProvingServiceError).data).toBeUndefined();
+    });
+
+    it("ProvingServiceError exposes code and data for screening rejection", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              error: {
+                code: 10000,
+                message: "Transaction rejected",
+                data: "address screening: 0xbad blocked",
+              },
+            })
+          ),
+      } as Response);
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      const error = await service
+        .proveTransaction("latest", MINIMAL_INVOKE_TX)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ProvingServiceError);
+      expect((error as ProvingServiceError).code).toBe(10000);
+      expect((error as ProvingServiceError).data).toBe("address screening: 0xbad blocked");
+      expect((error as ProvingServiceError).message).toBe(
+        "Transaction rejected: address screening: 0xbad blocked"
       );
+    });
+
+    it("ProvingServiceError exposes code for service busy", async () => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: 1,
+              error: {
+                code: -32005,
+                message: "Service is busy",
+                data: "retry later",
+              },
+            })
+          ),
+      } as Response);
+
+      const service = new ProvingService({ baseUrl: PROVER_URL });
+      const error = await service
+        .proveTransaction("latest", MINIMAL_INVOKE_TX)
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ProvingServiceError);
+      expect((error as ProvingServiceError).code).toBe(-32005);
+      expect((error as ProvingServiceError).data).toBe("retry later");
     });
 
     it("proveTransaction throws when response has no result", async () => {
