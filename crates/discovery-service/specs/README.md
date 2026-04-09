@@ -25,6 +25,7 @@ This folder contains the design specifications for the Privacy Pool Discovery Se
 | [17-cold-start-and-backfill.md](17-cold-start-and-backfill.md) | Behavior during cache backfill, snapshot import/export, and recovery time considerations. |
 | [18-configuration.md](18-configuration.md) | Layered configuration system (env var > config file > code default), TOML format, and env var overrides. |
 | [19-scaling-and-capacity.md](19-scaling-and-capacity.md) | Bottleneck analysis, capacity estimates, RPC node comparison, scaling strategy, and validated default config. |
+| [20-ohttp-integration.md](20-ohttp-integration.md) | Oblivious HTTP integration: privacy relay topology, request flow, key configuration, and privacy properties. |
 
 ## See also
 
