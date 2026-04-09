@@ -4,6 +4,12 @@ import type { ScreeningConfig } from "./screening-interceptor.js";
 
 export const DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024; // 5 MB
 
+export interface ArchivalConfig {
+  gcsBucket: string;
+  gcsKeyFilePath?: string;
+  blocking: boolean;
+}
+
 export interface Config {
   upstreamUrl: string;
   host: string;
@@ -11,6 +17,7 @@ export interface Config {
   forwardUnknownMethods: boolean;
   maxBodyBytes: number;
   screening?: ScreeningConfig;
+  archival?: ArchivalConfig;
   tls?: {
     certPath: string;
     keyPath: string;
@@ -46,6 +53,22 @@ export function loadConfig(): Config {
       maxRetries: parseIntEnv("SCREENING_MAX_RETRIES", 2),
       totalTimeoutMs: parseIntEnv("SCREENING_TOTAL_TIMEOUT_MS", 10000),
     };
+  }
+
+  const archivalBucket = process.env.ARCHIVAL_GCS_BUCKET;
+  if (archivalBucket) {
+    config.archival = {
+      gcsBucket: archivalBucket,
+      gcsKeyFilePath: process.env.ARCHIVAL_GCS_KEY_FILE,
+      blocking: process.env.ARCHIVAL_BLOCKING === "true",
+    };
+  } else {
+    console.error(
+      JSON.stringify({
+        error: "archival_disabled",
+        message: "ARCHIVAL_GCS_BUCKET not set",
+      })
+    );
   }
 
   const certPath = process.env.TLS_CERT_PATH;

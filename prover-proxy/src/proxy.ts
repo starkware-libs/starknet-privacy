@@ -5,7 +5,12 @@ import {
   validateRpcRequest,
   type RpcHandlerOptions,
 } from "./rpc.js";
-import { runInterceptors, type TransactionInterceptor } from "./interceptor.js";
+import {
+  runInterceptors,
+  notifyInterceptorError,
+  notifyInterceptorComplete,
+  type TransactionInterceptor,
+} from "./interceptor.js";
 import { jsonRpcError } from "./types.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./config.js";
 import {
@@ -149,6 +154,11 @@ export function createProxyHandler(
         );
 
         if (interceptorVerdict.action === "stop") {
+          await notifyInterceptorError(
+            interceptors,
+            TRANSACTION_REJECTED,
+            verdict.transaction
+          );
           console.error(JSON.stringify({ error: "transaction_rejected" }));
           finishRequest("forward_with_interceptors", {
             rpcAction: "forward_with_interceptors",
@@ -176,6 +186,11 @@ export function createProxyHandler(
         const upstreamResponse = (await upstreamPromise)!;
         const upstreamMs = (Date.now() - upstreamStart) / 1000;
         if (upstreamResponse.error) {
+          await notifyInterceptorError(
+            interceptors,
+            upstreamResponse.status,
+            verdict.transaction
+          );
           const message =
             upstreamResponse.error instanceof Error
               ? upstreamResponse.error.message
@@ -193,6 +208,7 @@ export function createProxyHandler(
           res.writeHead(502, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "bad gateway" }));
         } else {
+          notifyInterceptorComplete(interceptors, verdict.transaction);
           upstreamResponses.inc({
             status_code: String(upstreamResponse.status),
           });

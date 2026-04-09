@@ -1,5 +1,5 @@
 // tests/config.test.ts
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { loadConfig } from "../src/config.js";
 
 describe("loadConfig", () => {
@@ -79,5 +79,41 @@ describe("loadConfig", () => {
     expect(() => loadConfig()).toThrow(
       "MAX_BODY_BYTES must be a valid integer"
     );
+  });
+
+  it("logs error when ARCHIVAL_GCS_BUCKET is not set", () => {
+    process.env.UPSTREAM_URL = "http://localhost:3000";
+    delete process.env.ARCHIVAL_GCS_BUCKET;
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const config = loadConfig();
+    expect(config.archival).toBeUndefined();
+    expect(spy).toHaveBeenCalledWith(
+      expect.stringContaining("archival_disabled")
+    );
+    spy.mockRestore();
+  });
+
+  it("loads archival config when ARCHIVAL_GCS_BUCKET is set", () => {
+    process.env.UPSTREAM_URL = "http://localhost:3000";
+    process.env.ARCHIVAL_GCS_BUCKET = "my-bucket";
+    process.env.ARCHIVAL_GCS_KEY_FILE = "/path/to/key.json";
+    process.env.ARCHIVAL_BLOCKING = "true";
+
+    const config = loadConfig();
+    expect(config.archival).toEqual({
+      gcsBucket: "my-bucket",
+      gcsKeyFilePath: "/path/to/key.json",
+      blocking: true,
+    });
+  });
+
+  it("defaults archival blocking to false", () => {
+    process.env.UPSTREAM_URL = "http://localhost:3000";
+    process.env.ARCHIVAL_GCS_BUCKET = "my-bucket";
+
+    const config = loadConfig();
+    expect(config.archival?.blocking).toBe(false);
+    expect(config.archival?.gcsKeyFilePath).toBeUndefined();
   });
 });
