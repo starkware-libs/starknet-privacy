@@ -22,20 +22,17 @@ const sampleTransaction = {
   fee_data_availability_mode: "L1",
 } as unknown as ProveTxnV3;
 
-function allowAll(): TransactionInterceptor {
-  return { name: "allow-all", intercept: async () => ({ action: "allow" }) };
+function allowAll(name = "test"): TransactionInterceptor {
+  return { name, intercept: async () => ({ action: "allow" }) };
 }
 
-function blockWith(reason: string): TransactionInterceptor {
-  return {
-    name: "blocker",
-    intercept: async () => ({ action: "block", reason }),
-  };
+function blockWith(reason: string, name = "test"): TransactionInterceptor {
+  return { name, intercept: async () => ({ action: "block", reason }) };
 }
 
 function delayedAllow(delayMs: number): TransactionInterceptor {
   return {
-    name: "delayed-allow",
+    name: "delayed",
     intercept: () =>
       new Promise<Verdict>((resolve) =>
         setTimeout(() => resolve({ action: "allow" }), delayMs)
@@ -45,7 +42,7 @@ function delayedAllow(delayMs: number): TransactionInterceptor {
 
 function delayedBlock(delayMs: number, reason: string): TransactionInterceptor {
   return {
-    name: "delayed-block",
+    name: "delayed",
     intercept: () =>
       new Promise<Verdict>((resolve) =>
         setTimeout(() => resolve({ action: "block", reason }), delayMs)
@@ -70,7 +67,7 @@ describe("runInterceptors", () => {
 
   it("returns allow when all interceptors allow", async () => {
     const result = await runInterceptors(
-      [allowAll(), allowAll(), allowAll()],
+      [allowAll("a"), allowAll("b"), allowAll("c")],
       sampleTransaction
     );
     expect(result.action).toBe("allow");
