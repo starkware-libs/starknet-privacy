@@ -65,14 +65,14 @@ const transfers = createPrivateTransfers({
 
 ### `createPrivateTransfers(params)`
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `account` | `Account` | Starknet account for signing transactions |
-| `viewingKeyProvider` | `ViewingKeyProvider` | Provides the private viewing key used for encryption/decryption |
-| `provingProvider` | `ProofProviderInterface` | Backend that generates validity proofs |
-| `discoveryProvider` | `DiscoveryProviderInterface` | Backend for discovering notes and channels |
-| `poolContractAddress` | `StarknetAddress` | Address of the deployed privacy pool contract |
-| `proofInvocationFactory?` | `ProofInvocationFactoryInterface` | Optional override for proof invocation construction |
+| Parameter                 | Type                              | Description                                                     |
+| ------------------------- | --------------------------------- | --------------------------------------------------------------- |
+| `account`                 | `Account`                         | Starknet account for signing transactions                       |
+| `viewingKeyProvider`      | `ViewingKeyProvider`              | Provides the private viewing key used for encryption/decryption |
+| `provingProvider`         | `ProofProviderInterface`          | Backend that generates validity proofs                          |
+| `discoveryProvider`       | `DiscoveryProviderInterface`      | Backend for discovering notes and channels                      |
+| `poolContractAddress`     | `StarknetAddress`                 | Address of the deployed privacy pool contract                   |
+| `proofInvocationFactory?` | `ProofInvocationFactoryInterface` | Optional override for proof invocation construction             |
 
 ### Discovery providers
 
@@ -95,9 +95,7 @@ The builder provides a fluent interface for composing private operations. This i
 ### Register
 
 ```typescript
-const result = await transfers.build()
-  .register()
-  .execute();
+const result = await transfers.build().register().execute();
 ```
 
 ### Deposit
@@ -106,7 +104,8 @@ When depositing followed by other actions (transfers, withdrawals), omit the `re
 
 ```typescript
 // Deposit to self (simple case)
-const result = await transfers.build()
+const result = await transfers
+  .build()
   .with(STRK, (t) => t.deposit({ amount: 100n }))
   .surplusTo(self)
   .execute();
@@ -116,10 +115,9 @@ const result = await transfers.build()
 
 ```typescript
 // Deposit 100, transfer 60 to bob — the SDK creates a 40 change note for self
-const result = await transfers.build()
-  .with(STRK, (t) => t
-    .deposit({ amount: 100n })
-    .transfer({ recipient: bob, amount: 60n }))
+const result = await transfers
+  .build()
+  .with(STRK, (t) => t.deposit({ amount: 100n }).transfer({ recipient: bob, amount: 60n }))
   .surplusTo(self)
   .execute();
 ```
@@ -127,20 +125,18 @@ const result = await transfers.build()
 ### Transfer
 
 ```typescript
-const result = await transfers.build()
-  .with(STRK, (t) => t
-    .inputs(note)
-    .transfer({ recipient: bob, amount: 50n }))
+const result = await transfers
+  .build()
+  .with(STRK, (t) => t.inputs(note).transfer({ recipient: bob, amount: 50n }))
   .execute();
 ```
 
 ### Withdraw
 
 ```typescript
-const result = await transfers.build()
-  .with(STRK, (t) => t
-    .inputs(note)
-    .withdraw({ amount: 30n }))
+const result = await transfers
+  .build()
+  .with(STRK, (t) => t.inputs(note).withdraw({ amount: 30n }))
   .surplusTo(self)
   .execute();
 ```
@@ -148,11 +144,11 @@ const result = await transfers.build()
 ### Multi-operation batch
 
 ```typescript
-const result = await transfers.build()
-  .with(STRK, (t) => t
-    .inputs(note100Strk)
-    .transfer({ recipient: alice, amount: 40n })
-    .withdraw({ amount: 30n }))
+const result = await transfers
+  .build()
+  .with(STRK, (t) =>
+    t.inputs(note100Strk).transfer({ recipient: alice, amount: 40n }).withdraw({ amount: 30n })
+  )
   .surplusTo(self)
   .execute();
 ```
@@ -160,7 +156,8 @@ const result = await transfers.build()
 ### Setup (open channel/subchannel)
 
 ```typescript
-const result = await transfers.build()
+const result = await transfers
+  .build()
   .setup(recipientAddress)
   .with(STRK, (t) => t.setup(recipientAddress))
   .execute();
@@ -183,31 +180,159 @@ const result = await transfers.build()
 
 `invoke(callDetails)` adds an external contract call to the transaction. At most one `invoke()` per transaction.
 
+### Anonymous swap (Ekubo)
+
+Swap tokens privately by withdrawing the input token to a swap executor contract and receiving the output token as a private note. The executor performs the swap on Ekubo and deposits the output back into the privacy pool.
+
+The flow: withdraw BTC to executor → executor swaps BTC→USD on Ekubo Router → executor deposits USD into an open note.
+
+```typescript
+import { Open } from "@starkware-libs/starknet-privacy-sdk";
+
+const swapAmount = 10n * 10n ** 18n;
+
+const { callAndProof } = await transfers
+  .build({
+    autoSetup: true,
+    autoSelectNotes: "all",
+    autoDiscover: { notes: "refresh", channels: "refresh" },
+  })
+  // Withdraw input token to the executor
+  .with(BTC_TOKEN)
+  .withdraw({ recipient: EXECUTOR_ADDRESS, amount: swapAmount })
+  .surplusTo(self, false) // keep BTC change as a private note
+  // Create an open note for the output token (amount filled by executor)
+  .with(USD_TOKEN)
+  .transfer({ recipient: self, amount: Open })
+  .done()
+  // Build the executor calldata — runs after note IDs are assigned
+  .invoke((args) => ({
+    contractAddress: EXECUTOR_ADDRESS,
+    calldata: [
+      EKUBO_ROUTER,
+      BTC_TOKEN, // input token
+      swapAmount, // input amount (i129 mag)
+      0n, // i129 sign (positive = sell)
+      POOL_TOKEN0, // pool key: token0
+      POOL_TOKEN1, // pool key: token1
+      POOL_FEE, // pool key: fee
+      TICK_SPACING, // pool key: tick_spacing
+      EXTENSION, // pool key: extension
+      0n, // minimum_received (low)
+      0n, // minimum_received (high)
+      SKIP_AHEAD, // skip_ahead
+      args.openNotes[0].noteId, // open note to fill with output
+    ],
+  }))
+  .execute();
+```
+
+After the transaction settles, discover notes to see the USD output:
+
+```typescript
+const { notes } = await transfers.discoverNotes();
+const usdNotes = notes.get(BigInt(USD_TOKEN)) ?? [];
+```
+
+### Anonymous lending (Vesu)
+
+Deposit tokens into a Vesu lending pool privately and receive vToken shares as a private note. The lending helper withdraws tokens from the privacy pool, deposits them into the Vesu vToken vault, and deposits the received shares back as an open note.
+
+The flow: withdraw USD to helper → helper deposits USD into vToken vault → helper deposits vUSD into an open note.
+
+```typescript
+import { Open } from "@starkware-libs/starknet-privacy-sdk";
+
+const lendAmount = 50n * 10n ** 18n;
+
+// Lend: USD → vUSD
+const { callAndProof: lendCall } = await transfers
+  .build({
+    autoSetup: true,
+    autoSelectNotes: "all",
+    autoDiscover: { notes: "refresh", channels: "refresh" },
+  })
+  .with(USD_TOKEN)
+  .withdraw({ recipient: HELPER_ADDRESS, amount: lendAmount })
+  .surplusTo(self, false)
+  .with(USD_VTOKEN)
+  .transfer({ recipient: self, amount: Open })
+  .done()
+  .invoke((args) => ({
+    contractAddress: HELPER_ADDRESS,
+    calldata: [
+      0n, // LendingOperation::Deposit
+      USD_TOKEN, // underlying asset
+      USD_VTOKEN, // vToken address
+      lendAmount, // amount to deposit
+      0n, // (reserved)
+      args.openNotes[0].noteId,
+    ],
+  }))
+  .execute();
+```
+
+To unlend (redeem vUSD shares back to USD), reverse the direction:
+
+```typescript
+// Discover vToken notes first
+const { notes } = await transfers.discoverNotes();
+const vTokenNotes = notes.get(BigInt(USD_VTOKEN)) ?? [];
+const vTokenAmount = vTokenNotes.reduce((sum, n) => sum + n.amount, 0n);
+
+// Unlend: vUSD → USD
+const { callAndProof: unlendCall } = await transfers
+  .build({
+    autoSetup: true,
+    autoSelectNotes: "all",
+    autoDiscover: { notes: "refresh", channels: "refresh" },
+  })
+  .with(USD_VTOKEN)
+  .withdraw({ recipient: HELPER_ADDRESS, amount: vTokenAmount })
+  .surplusTo(self, false)
+  .with(USD_TOKEN)
+  .transfer({ recipient: self, amount: Open })
+  .done()
+  .invoke((args) => ({
+    contractAddress: HELPER_ADDRESS,
+    calldata: [
+      1n, // LendingOperation::Withdraw
+      USD_VTOKEN, // vToken to redeem
+      USD_TOKEN, // underlying asset to receive
+      lendAmount, // amount of underlying to withdraw
+      0n, // (reserved)
+      args.openNotes[0].noteId,
+    ],
+  }))
+  .execute();
+```
+
 ## Execute options
 
 Pass options to `build()` or `execute()` to control automation:
 
 ```typescript
-const result = await transfers.build({
-  autoRegister: true,
-  autoSetup: true,
-  autoSelectNotes: "naive",
-  autoDiscover: { notes: "refresh", channels: "refresh" },
-  registry: myRegistry,
-}).with(STRK, (t) => t
-  .transfer({ recipient: bob, amount: 50n }))
+const result = await transfers
+  .build({
+    autoRegister: true,
+    autoSetup: true,
+    autoSelectNotes: "naive",
+    autoDiscover: { notes: "refresh", channels: "refresh" },
+    registry: myRegistry,
+  })
+  .with(STRK, (t) => t.transfer({ recipient: bob, amount: 50n }))
   .execute();
 ```
 
-| Option | Type | Description |
-|--------|------|-------------|
-| `autoRegister` | `boolean` | Automatically register if user has no viewing key on-chain |
-| `autoSetup` | `boolean` | Automatically open channels and token subchannels as needed |
-| `autoSelectNotes` | `"all" \| "naive"` | Automatically select input notes (`"all"` uses every note, `"naive"` selects minimum) |
-| `autoDiscover` | `{ notes?, channels? }` | Refresh notes/channels before executing (`"missing"`, `"refresh"`, or `"all"`) |
-| `registry` | `PrivateRegistry` | User's private state (channels, notes, cursor) |
-| `registryConst` | `boolean` | If true, returns a new registry instead of mutating the provided one |
-| `provingBlockId` | `ProvingBlockId` | Block identifier to use for proving |
+| Option            | Type                    | Description                                                                           |
+| ----------------- | ----------------------- | ------------------------------------------------------------------------------------- |
+| `autoRegister`    | `boolean`               | Automatically register if user has no viewing key on-chain                            |
+| `autoSetup`       | `boolean`               | Automatically open channels and token subchannels as needed                           |
+| `autoSelectNotes` | `"all" \| "naive"`      | Automatically select input notes (`"all"` uses every note, `"naive"` selects minimum) |
+| `autoDiscover`    | `{ notes?, channels? }` | Refresh notes/channels before executing (`"missing"`, `"refresh"`, or `"all"`)        |
+| `registry`        | `PrivateRegistry`       | User's private state (channels, notes, cursor)                                        |
+| `registryConst`   | `boolean`               | If true, returns a new registry instead of mutating the provided one                  |
+| `provingBlockId`  | `ProvingBlockId`        | Block identifier to use for proving                                                   |
 
 ## Discovery
 
@@ -251,19 +376,19 @@ const page = await discovery.fetchHistory(
   userAddress,
   notesCursor,
   { channels },
-  { maxTransactions: 10 },
+  { maxTransactions: 10 }
 );
 
 for (const tx of page.transactions) {
   const { actions } = classifyTransaction(tx);
   for (const action of actions) {
     switch (action.type) {
-      case "deposit":       // { fromAddress, token, amount }
-      case "withdrawal":    // { toAddress, token, amount }
-      case "transferSent":  // { toAddress, token, amount, noteCount }
+      case "deposit": // { fromAddress, token, amount }
+      case "withdrawal": // { toAddress, token, amount }
+      case "transferSent": // { toAddress, token, amount, noteCount }
       case "transferReceived": // { fromAddress, token, amount, noteCount }
-      case "swap":          // { executor, sent: SwapLeg[], received: SwapLeg[] }
-      case "transferSelf":  // { token, amount, noteCount }
+      case "swap": // { executor, sent: SwapLeg[], received: SwapLeg[] }
+      case "transferSelf": // { token, amount, noteCount }
     }
   }
 }
@@ -274,7 +399,7 @@ if (!page.cursor.historyComplete) {
     userAddress,
     notesCursor,
     { channels },
-    { maxTransactions: 10, historyCursor: page.cursor, blockRef: page.blockRef },
+    { maxTransactions: 10, historyCursor: page.cursor, blockRef: page.blockRef }
   );
 }
 ```
@@ -285,9 +410,9 @@ Every `execute()` call returns:
 
 ```typescript
 type ExecuteResult = {
-  callAndProof: CallAndProof;  // Call + proof to send to the contract's execute_actions entry point
-  registry: PrivateRegistry;   // Updated notes and recipient info
-  warnings: Warning[];         // Privacy leakage warnings
+  callAndProof: CallAndProof; // Call + proof to send to the contract's execute_actions entry point
+  registry: PrivateRegistry; // Updated notes and recipient info
+  warnings: Warning[]; // Privacy leakage warnings
 };
 ```
 
@@ -318,10 +443,16 @@ The wallet sends `callAndProof` in a transaction to the contract's `execute_acti
 The SDK exports testing utilities from `starknet-sdk/testing`:
 
 ```typescript
-import { Devnet, createDevnetTestEnv, MockPoolContract, MockProofProvider } from "starknet-sdk/testing";
+import {
+  Devnet,
+  createDevnetTestEnv,
+  MockPoolContract,
+  MockProofProvider,
+} from "starknet-sdk/testing";
 ```
 
 Key exports:
+
 - **Devnet**: `Devnet`, `createDevnetTestEnv`, `DevnetConfig`, `DevnetEnvironment`, `DevnetTestEnv`
 - **Mocks**: `MockPoolContract`, `MockProofProvider`, `MockProofInvocationFactory`, `MockSwapHelper`, `MockContracts`, `Mocknet`, `ERC20`
 - **Helpers**: `createMockProof`, `createMockCallAndProof`, `CallMockProofProvider`, `Withdrawal`

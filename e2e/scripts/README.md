@@ -8,47 +8,61 @@ Setup scripts deploy contracts to the integration Starknet environment. Each scr
 
 ```bash
 # Build contract artifacts
-cd e2e/vesu-contracts && scarb build       # MockAsset, Vesu Pool, PoolFactory, VToken, Oracle, mock oracles
-scarb build                                 # Privacy pool + VesuLendingHelper (from repo root)
+cd e2e/contracts/test-token && scarb build  # TestToken (shared ERC-20 with open mint)
+cd e2e/contracts/ekubo     && scarb build  # Ekubo Core, Router, Positions, OwnedNFT
+cd e2e/contracts/vesu      && scarb build  # Vesu Pool, PoolFactory, VToken, Oracle, mock oracles
+scarb build                                 # Privacy pool + VesuLendingHelper + EkuboSwapHelper (from repo root)
 ```
 
-Note: `vesu-contracts/` requires Scarb 2.11.4 (pinned in its `.tool-versions`). The repo root uses Scarb 2.17.0-rc.4.
+Note: `contracts/vesu/` requires Scarb 2.11.4 (pinned in its `.tool-versions`). The repo root, `contracts/test-token/`, and `contracts/ekubo/` use Scarb 2.17.0-rc.4.
 
-### Setup order
+### Ekubo deployment
 
-Run from `e2e/` with `.env` populated (RPC_URL, ACCOUNTS, etc.):
+Deploys test tokens, Ekubo Core + Router + Positions with a seeded liquidity pool, and the EkuboSwapHelper executor in a single run:
 
 ```bash
-# 1. Deploy shared test tokens (USD + BTC)
-npm run setup-tokens
-# → outputs USD_TOKEN_ADDRESS, BTC_TOKEN_ADDRESS — add to .env
-
-# 2. Deploy Vesu lending infrastructure
-npm run setup-vesu
-# → outputs VESU_POOL_ADDRESS, VESU_ORACLE_ADDRESS, USD_VTOKEN_ADDRESS, etc. — add to .env
-
-# 3. Deploy VesuLendingHelper (requires privacy pool artifacts from `scarb build`)
-npm run setup-vesu-helper
-# → outputs VESU_LENDING_HELPER_ADDRESS — add to .env
+npm run deploy-ekubo
 ```
 
-After each script, copy the printed env vars into `e2e/.env`. See `.env.example` for the full list.
+Output addresses are written to `ekubo-deployment.env` and printed to the console.
+
+If `USD_TOKEN_ADDRESS` and `BTC_TOKEN_ADDRESS` are already set in `.env` (and not `0x0`), token deployment is skipped. Pool configuration (fee, tick spacing, seed amounts, etc.) reads from env vars when set, falling back to devnet defaults (~0.3% fee, 1000 tick spacing, 1000-token seed per side).
+
+After deployment, verify the pool with a swap smoke test:
+
+```bash
+npm run test-swap
+```
+
+### Vesu deployment
+
+Deploys test tokens (if not already set), Vesu PoolFactory + mock oracles + Oracle + Pool with USD/BTC pairs, seeds liquidity, and deploys VesuLendingHelper in a single run:
+
+```bash
+npm run deploy-vesu
+```
+
+Output addresses are written to `vesu-deployment.env` and printed to the console.
+
+If `USD_TOKEN_ADDRESS` and `BTC_TOKEN_ADDRESS` are already set in `.env`, token deployment is skipped. To skip re-creation of factory-created contracts (Oracle, Pool, VTokens), set their addresses in `.env` too.
 
 ### Idempotency and re-runs
 
 - Class declarations and UDC deploys are fully idempotent (skip if already on-chain)
+- Ekubo pool initialization catches "already initialized" errors — safe to re-run
+- Liquidity seeding always runs (safe to repeat)
 - Oracle and pool creation use `deploy_syscall` with deterministic addresses — they can't be re-created from the same factory. Set `VESU_ORACLE_ADDRESS` and `VESU_POOL_ADDRESS` in `.env` to skip these steps on re-run
-- Liquidity seeding and price setting always run (safe to repeat)
 
 ### Script details
 
-| Script              | What it does                                                                                                         | Depends on                                                                  |
-| ------------------- | -------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
-| `setup-tokens`      | Declares + deploys MockAsset (minimal ERC-20 with `mint`), deploys USD and BTC instances                             | `vesu-contracts/` build artifacts                                           |
-| `setup-vesu`        | Declares Vesu classes, deploys PoolFactory + mock oracles, creates Oracle + Pool with USD/BTC pairs, seeds liquidity | `vesu-contracts/` build artifacts, `USD_TOKEN_ADDRESS`, `BTC_TOKEN_ADDRESS` |
-| `setup-vesu-helper` | Declares + deploys stateless VesuLendingHelper                                                                       | Privacy pool build artifacts (`target/dev/`)                                |
+| Script         | What it does                                                                      | Depends on                                            |
+| -------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `deploy-vesu`  | Deploys tokens + Vesu infra + helper. Writes `.env.deployed`                      | `contracts/test-token/` + `contracts/vesu/` artifacts |
+| `test-lending` | Smoke test: deposit USD into vToken vault, redeem back                            | `.env.deployed` (from `deploy-vesu`)                  |
+| `deploy-ekubo` | Deploys Ekubo Core/Router/Positions + pool + executor. Appends to `.env.deployed` | `contracts/ekubo/` + repo root artifacts              |
+| `test-swap`    | Smoke test: swap BTC→USD via Router                                               | `.env.deployed` (from `deploy-ekubo`)                 |
 
-### Shared helpers (`helpers.ts`)
+### Shared helpers (`src/utils.ts`)
 
 All setup scripts import from `helpers.ts`:
 
@@ -88,7 +102,6 @@ npm run pull-env
 - Vercel CLI authentication, or `VERCEL_TOKEN` env var
 - `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` env vars (or a linked Vercel project via `.vercel/project.json`)
 
-
 ### `load-test-discovery.ts`
 
 Hammers the discovery service with concurrent `discoverNotes()` calls.
@@ -110,16 +123,6 @@ npm run load-test-discovery -- --threads 8 --duration 30 --account alice --warmu
 **Pagination tracking:** wraps `globalThis.fetch` to count POST requests to
 `/v1/sync/incoming_state`, giving visibility into how many pagination round
 trips each `discoverNotes()` call requires.
-
-### `batch-operations.ts`
-
-Creates many notes via chunked deposits or transfers. Used to build up pool
-state before load testing.
-
-```
-npm run batch-operations -- --mode deposit --count 500
-npm run batch-operations -- --mode transfer --count 25 --recipient Charlie --amount 10
-```
 
 ## Running a concurrency sweep
 
@@ -157,7 +160,7 @@ Single worker, current state. Establishes floor latency with zero contention.
 
 ### Phase B — State size sensitivity
 
-Use `batch-operations.ts` to create accounts with varying note counts.
+Use the demo app transaction builder to create accounts with varying note counts.
 Run at 1 and 4 workers per state size. Produces latency-vs-state-size curve.
 
 ### Phase C — Concurrency sweep

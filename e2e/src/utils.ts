@@ -90,9 +90,13 @@ export interface AccountEntry {
   viewingKey: string;
 }
 
+/**
+ * Read an env var, trying both `NAME` and `VITE_NAME` prefixes.
+ * Throws if neither is set.
+ */
 export function requireEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing required env var: ${name}`);
+  const value = process.env[name] ?? process.env[`VITE_${name}`];
+  if (!value) throw new Error(`Missing required env var: ${name} (or VITE_${name})`);
   return value;
 }
 
@@ -103,7 +107,9 @@ export function setupAdmin(): {
 } {
   const rpcUrl = requireEnv("RPC_URL");
   const accounts: AccountEntry[] = JSON.parse(requireEnv("ACCOUNTS"));
-  const admin = accounts.find((entry) => entry.name === "admin");
+  const admin = accounts.find(
+    (entry) => entry.name.toLowerCase() === "admin",
+  );
   if (!admin) throw new Error('No "admin" entry found in ACCOUNTS env var');
 
   const provider = new RpcProvider({ nodeUrl: rpcUrl });
@@ -143,11 +149,22 @@ export async function declareClass(
     casm: compiledClass,
     compiledClassHash: hash.computeCompiledClassHash(compiledClass),
   };
-  const feeEstimate = await account.estimateDeclareFee(declarePayload);
+
+  // Use generous resource bounds for declares. Fee estimation via RPC is
+  // unreliable across node implementations, and large contracts (e.g. Ekubo
+  // Core) need significant L2 gas for compilation.
+  const sierraSize = contractClass.sierra_program?.length ?? 0;
+  const dataGasAmount = BigInt(Math.max(sierraSize * 2, 640));
+  const declareResourceBounds = {
+    l2_gas: { max_amount: 5_000_000_000n, max_price_per_unit: 16_000_000_000n },
+    l1_gas: { max_amount: 1n, max_price_per_unit: 100_000_000_000_000n },
+    l1_data_gas: { max_amount: dataGasAmount, max_price_per_unit: 100_000n },
+  };
 
   try {
     const declaration = await account.declare(declarePayload, {
-      resourceBounds: feeEstimate.resourceBounds,
+      tip: 0n,
+      resourceBounds: declareResourceBounds,
     });
     const receipt = await provider.waitForTransaction(
       declaration.transaction_hash,
@@ -158,14 +175,26 @@ export async function declareClass(
     console.log(`  Declared: ${declaration.class_hash}`);
     return declaration.class_hash;
   } catch (error: unknown) {
+    // Code 51 = class already declared (race with another tx)
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as Error & { code: number }).code === 51
+    ) {
+      console.log(`  Already declared: ${classHash}`);
+      return classHash;
+    }
     if (error instanceof Error && "code" in error) {
-      const rpcError = error as Error & { code: number; data?: unknown };
+      const rpcError = error as Error & { code: number; data?: unknown; baseError?: unknown };
       const shortMessage = rpcError.message.split(" with params")[0];
       const dataStr = rpcError.data
         ? ` data=${JSON.stringify(rpcError.data)}`
         : "";
+      const baseStr = rpcError.baseError
+        ? ` base=${JSON.stringify(rpcError.baseError)}`
+        : "";
       throw new Error(
-        `Declare RPC error for ${classPath} (code=${rpcError.code}): ${shortMessage}${dataStr}`,
+        `Declare RPC error for ${classPath.split("/").pop()} (code=${rpcError.code}): ${shortMessage}${dataStr}${baseStr}`,
       );
     }
     throw error;
@@ -173,38 +202,22 @@ export async function declareClass(
 }
 
 /**
- * Deploy a contract with a deterministic salt, skipping if already deployed
- * at the precomputed address. No hardcoded resource bounds.
+ * Deploy a contract via UDC. The salt is combined with `DEPLOY_SALT_SEED`
+ * from the environment — change the seed to deploy fresh instances at new
+ * addresses.
  */
-export async function deployDeterministic(
+export async function deployContract(
   account: Account,
   provider: RpcProvider,
   classHash: string,
   constructorCalldata: Array<string | bigint>,
   salt: string,
 ): Promise<string> {
-  const UDC_ADDRESS =
-    "0x02ceed65a4bd731034c01113685c831b01c15d7d432f71afb1cf1634b53a2125";
-  const uniqueSalt = ec.starkCurve.pedersen(account.address, salt);
-  const precomputedAddress = hash.calculateContractAddressFromHash(
-    uniqueSalt,
-    classHash,
-    constructorCalldata,
-    UDC_ADDRESS,
-  );
-
-  try {
-    await provider.getClassHashAt(precomputedAddress);
-    console.log(`  Already deployed at ${precomputedAddress}`);
-    return precomputedAddress;
-  } catch {
-    // not deployed yet
-  }
-
+  const seed = process.env.DEPLOY_SALT_SEED ?? "0x0";
   const deployResponse = await account.deployContract({
     classHash,
     constructorCalldata,
-    salt,
+    salt: ec.starkCurve.pedersen(seed, salt),
   });
   const receipt = await provider.waitForTransaction(
     deployResponse.transaction_hash,

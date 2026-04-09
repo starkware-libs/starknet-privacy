@@ -1,6 +1,5 @@
 import { join } from "path";
 import {
-  cairo,
   hash,
   type Account,
   type RpcProvider,
@@ -10,7 +9,7 @@ import {
   repoRoot,
   artifactPair,
   declareClass,
-  deployDeterministic,
+  deployContract,
   executeAndWait,
   serializeByteArray,
   u256Calldata,
@@ -64,44 +63,40 @@ function filterEvents(
 
 /**
  * Declare and deploy shared test ERC-20 tokens (USD + BTC).
- * Uses MockAsset from vesu-contracts/ (minimal ERC-20 with mint).
+ * Uses TestToken from e2e/contracts/test-token/ (OZ ERC-20 with open mint).
  * Idempotent: skips already-declared classes and already-deployed contracts.
  */
 export async function deployTestTokens(
   admin: Account,
   provider: RpcProvider,
 ): Promise<TokenAddresses> {
-  const vesuArtifactDirectory = join(
-    repoRoot(),
-    "e2e/vesu-contracts/target/dev",
-  );
-  const mockAssetArtifact = artifactPair(
-    vesuArtifactDirectory,
-    "vesu_contracts",
-    "MockAsset",
+  const tokenArtifact = artifactPair(
+    join(repoRoot(), "e2e/contracts/test-token/target/dev"),
+    "test_token",
+    "TestToken",
   );
 
-  const mockAssetClassHash = await declareClass(
+  const tokenClassHash = await declareClass(
     admin,
     provider,
-    mockAssetArtifact.classPath,
-    mockAssetArtifact.compiledPath,
+    tokenArtifact.classPath,
+    tokenArtifact.compiledPath,
   );
 
-  // MockAsset constructor: (name: felt252, symbol: felt252, decimals: u8, initial_supply: u256, recipient: address)
-  const usdToken = await deployDeterministic(
+  // TestToken constructor: (name: ByteArray, symbol: ByteArray)
+  const usdToken = await deployContract(
     admin,
     provider,
-    mockAssetClassHash,
-    [cairo.felt("TestUSD"), cairo.felt("USD"), "18", "0", "0", admin.address],
+    tokenClassHash,
+    [...serializeByteArray("TestUSD"), ...serializeByteArray("USD")] as Array<string | bigint>,
     "0x400",
   );
 
-  const btcToken = await deployDeterministic(
+  const btcToken = await deployContract(
     admin,
     provider,
-    mockAssetClassHash,
-    [cairo.felt("TestBTC"), cairo.felt("BTC"), "18", "0", "0", admin.address],
+    tokenClassHash,
+    [...serializeByteArray("TestBTC"), ...serializeByteArray("BTC")] as Array<string | bigint>,
     "0x500",
   );
 
@@ -111,21 +106,18 @@ export async function deployTestTokens(
 /**
  * Deploy Vesu V2 lending infrastructure: PoolFactory, mock oracles, Oracle, Pool.
  * Seeds initial liquidity for both USD/BTC pairs.
- * Idempotent: skips already-declared classes and already-deployed contracts.
  *
- * For factory-created contracts (Oracle, Pool), pass existing addresses via
- * `existing` to skip re-creation (they use deploy_syscall, not UDC).
+ * Set `DEPLOY_SALT_SEED` env var to deploy fresh instances at new addresses.
  */
 export async function deployVesuInfra(
   admin: Account,
   provider: RpcProvider,
   tokens: TokenAddresses,
-  existing?: Partial<VesuAddresses>,
 ): Promise<VesuAddresses> {
   const { usdToken, btcToken } = tokens;
   const vesuArtifactDirectory = join(
     repoRoot(),
-    "e2e/vesu-contracts/target/dev",
+    "e2e/contracts/vesu/target/dev",
   );
 
   const vesuArtifact = (name: string) =>
@@ -145,7 +137,7 @@ export async function deployVesuInfra(
   const mockSummaryClassHash = await declareVesu("MockPragmaSummary");
 
   // Deploy PoolFactory
-  const factoryAddress = await deployDeterministic(
+  const factoryAddress = await deployContract(
     admin,
     provider,
     factoryClassHash,
@@ -154,14 +146,14 @@ export async function deployVesuInfra(
   );
 
   // Deploy mock oracle contracts
-  const pragmaOracleAddress = await deployDeterministic(
+  const pragmaOracleAddress = await deployContract(
     admin,
     provider,
     mockPragmaClassHash,
     [],
     "0x601",
   );
-  const pragmaSummaryAddress = await deployDeterministic(
+  const pragmaSummaryAddress = await deployContract(
     admin,
     provider,
     mockSummaryClassHash,
@@ -169,17 +161,14 @@ export async function deployVesuInfra(
     "0x602",
   );
 
-  // Create Oracle via PoolFactory (skip if existing address provided)
-  let oracleAddress = existing?.oracleAddress;
-  if (!oracleAddress) {
-    const createOracleSelector = hash.getSelectorFromName("CreateOracle");
-    const oracleReceipt = await executeAndWait(admin, provider, {
-      contractAddress: factoryAddress,
-      entrypoint: "create_oracle",
-      calldata: [admin.address, pragmaOracleAddress, pragmaSummaryAddress],
-    });
-    oracleAddress = findEventKey(oracleReceipt, createOracleSelector, 1);
-  }
+  // Create Oracle via PoolFactory
+  const createOracleSelector = hash.getSelectorFromName("CreateOracle");
+  const oracleReceipt = await executeAndWait(admin, provider, {
+    contractAddress: factoryAddress,
+    entrypoint: "create_oracle",
+    calldata: [admin.address, pragmaOracleAddress, pragmaSummaryAddress],
+  });
+  const oracleAddress = findEventKey(oracleReceipt, createOracleSelector, 1);
 
   // Set mock prices (1:1 = 1e18)
   await executeAndWait(admin, provider, {
@@ -206,7 +195,7 @@ export async function deployVesuInfra(
     calldata: [btcToken, BTC_PRAGMA_KEY, 0, 2, 0, 0, 0],
   });
 
-  // Mint inflation fee tokens and approve factory
+  // Mint inflation fee tokens and approve factory (required for pool creation)
   const inflationAmount = 4000n;
   await executeAndWait(admin, provider, {
     contractAddress: usdToken,
@@ -229,88 +218,82 @@ export async function deployVesuInfra(
     calldata: [factoryAddress, ...u256Calldata(inflationAmount)],
   });
 
-  // Create pool with USD/BTC pair (skip if existing addresses provided)
-  let poolAddress = existing?.poolAddress;
-  let usdVToken = existing?.usdVToken;
-  let btcVToken = existing?.btcVToken;
+  // Create pool with USD/BTC pair
+  const initialFullUtilRate = (1582470460n + 32150205761n) / 2n;
 
-  if (!poolAddress || !usdVToken || !btcVToken) {
-    const initialFullUtilRate = (1582470460n + 32150205761n) / 2n;
+  const assetParams = (tokenAddress: string) => [
+    tokenAddress,
+    ...u256Calldata(SCALE / 10_000n),
+    ...u256Calldata(initialFullUtilRate),
+    ...u256Calldata(SCALE),
+    0,
+    ...u256Calldata(0n),
+  ];
 
-    const assetParams = (tokenAddress: string) => [
-      tokenAddress,
-      ...u256Calldata(SCALE / 10_000n),
-      ...u256Calldata(initialFullUtilRate),
-      ...u256Calldata(SCALE),
-      0,
-      ...u256Calldata(0n),
-    ];
+  const interestRateConfig = [
+    ...u256Calldata(75_000n),
+    ...u256Calldata(99_999n),
+    ...u256Calldata(87_500n),
+    ...u256Calldata(1582470460n),
+    ...u256Calldata(32150205761n),
+    ...u256Calldata(158247046n),
+    ...u256Calldata(172_800n),
+    ...u256Calldata(20n * PERCENT),
+  ];
 
-    const interestRateConfig = [
-      ...u256Calldata(75_000n),
-      ...u256Calldata(99_999n),
-      ...u256Calldata(87_500n),
-      ...u256Calldata(1582470460n),
-      ...u256Calldata(32150205761n),
-      ...u256Calldata(158247046n),
-      ...u256Calldata(172_800n),
-      ...u256Calldata(20n * PERCENT),
-    ];
+  const createPoolCalldata = [
+    "0x5665737550726976616379", // "VesuPrivacy"
+    admin.address,
+    oracleAddress,
+    admin.address,
+    2,
+    ...assetParams(usdToken),
+    ...assetParams(btcToken),
+    2,
+    ...serializeByteArray("Vesu USD"),
+    ...serializeByteArray("vUSD"),
+    btcToken,
+    ...serializeByteArray("Vesu BTC"),
+    ...serializeByteArray("vBTC"),
+    usdToken,
+    2,
+    ...interestRateConfig,
+    ...interestRateConfig,
+    2,
+    1,
+    0,
+    80n * PERCENT,
+    0,
+    0, // pair BTC→USD
+    0,
+    1,
+    80n * PERCENT,
+    0,
+    0, // pair USD→BTC
+  ];
 
-    const createPoolCalldata = [
-      "0x5665737550726976616379", // "VesuPrivacy"
-      admin.address,
-      oracleAddress,
-      admin.address,
-      2,
-      ...assetParams(usdToken),
-      ...assetParams(btcToken),
-      2,
-      ...serializeByteArray("Vesu USD"),
-      ...serializeByteArray("vUSD"),
-      btcToken,
-      ...serializeByteArray("Vesu BTC"),
-      ...serializeByteArray("vBTC"),
-      usdToken,
-      2,
-      ...interestRateConfig,
-      ...interestRateConfig,
-      2,
-      1,
-      0,
-      80n * PERCENT,
-      0,
-      0, // pair BTC→USD
-      0,
-      1,
-      80n * PERCENT,
-      0,
-      0, // pair USD→BTC
-    ];
+  const createPoolSelector = hash.getSelectorFromName("CreatePool");
+  const createVTokenSelector = hash.getSelectorFromName("CreateVToken");
+  const poolReceipt = await executeAndWait(admin, provider, {
+    contractAddress: factoryAddress,
+    entrypoint: "create_pool",
+    calldata: createPoolCalldata.map(String),
+  });
 
-    const createPoolSelector = hash.getSelectorFromName("CreatePool");
-    const createVTokenSelector = hash.getSelectorFromName("CreateVToken");
-    const poolReceipt = await executeAndWait(admin, provider, {
-      contractAddress: factoryAddress,
-      entrypoint: "create_pool",
-      calldata: createPoolCalldata.map(String),
-    });
-
-    poolAddress = findEventKey(poolReceipt, createPoolSelector, 1);
-    const vtokenEvents = filterEvents(poolReceipt, createVTokenSelector);
-    usdVToken = "";
-    btcVToken = "";
-    for (const event of vtokenEvents) {
-      const assetAddr = event.keys[2];
-      const vtokenAddr = event.keys[3];
-      if (BigInt(assetAddr) === BigInt(usdToken)) usdVToken = vtokenAddr;
-      else if (BigInt(assetAddr) === BigInt(btcToken)) btcVToken = vtokenAddr;
-    }
-    if (!usdVToken || !btcVToken) {
-      throw new Error(
-        "Failed to extract vToken addresses from CreateVToken events",
-      );
-    }
+  const poolAddress = findEventKey(poolReceipt, createPoolSelector, 1);
+  const vtokenEvents = filterEvents(poolReceipt, createVTokenSelector);
+  let usdVToken = "";
+  let btcVToken = "";
+  for (const event of vtokenEvents) {
+    const assetAddr = event.keys[2];
+    const vtokenAddr = event.keys[3];
+    if (BigInt(assetAddr) === BigInt(usdToken)) usdVToken = vtokenAddr;
+    else if (BigInt(assetAddr) === BigInt(btcToken)) btcVToken = vtokenAddr;
+  }
+  if (!usdVToken || !btcVToken) {
+    throw new Error(
+      "Failed to extract vToken addresses from CreateVToken events",
+    );
   }
 
   // Supply initial liquidity (1000 tokens each side)
@@ -394,5 +377,5 @@ export async function deployVesuHelper(
     helperArtifact.compiledPath,
   );
 
-  return deployDeterministic(admin, provider, helperClassHash, [], "0x700");
+  return deployContract(admin, provider, helperClassHash, [], "0x700");
 }
