@@ -342,4 +342,6 @@ pub mod error_codes {
     pub const CONTRACT_NOT_FOUND: &str = "CONTRACT_NOT_FOUND";
     pub const RPC_UNAVAILABLE: &str = "RPC_UNAVAILABLE";
     pub const INTERNAL_ERROR: &str = "INTERNAL_ERROR";
+    pub const OHTTP_DECAPSULATION_FAILED: &str = "OHTTP_DECAPSULATION_FAILED";
+    pub const OHTTP_INVALID_FORMAT: &str = "OHTTP_INVALID_FORMAT";
 }

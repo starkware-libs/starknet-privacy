@@ -21,6 +21,9 @@ use tracing::info;
 
 use crate::chain_state::ChainState;
 use crate::config::{ApiServerConfig, ValidationLimits};
+use crate::ohttp::gateway::OhttpGateway;
+use crate::ohttp::handlers::ohttp_keys_handler;
+use crate::ohttp::layer::OhttpLayer;
 use crate::public_key_cache::PublicKeyCache;
 
 pub use handlers::{
@@ -38,6 +41,7 @@ pub struct ApiServer<B> {
     rx_shutdown: broadcast::Receiver<()>,
     config: ApiServerConfig,
     backend: B,
+    ohttp_gateway: Option<Arc<OhttpGateway>>,
 }
 
 /// Errors that can occur in the API server.
@@ -65,11 +69,17 @@ where
     B::Snapshot: RawEventAccess + Clone + Send + Sync + 'static,
 {
     /// Creates a new API server.
-    pub fn new(config: ApiServerConfig, rx_shutdown: broadcast::Receiver<()>, backend: B) -> Self {
+    pub fn new(
+        config: ApiServerConfig,
+        rx_shutdown: broadcast::Receiver<()>,
+        backend: B,
+        ohttp_gateway: Option<Arc<OhttpGateway>>,
+    ) -> Self {
         Self {
             rx_shutdown,
             config,
             backend,
+            ohttp_gateway,
         }
     }
 
@@ -84,7 +94,7 @@ where
             validation_limits: self.config.validation_limits.clone(),
         });
 
-        let app = Router::new()
+        let mut app = Router::new()
             .route("/health", get(health_handler::<B>))
             .route("/v1/sync/incoming_state", post(incoming_sync_handler::<B>))
             .route("/v1/sync/outgoing_state", post(outgoing_sync_handler::<B>))
@@ -93,6 +103,20 @@ where
                 post(preflight_check_handler::<B>),
             )
             .route("/v1/history", post(history_handler::<B>))
+            .with_state(app_state);
+
+        // Conditionally add OHTTP support.
+        if let Some(gateway) = &self.ohttp_gateway {
+            app = app
+                .route(
+                    "/ohttp-keys",
+                    get(ohttp_keys_handler).with_state(gateway.clone()),
+                )
+                .layer(OhttpLayer::new(gateway.clone()));
+            info!("OHTTP envelope encryption enabled");
+        }
+
+        let app = app
             .layer(CorsLayer::permissive())
             .layer(DefaultBodyLimit::max(
                 self.config.validation_limits.max_request_body_bytes,
@@ -100,8 +124,7 @@ where
             .layer(TimeoutLayer::with_status_code(
                 axum::http::StatusCode::REQUEST_TIMEOUT,
                 self.config.request_timeout,
-            ))
-            .with_state(app_state);
+            ));
 
         let tcp_listener = TcpListener::bind(&self.config.host)
             .await
