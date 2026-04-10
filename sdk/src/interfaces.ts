@@ -10,6 +10,7 @@ import type {
 } from "starknet";
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
+import type { OhttpOption } from "./internal/ohttp-client.js";
 
 export type Amount = bigint;
 
@@ -115,6 +116,8 @@ export type ProofProviderConfig = {
    * When set, the nonce is fetched once and cached; call invalidateProofNonceCache() to force a refresh.
    */
   nodeUrl?: string;
+  /** Enable OHTTP envelope encryption for the proving service. Pass `true` for defaults, or an object for custom relay/key config. */
+  ohttp?: OhttpOption;
 };
 
 /**

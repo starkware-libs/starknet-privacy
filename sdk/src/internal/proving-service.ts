@@ -6,6 +6,7 @@
 import type { BlockIdentifier } from "starknet";
 import type { ProofInvocation } from "../interfaces.js";
 import { z } from "zod";
+import type { OhttpClient } from "./ohttp-client.js";
 
 /** Default request timeout: 30s (proofs typically take a few seconds). */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -17,6 +18,8 @@ export interface ProvingServiceConfig {
   baseUrl: string;
   /** Request timeout in ms. Default 30_000 (30 seconds). */
   requestTimeoutMs?: number;
+  /** When set, requests are encrypted via OHTTP instead of plain fetch. */
+  ohttpClient?: OhttpClient;
 }
 
 /** Result of starknet_proveTransaction. */
@@ -52,10 +55,12 @@ const ProveTransactionResultSchema = z
 export class ProvingService {
   private baseUrl: string;
   private requestTimeoutMs: number;
+  private ohttpClient?: OhttpClient;
 
   constructor(config: ProvingServiceConfig) {
     this.baseUrl = config.baseUrl;
     this.requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.ohttpClient = config.ohttpClient;
   }
 
   private async call<T>(method: string, params: unknown): Promise<T> {
@@ -66,24 +71,32 @@ export class ProvingService {
       params,
     };
 
-    const res = await fetch(this.baseUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.requestTimeoutMs),
-    });
-
-    const text = await res.text();
-    if (!res.ok) {
-      throw new Error(`Proving service HTTP ${res.status}: ${text}`);
-    }
-
-    const json = JSON.parse(text) as {
+    type JsonRpcResponse = {
       jsonrpc: string;
       id: number;
       result?: T;
       error?: { code: number; message: string; data?: string };
     };
+
+    let json: JsonRpcResponse;
+
+    if (this.ohttpClient) {
+      json = await this.ohttpClient.post<JsonRpcResponse>("", body);
+    } else {
+      const res = await fetch(this.baseUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(this.requestTimeoutMs),
+      });
+
+      const text = await res.text();
+      if (!res.ok) {
+        throw new Error(`Proving service HTTP ${res.status}: ${text}`);
+      }
+
+      json = JSON.parse(text) as JsonRpcResponse;
+    }
 
     if (json.error) {
       const { code, message, data } = json.error;

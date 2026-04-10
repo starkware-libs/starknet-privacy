@@ -1,5 +1,5 @@
 /**
- * OHTTP (Oblivious HTTP, RFC 9458) client for encrypting discovery service
+ * OHTTP (Oblivious HTTP, RFC 9458) client for encrypting service
  * requests and decrypting responses using HPKE.
  *
  * Wraps the `ohttp-ts` library by Thibault Meunier (Cloudflare).
@@ -13,6 +13,9 @@ const KEY_CONFIG_TTL_MS = 3600_000;
 
 /** HTTP 409 — the discovery service returns this exclusively for block reorgs (BLOCK_REORGED). */
 const REORG_STATUS = 409;
+
+/** Configuration for enabling OHTTP. `true` uses defaults; an object allows custom relay/key config. */
+export type OhttpOption = boolean | { relayUrl?: string; publicKeyConfig?: Uint8Array };
 
 /** Error thrown when a block reorg is detected (HTTP 409 inner status). */
 export class ReorgError extends Error {
@@ -48,14 +51,19 @@ export class OhttpClient {
     }
 
     if (!this.pinnedKeyConfig) {
-      const url = new URL(gatewayUrl);
-      const isLocalDev = url.hostname === "localhost" || url.hostname === "127.0.0.1";
-      if (url.protocol !== "https:" && !isLocalDev) {
-        console.warn(
-          "OhttpClient: gatewayUrl is not HTTPS and no publicKeyConfig is pinned. " +
-            "An active network attacker could replace the OHTTP key config. " +
-            "Use HTTPS or pin a publicKeyConfig for production deployments."
-        );
+      try {
+        const url = new URL(gatewayUrl);
+        const isLocalDev = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+        if (url.protocol !== "https:" && !isLocalDev) {
+          console.warn(
+            "OhttpClient: gatewayUrl is not HTTPS and no publicKeyConfig is pinned. " +
+              "An active network attacker could replace the OHTTP key config. " +
+              "Use HTTPS or pin a publicKeyConfig for production deployments."
+          );
+        }
+      } catch (error) {
+        if (!(error instanceof TypeError)) throw error;
+        // Relative or non-standard URL — skip the HTTPS check
       }
     }
   }
@@ -110,7 +118,10 @@ export class OhttpClient {
 
     // Decrypt the OHTTP response
     const innerResponse = await context.decapsulateResponse(response);
-    const innerBody = await innerResponse.text();
+
+    // The reconstructed Response from decapsulateResponse does not auto-decompress
+    // Content-Encoding (unlike fetch). Handle gzip/deflate explicitly.
+    const innerBody = await readResponseText(innerResponse);
 
     // The OHTTP server encapsulates all API responses (including errors) inside the
     // envelope with outer status 200. A 409 BLOCK_REORGED from the discovery API
@@ -120,7 +131,9 @@ export class OhttpClient {
     }
 
     if (innerResponse.status !== 200) {
-      throw new Error(`Indexer API ${path} failed (${innerResponse.status}): ${innerBody}`);
+      throw new Error(
+        `OHTTP inner response ${path} failed (${innerResponse.status}): ${innerBody}`
+      );
     }
 
     return JSON.parse(innerBody) as T;
@@ -163,4 +176,31 @@ export class OhttpClient {
     this.ohttpClient = null;
     this.publicKeyConfigFetchedAt = 0;
   }
+}
+
+/** Supported Content-Encoding → DecompressionStream format mapping. */
+const ENCODING_TO_FORMAT: Record<string, CompressionFormat> = {
+  gzip: "gzip",
+  "x-gzip": "gzip",
+  deflate: "deflate",
+};
+
+/**
+ * Read the body text from a Response, decompressing if Content-Encoding is set.
+ * The Response objects from ohttp-ts decapsulateResponse do not auto-decompress
+ * like fetch() responses do, so we handle gzip/deflate explicitly via DecompressionStream.
+ */
+async function readResponseText(response: Response): Promise<string> {
+  const encoding = response.headers.get("content-encoding")?.toLowerCase();
+  if (!encoding || !response.body || encoding === "identity") {
+    return response.text();
+  }
+  const format = ENCODING_TO_FORMAT[encoding];
+  if (!format) {
+    // DecompressionStream only supports gzip and deflate per the Compression Streams spec.
+    // Brotli (br) and zstd are not universally available across runtimes.
+    throw new Error(`Unsupported Content-Encoding in OHTTP response: ${encoding}`);
+  }
+  const decompressed = response.body.pipeThrough(new DecompressionStream(format));
+  return new Response(decompressed).text();
 }

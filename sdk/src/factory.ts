@@ -79,6 +79,7 @@ export function createPrivateTransfers(params: {
         blockIdentifier: params.provingProvider.blockIdentifier,
         nodeUrl: params.provingProvider.nodeUrl,
         poolAddress: params.poolContractAddress,
+        ohttp: params.provingProvider.ohttp,
       })
     : params.provingProvider;
 
