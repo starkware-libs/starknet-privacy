@@ -129,7 +129,9 @@ describe("Privacy StarkNet integration", () => {
     poolAddress = deployResult.contract_address;
     console.log("[debug] privacy pool deployed at:", poolAddress);
 
-    discovery = new IndexerDiscoveryProvider(INDEXER_URL, poolAddress);
+    discovery = new IndexerDiscoveryProvider(INDEXER_URL, poolAddress, {
+      ohttp: true,
+    });
   }, 300_000);
 
   it("preflight returns a valid SetupRequirement", async () => {
@@ -160,6 +162,7 @@ describe("Privacy StarkNet integration", () => {
       provingProvider: new ProvingServiceProofProvider(
         PROVING_SERVICE_URL,
         CHAIN_ID,
+        { ohttp: true },
       ),
       discoveryProvider: discovery,
       poolContractAddress: poolAddress,
@@ -169,7 +172,7 @@ describe("Privacy StarkNet integration", () => {
     log("estimating mint fee...");
     const mintCall = {
       contractAddress: TOKEN,
-      entrypoint: "mint",
+      entrypoint: "permissionedMint",
       calldata: [alice.address, "100", "0"],
     };
     const mintFee = await adminAccount.estimateInvokeFee(mintCall);

@@ -687,9 +687,24 @@ is encrypted inside the OHTTP envelope and is not visible to the relay. The
 relay still sees request/response sizes and timing. The discovery service
 itself decrypts and processes the full request.
 
+### Proving service
+
+`ProvingServiceProofProvider` supports the same OHTTP options:
+
+```typescript
+const prover = new ProvingServiceProofProvider(proverUrl, chainId, {
+  ohttp: true,
+});
+
+// With relay and/or pinned key config:
+const prover = new ProvingServiceProofProvider(proverUrl, chainId, {
+  ohttp: { relayUrl: "https://relay.example.com", publicKeyConfig: keyBytes },
+});
+```
+
 ### Server requirements
 
-The discovery service must have OHTTP enabled:
+Both the discovery service and the proving service must have OHTTP enabled:
 
 ```
 OHTTP_ENABLED=true OHTTP_KEY=<hex-encoded-32-byte-x25519-private-key>
