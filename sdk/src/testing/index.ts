@@ -28,6 +28,7 @@ export {
   compute_enc_sender_addr_hash,
 } from "../utils/hashes.js";
 export { CallMockProofProvider } from "./mock-proving.js";
+export { ProvingServiceProofProvider } from "../internal/proving-service-provider.js";
 export { TracingRpcProvider, TracedRpcError, type DecodedError } from "./tracing-provider.js";
 export {
   ContractDiscoveryProvider,
