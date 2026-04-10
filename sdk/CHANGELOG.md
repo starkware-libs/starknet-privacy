@@ -17,6 +17,11 @@
   - Optional OHTTP relay support via `{ ohttp: { relayUrl: "..." } }` for client IP hiding; relay URL is used as-is (target API path is encrypted inside the OHTTP envelope)
   - Warns at construction time when `gatewayUrl` is plain HTTP and no key config is pinned (TOFU key discovery is vulnerable to MITM over unencrypted transport)
 - Export `OhttpClient` class for advanced OHTTP usage outside `IndexerDiscoveryProvider`
+- OHTTP envelope encryption support for `ProvingServiceProofProvider` — encrypts proving requests and decrypts compressed responses (decrypt-then-decompress)
+  - Enable with `new ProvingServiceProofProvider(url, chainId, { ohttp: true })`
+  - Same relay/key-pinning options as `IndexerDiscoveryProvider`
+  - Also available via `ProofProviderConfig.ohttp` in `createPrivateTransfers()` factory
+- Export `OhttpOption` type for reuse in consumer code
 
 ### Added
 

@@ -2,6 +2,18 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { constants, RpcProvider } from "starknet";
 import { ProvingServiceProofProvider } from "../../src/internal/proving-service-provider.js";
 
+// Mock ohttp-ts and hpke so OhttpClient can be instantiated without real crypto.
+vi.mock("ohttp-ts", () => ({
+  OHTTPClient: vi.fn(),
+  KeyConfig: { parseMultiple: vi.fn().mockReturnValue([{}]) },
+}));
+vi.mock("hpke", () => ({
+  CipherSuite: vi.fn(),
+  KEM_DHKEM_X25519_HKDF_SHA256: 0x20,
+  KDF_HKDF_SHA256: 0x01,
+  AEAD_AES_128_GCM: 0x01,
+}));
+
 const PROVER_URL = "https://prover.test";
 const NODE_URL = "https://node.test";
 const POOL_ADDRESS = "0x1234";
@@ -122,5 +134,41 @@ describe("ProvingServiceProofProvider.getDefaultDetails", () => {
       const details = await provider.getDefaultDetails();
       expect(details.nonce).toBe(0n);
     });
+  });
+});
+
+describe("ProvingServiceProofProvider with ohttp option", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("constructs without error when ohttp is true", () => {
+    expect(
+      () => new ProvingServiceProofProvider(PROVER_URL, CHAIN_ID, { ohttp: true })
+    ).not.toThrow();
+  });
+
+  it("constructs without error when ohttp has relayUrl and publicKeyConfig", () => {
+    expect(
+      () =>
+        new ProvingServiceProofProvider(PROVER_URL, CHAIN_ID, {
+          ohttp: {
+            relayUrl: "https://relay.example.com",
+            publicKeyConfig: new Uint8Array([1, 2, 3]),
+          },
+        })
+    ).not.toThrow();
+  });
+
+  it("constructs without error when ohttp is combined with other options", () => {
+    expect(
+      () =>
+        new ProvingServiceProofProvider(PROVER_URL, CHAIN_ID, {
+          ohttp: true,
+          nodeUrl: NODE_URL,
+          poolAddress: POOL_ADDRESS,
+          requestTimeoutMs: 60_000,
+        })
+    ).not.toThrow();
   });
 });
