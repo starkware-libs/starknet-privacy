@@ -20,6 +20,10 @@ To publish a release:
    npm publish
    ```
 
+## Prerequisites
+
+- **Node.js >= 24** (required by the `ohttp-ts` dependency for WebCrypto APIs)
+
 ## Development
 
 ```bash
@@ -625,6 +629,86 @@ npm ci
 npm run build
 npm test
 ```
+
+## OHTTP (Oblivious HTTP)
+
+The SDK supports [Oblivious HTTP (RFC 9458)](https://datatracker.ietf.org/doc/html/rfc9458) for encrypting all communication with the discovery service at the application layer, independent of TLS.
+
+When enabled, every request is encrypted with HPKE to the server's public key and sent as a `message/ohttp-req` payload. The response is returned as `message/ohttp-res` and decrypted client-side. The viewing key never appears in plaintext outside the OHTTP decryption layer.
+
+### Enable OHTTP
+
+```typescript
+const discovery = new IndexerDiscoveryProvider(apiUrl, contractAddress, {
+  ohttp: true,
+});
+```
+
+The client fetches the server's HPKE public key from `GET /ohttp-keys` and caches it for 1 hour.
+
+### Pin a key config
+
+By default the client discovers the server's public key automatically via `GET /ohttp-keys`. If you want to pin the key config instead (e.g. for environments where the endpoint is not reachable, or to prevent TOFU trust-on-first-use), pass the raw bytes as `publicKeyConfig`:
+
+```typescript
+const discovery = new IndexerDiscoveryProvider(apiUrl, contractAddress, {
+  ohttp: { publicKeyConfig: publicKeyConfigBytes },
+});
+```
+
+`publicKeyConfig` is the binary `application/ohttp-keys` blob — the same bytes returned by `GET /ohttp-keys`. It contains the server's HPKE public key, key ID, and supported cipher suites (KEM, KDF, AEAD identifiers) as defined in [RFC 9458 §3](https://datatracker.ietf.org/doc/html/rfc9458#section-3).
+
+To obtain it, fetch the endpoint once and save the response body:
+
+```bash
+curl -o ohttp-keys.bin https://discovery.example.com/ohttp-keys
+```
+
+Then load it in your application:
+
+```typescript
+import { readFileSync } from "fs";
+const publicKeyConfigBytes = new Uint8Array(readFileSync("ohttp-keys.bin"));
+```
+
+### Use with an OHTTP relay
+
+Route requests through an [OHTTP relay](https://github.com/cloudflare/privacy-gateway-relay) to hide client IP from the discovery service:
+
+```typescript
+const discovery = new IndexerDiscoveryProvider(apiUrl, contractAddress, {
+  ohttp: { relayUrl: "https://relay.example.com" },
+});
+```
+
+The relay hides the client's IP address from the discovery service. All
+encapsulated requests are sent to the relay URL as-is — the specific API path
+is encrypted inside the OHTTP envelope and is not visible to the relay. The
+relay still sees request/response sizes and timing. The discovery service
+itself decrypts and processes the full request.
+
+### Server requirements
+
+The discovery service must have OHTTP enabled:
+
+```
+OHTTP_ENABLED=true OHTTP_KEY=<hex-encoded-32-byte-x25519-private-key>
+```
+
+When the client has OHTTP enabled but the server does not, the `GET /ohttp-keys`
+fetch will fail and the SDK will throw. Omit the `ohttp` option to use plaintext
+JSON, or pin a `publicKeyConfig` to skip the key fetch.
+
+### Security considerations
+
+OHTTP encrypts request and response content but does **not** authenticate the
+gateway by itself. The key config fetched from `GET /ohttp-keys` is trusted on
+first use (TOFU). For production deployments:
+
+- **Always use HTTPS** for `apiUrl`. The SDK warns at construction time if the
+  URL is plain HTTP and no key config is pinned.
+- **Pin the key config** via `publicKeyConfig` to avoid TOFU and remove the
+  dependency on `GET /ohttp-keys` availability.
 
 ## See also
 

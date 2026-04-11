@@ -12,6 +12,7 @@ import { toHex } from "../utils/convert.js";
 import { AddressMap } from "../utils/maps.js";
 import { AbstractDiscoveryProvider } from "./abstract-discovery.js";
 import { Channel, Witness } from "./channel.js";
+import { OhttpClient } from "./ohttp-client.js";
 import type {
   ChannelCursor,
   IncomingChannelCursor,
@@ -105,20 +106,26 @@ export type DiscoveryHealthResponse = {
 };
 
 export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
+  private readonly ohttpClient?: OhttpClient;
+
   constructor(
     private readonly apiUrl: string,
-    private readonly contractAddress: StarknetAddress
+    private readonly contractAddress: StarknetAddress,
+    options?: { ohttp?: boolean | { relayUrl?: string; publicKeyConfig?: Uint8Array } }
   ) {
     super();
+    if (options?.ohttp) {
+      const ohttpOptions =
+        typeof options.ohttp === "object"
+          ? { relayUrl: options.ohttp.relayUrl, publicKeyConfig: options.ohttp.publicKeyConfig }
+          : undefined;
+      this.ohttpClient = new OhttpClient(apiUrl, ohttpOptions);
+    }
   }
 
   async isHealthy(): Promise<boolean> {
     try {
-      const response = await fetch(`${this.apiUrl}/health`, {
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!response.ok) return false;
-      const body = (await response.json()) as { status: string };
+      const body = await this.get<{ status: string }>("/health");
       return body.status === "OK";
     } catch {
       return false;
@@ -126,11 +133,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
   }
 
   async getHealth(): Promise<DiscoveryHealthResponse> {
-    const response = await fetch(`${this.apiUrl}/health`, {
-      signal: AbortSignal.timeout(8_000),
-    });
-    if (!response.ok) throw new Error(`Discovery service returned HTTP ${response.status}`);
-    return (await response.json()) as DiscoveryHealthResponse;
+    return this.get<DiscoveryHealthResponse>("/health");
   }
 
   async discoverNotes(
@@ -379,7 +382,23 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     return apiResponseToHistoryPage(resp);
   }
 
+  private async get<T>(path: string): Promise<T> {
+    if (this.ohttpClient) {
+      return this.ohttpClient.get<T>(path);
+    }
+    const resp = await fetch(`${this.apiUrl}${path}`, {
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!resp.ok) {
+      throw new Error(`Indexer API ${path} failed (${resp.status})`);
+    }
+    return resp.json() as Promise<T>;
+  }
+
   private async post<T>(path: string, body: unknown): Promise<T> {
+    if (this.ohttpClient) {
+      return this.ohttpClient.post<T>(path, body);
+    }
     const resp = await fetch(`${this.apiUrl}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
