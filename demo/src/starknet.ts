@@ -34,12 +34,17 @@ export function createTransfers(
   poolAddress: string,
   config: AppConfig
 ): PrivateTransfersInterface {
-  const discovery = new IndexerDiscoveryProvider(
-    config.indexerUrl,
-    poolAddress,
-  );
+  // TODO: Make OHTTP configurable via a toggle on the action panel (similar to paymaster toggle).
+  // Currently always-on; should be a user-facing switch so testers can compare encrypted vs plain.
+  const discovery = config.backendIndexerUrl
+    ? new IndexerDiscoveryProvider(config.backendIndexerUrl, poolAddress, {
+        ohttp: { relayUrl: config.indexerUrl, publicKeyConfig: config.ohttpKeyConfig },
+      })
+    : new IndexerDiscoveryProvider(config.indexerUrl, poolAddress, {
+        ohttp: config.ohttpKeyConfig ? { publicKeyConfig: config.ohttpKeyConfig } : true,
+      });
   const provingProvider = config.provingServiceUrl
-    ? new ProvingServiceProofProvider(config.provingServiceUrl, config.chainId)
+    ? new ProvingServiceProofProvider(config.provingServiceUrl, config.chainId, { ohttp: true })
     : new NoValidateProofProvider(provider, config.chainId);
   return createPrivateTransfers({
     account,

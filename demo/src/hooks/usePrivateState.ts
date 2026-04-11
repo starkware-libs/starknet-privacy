@@ -119,7 +119,13 @@ export function usePrivateState(
     setError(null);
 
     try {
-      const indexer = new IndexerDiscoveryProvider(config.indexerUrl, poolAddress);
+      const indexer = config.backendIndexerUrl
+        ? new IndexerDiscoveryProvider(config.backendIndexerUrl, poolAddress, {
+            ohttp: { relayUrl: config.indexerUrl, publicKeyConfig: config.ohttpKeyConfig },
+          })
+        : new IndexerDiscoveryProvider(config.indexerUrl, poolAddress, {
+            ohttp: config.ohttpKeyConfig ? { publicKeyConfig: config.ohttpKeyConfig } : true,
+          });
       const tokenBigInts = config.tokens.map((t) => BigInt(t.address));
 
       const [notesResult, channelsResult, requirement, ...transparentBalances] =

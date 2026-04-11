@@ -310,10 +310,13 @@ export function useHistory(
     setError(null);
 
     try {
-      const indexer = new IndexerDiscoveryProvider(
-        config.indexerUrl,
-        poolAddress,
-      );
+      const indexer = config.backendIndexerUrl
+        ? new IndexerDiscoveryProvider(config.backendIndexerUrl, poolAddress, {
+            ohttp: { relayUrl: config.indexerUrl, publicKeyConfig: config.ohttpKeyConfig },
+          })
+        : new IndexerDiscoveryProvider(config.indexerUrl, poolAddress, {
+            ohttp: config.ohttpKeyConfig ? { publicKeyConfig: config.ohttpKeyConfig } : true,
+          });
       const page = await indexer.fetchHistory(
         BigInt(account.address),
         registry.cursor,
@@ -367,10 +370,13 @@ export function useHistory(
     setError(null);
 
     try {
-      const indexer = new IndexerDiscoveryProvider(
-        config.indexerUrl,
-        poolAddress,
-      );
+      const indexer = config.backendIndexerUrl
+        ? new IndexerDiscoveryProvider(config.backendIndexerUrl, poolAddress, {
+            ohttp: { relayUrl: config.indexerUrl, publicKeyConfig: config.ohttpKeyConfig },
+          })
+        : new IndexerDiscoveryProvider(config.indexerUrl, poolAddress, {
+            ohttp: config.ohttpKeyConfig ? { publicKeyConfig: config.ohttpKeyConfig } : true,
+          });
       const page = await indexer.fetchHistory(
         BigInt(account.address),
         registry.cursor,
