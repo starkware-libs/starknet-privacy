@@ -24,10 +24,15 @@ import "./App.css";
 
 const config = loadConfig();
 
-initPaymasterForwarder(config);
-
 export function App() {
   const [classHash, setClassHash] = useState(config.poolClassHash);
+  const [paymasterForwarderAddress, setPaymasterForwarderAddress] = useState<string | undefined>();
+
+  useEffect(() => {
+    initPaymasterForwarder(config).then(() => {
+      setPaymasterForwarderAddress(config.paymasterForwarderAddress);
+    });
+  }, []);
   const [paymasterEnabled, setPaymasterEnabled] = useState(() => {
     const stored = localStorage.getItem("paymasterEnabled");
     return stored !== null ? stored === "true" : true;
@@ -36,6 +41,16 @@ export function App() {
   const togglePaymaster = useCallback((enabled: boolean) => {
     setPaymasterEnabled(enabled);
     localStorage.setItem("paymasterEnabled", String(enabled));
+  }, []);
+
+  const [ohttpEnabled, setOhttpEnabled] = useState(() => {
+    const stored = localStorage.getItem("ohttpEnabled");
+    return stored !== null ? stored === "true" : true;
+  });
+
+  const toggleOhttp = useCallback((enabled: boolean) => {
+    setOhttpEnabled(enabled);
+    localStorage.setItem("ohttpEnabled", String(enabled));
   }, []);
 
   const { accounts, activeIndex, activeAccount, setActiveIndex, importAccounts } =
@@ -52,8 +67,13 @@ export function App() {
   );
 
   const effectiveConfig = useMemo(
-    () => paymasterEnabled ? config : { ...config, paymasterUrl: undefined },
-    [paymasterEnabled],
+    () => ({
+      ...config,
+      ...(paymasterEnabled ? {} : { paymasterUrl: undefined }),
+      ohttpEnabled,
+      paymasterForwarderAddress,
+    }),
+    [paymasterEnabled, ohttpEnabled, paymasterForwarderAddress],
   );
 
   const { deploying, deployError, deploy } = useDeployPool(provider, configWithClassHash, accounts);
@@ -74,8 +94,8 @@ export function App() {
 
   const transfers = useMemo(() => {
     if (!account || !activeAccount) return undefined;
-    return createTransfers(provider, account, activeAccount, poolAddress, config);
-  }, [provider, account, activeAccount, poolAddress]);
+    return createTransfers(provider, account, activeAccount, poolAddress, effectiveConfig);
+  }, [provider, account, activeAccount, poolAddress, effectiveConfig]);
 
   const registry = useRef(createEmptyRegistry());
 
@@ -95,7 +115,7 @@ export function App() {
     activeAccount,
     accounts,
     poolAddress,
-    config,
+    effectiveConfig,
     registry.current,
   );
 
@@ -106,7 +126,7 @@ export function App() {
     historyComplete,
     fetchMore: fetchHistory,
     refreshLatest: refreshHistoryLatest,
-  } = useHistory(provider, poolAddress, config, activeAccount, accounts, registry.current);
+  } = useHistory(provider, poolAddress, effectiveConfig, activeAccount, accounts, registry.current);
 
   const refreshAll = useCallback(async () => {
     // Reset cursors so refresh does a full re-sync — incremental discovery
@@ -145,7 +165,7 @@ export function App() {
     refreshAll,
   );
 
-  const serviceHealth = useServiceHealth(provider, config);
+  const serviceHealth = useServiceHealth(provider, effectiveConfig);
 
   const [activeView, setActiveView] = useState<"actions" | "builder" | "defi">("actions");
 
@@ -251,9 +271,18 @@ export function App() {
                   onVesuWithdraw={vesuWithdraw}
                 />
               )}
-              {config.paymasterUrl && (
-                <div className="config-island">
-                  <h3>Config</h3>
+              <div className="config-island">
+                <h3>Config</h3>
+                <label className="builder-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={ohttpEnabled}
+                    onChange={(e) => toggleOhttp(e.target.checked)}
+                  />
+                  OHTTP
+                  {config.backendIndexerUrl && <span className="chip">relay</span>}
+                </label>
+                {config.paymasterUrl && (
                   <label className="builder-checkbox">
                     <input
                       type="checkbox"
@@ -267,8 +296,8 @@ export function App() {
                       </span>
                     )}
                   </label>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </>

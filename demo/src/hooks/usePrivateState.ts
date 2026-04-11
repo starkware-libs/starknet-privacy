@@ -8,11 +8,8 @@ import {
   type PrivateTransfersInterface,
   type PrivateRegistry,
 } from "starknet-sdk";
-// Direct import avoids pulling in Node-only modules from the testing barrel
-// @ts-expect-error — deep import into dist, not part of the declared exports
-import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
 import type { AppConfig, AccountConfig } from "../config.ts";
-import { getErc20Balance } from "../starknet.ts";
+import { createDiscoveryProvider, getErc20Balance } from "../starknet.ts";
 
 export type NoteDisplay = {
   id: string;
@@ -119,7 +116,7 @@ export function usePrivateState(
     setError(null);
 
     try {
-      const indexer = new IndexerDiscoveryProvider(config.indexerUrl, poolAddress);
+      const indexer = createDiscoveryProvider(config, poolAddress);
       const tokenBigInts = config.tokens.map((t) => BigInt(t.address));
 
       const [notesResult, channelsResult, requirement, ...transparentBalances] =

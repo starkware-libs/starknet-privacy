@@ -52,11 +52,19 @@ export type AppConfig = {
   chainId: constants.StarknetChainId;
   /** Proving service URL. If set, uses real prover; otherwise mock. */
   provingServiceUrl?: string;
+  /** Real backend indexer URL. When set, OHTTP uses this as gateway and indexerUrl as relay. */
+  backendIndexerUrl?: string;
+  /** Real backend prover URL. When set, OHTTP uses this as gateway and provingServiceUrl as relay. */
+  backendProverUrl?: string;
+  /** Pinned OHTTP key config (decoded from base64). Avoids fetching /ohttp-keys at runtime. */
+  ohttpKeyConfig?: Uint8Array;
   gatewayUrl?: string;
   feederGatewayUrl?: string;
   explorerUrl?: string;
   ekubo?: EkuboConfig;
   vesu?: VesuConfig;
+  /** Whether OHTTP encryption is enabled for indexer and prover requests. Default true. */
+  ohttpEnabled?: boolean;
   paymasterUrl?: string;
   paymasterFeeToken?: string;
   avnuApiKey?: string;
@@ -148,6 +156,11 @@ export function loadConfig(): AppConfig {
     tokens,
     chainId: requireEnv("VITE_CHAIN_ID") as constants.StarknetChainId,
     provingServiceUrl: import.meta.env.VITE_PROVING_SERVICE_URL as string | undefined,
+    backendIndexerUrl: import.meta.env.VITE_BACKEND_INDEXER_URL as string | undefined,
+    backendProverUrl: import.meta.env.VITE_BACKEND_PROVER_URL as string | undefined,
+    ohttpKeyConfig: import.meta.env.VITE_OHTTP_KEY_CONFIG
+      ? Uint8Array.from(atob(import.meta.env.VITE_OHTTP_KEY_CONFIG as string), (c) => c.charCodeAt(0))
+      : undefined,
     gatewayUrl: import.meta.env.VITE_GATEWAY_URL as string | undefined,
     feederGatewayUrl: import.meta.env.VITE_FEEDER_GATEWAY_URL as string | undefined,
     explorerUrl: import.meta.env.VITE_EXPLORER_URL as string | undefined,

@@ -489,6 +489,22 @@ input[type="number"] {
   background: #238636;
 }
 
+.timeline-bar-phase {
+  background: #8b949e;
+  height: 6px;
+}
+
+.timeline-row-expandable {
+  cursor: pointer;
+}
+
+.timeline-expand {
+  display: inline-block;
+  width: 12px;
+  font-size: 10px;
+  color: #8b949e;
+}
+
 .error {
   color: #f85149;
   margin-bottom: 8px;

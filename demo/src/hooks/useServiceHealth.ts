@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ProvingService } from "starknet-sdk";
-// @ts-expect-error — deep import into dist, not part of the declared exports
-import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
+import { ProvingService, OhttpClient } from "starknet-sdk";
 import type { RpcProvider } from "starknet";
 import type { AppConfig } from "../config.ts";
+import { createDiscoveryProvider } from "../starknet.ts";
 
 export type HealthStatus = "checking" | "healthy" | "unhealthy" | "unknown";
 
@@ -29,9 +28,9 @@ function pending(): SubsystemHealth {
   return { status: "checking", detail: null };
 }
 
-async function checkDiscovery(indexerUrl: string): Promise<SubsystemHealth> {
+async function checkDiscovery(config: AppConfig): Promise<SubsystemHealth> {
   try {
-    const indexer = new IndexerDiscoveryProvider(indexerUrl, "0x0");
+    const indexer = createDiscoveryProvider(config, "0x0");
     const health = await indexer.getHealth();
     if (health.status === "OK") {
       const detail = health.lag_secs != null ? `lag: ${health.lag_secs}s` : null;
@@ -88,9 +87,10 @@ async function checkAliveEndpoint(url: string): Promise<SubsystemHealth> {
   }
 }
 
-async function checkProving(provingServiceUrl: string): Promise<SubsystemHealth> {
+async function checkProving(provingServiceUrl: string, ohttpEnabled: boolean): Promise<SubsystemHealth> {
   try {
-    const service = new ProvingService({ baseUrl: provingServiceUrl });
+    const ohttpClient = ohttpEnabled ? new OhttpClient(provingServiceUrl) : undefined;
+    const service = new ProvingService({ baseUrl: provingServiceUrl, ohttpClient });
     const healthy = await service.isHealthy();
     return healthy
       ? { status: "healthy", detail: null }
@@ -122,11 +122,11 @@ export function useServiceHealth(
       if (mountedRef.current) setState((prev) => ({ ...prev, [key]: value }));
     };
 
-    checkDiscovery(config.indexerUrl).then(update("discovery"));
+    checkDiscovery(config).then(update("discovery"));
     checkRpc(provider, config.feederGatewayUrl).then(update("rpc"));
 
     if (config.provingServiceUrl) {
-      checkProving(config.provingServiceUrl).then(update("proving"));
+      checkProving(config.provingServiceUrl, config.ohttpEnabled !== false).then(update("proving"));
     }
     if (config.gatewayUrl) {
       checkAliveEndpoint(`${config.gatewayUrl}/gateway/is_alive`).then(update("gateway"));

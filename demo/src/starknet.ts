@@ -10,6 +10,23 @@ import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-dis
 import type { AppConfig, AccountConfig } from "./config.ts";
 import { NoValidateProofProvider } from "./proof-provider.ts";
 
+export function createDiscoveryProvider(
+  config: AppConfig,
+  poolAddress: string,
+): InstanceType<typeof IndexerDiscoveryProvider> {
+  if (config.ohttpEnabled === false) {
+    return new IndexerDiscoveryProvider(config.backendIndexerUrl ?? config.indexerUrl, poolAddress);
+  }
+  if (config.backendIndexerUrl) {
+    return new IndexerDiscoveryProvider(config.backendIndexerUrl, poolAddress, {
+      ohttp: { relayUrl: config.indexerUrl, publicKeyConfig: config.ohttpKeyConfig },
+    });
+  }
+  return new IndexerDiscoveryProvider(config.indexerUrl, poolAddress, {
+    ohttp: config.ohttpKeyConfig ? { publicKeyConfig: config.ohttpKeyConfig } : true,
+  });
+}
+
 export function createProvider(rpcUrl: string): RpcProvider {
   return new RpcProvider({ nodeUrl: rpcUrl, batch: 50 });
 }
@@ -34,12 +51,10 @@ export function createTransfers(
   poolAddress: string,
   config: AppConfig
 ): PrivateTransfersInterface {
-  const discovery = new IndexerDiscoveryProvider(
-    config.indexerUrl,
-    poolAddress,
-  );
+  const discovery = createDiscoveryProvider(config, poolAddress);
+  const ohttpOption = config.ohttpEnabled !== false ? { ohttp: true } : {};
   const provingProvider = config.provingServiceUrl
-    ? new ProvingServiceProofProvider(config.provingServiceUrl, config.chainId)
+    ? new ProvingServiceProofProvider(config.provingServiceUrl, config.chainId, ohttpOption)
     : new NoValidateProofProvider(provider, config.chainId);
   return createPrivateTransfers({
     account,
