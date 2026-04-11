@@ -17,10 +17,10 @@ jobs:
         with:
           universal-sierra-compiler-version: "v2.8.0-rc.0"
 
-      - name: Install starknet-foundry via asdf
-        uses: asdf-vm/actions/install@v3
+      - name: Install starknet-foundry
+        uses: foundry-rs/setup-snfoundry@v4
         with:
-          tool_versions: starknet-foundry nightly-2026-02-20
+          starknet-foundry-version: "nightly-2026-02-20"
 
       - name: Run tests
         run: scarb test -w

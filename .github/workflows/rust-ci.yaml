@@ -74,12 +74,11 @@ jobs:
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         with:
           universal-sierra-compiler-version: "v2.8.0-rc.0"
-      - name: Install starknet-foundry via asdf
+      - name: Install starknet-foundry
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
-        uses: asdf-vm/actions/install@v3
+        uses: foundry-rs/setup-snfoundry@v4
         with:
-          tool_versions: |
-            starknet-foundry nightly-2026-02-20
+          starknet-foundry-version: "nightly-2026-02-20"
       - name: Generate Cairo reference data
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         run: |

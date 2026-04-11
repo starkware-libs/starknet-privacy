@@ -14,6 +14,8 @@ export interface IndexerSpawnConfig {
   rpcUrl?: string;
   apiPort?: number;
   logFile?: string;
+  /** Additional environment variables for the discovery service process. */
+  env?: Record<string, string>;
 }
 
 async function findFreePort(): Promise<number> {
@@ -70,6 +72,7 @@ export class IndexerClient {
 
     const env: Record<string, string> = {
       ...(process.env as Record<string, string>),
+      ...config.env,
       WS_URL: config.wsUrl,
       API_HOST: `127.0.0.1:${port}`,
       RUST_LOG: process.env.RUST_LOG ?? "debug,hyper_util=warn,hyper=warn",
