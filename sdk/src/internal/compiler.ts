@@ -39,7 +39,7 @@ import { generateRandom, generateRandom120 } from "../utils/crypto.js";
 import { debugLog } from "../utils/logging.js";
 import { toHex } from "../utils/convert.js";
 import { compute_note_id } from "../utils/hashes.js";
-import { ReorgError } from "./indexer-discovery.js";
+import { ReorgError } from "./errors.js";
 
 export type CompileResult = {
   clientActions: ClientAction[];

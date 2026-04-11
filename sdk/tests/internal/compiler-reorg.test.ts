@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import { ActionCompiler } from "../../src/internal/compiler.js";
-import { ReorgError } from "../../src/internal/indexer-discovery.js";
+import { ReorgError } from "../../src/internal/errors.js";
 import { createEmptyRegistry, SetupRequirement } from "../../src/interfaces.js";
 import type { DiscoveryProviderInterface, Note } from "../../src/interfaces.js";
 import { AddressMap } from "../../src/utils/maps.js";
