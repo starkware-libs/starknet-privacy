@@ -24,7 +24,7 @@ import {
 import { TracingRpcProvider } from "./tracing-provider.js";
 import type { CallAndProof, PrivateTransfersInterface } from "../interfaces.js";
 import { createPrivateTransfers } from "../factory.js";
-import { CallMockProofProvider } from "./mock-proving.js";
+import { CallMockProofProvider } from "../internal/mock-proving.js";
 import {
   ContractDiscoveryProvider,
   type DiscoveryOptions,
