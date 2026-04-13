@@ -13,10 +13,10 @@ export default defineConfig({
     // bundler agreeing on a single Account class identity.
     dedupe: ["starknet"],
     alias: {
-      // Remap testing imports to avoid pulling in Node-only devnet module
-      "starknet-sdk/dist/testing/mock-proving.js": resolve(
+      // Remap the mock-proving import to avoid pulling in Node-only devnet module
+      "starknet-sdk/dist/internal/mock-proving.js": resolve(
         sdkDist,
-        "testing/mock-proving.js",
+        "internal/mock-proving.js",
       ),
       "starknet-sdk/dist/internal/indexer-discovery.js": resolve(
         sdkDist,

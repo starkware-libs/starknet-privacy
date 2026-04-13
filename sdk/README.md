@@ -470,6 +470,63 @@ const result = await transfers
 | `registryConst`   | `boolean`               | If true, returns a new registry instead of mutating the provided one                                                                                             |
 | `provingBlockId`  | `ProvingBlockId`        | Block identifier for proving and discovery — pins both note/channel discovery and proof generation to the same block state. Can be a block hash, number, or tag. |
 
+## Fee estimation
+
+Simulate a private transaction to estimate gas costs before proving. `simulate()` uses a mock proof provider internally — no real proof is generated, but the returned `CallAndProof` has the same calldata structure as a real transaction, making it suitable for gas estimation. Pass a node `provider` in the options: the mock prover calls the pool's view function to build the proof facts, and the minimal account (`{ address, signer }`) carries no provider of its own.
+
+### Basic fee estimation
+
+```typescript
+const { callAndProof } = await transfers
+  .build({ autoSelectNotes: "naive", autoDiscover: { notes: "refresh" } })
+  .with(STRK, (t) => t.inputs(note).transfer({ recipient: bob, amount: 50n }))
+  .surplusTo(self)
+  .simulate({ provider });
+
+const fee = await account.estimateInvokeFee(callAndProof.call, {
+  proofFacts: callAndProof.proof.proofFacts,
+  proof: callAndProof.proof.data,
+});
+```
+
+### Gasless mode (paymaster)
+
+For gasless transactions via a paymaster (e.g. Avnu), the wallet adds a dust withdrawal to the paymaster and uses the simulated transaction to get a gas quote, then rebuilds the transaction with the withdrawal action with the right amount:
+
+1. Build actions including a withdrawal to a dummy account
+2. call `simulate()` to get a `CallAndProof`
+3. Send the `CallAndProof` to the paymaster to get a gas fee quote
+4. Update the withdrawal action amount
+5. Call `execute()` with the real proving service
+
+```typescript
+// 1. Simulate to get gas estimate
+const { callAndProof: simulated } = await transfers
+  .build(options)
+  .with(USDC, (t) =>
+    t
+      .transfer({ recipient: bob, amount: 50n })
+      .withdraw({ recipient: 0x1, amount: 1n }))
+  .surplusTo(self)
+  .simulate({ provider });
+
+// 2. Get paymaster quote
+const quote = await paymaster.getQuote(simulated);
+
+// 3. Rebuild with fee withdrawal and execute for real
+const { callAndProof } = await transfers
+  .build(options)
+  .with(USDC, (t) =>
+    t
+      .transfer({ recipient: bob, amount: 50n })
+      .withdraw({ recipient: quote.feeRecipient, amount: quote.fee })
+  )
+  .surplusTo(self)
+  .execute();
+```
+
+When using gasfree mode (the user's account pays gas directly), steps 2-3 are not needed — use `simulate()` only to preview the cost, then call `execute()` with the original actions.
+
 ## Discovery
 
 ### Check transfer readiness

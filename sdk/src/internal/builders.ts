@@ -26,6 +26,7 @@ import {
   type InvokeAction,
   type Amount,
   type InvokeCalldataBuilderArgs,
+  type SimulateOptions,
   Open,
   PrivateTransfersInterface,
 } from "../interfaces.js";
@@ -143,6 +144,10 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
 
   async createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult> {
     return this.parentBuilder.createProofInvocation(options);
+  }
+
+  async simulate(options: SimulateOptions): Promise<ExecuteResult> {
+    return this.parentBuilder.simulate(options);
   }
 }
 
@@ -271,5 +276,11 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     debugLog("builder", "PrivateTransfersBuilderImpl.createProofInvocation called");
     const { actions, mergedOptions } = this.collectActionsAndOptions(options);
     return this.transfers.createProofInvocation(actions, mergedOptions);
+  }
+
+  async simulate(options: SimulateOptions): Promise<ExecuteResult> {
+    debugLog("builder", "PrivateTransfersBuilderImpl.simulate called");
+    const { actions, mergedOptions } = this.collectActionsAndOptions();
+    return this.transfers.simulate(actions, { ...mergedOptions, ...options });
   }
 }
