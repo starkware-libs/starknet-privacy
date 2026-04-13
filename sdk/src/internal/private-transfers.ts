@@ -12,11 +12,13 @@ import type {
   StarknetAddress,
   ProofInvocationResult,
   ProvingBlockId,
+  SimulateOptions,
 } from "../interfaces.js";
 import type { Account, TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
 import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
+import { CallMockProofProvider } from "./mock-proving.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toBigInt, toHex } from "../utils/convert.js";
@@ -94,6 +96,40 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     const parsedOutput = () =>
       this.params.proofInvocationFactory.parseOutput(serverActionsCalldata);
     debugLog("private-transfers", "execute", "parsed server actions", parsedOutput);
+
+    return {
+      callAndProof: {
+        call: {
+          contractAddress: toHex(this.params.poolContractAddress),
+          entrypoint: "apply_actions",
+          calldata: serverActionsCalldata,
+        },
+        proof,
+      },
+      registry,
+      warnings,
+    };
+  }
+
+  async simulate(
+    actions: Actions,
+    options?: ExecuteOptions & SimulateOptions
+  ): Promise<ExecuteResult> {
+    const { invocation, registry, warnings } = await this.createProofInvocation(actions, options);
+
+    const details = await this.params.provingProvider.getDefaultDetails();
+
+    const mockProvider = new CallMockProofProvider(this.params.account.provider, details.chainId, {
+      validateSignature: options?.validateSignature ?? false,
+    });
+
+    const proof = await mockProvider.prove(invocation, options?.provingBlockId);
+
+    const serverActionsCalldata = proof.output.slice(1);
+
+    const parsedOutput = () =>
+      this.params.proofInvocationFactory.parseOutput(serverActionsCalldata);
+    debugLog("private-transfers", "simulate", "parsed server actions", parsedOutput);
 
     return {
       callAndProof: {
