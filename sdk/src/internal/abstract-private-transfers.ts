@@ -17,6 +17,7 @@ import type {
   PrivateTransfersInterface,
   ProofInvocationResult,
   ProvingBlockId,
+  SimulateOptions,
   StarknetAddress,
   StarknetAddressBigint,
   ViewingKey,
@@ -107,6 +108,13 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
   async execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult> {
     const invocationResult = await this.createProofInvocation(actions, options);
     return this.executeWithInvocation(invocationResult, options?.provingBlockId);
+  }
+
+  async simulate(
+    _actions: Actions,
+    _options?: ExecuteOptions & SimulateOptions
+  ): Promise<ExecuteResult> {
+    throw new Error("simulate() is not supported by this implementation");
   }
 
   /**

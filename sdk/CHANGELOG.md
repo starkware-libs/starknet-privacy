@@ -13,6 +13,7 @@
 - `fetchHistory` option renamed from `blockRef` to `blockIdentifier` (type: `BlockIdentifier`)
 - `HistoryPage.blockRef` changed from `string` to `BlockIdentifier`
 - `HistoryCursor.beginBlockNumber` is now optional (`undefined` on first page; server resolves from `block_ref`)
+- `CallMockProofProvider` moved from `starknet-sdk/testing` to `starknet-sdk/internal` — update imports
 
 ### Added
 
@@ -27,6 +28,8 @@
   - Same relay/key-pinning options as `IndexerDiscoveryProvider`
   - Also available via `ProofProviderConfig.ohttp` in `createPrivateTransfers()` factory
 - Export `OhttpOption` type for reuse in consumer code
+- `simulate()` method on `PrivateTransfersInterface`, `PrivateTransfersBuilder`, and `TokenOperationsBuilder` for gas fee estimation without real proof generation
+- `SimulateOptions` type with optional `validateSignature` flag
 - `fee` action type in `classifyTransaction` for withdrawals to fee recipients (e.g. paymaster forwarder), distinct from regular withdrawals
 - `ClassifyOptions.feeRecipients` parameter on `classifyTransaction` to identify fee recipient addresses
 - `Note.created` is now populated by `IndexerDiscoveryProvider` from the discovery service's per-note `block_number` (slot's `last_update_block`), enabling clients to enforce the 10-block maturity rule before spending
