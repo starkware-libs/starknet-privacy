@@ -8,6 +8,7 @@ export type SwapLeg = {
 export type HistoryAction =
   | { type: "deposit"; fromAddress: bigint; token: bigint; amount: bigint }
   | { type: "withdrawal"; toAddress: bigint; token: bigint; amount: bigint }
+  | { type: "fee"; toAddress: bigint; token: bigint; amount: bigint }
   | { type: "transferSent"; toAddress: bigint; token: bigint; amount: bigint; noteCount: number }
   | {
       type: "transferReceived";
@@ -27,8 +28,17 @@ export type ClassifiedTransaction = {
   actions: HistoryAction[];
 };
 
+export type ClassifyOptions = {
+  /** Addresses that receive fee payments (e.g. paymaster forwarder).
+   *  Withdrawals to these addresses won't prevent transferSelf detection. */
+  feeRecipients?: bigint[];
+};
+
 /** Classifies a history transaction's raw events into user-facing actions. Pure, no I/O. */
-export function classifyTransaction(transaction: HistoryTransaction): ClassifiedTransaction {
+export function classifyTransaction(
+  transaction: HistoryTransaction,
+  options?: ClassifyOptions
+): ClassifiedTransaction {
   const actions: HistoryAction[] = [];
 
   // Step 1: Detect swaps — openNoteDeposits are swap received legs, grouped by depositor (executor).
@@ -57,14 +67,21 @@ export function classifyTransaction(transaction: HistoryTransaction): Classified
     actions.push({ type: "swap", executor, sent: swap.sent, received: swap.received });
   }
 
-  // Step 2: Classify deposits and remaining withdrawals
+  // Step 2: Classify deposits and remaining withdrawals.
+  // Withdrawals to fee recipients (e.g. paymaster forwarder) are classified as "fee".
+  const feeRecipientSet = new Set(options?.feeRecipients);
+
   for (const deposit of transaction.deposits) {
     actions.push({ type: "deposit", ...deposit });
   }
 
   for (let index = 0; index < transaction.withdrawals.length; index++) {
     if (matchedWithdrawalIndexes.has(index)) continue;
-    actions.push({ type: "withdrawal", ...transaction.withdrawals[index] });
+    const withdrawal = transaction.withdrawals[index];
+    const type = feeRecipientSet.has(withdrawal.toAddress)
+      ? ("fee" as const)
+      : ("withdrawal" as const);
+    actions.push({ type, ...withdrawal });
   }
 
   // Step 3: Classify notes — aggregate by (channelKind, counterparty, token)
@@ -115,16 +132,24 @@ export function classifyTransaction(transaction: HistoryTransaction): Classified
     }
   }
 
-  // Step 4: Detect sweep/spray — only self_channel notes, no other events
-  if (actions.length === 0 && selfChannelAggregates.size > 0) {
+  // Step 4: Detect sweep/spray — only self_channel notes, no other meaningful events.
+  // Fee actions don't count as meaningful for this check.
+  const meaningfulActions = actions.filter((a) => a.type !== "fee");
+  if (meaningfulActions.length === 0 && selfChannelAggregates.size > 0) {
     for (const [token, { totalAmount, noteCount }] of selfChannelAggregates) {
       actions.push({ type: "transferSelf", token, amount: totalAmount, noteCount });
     }
   }
 
+  // Step 5: Strip fee actions from incoming transfers — the sender paid the fee, not the receiver.
+  const isIncoming =
+    actions.some((a) => a.type === "transferReceived") &&
+    !actions.some((a) => a.type === "transferSent");
+  const filteredActions = isIncoming ? actions.filter((a) => a.type !== "fee") : actions;
+
   return {
     blockNumber: transaction.blockNumber,
     transactionHash: transaction.transactionHash,
-    actions,
+    actions: filteredActions,
   };
 }

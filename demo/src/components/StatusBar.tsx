@@ -37,7 +37,7 @@ export function StatusBar({ status }: Props) {
 
   return (
     <div className="status-bar">
-      {status.pending && <span className="pending">Transaction pending...</span>}
+      {status.pending && <span className="pending">{status.action ?? "Transaction"} pending...</span>}
       {status.lastTxHash && (
         <span className="success">
           Tx: <code>{status.lastTxHash}</code>
@@ -52,7 +52,7 @@ export function StatusBar({ status }: Props) {
           <code className="status-error-detail">{status.lastError}</code>
         </span>
       )}
-      {status.timeline && !status.lastError && (
+      {status.timeline && (
         <button
           className="pool-action-button timeline-button"
           onClick={() => setShowTimeline(true)}

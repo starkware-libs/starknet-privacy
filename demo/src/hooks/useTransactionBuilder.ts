@@ -1,16 +1,31 @@
 import { useState, useCallback, useMemo, useRef } from "react";
-import { Account, TransactionFinalityStatus, type RpcProvider } from "starknet";
+import { Account, TransactionFinalityStatus, hash, type RpcProvider } from "starknet";
 import type { PrivateTransfersInterface } from "starknet-sdk";
 import type { AccountConfig, AppConfig } from "../config.ts";
 import type { TransactionStatus } from "./useTransactions.ts";
 import type { BuilderOperation } from "../components/TransactionBuilder.tsx";
 import { Timeline } from "../timeline.ts";
 import { toRawAmount } from "../format.ts";
+import {
+  type FeeAction,
+  type FeeMode,
+  paymasterBuildApplyAction,
+  paymasterBuildInvokeAndApplyAction,
+  paymasterExecuteApplyAction,
+  paymasterExecuteInvokeAndApplyAction,
+  toPaymasterCall,
+  normalizeSignature,
+  type PaymasterCall,
+} from "../paymaster.ts";
 
 const WAIT_OPTIONS = {
   successStates: [TransactionFinalityStatus.PRE_CONFIRMED],
   retryInterval: 100,
 };
+
+function getFeeMode(config: AppConfig): FeeMode {
+  return { mode: "sponsored_private", pool_fee_token: config.paymasterFeeToken!, tip: "normal" };
+}
 
 function base64ByteLength(base64: string): number {
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
@@ -56,7 +71,7 @@ export function useTransactionBuilder(
     (operations: BuilderOperation[]) => {
       const action = "Builder";
       const timeline = new Timeline();
-      setStatus({ pending: true, action, lastTxHash: null, lastError: null, proofSizeBytes: null, timeline: null });
+      setStatus({ pending: true, action, lastTxHash: null, lastError: null, proofSizeBytes: null, timeline });
 
       void (async () => {
         try {
@@ -69,7 +84,7 @@ export function useTransactionBuilder(
               return toRawAmount(humanAmount, decimalsByToken.get(token) ?? 0);
             }
 
-            // Approve pool for deposit amounts, grouped by token
+            // Collect deposit amounts per token (needed for approve)
             const depositsByToken = new Map<string, bigint>();
             for (const op of operations) {
               if (op.operationType === "deposit" && op.token) {
@@ -77,8 +92,41 @@ export function useTransactionBuilder(
                 depositsByToken.set(op.token, current + scaleOp(op.token, op.amount));
               }
             }
+            const hasDeposits = depositsByToken.size > 0;
 
-            if (depositsByToken.size > 0) {
+            // Paymaster fee + optional typed_data for deposits
+            let feeAction: FeeAction | undefined;
+            let invokeTypedData: unknown | undefined;
+            let invokeSignature: string[] | undefined;
+
+            if (config.paymasterUrl) {
+              if (hasDeposits) {
+                const approveCalls: PaymasterCall[] = [...depositsByToken.entries()].map(
+                  ([token, totalAmount]) => ({
+                    to: token,
+                    selector: hash.getSelectorFromName("approve"),
+                    calldata: [poolAddress, "0x" + totalAmount.toString(16), "0x0"],
+                  }),
+                );
+                const buildResult = await timeline.step("Get paymaster fee", () =>
+                  paymasterBuildInvokeAndApplyAction(
+                    config.paymasterUrl!, poolAddress, getFeeMode(config),
+                    activeAddress, approveCalls, config.avnuApiKey,
+                  ),
+                );
+                feeAction = buildResult.fee_action;
+                invokeTypedData = buildResult.typed_data;
+                const signature = await timeline.step("Sign approvals", () =>
+                  userAccount.signMessage(buildResult.typed_data),
+                );
+                invokeSignature = normalizeSignature(signature);
+              } else {
+                feeAction = (await timeline.step("Get paymaster fee", () =>
+                  paymasterBuildApplyAction(config.paymasterUrl!, poolAddress, getFeeMode(config), config.avnuApiKey),
+                )).fee_action;
+              }
+            } else if (hasDeposits) {
+              // Direct execution: approve separately
               await timeline.step("Approve", async () => {
                 for (const [token, totalAmount] of depositsByToken) {
                   const approveCall = {
@@ -142,27 +190,66 @@ export function useTransactionBuilder(
               });
             }
 
+            if (feeAction) {
+              chain.with(feeAction.token, (t) =>
+                t.withdraw({ amount: BigInt(feeAction!.amount), recipient: feeAction!.recipient }),
+              );
+            }
+
             const provingBlockId = await timeline.step("Get block number",
               () => provider.getBlockNumber(),
             ) - 10;
 
-            const { callAndProof } = await timeline.step("SDK build + prove", () =>
-              chain.execute({ provingBlockId }),
+            const invocation = await timeline.step("Build transaction", () =>
+              chain.createProofInvocation({ provingBlockId }),
+            );
+            const { callAndProof } = await timeline.step("Prove", () =>
+              transfers.executeWithInvocation(invocation, provingBlockId),
             );
 
-            const proofDetails = callAndProof.proof.proofFacts?.length
-              ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
-              : {};
-
-            const executeTx = await timeline.step("Estimate + submit", () =>
-              userAccount.execute(callAndProof.call, {
-                tip: 0n,
-                ...proofDetails,
-              }),
-            );
+            let txHash: string;
+            if (config.paymasterUrl) {
+              if (invokeTypedData && invokeSignature) {
+                const response = await timeline.step("Submit via paymaster", () =>
+                  paymasterExecuteInvokeAndApplyAction(
+                    config.paymasterUrl!,
+                    toPaymasterCall(callAndProof.call),
+                    callAndProof.proof.data,
+                    callAndProof.proof.proofFacts,
+                    getFeeMode(config),
+                    activeAddress,
+                    invokeTypedData as Parameters<typeof paymasterExecuteInvokeAndApplyAction>[6],
+                    invokeSignature!,
+                    config.avnuApiKey,
+                  ),
+                );
+                txHash = response.transaction_hash;
+              } else {
+                const response = await timeline.step("Submit via paymaster", () =>
+                  paymasterExecuteApplyAction(
+                    config.paymasterUrl!,
+                    toPaymasterCall(callAndProof.call),
+                    callAndProof.proof.data,
+                    callAndProof.proof.proofFacts,
+                    getFeeMode(config),
+                    config.avnuApiKey,
+                  ),
+                );
+                txHash = response.transaction_hash;
+              }
+            } else {
+              const proofDetails = callAndProof.proof.proofFacts?.length
+                ? { proofFacts: callAndProof.proof.proofFacts, proof: callAndProof.proof.data }
+                : {};
+              // execute() estimates fee internally; splitting estimate+submit would double RPC calls
+              const executeTx = await timeline.step("Estimate + submit", () =>
+                userAccount.execute(callAndProof.call, { tip: 0n, ...proofDetails }),
+              );
+              txHash = executeTx.transaction_hash;
+            }
 
             const receipt = await timeline.step("Wait for receipt", () =>
-              provider.waitForTransaction(executeTx.transaction_hash, WAIT_OPTIONS),
+              provider.waitForTransaction(txHash, WAIT_OPTIONS),
             );
             if (!receipt.isSuccess()) {
               throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
@@ -171,7 +258,7 @@ export function useTransactionBuilder(
             const proofSizeBytes = callAndProof.proof.data
               ? base64ByteLength(callAndProof.proof.data)
               : null;
-            setStatus({ pending: false, action: null, lastTxHash: executeTx.transaction_hash, lastError: null, proofSizeBytes, timeline });
+            setStatus({ pending: false, action: null, lastTxHash: txHash, lastError: null, proofSizeBytes, timeline });
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
