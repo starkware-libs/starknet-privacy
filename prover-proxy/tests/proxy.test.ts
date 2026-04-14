@@ -3,6 +3,13 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
 import { createProxyHandler, type ProxyOptions } from "../src/proxy.js";
 import type { TransactionInterceptor } from "../src/interceptor.js";
+import {
+  CipherSuite,
+  KEM_DHKEM_X25519_HKDF_SHA256,
+  KDF_HKDF_SHA256,
+  AEAD_AES_128_GCM,
+} from "hpke";
+import { KeyConfig, OHTTPClient } from "ohttp-ts";
 
 let upstream: Server;
 let upstreamPort: number;
@@ -25,15 +32,15 @@ function startUpstream(
   });
 }
 
-function startProxy(
+async function startProxy(
   upstreamUrl: string,
   options?: Partial<ProxyOptions>
 ): Promise<void> {
+  const handler = await createProxyHandler(upstreamUrl, {
+    forwardUnknownMethods: false,
+    ...options,
+  });
   return new Promise((resolve) => {
-    const handler = createProxyHandler(upstreamUrl, {
-      forwardUnknownMethods: false,
-      ...options,
-    });
     proxy = createServer(handler);
     proxy.listen(0, "127.0.0.1", () => {
       const addr = proxy.address();
@@ -521,5 +528,173 @@ describe("proxy with interceptors", () => {
 
     expect(body.error.code).toBe(10000);
     expect(body.error.data).toBe("critical failure");
+  });
+});
+
+function createTestOhttpClient(keyConfigBytes: Uint8Array): OHTTPClient {
+  const suite = new CipherSuite(
+    KEM_DHKEM_X25519_HKDF_SHA256,
+    KDF_HKDF_SHA256,
+    AEAD_AES_128_GCM
+  );
+  const configs = KeyConfig.parseMultiple(keyConfigBytes);
+  return new OHTTPClient(suite, configs[0]);
+}
+
+async function fetchOhttpClient(): Promise<OHTTPClient> {
+  const response = await fetch(proxyUrl("/ohttp-keys"));
+  const keyConfigBytes = new Uint8Array(await response.arrayBuffer());
+  return createTestOhttpClient(keyConfigBytes);
+}
+
+async function ohttpPost(
+  url: string,
+  client: OHTTPClient,
+  innerBody: object
+): Promise<Response> {
+  const innerRequest = new Request("https://target.example/", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(innerBody),
+  });
+  const { init, context } = await client.encapsulateRequest(innerRequest);
+  const encapsulatedBody =
+    init.body instanceof ArrayBuffer
+      ? init.body
+      : await new Response(init.body).arrayBuffer();
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "message/ohttp-req" },
+    body: encapsulatedBody,
+  });
+
+  return context.decapsulateResponse(response);
+}
+
+describe("proxy with OHTTP", () => {
+  it("serves /ohttp-keys with parseable key config", async () => {
+    await startProxy("http://127.0.0.1:1");
+
+    const response = await fetch(proxyUrl("/ohttp-keys"));
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/ohttp-keys");
+    expect(response.headers.get("cache-control")).toBe("public, max-age=3600");
+    const body = new Uint8Array(await response.arrayBuffer());
+    expect(body.byteLength).toBeGreaterThan(0);
+
+    // Verify the key config can be parsed
+    const configs = KeyConfig.parseMultiple(body);
+    expect(configs).toHaveLength(1);
+  });
+
+  it("round-trips a JSON-RPC request through OHTTP", async () => {
+    await startUpstream((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0.10.1" }));
+    });
+
+    await startProxy(`http://127.0.0.1:${upstreamPort}`);
+
+    const client = await fetchOhttpClient();
+    const decryptedResponse = await ohttpPost(proxyUrl("/"), client, {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "starknet_specVersion",
+    });
+
+    expect(decryptedResponse.status).toBe(200);
+    const body = await decryptedResponse.json();
+    expect(body.result).toBe("0.10.1");
+  });
+
+  it("round-trips proveTransaction with interceptors through OHTTP", async () => {
+    await startUpstream((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result: { proof: "abc" } })
+      );
+    });
+
+    const allowAll: TransactionInterceptor = {
+      name: "test",
+      intercept: async () => ({ action: "continue" }),
+    };
+    await startProxy(`http://127.0.0.1:${upstreamPort}`, {
+      interceptors: [allowAll],
+    });
+
+    const client = await fetchOhttpClient();
+    const decryptedResponse = await ohttpPost(
+      proxyUrl("/"),
+      client,
+      proveRequest()
+    );
+
+    expect(decryptedResponse.status).toBe(200);
+    const body = await decryptedResponse.json();
+    expect(body.result).toEqual({ proof: "abc" });
+  });
+
+  it("returns interceptor rejection inside OHTTP envelope", async () => {
+    await startUpstream((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: {} }));
+    });
+
+    const blocker: TransactionInterceptor = {
+      name: "test",
+      intercept: async () => ({ action: "stop", reason: "sanctioned" }),
+    };
+    await startProxy(`http://127.0.0.1:${upstreamPort}`, {
+      interceptors: [blocker],
+    });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const client = await fetchOhttpClient();
+    const decryptedResponse = await ohttpPost(
+      proxyUrl("/"),
+      client,
+      proveRequest()
+    );
+    spy.mockRestore();
+
+    const body = await decryptedResponse.json();
+    expect(body.error.code).toBe(10000);
+    expect(body.error.data).toBe("sanctioned");
+  });
+
+  it("plain JSON-RPC requests still work alongside OHTTP", async () => {
+    await startUpstream((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0.10.1" }));
+    });
+
+    await startProxy(`http://127.0.0.1:${upstreamPort}`);
+
+    const response = await rpcPost(proxyUrl("/"), {
+      jsonrpc: "2.0",
+      id: 1,
+      method: "starknet_specVersion",
+    });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result).toBe("0.10.1");
+  });
+
+  it("returns 422 for bad OHTTP envelope", async () => {
+    await startProxy("http://127.0.0.1:1");
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const response = await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: { "content-type": "message/ohttp-req" },
+      body: new Uint8Array([0x01, 0x02, 0x03, 0x04]),
+    });
+    spy.mockRestore();
+
+    expect(response.status).toBe(422);
+    const body = await response.json();
+    expect(body.error).toContain("decapsulate");
   });
 });

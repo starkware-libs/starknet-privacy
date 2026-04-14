@@ -25,7 +25,7 @@ if (config.archival) {
   );
 }
 
-const handler = createProxyHandler(config.upstreamUrl, {
+const handler = await createProxyHandler(config.upstreamUrl, {
   forwardUnknownMethods: config.forwardUnknownMethods,
   maxBodyBytes: config.maxBodyBytes,
   interceptors,

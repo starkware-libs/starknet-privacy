@@ -120,7 +120,7 @@ async function startProverProxy(): Promise<void> {
     totalTimeoutMs: 10000,
   });
 
-  const handler = createProxyHandler(`http://127.0.0.1:${mockProverPort}`, {
+  const handler = await createProxyHandler(`http://127.0.0.1:${mockProverPort}`, {
     forwardUnknownMethods: false,
     interceptors: [interceptor],
   });
@@ -252,7 +252,7 @@ describe("e2e: prover-proxy → elliptic-proxy → mock Elliptic API", () => {
   it("starknet_specVersion bypasses screening", async () => {
     await startMockProver();
 
-    const handler = createProxyHandler(`http://127.0.0.1:${mockProverPort}`, {
+    const handler = await createProxyHandler(`http://127.0.0.1:${mockProverPort}`, {
       forwardUnknownMethods: false,
       interceptors: [
         new ScreeningInterceptor({

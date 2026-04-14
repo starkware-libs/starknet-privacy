@@ -22,6 +22,8 @@ import {
   errorsTotal,
   inFlightRequests,
 } from "./metrics.js";
+import { OhttpGateway, type OhttpServerContext } from "./ohttp.js";
+import { isOHTTPError } from "ohttp-ts";
 
 const TRANSACTION_REJECTED = 10000;
 const DEFAULT_UPSTREAM_TIMEOUT_MS = 30_000;
@@ -50,15 +52,25 @@ interface UpstreamResponse {
   error?: unknown;
 }
 
-export function createProxyHandler(
+/** The result of processing a request body through the proxy logic. */
+interface ProcessedResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: string | Buffer;
+  rpcAction: string;
+  logFields: Record<string, unknown>;
+}
+
+export async function createProxyHandler(
   upstreamUrl: string,
-  options: ProxyOptions = { forwardUnknownMethods: false }
+  options: ProxyOptions
 ) {
   const upstreamBaseUrl = upstreamUrl.replace(/\/+$/, "");
   const interceptors = options.interceptors ?? [];
   const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
   const upstreamTimeoutMs =
     options.upstreamTimeoutMs ?? DEFAULT_UPSTREAM_TIMEOUT_MS;
+  const ohttpGateway = await OhttpGateway.generate();
 
   return async (req: IncomingMessage, res: ServerResponse) => {
     if (req.url === "/health" && req.method === "GET") {
@@ -71,6 +83,17 @@ export function createProxyHandler(
       const metricsBody = await registry.metrics();
       res.writeHead(200, { "content-type": registry.contentType });
       res.end(metricsBody);
+      return;
+    }
+
+    if (req.url === "/ohttp-keys" && req.method === "GET") {
+      const keyConfigBytes = ohttpGateway.keyConfigBytes();
+      res.writeHead(200, {
+        "content-type": "application/ohttp-keys",
+        "cache-control": "public, max-age=3600",
+        "content-length": String(keyConfigBytes.byteLength),
+      });
+      res.end(Buffer.from(keyConfigBytes));
       return;
     }
 
@@ -111,22 +134,129 @@ export function createProxyHandler(
       return;
     }
 
+    // OHTTP-encapsulated request
+    if (isOhttpContent(req)) {
+      let innerRequest: Request;
+      let ohttpContext: OhttpServerContext;
+      try {
+        const result = await ohttpGateway.decapsulateRequest(
+          new Uint8Array(body)
+        );
+        innerRequest = result.request;
+        ohttpContext = result.context;
+      } catch (error) {
+        const isOhttp = isOHTTPError(error);
+        console.error(
+          JSON.stringify({
+            error: "ohttp_decapsulation_failed",
+            code: isOhttp ? error.code : undefined,
+          })
+        );
+        errorsTotal.inc({ type: "ohttp_decapsulation_failed" });
+        finishRequest("error", { error: "ohttp_decapsulation_failed" });
+        res.writeHead(422, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({ error: "failed to decapsulate OHTTP request" })
+        );
+        return;
+      }
+
+      const innerBody = Buffer.from(await innerRequest.arrayBuffer());
+      const innerContentType = innerRequest.headers.get("content-type") ?? "";
+      const innerUrl = new URL(innerRequest.url).pathname;
+      const innerMethod = innerRequest.method;
+      const innerHeaders: Record<string, string> = {};
+      innerRequest.headers.forEach((value, key) => {
+        innerHeaders[key] = value;
+      });
+
+      const result = await processBody(
+        innerBody,
+        innerContentType,
+        innerUrl,
+        innerMethod,
+        innerHeaders,
+        "ohttp"
+      );
+
+      // Encapsulate the response back into OHTTP
+      const responseBody =
+        typeof result.body === "string"
+          ? result.body
+          : new Uint8Array(result.body);
+      const innerResponse = new Response(responseBody, {
+        status: result.status,
+        headers: result.headers,
+      });
+      const encapsulatedResponse =
+        await ohttpContext.encapsulateResponse(innerResponse);
+      const encapsulatedBody = Buffer.from(
+        await encapsulatedResponse.arrayBuffer()
+      );
+
+      finishRequest(result.rpcAction, { ...result.logFields, ohttp: true });
+      res.writeHead(200, {
+        "content-type": "message/ohttp-res",
+        "content-length": String(encapsulatedBody.byteLength),
+      });
+      res.end(encapsulatedBody);
+      return;
+    }
+
+    // Plain (non-OHTTP) request — flatten multi-value headers for processBody.
+    const flatHeaders: Record<string, string> = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (value !== undefined) {
+        flatHeaders[key] = Array.isArray(value) ? value.join(", ") : value;
+      }
+    }
+    const result = await processBody(
+      body,
+      req.headers["content-type"] ?? "",
+      req.url ?? "/",
+      req.method ?? "GET",
+      flatHeaders,
+      "plaintext"
+    );
+
+    finishRequest(result.rpcAction, result.logFields);
+    res.writeHead(result.status, result.headers);
+    res.end(result.body);
+  };
+
+  /**
+   * Core request processing shared by both plain and OHTTP paths.
+   * Handles JSON-RPC validation/forwarding and non-JSON passthrough.
+   * Hoisted — defined after the return but callable from the handler.
+   */
+  async function processBody(
+    body: Buffer,
+    contentType: string,
+    url: string,
+    method: string,
+    headers: Record<string, string>,
+    transport: "ohttp" | "plaintext"
+  ): Promise<ProcessedResponse> {
     // JSON-RPC POST: validate before forwarding
-    if (req.method === "POST" && isJsonContent(req)) {
+    if (method === "POST" && contentType.includes("application/json")) {
       const verdict = validateRpcRequest(body.toString(), options);
 
       if (verdict.action === RpcAction.Error) {
-        rpcRequestsTotal.inc({ action: "error", method: "" });
-        finishRequest("error", { rpcAction: "error" });
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify(verdict.response));
-        return;
+        rpcRequestsTotal.inc({ action: "error", method: "", transport });
+        return {
+          status: 200,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(verdict.response),
+          rpcAction: "error",
+          logFields: { rpcAction: "error" },
+        };
       }
 
       if (verdict.action === RpcAction.ForwardWithInterceptors) {
         rpcRequestsTotal.inc({
           action: "forward_with_interceptors",
           method: "starknet_proveTransaction",
+          transport,
         });
 
         // Fire upstream request in parallel with interceptors for latency.
@@ -160,23 +290,24 @@ export function createProxyHandler(
             verdict.transaction
           );
           console.error(JSON.stringify({ error: "transaction_rejected" }));
-          finishRequest("forward_with_interceptors", {
-            rpcAction: "forward_with_interceptors",
-            interceptorVerdict: "stop",
-          });
           abortController.abort();
-          res.writeHead(200, { "content-type": "application/json" });
-          res.end(
-            JSON.stringify(
+          return {
+            status: 200,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(
               jsonRpcError(
                 verdict.requestId,
                 TRANSACTION_REJECTED,
                 "Transaction rejected",
                 interceptorVerdict.reason
               )
-            )
-          );
-          return;
+            ),
+            rpcAction: "forward_with_interceptors",
+            logFields: {
+              rpcAction: "forward_with_interceptors",
+              interceptorVerdict: "stop",
+            },
+          };
         }
 
         // Interceptors passed — return upstream result.
@@ -200,34 +331,39 @@ export function createProxyHandler(
           );
           errorsTotal.inc({ type: "upstream_unreachable" });
           upstreamDuration.observe(upstreamMs);
-          finishRequest("forward_with_interceptors", {
+          return {
+            status: 502,
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ error: "bad gateway" }),
             rpcAction: "forward_with_interceptors",
-            interceptorVerdict: "continue",
-            upstreamStatus: 502,
-          });
-          res.writeHead(502, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "bad gateway" }));
-        } else {
-          notifyInterceptorComplete(interceptors, verdict.transaction);
-          upstreamResponses.inc({
-            status_code: String(upstreamResponse.status),
-          });
-          upstreamDuration.observe(upstreamMs);
-          finishRequest("forward_with_interceptors", {
+            logFields: {
+              rpcAction: "forward_with_interceptors",
+              interceptorVerdict: "continue",
+              upstreamStatus: 502,
+            },
+          };
+        }
+
+        notifyInterceptorComplete(interceptors, verdict.transaction);
+        upstreamResponses.inc({
+          status_code: String(upstreamResponse.status),
+        });
+        upstreamDuration.observe(upstreamMs);
+        return {
+          status: upstreamResponse.status,
+          headers: { "content-type": "application/json" },
+          body: upstreamResponse.body,
+          rpcAction: "forward_with_interceptors",
+          logFields: {
             rpcAction: "forward_with_interceptors",
             interceptorVerdict: "continue",
             upstreamStatus: upstreamResponse.status,
-          });
-          res.writeHead(upstreamResponse.status, {
-            "content-type": "application/json",
-          });
-          res.end(upstreamResponse.body);
-        }
-        return;
+          },
+        };
       }
 
       // forward (specVersion, unknown methods when allowed)
-      rpcRequestsTotal.inc({ action: "forward_as_is", method: "" });
+      rpcRequestsTotal.inc({ action: "forward_as_is", method: "", transport });
       const forwardStart = Date.now();
       try {
         const upstreamResponse = await forwardToUpstream(
@@ -239,14 +375,16 @@ export function createProxyHandler(
           status_code: String(upstreamResponse.status),
         });
         upstreamDuration.observe((Date.now() - forwardStart) / 1000);
-        finishRequest("forward_as_is", {
+        return {
+          status: upstreamResponse.status,
+          headers: { "content-type": "application/json" },
+          body: upstreamResponse.body,
           rpcAction: "forward_as_is",
-          upstreamStatus: upstreamResponse.status,
-        });
-        res.writeHead(upstreamResponse.status, {
-          "content-type": "application/json",
-        });
-        res.end(upstreamResponse.body);
+          logFields: {
+            rpcAction: "forward_as_is",
+            upstreamStatus: upstreamResponse.status,
+          },
+        };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(
@@ -254,33 +392,29 @@ export function createProxyHandler(
         );
         errorsTotal.inc({ type: "upstream_unreachable" });
         upstreamDuration.observe((Date.now() - forwardStart) / 1000);
-        finishRequest("forward_as_is", {
+        return {
+          status: 502,
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ error: "bad gateway" }),
           rpcAction: "forward_as_is",
-          upstreamStatus: 502,
-        });
-        res.writeHead(502, { "content-type": "application/json" });
-        res.end(JSON.stringify({ error: "bad gateway" }));
+          logFields: { rpcAction: "forward_as_is", upstreamStatus: 502 },
+        };
       }
-      return;
     }
 
     // Non-JSON-RPC: forward as-is
-    const targetUrl = upstreamBaseUrl + (req.url ?? "/");
+    rpcRequestsTotal.inc({ action: "passthrough", method: "", transport });
+    const targetUrl = upstreamBaseUrl + url;
     const forwardHeaders = new Headers();
-    for (const [key, value] of Object.entries(req.headers)) {
-      if (value === undefined || HOP_BY_HOP_HEADERS.has(key)) continue;
-      if (Array.isArray(value)) {
-        for (const entry of value) forwardHeaders.append(key, entry);
-      } else {
-        forwardHeaders.set(key, value);
-      }
+    for (const [key, value] of Object.entries(headers)) {
+      if (!HOP_BY_HOP_HEADERS.has(key)) forwardHeaders.set(key, value);
     }
 
     const passthroughStart = Date.now();
     let upstreamResponse: Response;
     try {
       upstreamResponse = await fetch(targetUrl, {
-        method: req.method ?? "GET",
+        method,
         headers: forwardHeaders,
         body: body.length > 0 ? new Uint8Array(body) : undefined,
         signal: AbortSignal.timeout(upstreamTimeoutMs),
@@ -290,21 +424,17 @@ export function createProxyHandler(
       console.error(JSON.stringify({ error: "upstream_unreachable", message }));
       errorsTotal.inc({ type: "upstream_unreachable" });
       upstreamDuration.observe((Date.now() - passthroughStart) / 1000);
-      finishRequest("passthrough", {
+      return {
+        status: 502,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ error: "bad gateway" }),
         rpcAction: "passthrough",
-        upstreamStatus: 502,
-      });
-      res.writeHead(502, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: "bad gateway" }));
-      return;
+        logFields: { rpcAction: "passthrough", upstreamStatus: 502 },
+      };
     }
 
     upstreamResponses.inc({ status_code: String(upstreamResponse.status) });
     upstreamDuration.observe((Date.now() - passthroughStart) / 1000);
-    finishRequest("passthrough", {
-      rpcAction: "passthrough",
-      upstreamStatus: upstreamResponse.status,
-    });
 
     const responseHeaders: Record<string, string> = {};
     upstreamResponse.headers.forEach((value, key) => {
@@ -313,10 +443,18 @@ export function createProxyHandler(
       }
     });
 
-    res.writeHead(upstreamResponse.status, responseHeaders);
     const responseBody = await upstreamResponse.arrayBuffer();
-    res.end(Buffer.from(responseBody));
-  };
+    return {
+      status: upstreamResponse.status,
+      headers: responseHeaders,
+      body: Buffer.from(responseBody),
+      rpcAction: "passthrough",
+      logFields: {
+        rpcAction: "passthrough",
+        upstreamStatus: upstreamResponse.status,
+      },
+    };
+  }
 }
 
 async function forwardToUpstream(
@@ -379,7 +517,7 @@ function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   });
 }
 
-function isJsonContent(req: IncomingMessage): boolean {
+function isOhttpContent(req: IncomingMessage): boolean {
   const contentType = req.headers["content-type"] ?? "";
-  return contentType.includes("application/json");
+  return contentType.includes("message/ohttp-req");
 }

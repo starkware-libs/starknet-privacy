@@ -13,8 +13,8 @@ collectDefaultMetrics({ register: registry });
 
 export const rpcRequestsTotal = new Counter({
   name: "prover_proxy_rpc_requests_total",
-  help: "Total JSON-RPC requests by verdict action and method",
-  labelNames: ["action", "method"] as const,
+  help: "Total proxied requests by action, method, and transport",
+  labelNames: ["action", "method", "transport"] as const,
   registers: [registry],
 });
 

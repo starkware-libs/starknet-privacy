@@ -116,4 +116,5 @@ describe("loadConfig", () => {
     expect(config.archival?.blocking).toBe(false);
     expect(config.archival?.gcsKeyFilePath).toBeUndefined();
   });
+
 });
