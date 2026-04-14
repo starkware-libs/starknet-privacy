@@ -14,6 +14,7 @@ import type {
 } from "../interfaces.js";
 import { toHex } from "../utils/convert.js";
 import { getDefaultProofDetails } from "./proof-invocation-factory.js";
+import { OhttpClient, type OhttpOption } from "./ohttp-client.js";
 import { DEFAULT_REQUEST_TIMEOUT_MS, ProvingService } from "./proving-service.js";
 
 /** Options for ProvingServiceProofProvider. */
@@ -37,6 +38,8 @@ export type ProvingServiceProofProviderOptions = {
    * Pool contract address used for nonce fetching. Required when `nodeUrl` is set.
    */
   poolAddress?: StarknetAddress;
+  /** Enable OHTTP envelope encryption. Pass `true` for defaults, or an object for custom relay/key config. */
+  ohttp?: OhttpOption;
 };
 
 /**
@@ -58,9 +61,19 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
     private readonly chainId: constants.StarknetChainId,
     options: ProvingServiceProofProviderOptions = {}
   ) {
+    let ohttpClient: OhttpClient | undefined;
+    if (options.ohttp) {
+      const ohttpOptions =
+        typeof options.ohttp === "object"
+          ? { relayUrl: options.ohttp.relayUrl, publicKeyConfig: options.ohttp.publicKeyConfig }
+          : undefined;
+      ohttpClient = new OhttpClient(provingServiceUrl, ohttpOptions);
+    }
+
     this.provingService = new ProvingService({
       baseUrl: provingServiceUrl,
       requestTimeoutMs: options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+      ohttpClient,
     });
     this.blockIdentifier = options.blockIdentifier ?? "latest";
     if (options.nodeUrl != null) {
