@@ -7,10 +7,9 @@ import {
   type HistoryAction,
   type HistoryTransaction,
 } from "starknet-sdk";
-// @ts-expect-error — deep import into dist, not part of the declared exports
-import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
 import type { RpcProvider } from "starknet";
 import type { AppConfig, AccountConfig } from "../config.ts";
+import { createDiscoveryProvider } from "../starknet.ts";
 import { formatTokenAmount, truncateAddress } from "../format.ts";
 
 export type ActionDisplay = {
@@ -327,10 +326,7 @@ export function useHistory(
     setError(null);
 
     try {
-      const indexer = new IndexerDiscoveryProvider(
-        config.indexerUrl,
-        poolAddress,
-      );
+      const indexer = createDiscoveryProvider(config, poolAddress);
       const page = await indexer.fetchHistory(
         BigInt(account.address),
         registry.cursor,
@@ -385,10 +381,7 @@ export function useHistory(
     setError(null);
 
     try {
-      const indexer = new IndexerDiscoveryProvider(
-        config.indexerUrl,
-        poolAddress,
-      );
+      const indexer = createDiscoveryProvider(config, poolAddress);
       const page = await indexer.fetchHistory(
         BigInt(account.address),
         registry.cursor,
