@@ -78,6 +78,7 @@ jobs:
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         uses: asdf-vm/actions/install@v3
         with:
+          asdf_branch: v0.14.1
           tool_versions: |
             starknet-foundry nightly-2026-02-20
       - name: Generate Cairo reference data
