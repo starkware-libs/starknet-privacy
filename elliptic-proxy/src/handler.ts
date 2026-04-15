@@ -65,6 +65,14 @@ export function createHandler(
       return;
     }
 
+    if (req.rawBody && req.rawBody.length > config.maxBodyBytes) {
+      sendResponse(413, JSON.stringify({ error: "payload too large" }), {
+        bodyBytes: req.rawBody.length,
+        maxBytes: config.maxBodyBytes,
+      });
+      return;
+    }
+
     const authResult = authenticateRequest(req, config);
     if (!isAuthenticated(authResult)) {
       sendResponse(401, JSON.stringify({ error: authResult.error }), {
@@ -75,15 +83,6 @@ export function createHandler(
     }
 
     const { partnerName } = authResult;
-
-    if (req.rawBody && req.rawBody.length > config.maxBodyBytes) {
-      sendResponse(413, JSON.stringify({ error: "payload too large" }), {
-        partner: partnerName,
-        bodyBytes: req.rawBody.length,
-        maxBytes: config.maxBodyBytes,
-      });
-      return;
-    }
 
     if (!rateLimiter.check(partnerName, config.rateLimitPerMinute)) {
       sendResponse(429, JSON.stringify({ error: "too many requests" }), {
