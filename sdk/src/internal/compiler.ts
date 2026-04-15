@@ -517,7 +517,8 @@ export class ActionCompiler {
     const { channels } = await this.discoveryProvider.discoverChannels(
       this.userAddress,
       this.userViewingKey,
-      recipientsToDiscover
+      recipientsToDiscover,
+      { blockIdentifier: options?.provingBlockId }
     );
 
     // see if all recipients were discoveredall
@@ -528,7 +529,8 @@ export class ActionCompiler {
     const { total } = await this.discoveryProvider.discoverChannels(
       this.userAddress,
       this.userViewingKey,
-      "total-only"
+      "total-only",
+      { blockIdentifier: options?.provingBlockId }
     );
 
     return { channels, total };
@@ -629,7 +631,11 @@ export class ActionCompiler {
         const { notes, cursor } = await this.discoveryProvider.discoverNotes(
           this.userAddress,
           this.userViewingKey,
-          { cursor: registry.cursor, tokens: tokensToDiscover }
+          {
+            cursor: registry.cursor,
+            tokens: tokensToDiscover,
+            blockIdentifier: options?.provingBlockId,
+          }
         );
 
         // Replace registry notes (don't merge - some may have been spent)

@@ -6,7 +6,9 @@ import {
   apiCursorToNotesCursor,
   convertIncomingNotes,
   buildSubchannelCursors,
+  blockIdToIdentifier,
 } from "../../src/internal/indexer-discovery.js";
+import { provider } from "starknet";
 import { SetupRequirement } from "../../src/interfaces.js";
 import { AddressMap } from "../../src/utils/maps.js";
 import type { IncomingChannelCursor, NotesCursor } from "../../src/internal/channel.js";
@@ -662,6 +664,45 @@ describe("IndexerDiscoveryProvider", () => {
 
         expect(senderChannel.subchannel_discovery_complete).toBe(false);
       });
+    });
+  });
+
+  describe("blockIdToIdentifier", () => {
+    it("converts block hash to hex string", () => {
+      const result = blockIdToIdentifier({ block_hash: "0xabc123" });
+      expect(result).toBe("0xabc123");
+    });
+
+    it("converts block number to number", () => {
+      const result = blockIdToIdentifier({ block_number: 42 });
+      expect(result).toBe(42);
+    });
+
+    it("passes tag strings through", () => {
+      expect(blockIdToIdentifier("latest")).toBe("latest");
+      expect(blockIdToIdentifier("pre_confirmed")).toBe("pre_confirmed");
+      expect(blockIdToIdentifier("l1_accepted")).toBe("l1_accepted");
+    });
+
+    it("roundtrips block hash through provider.Block", () => {
+      const original = "0xdeadbeef";
+      const wireFormat = new provider.Block(original).identifier;
+      const result = blockIdToIdentifier(wireFormat);
+      expect(result).toBe(original);
+    });
+
+    it("roundtrips block number through provider.Block", () => {
+      const original = 12345;
+      const wireFormat = new provider.Block(original).identifier;
+      const result = blockIdToIdentifier(wireFormat);
+      expect(result).toBe(original);
+    });
+
+    it("roundtrips tag through provider.Block", () => {
+      const original = "pre_confirmed";
+      const wireFormat = new provider.Block(original).identifier;
+      const result = blockIdToIdentifier(wireFormat);
+      expect(result).toBe(original);
     });
   });
 });

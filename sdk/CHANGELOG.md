@@ -9,6 +9,14 @@
 - Removed `@starknet-io/starknet-types-09` direct dependency (now resolved transitively via starknet)
 - **Node.js >= 24** now required (due to `ohttp-ts` dependency using WebCrypto APIs)
 
+### Changed
+
+- `block_ref` in API models changed from `string` to `BLOCK_ID` (supports hash, number, or tag). Wire format now matches the Starknet JSON-RPC `BLOCK_ID` type.
+- `discoverNotes` and `discoverChannels` accept optional `blockIdentifier` param to pin discovery reads to a specific block
+- `fetchHistory` `blockRef` option changed from `string` to `BlockIdentifier`
+- `HistoryPage.blockRef` changed from `string` to `BlockIdentifier`
+- Compiler passes `ExecuteOptions.provingBlockId` to discovery as `blockIdentifier`, ensuring discovery and proving use the same block state
+
 ### Added
 
 - OHTTP (Oblivious HTTP, RFC 9458) support for `IndexerDiscoveryProvider` — encrypts all discovery requests and responses at the application layer using HPKE, independent of TLS (#TBD)

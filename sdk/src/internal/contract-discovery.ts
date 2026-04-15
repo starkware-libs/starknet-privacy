@@ -394,7 +394,11 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
   async discoverNotes(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }
+    params?: {
+      cursor?: NotesCursor;
+      tokens?: StarknetAddressBigint[];
+      blockIdentifier?: BlockIdentifier;
+    }
   ): Promise<{ timestamp: BlockIdentifier; notes: AddressMap<Note[]>; cursor: NotesCursor }> {
     const discovery = new NotesDiscovery(
       address,
@@ -410,7 +414,7 @@ export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
     recipients: RecipientsFilter,
-    params?: { cursor?: ChannelCursor }
+    params?: { cursor?: ChannelCursor; blockIdentifier?: BlockIdentifier }
   ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }> {
     const discovery = new ChannelsDiscovery(
       address,

@@ -1,4 +1,5 @@
-import type { BlockIdentifier } from "starknet";
+import { provider, type BlockIdentifier } from "starknet";
+import type { BLOCK_ID } from "@starknet-io/starknet-types-09";
 import {
   SetupRequirement,
   type Channel as ChannelInterface,
@@ -81,7 +82,7 @@ type ApiOutgoingSubchannelInfo = {
 };
 
 type ApiIncomingSyncResponse = {
-  block_ref: string;
+  block_ref: BLOCK_ID;
   channels: ApiIncomingChannel[];
   subchannels: ApiIncomingSubchannelInfo[];
   notes: ApiIncomingNoteInfo[];
@@ -89,7 +90,7 @@ type ApiIncomingSyncResponse = {
 };
 
 type ApiOutgoingSyncResponse = {
-  block_ref: string;
+  block_ref: BLOCK_ID;
   channels: ApiOutgoingChannel[];
   subchannels: ApiOutgoingSubchannelInfo[];
   cursor: ApiDiscoveryCursor;
@@ -100,6 +101,14 @@ export type DiscoveryHealthResponse = {
   chain_head?: { block_number: number; block_hash: string; timestamp: number };
   lag_secs?: number;
 };
+
+/** Convert wire-format BLOCK_ID to starknet.js BlockIdentifier. */
+export function blockIdToIdentifier(id: BLOCK_ID): BlockIdentifier {
+  if (typeof id === "string") return id; // tag string
+  if ("block_hash" in id && id.block_hash) return id.block_hash;
+  if ("block_number" in id && id.block_number !== undefined) return id.block_number;
+  return "latest";
+}
 
 export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
   private readonly ohttpClient?: OhttpClient;
@@ -135,7 +144,11 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
   async discoverNotes(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }
+    params?: {
+      cursor?: NotesCursor;
+      tokens?: StarknetAddressBigint[];
+      blockIdentifier?: BlockIdentifier;
+    }
   ): Promise<{ timestamp: BlockIdentifier; notes: AddressMap<Note[]>; cursor: NotesCursor }> {
     const tokenFilter = params?.tokens ? new Set(params.tokens.map((t) => toBigInt(t))) : null;
     const cursor = params?.cursor;
@@ -144,7 +157,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     // last_known_block is sent once on the first request for reorg detection.
     // block_ref (from the first response) pins subsequent pagination requests.
     const lastKnownBlock = cursor?.blockId as string | undefined;
-    let blockRef: string | undefined;
+    let blockRef: BLOCK_ID | undefined;
 
     const allNotes = new AddressMap<Note[]>(() => []);
     const incomingChannels = new AddressMap<IncomingChannelCursor>();
@@ -159,6 +172,8 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       };
       if (blockRef) {
         body.block_ref = blockRef;
+      } else if (params?.blockIdentifier !== undefined) {
+        body.block_ref = new provider.Block(params.blockIdentifier).identifier;
       } else if (lastKnownBlock) {
         body.last_known_block = lastKnownBlock;
       }
@@ -182,7 +197,10 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
         allNotes.get(token)!.push(...tokenNotes);
       }
 
-      const updatedCursor = apiCursorToNotesCursor(resp.cursor, resp.block_ref);
+      const updatedCursor = apiCursorToNotesCursor(
+        resp.cursor,
+        blockIdToIdentifier(resp.block_ref)
+      );
       for (const [sender, icc] of updatedCursor.incomingChannels) {
         incomingChannels.set(sender, icc);
       }
@@ -199,10 +217,11 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     // suboptimal incremental updates — the next call re-scans already-discovered
     // (but now spent) note indices.
 
+    const blockIdentifier = blockIdToIdentifier(blockRef!);
     return {
-      timestamp: blockRef!,
+      timestamp: blockIdentifier,
       notes: allNotes,
-      cursor: { blockId: blockRef!, incomingChannels },
+      cursor: { blockId: blockIdentifier, incomingChannels },
     };
   }
 
@@ -210,7 +229,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
     recipients: RecipientsFilter,
-    params?: { cursor?: ChannelCursor }
+    params?: { cursor?: ChannelCursor; blockIdentifier?: BlockIdentifier }
   ): Promise<{
     timestamp: BlockIdentifier;
     channels?: AddressMap<ChannelInterface>;
@@ -224,8 +243,14 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
         viewing_key: toHex(viewingKey),
         cursor: { channel_discovery_complete: false },
       };
+      if (params?.blockIdentifier !== undefined) {
+        body.block_ref = new provider.Block(params.blockIdentifier).identifier;
+      }
       const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
-      return { timestamp: resp.block_ref, total: resp.cursor.total_n_channels! };
+      return {
+        timestamp: blockIdToIdentifier(resp.block_ref),
+        total: resp.cursor.total_n_channels!,
+      };
     }
 
     const cursorMap = params?.cursor?.channels;
@@ -275,7 +300,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       Map<string, { token: bigint; lastIndex: number | null }>
     >();
     const nonCreatedChannelMap = new Map<string, { publicKey: bigint; channelKey: bigint }>();
-    let blockRef: string | undefined;
+    let blockRef: BLOCK_ID | undefined;
 
     let complete = false;
     do {
@@ -287,6 +312,8 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       };
       if (blockRef) {
         body.block_ref = blockRef;
+      } else if (params?.blockIdentifier !== undefined) {
+        body.block_ref = new provider.Block(params.blockIdentifier).identifier;
       }
       if (recipients !== "all") {
         body.recipients = recipients.map((r) => toHex(r));
@@ -322,7 +349,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       }
     }
 
-    return { timestamp: blockRef!, channels };
+    return { timestamp: blockIdToIdentifier(blockRef!), channels };
   }
 
   async discoverRequirement(
@@ -356,7 +383,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     options?: {
       maxTransactions?: number;
       lastKnownBlock?: string;
-      blockRef?: string;
+      blockRef?: BlockIdentifier;
       /** Pass the cursor from a previous HistoryPage to continue pagination. */
       historyCursor?: HistoryCursor;
     }
@@ -369,8 +396,8 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       max_transactions: options?.maxTransactions ?? 50,
       cursor: historyCursorToApi(cursor),
     };
-    if (options?.blockRef) {
-      body.block_ref = options.blockRef;
+    if (options?.blockRef !== undefined) {
+      body.block_ref = new provider.Block(options.blockRef).identifier;
     } else if (options?.lastKnownBlock) {
       body.last_known_block = options.lastKnownBlock;
     }
@@ -470,7 +497,7 @@ export function notesCursorToApiCursor(
 /** Converts API cursor from an incoming sync response → SDK `NotesCursor`. */
 export function apiCursorToNotesCursor(
   apiCursor: ApiDiscoveryCursor,
-  blockRef: string
+  blockRef: BlockIdentifier
 ): NotesCursor {
   const incomingChannels = new AddressMap<IncomingChannelCursor>();
   if (apiCursor.channels) {

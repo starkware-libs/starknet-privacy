@@ -1,4 +1,7 @@
+import type { BlockIdentifier } from "starknet";
+import type { BLOCK_ID } from "@starknet-io/starknet-types-09";
 import type { StarknetAddressBigint } from "../interfaces.js";
+import { blockIdToIdentifier } from "./indexer-discovery.js";
 import { toHex } from "../utils/convert.js";
 import type { NotesCursor, ChannelCursor } from "./channel.js";
 
@@ -61,7 +64,7 @@ export type HistoryTransaction = {
 };
 
 export type HistoryPage = {
-  blockRef: string;
+  blockRef: BlockIdentifier;
   transactions: HistoryTransaction[];
   cursor: HistoryCursor;
 };
@@ -122,7 +125,7 @@ type ApiHistoryTransaction = {
 };
 
 export type ApiHistoryResponse = {
-  block_ref: string;
+  block_ref: BLOCK_ID;
   transactions: ApiHistoryTransaction[];
   cursor: ApiHistoryCursor;
 };
@@ -189,7 +192,7 @@ export function historyCursorToApi(cursor: HistoryCursor): ApiHistoryCursor {
 /** Converts API history response → SDK HistoryPage. */
 export function apiResponseToHistoryPage(resp: ApiHistoryResponse): HistoryPage {
   return {
-    blockRef: resp.block_ref,
+    blockRef: blockIdToIdentifier(resp.block_ref),
     transactions: resp.transactions.map((tx) => ({
       blockNumber: tx.block_number,
       transactionHash: BigInt(tx.transaction_hash),

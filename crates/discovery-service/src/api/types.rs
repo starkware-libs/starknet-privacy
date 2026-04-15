@@ -14,7 +14,7 @@ use discovery_core::privacy_pool::types::{secret_felt_serde, SecretFelt};
 use discovery_core::sync::incoming_state::IncomingSubchannel;
 use discovery_core::sync::outgoing_state::OutgoingSubchannel;
 use serde::{Deserialize, Serialize};
-use starknet_core::types::Felt;
+use starknet_core::types::{BlockId, Felt};
 use tracing::warn;
 
 use crate::chain_state::ChainHead;
@@ -152,11 +152,12 @@ pub struct SyncRequestBase {
     /// Leave empty on pagination requests or fresh syncs.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_known_block: Option<Felt>,
-    /// Block hash to query state at. Ensures consistent reads across
-    /// paginated requests. Leave empty on first request (server uses
-    /// current head). On pagination, use the value from previous response.
+    /// Block identifier to pin storage reads to. Can be a block hash, number,
+    /// or tag (`"latest"`, `"pre_confirmed"`, `"l1_accepted"`). When omitted,
+    /// resolves to the current head hash. Explicit values pass through as-is.
+    /// Only a block hash guarantees consistent reads across paginated requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub block_ref: Option<Felt>,
+    pub block_ref: Option<BlockId>,
     /// Discovery cursor for pagination. Use the cursor from previous
     /// response to continue discovery.
     #[serde(default)]
@@ -198,9 +199,9 @@ pub struct IncomingSyncRequest {
 /// Response body for POST /v1/sync/incoming_state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IncomingSyncResponse {
-    /// Block hash pinning all reads in this response. Pass back as
+    /// Block identifier pinning all reads in this response. Pass back as
     /// `block_ref` in subsequent requests for consistency.
-    pub block_ref: Felt,
+    pub block_ref: BlockId,
     /// Discovered incoming channels (one per sender).
     pub channels: Vec<IncomingChannel>,
     /// Discovered incoming subchannels (one per sender×token pair).
@@ -251,9 +252,9 @@ pub struct OutgoingSyncRequest {
 /// Response body for POST /v1/sync/outgoing_state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutgoingSyncResponse {
-    /// Block hash pinning all reads in this response. Pass back as
+    /// Block identifier pinning all reads in this response. Pass back as
     /// `block_ref` in subsequent requests for consistency.
-    pub block_ref: Felt,
+    pub block_ref: BlockId,
     /// Discovered outgoing channels (one per recipient). Includes both
     /// on-chain channels (`precomputed: false`) and precomputed channels
     /// for requested recipients (`precomputed: true`).
@@ -289,8 +290,8 @@ pub struct PreflightCheckRequest {
 /// Response body for POST /v1/sync/preflight_check.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PreflightCheckResponse {
-    /// Block hash pinning the reads in this response.
-    pub block_ref: Felt,
+    /// Block identifier pinning the reads in this response.
+    pub block_ref: BlockId,
     /// Whether the sender has a public key registered on-chain.
     pub sender_registered: bool,
     /// Whether the channel from sender to recipient exists.
@@ -312,10 +313,10 @@ pub struct HistoryRequest {
     /// on first request. Leave empty on fresh syncs or pagination requests.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_known_block: Option<Felt>,
-    /// Block hash for consistent storage reads across paginated requests.
-    /// Leave empty on first request (server uses current head).
+    /// Block identifier for storage reads. See [`SyncRequestBase::block_ref`]
+    /// for consistency semantics of hash vs number vs tag.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub block_ref: Option<Felt>,
+    pub block_ref: Option<BlockId>,
     /// History cursor for pagination. Use the cursor from previous response
     /// to continue scanning.
     #[serde(default)]
@@ -325,8 +326,8 @@ pub struct HistoryRequest {
 /// Response body for POST /v1/history.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryResponse {
-    /// Block hash pinning all storage reads.
-    pub block_ref: Felt,
+    /// Block identifier pinning all storage reads.
+    pub block_ref: BlockId,
     /// History transactions for the current page.
     pub transactions: Vec<HistoryTransaction>,
     /// Updated cursor for continuation.

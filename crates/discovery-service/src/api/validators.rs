@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use discovery_core::discovery::DiscoveryCursor;
 use discovery_core::history::types::HistoryCursor;
 use discovery_core::storage_backend::{StorageError, StorageSnapshot};
-use starknet_core::types::Felt;
+use starknet_core::types::{BlockId, Felt};
 use tracing::warn;
 
 use crate::api::types::{error_codes, ApiErrorResponse};
@@ -16,14 +16,14 @@ use crate::public_key_cache::PublicKeyCache;
 
 /// Validates block reference for sync endpoints.
 ///
-/// Performs the following:
-/// 1. Checks last_known_block hasn't been reorged (if provided)
-/// 2. Resolves block_ref (if provided) or uses current head
+/// 1. Checks `last_known_block` hasn't been reorged (if provided)
+/// 2. Explicit `block_ref` passes through as-is (hash, number, or tag)
+/// 3. When omitted, resolves to the current head hash for pagination consistency
 pub async fn validate_block_ref<B: ChainState>(
     last_known_block: Option<Felt>,
-    block_ref: Option<Felt>,
+    block_ref: Option<BlockId>,
     backend: &B,
-) -> Result<Felt, (StatusCode, ApiErrorResponse)> {
+) -> Result<BlockId, (StatusCode, ApiErrorResponse)> {
     // last_known_block is for first requests, block_ref is for pagination — never both.
     if last_known_block.is_some() && block_ref.is_some() {
         return Err((
@@ -61,28 +61,22 @@ pub async fn validate_block_ref<B: ChainState>(
         }
     }
 
-    // 2. Resolve query block
-    //
-    // If block_ref is specified, use it directly without validation.
-    // It's the client's responsibility to use a valid block_ref (typically
-    // from the cursor returned in a previous response). If invalid, the RPC
-    // call will fail and discovery will return an error.
-    let block_ref = if let Some(block_ref) = block_ref {
-        block_ref
-    } else {
-        let head = backend.get_head().await.ok_or_else(|| {
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                ApiErrorResponse::new(
-                    error_codes::SERVICE_UNAVAILABLE,
-                    "No indexed head available yet",
-                ),
-            )
-        })?;
-        head.block_hash
-    };
-
-    Ok(block_ref)
+    // 2. Explicit block_ref passes through; None resolves to head hash.
+    match block_ref {
+        Some(id) => Ok(id),
+        None => {
+            let head = backend.get_head().await.ok_or_else(|| {
+                (
+                    StatusCode::SERVICE_UNAVAILABLE,
+                    ApiErrorResponse::new(
+                        error_codes::SERVICE_UNAVAILABLE,
+                        "No indexed head available yet",
+                    ),
+                )
+            })?;
+            Ok(BlockId::Hash(head.block_hash))
+        }
+    }
 }
 
 /// Rejects a value that exceeds an upper bound.
@@ -265,21 +259,22 @@ mod tests {
     use discovery_core::privacy_pool::types::SecretFelt;
 
     #[tokio::test]
-    async fn test_valid_request_uses_head_as_block_ref() {
+    async fn test_none_resolves_to_head_hash() {
         let backend = MockChainState::new();
 
         let block_ref = validate_block_ref(None, None, &backend).await.unwrap();
-        assert_ne!(block_ref, Felt::ZERO);
+        assert_eq!(block_ref, BlockId::Hash(Felt::from_hex_unchecked("0x123")));
     }
 
     #[tokio::test]
-    async fn test_block_ref_used_directly() {
-        let backend = MockChainState::new();
+    async fn test_none_fails_without_head() {
+        let backend = MockChainState::with_no_head();
 
-        let block_ref = validate_block_ref(None, Some(Felt::from_hex_unchecked("0xabc")), &backend)
-            .await
-            .unwrap();
-        assert_eq!(block_ref, Felt::from_hex_unchecked("0xabc"));
+        let result = validate_block_ref(None, None, &backend).await;
+        assert!(result.is_err());
+
+        let (status, _) = result.unwrap_err();
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
     }
 
     #[tokio::test]
@@ -293,28 +288,6 @@ mod tests {
         let (status, error) = result.unwrap_err();
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(error.error.code, error_codes::BLOCK_REORGED);
-    }
-
-    #[tokio::test]
-    async fn test_no_head_available_without_block_ref() {
-        let backend = MockChainState::with_no_head();
-
-        let result = validate_block_ref(None, None, &backend).await;
-        assert!(result.is_err());
-
-        let (status, error) = result.unwrap_err();
-        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
-        assert_eq!(error.error.code, error_codes::SERVICE_UNAVAILABLE);
-    }
-
-    #[tokio::test]
-    async fn test_block_ref_works_without_head() {
-        let backend = MockChainState::with_no_head();
-
-        let block_ref = validate_block_ref(None, Some(Felt::from_hex_unchecked("0xabc")), &backend)
-            .await
-            .unwrap();
-        assert_eq!(block_ref, Felt::from_hex_unchecked("0xabc"));
     }
 
     #[tokio::test]
@@ -386,7 +359,7 @@ mod tests {
 
         let result = validate_block_ref(
             Some(Felt::from_hex_unchecked("0x111")),
-            Some(Felt::from_hex_unchecked("0x222")),
+            Some(BlockId::Hash(Felt::from_hex_unchecked("0x222"))),
             &backend,
         )
         .await;
