@@ -364,4 +364,22 @@ describe("classifyTransaction", () => {
       { type: "transferSent", toAddress: BOB, token: STRK, amount: 50n, noteCount: 1 },
     ]);
   });
+
+  it("classifies a registration transaction", () => {
+    const result = classifyTransaction(emptyTransaction({ registeredPubkey: 0xcafen }));
+
+    expect(result.blockNumber).toBe(1);
+    expect(result.actions).toEqual([{ type: "register", pubkey: 0xcafen }]);
+  });
+
+  it("registration skips normal classification", () => {
+    const result = classifyTransaction(
+      emptyTransaction({
+        registeredPubkey: 0xcafen,
+        deposits: [{ fromAddress: ALICE, token: STRK, amount: 100n }],
+      })
+    );
+
+    expect(result.actions).toEqual([{ type: "register", pubkey: 0xcafen }]);
+  });
 });
