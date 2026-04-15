@@ -56,6 +56,8 @@ export type HistoryTransaction = {
   deposits: HistoryDeposit[];
   withdrawals: HistoryWithdrawal[];
   openNoteDeposits: HistoryOpenNoteDeposit[];
+  /** Present only on the synthetic registration transaction (last in history). */
+  registeredPubkey?: bigint;
 };
 
 export type HistoryPage = {
@@ -116,6 +118,7 @@ type ApiHistoryTransaction = {
   deposits: ApiHistoryDeposit[];
   withdrawals: ApiHistoryWithdrawal[];
   open_note_deposits: ApiHistoryOpenNoteDeposit[];
+  registered_pubkey?: string;
 };
 
 export type ApiHistoryResponse = {
@@ -215,6 +218,7 @@ export function apiResponseToHistoryPage(resp: ApiHistoryResponse): HistoryPage 
         noteId: BigInt(deposit.note_id),
         amount: BigInt(deposit.amount),
       })),
+      ...(tx.registered_pubkey && { registeredPubkey: BigInt(tx.registered_pubkey) }),
     })),
     cursor: {
       subchannels: resp.cursor.subchannels.map((sc) => ({
