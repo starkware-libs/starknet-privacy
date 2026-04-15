@@ -19,7 +19,7 @@ export function authenticateRequest(
   const accessTimestamp = firstValue(req.headers["x-access-timestamp"]);
 
   if (!partnerName || !accessSign || !accessTimestamp) {
-    return { error: "unauthorized", reason: "missing_headers" };
+    return { error: "unauthorized", reason: "missing_headers", partnerName };
   }
 
   const timestampMs = Number(accessTimestamp);
