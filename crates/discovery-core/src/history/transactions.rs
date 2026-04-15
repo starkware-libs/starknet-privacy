@@ -107,7 +107,7 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
         cursor.history_complete = false;
     }
 
-    result.sort_by(|a, b| b.block_number.cmp(&a.block_number));
+    result.sort_by_key(|tx| std::cmp::Reverse(tx.block_number));
 
     debug!(
         num_transactions = result.len(),

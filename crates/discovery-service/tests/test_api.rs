@@ -14,7 +14,7 @@ use discovery_service::api::{
     HealthResponse, HistoryRequest, IncomingSyncRequest, OutgoingSyncRequest,
     PreflightCheckRequest, SyncRequestBase,
 };
-use starknet_core::types::Felt;
+use starknet_core::types::{BlockId, Felt};
 
 #[tokio::test]
 async fn test_health_endpoint_returns_ok() {
@@ -58,7 +58,10 @@ async fn test_incoming_sync_basic() {
     let response = indexer.incoming_sync(&request).await.unwrap();
 
     // block_ref is always present
-    assert!(response.block_ref != Felt::ZERO, "block_ref should be set");
+    assert!(
+        matches!(response.block_ref, BlockId::Hash(_)),
+        "block_ref should be a block hash"
+    );
 
     // With a large budget, all discovery should complete
     assert!(
@@ -82,6 +85,50 @@ async fn test_incoming_sync_basic() {
     for subchannel in &response.subchannels {
         assert!(subchannel.token != Felt::ZERO, "Token should not be zero");
     }
+
+    indexer.signal_shutdown().unwrap();
+    indexer.wait().await.unwrap();
+}
+
+/// Verifies that sync works when the client pins reads to `pre_confirmed`.
+#[tokio::test]
+async fn test_incoming_sync_with_pre_confirmed_block_ref() {
+    let (devnet, metadata) = setup_devnet_with_dump().await;
+    let indexer = setup_indexer(&devnet, Some(&metadata)).await;
+
+    let request = IncomingSyncRequest {
+        recipient_address: metadata.alice_address,
+        base: SyncRequestBase {
+            contract_address: metadata.contract_address,
+            viewing_key: metadata.alice_viewing_key,
+            last_known_block: None,
+            block_ref: Some(BlockId::Tag(starknet_core::types::BlockTag::PreConfirmed)),
+            cursor: Default::default(),
+        },
+    };
+
+    let response = indexer.incoming_sync(&request).await.unwrap();
+
+    // Server passes the pre_confirmed tag through unchanged — it cannot
+    // be resolved to a stable block number or hash.
+    assert!(
+        matches!(
+            response.block_ref,
+            BlockId::Tag(starknet_core::types::BlockTag::PreConfirmed)
+        ),
+        "pre_confirmed tag should pass through unchanged, got {:?}",
+        response.block_ref
+    );
+
+    // Discovery should still complete and find Alice's notes
+    assert!(
+        response.cursor.is_complete(),
+        "Discovery should complete with pre_confirmed block_ref"
+    );
+    assert!(
+        !response.notes.is_empty(),
+        "Alice should have notes with pre_confirmed reads"
+    );
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();
@@ -193,8 +240,6 @@ async fn test_incoming_sync_no_head() {
     let (status, error) = indexer.incoming_sync_error(&request).await.unwrap();
 
     // Should return 503 SERVICE_UNAVAILABLE since no head is indexed yet
-    // (fresh devnet genesis block is pre-confirmed, so the RPC fallback
-    // returns None and the validator rejects with SERVICE_UNAVAILABLE)
     assert_eq!(status, 503);
     assert_eq!(error.error.code, "SERVICE_UNAVAILABLE");
 
@@ -246,7 +291,10 @@ async fn test_outgoing_sync_basic() {
 
     let response = indexer.outgoing_sync(&request).await.unwrap();
 
-    assert!(response.block_ref != Felt::ZERO, "block_ref should be set");
+    assert!(
+        matches!(response.block_ref, BlockId::Hash(_)),
+        "block_ref should be a block hash"
+    );
 
     // Alice has 2 outgoing channels: self-channel (deposit) + Bob (transfer)
     assert_eq!(
@@ -352,7 +400,10 @@ async fn test_preflight_check_basic() {
     };
 
     let response = indexer.preflight_check(&request).await.unwrap();
-    assert!(response.block_ref != Felt::ZERO, "block_ref should be set");
+    assert!(
+        matches!(response.block_ref, BlockId::Hash(_)),
+        "block_ref should be a block hash"
+    );
     assert!(response.sender_registered, "Alice should be registered");
     assert!(response.channel_exists, "Alice→Bob channel should exist");
     assert!(
@@ -462,8 +513,8 @@ async fn test_history_basic() {
     let history_response = indexer.history(&history_request).await.unwrap();
 
     assert!(
-        history_response.block_ref != Felt::ZERO,
-        "block_ref should be set"
+        matches!(history_response.block_ref, BlockId::Hash(_)),
+        "block_ref should be a block hash"
     );
     assert!(
         !history_response.transactions.is_empty(),

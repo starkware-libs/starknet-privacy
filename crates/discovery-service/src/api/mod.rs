@@ -1,5 +1,6 @@
 //! Axum API server for the discovery service.
 
+pub mod block_id_serde;
 pub mod handlers;
 pub mod types;
 pub mod validators;
