@@ -21,6 +21,8 @@ static ENC_NOTE_CREATED_SELECTOR: LazyLock<Felt> =
     LazyLock::new(|| starknet_keccak(b"EncNoteCreated"));
 static OPEN_NOTE_DEPOSITED_SELECTOR: LazyLock<Felt> =
     LazyLock::new(|| starknet_keccak(b"OpenNoteDeposited"));
+static VIEWING_KEY_SET_SELECTOR: LazyLock<Felt> =
+    LazyLock::new(|| starknet_keccak(b"ViewingKeySet"));
 
 /// A typed privacy pool contract event with block context.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,6 +71,14 @@ pub struct OpenNoteDepositedEvent {
     pub amount: u128,
 }
 
+/// Decoded fields for a Cairo `ViewingKeySet` event.
+/// Keys = `[selector, user_addr, public_key]`, data = `[enc_private_key(3)]`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ViewingKeySetEvent {
+    pub user_address: Felt,
+    pub public_key: Felt,
+}
+
 /// Event-specific content for privacy pool contract events.
 ///
 /// Each variant corresponds to a Cairo event type with its decoded fields.
@@ -78,6 +88,7 @@ pub enum PrivacyPoolEventContent {
     Withdrawal(WithdrawalEvent),
     EncNoteCreated(EncNoteCreatedEvent),
     OpenNoteDeposited(OpenNoteDepositedEvent),
+    ViewingKeySet(ViewingKeySetEvent),
 }
 
 /// Typed event access for privacy pool contract events.
@@ -98,6 +109,16 @@ pub trait IEvents: Send + Sync {
     async fn get_withdrawal_events(
         &self,
         address: Felt,
+        from_block: u64,
+        to_block: u64,
+    ) -> Result<Vec<PrivacyPoolEvent>, StorageError>;
+
+    /// Fetches `ViewingKeySet` events for the given user within a block range (inclusive).
+    ///
+    /// The address matches the user (key position 1 in `ViewingKeySet`).
+    async fn get_viewing_key_set_events(
+        &self,
+        user_address: Felt,
         from_block: u64,
         to_block: u64,
     ) -> Result<Vec<PrivacyPoolEvent>, StorageError>;
@@ -161,6 +182,11 @@ impl TryFrom<EmittedEvent> for PrivacyPoolEvent {
                 note_id: required_key(&event, 3, "note_id")?,
                 amount: required_amount(&event, 0)?,
             })
+        } else if selector == *VIEWING_KEY_SET_SELECTOR {
+            PrivacyPoolEventContent::ViewingKeySet(ViewingKeySetEvent {
+                user_address: required_key(&event, 1, "user_addr")?,
+                public_key: required_key(&event, 2, "public_key")?,
+            })
         } else {
             return Err(EventParseError::UnknownSelector);
         };
@@ -218,6 +244,22 @@ impl<T: RawEventAccess> IEvents for T {
         let raw_events = self
             .get_events(
                 &[vec![*WITHDRAWAL_SELECTOR], vec![address]],
+                from_block,
+                to_block,
+            )
+            .await?;
+        parse_events(raw_events)
+    }
+
+    async fn get_viewing_key_set_events(
+        &self,
+        user_address: Felt,
+        from_block: u64,
+        to_block: u64,
+    ) -> Result<Vec<PrivacyPoolEvent>, StorageError> {
+        let raw_events = self
+            .get_events(
+                &[vec![*VIEWING_KEY_SET_SELECTOR], vec![user_address]],
                 from_block,
                 to_block,
             )

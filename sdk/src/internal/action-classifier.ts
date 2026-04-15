@@ -18,7 +18,8 @@ export type HistoryAction =
       noteCount: number;
     }
   | { type: "swap"; executor: bigint; sent: SwapLeg[]; received: SwapLeg[] }
-  | { type: "transferSelf"; token: bigint; amount: bigint; noteCount: number };
+  | { type: "transferSelf"; token: bigint; amount: bigint; noteCount: number }
+  | { type: "register"; pubkey: bigint };
 
 export type HistoryActionKind = HistoryAction["type"];
 
@@ -39,6 +40,14 @@ export function classifyTransaction(
   transaction: HistoryTransaction,
   options?: ClassifyOptions
 ): ClassifiedTransaction {
+  if (transaction.registeredPubkey != null) {
+    return {
+      blockNumber: transaction.blockNumber,
+      transactionHash: transaction.transactionHash,
+      actions: [{ type: "register", pubkey: transaction.registeredPubkey }],
+    };
+  }
+
   const actions: HistoryAction[] = [];
 
   // Step 1: Detect swaps — openNoteDeposits are swap received legs, grouped by depositor (executor).
