@@ -1,3 +1,4 @@
+import type { BlockIdentifier } from "starknet";
 import type { StarknetAddressBigint } from "../interfaces.js";
 import { toHex } from "../utils/convert.js";
 import type { NotesCursor, ChannelCursor } from "./channel.js";
@@ -61,7 +62,7 @@ export type HistoryTransaction = {
 };
 
 export type HistoryPage = {
-  blockRef: string;
+  blockRef: BlockIdentifier;
   transactions: HistoryTransaction[];
   cursor: HistoryCursor;
 };
@@ -122,7 +123,7 @@ type ApiHistoryTransaction = {
 };
 
 export type ApiHistoryResponse = {
-  block_ref: string;
+  block_ref: BlockIdentifier;
   transactions: ApiHistoryTransaction[];
   cursor: ApiHistoryCursor;
 };

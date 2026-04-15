@@ -32,17 +32,17 @@ function assert(condition: unknown, message: () => string): asserts condition {
 }
 
 export type IncomingChannelCursor = {
-  /** @internal */ channelKey: ChannelKey;
-  /** @internal */ subchannelIdIndex: number;
-  /** @internal */ noteIndexes: AddressMap<number>; // token -> i
-  /** @internal */ totalNoteCounts: AddressMap<number>; // token -> total notes found by boundary finder
+  channelKey: ChannelKey;
+  subchannelIdIndex: number;
+  noteIndexes: AddressMap<number>; // token -> i
+  totalNoteCounts: AddressMap<number>; // token -> total notes found by boundary finder
 };
 
 export type NotesCursor = {
   /* when was this cursor valid */
-  /** @internal */ blockId: BlockIdentifier;
+  blockId: BlockIdentifier;
   /* per sender, a cursor to the subcahnels they opened and notes they created */
-  /** @internal */ incomingChannels: AddressMap<IncomingChannelCursor>; // sender -> cursor
+  incomingChannels: AddressMap<IncomingChannelCursor>; // sender -> cursor
 };
 
 export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
@@ -74,8 +74,8 @@ export function cloneNotesCursor(cursor?: NotesCursor): NotesCursor {
 export type RecipientsFilter<T = StarknetAddressBigint> = T[] | "all" | "total-only";
 
 export type ChannelCursor = {
-  /** @internal */ channels?: AddressMap<Channel>;
-  /** @internal */ total?: number;
+  channels?: AddressMap<Channel>;
+  total?: number;
 };
 export function cloneChannelCursor(cursor?: ChannelCursor): ChannelCursor {
   if (!cursor) {
@@ -102,9 +102,9 @@ type ChannelKey = bigint;
 
 /** Channel containing nonces for token and note creation. */
 export class Channel {
-  /** @internal */ readonly publicKey: PublicKey;
-  /** @internal */ key?: ChannelKey;
-  /** @internal */ readonly tokens: AddressMap<TokenChannel>; // for the next note for each token
+  readonly publicKey: PublicKey;
+  key?: ChannelKey;
+  readonly tokens: AddressMap<TokenChannel>; // for the next note for each token
 
   constructor(
     publicKey: PublicKey,
@@ -183,9 +183,9 @@ export const channelSerde: ChannelSerde = {
 
 /** Witness for a note, containing channel key and nonce. */
 export class Witness {
-  /** @internal */ readonly channelKey: ChannelKey;
-  /** @internal */ readonly nonce: number;
-  /** @internal */ readonly r: bigint;
+  readonly channelKey: ChannelKey;
+  readonly nonce: number;
+  readonly r: bigint;
 
   constructor(channelKey: ChannelKey, nonce: number, r: bigint) {
     this.channelKey = channelKey;

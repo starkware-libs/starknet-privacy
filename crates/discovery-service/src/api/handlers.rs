@@ -63,7 +63,7 @@ where
 
 /// Validated and resolved shared context for sync handlers.
 struct SyncContext<S> {
-    block_ref: Felt,
+    block_ref: BlockId,
     snapshot: S,
     budget: IoBudget,
     cursor_limits: CursorLimits,
@@ -89,7 +89,7 @@ where
 
     let snapshot = state
         .backend
-        .snapshot(base.contract_address, Some(BlockId::Hash(block_ref)))
+        .snapshot(base.contract_address, Some(block_ref))
         .await;
 
     validate_viewing_key(
@@ -139,7 +139,7 @@ where
 
     debug!(
         recipient = %format!("{:#x}", request.recipient_address),
-        block = %context.block_ref,
+        block = ?context.block_ref,
         "incoming_sync request"
     );
 
@@ -203,7 +203,7 @@ where
     debug!(
         sender = felt_hex(&request.sender_address),
         recipients = ?request.recipients.as_ref().map(|r| r.len()),
-        block = %context.block_ref,
+        block = ?context.block_ref,
         "outgoing_sync request"
     );
 
@@ -263,13 +263,11 @@ where
             ApiErrorResponse::new(error_codes::SERVICE_UNAVAILABLE, "No block indexed yet"),
         )
     })?;
+    let block_ref = BlockId::Hash(head.block_hash);
 
     let snapshot = state
         .backend
-        .snapshot(
-            request.contract_address,
-            Some(BlockId::Hash(head.block_hash)),
-        )
+        .snapshot(request.contract_address, Some(block_ref))
         .await;
 
     validate_viewing_key(
@@ -284,7 +282,7 @@ where
         sender = felt_hex(&request.sender_address),
         recipient = felt_hex(&request.recipient),
         token = felt_hex(&request.token),
-        block = %head.block_hash,
+        block = ?block_ref,
         "preflight_check request"
     );
 
@@ -299,7 +297,7 @@ where
     .map_err(crate::api::types::discovery_error_to_response)?;
 
     Ok(PreflightCheckResponse {
-        block_ref: head.block_hash,
+        block_ref,
         sender_registered: result.sender_registered,
         channel_exists: result.channel_exists,
         subchannel_exists: result.subchannel_exists,
@@ -340,7 +338,7 @@ where
 
     let snapshot = state
         .backend
-        .snapshot(request.contract_address, Some(BlockId::Hash(block_ref)))
+        .snapshot(request.contract_address, Some(block_ref))
         .await;
 
     let mut cursor = request.cursor;
@@ -359,7 +357,7 @@ where
 
     debug!(
         user = %format!("{:#x}", request.user_address),
-        block = %block_ref,
+        block = ?block_ref,
         num_subchannels = cursor.subchannels.len(),
         begin_block = cursor.begin_block_number,
         "history request"

@@ -8,6 +8,14 @@
 - `ProofInvocation` type now imports `INVOKE_TXN_V3` from `@starknet-io/starknet-types-0101` (was `@starknet-io/starknet-types-010`)
 - Removed `@starknet-io/starknet-types-09` direct dependency (now resolved transitively via starknet)
 - **Node.js >= 24** now required (due to `ohttp-ts` dependency using WebCrypto APIs)
+- `fetchHistory` `blockRef` option changed from `string` to `BlockIdentifier`
+- `HistoryPage.blockRef` changed from `string` to `BlockIdentifier`
+
+### Changed
+
+- `block_ref` in API models now accepts block hash (hex string), block number (integer), or tag (`"latest"`, `"pre_confirmed"`, `"l1_accepted"`). Wire format is backwards compatible — block hashes remain plain hex strings.
+- `discoverNotes` and `discoverChannels` accept optional `blockIdentifier` param to pin discovery reads to a specific block
+- Compiler passes `ExecuteOptions.provingBlockId` to discovery as `blockIdentifier`, ensuring discovery and proving use the same block state
 
 ### Added
 

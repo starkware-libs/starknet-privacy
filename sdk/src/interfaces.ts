@@ -405,7 +405,11 @@ export interface PrivateTransfersInterface {
    * Discover unspent notes per token
    *
    */
-  discoverNotes(params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }): Promise<{
+  discoverNotes(params?: {
+    cursor?: NotesCursor;
+    tokens?: StarknetAddressBigint[];
+    blockIdentifier?: BlockIdentifier;
+  }): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
   }>;
@@ -415,7 +419,7 @@ export interface PrivateTransfersInterface {
    */
   discoverChannels(
     recipients: RecipientsFilter<StarknetAddress>,
-    params?: { cursor?: ChannelCursor }
+    params?: { cursor?: ChannelCursor; blockIdentifier?: BlockIdentifier }
   ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
 
   /**
@@ -649,7 +653,11 @@ export interface DiscoveryProviderInterface {
   discoverNotes(
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
-    params?: { cursor?: NotesCursor; tokens?: StarknetAddressBigint[] }
+    params?: {
+      cursor?: NotesCursor;
+      tokens?: StarknetAddressBigint[];
+      blockIdentifier?: BlockIdentifier;
+    }
   ): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
@@ -664,7 +672,7 @@ export interface DiscoveryProviderInterface {
     address: StarknetAddressBigint,
     viewingKey: ViewingKey,
     recipients: RecipientsFilter,
-    params?: { cursor?: ChannelCursor }
+    params?: { cursor?: ChannelCursor; blockIdentifier?: BlockIdentifier }
   ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
 
   /**
