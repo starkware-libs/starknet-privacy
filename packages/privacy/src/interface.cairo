@@ -718,6 +718,13 @@ pub trait IAdmin<T> {
     ///
     /// #### Access Control
     /// - Only token admin.
+    ///
+    /// #### Audit Gap Warning
+    /// Rotating the auditor key creates a persistent audit gap: `enc_private_key` is encrypted to
+    /// the key active at registration, so a new auditor cannot derive channel keys for pre-rotation
+    /// users and cannot decrypt their activity — even activity occurring after the rotation.
+    /// Full continuity requires out-of-band coordination (e.g., the retiring auditor re-encrypting
+    /// historical viewing keys to the new auditor before rotation).
     fn set_auditor_public_key(ref self: T, auditor_public_key: felt252);
 
     /// Sets the fee amount in FRI per `apply_actions` call.
