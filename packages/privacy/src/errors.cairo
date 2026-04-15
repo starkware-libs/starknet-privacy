@@ -62,4 +62,5 @@ pub(crate) mod internal_errors {
     pub const UNEXPECTED_EMPTY_VALUE: felt252 = 'UNEXPECTED_EMPTY_VALUE';
     pub const UNEXPECTED_ZERO_VALUE: felt252 = 'UNEXPECTED_ZERO_VALUE';
     pub const TOO_MANY_OPEN_NOTES_DEPOSITED: felt252 = 'TOO_MANY_OPEN_NOTES_DEPOSITED';
+    pub const INVALID_PUBLIC_KEY: felt252 = 'INVALID_PUBLIC_KEY';
 }
