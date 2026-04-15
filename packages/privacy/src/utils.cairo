@@ -105,7 +105,7 @@ fn _compute_shared_x(ephemeral_secret: felt252, public_key: felt252) -> (felt252
         .expect(internal_errors::ZERO_EPHEMERAL_PUBLIC)
         .x();
     // Compute shared point.
-    let public_point = EcPointTrait::new_from_x(x: public_key).unwrap();
+    let public_point = EcPointTrait::new_from_x(x: public_key).expect(errors::INVALID_PUBLIC_KEY);
     let shared_point = public_point.mul(scalar: ephemeral_secret);
     let shared_x = shared_point.try_into().expect(internal_errors::ZERO_SHARED).x();
     (ephemeral_pub_x, shared_x)
