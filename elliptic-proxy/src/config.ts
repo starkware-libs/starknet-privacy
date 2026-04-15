@@ -71,17 +71,25 @@ function requirePositiveNumber(
 }
 
 function validateConfig(raw: unknown): Config {
-  if (typeof raw !== "object" || raw === null) {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     throw new Error("config: must be a non-null object");
   }
   const root = raw as Record<string, unknown>;
 
-  if (typeof root.elliptic !== "object" || root.elliptic === null) {
+  if (
+    typeof root.elliptic !== "object" ||
+    root.elliptic === null ||
+    Array.isArray(root.elliptic)
+  ) {
     throw new Error("config: elliptic must be a non-null object");
   }
   const elliptic = root.elliptic as Record<string, unknown>;
 
-  if (typeof root.partners !== "object" || root.partners === null) {
+  if (
+    typeof root.partners !== "object" ||
+    root.partners === null ||
+    Array.isArray(root.partners)
+  ) {
     throw new Error("config: partners must be a non-null object");
   }
   const partners = root.partners as Record<string, unknown>;
