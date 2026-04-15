@@ -114,6 +114,12 @@ pub trait IViews: Send + Sync {
         &self,
         note_ids: &[Felt],
     ) -> Result<Vec<StorageResult>, StorageError>;
+
+    /// Returns a user's public key with its last-update block number.
+    async fn get_public_key_with_block(
+        &self,
+        user_addr: Felt,
+    ) -> Result<StorageResult, StorageError>;
 }
 
 /// Blanket implementation of `IViews` for any type implementing `RawStorageAccess`.
@@ -276,5 +282,18 @@ impl<T: RawStorageAccess> IViews for T {
             .map(|&nid| storage_slots::notes(nid))
             .collect();
         self.read_slots_with_block(slots).await
+    }
+
+    #[tracing::instrument(name = "get_public_key_with_block", level = "debug", skip(self))]
+    async fn get_public_key_with_block(
+        &self,
+        user_addr: Felt,
+    ) -> Result<StorageResult, StorageError> {
+        let slot = storage_slots::public_key(user_addr);
+        let results = self.read_slots_with_block(vec![slot]).await?;
+        results
+            .into_iter()
+            .next()
+            .ok_or(StorageError::SlotCountMismatch)
     }
 }

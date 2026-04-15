@@ -38,6 +38,10 @@ pub struct HistoryTransaction {
     pub deposits: Vec<DepositEvent>,
     pub withdrawals: Vec<WithdrawalEvent>,
     pub open_note_deposits: Vec<OpenNoteDepositedEvent>,
+    /// The user's registered public key. Present only on the synthetic
+    /// registration transaction appended at the end of history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registered_pubkey: Option<Felt>,
 }
 
 impl HistoryTransaction {
@@ -49,6 +53,7 @@ impl HistoryTransaction {
             deposits: Vec::new(),
             withdrawals: Vec::new(),
             open_note_deposits: Vec::new(),
+            registered_pubkey: None,
         }
     }
 }
@@ -126,6 +131,7 @@ mod tests {
                 note_id: Felt::from(0x42u64),
                 amount: 0,
             }],
+            registered_pubkey: None,
         };
 
         let json = serde_json::to_value(&transaction).unwrap();
@@ -135,5 +141,30 @@ mod tests {
 
         let restored: HistoryTransaction = serde_json::from_value(json).unwrap();
         assert_eq!(restored, transaction);
+    }
+
+    #[test]
+    fn test_registered_pubkey_omitted_when_none() {
+        let transaction = HistoryTransaction::new(10, Felt::from(0x999u64));
+        let json = serde_json::to_value(&transaction).unwrap();
+        assert!(
+            json.get("registered_pubkey").is_none(),
+            "registered_pubkey must be omitted when None"
+        );
+
+        let restored: HistoryTransaction = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.registered_pubkey, None);
+    }
+
+    #[test]
+    fn test_registered_pubkey_round_trips_when_present() {
+        let mut transaction = HistoryTransaction::new(5, Felt::ZERO);
+        transaction.registered_pubkey = Some(Felt::from(0xCAFEu64));
+
+        let json = serde_json::to_value(&transaction).unwrap();
+        assert!(json.get("registered_pubkey").is_some());
+
+        let restored: HistoryTransaction = serde_json::from_value(json).unwrap();
+        assert_eq!(restored.registered_pubkey, Some(Felt::from(0xCAFEu64)));
     }
 }
