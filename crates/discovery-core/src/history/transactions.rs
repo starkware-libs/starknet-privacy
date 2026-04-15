@@ -11,7 +11,8 @@ use tracing::{debug, trace};
 use super::notes::BufferedNoteScanner;
 use super::types::{HistoryCursor, HistoryNote, HistoryTransaction};
 use crate::discovery::{
-    DiscoveryError, COST_BLOCK_EVENTS_QUERY, COST_EVENTS_CHUNK, EVENTS_COST_CHUNK_SIZE,
+    DiscoveryError, COST_BLOCK_EVENTS_QUERY, COST_EVENTS_CHUNK, COST_PUBLIC_KEY,
+    EVENTS_COST_CHUNK_SIZE,
 };
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::events::{IEvents, PrivacyPoolEventContent};
@@ -82,21 +83,39 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
     }
 
     cursor.begin_block_number = previous_block_bound;
-    cursor.history_complete = scanner_complete;
-
-    debug!(
-        num_transactions = transactions.len(),
-        history_complete = cursor.history_complete,
-        budget_remaining = budget.remaining(),
-        begin_block_number = cursor.begin_block_number,
-        "history: fetch_transactions done"
-    );
 
     let mut result: Vec<HistoryTransaction> = transactions.into_values().collect();
     if !scanner_complete {
         result.retain(|tx| completed_blocks.contains(&tx.block_number));
     }
+
+    // Append the synthetic registration transaction when the note scan is
+    // complete and there is room on this page. When the page is already full,
+    // keep history_complete false so the client fetches one more page.
+    // InsufficientBudget from fetch_registration also defers to the next page.
+    if scanner_complete && result.len() < max_transactions {
+        match fetch_registration(backend, user_address, budget).await {
+            Ok(Some(registration)) => result.push(registration),
+            Ok(None) => {}
+            Err(e) if matches!(e, DiscoveryError::InsufficientBudget { .. }) => {
+                budget_error = Some(e);
+            }
+            Err(e) => return Err(e),
+        }
+        cursor.history_complete = budget_error.is_none();
+    } else {
+        cursor.history_complete = false;
+    }
+
     result.sort_by(|a, b| b.block_number.cmp(&a.block_number));
+
+    debug!(
+        num_transactions = result.len(),
+        history_complete = cursor.history_complete,
+        budget_remaining = budget.remaining(),
+        begin_block_number = cursor.begin_block_number,
+        "history: fetch_transactions done"
+    );
 
     if result.is_empty() {
         if let Some(error) = budget_error {
@@ -235,7 +254,8 @@ async fn fetch_aggregated_block_events<E: IEvents>(
                 PrivacyPoolEventContent::OpenNoteDeposited(open_note) => {
                     tx.open_note_deposits.push(open_note);
                 }
-                PrivacyPoolEventContent::EncNoteCreated(_) => {}
+                PrivacyPoolEventContent::EncNoteCreated(_)
+                | PrivacyPoolEventContent::ViewingKeySet(_) => {}
             }
         }
     }
@@ -293,6 +313,44 @@ async fn fetch_aggregated_withdrawal_events<E: IEvents>(
     Ok(())
 }
 
+/// Fetches the synthetic registration transaction for the user.
+///
+/// Reads the `public_key` storage slot with block info to find when the user
+/// registered, then queries the `ViewingKeySet` event at that block to get the
+/// real transaction hash.
+///
+/// Returns `Ok(None)` when the registration block is unavailable (block 0).
+/// Budget and backend errors propagate to the caller.
+async fn fetch_registration<B: IViews + IEvents>(
+    backend: &B,
+    user_address: Felt,
+    budget: &IoBudget,
+) -> Result<Option<HistoryTransaction>, DiscoveryError> {
+    budget.try_consume(COST_PUBLIC_KEY)?;
+    let storage_result = backend.get_public_key_with_block(user_address).await?;
+    if storage_result.last_update_block == 0 {
+        return Ok(None);
+    }
+    let block = storage_result.last_update_block;
+
+    budget.try_consume(COST_EVENTS_CHUNK)?;
+    let events = backend
+        .get_viewing_key_set_events(user_address, block, block)
+        .await?;
+    let transaction_hash = events
+        .first()
+        .map(|event| event.transaction_hash)
+        .ok_or_else(|| {
+            DiscoveryError::EventError(format!(
+                "ViewingKeySet event not found at block {block} for user {user_address:#x}"
+            ))
+        })?;
+
+    let mut registration = HistoryTransaction::new(block, transaction_hash);
+    registration.registered_pubkey = Some(storage_result.value);
+    Ok(Some(registration))
+}
+
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
@@ -314,6 +372,7 @@ mod tests {
     const TOKEN: Felt = Felt::from_hex_unchecked("0x12345");
     const TX_HASH_1: Felt = Felt::from_hex_unchecked("0x1001");
     const TX_HASH_2: Felt = Felt::from_hex_unchecked("0x1002");
+    const TX_HASH_REG: Felt = Felt::from_hex_unchecked("0x2001");
     const NOTE_ID: Felt = Felt::from_hex_unchecked("0xAABB");
     const PACKED: Felt = Felt::from_hex_unchecked("0xDEAD");
 
@@ -344,6 +403,21 @@ mod tests {
             transaction_hash,
             vec![selector, note_id],
             vec![Felt::from(0xDEADu64)],
+        )
+    }
+
+    fn viewing_key_set_event(
+        user_address: Felt,
+        pubkey: Felt,
+        block_number: u64,
+        transaction_hash: Felt,
+    ) -> EmittedEvent {
+        let selector = starknet_keccak(b"ViewingKeySet");
+        mock_event(
+            block_number,
+            transaction_hash,
+            vec![selector, user_address, pubkey],
+            vec![Felt::ZERO, Felt::ZERO, Felt::ZERO],
         )
     }
 
@@ -452,6 +526,14 @@ mod tests {
         ) -> Self {
             self.events
                 .push(deposit_event_from(user_address, amount, block, tx_hash));
+            self
+        }
+
+        fn pubkey(mut self, user_address: Felt, pubkey: Felt, block: u64, tx_hash: Felt) -> Self {
+            self.storage
+                .insert_with_block(storage_slots::public_key(user_address), pubkey, block);
+            self.events
+                .push(viewing_key_set_event(user_address, pubkey, block, tx_hash));
             self
         }
 
@@ -910,5 +992,103 @@ mod tests {
 
         assert_eq!(cursor.begin_block_number, 9);
         assert!(cursor.history_complete);
+    }
+
+    // -- registration event tests --
+
+    const PUBKEY: Felt = Felt::from_hex_unchecked("0xBEE1");
+
+    #[tokio::test]
+    async fn registration_appended_on_complete_scan() {
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note(0, 10, TX_HASH_1)
+            .pubkey(ADDRESS, PUBKEY, 5, TX_HASH_REG)
+            .build(Some(0));
+
+        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 2);
+        assert!(cursor.history_complete);
+
+        let registration = &result[1];
+        assert_eq!(registration.registered_pubkey, Some(PUBKEY));
+        assert_eq!(registration.block_number, 5);
+        assert_eq!(registration.transaction_hash, TX_HASH_REG);
+        assert!(registration.notes.is_empty());
+        assert!(registration.deposits.is_empty());
+        assert!(registration.withdrawals.is_empty());
+        assert!(registration.open_note_deposits.is_empty());
+    }
+
+    #[tokio::test]
+    async fn registration_not_appended_on_partial_scan() {
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note(0, 10, TX_HASH_1)
+            .note(1, 20, TX_HASH_2)
+            .pubkey(ADDRESS, PUBKEY, 5, TX_HASH_REG)
+            .build(Some(1));
+
+        let one_block_budget = 2 * COST_NOTE + COST_BLOCK_EVENTS_QUERY + COST_EVENTS_CHUNK;
+        let result = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            &IoBudget::new(one_block_budget),
+        )
+        .await
+        .unwrap();
+
+        assert!(!cursor.history_complete);
+        assert!(result.iter().all(|tx| tx.registered_pubkey.is_none()));
+    }
+
+    #[tokio::test]
+    async fn registration_deferred_when_page_full() {
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note(0, 10, TX_HASH_1)
+            .pubkey(ADDRESS, PUBKEY, 5, TX_HASH_REG)
+            .build(Some(0));
+
+        // First page: max_transactions=1, note tx fills the page.
+        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 1, &IoBudget::new(1000))
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert!(result[0].registered_pubkey.is_none());
+        assert!(!cursor.history_complete);
+
+        // Second page: scanner is already exhausted, only registration returned.
+        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 1, &IoBudget::new(1000))
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].registered_pubkey, Some(PUBKEY));
+        assert!(cursor.history_complete);
+    }
+
+    #[tokio::test]
+    async fn registration_sorted_last() {
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note(0, 10, TX_HASH_1)
+            .note(1, 20, TX_HASH_2)
+            .pubkey(ADDRESS, PUBKEY, 5, TX_HASH_REG)
+            .build(Some(1));
+
+        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
+            .await
+            .unwrap();
+
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].block_number, 20);
+        assert!(result[0].registered_pubkey.is_none());
+        assert_eq!(result[1].block_number, 10);
+        assert!(result[1].registered_pubkey.is_none());
+        assert_eq!(result[2].block_number, 5);
+        assert_eq!(result[2].registered_pubkey, Some(PUBKEY));
     }
 }

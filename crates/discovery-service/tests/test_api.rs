@@ -477,11 +477,23 @@ async fn test_history_basic() {
     // Verify transactions have expected structure
     for transaction in &history_response.transactions {
         assert!(transaction.block_number > 0, "block_number should be set");
-        assert!(
-            transaction.transaction_hash != Felt::ZERO,
-            "transaction_hash should be set"
-        );
+        if transaction.registered_pubkey.is_some() {
+            // Registration transaction carries the real tx hash from the ViewingKeySet event.
+            assert_ne!(transaction.transaction_hash, Felt::ZERO);
+        } else {
+            assert!(
+                transaction.transaction_hash != Felt::ZERO,
+                "transaction_hash should be set"
+            );
+        }
     }
+
+    // The last transaction (chronologically oldest) should be the registration event.
+    let last_transaction = history_response.transactions.last().unwrap();
+    assert!(
+        last_transaction.registered_pubkey.is_some(),
+        "last history entry should be the registration event"
+    );
 
     indexer.signal_shutdown().unwrap();
     indexer.wait().await.unwrap();
