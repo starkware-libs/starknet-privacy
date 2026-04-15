@@ -100,7 +100,7 @@ export function usePrivateState(
   allAccounts: AccountConfig[],
   poolAddress: string,
   config: AppConfig,
-  registry: PrivateRegistry,
+  registry: PrivateRegistry
 ) {
   const [state, setState] = useState<PrivateState>(EMPTY_STATE);
   const [loading, setLoading] = useState(false);
@@ -119,29 +119,26 @@ export function usePrivateState(
       const indexer = createDiscoveryProvider(config, poolAddress);
       const tokenBigInts = config.tokens.map((t) => BigInt(t.address));
 
-      const [notesResult, channelsResult, requirement, ...transparentBalances] =
-        await Promise.all([
-          indexer.discoverNotes(
-            BigInt(account.address),
-            BigInt(account.viewingKey),
-            { cursor: registry.cursor, tokens: tokenBigInts },
-          ),
-          indexer.discoverChannels(
-            BigInt(account.address),
-            BigInt(account.viewingKey),
-            "all",
-            { cursor: { channels: registry.channels } },
-          ),
-          indexer.discoverRequirement(
-            BigInt(account.address),
-            BigInt(account.viewingKey),
-            BigInt(account.address),
-            BigInt(config.tokens[0].address),
-          ),
-          ...config.tokens.map((t) =>
-            getErc20Balance(provider, t.address, account.address, "pre_confirmed"),
-          ),
-        ]);
+      const [notesResult, channelsResult, requirement, ...transparentBalances] = await Promise.all([
+        indexer.discoverNotes(BigInt(account.address), BigInt(account.viewingKey), {
+          cursor: registry.cursor,
+          tokens: tokenBigInts,
+          blockIdentifier: "pre_confirmed",
+        }),
+        indexer.discoverChannels(BigInt(account.address), BigInt(account.viewingKey), "all", {
+          cursor: { channels: registry.channels },
+          blockIdentifier: "pre_confirmed",
+        }),
+        indexer.discoverRequirement(
+          BigInt(account.address),
+          BigInt(account.viewingKey),
+          BigInt(account.address),
+          BigInt(config.tokens[0].address)
+        ),
+        ...config.tokens.map((t) =>
+          getErc20Balance(provider, t.address, account.address, "pre_confirmed")
+        ),
+      ]);
       const isRegistered = requirement !== SetupRequirement.Register;
 
       registry.cursor = notesResult.cursor;
@@ -152,7 +149,7 @@ export function usePrivateState(
         const tokenNotes = notesResult.notes.get(BigInt(tokenConfig.address)) ?? [];
         const privateBalance = tokenNotes.reduce(
           (sum: bigint, note: Note) => sum + note.amount,
-          0n,
+          0n
         );
         return {
           name: tokenConfig.name,
@@ -252,9 +249,7 @@ export function usePrivateState(
       });
 
       // Build outgoing cards
-      const tokenNameByBigInt = new Map(
-        config.tokens.map((t) => [BigInt(t.address), t.name]),
-      );
+      const tokenNameByBigInt = new Map(config.tokens.map((t) => [BigInt(t.address), t.name]));
       const outgoingCards: OutgoingChannelCard[] = [];
       for (const [recipient, channel] of channelsResult.channels) {
         const internal = readChannel(channel);
@@ -302,28 +297,29 @@ export function usePrivateState(
     if (!provider || !account) return;
     const transparentBalances = await Promise.all(
       config.tokens.map((t) =>
-        getErc20Balance(provider, t.address, account.address, "pre_confirmed"),
-      ),
+        getErc20Balance(provider, t.address, account.address, "pre_confirmed")
+      )
     );
     const balanceByAddress = new Map(
-      config.tokens.map((t, index) => [t.address, transparentBalances[index]]),
+      config.tokens.map((t, index) => [t.address, transparentBalances[index]])
     );
     setState((previous) => ({
       ...previous,
-      tokenBalances: previous.tokenBalances.length > 0
-        ? previous.tokenBalances.map((tb) => ({
-            ...tb,
-            transparent: balanceByAddress.get(tb.address) ?? tb.transparent,
-          }))
-        : config.tokens.map((t, index) => ({
-            name: t.name,
-            address: t.address,
-            decimals: t.decimals,
-            fee: t.fee ?? false,
-            transparent: transparentBalances[index],
-            private: 0n,
-            noteCount: 0,
-          })),
+      tokenBalances:
+        previous.tokenBalances.length > 0
+          ? previous.tokenBalances.map((tb) => ({
+              ...tb,
+              transparent: balanceByAddress.get(tb.address) ?? tb.transparent,
+            }))
+          : config.tokens.map((t, index) => ({
+              name: t.name,
+              address: t.address,
+              decimals: t.decimals,
+              fee: t.fee ?? false,
+              transparent: transparentBalances[index],
+              private: 0n,
+              noteCount: 0,
+            })),
     }));
   }, [provider, account, config.tokens]);
 

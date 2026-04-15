@@ -1,8 +1,8 @@
-import { useState, useCallback, useMemo, useRef } from "react";
+import { useState, useCallback, useMemo, useRef, type RefObject } from "react";
 import { Account, TransactionFinalityStatus, hash, type RpcProvider } from "starknet";
 import type { PrivateTransfersInterface } from "starknet-sdk";
 import type { AccountConfig, AppConfig } from "../config.ts";
-import type { TransactionStatus } from "./useTransactions.ts";
+import { type TransactionStatus, waitForProvingBlock } from "./useTransactions.ts";
 import type { BuilderOperation } from "../components/TransactionBuilder.tsx";
 import { Timeline } from "../timeline.ts";
 import { toRawAmount } from "../format.ts";
@@ -40,6 +40,8 @@ export function useTransactionBuilder(
   config: AppConfig,
   accounts: AccountConfig[],
   onSettled: () => void,
+  lastTxBlockNumberRef: RefObject<number | undefined>,
+  updateLastTxBlockNumber: (blockNumber: number) => void
 ) {
   const [status, setStatus] = useState<TransactionStatus>({
     pending: false,
@@ -55,9 +57,7 @@ export function useTransactionBuilder(
 
   const userAccount = useMemo(() => {
     if (!provider || !activeAddress) return undefined;
-    const accountConfig = accounts.find(
-      (account) => account.address === activeAddress,
-    );
+    const accountConfig = accounts.find((account) => account.address === activeAddress);
     if (!accountConfig) return undefined;
     return new Account({
       provider,
@@ -71,7 +71,17 @@ export function useTransactionBuilder(
     (operations: BuilderOperation[]) => {
       const action = "Builder";
       const timeline = new Timeline();
-      setStatus({ pending: true, action, lastTxHash: null, lastError: null, proofSizeBytes: null, timeline });
+      timeline.onStepChange = (label) => {
+        setStatus((previous) => (previous.pending ? { ...previous, action: label } : previous));
+      };
+      setStatus({
+        pending: true,
+        action,
+        lastTxHash: null,
+        lastError: null,
+        proofSizeBytes: null,
+        timeline,
+      });
 
       void (async () => {
         try {
@@ -106,24 +116,35 @@ export function useTransactionBuilder(
                     to: token,
                     selector: hash.getSelectorFromName("approve"),
                     calldata: [poolAddress, "0x" + totalAmount.toString(16), "0x0"],
-                  }),
+                  })
                 );
                 const buildResult = await timeline.step("Get paymaster fee", () =>
                   paymasterBuildInvokeAndApplyAction(
-                    config.paymasterUrl!, poolAddress, getFeeMode(config),
-                    activeAddress, approveCalls, config.avnuApiKey,
-                  ),
+                    config.paymasterUrl!,
+                    poolAddress,
+                    getFeeMode(config),
+                    activeAddress,
+                    approveCalls,
+                    config.avnuApiKey
+                  )
                 );
                 feeAction = buildResult.fee_action;
                 invokeTypedData = buildResult.typed_data;
                 const signature = await timeline.step("Sign approvals", () =>
-                  userAccount.signMessage(buildResult.typed_data),
+                  userAccount.signMessage(buildResult.typed_data)
                 );
                 invokeSignature = normalizeSignature(signature);
               } else {
-                feeAction = (await timeline.step("Get paymaster fee", () =>
-                  paymasterBuildApplyAction(config.paymasterUrl!, poolAddress, getFeeMode(config), config.avnuApiKey),
-                )).fee_action;
+                feeAction = (
+                  await timeline.step("Get paymaster fee", () =>
+                    paymasterBuildApplyAction(
+                      config.paymasterUrl!,
+                      poolAddress,
+                      getFeeMode(config),
+                      config.avnuApiKey
+                    )
+                  )
+                ).fee_action;
               }
             } else if (hasDeposits) {
               // Direct execution: approve separately
@@ -135,10 +156,10 @@ export function useTransactionBuilder(
                     calldata: [poolAddress, totalAmount.toString(), "0"],
                   };
                   const approveTx = await timeline.step(`Approve ${token.slice(0, 10)}...`, () =>
-                    userAccount.execute(approveCall, { tip: 0n }),
+                    userAccount.execute(approveCall, { tip: 0n })
                   );
                   await timeline.step("Wait for receipt", () =>
-                    provider.waitForTransaction(approveTx.transaction_hash, WAIT_OPTIONS),
+                    provider.waitForTransaction(approveTx.transaction_hash, WAIT_OPTIONS)
                   );
                 }
               });
@@ -155,7 +176,7 @@ export function useTransactionBuilder(
               })
               .surplusTo(
                 surplusOperation?.recipient ?? activeAddress,
-                surplusOperation?.withdrawSurplus,
+                surplusOperation?.withdrawSurplus
               );
 
             // Group token ops by token address
@@ -192,19 +213,21 @@ export function useTransactionBuilder(
 
             if (feeAction) {
               chain.with(feeAction.token, (t) =>
-                t.withdraw({ amount: BigInt(feeAction!.amount), recipient: feeAction!.recipient }),
+                t.withdraw({ amount: BigInt(feeAction!.amount), recipient: feeAction!.recipient })
               );
             }
 
-            const provingBlockId = await timeline.step("Get block number",
-              () => provider.getBlockNumber(),
-            ) - 10;
+            const provingBlockId = await waitForProvingBlock(
+              timeline,
+              provider,
+              lastTxBlockNumberRef.current
+            );
 
             const invocation = await timeline.step("Build transaction", () =>
-              chain.createProofInvocation({ provingBlockId }),
+              chain.createProofInvocation({ provingBlockId })
             );
             const { callAndProof } = await timeline.step("Prove", () =>
-              transfers.executeWithInvocation(invocation, provingBlockId),
+              transfers.executeWithInvocation(invocation, provingBlockId)
             );
 
             let txHash: string;
@@ -220,8 +243,8 @@ export function useTransactionBuilder(
                     activeAddress,
                     invokeTypedData as Parameters<typeof paymasterExecuteInvokeAndApplyAction>[6],
                     invokeSignature!,
-                    config.avnuApiKey,
-                  ),
+                    config.avnuApiKey
+                  )
                 );
                 txHash = response.transaction_hash;
               } else {
@@ -232,8 +255,8 @@ export function useTransactionBuilder(
                     callAndProof.proof.data,
                     callAndProof.proof.proofFacts,
                     getFeeMode(config),
-                    config.avnuApiKey,
-                  ),
+                    config.avnuApiKey
+                  )
                 );
                 txHash = response.transaction_hash;
               }
@@ -243,41 +266,49 @@ export function useTransactionBuilder(
                 : {};
               // execute() estimates fee internally; splitting estimate+submit would double RPC calls
               const executeTx = await timeline.step("Estimate + submit", () =>
-                userAccount.execute(callAndProof.call, { tip: 0n, ...proofDetails }),
+                userAccount.execute(callAndProof.call, { tip: 0n, ...proofDetails })
               );
               txHash = executeTx.transaction_hash;
             }
 
             const receipt = await timeline.step("Wait for receipt", () =>
-              provider.waitForTransaction(txHash, WAIT_OPTIONS),
+              provider.waitForTransaction(txHash, WAIT_OPTIONS)
             );
             if (!receipt.isSuccess()) {
               throw new Error(`Transaction reverted: ${JSON.stringify(receipt)}`);
             }
 
+            updateLastTxBlockNumber(receipt.block_number);
+
             const proofSizeBytes = callAndProof.proof.data
               ? base64ByteLength(callAndProof.proof.data)
               : null;
-            setStatus({ pending: false, action: null, lastTxHash: txHash, lastError: null, proofSizeBytes, timeline });
+            setStatus({
+              pending: false,
+              action: null,
+              lastTxHash: txHash,
+              lastError: null,
+              proofSizeBytes,
+              timeline,
+            });
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           console.error(`[${action}] failed:`, err);
-          setStatus({ pending: false, action: null, lastTxHash: null, lastError: `${action}: ${message}`, proofSizeBytes: null, timeline });
+          setStatus({
+            pending: false,
+            action: null,
+            lastTxHash: null,
+            lastError: `${action}: ${message}`,
+            proofSizeBytes: null,
+            timeline,
+          });
         } finally {
           onSettledRef.current();
         }
       })();
     },
-    [
-      userAccount,
-      transfers,
-      provider,
-      activeAddress,
-      config,
-      poolAddress,
-      accounts,
-    ],
+    [userAccount, transfers, provider, activeAddress, config, poolAddress, accounts]
   );
 
   return { status, executeBatch };

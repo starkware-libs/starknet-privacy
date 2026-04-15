@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type {
   IncomingChannelCard,
   OutgoingChannelCard,
@@ -187,6 +187,26 @@ export function InfoPanel({
   onFetchHistory,
 }: Props) {
   const [view, setView] = useState<"notes" | "channels" | "activity">("activity");
+  const [glowAddresses, setGlowAddresses] = useState<Set<string>>(new Set());
+  const prevBalancesRef = useRef<Map<string, string>>(new Map());
+
+  useEffect(() => {
+    const changed = new Set<string>();
+    for (const tb of state.tokenBalances) {
+      const key = tb.address;
+      const current = `${tb.private}:${tb.transparent}`;
+      const previous = prevBalancesRef.current.get(key);
+      if (previous !== undefined && previous !== current) {
+        changed.add(key);
+      }
+      prevBalancesRef.current.set(key, current);
+    }
+    if (changed.size > 0) {
+      setGlowAddresses(changed);
+      const timer = setTimeout(() => setGlowAddresses(new Set()), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [state.tokenBalances]);
 
   return (
     <div className="island">
@@ -223,7 +243,7 @@ export function InfoPanel({
           </thead>
           <tbody>
             {state.tokenBalances.map((tb) => (
-              <tr key={tb.address}>
+              <tr key={tb.address} className={glowAddresses.has(tb.address) ? "glow" : ""}>
                 <td>
                   {tb.name}
                   {tb.fee && <span className="chip">fee</span>}

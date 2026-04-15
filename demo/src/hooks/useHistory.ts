@@ -41,7 +41,7 @@ function formatActionLabel(
   nameByAddress: Map<bigint, string>,
   tokenNameByAddress: Map<bigint, string>,
   tokenDecimalsByAddress: Map<bigint, number>,
-  executorNames: Map<bigint, string>,
+  executorNames: Map<bigint, string>
 ): { label: string; chipClass: string; chipLabel?: string; isFee?: boolean } {
   const tokenName = (token: bigint) =>
     tokenNameByAddress.get(token) ?? truncateAddress(token.toString(16));
@@ -69,8 +69,7 @@ function formatActionLabel(
       };
     case "transferSent": {
       const name =
-        nameByAddress.get(action.toAddress) ??
-        truncateAddress(action.toAddress.toString(16));
+        nameByAddress.get(action.toAddress) ?? truncateAddress(action.toAddress.toString(16));
       return {
         label: `Sent ${fmtAmount(action.amount, action.token)} ${tokenName(action.token)} to ${name}`,
         chipClass: "chip-no",
@@ -78,21 +77,20 @@ function formatActionLabel(
     }
     case "transferReceived": {
       const name =
-        nameByAddress.get(action.fromAddress) ??
-        truncateAddress(action.fromAddress.toString(16));
+        nameByAddress.get(action.fromAddress) ?? truncateAddress(action.fromAddress.toString(16));
       return {
         label: `Received ${fmtAmount(action.amount, action.token)} ${tokenName(action.token)} from ${name}`,
         chipClass: "chip-ok",
       };
     }
     case "swap": {
-      const executorLabel = executorNames.get(action.executor)
-        ?? truncateAddress(action.executor.toString(16));
+      const executorLabel =
+        executorNames.get(action.executor) ?? truncateAddress(action.executor.toString(16));
       const sentParts = action.sent.map(
-        (leg) => `${fmtAmount(leg.amount, leg.token)} ${tokenName(leg.token)}`,
+        (leg) => `${fmtAmount(leg.amount, leg.token)} ${tokenName(leg.token)}`
       );
       const receivedParts = action.received.map(
-        (leg) => `${fmtAmount(leg.amount, leg.token)} ${tokenName(leg.token)}`,
+        (leg) => `${fmtAmount(leg.amount, leg.token)} ${tokenName(leg.token)}`
       );
       return {
         label: `Swapped ${sentParts.join(", ")} for ${receivedParts.join(", ")} via ${executorLabel}`,
@@ -105,6 +103,11 @@ function formatActionLabel(
         label: `Reorganized ${fmtAmount(action.amount, action.token)} ${tokenName(action.token)}`,
         chipClass: "chip",
       };
+    case "register":
+      return {
+        label: "Registered with the privacy pool",
+        chipClass: "chip",
+      };
   }
 }
 
@@ -112,7 +115,7 @@ function computeBalanceUpdates(
   actions: HistoryAction[],
   viewerAddress: bigint,
   tokenNameByAddress: Map<bigint, string>,
-  tokenDecimalsByAddress: Map<bigint, number>,
+  tokenDecimalsByAddress: Map<bigint, number>
 ): BalanceUpdate[] {
   const netByToken = new Map<bigint, bigint>();
 
@@ -122,45 +125,29 @@ function computeBalanceUpdates(
         break;
       case "withdrawal":
         if (action.toAddress !== viewerAddress) {
-          netByToken.set(
-            action.token,
-            (netByToken.get(action.token) ?? 0n) - action.amount,
-          );
+          netByToken.set(action.token, (netByToken.get(action.token) ?? 0n) - action.amount);
         }
         break;
       case "fee":
-        netByToken.set(
-          action.token,
-          (netByToken.get(action.token) ?? 0n) - action.amount,
-        );
+        netByToken.set(action.token, (netByToken.get(action.token) ?? 0n) - action.amount);
         break;
       case "transferSent":
-        netByToken.set(
-          action.token,
-          (netByToken.get(action.token) ?? 0n) - action.amount,
-        );
+        netByToken.set(action.token, (netByToken.get(action.token) ?? 0n) - action.amount);
         break;
       case "transferReceived":
-        netByToken.set(
-          action.token,
-          (netByToken.get(action.token) ?? 0n) + action.amount,
-        );
+        netByToken.set(action.token, (netByToken.get(action.token) ?? 0n) + action.amount);
         break;
       case "swap":
         for (const leg of action.sent) {
-          netByToken.set(
-            leg.token,
-            (netByToken.get(leg.token) ?? 0n) - leg.amount,
-          );
+          netByToken.set(leg.token, (netByToken.get(leg.token) ?? 0n) - leg.amount);
         }
         for (const leg of action.received) {
-          netByToken.set(
-            leg.token,
-            (netByToken.get(leg.token) ?? 0n) + leg.amount,
-          );
+          netByToken.set(leg.token, (netByToken.get(leg.token) ?? 0n) + leg.amount);
         }
         break;
       case "transferSelf":
+        break;
+      case "register":
         break;
     }
   }
@@ -178,7 +165,7 @@ function computeBalanceUpdates(
 function buildDisplayMaps(
   account: AccountConfig,
   allAccounts: AccountConfig[],
-  config: AppConfig,
+  config: AppConfig
 ): {
   nameByAddress: Map<bigint, string>;
   tokenNameByAddress: Map<bigint, string>;
@@ -190,7 +177,7 @@ function buildDisplayMaps(
     const accAddress = BigInt(acc.address);
     nameByAddress.set(
       accAddress,
-      accAddress === BigInt(account.address) ? "self" : acc.name.toLowerCase(),
+      accAddress === BigInt(account.address) ? "self" : acc.name.toLowerCase()
     );
   }
   const tokenNameByAddress = new Map<bigint, string>();
@@ -211,13 +198,14 @@ function buildDisplayMaps(
 }
 
 const ACTION_ORDER: Record<string, number> = {
-  deposit: 0,
-  transferReceived: 1,
-  transferSelf: 2,
-  transferSent: 3,
-  swap: 4,
-  withdrawal: 5,
-  fee: 6,
+  register: 0,
+  deposit: 1,
+  transferReceived: 2,
+  transferSelf: 3,
+  transferSent: 4,
+  swap: 5,
+  withdrawal: 6,
+  fee: 7,
 };
 
 function toDisplayTransactions(
@@ -227,7 +215,7 @@ function toDisplayTransactions(
   tokenNameByAddress: Map<bigint, string>,
   tokenDecimalsByAddress: Map<bigint, number>,
   executorNames: Map<bigint, string>,
-  paymasterForwarderAddress: bigint | undefined,
+  paymasterForwarderAddress: bigint | undefined
 ): TransactionDisplay[] {
   const classifyOptions: ClassifyOptions | undefined = paymasterForwarderAddress
     ? { feeRecipients: [paymasterForwarderAddress] }
@@ -241,19 +229,17 @@ function toDisplayTransactions(
           nameByAddress,
           tokenNameByAddress,
           tokenDecimalsByAddress,
-          executorNames,
+          executorNames
         );
         const noteCount = "noteCount" in action ? action.noteCount : undefined;
         return { type: action.type, label, chipClass, chipLabel, noteCount, isFee };
       })
-      .sort(
-        (a, b) => (ACTION_ORDER[a.type] ?? 99) - (ACTION_ORDER[b.type] ?? 99),
-      );
+      .sort((a, b) => (ACTION_ORDER[a.type] ?? 99) - (ACTION_ORDER[b.type] ?? 99));
     const balanceUpdates = computeBalanceUpdates(
       classified.actions,
       viewerAddress,
       tokenNameByAddress,
-      tokenDecimalsByAddress,
+      tokenDecimalsByAddress
     );
     return {
       blockNumber: classified.blockNumber,
@@ -268,14 +254,14 @@ function toDisplayTransactions(
 
 async function resolveTimestamps(
   provider: RpcProvider,
-  transactions: TransactionDisplay[],
+  transactions: TransactionDisplay[]
 ): Promise<TransactionDisplay[]> {
   const blockNumbers = [...new Set(transactions.map((tx) => tx.blockNumber))];
   const entries = await Promise.all(
     blockNumbers.map(async (blockNumber) => {
       const block = await provider.getBlock(blockNumber);
       return [blockNumber, block.timestamp] as const;
-    }),
+    })
   );
   const timestampByBlock = new Map(entries);
   return transactions.map((tx) => ({
@@ -290,7 +276,7 @@ export function useHistory(
   config: AppConfig,
   account: AccountConfig | undefined,
   allAccounts: AccountConfig[],
-  registry: PrivateRegistry,
+  registry: PrivateRegistry
 ) {
   const [transactions, setTransactions] = useState<TransactionDisplay[]>([]);
   const [loading, setLoading] = useState(false);
@@ -335,18 +321,15 @@ export function useHistory(
           maxTransactions: 5,
           historyCursor: historyCursorRef.current,
           blockRef: blockRefValue.current,
-        },
+        }
       );
 
       historyCursorRef.current = page.cursor;
       blockRefValue.current = page.blockRef;
       setHistoryComplete(page.cursor.historyComplete);
 
-      const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames } = buildDisplayMaps(
-        account,
-        allAccounts,
-        config,
-      );
+      const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames } =
+        buildDisplayMaps(account, allAccounts, config);
       let newTransactions = toDisplayTransactions(
         page.transactions,
         BigInt(account.address),
@@ -354,7 +337,7 @@ export function useHistory(
         tokenNameByAddress,
         tokenDecimalsByAddress,
         executorNames,
-        config.paymasterForwarderAddress ? BigInt(config.paymasterForwarderAddress) : undefined,
+        config.paymasterForwarderAddress ? BigInt(config.paymasterForwarderAddress) : undefined
       );
       if (provider) {
         newTransactions = await resolveTimestamps(provider, newTransactions);
@@ -386,36 +369,26 @@ export function useHistory(
         BigInt(account.address),
         registry.cursor,
         { channels: registry.channels },
-        { maxTransactions: 1 },
+        { maxTransactions: 1, blockIdentifier: "pre_confirmed" },
       );
 
       if (page.transactions.length === 0) return;
 
-      const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames } = buildDisplayMaps(
-        account,
-        allAccounts,
-        config,
-      );
-      let freshTransactions = toDisplayTransactions(
+      const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames } =
+        buildDisplayMaps(account, allAccounts, config);
+      const freshTransactions = toDisplayTransactions(
         page.transactions,
         BigInt(account.address),
         nameByAddress,
         tokenNameByAddress,
         tokenDecimalsByAddress,
         executorNames,
-        config.paymasterForwarderAddress ? BigInt(config.paymasterForwarderAddress) : undefined,
-      );
-      if (provider) {
-        freshTransactions = await resolveTimestamps(provider, freshTransactions);
-      }
+        config.paymasterForwarderAddress ? BigInt(config.paymasterForwarderAddress) : undefined
+      ).map((tx) => ({ ...tx, timestamp: Math.floor(Date.now() / 1000) }));
 
       setTransactions((previous) => {
-        const existingHashes = new Set(
-          previous.map((tx) => tx.transactionHash),
-        );
-        const newOnly = freshTransactions.filter(
-          (tx) => !existingHashes.has(tx.transactionHash),
-        );
+        const existingHashes = new Set(previous.map((tx) => tx.transactionHash));
+        const newOnly = freshTransactions.filter((tx) => !existingHashes.has(tx.transactionHash));
         if (newOnly.length === 0) return previous;
         return [...newOnly, ...previous];
       });
