@@ -40,17 +40,20 @@ export async function forwardToElliptic(
   );
 
   const startTime = Date.now();
-  const response = await fetch(request.ellipticUrl + ELLIPTIC_PATH, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-access-key": request.ellipticKey,
-      "x-access-sign": signature,
-      "x-access-timestamp": timestamp,
-    },
-    body,
-    signal: AbortSignal.timeout(request.ellipticTimeoutMs),
-  });
+  const response = await fetch(
+    new URL(ELLIPTIC_PATH, request.ellipticUrl).toString(),
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-access-key": request.ellipticKey,
+        "x-access-sign": signature,
+        "x-access-timestamp": timestamp,
+      },
+      body,
+      signal: AbortSignal.timeout(request.ellipticTimeoutMs),
+    }
+  );
   const responseBody = await response.text();
 
   return {
