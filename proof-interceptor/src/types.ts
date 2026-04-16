@@ -1,4 +1,7 @@
 // src/types.ts
+import type { SPEC } from "@starknet-io/types-js";
+
+export type ProveTxnV3 = SPEC.INVOKE_TXN_V3;
 
 export interface JsonRpcRequest {
   jsonrpc: "2.0";
