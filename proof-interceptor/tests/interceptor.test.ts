@@ -23,19 +23,16 @@ const sampleTransaction = {
 } as unknown as ProveTxnV3;
 
 function allowAll(): TransactionInterceptor {
-  return { name: "test-allow", intercept: async () => ({ action: "allow" }) };
+  return { name: "allow-all", intercept: async () => ({ action: "allow" }) };
 }
 
 function blockWith(reason: string): TransactionInterceptor {
-  return {
-    name: "test-block",
-    intercept: async () => ({ action: "block", reason }),
-  };
+  return { name: "blocker", intercept: async () => ({ action: "block", reason }) };
 }
 
 function delayedAllow(delayMs: number): TransactionInterceptor {
   return {
-    name: "test-delayed-allow",
+    name: "delayed-allow",
     intercept: () =>
       new Promise<Verdict>((resolve) =>
         setTimeout(() => resolve({ action: "allow" }), delayMs)
@@ -43,12 +40,9 @@ function delayedAllow(delayMs: number): TransactionInterceptor {
   };
 }
 
-function delayedBlock(
-  delayMs: number,
-  reason: string
-): TransactionInterceptor {
+function delayedBlock(delayMs: number, reason: string): TransactionInterceptor {
   return {
-    name: "test-delayed-block",
+    name: "delayed-block",
     intercept: () =>
       new Promise<Verdict>((resolve) =>
         setTimeout(() => resolve({ action: "block", reason }), delayMs)
@@ -58,7 +52,7 @@ function delayedBlock(
 
 function throwing(message: string): TransactionInterceptor {
   return {
-    name: "test-thrower",
+    name: "thrower",
     intercept: async () => {
       throw new Error(message);
     },
@@ -118,7 +112,7 @@ describe("runInterceptors", () => {
     const elapsed = Date.now() - start;
 
     expect(result.action).toBe("block");
-    expect(elapsed).toBeLessThan(1000);
+    expect(elapsed).toBeLessThan(1000); // Should not wait for the 5s interceptor
   });
 
   it("returns block even when slow block races against fast allows", async () => {
@@ -132,7 +126,7 @@ describe("runInterceptors", () => {
   it("passes the transaction to each interceptor", async () => {
     let receivedTransaction: ProveTxnV3 | null = null;
     const capturing: TransactionInterceptor = {
-      name: "test-capture",
+      name: "capturing",
       intercept: async (tx) => {
         receivedTransaction = tx;
         return { action: "allow" };
