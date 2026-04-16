@@ -12,6 +12,7 @@ const VALID_CONFIG = {
   rateLimitPerMinute: 100,
   maxBodyBytes: 10240,
   configCacheTtlSeconds: 2,
+  blockedCacheTtlSeconds: 300,
   partners: {
     "prover-proxy": btoa("secret-aaa"),
     "other-service": btoa("secret-bbb"),
