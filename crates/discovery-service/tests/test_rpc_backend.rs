@@ -36,7 +36,10 @@ async fn test_public_key_lookup() {
     };
     let backend = RpcBackend::new(rpc_config).unwrap();
 
-    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+    let snapshot = backend
+        .snapshot(metadata.contract_address, None)
+        .await
+        .unwrap();
 
     // Alice should have a registered public key
     let alice_pubkey = snapshot
@@ -66,12 +69,18 @@ async fn test_block_events() {
     })
     .unwrap();
     let head_block = backend.get_head().await.unwrap().block_number;
-    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+    let snapshot = backend
+        .snapshot(metadata.contract_address, None)
+        .await
+        .unwrap();
 
     // Collect all events across all blocks in the devnet fixture.
     let mut all_events = Vec::new();
     for block_number in 0..=head_block {
-        let events = snapshot.get_block_events(block_number).await.unwrap();
+        let events = snapshot
+            .get_block_events(starknet_core::types::BlockId::Number(block_number))
+            .await
+            .unwrap();
         all_events.extend(events);
     }
 
@@ -111,10 +120,17 @@ async fn test_withdrawal_events() {
     })
     .unwrap();
     let head_block = backend.get_head().await.unwrap().block_number;
-    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+    let snapshot = backend
+        .snapshot(metadata.contract_address, None)
+        .await
+        .unwrap();
 
     let withdrawals = snapshot
-        .get_withdrawal_events(metadata.bob_address, 0, head_block)
+        .get_withdrawal_events(
+            metadata.bob_address,
+            starknet_core::types::BlockId::Number(0),
+            starknet_core::types::BlockId::Number(head_block),
+        )
         .await
         .unwrap();
 
@@ -137,11 +153,18 @@ async fn test_withdrawal_events_empty_for_non_recipient() {
     })
     .unwrap();
     let head_block = backend.get_head().await.unwrap().block_number;
-    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+    let snapshot = backend
+        .snapshot(metadata.contract_address, None)
+        .await
+        .unwrap();
 
     // Alice is not a withdrawal recipient in the devnet scenario
     let withdrawals = snapshot
-        .get_withdrawal_events(metadata.alice_address, 0, head_block)
+        .get_withdrawal_events(
+            metadata.alice_address,
+            starknet_core::types::BlockId::Number(0),
+            starknet_core::types::BlockId::Number(head_block),
+        )
         .await
         .unwrap();
 
@@ -157,7 +180,10 @@ async fn test_read_slots_with_block() {
         ..Default::default()
     };
     let backend = RpcBackend::new(rpc_config).unwrap();
-    let snapshot = backend.snapshot(metadata.contract_address, None).await;
+    let snapshot = backend
+        .snapshot(metadata.contract_address, None)
+        .await
+        .unwrap();
 
     // Query a slot known to be written during fixture generation (Alice's public key)
     let alice_pubkey_slot = storage_slots::public_key(metadata.alice_address);

@@ -53,9 +53,6 @@ struct RpcBackendInner {
     head: RwLock<Option<ChainHead>>,
     max_batch_size: usize,
     event_page_size: usize,
-    /// Maximum allowed block range for a single `get_events` query.
-    /// `0` means unlimited.
-    max_event_block_range: u64,
 }
 
 /// RPC-based storage backend that reads from a StarkNet node via JSON-RPC.
@@ -90,7 +87,6 @@ impl RpcBackend {
                 head: RwLock::new(None),
                 max_batch_size: config.max_batch_size,
                 event_page_size: config.event_page_size,
-                max_event_block_range: config.max_event_block_range,
             }),
         })
     }
@@ -100,13 +96,43 @@ impl RpcBackend {
 impl StorageBackend for RpcBackend {
     type Snapshot = RpcSnapshot;
 
-    async fn snapshot(&self, contract_address: Felt, block_id: Option<BlockId>) -> Self::Snapshot {
+    async fn snapshot(
+        &self,
+        contract_address: Felt,
+        block_id: Option<BlockId>,
+    ) -> Result<Self::Snapshot, StorageError> {
         let block_id = block_id.unwrap_or(BlockId::Tag(BlockTag::Latest));
-        RpcSnapshot {
+        let block_number = self.resolve_block_number(block_id).await?;
+        Ok(RpcSnapshot {
             backend: self.clone(),
             contract_address,
             block_id,
+            block_number,
+        })
+    }
+}
+
+impl RpcBackend {
+    /// Resolves a `BlockId` to a concrete block number for snapshot pinning.
+    ///
+    /// `Number(n)` returns `n` directly; every other variant (`Tag(_)` or
+    /// `Hash(_)`) is resolved authoritatively via `get_block_with_tx_hashes`,
+    /// which returns either a `Block` or `PreConfirmedBlock` variant — both
+    /// carry `block_number`. RPC errors propagate.
+    async fn resolve_block_number(&self, block_id: BlockId) -> Result<u64, StorageError> {
+        if let BlockId::Number(n) = block_id {
+            return Ok(n);
         }
+        let block = self
+            .inner
+            .provider
+            .get_block_with_tx_hashes(block_id)
+            .await
+            .map_err(|e| RpcBackendError::Request(e.to_string()))?;
+        Ok(match block {
+            MaybePreConfirmedBlockWithTxHashes::Block(b) => b.block_number,
+            MaybePreConfirmedBlockWithTxHashes::PreConfirmedBlock(b) => b.block_number,
+        })
     }
 }
 
@@ -116,6 +142,7 @@ pub struct RpcSnapshot {
     backend: RpcBackend,
     contract_address: Felt,
     block_id: BlockId,
+    block_number: u64,
 }
 
 impl RpcSnapshot {
@@ -239,19 +266,14 @@ impl RawEventAccess for RpcSnapshot {
     async fn get_events(
         &self,
         keys: &[Vec<Felt>],
-        from_block: u64,
-        to_block: u64,
+        from_block: BlockId,
+        to_block: BlockId,
     ) -> Result<Vec<EmittedEvent>, StorageError> {
-        let max_range = self.backend.inner.max_event_block_range;
-        if max_range > 0 {
-            let range = to_block.saturating_sub(from_block).saturating_add(1);
-            if range > max_range {
-                return Err(RpcBackendError::Request(format!(
-                    "event query block range {range} exceeds maximum {max_range}"
-                ))
-                .into());
-            }
-        }
+        // TODO: history queries spanning a large block range bottleneck here
+        // on an unbounded `starknet_getEvents` scan against the node. Pre-index
+        // privacy-pool events (at minimum withdrawals, which drive the history
+        // feed) locally so history can be served from our own store instead of
+        // re-querying the RPC on every request.
 
         // Strip trailing empty key vecs — they mean "wildcard" in our trait but
         // some RPC implementations (e.g. devnet) treat them as "match nothing".
@@ -264,8 +286,8 @@ impl RawEventAccess for RpcSnapshot {
         };
 
         let filter = EventFilter {
-            from_block: Some(BlockId::Number(from_block)),
-            to_block: Some(BlockId::Number(to_block)),
+            from_block: Some(from_block),
+            to_block: Some(to_block),
             address: Some(AddressFilter::Single(self.contract_address)),
             keys: if trimmed_keys.is_empty() {
                 None
@@ -299,7 +321,31 @@ impl RawEventAccess for RpcSnapshot {
             }
         }
 
+        patch_pre_confirmed_block_number(self.block_number, &mut all_events);
+
         Ok(all_events)
+    }
+
+    fn block_id(&self) -> BlockId {
+        self.block_id
+    }
+
+    fn block_number(&self) -> u64 {
+        self.block_number
+    }
+}
+
+/// TODO: Pathfinder workaround — pre-confirmed events are returned with
+/// `block_number: None`. Fill the gap using the snapshot's resolved block
+/// number (which is `cached_head + 1` when the snapshot is pinned to
+/// `Tag(PreConfirmed)`). Remove once
+/// <https://github.com/equilibriumco/pathfinder/pull/3348> is included in a
+/// Pathfinder release and rolled out across RPC providers.
+fn patch_pre_confirmed_block_number(snapshot_block_number: u64, events: &mut [EmittedEvent]) {
+    for event in events.iter_mut() {
+        if event.block_number.is_none() {
+            event.block_number = Some(snapshot_block_number);
+        }
     }
 }
 
