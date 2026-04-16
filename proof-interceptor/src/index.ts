@@ -5,6 +5,8 @@ import { startServer } from "./server.js";
 import { setupGracefulShutdown } from "./shutdown.js";
 
 const config = loadConfig();
-const handler = createHandler(config.maxBodyBytes);
+const handler = createHandler({
+  maxBodyBytes: config.maxBodyBytes,
+});
 const server = await startServer(config, handler);
 setupGracefulShutdown(server);
