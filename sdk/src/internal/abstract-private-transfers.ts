@@ -54,9 +54,16 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
   }
 
   /**
-   * Discover unspent notes per token
+   * Discover unspent notes per token.
+   * By default performs a full refresh. Pass a cursor from a previous call for incremental discovery.
    */
-  async discoverNotes(params: { since?: BlockIdentifier; cursor?: NotesCursor } = {}): Promise<{
+  async discoverNotes(
+    params: {
+      cursor?: NotesCursor;
+      tokens?: StarknetAddressBigint[];
+      blockIdentifier?: BlockIdentifier;
+    } = {}
+  ): Promise<{
     timestamp: BlockIdentifier;
     notes: AddressMap<Note[]>;
   }> {
@@ -64,12 +71,12 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
   }
 
   /**
-   * Discover channels for one or more recipients
+   * Discover channels for one or more recipients.
+   * By default performs a full refresh. Pass a cursor from a previous call for incremental discovery.
    */
-
   async discoverChannels(
     recipients: RecipientsFilter<StarknetAddress>,
-    params?: { cursor?: ChannelCursor }
+    params?: { cursor?: ChannelCursor; blockIdentifier?: BlockIdentifier }
   ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }> {
     return this.discoveryProvider.discoverChannels(
       this.user,

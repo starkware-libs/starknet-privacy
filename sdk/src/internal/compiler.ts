@@ -97,21 +97,16 @@ export class ActionCompiler {
     } catch (e) {
       if (e instanceof ReorgError) {
         debugLog("compiler", "compile", "reorg detected", e);
-        // Reorg detected: clear stale registry state and retry from scratch.
-        if (options?.registry) {
-          options.registry.notes.clear();
-          options.registry.channels.clear();
-          delete options.registry.cursor;
-        }
-        return await this.compileOnce(actions, options);
+        // Reorg detected: retry with a clean registry so stale state is discarded.
+        const retryOptions = options ? { ...options, registry: createEmptyRegistry() } : options;
+        return await this.compileOnce(actions, retryOptions);
       }
       throw e;
     }
   }
 
   private async compileOnce(actions: Actions, options?: ExecuteOptions): Promise<CompileResult> {
-    const registry_ = options?.registry ?? createEmptyRegistry();
-    const registry = options?.registryConst ? this.cloneRegistry(registry_) : registry_;
+    const registry = this.cloneRegistry(options?.registry ?? createEmptyRegistry());
     const recipientsNeeded = this.getRecipientsNeeded(actions);
 
     // Resolve channels and notes concurrently (they are independent)
@@ -602,7 +597,6 @@ export class ActionCompiler {
     }
 
     const notesDiscoveryLevel = options?.autoDiscover?.notes;
-    // discover notes if requested
     if (notesDiscoveryLevel !== undefined) {
       const tokensToDiscover = (() => {
         if (notesDiscoveryLevel === "all") return undefined;
@@ -731,7 +725,7 @@ export class ActionCompiler {
       clonedNotes.set(addr, [...notes]);
     }
 
-    return { channels: clonedChannels, notes: clonedNotes };
+    return { channels: clonedChannels, notes: clonedNotes, cursor: registry.cursor };
   }
 
   private allOpen(

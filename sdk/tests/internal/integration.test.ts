@@ -63,7 +63,7 @@ describe("Private Transfers Integration", () => {
 
       // Alice: use note as input, transfer half to Bob, surplus to self, withdraw
       // prettier-ignore
-      mocknet.executeOutside(
+      const updatedRegistry = mocknet.executeOutside(
         await alice
           .build({ registry })
           .surplusTo(env.alice.address)
@@ -75,8 +75,8 @@ describe("Private Transfers Integration", () => {
       );
 
       // Alice should have 25n surplus note, Bob should have 50n note
-      const aliceNotes = registry.notes.get(ace) ?? [];
-      debugLog("test", "alice registry", registry);
+      const aliceNotes = updatedRegistry.notes.get(ace) ?? [];
+      debugLog("test", "alice registry", updatedRegistry);
       expect(aliceNotes.length).toBe(1);
       expect(aliceNotes[0].amount).toBe(25n);
 
@@ -139,7 +139,7 @@ describe("Private Transfers Integration", () => {
       expect(bobNotes.get(bee)?.[0].amount).toBe(50n);
     });
 
-    it("covers autoSelectNotes: all, autoDiscover: missing, registryConst, implicit surplus", async () => {
+    it("covers autoSelectNotes: all, autoDiscover: missing, immutable registry, implicit surplus", async () => {
       const { env, transfers } = testEnv;
       const { alice } = transfers;
       const ace = toBigInt(env.ace);
@@ -176,7 +176,6 @@ describe("Private Transfers Integration", () => {
 
       // Deposit 30n with:
       // - autoSelectNotes: "all" (sweeps ALL notes, not just enough for deficit)
-      // - registryConst: true (don't mutate channelOnly)
       // - autoDiscover: { notes: "missing" } (discover ACE notes since not in registry)
       // - surplusTo triggers the "sweeping" code path for discovery
       debugLog("test", "main");
@@ -184,7 +183,6 @@ describe("Private Transfers Integration", () => {
         await alice
           .build({
             registry: channelOnly,
-            registryConst: true,
             autoDiscover: { channels: "refresh", notes: "missing" },
             autoSelectNotes: "all",
             autoSetup: true,
@@ -200,7 +198,7 @@ describe("Private Transfers Integration", () => {
       expect(result.notes.get(ace)?.length).toBe(1);
       expect(result.notes.get(ace)?.[0].amount).toBe(180n);
 
-      // Verify registryConst: original registry unchanged
+      // Verify immutability: original registry unchanged (registry is never mutated)
       expect(channelOnly.notes.has(ace)).toBe(false);
 
       // Verify ERC20 balance

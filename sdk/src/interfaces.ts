@@ -289,10 +289,8 @@ export type ExecuteOptions = {
   autoSetup?: boolean;
   /** If defined, auto select notes from registry. **/
   autoSelectNotes?: AutoSelectionStrategy;
-  /** Registry for context/notes lookup. Updated during execute unless registryConst is true. */
+  /** Registry for context/notes lookup. Never mutated. */
   registry?: PrivateRegistry;
-  /** If true, registry is not mutated; a new one is returned instead */
-  registryConst?: boolean;
   /** If defined, use the given block id for proving */
   provingBlockId?: ProvingBlockId;
 };
@@ -310,7 +308,7 @@ export enum WarningCode {
  */
 export type ExecuteResult = {
   callAndProof: CallAndProof;
-  /** Updated registry (new object if registryConst was true, same object otherwise) */
+  /** Updated registry copy (always a new object, never the input reference) */
   registry: PrivateRegistry;
 
   warnings: Warning[];
@@ -327,8 +325,6 @@ export type ProofInvocationResult = {
  */
 export interface SimplePrivateTransfersInterface {
   readonly user: StarknetAddress;
-  readonly registry: PrivateRegistry;
-
   /**
    * deposit tokens into the privacy pool
    *

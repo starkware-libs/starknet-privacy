@@ -4,6 +4,8 @@
 
 ### Breaking
 
+- Removed `registryConst` option: the input registry is never mutated in-place; the result always contains an updated copy (new object)
+- `SimplePrivateTransfersInterface` no longer exposes a `registry` field; each call re-discovers state from chain
 - Switch `starknet` dependency from custom fork (`starkware-libs/starknet.js#PRIVACY-0.14.2-RC.2`) to official `starknet@10.0.0-beta.6`
 - `ProofInvocation` type now imports `INVOKE_TXN_V3` from `@starknet-io/starknet-types-0101` (was `@starknet-io/starknet-types-010`)
 - Removed `@starknet-io/starknet-types-09` direct dependency (now resolved transitively via starknet)
@@ -15,8 +17,14 @@
 ### Changed
 
 - `block_ref` in API models now accepts block hash (hex string), block number (integer), or tag (`"latest"`, `"pre_confirmed"`, `"l1_accepted"`). Wire format is backwards compatible — block hashes remain plain hex strings.
-- `discoverNotes` and `discoverChannels` accept optional `blockIdentifier` param to pin discovery reads to a specific block
+- `discoverNotes` params: dropped `since`, added `tokens` and `blockIdentifier`; full refresh by default (no cursor needed)
+- `discoverChannels` params: added `blockIdentifier`
 - Compiler passes `ExecuteOptions.provingBlockId` to discovery as `blockIdentifier`, ensuring discovery and proving use the same block state
+- Run channel and note discovery concurrently during transaction compilation to reduce latency
+- `ProofInvocationFactory` builds `INVOKE_TXN_V3` manually instead of using `RpcChannel.prototype.buildTransaction()` (removed in v10)
+- `ProvingService.proveTransaction()` parameter type changed from `INVOKE_TXN_V3` to `ProofInvocation` (same underlying type)
+- Fee withdrawals no longer prevent `transferSelf` (reorganization) detection
+- Fee withdrawals are excluded from incoming transfer actions (receiver doesn't see sender's fee)
 
 ### Added
 
@@ -31,21 +39,8 @@
   - Same relay/key-pinning options as `IndexerDiscoveryProvider`
   - Also available via `ProofProviderConfig.ohttp` in `createPrivateTransfers()` factory
 - Export `OhttpOption` type for reuse in consumer code
-
-### Added
-
 - `fee` action type in `classifyTransaction` for withdrawals to fee recipients (e.g. paymaster forwarder), distinct from regular withdrawals
 - `ClassifyOptions.feeRecipients` parameter on `classifyTransaction` to identify fee recipient addresses
-
-### Changed
-
-- Switch devnet testing from `ProvingServiceProofProvider` to `CallMockProofProvider` with `--proof-mode none` (proofFacts validated, proof ignored)
-- Run channel and note discovery concurrently during transaction compilation to reduce latency
-- `ProofInvocationFactory` builds `INVOKE_TXN_V3` manually instead of using `RpcChannel.prototype.buildTransaction()` (removed in v10)
-- `ProvingService.proveTransaction()` parameter type changed from `INVOKE_TXN_V3` to `ProofInvocation` (same underlying type)
-- Remove devnet `getStarknetVersion` monkey-patch and `declareWithoutVersionCheck` workaround (starknet.js#1561 resolved in v10)
-- Fee withdrawals no longer prevent `transferSelf` (reorganization) detection
-- Fee withdrawals are excluded from incoming transfer actions (receiver doesn't see sender's fee)
 
 ### Dependencies
 

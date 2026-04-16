@@ -35,7 +35,7 @@ afterEach(() => {
 });
 
 describe("ActionCompiler reorg handling", () => {
-  it("clears registry and retries on ReorgError", async () => {
+  it("retries on ReorgError without mutating input registry", async () => {
     const mockProvider = createMockProvider({
       discoverChannels: vi
         .fn()
@@ -69,8 +69,9 @@ describe("ActionCompiler reorg handling", () => {
     );
 
     expect(mockProvider.discoverChannels).toHaveBeenCalledTimes(2);
-    // Stale note was cleared before the retry repopulated the registry
-    expect(registry.notes.has(TOKEN_ADDR)).toBe(false);
+    // Input registry is never mutated (immutability guarantee)
+    expect(registry.notes.has(TOKEN_ADDR)).toBe(true);
+    expect(registry.channels.has(RECIPIENT_ADDR)).toBe(true);
     expect(result.clientActions).toBeDefined();
   });
 

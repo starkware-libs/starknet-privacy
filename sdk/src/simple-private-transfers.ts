@@ -2,17 +2,13 @@ import {
   SimplePrivateTransfersInterface,
   PrivateTransfersInterface,
   Amount,
-  Channel,
-  Note,
   Open,
-  PrivateRegistry,
   StarknetAddress,
   All,
   ExecuteResult,
 } from "./interfaces.js"; // Assuming you moved interfaces
 import { toBigInt } from "./utils/convert.js";
 import { toHex } from "./utils/convert.js";
-import { AddressMap } from "./utils/maps.js";
 import { isAll } from "./utils/validation.js";
 
 export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterface {
@@ -21,11 +17,6 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
   get user(): StarknetAddress {
     return this.inner.user;
   }
-
-  readonly registry: PrivateRegistry = {
-    channels: new AddressMap<Channel>(),
-    notes: new AddressMap<Note[]>(),
-  };
 
   deposit(token: StarknetAddress, amount: Amount): Promise<ExecuteResult> {
     return this.build(token).deposit({ amount }).execute();
@@ -86,14 +77,11 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
   }
 
   private build(token: StarknetAddress) {
-    // Clear notes before refresh to avoid stale entries (already-spent notes)
-    this.registry.notes.clear();
     return this.inner
       .build({
         autoDiscover: { notes: "refresh", channels: "refresh" },
         autoSetup: true,
         autoSelectNotes: "all",
-        registry: this.registry,
       })
       .with(token);
   }
