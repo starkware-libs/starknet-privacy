@@ -118,9 +118,11 @@ export class ScreeningInterceptor implements TransactionInterceptor {
 
   private async screenAddress(address: string): Promise<ScreenResult> {
     let lastError: Error | null = null;
+    let finalAttempt = 0;
     const deadline = Date.now() + this.config.totalTimeoutMs;
 
     for (let attempt = 0; attempt <= this.config.maxRetries; attempt++) {
+      finalAttempt = attempt;
       if (attempt > 0) {
         const backoffMs = exponentialBackoff(attempt);
         const remainingMs = deadline - Date.now();
@@ -133,8 +135,18 @@ export class ScreeningInterceptor implements TransactionInterceptor {
 
       try {
         const perCallTimeout = Math.min(this.config.timeoutMs, remainingMs);
+        const callStart = Date.now();
         const blocked = await this.callEllipticProxy(address, perCallTimeout);
-        return blocked ? "blocked" : "allowed";
+        const result: ScreenResult = blocked ? "blocked" : "allowed";
+        console.log(
+          JSON.stringify({
+            screening: "complete",
+            result,
+            attempts: attempt + 1,
+            screeningLatencyMs: Date.now() - callStart,
+          })
+        );
+        return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
       }
@@ -145,6 +157,7 @@ export class ScreeningInterceptor implements TransactionInterceptor {
         error: "screening_failed",
         message: lastError?.message,
         failOpen: this.config.failOpen,
+        attempts: finalAttempt + 1,
       })
     );
 

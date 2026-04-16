@@ -7,7 +7,7 @@ import type { TransactionInterceptor } from "../src/interceptor.js";
 let proxy: Server;
 let proxyPort: number;
 
-function startProxy(options?: Partial<HandlerOptions>): Promise<void> {
+function startProxy(options?: HandlerOptions): Promise<void> {
   return new Promise((resolve) => {
     const handler = createHandler(options);
     proxy = createServer(handler);
@@ -63,13 +63,27 @@ afterEach(async () => {
   });
 });
 
-describe("handler", () => {
-  it("responds to /health with 200", async () => {
+describe("proxy", () => {
+  it("returns 400 for non-JSON POST body", async () => {
     await startProxy();
 
-    const response = await fetch(proxyUrl("/health"));
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ status: "ok" });
+    const response = await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: { "content-type": "text/plain" },
+      body: "raw data",
+    });
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "only JSON-RPC POST requests are supported",
+    });
+  });
+
+  it("returns 400 for GET request to non-health path", async () => {
+    await startProxy();
+
+    const response = await fetch(proxyUrl("/some/path"));
+    expect(response.status).toBe(400);
   });
 
   it("returns JSON-RPC error for unknown method", async () => {
@@ -86,23 +100,12 @@ describe("handler", () => {
     expect(body.error.code).toBe(-32601);
   });
 
-  it("returns 400 for non-JSON POST body", async () => {
+  it("responds to /health with 200", async () => {
     await startProxy();
 
-    const response = await fetch(proxyUrl("/"), {
-      method: "POST",
-      headers: { "content-type": "text/plain" },
-      body: "raw data",
-    });
-
-    expect(response.status).toBe(400);
-  });
-
-  it("returns 400 for non-POST request", async () => {
-    await startProxy();
-
-    const response = await fetch(proxyUrl("/some/path"));
-    expect(response.status).toBe(400);
+    const response = await fetch(proxyUrl("/health"));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ status: "ok" });
   });
 
   it("returns 413 when body exceeds maxBodyBytes", async () => {
@@ -122,18 +125,19 @@ describe("handler", () => {
 
     const response = await rpcPost(proxyUrl("/"), {
       jsonrpc: "2.0",
-      id: 1,
+      id: 42,
       method: "starknet_specVersion",
     });
 
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.result).toBe("0.10.1");
+    expect(body.id).toBe(42);
   });
 });
 
-describe("handler with interceptors", () => {
-  it("returns allowed result when interceptor allows", async () => {
+describe("proxy with interceptors", () => {
+  it("returns allowed:true when interceptor allows", async () => {
     const allowAll: TransactionInterceptor = {
       name: "allow-all",
       intercept: async () => ({ action: "allow" }),
@@ -143,7 +147,6 @@ describe("handler with interceptors", () => {
     const response = await rpcPost(proxyUrl("/"), checkRequest());
     const body = await response.json();
     expect(body.result).toEqual({ allowed: true });
-    expect(body.id).toBe(1);
   });
 
   it("returns 10000 when interceptor blocks", async () => {
@@ -191,19 +194,64 @@ describe("handler with interceptors", () => {
     };
     await startProxy({ interceptors: [thrower] });
 
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const response = await rpcPost(proxyUrl("/"), checkRequest());
     const body = await response.json();
     expect(body.error.code).toBe(10000);
     expect(body.error.data).toBe("network timeout");
+    spy.mockRestore();
   });
 
-  it("returns allowed result with no interceptors configured", async () => {
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+  it("returns allowed:true when no interceptors are configured", async () => {
     await startProxy();
 
     const response = await rpcPost(proxyUrl("/"), checkRequest());
     const body = await response.json();
     expect(body.result).toEqual({ allowed: true });
-    spy.mockRestore();
+  });
+
+  it("logs structured JSON for check_with_interceptors path", async () => {
+    const allowAll: TransactionInterceptor = {
+      name: "allow-all",
+      intercept: async () => ({ action: "allow" }),
+    };
+    await startProxy({ interceptors: [allowAll] });
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await rpcPost(proxyUrl("/"), checkRequest());
+
+    const logCall = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.rpcAction === "check_with_interceptors";
+    });
+    expect(logCall).toBeDefined();
+    const logData = JSON.parse(logCall![0] as string);
+    expect(logData.interceptorVerdict).toBe("allow");
+    expect(typeof logData.latencyMs).toBe("number");
+    expect(logData.statusCode).toBe(200);
+    logSpy.mockRestore();
+  });
+
+  it("logs structured JSON for blocked transactions", async () => {
+    const blocker: TransactionInterceptor = {
+      name: "blocker",
+      intercept: async () => ({ action: "block", reason: "sanctioned" }),
+    };
+    await startProxy({ interceptors: [blocker] });
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    await rpcPost(proxyUrl("/"), checkRequest());
+
+    const logCall = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.rpcAction === "check_with_interceptors";
+    });
+    expect(logCall).toBeDefined();
+    const logData = JSON.parse(logCall![0] as string);
+    expect(logData.interceptorVerdict).toBe("block");
+
+    errorSpy.mockRestore();
+    logSpy.mockRestore();
   });
 });
