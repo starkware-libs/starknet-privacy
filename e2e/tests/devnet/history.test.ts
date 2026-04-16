@@ -4,6 +4,7 @@ import {
   IndexerDiscoveryProvider,
 } from "@starkware-libs/starknet-privacy-sdk/testing";
 import { type HistoryTransaction } from "@starkware-libs/starknet-privacy-sdk";
+import type { BlockIdentifier } from "starknet";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 
 describe("E2E History", () => {
@@ -137,7 +138,7 @@ describe("E2E History", () => {
     // Fetch one transaction at a time
     const allTransactions: HistoryTransaction[] = [];
     let historyCursor: undefined | typeof firstPage.cursor = undefined;
-    let blockRef: string | undefined;
+    let blockIdentifier: BlockIdentifier | undefined;
 
     const firstPage = await indexerDiscovery.fetchHistory(
       aliceAddress,
@@ -147,7 +148,7 @@ describe("E2E History", () => {
     );
     allTransactions.push(...firstPage.transactions);
     historyCursor = firstPage.cursor;
-    blockRef = firstPage.blockRef;
+    blockIdentifier = firstPage.blockRef;
 
     // Continue fetching until complete
     while (!historyCursor.historyComplete) {
@@ -155,11 +156,11 @@ describe("E2E History", () => {
         aliceAddress,
         notesCursor,
         channelCursor,
-        { maxTransactions: 1, historyCursor, blockRef },
+        { maxTransactions: 1, historyCursor, blockIdentifier },
       );
       allTransactions.push(...page.transactions);
       historyCursor = page.cursor;
-      blockRef = page.blockRef;
+      blockIdentifier = page.blockRef;
     }
 
     // Should have fetched multiple pages (scenario has at least 1 tx)

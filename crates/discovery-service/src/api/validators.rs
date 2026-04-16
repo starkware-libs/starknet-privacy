@@ -7,7 +7,7 @@ use discovery_core::discovery::DiscoveryCursor;
 use discovery_core::history::types::HistoryCursor;
 use discovery_core::storage_backend::{StorageError, StorageSnapshot};
 use starknet_core::types::{BlockId, Felt};
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::api::types::{error_codes, ApiErrorResponse};
 use crate::chain_state::{ChainState, ChainStateError};
@@ -216,13 +216,10 @@ pub async fn validate_viewing_key<S: StorageSnapshot>(
                     ),
                 ),
                 other => {
-                    warn!("Storage error fetching public key: {}", other);
+                    debug!("Storage error fetching public key: {}", other);
                     (
                         StatusCode::SERVICE_UNAVAILABLE,
-                        ApiErrorResponse::new(
-                            error_codes::RPC_UNAVAILABLE,
-                            "Upstream RPC is unavailable",
-                        ),
+                        ApiErrorResponse::new(error_codes::STORAGE_ERROR, "Storage backend error"),
                     )
                 }
             })?;
@@ -492,7 +489,7 @@ mod tests {
             .collect();
         let cursor = HistoryCursor {
             subchannels,
-            begin_block_number: 100,
+            begin_block_number: Some(100),
             history_complete: false,
         };
 
@@ -525,7 +522,7 @@ mod tests {
         let subchannels: Vec<_> = (0..5).map(|_| dummy_history_subchannel()).collect();
         let cursor = HistoryCursor {
             subchannels,
-            begin_block_number: 100,
+            begin_block_number: Some(100),
             history_complete: false,
         };
 

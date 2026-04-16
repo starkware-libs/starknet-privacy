@@ -219,7 +219,7 @@ mod tests {
     fn test_cursor(subchannels: Vec<HistorySubchannel>) -> HistoryCursor {
         HistoryCursor {
             subchannels,
-            begin_block_number: u64::MAX,
+            begin_block_number: Some(u64::MAX),
             history_complete: false,
         }
     }

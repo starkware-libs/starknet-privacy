@@ -77,9 +77,10 @@ pub struct HistorySubchannel {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct HistoryCursor {
     pub subchannels: Vec<HistorySubchannel>,
-    /// Inclusive upper bound for event queries — the block where backward scanning begins.
-    /// Typically set to the latest confirmed block when the scan starts.
-    pub begin_block_number: u64,
+    /// Inclusive upper bound for event queries (block number). `None` on the
+    /// first page — the caller provides the upper bound separately.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub begin_block_number: Option<u64>,
     /// `true` = all subchannels exhausted, no more history.
     /// `false` = stopped due to budget or max_transactions limit.
     pub history_complete: bool,
