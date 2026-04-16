@@ -505,7 +505,7 @@ async fn test_history_basic() {
         block_ref: Some(sync_response.block_ref),
         cursor: HistoryCursor {
             subchannels: history_subchannels,
-            begin_block_number: 0,
+            begin_block_number: None,
             history_complete: false,
         },
     };

@@ -5,6 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use starknet_core::types::{BlockId, BlockTag};
 use starknet_types_core::felt::Felt;
 use tracing::{debug, trace};
 
@@ -36,7 +37,8 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
 ) -> Result<Vec<HistoryTransaction>, DiscoveryError> {
     debug!(
         num_subchannels = cursor.subchannels.len(),
-        begin_block_number = cursor.begin_block_number,
+        begin_block_number = ?cursor.begin_block_number,
+        snapshot_block_id = ?backend.block_id(),
         budget_remaining = budget.remaining(),
         max_transactions,
         "history: starting fetch_transactions"
@@ -45,7 +47,6 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
     let mut note_scanner = BufferedNoteScanner::new();
     let mut transactions: HashMap<Felt, HistoryTransaction> = HashMap::new();
     let mut completed_blocks: HashSet<u64> = HashSet::new();
-    let mut previous_block_bound = cursor.begin_block_number;
     let mut budget_error: Option<DiscoveryError> = None;
     let mut scanner_complete = false;
 
@@ -61,14 +62,13 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
             &mut note_scanner,
             cursor,
             budget,
-            previous_block_bound,
             &mut transactions,
         )
         .await
         {
             Ok(Some(block_number)) => {
                 completed_blocks.insert(block_number);
-                previous_block_bound = block_number.saturating_sub(1);
+                cursor.begin_block_number = Some(block_number.saturating_sub(1));
             }
             Ok(None) => {
                 scanner_complete = true;
@@ -81,8 +81,6 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
             Err(e) => return Err(e),
         }
     }
-
-    cursor.begin_block_number = previous_block_bound;
 
     let mut result: Vec<HistoryTransaction> = transactions.into_values().collect();
     if !scanner_complete {
@@ -113,7 +111,7 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
         num_transactions = result.len(),
         history_complete = cursor.history_complete,
         budget_remaining = budget.remaining(),
-        begin_block_number = cursor.begin_block_number,
+        begin_block_number = ?cursor.begin_block_number,
         "history: fetch_transactions done"
     );
 
@@ -136,13 +134,31 @@ async fn process_next_block<B: IViews + IEvents>(
     note_scanner: &mut BufferedNoteScanner,
     cursor: &mut HistoryCursor,
     budget: &IoBudget,
-    previous_block_bound: u64,
     transactions: &mut HashMap<Felt, HistoryTransaction>,
 ) -> Result<Option<u64>, DiscoveryError> {
-    let Some((block_number, block_notes)) =
-        note_scanner.next_block(backend, cursor, budget).await?
-    else {
-        return Ok(None);
+    let previous_block_number = cursor
+        .begin_block_number
+        .unwrap_or_else(|| backend.block_number());
+
+    // Drop notes whose block sits *above* the cursor/snapshot upper bound.
+    // Both `cursor.begin_block_number` and the snapshot's `block_id` are
+    // user-controlled, so they may disagree with the actual on-chain block of a
+    // discovered note (stale cursor, malicious input, or chain drift). Skip
+    // silently and advance the scanner.
+    let (block_number, block_notes) = loop {
+        let Some((block_number, block_notes)) =
+            note_scanner.next_block(backend, cursor, budget).await?
+        else {
+            return Ok(None);
+        };
+        if block_number <= previous_block_number {
+            break (block_number, block_notes);
+        }
+        trace!(
+            block_number,
+            previous_block_number,
+            "history: skipping note above upper bound"
+        );
     };
 
     trace!(
@@ -162,18 +178,15 @@ async fn process_next_block<B: IViews + IEvents>(
     )
     .await?;
 
-    let withdrawal_range_start = block_number + 1;
-    if withdrawal_range_start <= previous_block_bound {
-        fetch_aggregated_withdrawal_events(
-            backend,
-            user_address,
-            withdrawal_range_start,
-            previous_block_bound,
-            budget,
-            transactions,
-        )
-        .await?;
-    }
+    fetch_aggregated_withdrawal_events(
+        backend,
+        user_address,
+        block_number + 1,
+        cursor.begin_block_number,
+        budget,
+        transactions,
+    )
+    .await?;
 
     Ok(Some(block_number))
 }
@@ -203,7 +216,22 @@ async fn fetch_aggregated_block_events<E: IEvents>(
 ) -> Result<(), DiscoveryError> {
     budget.try_consume(COST_BLOCK_EVENTS_QUERY)?;
 
-    let block_events = backend.get_block_events(block_number).await?;
+    let mut block_events = backend
+        .get_block_events(BlockId::Number(block_number))
+        .await?;
+
+    // If the by-number fetch returned nothing, the block may still be
+    // pre-confirmed (events only accessible by tag). Retry with the
+    // pre_confirmed tag.
+    if block_events.is_empty() {
+        debug!(
+            block_number,
+            "block_events: no events by number, retrying with pre_confirmed tag"
+        );
+        block_events = backend
+            .get_block_events(BlockId::Tag(BlockTag::PreConfirmed))
+            .await?;
+    }
 
     // Build note_id → tx_hash index from note creation events.
     let mut note_id_to_tx_hash: HashMap<Felt, Felt> = HashMap::new();
@@ -230,6 +258,12 @@ async fn fetch_aggregated_block_events<E: IEvents>(
                 .entry(transaction_hash)
                 .or_insert_with(|| HistoryTransaction::new(block_number, transaction_hash));
             tx.notes.push(note);
+        } else {
+            debug!(
+                note_id = %format!("{:#x}", note.note_id),
+                block_number,
+                "history: no matching event found for note"
+            );
         }
     }
 
@@ -272,31 +306,57 @@ async fn fetch_aggregated_block_events<E: IEvents>(
 /// already keyed on the querying account's address.
 ///
 /// Budget cost scales with the range size:
-/// `ceil(num_blocks / EVENTS_COST_CHUNK_SIZE) * COST_EVENTS_CHUNK`.
+/// `ceil((to_block_number + 1 - from_block_number) / EVENTS_COST_CHUNK_SIZE) * COST_EVENTS_CHUNK`,
+/// where `to_block_number` defaults to the snapshot's resolved `block_number`
+/// when the caller passes `None`. An empty range
+/// (`to_block_number < from_block_number`) is skipped without an RPC.
+///
+/// When `to_block_number` is `None` (first page of a fresh scan), the upper
+/// bound passed to the RPC is the snapshot's pinned `block_id` so any tag/hash
+/// semantics (e.g. `PreConfirmed`) are preserved.
 ///
 /// Returns `Err(InsufficientBudget)` if budget is insufficient (no work done).
 async fn fetch_aggregated_withdrawal_events<E: IEvents>(
     backend: &E,
     user_address: Felt,
-    from_block: u64,
-    to_block: u64,
+    from_block_number: u64,
+    to_block_number: Option<u64>,
     budget: &IoBudget,
     transactions: &mut HashMap<Felt, HistoryTransaction>,
 ) -> Result<(), DiscoveryError> {
-    let num_blocks = (to_block - from_block + 1) as usize;
-    let num_queries = num_blocks.div_ceil(EVENTS_COST_CHUNK_SIZE);
-    let cost = num_queries * COST_EVENTS_CHUNK;
+    let (to_block_number, to_block) = match to_block_number {
+        Some(n) => (n, BlockId::Number(n)),
+        None => (backend.block_number(), backend.block_id()),
+    };
+
+    // Empty / inverted range — `from_block_number` is `block_number + 1` of the
+    // last processed note, so the gap can be empty for adjacent note blocks
+    // (normal) or for a stale/inconsistent cursor (`to_block_number` below the
+    // scanner's actual blocks). Either way, skip the RPC.
+    if to_block_number < from_block_number {
+        trace!(
+            from_block_number,
+            to_block_number,
+            "withdrawal_events: empty range, skipping RPC"
+        );
+        return Ok(());
+    }
+
+    let num_blocks = to_block_number - from_block_number + 1;
+    let cost_u64 = num_blocks.div_ceil(EVENTS_COST_CHUNK_SIZE as u64) * COST_EVENTS_CHUNK as u64;
+    let cost: usize = cost_u64
+        .try_into()
+        .map_err(|_| DiscoveryError::CostOverflow(cost_u64))?;
 
     budget.try_consume(cost)?;
 
     let events = backend
-        .get_withdrawal_events(user_address, from_block, to_block)
+        .get_withdrawal_events(user_address, BlockId::Number(from_block_number), to_block)
         .await?;
 
     trace!(
-        from_block,
-        to_block,
-        num_blocks,
+        from_block_number,
+        to_block = ?to_block,
         num_withdrawal_events = events.len(),
         "withdrawal_events: fetched"
     );
@@ -331,22 +391,23 @@ async fn fetch_registration<B: IViews + IEvents>(
     if storage_result.last_update_block == 0 {
         return Ok(None);
     }
-    let block = storage_result.last_update_block;
+    let block_number = storage_result.last_update_block;
 
     budget.try_consume(COST_EVENTS_CHUNK)?;
+    let block_id = BlockId::Number(block_number);
     let events = backend
-        .get_viewing_key_set_events(user_address, block, block)
+        .get_viewing_key_set_events(user_address, block_id, block_id)
         .await?;
     let transaction_hash = events
         .first()
         .map(|event| event.transaction_hash)
         .ok_or_else(|| {
             DiscoveryError::EventError(format!(
-                "ViewingKeySet event not found at block {block} for user {user_address:#x}"
+                "ViewingKeySet event not found at block {block_number} for user {user_address:#x}"
             ))
         })?;
 
-    let mut registration = HistoryTransaction::new(block, transaction_hash);
+    let mut registration = HistoryTransaction::new(block_number, transaction_hash);
     registration.registered_pubkey = Some(storage_result.value);
     Ok(Some(registration))
 }
@@ -354,6 +415,7 @@ async fn fetch_registration<B: IViews + IEvents>(
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
+    use starknet_core::types::BlockId;
     use starknet_core::utils::starknet_keccak;
 
     use super::*;
@@ -480,10 +542,18 @@ mod tests {
         async fn get_events(
             &self,
             keys: &[Vec<Felt>],
-            from_block: u64,
-            to_block: u64,
+            from_block: BlockId,
+            to_block: BlockId,
         ) -> Result<Vec<EmittedEvent>, StorageError> {
             self.events.get_events(keys, from_block, to_block).await
+        }
+
+        fn block_id(&self) -> BlockId {
+            RawEventAccess::block_id(&self.events)
+        }
+
+        fn block_number(&self) -> u64 {
+            RawEventAccess::block_number(&self.events)
         }
     }
 
@@ -555,7 +625,7 @@ mod tests {
                     counterparty: Felt::from_hex_unchecked("0xBEEF"),
                     next_index: last_index,
                 }],
-                begin_block_number: 100,
+                begin_block_number: Some(100),
                 history_complete: false,
             };
             (backend, cursor)
@@ -789,9 +859,16 @@ mod tests {
         let budget = IoBudget::new(100);
         let mut transactions = HashMap::new();
 
-        fetch_aggregated_withdrawal_events(&backend, ADDRESS, 10, 25, &budget, &mut transactions)
-            .await
-            .unwrap();
+        fetch_aggregated_withdrawal_events(
+            &backend,
+            ADDRESS,
+            10,
+            Some(25),
+            &budget,
+            &mut transactions,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(transactions.len(), 2);
     }
@@ -802,9 +879,16 @@ mod tests {
         let budget = IoBudget::new(100);
         let mut transactions = HashMap::new();
 
-        fetch_aggregated_withdrawal_events(&backend, ADDRESS, 10, 25, &budget, &mut transactions)
-            .await
-            .unwrap();
+        fetch_aggregated_withdrawal_events(
+            &backend,
+            ADDRESS,
+            10,
+            Some(25),
+            &budget,
+            &mut transactions,
+        )
+        .await
+        .unwrap();
 
         assert!(transactions.is_empty());
     }
@@ -819,7 +903,7 @@ mod tests {
             &backend,
             ADDRESS,
             10,
-            25,
+            Some(25),
             &budget,
             &mut transactions,
         )
@@ -833,6 +917,70 @@ mod tests {
         assert!(transactions.is_empty());
     }
 
+    #[tokio::test]
+    async fn withdrawal_events_first_page_cost_uses_to_block_number() {
+        // Range is [0, 1024] → 1025 blocks → 2 chunks of 1024 → cost = 20.
+        // The first-page flag is independent: it controls only the BlockId
+        // passed to the RPC (snapshot's pinned block_id vs. concrete number).
+        let backend = MockEventBackend::empty();
+        let budget = IoBudget::new(COST_EVENTS_CHUNK * 2);
+        let mut transactions = HashMap::new();
+
+        fetch_aggregated_withdrawal_events(
+            &backend,
+            ADDRESS,
+            0,
+            Some(1024),
+            &budget,
+            &mut transactions,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(budget.remaining(), 0);
+
+        // One less and the call must fail with a legitimate (small) `needed`.
+        let tight_budget = IoBudget::new(COST_EVENTS_CHUNK * 2 - 1);
+        let error = fetch_aggregated_withdrawal_events(
+            &backend,
+            ADDRESS,
+            0,
+            Some(1024),
+            &tight_budget,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap_err();
+        match error {
+            DiscoveryError::InsufficientBudget { needed, available } => {
+                assert_eq!(needed, COST_EVENTS_CHUNK * 2);
+                assert_eq!(available, COST_EVENTS_CHUNK * 2 - 1);
+            }
+            other => panic!("expected InsufficientBudget, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn fetch_transactions_skips_notes_above_cursor_upper_bound() {
+        // Regression: stale/malicious cursor with begin_block_number below the
+        // scanner's first emitted note block used to trigger a u64 underflow
+        // in the withdrawal-event cost calc, producing `needed ≈ 1.8e17`.
+        // Now such notes are skipped silently.
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note(0, 100, TX_HASH_1)
+            .deposit(50, 100, TX_HASH_1)
+            .build(Some(0));
+        cursor.begin_block_number = Some(10); // below the note's block (100)
+
+        let budget = IoBudget::new(1_000);
+        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &budget)
+            .await
+            .unwrap();
+
+        assert!(result.is_empty(), "note above upper bound must be skipped");
+        assert!(cursor.history_complete);
+    }
+
     // -- fetch_transactions tests --
 
     #[tokio::test]
@@ -843,7 +991,7 @@ mod tests {
         };
         let mut cursor = HistoryCursor {
             subchannels: vec![],
-            begin_block_number: 100,
+            begin_block_number: Some(100),
             history_complete: false,
         };
 
@@ -984,13 +1132,13 @@ mod tests {
     #[tokio::test]
     async fn cursor_state_after_full_scan() {
         let (backend, mut cursor) = FixtureBuilder::new().note(0, 10, TX_HASH_1).build(Some(0));
-        assert_eq!(cursor.begin_block_number, 100);
+        assert_eq!(cursor.begin_block_number, Some(100));
 
         fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
             .await
             .unwrap();
 
-        assert_eq!(cursor.begin_block_number, 9);
+        assert_eq!(cursor.begin_block_number, Some(9));
         assert!(cursor.history_complete);
     }
 

@@ -371,7 +371,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     options?: {
       maxTransactions?: number;
       lastKnownBlock?: string;
-      blockRef?: BlockIdentifier;
+      blockIdentifier?: BlockIdentifier;
       /** Pass the cursor from a previous HistoryPage to continue pagination. */
       historyCursor?: HistoryCursor;
     }
@@ -384,8 +384,8 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       max_transactions: options?.maxTransactions ?? 50,
       cursor: historyCursorToApi(cursor),
     };
-    if (options?.blockRef !== undefined) {
-      body.block_ref = options.blockRef;
+    if (options?.blockIdentifier !== undefined) {
+      body.block_ref = options.blockIdentifier;
     } else if (options?.lastKnownBlock) {
       body.last_known_block = options.lastKnownBlock;
     }

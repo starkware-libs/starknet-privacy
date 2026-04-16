@@ -349,7 +349,7 @@ describe("Privacy StarkNet integration", () => {
     allTransactions.push(...firstPage.transactions);
 
     let historyCursor = firstPage.cursor;
-    let blockRef: string | undefined = firstPage.blockRef;
+    let blockIdentifier = firstPage.blockRef;
     const MAX_PAGES = 5;
     let pageCount = 1;
 
@@ -358,11 +358,11 @@ describe("Privacy StarkNet integration", () => {
         aliceAddress,
         notesCursor,
         channelCursor,
-        { maxTransactions: 1, historyCursor, blockRef },
+        { maxTransactions: 1, historyCursor, blockIdentifier },
       );
       allTransactions.push(...page.transactions);
       historyCursor = page.cursor;
-      blockRef = page.blockRef;
+      blockIdentifier = page.blockRef;
       pageCount++;
     }
 
@@ -377,5 +377,32 @@ describe("Privacy StarkNet integration", () => {
           deposit.amount === 100n && deposit.token === BigInt(TOKEN),
       ),
     ).toBeDefined();
+  }, 300_000);
+
+  it("history works with pre_confirmed block ref", async () => {
+    const aliceAddress = BigInt(alice.address);
+    const aliceViewingKey = BigInt(alice.viewingKey);
+
+    const notesResult = await discovery.discoverNotes(
+      aliceAddress,
+      aliceViewingKey,
+    );
+    const { channels } = await discovery.discoverChannels(
+      aliceAddress,
+      aliceViewingKey,
+      "all",
+    );
+
+    const page = await discovery.fetchHistory(
+      aliceAddress,
+      notesResult.cursor,
+      { channels },
+      { maxTransactions: 5, blockIdentifier: "pre_confirmed" },
+    );
+
+    expect(page.blockRef).toBeDefined();
+    // Fresh pool may have no transactions — just verify the call succeeds
+    // with a pre_confirmed tag (no 503 or deserialization errors).
+    expect(page.transactions).toBeDefined();
   }, 300_000);
 });

@@ -33,7 +33,6 @@ request_timeout = 30        # seconds
 max_idle_per_host = 10
 max_batch_size = 256        # max storage slots per JSON-RPC batch request
 event_page_size = 1024      # max events per starknet_getEvents page (spec max: 1024)
-max_event_block_range = 0   # max block range for get_events queries; 0 = unlimited
 
 [indexer]
 ws_url = "ws://127.0.0.1:5050/ws"

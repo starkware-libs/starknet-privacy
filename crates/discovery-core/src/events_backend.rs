@@ -4,6 +4,7 @@
 //! access trait and a mock backend for testing.
 
 use async_trait::async_trait;
+use starknet_core::types::BlockId;
 pub use starknet_core::types::EmittedEvent;
 use starknet_types_core::felt::Felt;
 
@@ -12,7 +13,7 @@ use crate::storage_backend::StorageError;
 /// Low-level event access for reading contract events.
 #[async_trait]
 pub trait RawEventAccess: Send + Sync {
-    /// Fetches events matching the given key filters within a block range (inclusive).
+    /// Fetches events matching the given key filters within a block range.
     ///
     /// Each element of `keys` is a set of accepted values for that key position.
     /// An event matches if, for every non-empty filter, the event's key at that
@@ -20,17 +21,35 @@ pub trait RawEventAccess: Send + Sync {
     async fn get_events(
         &self,
         keys: &[Vec<Felt>],
-        from_block: u64,
-        to_block: u64,
+        from_block: BlockId,
+        to_block: BlockId,
     ) -> Result<Vec<EmittedEvent>, StorageError>;
+
+    /// Returns the `BlockId` this view is pinned to (number, hash, or tag).
+    ///
+    /// Use this for RPC queries that need to preserve tag semantics (e.g.
+    /// `Tag(PreConfirmed)` to include pre-confirmed events).
+    fn block_id(&self) -> BlockId;
+
+    /// Returns the concrete block number this view is pinned to.
+    ///
+    /// Resolved once at snapshot creation and stable thereafter. Used as an
+    /// upper-bound estimator for event-range cost accounting.
+    fn block_number(&self) -> u64;
 }
 
 #[cfg(test)]
 /// Mock event backend backed by an in-memory `Vec<EmittedEvent>`.
+///
+/// The mock pretends to be pinned to a fixed block number (`MOCK_BLOCK_NUMBER`)
+/// — large enough that all test ranges are valid against it.
 #[derive(Clone, Default)]
 pub struct MockEventBackend {
     events: Vec<EmittedEvent>,
 }
+
+#[cfg(test)]
+const MOCK_BLOCK_NUMBER: u64 = 1_000;
 
 #[cfg(test)]
 impl MockEventBackend {
@@ -49,16 +68,24 @@ impl RawEventAccess for MockEventBackend {
     async fn get_events(
         &self,
         keys: &[Vec<Felt>],
-        from_block: u64,
-        to_block: u64,
+        from_block: BlockId,
+        to_block: BlockId,
     ) -> Result<Vec<EmittedEvent>, StorageError> {
+        let from = match from_block {
+            BlockId::Number(n) => n,
+            _ => 0,
+        };
+        let to = match to_block {
+            BlockId::Number(n) => n,
+            _ => u64::MAX,
+        };
         Ok(self
             .events
             .iter()
             .filter(|event| {
                 let block = event.block_number.unwrap_or(0);
-                block >= from_block
-                    && block <= to_block
+                block >= from
+                    && block <= to
                     && keys.iter().enumerate().all(|(position, accepted)| {
                         accepted.is_empty()
                             || event
@@ -69,6 +96,14 @@ impl RawEventAccess for MockEventBackend {
             })
             .cloned()
             .collect())
+    }
+
+    fn block_id(&self) -> BlockId {
+        BlockId::Number(MOCK_BLOCK_NUMBER)
+    }
+
+    fn block_number(&self) -> u64 {
+        MOCK_BLOCK_NUMBER
     }
 }
 
@@ -102,7 +137,10 @@ mod tests {
     #[tokio::test]
     async fn empty_mock_returns_no_events() {
         let backend = MockEventBackend::empty();
-        let events = backend.get_events(&[], 0, 100).await.unwrap();
+        let events = backend
+            .get_events(&[], BlockId::Number(0), BlockId::Number(100))
+            .await
+            .unwrap();
         assert!(events.is_empty());
     }
 
@@ -114,7 +152,10 @@ mod tests {
             mock_event(25, Felt::from(0x3u64), vec![Felt::from(0xCu64)], vec![]),
         ]);
 
-        let events = backend.get_events(&[], 5, 15).await.unwrap();
+        let events = backend
+            .get_events(&[], BlockId::Number(5), BlockId::Number(15))
+            .await
+            .unwrap();
         assert_eq!(events.len(), 2);
         assert_eq!(events[0].block_number, Some(5));
         assert_eq!(events[1].block_number, Some(15));
@@ -133,7 +174,11 @@ mod tests {
 
         // Filter by selector_a at position 0
         let events = backend
-            .get_events(&[vec![selector_a]], 0, 100)
+            .get_events(
+                &[vec![selector_a]],
+                BlockId::Number(0),
+                BlockId::Number(100),
+            )
             .await
             .unwrap();
         assert_eq!(events.len(), 1);
@@ -141,7 +186,11 @@ mod tests {
 
         // Filter by user at position 1 (any selector)
         let events = backend
-            .get_events(&[vec![], vec![user]], 0, 100)
+            .get_events(
+                &[vec![], vec![user]],
+                BlockId::Number(0),
+                BlockId::Number(100),
+            )
             .await
             .unwrap();
         assert_eq!(events.len(), 2);

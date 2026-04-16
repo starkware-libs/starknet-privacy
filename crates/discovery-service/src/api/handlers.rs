@@ -90,7 +90,8 @@ where
     let snapshot = state
         .backend
         .snapshot(base.contract_address, Some(block_ref))
-        .await;
+        .await
+        .map_err(crate::api::types::storage_error_to_response)?;
 
     validate_viewing_key(
         &base.viewing_key,
@@ -268,7 +269,8 @@ where
     let snapshot = state
         .backend
         .snapshot(request.contract_address, Some(block_ref))
-        .await;
+        .await
+        .map_err(crate::api::types::storage_error_to_response)?;
 
     validate_viewing_key(
         &request.viewing_key,
@@ -339,27 +341,16 @@ where
     let snapshot = state
         .backend
         .snapshot(request.contract_address, Some(block_ref))
-        .await;
+        .await
+        .map_err(crate::api::types::storage_error_to_response)?;
 
     let mut cursor = request.cursor;
-    if cursor.begin_block_number == 0 {
-        let head = state.backend.get_head().await.ok_or_else(|| {
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                ApiErrorResponse::new(
-                    error_codes::SERVICE_UNAVAILABLE,
-                    "No indexed head available yet",
-                ),
-            )
-        })?;
-        cursor.begin_block_number = head.block_number;
-    }
 
     debug!(
         user = %format!("{:#x}", request.user_address),
         block = ?block_ref,
         num_subchannels = cursor.subchannels.len(),
-        begin_block = cursor.begin_block_number,
+        begin_block_number = ?cursor.begin_block_number,
         "history request"
     );
 
