@@ -221,7 +221,7 @@ pub(crate) impl InvokeExternalInputValid of InputValidation<InvokeExternalInput>
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ClientAction {
-    /// Register a user with a viewing key, or replace the user's viewing key if already registered.
+    /// Register a user with a viewing key. The key is immutable once set (enforced via WriteOnce).
     SetViewingKey: SetViewingKeyInput,
     /// Open a new channel from the user to a recipient.
     OpenChannel: OpenChannelInput,

@@ -294,7 +294,8 @@ pub mod Privacy {
             server_actions.span()
         }
 
-        /// Returns the server actions to set a viewing key.
+        /// Returns the server actions to register a viewing key for the first time.
+        /// The key is immutable once set; re-registration reverts via WriteOnce enforcement.
         /// Assumes `user_addr` is non-zero and `user_private_key` is non-zero and canonical
         /// (checked in `main`).
         fn set_viewing_key(
