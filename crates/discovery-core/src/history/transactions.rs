@@ -24,7 +24,9 @@ use crate::privacy_pool::views::IViews;
 /// Each loop iteration:
 /// 1. Drain the next block of notes via [`BufferedNoteScanner::next_block`].
 /// 2. Fetch block events and group into transactions via [`fetch_aggregated_block_events`].
-/// 3. Fetch withdrawal events for the gap range via [`fetch_aggregated_withdrawal_events`].
+/// 3. If `scan_full_withdrawals` is on, fetch standalone withdrawal events for
+///    the gap range via [`fetch_aggregated_withdrawal_events`] — catches a full
+///    withdrawal that leaves no change note.
 ///
 /// Budget is consumed incrementally; exits early if insufficient.
 /// Returns transactions sorted by `block_number` descending.
@@ -33,12 +35,14 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
     user_address: Felt,
     cursor: &mut HistoryCursor,
     max_transactions: usize,
+    scan_full_withdrawals: bool,
     budget: &IoBudget,
 ) -> Result<Vec<HistoryTransaction>, DiscoveryError> {
     debug!(
         num_subchannels = cursor.subchannels.len(),
         begin_block_number = ?cursor.begin_block_number,
         snapshot_block_id = ?backend.block_id(),
+        scan_full_withdrawals,
         budget_remaining = budget.remaining(),
         max_transactions,
         "history: starting fetch_transactions"
@@ -61,6 +65,7 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
             user_address,
             &mut note_scanner,
             cursor,
+            scan_full_withdrawals,
             budget,
             &mut transactions,
         )
@@ -133,6 +138,7 @@ async fn process_next_block<B: IViews + IEvents>(
     user_address: Felt,
     note_scanner: &mut BufferedNoteScanner,
     cursor: &mut HistoryCursor,
+    scan_full_withdrawals: bool,
     budget: &IoBudget,
     transactions: &mut HashMap<Felt, HistoryTransaction>,
 ) -> Result<Option<u64>, DiscoveryError> {
@@ -178,15 +184,17 @@ async fn process_next_block<B: IViews + IEvents>(
     )
     .await?;
 
-    fetch_aggregated_withdrawal_events(
-        backend,
-        user_address,
-        block_number + 1,
-        cursor.begin_block_number,
-        budget,
-        transactions,
-    )
-    .await?;
+    if scan_full_withdrawals {
+        fetch_aggregated_withdrawal_events(
+            backend,
+            user_address,
+            block_number + 1,
+            cursor.begin_block_number,
+            budget,
+            transactions,
+        )
+        .await?;
+    }
 
     Ok(Some(block_number))
 }
@@ -973,7 +981,7 @@ mod tests {
         cursor.begin_block_number = Some(10); // below the note's block (100)
 
         let budget = IoBudget::new(1_000);
-        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &budget)
+        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, true, &budget)
             .await
             .unwrap();
 
@@ -995,9 +1003,16 @@ mod tests {
             history_complete: false,
         };
 
-        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
-            .await
-            .unwrap();
+        let result = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            true,
+            &IoBudget::new(1000),
+        )
+        .await
+        .unwrap();
 
         assert!(result.is_empty());
         assert!(cursor.history_complete);
@@ -1010,9 +1025,16 @@ mod tests {
             .deposit(100, 10, TX_HASH_1)
             .build(Some(0));
 
-        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
-            .await
-            .unwrap();
+        let result = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            true,
+            &IoBudget::new(1000),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].block_number, 10);
@@ -1030,9 +1052,16 @@ mod tests {
             .withdrawal(50, 20, TX_HASH_2)
             .build(Some(1));
 
-        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
-            .await
-            .unwrap();
+        let result = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            true,
+            &IoBudget::new(1000),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].block_number, 20);
@@ -1047,7 +1076,7 @@ mod tests {
     async fn zero_budget_returns_insufficient_budget_error() {
         let (backend, mut cursor) = FixtureBuilder::new().note(0, 10, TX_HASH_1).build(Some(0));
 
-        let error = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(0))
+        let error = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, true, &IoBudget::new(0))
             .await
             .unwrap_err();
 
@@ -1072,6 +1101,7 @@ mod tests {
             ADDRESS,
             &mut cursor,
             10,
+            true,
             &IoBudget::new(one_block_budget),
         )
         .await
@@ -1100,6 +1130,7 @@ mod tests {
             ADDRESS,
             &mut cursor,
             10,
+            true,
             &IoBudget::new(one_block_budget),
         )
         .await
@@ -1119,9 +1150,16 @@ mod tests {
             .deposit_from(OTHER_ADDRESS, 200, 10, TX_HASH_1)
             .build(Some(0));
 
-        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
-            .await
-            .unwrap();
+        let result = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            true,
+            &IoBudget::new(1000),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].deposits.len(), 1);
@@ -1134,9 +1172,16 @@ mod tests {
         let (backend, mut cursor) = FixtureBuilder::new().note(0, 10, TX_HASH_1).build(Some(0));
         assert_eq!(cursor.begin_block_number, Some(100));
 
-        fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
-            .await
-            .unwrap();
+        fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            true,
+            &IoBudget::new(1000),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(cursor.begin_block_number, Some(9));
         assert!(cursor.history_complete);
@@ -1153,9 +1198,16 @@ mod tests {
             .pubkey(ADDRESS, PUBKEY, 5, TX_HASH_REG)
             .build(Some(0));
 
-        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
-            .await
-            .unwrap();
+        let result = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            true,
+            &IoBudget::new(1000),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(result.len(), 2);
         assert!(cursor.history_complete);
@@ -1184,6 +1236,7 @@ mod tests {
             ADDRESS,
             &mut cursor,
             10,
+            true,
             &IoBudget::new(one_block_budget),
         )
         .await
@@ -1201,18 +1254,32 @@ mod tests {
             .build(Some(0));
 
         // First page: max_transactions=1, note tx fills the page.
-        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 1, &IoBudget::new(1000))
-            .await
-            .unwrap();
+        let result = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            1,
+            true,
+            &IoBudget::new(1000),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(result.len(), 1);
         assert!(result[0].registered_pubkey.is_none());
         assert!(!cursor.history_complete);
 
         // Second page: scanner is already exhausted, only registration returned.
-        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 1, &IoBudget::new(1000))
-            .await
-            .unwrap();
+        let result = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            1,
+            true,
+            &IoBudget::new(1000),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].registered_pubkey, Some(PUBKEY));
@@ -1227,9 +1294,16 @@ mod tests {
             .pubkey(ADDRESS, PUBKEY, 5, TX_HASH_REG)
             .build(Some(1));
 
-        let result = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
-            .await
-            .unwrap();
+        let result = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            true,
+            &IoBudget::new(1000),
+        )
+        .await
+        .unwrap();
 
         assert_eq!(result.len(), 3);
         assert_eq!(result[0].block_number, 20);

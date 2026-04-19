@@ -58,6 +58,7 @@ level = "info"
 max_cursor_channels = 256
 max_cursor_subchannels_per_channel = 64
 max_outgoing_recipients = 64
+history_scan_full_withdrawals = false  # opt-in gap-range withdrawal scan (see §06 history)
 server_budget = 10000
 max_request_body_bytes = 102400
 ```

@@ -17,6 +17,7 @@
 - `block_ref` in API models now accepts block hash (hex string), block number (integer), or tag (`"latest"`, `"pre_confirmed"`, `"l1_accepted"`). Wire format is backwards compatible — block hashes remain plain hex strings.
 - `discoverNotes` and `discoverChannels` accept optional `blockIdentifier` param to pin discovery reads to a specific block
 - Compiler passes `ExecuteOptions.provingBlockId` to discovery as `blockIdentifier`, ensuring discovery and proving use the same block state
+- `fetchHistory` no longer returns full withdrawals that leave no change note unless the indexer is deployed with `limits.history_scan_full_withdrawals = true`. Documented as an edge case in the README; the previous always-on gap-range scan dominated history cost for a rare flow.
 
 ### Added
 

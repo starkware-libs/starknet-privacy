@@ -152,6 +152,13 @@ pub struct ValidationLimits {
     pub max_history_subchannels: usize,
     /// Maximum number of transactions per history request.
     pub max_history_transactions: usize,
+    /// Opt-in to a range scan of withdrawal events in the gaps between note
+    /// blocks. Catches a *full* withdrawal — one that leaves no change note —
+    /// which is rare. Common flows (partial withdrawal, paymaster change note,
+    /// transparent withdrawals already visible at the wallet) don't need it.
+    /// Off by default because the range `starknet_getEvents` dominates
+    /// history cost.
+    pub history_scan_full_withdrawals: bool,
     /// Server-controlled I/O budget per request.
     pub server_budget: usize,
     /// Maximum request body size in bytes.
@@ -167,6 +174,7 @@ impl Default for ValidationLimits {
             max_outgoing_recipients: 64,
             max_history_subchannels: 256,
             max_history_transactions: 100,
+            history_scan_full_withdrawals: false,
             server_budget: 10_000,
             max_request_body_bytes: 102_400,
             public_key_cache_capacity: 10_000,

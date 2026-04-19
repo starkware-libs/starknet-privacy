@@ -360,6 +360,7 @@ where
         request.user_address,
         &mut cursor,
         request.max_transactions as usize,
+        state.validation_limits.history_scan_full_withdrawals,
         &budget,
     )
     .await

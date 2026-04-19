@@ -424,6 +424,19 @@ if (!page.cursor.historyComplete) {
 }
 ```
 
+**Completeness caveats.** The history feed is anchored on the user's notes — each page scans backward one note block at a time and attaches the events that sit in that block. A few transaction shapes fall outside this anchor:
+
+- **Full withdrawals with no change note** — e.g. spending all inputs into a single `withdraw` call with no `transfer` or `surplusTo` remainder. The transaction produces no new note for the user, so it is invisible unless the indexer is run with `limits.history_scan_full_withdrawals = true` (off by default — the range `starknet_getEvents` scan dominates per-request cost). The withdrawal itself is a transparent on-chain transfer to the recipient, so the recipient's wallet still shows it via ordinary account activity.
+- **Deposits inside a bundled multi-user transaction** — when another user's deposit shares a transaction with your notes (atypical), it is filtered out of your history by `user_address` to avoid double-counting balances. Your own deposits in the same transaction still appear.
+- **Notes above the cursor's upper bound** — if the client-provided cursor or `blockIdentifier` disagrees with the actual block of a discovered note (stale cursor, malicious input, or chain drift), those notes are skipped silently and the scanner advances.
+
+**Withdrawal attribution caveat.** On-chain `Withdrawal` events expose only the recipient address; the initiating `user_addr` is encrypted. The service cannot filter in-block withdrawals by initiator, so:
+
+- A withdrawal that shares a transaction with your notes is attached to that transaction in your history, even if a different user initiated it (e.g. A withdraws to B while B has notes in the same tx).
+- In multi-user batched transactions, unrelated withdrawals may be attached to any user with matched notes in the batch.
+
+Gap-range withdrawals (when enabled via `history_scan_full_withdrawals`) are keyed on the user's own address at the RPC filter level, so the attribution caveat above does **not** apply to them.
+
 ## Execute result
 
 Every `execute()` call returns:

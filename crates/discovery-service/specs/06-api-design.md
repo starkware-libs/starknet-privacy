@@ -349,6 +349,7 @@ Retrieves paginated transaction history by scanning backward through note subcha
 
 - `max_history_subchannels` (default: 256): Maximum number of subchannels in a history cursor.
 - `max_history_transactions` (default: 100): Maximum allowed `max_transactions` value.
+- `history_scan_full_withdrawals` (default: `false`): Opt-in to a range `starknet_getEvents` scan of withdrawal events across block gaps between note blocks. This catches the edge case of a *full* withdrawal that leaves no change note. Off by default because common flows already cover this: partial withdrawals and paymaster flows create a change note (picked up via the in-block event path), and a fully transparent withdrawal is visible directly at the recipient account. Range scans dominate history cost, so operators should enable this only when the service must return fully-withdrawn transactions for users who do not run a wallet.
 
 **Error responses:**
 
