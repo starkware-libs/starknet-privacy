@@ -1,5 +1,6 @@
 // tests/cache.test.ts
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
+import { setTimeout as sleep } from "node:timers/promises";
 import { BlockedAddressCache } from "../src/cache.js";
 
 describe("BlockedAddressCache", () => {
@@ -14,17 +15,17 @@ describe("BlockedAddressCache", () => {
     expect(cache.isBlocked("0xabc")).toBe(true);
   });
 
-  it("expires after TTL", () => {
-    vi.useFakeTimers();
-    const cache = new BlockedAddressCache(1000);
+  it("expires after TTL", async () => {
+    // Uses real time because lru-cache reads `perf.now()` internally and
+    // debounces it via `setTimeout` on `ttlResolution`, which vitest fake
+    // timers can't drive in unison.
+    const cache = new BlockedAddressCache(20);
     cache.markBlocked("0xabc");
 
     expect(cache.isBlocked("0xabc")).toBe(true);
 
-    vi.advanceTimersByTime(1001);
+    await sleep(40);
     expect(cache.isBlocked("0xabc")).toBe(false);
-
-    vi.useRealTimers();
   });
 
   it("does not cross-contaminate addresses", () => {
