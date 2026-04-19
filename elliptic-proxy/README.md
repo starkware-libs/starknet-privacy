@@ -102,7 +102,7 @@ npm run build
 
 gcloud functions deploy elliptic-proxy \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --trigger-http \
   --allow-unauthenticated \
   --entry-point=ellipticProxy \

@@ -129,7 +129,7 @@ elliptic-proxy/
 ```bash
 gcloud functions deploy elliptic-proxy \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --trigger-http \
   --allow-unauthenticated \
   --min-instances=1 \

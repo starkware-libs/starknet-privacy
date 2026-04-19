@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.filter.outputs.changed == 'true'
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: elliptic-proxy/package-lock.json
       - if: steps.filter.outputs.changed == 'true'
@@ -50,7 +50,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: steps.filter.outputs.changed == 'true'
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: proof-interceptor/package-lock.json
       - name: Build SDK (proof-interceptor depends on ABI)
