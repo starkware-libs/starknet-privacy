@@ -1,10 +1,9 @@
 // src/types.ts
-
 export interface JsonRpcRequest {
   jsonrpc: "2.0";
   id: string | number | null;
   method: string;
-  params?: unknown[];
+  params?: unknown;
 }
 
 export interface JsonRpcError {

@@ -4,7 +4,7 @@ import { validateRpcRequest } from "../src/rpc.js";
 
 function rpcBody(
   method: string,
-  params?: unknown[],
+  params?: unknown,
   overrides?: Record<string, unknown>
 ): string {
   return JSON.stringify({
@@ -170,6 +170,83 @@ describe("validateRpcRequest", () => {
       if (!result.ok) {
         expect(result.response.error.code).toBe(-32600);
       }
+    });
+
+    describe("object-form params (by-name)", () => {
+      it("accepts object params with block_id and transaction", () => {
+        const result = validateRpcRequest(
+          rpcBody("starknet_checkTransaction", {
+            block_id: "latest",
+            transaction: sampleInvokeV3(),
+          })
+        );
+        expect(result.action).toBe(RpcAction.CheckWithInterceptors);
+      });
+
+      it("accepts object params with block_hash block_id", () => {
+        const result = validateRpcRequest(
+          rpcBody("starknet_checkTransaction", {
+            block_id: { block_hash: "0xabc" },
+            transaction: sampleInvokeV3(),
+          })
+        );
+        expect(result.action).toBe(RpcAction.CheckWithInterceptors);
+      });
+
+      it("rejects object params with pending block_id as BLOCK_NOT_FOUND (24)", () => {
+        const result = validateRpcRequest(
+          rpcBody("starknet_checkTransaction", {
+            block_id: "pending",
+            transaction: sampleInvokeV3(),
+          })
+        );
+        expect(result.action).toBe(RpcAction.Error);
+        if (result.action === RpcAction.Error) {
+          expect(result.response.error.code).toBe(24);
+        }
+      });
+
+      it("rejects object params missing block_id", () => {
+        const result = validateRpcRequest(
+          rpcBody("starknet_checkTransaction", {
+            transaction: sampleInvokeV3(),
+          })
+        );
+        expect(result.action).toBe(RpcAction.Error);
+        if (result.action === RpcAction.Error) {
+          expect(result.response.error.code).toBe(-32600);
+        }
+      });
+
+      it("rejects object params missing transaction", () => {
+        const result = validateRpcRequest(
+          rpcBody("starknet_checkTransaction", { block_id: "latest" })
+        );
+        expect(result.action).toBe(RpcAction.Error);
+        if (result.action === RpcAction.Error) {
+          expect(result.response.error.code).toBe(-32600);
+        }
+      });
+
+      it("rejects object params with non-object transaction", () => {
+        const result = validateRpcRequest(
+          rpcBody("starknet_checkTransaction", {
+            block_id: "latest",
+            transaction: "not-an-object",
+          })
+        );
+        expect(result.action).toBe(RpcAction.Error);
+      });
+
+      it("rejects primitive params", () => {
+        const result = validateRpcRequest(
+          rpcBody("starknet_checkTransaction", "not-an-object-or-array")
+        );
+        expect(result.action).toBe(RpcAction.Error);
+        if (result.action === RpcAction.Error) {
+          expect(result.response.error.code).toBe(-32600);
+        }
+      });
     });
   });
 

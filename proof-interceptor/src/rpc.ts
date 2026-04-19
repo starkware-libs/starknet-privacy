@@ -78,15 +78,17 @@ export function validateRpcRequest(body: string): RpcVerdict {
 }
 
 function validateCheckTransaction(request: JsonRpcRequest): RpcVerdict {
-  const params = request.params;
-  if (!Array.isArray(params) || params.length < 2) {
+  // JSON-RPC 2.0 allows params as a positional array or a by-name object.
+  // The real starknet_transaction_prover's client (sequencer) sends by-name.
+  const extracted = extractCheckTransactionParams(request.params);
+  if (extracted === null) {
     return {
       ok: false,
       response: jsonRpcError(request.id, INVALID_REQUEST, "Invalid Request"),
     };
   }
+  const { blockId, transaction: rawTransaction } = extracted;
 
-  const blockId = params[0];
   if (blockId === "pending") {
     return {
       ok: false,
@@ -94,17 +96,17 @@ function validateCheckTransaction(request: JsonRpcRequest): RpcVerdict {
     };
   }
 
-  const transaction = params[1] as Record<string, unknown>;
   if (
-    typeof transaction !== "object" ||
-    transaction === null ||
-    Array.isArray(transaction)
+    typeof rawTransaction !== "object" ||
+    rawTransaction === null ||
+    Array.isArray(rawTransaction)
   ) {
     return {
       ok: false,
       response: jsonRpcError(request.id, INVALID_REQUEST, "Invalid Request"),
     };
   }
+  const transaction = rawTransaction as Record<string, unknown>;
 
   if (transaction.type !== "INVOKE") {
     return {
@@ -142,4 +144,19 @@ function validateCheckTransaction(request: JsonRpcRequest): RpcVerdict {
     transaction: transaction as unknown as ProveTxnV3,
     requestId: request.id,
   };
+}
+
+function extractCheckTransactionParams(
+  params: unknown
+): { blockId: unknown; transaction: unknown } | null {
+  if (Array.isArray(params)) {
+    if (params.length < 2) return null;
+    return { blockId: params[0], transaction: params[1] };
+  }
+  if (typeof params === "object" && params !== null) {
+    const { block_id, transaction } = params as Record<string, unknown>;
+    if (block_id === undefined || transaction === undefined) return null;
+    return { blockId: block_id, transaction };
+  }
+  return null;
 }
