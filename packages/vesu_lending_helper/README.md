@@ -73,7 +73,7 @@ scarb build --package vesu_lending_helper
 scarb test   # wraps snforge test
 ```
 
-snforge version: `0.55.0+nightly-2026-02-20`
+snforge version: `0.59.0`
 
 ## Declare and deploy with sncast
 

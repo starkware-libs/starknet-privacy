@@ -65,6 +65,138 @@ const transfers = createPrivateTransfers({
 });
 ```
 
+## Typical workflows
+
+This section describes the recommended integration patterns. Each subsection gives one opinionated recipe — stick to it unless you have a specific reason to deviate.
+
+### State management: go stateless
+
+Do not persist `PrivateRegistry` between sessions. Rely on the default full-refresh discovery on every `execute()` call:
+
+```typescript
+const result = await transfers
+  .build({
+    autoDiscover: { notes: "refresh", channels: "refresh" },
+    autoSelectNotes: "naive",
+  })
+  .with(STRK)
+  .transfer({ recipient: bob, amount: 50n })
+  .surplusTo(self)
+  .execute();
+```
+
+No local state means no cursor drift, no reorg reconciliation, and no stale-channel bugs.
+
+By default `execute()` mutates the `registry` argument in place. If you want to hand the SDK a registry you intend to reuse elsewhere, pass `registryConst: true` — the call then returns a new registry object and leaves the input untouched. Either way, treat the registry as ephemeral within a session and rebuild it from `discoverNotes` / `discoverChannels` at the start of the next session.
+
+**When to graduate.** Discovery becomes the UX bottleneck only past several thousand notes per account. At that point switch to incremental discovery by storing the `cursor` from the previous `discoverNotes` / `discoverChannels` response and passing it back on the next call (see [Discover notes](#discover-notes)). Incremental adds complexity — don't do it prematurely.
+
+### Speculative balances and history (`pre_confirmed`)
+
+For balance displays, history UI, and other read-only views where latency matters, pass `blockIdentifier: "pre_confirmed"` to `discoverNotes`, `discoverChannels`, and `fetchHistory`:
+
+```typescript
+const { notes } = await transfers.discoverNotes({
+  blockIdentifier: "pre_confirmed",
+});
+```
+
+`pre_confirmed` reads the node's speculative next-block state, so newly accepted transactions show up immediately rather than after `ACCEPTED_ON_L2`.
+
+**Precondition — the wallet must already handle reorgs on transparent balances.** If it does, `pre_confirmed` is a free latency win for private state too. If it doesn't, stay on `"latest"` until the wallet's reorg story is solid. Never prove against `pre_confirmed` — the prover requires finalized state (see next subsection).
+
+Caveats:
+
+- Speculative state may be reverted if the pre-confirmed block doesn't finalize.
+- Paginated discovery may see the underlying block advance between pages — fine for displaying a balance, not for building a transaction (use a block hash for that).
+- Pre-confirmed data can point at a branch that never gets finalized.
+
+**Alternative for a just-submitted tx: optimistic registry.** Every `execute()` returns a registry reflecting the compiled actions (the same mutated object by default; a new object if `registryConst: true` was passed). If the tx succeeds, use that registry directly and skip a discovery round-trip; replace it with fresh discovery before building the next tx.
+
+```typescript
+const result = await transfers.build(/* ... */).execute();
+const receipt = await provider.waitForTransaction(txHash);
+if (receipt.isSuccess()) {
+  // Use result.registry directly — no need to re-discover
+}
+```
+
+### Sequencing private transactions
+
+Two constraints govern when you can prove the next private transaction:
+
+1. **The prover reads finalized state, not `pre_confirmed`.** Your previous private tx's block must be finalized before you can prove the next one.
+2. **The sequencer accepts proofs whose `base_block` is at least 10 blocks older than the submission block.** The proving block must sit within the acceptance window when the transaction arrives.
+
+**Recipe:**
+
+1. After each accepted private tx, record `lastTxBlockNumber = receipt.block_number`.
+2. Before starting the next private tx, poll until `latestBlock - lastTxBlockNumber ≥ 10`.
+3. Prove at `latestBlock - 10` (or a couple of blocks earlier, see comment) and submit.
+4. Hide the wait behind a spinner — from the user's perspective the transaction just takes a bit longer.
+
+```typescript
+// Wait until the last tx block is finalized and old enough for the sequencer.
+// getBlockNumber() returns the latest finalized block, so this loop covers
+// both constraints: finalization and sequencer acceptance depth.
+let latestBlock = await provider.getBlockNumber();
+while (lastTxBlockNumber >= latestBlock - 10) {
+  await sleep(blockTime);
+  latestBlock = await provider.getBlockNumber();
+}
+
+// Prove at latest - 10 so the sequencer accepts it even after proving delay.
+// Optimization: use 8–9 instead of 10 — proving takes ~4s, which is less than
+// 1–2 block times, so the proof will still be within the window on arrival.
+const provingBlock = latestBlock - 10;
+const result = await transfers
+  .build({
+    autoDiscover: { notes: "refresh", channels: "refresh" },
+    autoSelectNotes: "naive",
+    provingBlockId: { block_number: provingBlock },
+  })
+  .with(STRK)
+  .transfer({ recipient: bob, amount: 50n })
+  .surplusTo(myAddress)
+  .execute();
+
+// Update tracking after the tx is accepted
+const receipt = await provider.waitForTransaction(txHash);
+lastTxBlockNumber = receipt.block_number;
+```
+
+The compiler forwards `provingBlockId` to discovery calls, ensuring the prover and discovery see the same contract state.
+
+### Sequencing after transparent state changes
+
+The same 10-block rule applies to **transparent** (non-private) transactions whose effects the pool will later need to prove against. Treat the receipt block of such a transaction exactly like `lastTxBlockNumber` in the previous recipe.
+
+Two concrete cases:
+
+- **Freshly deployed account → register.** You cannot call `register()` immediately after the account's deploy-account transaction. The prover must read the account's on-chain viewing-key slot at its base block; that slot only exists once the deploy is finalized. Wait ~10 blocks after the deploy receipt before registering.
+- **Freshly topped-up account → deposit.** You cannot `deposit()` tokens into the pool in the same block (or within ~10 blocks) of the ERC-20 transfer that funded the account. The prover reads the depositor's token balance at its base block; if the transfer hasn't propagated to that base block, the proof is invalid or the deposit fails on-chain due to insufficient balance.
+
+```typescript
+// After topping up the account with tokens, wait before depositing into the pool.
+const topupReceipt = await provider.waitForTransaction(topupTxHash);
+const topupBlock = topupReceipt.block_number;
+
+let latestBlock = await provider.getBlockNumber();
+while (topupBlock >= latestBlock - 10) {
+  await sleep(blockTime);
+  latestBlock = await provider.getBlockNumber();
+}
+
+// Safe to deposit now.
+const result = await transfers
+  .build({ autoDiscover: { notes: "refresh", channels: "refresh" } })
+  .with(STRK, (t) => t.deposit({ amount: 100n }))
+  .surplusTo(self)
+  .execute();
+```
+
+Rule of thumb: any on-chain state that the pool proof reads — account viewing key, depositor token balance, nullifier set — must have been written at least 10 blocks before the proof's base block.
+
 ## Configuration
 
 ### `createPrivateTransfers(params)`
@@ -423,6 +555,16 @@ if (!page.cursor.historyComplete) {
   );
 }
 ```
+
+**Completeness caveats.** The history feed is anchored on the user's notes — each page scans backward one note block at a time and attaches the events that sit in that block. A few transaction shapes fall outside this anchor:
+
+- **Bundled multi-user deposits** — when another user's deposit shares a transaction with your notes (atypical), it is filtered out of your history by `user_address` to avoid double-counting balances. Your own deposits in the same transaction still appear.
+- **Notes above the cursor / `blockIdentifier` upper bound** — if the client-provided cursor or `blockIdentifier` disagrees with the actual block of a discovered note (stale cursor, malicious input, or chain drift), those notes are skipped silently and the scanner advances.
+
+**Withdrawal attribution caveat.** On-chain `Withdrawal` events expose only the recipient address; the initiating `user_addr` is encrypted. The service cannot filter in-block withdrawals by initiator, so:
+
+- A withdrawal that shares a transaction with your notes is attached to that transaction in your history, even if a different user initiated it (e.g. A withdraws to B while B has notes in the same tx).
+- In multi-user batched transactions, unrelated withdrawals may be attached to any user with matched notes in the batch.
 
 ## Execute result
 

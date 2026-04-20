@@ -43,11 +43,10 @@ All components in a row are tested together. Use matching revisions when deployi
 
 | Component | Docs | Tag |
 |-----------|------|-------------|
-| Sequencer | | [`APOLLO-0.14.2-RC.6`](https://github.com/starkware-libs/sequencer/releases/tag/APOLLO-0.14.2-RC.6) |
-| Transaction Prover | [README](https://github.com/starkware-libs/sequencer/tree/avi/privacy/configmap-docs/crates/starknet_transaction_prover) | [`ghcr.io/starkware-libs/starknet-privacy/transaction-prover:PRIVACY-0.14.2-RC.3`](https://github.com/starkware-libs/sequencer/pkgs/container/starknet-privacy%2Ftransaction-prover/743671200?tag=PRIVACY-0.14.2-RC.3) |
-| Discovery Service | [README](deploy/discovery-service/README.md) | [`ghcr.io/starkware-libs/starknet-privacy/discovery-service:PRIVACY-0.14.2-RC.2`](https://github.com/starkware-libs/starknet-privacy/pkgs/container/starknet-privacy%2Fdiscovery-service) |
-| Pathfinder* | [docs](https://eqlabs.github.io/pathfinder/getting-started/running-pathfinder) | [`eqlabs/pathfinder:v0.22.1`](https://hub.docker.com/layers/eqlabs/pathfinder/v0.22.1/images/sha256-ff7e7b1b2121c1abc754701f6acd24587da21b26c010061633ebc1f270f08aa7) |
-| SDK | [README](sdk/README.md) | [`PRIVACY-0.14.2-RC.2`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.2) |
+| Transaction Prover | [README](https://github.com/starkware-libs/sequencer/tree/avi/privacy/configmap-docs/crates/starknet_transaction_prover) | [`ghcr.io/starkware-libs/starknet-privacy/transaction-prover:PRIVACY-0.14.2-RC.4`](https://github.com/starkware-libs/sequencer/pkgs/container/starknet-privacy%2Ftransaction-prover?tag=PRIVACY-0.14.2-RC.4) |
+| Discovery Service | [README](deploy/discovery-service/README.md) | [`ghcr.io/starkware-libs/starknet-privacy/discovery-service:PRIVACY-0.14.2-RC.3`](https://github.com/starkware-libs/starknet-privacy/pkgs/container/starknet-privacy%2Fdiscovery-service) |
+| Pathfinder* | [docs](https://eqlabs.github.io/pathfinder/getting-started/running-pathfinder) | [`eqlabs/pathfinder:v0.22.3`](https://hub.docker.com/layers/eqlabs/pathfinder/v0.22.3/images/sha256-e3ae2c2895d18dd17a3bb64c3582c6758e4701a248dff9f957b69f1ad63be7f7) |
+| SDK | [README](sdk/README.md) | [`PRIVACY-0.14.2-RC.3`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.3) |
 
 \* For the transaction prover to work correctly with Pathfinder, set `PATHFINDER_STORAGE_STATE_TRIES=10000`.
 
@@ -55,9 +54,9 @@ All components in a row are tested together. Use matching revisions when deployi
 
 | Contract | Docs | Tag | Class Hash |
 |----------|------|-----|------------|
-| Privacy Pool | [README](packages/privacy/README.md) | [`PRIVACY-0.14.2-RC.2`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.2) | `0x715b22abfb60815623f4127ba64bd2f93613d8a5c1e519841eaab444659d2af` |
-| Ekubo Helper | | | |
-| Vesu Helper | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_helper) | [`PRIVACY-0.14.2-RC.2`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.2) | |
+| Privacy Pool | [README](packages/privacy/README.md) | [`PRIVACY-0.14.2-RC.3`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.3) | `0x30b8c540cf04d8ef0f4db2a9098d9cc0e35e83af1cb3325f5a4f40144b4b30b` |
+| Ekubo Helper | [README](packages/ekubo_swap_helper/README.md) | [`PRIVACY-0.14.2-RC.3`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.3) | `0x61047c201f235d66cab8a0c4768ea0ca9f900c64b478a90531fb2fb30e061dc` |
+| Vesu Helper | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_helper) | [`PRIVACY-0.14.2-RC.3`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.3) | `0x2fec72887f6431e4a66090bec49ecf8bde30cf39a7045e4ed6ce57447704b24` |
 
 ## Repository map
 

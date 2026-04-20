@@ -51,18 +51,18 @@ jobs:
       - name: Install Scarb
         uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.17.0-rc.4"
+          scarb-version: "2.17.0"
 
       - uses: software-mansion/setup-universal-sierra-compiler@v1
         with:
-          universal-sierra-compiler-version: "v2.8.0-rc.0"
+          universal-sierra-compiler-version: "v2.8.0"
 
       - name: Install starknet-foundry via asdf
         uses: asdf-vm/actions/install@v3
         with:
           asdf_branch: v0.14.1
           tool_versions: |
-            starknet-foundry nightly-2026-02-20
+            starknet-foundry 0.59.0
 
       - name: Regenerate Cairo contract artifacts
         run: npm run generate
@@ -94,11 +94,11 @@ jobs:
       - name: Install Scarb
         uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.17.0-rc.4"
+          scarb-version: "2.17.0"
 
       - uses: software-mansion/setup-universal-sierra-compiler@v1
         with:
-          universal-sierra-compiler-version: "v2.8.0-rc.0"
+          universal-sierra-compiler-version: "v2.8.0"
 
       - name: Install starknet-devnet
         run: |

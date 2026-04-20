@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.2-RC.3
+
 ### Breaking
 
 - Switch `starknet` dependency from custom fork (`starkware-libs/starknet.js#PRIVACY-0.14.2-RC.2`) to official `starknet@10.0.0-beta.6`
@@ -11,12 +13,6 @@
 - `fetchHistory` option renamed from `blockRef` to `blockIdentifier` (type: `BlockIdentifier`)
 - `HistoryPage.blockRef` changed from `string` to `BlockIdentifier`
 - `HistoryCursor.beginBlockNumber` is now optional (`undefined` on first page; server resolves from `block_ref`)
-
-### Changed
-
-- `block_ref` in API models now accepts block hash (hex string), block number (integer), or tag (`"latest"`, `"pre_confirmed"`, `"l1_accepted"`). Wire format is backwards compatible — block hashes remain plain hex strings.
-- `discoverNotes` and `discoverChannels` accept optional `blockIdentifier` param to pin discovery reads to a specific block
-- Compiler passes `ExecuteOptions.provingBlockId` to discovery as `blockIdentifier`, ensuring discovery and proving use the same block state
 
 ### Added
 
@@ -31,15 +27,15 @@
   - Same relay/key-pinning options as `IndexerDiscoveryProvider`
   - Also available via `ProofProviderConfig.ohttp` in `createPrivateTransfers()` factory
 - Export `OhttpOption` type for reuse in consumer code
-
-### Added
-
 - `fee` action type in `classifyTransaction` for withdrawals to fee recipients (e.g. paymaster forwarder), distinct from regular withdrawals
 - `ClassifyOptions.feeRecipients` parameter on `classifyTransaction` to identify fee recipient addresses
 - `Note.created` is now populated by `IndexerDiscoveryProvider` from the discovery service's per-note `block_number` (slot's `last_update_block`), enabling clients to enforce the 10-block maturity rule before spending
 
 ### Changed
 
+- `block_ref` in API models now accepts block hash (hex string), block number (integer), or tag (`"latest"`, `"pre_confirmed"`, `"l1_accepted"`). Wire format is backwards compatible — block hashes remain plain hex strings.
+- `discoverNotes` and `discoverChannels` accept optional `blockIdentifier` param to pin discovery reads to a specific block
+- Compiler passes `ExecuteOptions.provingBlockId` to discovery as `blockIdentifier`, ensuring discovery and proving use the same block state
 - Switch devnet testing from `ProvingServiceProofProvider` to `CallMockProofProvider` with `--proof-mode none` (proofFacts validated, proof ignored)
 - Run channel and note discovery concurrently during transaction compilation to reduce latency
 - `ProofInvocationFactory` builds `INVOKE_TXN_V3` manually instead of using `RpcChannel.prototype.buildTransaction()` (removed in v10)
