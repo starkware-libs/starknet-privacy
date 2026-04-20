@@ -14,16 +14,26 @@ Async jobs remain an option for extreme backfills, but they introduce operationa
 
 ## 6.2 Block Reference Parameter
 
-All discovery methods accept a `block_ref` parameter (a block hash) to fix the head so that all requests within the current cursor "session" are queried against the same state. This block must have a block number greater than `last_synced_block`.
+All discovery methods accept a `block_ref` parameter — a block identifier that pins all storage reads to a specific chain state. It can be:
 
-The `block_ref` becomes the next sync's `last_synced_block`, reducing the search scope for future queries.
+- A **block hash**: `"0x..."` — pins reads to a specific confirmed block.
+- A **block number**: `12345` — pins reads to a specific block height.
+- A **block tag**: `"latest"`, `"pre_confirmed"`, `"l1_accepted"` — pins reads to a dynamic head.
+
+Clients may specify `block_ref` on any request, including the first. When omitted, the server resolves to the current head hash. Explicit values (hash, number, or tag) pass through to the RPC node as-is. On pagination, pass back the `block_ref` from the previous response to ensure consistent reads across pages.
+
+**Consistency guarantees:**
+- **Block hash**: Full consistency — all paginated reads are pinned to the exact same block state. Reorg detection via `last_known_block` works.
+- **Block number**: Best-effort — reads are pinned to a block height, but reorg detection does not apply.
+- **Block tag**: Best-effort — the underlying block may change between paginated requests. Suitable for one-shot queries.
+
+The hash-based `block_ref` from a completed sync becomes the next session's `last_known_block`, reducing the search scope for future queries. If the final `block_ref` is not a block hash, it cannot be used for reorg detection.
 
 **Validation rules:**
 
-- If `block_ref` is null, the service queries against the latest RPC head.
-- If `block_ref` references an unknown block, return error `BLOCK_NOT_FOUND`.
-- If `block_ref` references a block that has been reorged out, return error `BLOCK_REORGED`.
-- If `block_ref` block number is not greater than `last_synced_block` block number, return error `INVALID_BLOCK_RANGE`.
+- If `block_ref` is null, the server resolves to the current head hash.
+- If `block_ref` references an unknown block, the RPC call fails with an error.
+- `block_ref` is not validated for canonicity — that check is done via `last_known_block`.
 
 ## 6.3 Global Cursor Persistence
 
@@ -76,7 +86,7 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
 - `recipient_address`: The recipient's on-chain address.
 - `viewing_key`: The recipient's private viewing key (used for server-side decryption). Validated against the on-chain public key for the given address.
 - `last_known_block`: Optional. Block hash from last completed sync session. Used for reorg detection on first request. Server returns `409 BLOCK_REORGED` if this block is no longer canonical. Leave empty on fresh syncs or pagination requests.
-- `block_ref`: Optional. Block hash to query state at. Ensures consistent reads across paginated requests. Leave empty on first request (server uses current head and sets it in response).
+- `block_ref`: Optional. Block identifier — a hex string (`"0x..."`), a block number (`12345`), or a tag (`"latest"`, `"pre_confirmed"`, `"l1_accepted"`). Pins storage reads to a specific block. When omitted, the server uses the current head hash.
 - `cursor`: Composite `DiscoveryCursor` for pagination. Default (empty) on first request.
 
 **Progress fields in cursor:**
@@ -121,7 +131,7 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
 
 **Response fields:**
 
-- `block_ref`: Block hash pinning all reads. Pass back as `block_ref` in subsequent requests.
+- `block_ref`: Block identifier pinning all reads. Pass back as `block_ref` in subsequent requests.
 - `channels`: Discovered incoming channels (one per sender).
 - `subchannels`: Discovered incoming subchannels (one per sender×token pair).
 - `notes`: Discovered notes with sender and token context.
@@ -131,9 +141,9 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
 
 **User flow:**
 
-1. **First request**: Send with `last_known_block` set to previous session's block hash (or empty if fresh sync).
+1. **First request**: Send with `last_known_block` set to previous session's block hash (or empty if fresh sync). Optionally include `block_ref` to pin reads to a specific block.
 2. **Pagination**: Pass back `block_ref` and `cursor` from response until complete.
-3. **Store for next session**: Save final `block_ref` as your `last_known_block`.
+3. **Store for next session**: If the final `block_ref` is a block hash, save it as your `last_known_block` for reorg detection. Block number or tag refs cannot be used for reorg detection.
 
 **Note filtering:** For each decrypted note, the service derives the nullifier and checks if it exists in contract state. Only unspent notes (those whose nullifier does not exist) are included in the response.
 
@@ -163,7 +173,7 @@ Uses the same `block_ref`/`last_known_block` reorg-detection pattern and composi
 - `sender_address`: The sender's on-chain address.
 - `viewing_key`: The sender's private viewing key (used for server-side decryption of outgoing channel data). Validated against the on-chain public key for the given address.
 - `last_known_block`: Optional. For reorg detection on first request of a new sync session.
-- `block_ref`: Optional. Block hash for consistent reads across paginated requests.
+- `block_ref`: Optional. Block identifier for consistent reads across requests. Can be specified on any request, including the first.
 - `cursor`: Composite `DiscoveryCursor` for pagination. Default (empty) on first request.
 - `recipients`: Optional. When set, only return channels for these recipient addresses.
 
@@ -191,7 +201,7 @@ Uses the same `block_ref`/`last_known_block` reorg-detection pattern and composi
 }
 ```
 
-- `block_ref`: Block hash pinning all reads. Pass back as `block_ref` in subsequent requests.
+- `block_ref`: Block identifier pinning all reads. Pass back as `block_ref` in subsequent requests.
 - `channels`: Discovered outgoing channels (one per recipient). `precomputed: true` for recipients requested via `recipients` filter that don't yet have an on-chain channel.
 - `subchannels`: Discovered subchannels (one per recipient×token pair). `last_note_index` is the last note index in the subchannel, or `null` if no notes exist.
 - `cursor`: Updated cursor for continuation.
@@ -233,7 +243,7 @@ A non-paginated readiness check that reports what on-chain setup exists for a `(
 }
 ```
 
-- `block_ref`: Block hash pinning the reads. Clients can use this for consistency.
+- `block_ref`: Block identifier pinning the reads. Clients can use this for consistency.
 - `sender_registered`: Whether the sender has a public key registered on-chain.
 - `channel_exists`: Whether the channel from sender to recipient exists. Always `false` if `sender_registered` is `false`.
 - `subchannel_exists`: Whether the token subchannel exists within the channel. Always `false` if `channel_exists` is `false`.
@@ -281,7 +291,7 @@ Retrieves paginated transaction history by scanning backward through note subcha
 - `user_address`: The user's on-chain address (used for withdrawal event filtering).
 - `max_transactions`: Maximum number of transactions to return per page. Capped by server `max_history_transactions` limit.
 - `last_known_block`: Optional. Block hash from last completed sync session. Used for reorg detection on first request.
-- `block_ref`: Optional. Block hash for consistent storage reads across paginated requests. Leave empty on first request.
+- `block_ref`: Optional. Block identifier for consistent storage reads across requests. Can be specified on any request, including the first.
 - `cursor`: History cursor for pagination.
   - `subchannels`: List of subchannels to scan. Each contains the `channel_key`, `token`, `channel_kind` (`incoming`, `outgoing`, `self_channel`), `counterparty` address, and `next_index` (next note index to read descending, `null` if exhausted).
   - `begin_block_number`: Inclusive upper bound for event queries. Set to `0` on first request (server resolves from chain head). On subsequent requests, use the value from the previous response cursor.
@@ -322,7 +332,7 @@ Retrieves paginated transaction history by scanning backward through note subcha
 }
 ```
 
-- `block_ref`: Block hash pinning all storage reads. Pass back as `block_ref` in subsequent requests.
+- `block_ref`: Block identifier pinning all storage reads. Pass back as `block_ref` in subsequent requests.
 - `transactions`: Transactions sorted by `block_number` descending. Each contains matched notes, deposits, withdrawals, and open note deposits from the same transaction.
 - `cursor`: Updated cursor for continuation. Pass back in next request.
 

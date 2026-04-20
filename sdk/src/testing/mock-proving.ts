@@ -5,7 +5,7 @@
  * to execute the invocation and capture the output.
  */
 
-import type { constants, ETransactionVersion3, ProviderInterface } from "starknet";
+import type { BlockIdentifier, constants, ETransactionVersion3, ProviderInterface } from "starknet";
 import { EDAMode, encode, hash, num, stark } from "starknet";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js";
@@ -31,7 +31,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     return getDefaultProofDetails(this.chainId);
   }
 
-  async prove(invocation: ProofInvocation): Promise<Proof> {
+  async prove(invocation: ProofInvocation, blockIdentifier?: BlockIdentifier): Promise<Proof> {
     // Validate signature similar to how __execute__ does in the contract.
     // compile_actions skips this since view functions don't have tx_info.
     await this.validateSignature(invocation);
@@ -40,13 +40,19 @@ export class CallMockProofProvider implements ProofProviderInterface {
     // Layout: [1, to, selector, inner_len, ...inner_calldata]
     const executeViewCalldata = extractExecuteViewCalldata(invocation.calldata as string[]);
 
-    const result = await this.provider.callContract({
-      contractAddress: invocation.sender_address,
-      entrypoint: "compile_actions",
-      calldata: executeViewCalldata,
-    });
+    const result = await this.provider.callContract(
+      {
+        contractAddress: invocation.sender_address,
+        entrypoint: "compile_actions",
+        calldata: executeViewCalldata,
+      },
+      blockIdentifier
+    );
 
-    const poolClassHash = await this.provider.getClassHashAt(invocation.sender_address);
+    const poolClassHash = await this.provider.getClassHashAt(
+      invocation.sender_address,
+      blockIdentifier
+    );
 
     // Build proof facts for on-chain validation when provider supports getBlock (e.g. e2e with RpcProvider).
     // Blockifier requires base_block_number to be at least STORED_BLOCK_HASH_BUFFER blocks behind current.

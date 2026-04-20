@@ -328,15 +328,15 @@ const result = await transfers
   .execute();
 ```
 
-| Option            | Type                    | Description                                                                           |
-| ----------------- | ----------------------- | ------------------------------------------------------------------------------------- |
-| `autoRegister`    | `boolean`               | Automatically register if user has no viewing key on-chain                            |
-| `autoSetup`       | `boolean`               | Automatically open channels and token subchannels as needed                           |
-| `autoSelectNotes` | `"all" \| "naive"`      | Automatically select input notes (`"all"` uses every note, `"naive"` selects minimum) |
-| `autoDiscover`    | `{ notes?, channels? }` | Refresh notes/channels before executing (`"missing"`, `"refresh"`, or `"all"`)        |
-| `registry`        | `PrivateRegistry`       | User's private state (channels, notes, cursor)                                        |
-| `registryConst`   | `boolean`               | If true, returns a new registry instead of mutating the provided one                  |
-| `provingBlockId`  | `ProvingBlockId`        | Block identifier to use for proving                                                   |
+| Option            | Type                    | Description                                                                                                                                                      |
+| ----------------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `autoRegister`    | `boolean`               | Automatically register if user has no viewing key on-chain                                                                                                       |
+| `autoSetup`       | `boolean`               | Automatically open channels and token subchannels as needed                                                                                                      |
+| `autoSelectNotes` | `"all" \| "naive"`      | Automatically select input notes (`"all"` uses every note, `"naive"` selects minimum)                                                                            |
+| `autoDiscover`    | `{ notes?, channels? }` | Refresh notes/channels before executing (`"missing"`, `"refresh"`, or `"all"`)                                                                                   |
+| `registry`        | `PrivateRegistry`       | User's private state (channels, notes, cursor)                                                                                                                   |
+| `registryConst`   | `boolean`               | If true, returns a new registry instead of mutating the provided one                                                                                             |
+| `provingBlockId`  | `ProvingBlockId`        | Block identifier for proving and discovery — pins both note/channel discovery and proof generation to the same block state. Can be a block hash, number, or tag. |
 
 ## Discovery
 
@@ -353,6 +353,7 @@ const requirement = await transfers.discoverRequirement(recipient, token);
 const { notes, timestamp } = await transfers.discoverNotes({
   tokens: [STRK],
   cursor: previousCursor,
+  blockIdentifier: 42, // optional: pin reads to a specific block
 });
 // notes: AddressMap<Note[]> — unspent notes keyed by token address
 ```
@@ -362,9 +363,22 @@ const { notes, timestamp } = await transfers.discoverNotes({
 ```typescript
 const { timestamp, channels, total } = await transfers.discoverChannels("all", {
   cursor: previousCursor,
+  blockIdentifier: "pre_confirmed", // optional: pin reads to a specific block
 });
 // channels: AddressMap<Channel> — channels keyed by recipient address
 ```
+
+### Block identifier consistency
+
+The optional `blockIdentifier` parameter pins storage reads to a specific block. Consistency guarantees depend on the type:
+
+| Type                         | Consistency                                                          | Reorg detection              |
+| ---------------------------- | -------------------------------------------------------------------- | ---------------------------- |
+| Block hash (`"0x..."`)       | Full — identical state across all paginated requests                 | Yes (via `last_known_block`) |
+| Block number (`42`)          | Stable height, but may reference a different branch after reorg      | No                           |
+| Block tag (`"latest"`, etc.) | Best-effort — underlying block may change between paginated requests | No                           |
+
+When `provingBlockId` is set in `ExecuteOptions`, the compiler automatically passes it as `blockIdentifier` to `discoverNotes` and `discoverChannels`, ensuring discovery and proving use the same block state.
 
 ### Transaction history
 
