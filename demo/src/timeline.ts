@@ -11,6 +11,7 @@ export class Timeline {
   readonly spans: Span[] = [];
   private stack: Span[] = [];
   private enriched = false;
+  onStepChange?: (label: string) => void;
 
   begin(label: string): void {
     const span: Span = { label, startMs: performance.now(), endMs: null, children: [] };
@@ -21,6 +22,7 @@ export class Timeline {
       this.spans.push(span);
     }
     this.stack.push(span);
+    this.onStepChange?.(label);
   }
 
   end(): void {

@@ -37,7 +37,7 @@ export function StatusBar({ status }: Props) {
 
   return (
     <div className="status-bar">
-      {status.pending && <span className="pending">{status.action ?? "Transaction"} pending...</span>}
+      {status.pending && <span className="pending">{status.action ?? "Transaction"}...</span>}
       {status.lastTxHash && (
         <span className="success">
           Tx: <code>{status.lastTxHash}</code>

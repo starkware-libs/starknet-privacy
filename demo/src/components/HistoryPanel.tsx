@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import type { TransactionDisplay, ActionDisplay } from "../hooks/useHistory.ts";
 import { formatTokenAmount, formatRelativeTime } from "../format.ts";
 
@@ -33,6 +33,21 @@ export function HistoryPanel({
   const [expandedIndexes, setExpandedIndexes] = useState<Set<number>>(
     new Set(),
   );
+  const [glowHashes, setGlowHashes] = useState<Set<string>>(new Set());
+  const prevCountRef = useRef(transactions.length);
+
+  useEffect(() => {
+    const prevCount = prevCountRef.current;
+    prevCountRef.current = transactions.length;
+    if (transactions.length > prevCount && prevCount > 0) {
+      const newHashes = new Set(
+        transactions.slice(0, transactions.length - prevCount).map((tx) => tx.transactionHash),
+      );
+      setGlowHashes(newHashes);
+      const timer = setTimeout(() => setGlowHashes(new Set()), 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [transactions]);
 
   function toggleExpanded(index: number) {
     setExpandedIndexes((previous) => {
@@ -59,7 +74,7 @@ export function HistoryPanel({
         return (
           <div
             key={transactionIndex}
-            className={`history-row ${expanded ? "history-row-expanded" : ""}`}
+            className={`history-row ${expanded ? "history-row-expanded" : ""} ${glowHashes.has(transaction.transactionHash) ? "glow" : ""}`}
           >
             <div
               className="history-row-summary"

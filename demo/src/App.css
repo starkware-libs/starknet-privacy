@@ -1065,3 +1065,35 @@ input[type="number"] {
   margin: 4px 0 0;
   text-align: center;
 }
+
+@keyframes glow-pulse {
+  0% {
+    box-shadow: 0 0 4px rgba(88, 166, 255, 0.6), inset 0 0 4px rgba(88, 166, 255, 0.1);
+    border-color: #58a6ff88;
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(88, 166, 255, 0.4), inset 0 0 8px rgba(88, 166, 255, 0.05);
+    border-color: #58a6ff44;
+  }
+  100% {
+    box-shadow: none;
+    border-color: #30363d;
+  }
+}
+
+.history-row.glow {
+  animation: glow-pulse 2s ease-out;
+}
+
+@keyframes row-glow {
+  0% {
+    background: rgba(88, 166, 255, 0.15);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.balances tr.glow td {
+  animation: row-glow 2s ease-out;
+}

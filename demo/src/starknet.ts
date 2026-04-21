@@ -15,7 +15,7 @@ export function createDiscoveryProvider(
   poolAddress: string,
 ): InstanceType<typeof IndexerDiscoveryProvider> {
   if (config.ohttpEnabled === false) {
-    return new IndexerDiscoveryProvider(config.backendIndexerUrl ?? config.indexerUrl, poolAddress);
+    return new IndexerDiscoveryProvider(config.indexerUrl, poolAddress);
   }
   if (config.backendIndexerUrl) {
     return new IndexerDiscoveryProvider(config.backendIndexerUrl, poolAddress, {

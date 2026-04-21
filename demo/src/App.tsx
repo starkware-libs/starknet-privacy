@@ -17,6 +17,7 @@ import { TransactionBuilder } from "./components/TransactionBuilder.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
 import { ServiceHealthBar } from "./components/ServiceHealthBar.tsx";
 import { useTransactionBuilder } from "./hooks/useTransactionBuilder.ts";
+import { useLastTxBlockNumber } from "./hooks/useLastTxBlock.ts";
 import { useServiceHealth } from "./hooks/useServiceHealth.ts";
 import { DefiPanel } from "./components/DefiPanel.tsx";
 import { useTokenMetadata } from "./hooks/useTokenMetadata.ts";
@@ -99,9 +100,9 @@ export function App() {
 
   const registry = useRef(createEmptyRegistry());
 
-  // Reset registry in-place when account or pool changes so discovery starts
-  // fresh. Mutating the existing object (rather than replacing it) ensures that
-  // callbacks captured during this render cycle see the cleared state.
+  // Reset registry BEFORE useHistory's auto-fetch effect runs on account/pool
+  // switch. Otherwise useHistory captures the previous account's cursor and
+  // calls fetchHistory against the new account's address, producing mixed data.
   useEffect(() => {
     const reg = registry.current;
     reg.cursor = undefined;
@@ -128,6 +129,11 @@ export function App() {
     refreshLatest: refreshHistoryLatest,
   } = useHistory(provider, poolAddress, effectiveConfig, activeAccount, accounts, registry.current);
 
+  const { lastTxBlockNumberRef, updateLastTxBlockNumber } = useLastTxBlockNumber(
+    activeAccount?.address,
+    historyTransactions,
+  );
+
   const refreshAll = useCallback(async () => {
     // Reset cursors so refresh does a full re-sync — incremental discovery
     // only returns new notes, so stale cursors would yield empty results
@@ -140,7 +146,16 @@ export function App() {
     refreshHistoryLatest();
   }, [refresh, refreshHistoryLatest]);
 
+  // Reset registry in-place before each refresh. Incremental discovery returns
+  // only delta notes past registry.cursor, so any change that rebuilds refresh
+  // (account, pool, config, transfers) must first clear cursors or balances
+  // will zero out. Mutating (not replacing) preserves the ref identity that
+  // captured callbacks rely on.
   useEffect(() => {
+    const reg = registry.current;
+    reg.cursor = undefined;
+    reg.channels = createEmptyRegistry().channels;
+    reg.notes = createEmptyRegistry().notes;
     refresh();
   }, [refresh]);
 
@@ -153,6 +168,8 @@ export function App() {
     accounts,
     refreshAll,
     refreshBalances,
+    lastTxBlockNumberRef,
+    updateLastTxBlockNumber,
   );
 
   const { status: builderStatus, executeBatch } = useTransactionBuilder(
@@ -163,6 +180,8 @@ export function App() {
     effectiveConfig,
     accounts,
     refreshAll,
+    lastTxBlockNumberRef,
+    updateLastTxBlockNumber,
   );
 
   const serviceHealth = useServiceHealth(provider, effectiveConfig);
