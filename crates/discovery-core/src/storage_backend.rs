@@ -54,8 +54,14 @@ pub trait StorageBackend: Send + Sync {
     type Snapshot: StorageSnapshot;
 
     /// Creates a snapshot at the specified block for the given contract.
-    /// If `block_id` is `None`, uses the latest block.
-    async fn snapshot(&self, contract_address: Felt, block_id: Option<BlockId>) -> Self::Snapshot;
+    /// If `block_id` is `None`, uses the latest block. Returns an error when
+    /// the block id cannot be resolved to a concrete number (e.g. RPC failure
+    /// when resolving `Tag(PreConfirmed)`).
+    async fn snapshot(
+        &self,
+        contract_address: Felt,
+        block_id: Option<BlockId>,
+    ) -> Result<Self::Snapshot, StorageError>;
 }
 
 /// Consistent view of storage at a specific block.

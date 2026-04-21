@@ -15,7 +15,7 @@ use discovery_core::sync::incoming_state::IncomingSubchannel;
 use discovery_core::sync::outgoing_state::OutgoingSubchannel;
 use serde::{Deserialize, Serialize};
 use starknet_core::types::{BlockId, Felt};
-use tracing::warn;
+use tracing::{debug, warn};
 
 use super::block_id_serde;
 use crate::chain_state::ChainHead;
@@ -70,31 +70,34 @@ impl ApiErrorResponse {
     }
 }
 
+/// Maps [`discovery_core::storage_backend::StorageError`] (e.g. from
+/// `StorageBackend::snapshot`) to an HTTP status + API error response.
+pub fn storage_error_to_response(
+    error: discovery_core::storage_backend::StorageError,
+) -> (StatusCode, ApiErrorResponse) {
+    use discovery_core::storage_backend::StorageError;
+    match error {
+        StorageError::ContractNotFound => (
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::new(
+                error_codes::CONTRACT_NOT_FOUND,
+                "Contract not found at the configured address",
+            ),
+        ),
+        other => {
+            debug!("Storage error: {}", other);
+            (
+                StatusCode::SERVICE_UNAVAILABLE,
+                ApiErrorResponse::new(error_codes::STORAGE_ERROR, "Storage backend error"),
+            )
+        }
+    }
+}
+
 /// Maps [`DiscoveryError`] to an HTTP status + API error response.
 pub fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErrorResponse) {
     match error {
-        DiscoveryError::Storage(storage_err) => {
-            use discovery_core::storage_backend::StorageError;
-            if matches!(storage_err, StorageError::ContractNotFound) {
-                warn!("Contract not found during discovery");
-                (
-                    StatusCode::BAD_REQUEST,
-                    ApiErrorResponse::new(
-                        error_codes::CONTRACT_NOT_FOUND,
-                        "Contract not found at the configured address",
-                    ),
-                )
-            } else {
-                warn!("Storage error during discovery: {}", storage_err);
-                (
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    ApiErrorResponse::new(
-                        error_codes::RPC_UNAVAILABLE,
-                        "Upstream RPC is unavailable",
-                    ),
-                )
-            }
-        }
+        DiscoveryError::Storage(storage_err) => storage_error_to_response(storage_err),
         DiscoveryError::Decryption { index, source } => {
             warn!("Decryption failed at channel index {}: {}", index, source);
             (
@@ -118,6 +121,13 @@ pub fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErr
                 "Insufficient I/O budget: needed {}, available {}",
                 needed, available
             );
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
+            )
+        }
+        DiscoveryError::CostOverflow(cost) => {
+            warn!("I/O cost overflow: {} exceeds usize", cost);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
@@ -355,6 +365,7 @@ pub mod error_codes {
     pub const SERVICE_UNAVAILABLE: &str = "SERVICE_UNAVAILABLE";
     pub const CONTRACT_NOT_FOUND: &str = "CONTRACT_NOT_FOUND";
     pub const RPC_UNAVAILABLE: &str = "RPC_UNAVAILABLE";
+    pub const STORAGE_ERROR: &str = "STORAGE_ERROR";
     pub const INTERNAL_ERROR: &str = "INTERNAL_ERROR";
     pub const OHTTP_DECAPSULATION_FAILED: &str = "OHTTP_DECAPSULATION_FAILED";
     pub const OHTTP_INVALID_FORMAT: &str = "OHTTP_INVALID_FORMAT";

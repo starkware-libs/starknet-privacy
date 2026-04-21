@@ -390,11 +390,13 @@ import { classifyTransaction } from "@starkware-libs/starknet-privacy-sdk";
 const { notes, cursor: notesCursor } = await transfers.discoverNotes();
 const { channels } = await transfers.discoverChannels("all");
 
+// First page — blockIdentifier pins both storage reads and the event scan upper bound.
+// Use "pre_confirmed" to include events from pre-confirmed blocks.
 const page = await discovery.fetchHistory(
   userAddress,
   notesCursor,
   { channels },
-  { maxTransactions: 10 }
+  { maxTransactions: 10, blockIdentifier: "latest" }
 );
 
 for (const tx of page.transactions) {
@@ -417,7 +419,7 @@ if (!page.cursor.historyComplete) {
     userAddress,
     notesCursor,
     { channels },
-    { maxTransactions: 10, historyCursor: page.cursor, blockRef: page.blockRef }
+    { maxTransactions: 10, historyCursor: page.cursor, blockIdentifier: page.blockRef }
   );
 }
 ```

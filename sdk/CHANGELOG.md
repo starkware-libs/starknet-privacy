@@ -8,8 +8,9 @@
 - `ProofInvocation` type now imports `INVOKE_TXN_V3` from `@starknet-io/starknet-types-0101` (was `@starknet-io/starknet-types-010`)
 - Removed `@starknet-io/starknet-types-09` direct dependency (now resolved transitively via starknet)
 - **Node.js >= 24** now required (due to `ohttp-ts` dependency using WebCrypto APIs)
-- `fetchHistory` `blockRef` option changed from `string` to `BlockIdentifier`
+- `fetchHistory` option renamed from `blockRef` to `blockIdentifier` (type: `BlockIdentifier`)
 - `HistoryPage.blockRef` changed from `string` to `BlockIdentifier`
+- `HistoryCursor.beginBlockNumber` is now optional (`undefined` on first page; server resolves from `block_ref`)
 
 ### Changed
 

@@ -8,6 +8,7 @@ use std::sync::LazyLock;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use starknet_core::types::BlockId;
 use starknet_core::utils::starknet_keccak;
 use starknet_types_core::felt::Felt;
 
@@ -95,33 +96,33 @@ pub enum PrivacyPoolEventContent {
 #[async_trait]
 pub trait IEvents: Send + Sync {
     /// Fetches all privacy pool events in a single block.
-    ///
-    /// Parses all known event types (Deposit, Withdrawal, EncNoteCreated, OpenNoteDeposited).
-    /// Unknown selectors are silently skipped. Malformed known events return an error.
-    async fn get_block_events(
-        &self,
-        block_number: u64,
-    ) -> Result<Vec<PrivacyPoolEvent>, StorageError>;
+    async fn get_block_events(&self, block: BlockId)
+        -> Result<Vec<PrivacyPoolEvent>, StorageError>;
 
-    /// Fetches `Withdrawal` events for the given address within a block range (inclusive).
-    ///
-    /// The address matches the recipient (key position 1 in `Withdrawal`).
+    /// Fetches `Withdrawal` events for the given address within a block range.
     async fn get_withdrawal_events(
         &self,
         address: Felt,
-        from_block: u64,
-        to_block: u64,
+        from_block: BlockId,
+        to_block: BlockId,
     ) -> Result<Vec<PrivacyPoolEvent>, StorageError>;
 
-    /// Fetches `ViewingKeySet` events for the given user within a block range (inclusive).
-    ///
-    /// The address matches the user (key position 1 in `ViewingKeySet`).
+    /// Fetches `ViewingKeySet` events for the given user within a block range.
     async fn get_viewing_key_set_events(
         &self,
         user_address: Felt,
-        from_block: u64,
-        to_block: u64,
+        from_block: BlockId,
+        to_block: BlockId,
     ) -> Result<Vec<PrivacyPoolEvent>, StorageError>;
+
+    /// Returns the `BlockId` this view is pinned to (number, hash, or tag).
+    fn block_id(&self) -> BlockId;
+
+    /// Returns the concrete block number this view is pinned to.
+    ///
+    /// Resolved once at snapshot creation and stable thereafter. Used as an
+    /// upper-bound estimator for event-range cost accounting.
+    fn block_number(&self) -> u64;
 }
 
 /// Reason a raw event could not be converted to a typed event.
@@ -221,7 +222,7 @@ fn parse_events(raw_events: Vec<EmittedEvent>) -> Result<Vec<PrivacyPoolEvent>, 
 impl<T: RawEventAccess> IEvents for T {
     async fn get_block_events(
         &self,
-        block_number: u64,
+        block: BlockId,
     ) -> Result<Vec<PrivacyPoolEvent>, StorageError> {
         let selectors = vec![
             *DEPOSIT_SELECTOR,
@@ -229,17 +230,15 @@ impl<T: RawEventAccess> IEvents for T {
             *ENC_NOTE_CREATED_SELECTOR,
             *OPEN_NOTE_DEPOSITED_SELECTOR,
         ];
-        let raw_events = self
-            .get_events(&[selectors], block_number, block_number)
-            .await?;
+        let raw_events = self.get_events(&[selectors], block, block).await?;
         parse_events(raw_events)
     }
 
     async fn get_withdrawal_events(
         &self,
         address: Felt,
-        from_block: u64,
-        to_block: u64,
+        from_block: BlockId,
+        to_block: BlockId,
     ) -> Result<Vec<PrivacyPoolEvent>, StorageError> {
         let raw_events = self
             .get_events(
@@ -254,8 +253,8 @@ impl<T: RawEventAccess> IEvents for T {
     async fn get_viewing_key_set_events(
         &self,
         user_address: Felt,
-        from_block: u64,
-        to_block: u64,
+        from_block: BlockId,
+        to_block: BlockId,
     ) -> Result<Vec<PrivacyPoolEvent>, StorageError> {
         let raw_events = self
             .get_events(
@@ -265,6 +264,14 @@ impl<T: RawEventAccess> IEvents for T {
             )
             .await?;
         parse_events(raw_events)
+    }
+
+    fn block_id(&self) -> BlockId {
+        RawEventAccess::block_id(self)
+    }
+
+    fn block_number(&self) -> u64 {
+        RawEventAccess::block_number(self)
     }
 }
 
@@ -327,7 +334,7 @@ mod tests {
             ),
         ]);
 
-        let events = backend.get_block_events(10).await.unwrap();
+        let events = backend.get_block_events(BlockId::Number(10)).await.unwrap();
         assert_eq!(events.len(), 3);
         assert!(matches!(
             events[0].content,
@@ -346,7 +353,7 @@ mod tests {
     #[tokio::test]
     async fn get_block_events_skips_keyless_events() {
         let backend = MockEventBackend::new(vec![mock_event(10, TX_HASH, vec![], vec![Felt::ONE])]);
-        let events = backend.get_block_events(10).await.unwrap();
+        let events = backend.get_block_events(BlockId::Number(10)).await.unwrap();
         assert!(events.is_empty());
     }
 
@@ -367,7 +374,7 @@ mod tests {
             ),
         ]);
 
-        let events = backend.get_block_events(10).await.unwrap();
+        let events = backend.get_block_events(BlockId::Number(10)).await.unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].block_number, 10);
     }
@@ -381,7 +388,7 @@ mod tests {
             vec![Felt::from(100u64)],
         )]);
 
-        let events = backend.get_block_events(10).await.unwrap();
+        let events = backend.get_block_events(BlockId::Number(10)).await.unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].block_number, 10);
         assert_eq!(events[0].transaction_hash, TX_HASH);
@@ -404,7 +411,7 @@ mod tests {
             vec![Felt::ZERO, Felt::ZERO, Felt::ZERO, Felt::from(75u64)],
         )]);
 
-        let events = backend.get_block_events(20).await.unwrap();
+        let events = backend.get_block_events(BlockId::Number(20)).await.unwrap();
         assert_eq!(events.len(), 1);
         let PrivacyPoolEventContent::Withdrawal(withdrawal) = &events[0].content else {
             panic!("expected Withdrawal");
@@ -433,7 +440,10 @@ mod tests {
             ),
         ]);
 
-        let events = backend.get_withdrawal_events(alice, 0, 100).await.unwrap();
+        let events = backend
+            .get_withdrawal_events(alice, BlockId::Number(0), BlockId::Number(100))
+            .await
+            .unwrap();
         assert_eq!(events.len(), 1);
         let PrivacyPoolEventContent::Withdrawal(withdrawal) = &events[0].content else {
             panic!("expected Withdrawal");
@@ -459,7 +469,10 @@ mod tests {
             ),
         ]);
 
-        let events = backend.get_withdrawal_events(USER, 0, 100).await.unwrap();
+        let events = backend
+            .get_withdrawal_events(USER, BlockId::Number(0), BlockId::Number(100))
+            .await
+            .unwrap();
         assert_eq!(events.len(), 1);
         assert!(matches!(
             events[0].content,
@@ -484,7 +497,10 @@ mod tests {
             ),
         ]);
 
-        let events = backend.get_withdrawal_events(USER, 15, 100).await.unwrap();
+        let events = backend
+            .get_withdrawal_events(USER, BlockId::Number(15), BlockId::Number(100))
+            .await
+            .unwrap();
         assert_eq!(events.len(), 1);
         assert_eq!(events[0].block_number, 20);
     }
@@ -498,7 +514,7 @@ mod tests {
             vec![Felt::from(100u64)],
         )]);
 
-        let result = backend.get_block_events(10).await;
+        let result = backend.get_block_events(BlockId::Number(10)).await;
         assert!(result.is_err());
     }
 
@@ -512,7 +528,7 @@ mod tests {
             vec![Felt::ZERO, Felt::ZERO], // only 2 data elements, need 4
         )]);
 
-        let result = backend.get_block_events(20).await;
+        let result = backend.get_block_events(BlockId::Number(20)).await;
         assert!(result.is_err());
     }
 }

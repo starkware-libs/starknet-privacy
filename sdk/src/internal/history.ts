@@ -17,7 +17,7 @@ export type HistorySubchannel = {
 
 export type HistoryCursor = {
   subchannels: HistorySubchannel[];
-  beginBlockNumber: number;
+  beginBlockNumber?: number;
   historyComplete: boolean;
 };
 
@@ -79,7 +79,7 @@ type ApiHistorySubchannel = {
 
 type ApiHistoryCursor = {
   subchannels: ApiHistorySubchannel[];
-  begin_block_number: number;
+  begin_block_number?: number;
   history_complete: boolean;
 };
 
@@ -169,7 +169,7 @@ export function buildHistoryCursor(
     }
   }
 
-  return { subchannels, beginBlockNumber: 0, historyComplete: false };
+  return { subchannels, historyComplete: false };
 }
 
 /** Converts SDK HistoryCursor → API wire format. */
