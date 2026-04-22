@@ -49,14 +49,13 @@ pub trait IViews: Send + Sync {
         outgoing_channel_id: Felt,
     ) -> Result<EncOutgoingChannelInfo, StorageError>;
 
-    /// Returns the note value for the given note ID.
-    async fn get_note(&self, note_id: Felt) -> Result<Felt, StorageError> {
-        self.get_notes_batch(&[note_id]).await.map(|notes| {
-            notes
-                .first()
-                .copied()
-                .ok_or(StorageError::SlotCountMismatch)
-        })?
+    /// Returns the note value with its last-update block number for the given note ID.
+    async fn get_note_with_block(&self, note_id: Felt) -> Result<StorageResult, StorageError> {
+        self.get_notes_batch_with_block(&[note_id])
+            .await?
+            .into_iter()
+            .next()
+            .ok_or(StorageError::SlotCountMismatch)
     }
 
     /// Checks if a nullifier exists.
@@ -93,11 +92,6 @@ pub trait IViews: Send + Sync {
         start_index: u64,
         count: usize,
     ) -> Result<Vec<EncChannelInfo>, StorageError>;
-
-    /// Batch-reads packed note values for the given note IDs.
-    ///
-    /// Returns a `Vec<Felt>` matching the input length. Zero = note doesn't exist.
-    async fn get_notes_batch(&self, note_ids: &[Felt]) -> Result<Vec<Felt>, StorageError>;
 
     /// Batch-reads public keys for the given addresses.
     ///
@@ -220,21 +214,6 @@ impl<T: RawStorageAccess> IViews for T {
             });
         }
         Ok(result)
-    }
-
-    #[tracing::instrument(
-        name = "get_notes_batch",
-        level = "debug",
-        skip(self, note_ids),
-        fields(count = note_ids.len())
-    )]
-    async fn get_notes_batch(&self, note_ids: &[Felt]) -> Result<Vec<Felt>, StorageError> {
-        let slots: Vec<_> = note_ids
-            .iter()
-            .map(|&nid| storage_slots::notes(nid))
-            .collect();
-        let values = self.read_slots(slots).await?;
-        Ok(values)
     }
 
     #[tracing::instrument(

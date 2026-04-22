@@ -23,13 +23,13 @@ pub const COST_CHANNEL_INFO: usize = 3;
 /// Cost for `get_subchannel_info` (2 storage slot reads).
 pub const COST_SUBCHANNEL_INFO: usize = 2;
 
-/// Cost for `get_note` + `nullifier_exists` (2 storage slot reads).
+/// Cost for `get_note_with_block` + `nullifier_exists` (2 storage slot reads).
 pub const COST_NOTE: usize = 2;
 
 /// Cost for outgoing channel info (3 storage slot reads: salt + enc_recipient_addr + public_key).
 pub const COST_OUTGOING_CHANNEL_INFO: usize = 3;
 
-/// Cost for a single note existence probe (1 `get_note` read, no nullifier check).
+/// Cost for a single note existence probe (1 `get_note_with_block` read, no nullifier check).
 pub const COST_NOTE_PROBING: usize = 1;
 
 /// Cost for a single `get_public_key` (1 storage slot read).

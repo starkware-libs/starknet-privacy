@@ -14,6 +14,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
+use starknet_core::types::StorageResult;
 use starknet_types_core::felt::Felt;
 
 use tracing::{debug, trace};
@@ -51,6 +52,10 @@ pub struct DecryptedNote {
     /// The salt used for encryption.
     #[serde(with = "u128_as_string")]
     pub salt: u128,
+    /// Block in which the note was created (the slot's `last_update_block`).
+    /// Note slots are write-once, so this is also the creation block. Clients
+    /// use it to enforce the 10-block maturity rule before spending.
+    pub block_number: u64,
 }
 
 impl DecryptedNote {
@@ -165,7 +170,7 @@ async fn discover_notes<S: IViews>(
     end_index: u64,
     private_key: &SecretFelt,
     budget: &IoBudget,
-    probe_cache: &HashMap<u64, (Felt, Felt)>,
+    probe_cache: &HashMap<u64, (Felt, StorageResult)>,
 ) -> Result<NotesDiscoveryResult, DiscoveryError> {
     let num_remaining_notes = usize::try_from((end_index + 1).saturating_sub(start_index))
         .map_err(|_| DiscoveryError::InvalidCursor("note range too large".into()))?;
@@ -213,7 +218,7 @@ async fn process_note_batch<S: IViews>(
     token: Felt,
     indices: std::ops::Range<u64>,
     private_key: &SecretFelt,
-    probe_cache: &HashMap<u64, (Felt, Felt)>,
+    probe_cache: &HashMap<u64, (Felt, StorageResult)>,
 ) -> Result<(Vec<DecryptedNote>, usize), DiscoveryError> {
     // Batch-check nullifiers.
     let nullifiers: Vec<_> = indices
@@ -222,9 +227,9 @@ async fn process_note_batch<S: IViews>(
         .collect();
     let spent_flags = pool.nullifier_exists_batch(&nullifiers).await?;
 
-    // Classify: spent → skip, unspent+cached → insert with amount,
+    // Classify: spent → skip, unspent+cached → insert with stored result,
     // unspent+uncached → collect for batch fetch.
-    let mut unspent_notes: HashMap<u64, (Felt, Felt)> = HashMap::new();
+    let mut unspent_notes: HashMap<u64, (Felt, StorageResult)> = HashMap::new();
     let mut indices_to_fetch: Vec<u64> = Vec::new();
     let mut num_skipped = 0;
 
@@ -233,7 +238,7 @@ async fn process_note_batch<S: IViews>(
             num_skipped += 1;
             continue;
         }
-        if let Some(&cached_note) = probe_cache.get(&idx) {
+        if let Some(cached_note) = probe_cache.get(&idx).cloned() {
             num_skipped += 1;
             unspent_notes.insert(idx, cached_note);
         } else {
@@ -241,27 +246,34 @@ async fn process_note_batch<S: IViews>(
         }
     }
 
-    // Fetch amounts for uncached unspent notes, merge into map.
+    // Fetch storage results (value + creation block) for uncached unspent notes.
     if !indices_to_fetch.is_empty() {
         let note_ids: Vec<_> = indices_to_fetch
             .iter()
             .map(|&index| compute_note_id(channel_key, token, index))
             .collect();
-        let packed_values = pool.get_notes_batch(&note_ids).await?;
-        for (index, (note_id, packed)) in indices_to_fetch
+        let storage_results = pool.get_notes_batch_with_block(&note_ids).await?;
+        for (index, (note_id, result)) in indices_to_fetch
             .iter()
-            .zip(note_ids.into_iter().zip(packed_values))
+            .zip(note_ids.into_iter().zip(storage_results))
         {
-            unspent_notes.insert(*index, (note_id, packed));
+            unspent_notes.insert(*index, (note_id, result));
         }
     }
 
     // Decrypt in index order by iterating the original batch range.
     let notes = indices
         .filter_map(|idx| {
-            unspent_notes
-                .remove(&idx)
-                .map(|(note_id, packed)| decrypt_note(channel_key, token, idx, note_id, packed))
+            unspent_notes.remove(&idx).map(|(note_id, result)| {
+                decrypt_note(
+                    channel_key,
+                    token,
+                    idx,
+                    note_id,
+                    result.value,
+                    result.last_update_block,
+                )
+            })
         })
         .collect();
 
@@ -278,9 +290,10 @@ fn decrypt_note(
     index: u64,
     note_id: Felt,
     packed: Felt,
+    block_number: u64,
 ) -> DecryptedNote {
     let (amount, salt) = decrypt_packed_value(packed, channel_key, token, index);
-    trace!(index, amount, salt, "unspent note found");
+    trace!(index, amount, salt, block_number, "unspent note found");
     DecryptedNote {
         sender_addr: Felt::ZERO, // set by the sync orchestrator after discovery
         token: Felt::ZERO,       // set by the sync orchestrator after discovery
@@ -288,6 +301,7 @@ fn decrypt_note(
         note_id,
         amount,
         salt,
+        block_number,
     }
 }
 
@@ -720,19 +734,21 @@ mod tests {
         let token = Felt::from_hex_unchecked("0x67890");
         let index = 0u64;
         let note_id = Felt::from(42u64);
+        let block_number = 1234u64;
 
         let amount: u128 = 50_000_000_000_000_000_000;
         // Pack: salt=1 in upper 128 bits, plaintext amount in lower 128 bits
         let packed = Felt::from(OPEN_NOTE_SALT) * Felt::from(1u128 << 64) * Felt::from(1u128 << 64)
             + Felt::from(amount);
 
-        let note = decrypt_note(&channel_key, token, index, note_id, packed);
+        let note = decrypt_note(&channel_key, token, index, note_id, packed, block_number);
 
         assert!(note.is_open(), "salt==1 note should be open");
         assert_eq!(note.amount, amount, "open note amount should be plaintext");
         assert_eq!(note.salt, OPEN_NOTE_SALT);
         assert_eq!(note.index, index);
         assert_eq!(note.note_id, note_id);
+        assert_eq!(note.block_number, block_number);
     }
 
     #[test]
@@ -741,6 +757,7 @@ mod tests {
         let token = Felt::from_hex_unchecked("0x67890");
         let index = 0u64;
         let note_id = Felt::from(42u64);
+        let block_number = 9999u64;
 
         // Salt >= 2 means encrypted note
         let salt: u128 = 2;
@@ -748,9 +765,44 @@ mod tests {
         let packed = Felt::from(salt) * Felt::from(1u128 << 64) * Felt::from(1u128 << 64)
             + Felt::from(enc_amount);
 
-        let note = decrypt_note(&channel_key, token, index, note_id, packed);
+        let note = decrypt_note(&channel_key, token, index, note_id, packed, block_number);
 
         assert!(!note.is_open(), "salt>=2 note should not be open");
         assert_eq!(note.salt, salt);
+        assert_eq!(note.block_number, block_number);
+    }
+
+    #[tokio::test]
+    async fn test_discover_notes_propagates_block_number() {
+        // Insert two open notes at distinct blocks; verify each DecryptedNote
+        // carries the slot's last_update_block as block_number.
+        use crate::privacy_pool::decryption::OPEN_NOTE_SALT;
+        use crate::privacy_pool::storage_slots;
+
+        let channel_key = SecretFelt::new(Felt::from_hex_unchecked("0x12345"));
+        let token = Felt::from_hex_unchecked("0x67890");
+        let zero_key = SecretFelt::new(Felt::ZERO);
+
+        // Open notes (salt=1) so decryption returns the plaintext amount.
+        let pack = |amount: u128| {
+            Felt::from(OPEN_NOTE_SALT) * Felt::from(1u128 << 64) * Felt::from(1u128 << 64)
+                + Felt::from(amount)
+        };
+
+        let mut backend = MockBackend::empty();
+        let note_id_0 = compute_note_id(&channel_key, token, 0);
+        let note_id_1 = compute_note_id(&channel_key, token, 1);
+        backend.insert_with_block(storage_slots::notes(note_id_0), pack(100), 42);
+        backend.insert_with_block(storage_slots::notes(note_id_1), pack(200), 77);
+
+        let budget = IoBudget::new(200);
+        let (notes, cursor) =
+            discover_with_fresh_cursor(&backend, &channel_key, token, &zero_key, &budget).await;
+
+        assert!(cursor.note_discovery_complete);
+        assert_eq!(notes.len(), 2);
+        let by_index: HashMap<u64, &DecryptedNote> = notes.iter().map(|n| (n.index, n)).collect();
+        assert_eq!(by_index[&0].block_number, 42);
+        assert_eq!(by_index[&1].block_number, 77);
     }
 }

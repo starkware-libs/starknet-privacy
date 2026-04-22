@@ -65,6 +65,7 @@ type ApiIncomingNoteInfo = {
   note_id: string;
   amount: string;
   salt: string;
+  block_number: number;
 };
 
 type ApiOutgoingChannel = {
@@ -648,6 +649,7 @@ export function convertIncomingNotes(
     result.get(token)!.push({
       id: n.note_id,
       amount: BigInt(n.amount),
+      created: n.block_number,
       witness: new Witness(channelKey, n.index, BigInt(n.salt)),
       sender,
       open: n.salt === "1",

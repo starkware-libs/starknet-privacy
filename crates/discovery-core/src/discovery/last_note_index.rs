@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 
+use starknet_core::types::StorageResult;
 use starknet_types_core::felt::Felt;
 
 use crate::discovery::cursor::SubchannelCursor;
@@ -38,7 +39,8 @@ pub fn boundary_budget(max_note_log_index: u32) -> usize {
 /// fully or makes no progress (budget too small).
 ///
 /// Returns `(probe_cache, has_more)`:
-/// - `probe_cache`: index → (note_id, packed_amount) from probe hits (for incoming scan).
+/// - `probe_cache`: index → (note_id, storage_result) from probe hits (for incoming scan).
+///   The `StorageResult` carries both the packed value and the slot's last-update block.
 /// - `has_more`: `true` if budget was insufficient and another call is needed.
 ///
 /// On success, sets `cursor.total_n_notes`. Callers read the result via
@@ -50,7 +52,7 @@ pub async fn find_last_note_index<S: IViews>(
     cursor: &mut SubchannelCursor,
     max_note_log_index: u32,
     budget: &IoBudget,
-) -> Result<(HashMap<u64, (Felt, Felt)>, bool), DiscoveryError> {
+) -> Result<(HashMap<u64, (Felt, StorageResult)>, bool), DiscoveryError> {
     if cursor.total_n_notes.is_some() {
         return Ok((HashMap::new(), false));
     }
@@ -107,16 +109,16 @@ async fn bisect_boundary<S: IViews>(
     token: Felt,
     mut lower_bound: u64,
     mut upper_bound: u64,
-    cache: &mut HashMap<u64, (Felt, Felt)>,
+    cache: &mut HashMap<u64, (Felt, StorageResult)>,
 ) -> Result<(u64, usize), DiscoveryError> {
     let mut step_count = 0;
     while lower_bound + 1 < upper_bound {
         let mid = lower_bound + (upper_bound - lower_bound) / 2;
         let note_id = compute_note_id(channel_key, token, mid);
         step_count += 1;
-        let packed = pool.get_note(note_id).await?;
-        if packed != Felt::ZERO {
-            cache.insert(mid, (note_id, packed));
+        let result = pool.get_note_with_block(note_id).await?;
+        if result.value != Felt::ZERO {
+            cache.insert(mid, (note_id, result));
             lower_bound = mid;
         } else {
             upper_bound = mid;
@@ -147,7 +149,7 @@ async fn exponential_probe<S: IViews>(
     token: Felt,
     start_index: u64,
     max_note_log_index: u32,
-    cache: &mut HashMap<u64, (Felt, Felt)>,
+    cache: &mut HashMap<u64, (Felt, StorageResult)>,
 ) -> Result<Option<(u64, u64)>, DiscoveryError> {
     // Offsets: [0, 1, 3, 7, 15, ..., 2^k - 1] where k = max_note_log_index.
     let offsets: Vec<u64> = (0..=max_note_log_index)
@@ -158,14 +160,14 @@ async fn exponential_probe<S: IViews>(
         .iter()
         .map(|&off| compute_note_id(channel_key, token, start_index + off))
         .collect();
-    let results = pool.get_notes_batch(&note_ids).await?;
+    let results = pool.get_notes_batch_with_block(&note_ids).await?;
 
     let mut lower_bound: Option<u64> = None;
 
-    for (i, &packed) in results.iter().enumerate() {
+    for (i, result) in results.into_iter().enumerate() {
         let idx = start_index + offsets[i];
-        if packed != Felt::ZERO {
-            cache.insert(idx, (note_ids[i], packed));
+        if result.value != Felt::ZERO {
+            cache.insert(idx, (note_ids[i], result));
             lower_bound = Some(idx);
         } else {
             return Ok(lower_bound.map(|lower_bound| (lower_bound, idx)));
