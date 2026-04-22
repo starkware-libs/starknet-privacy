@@ -5,7 +5,6 @@ import {
   createEmptyRegistry,
   type Note,
   type Channel,
-  type PrivateTransfersInterface,
   type PrivateRegistry,
 } from "starknet-sdk";
 import type { AppConfig, AccountConfig } from "../config.ts";
@@ -95,7 +94,6 @@ function readChannel(channel: Channel): ChannelInternal {
 
 export function usePrivateState(
   provider: RpcProvider | undefined,
-  transfers: PrivateTransfersInterface | undefined,
   account: AccountConfig | undefined,
   allAccounts: AccountConfig[],
   poolAddress: string,
@@ -111,7 +109,8 @@ export function usePrivateState(
   }, [account, poolAddress]);
 
   const refresh = useCallback(async () => {
-    if (!provider || !transfers || !account) return;
+    if (!provider || !account || !account.viewingKey) return;
+    const viewingKey = BigInt(account.viewingKey);
     setLoading(true);
     setError(null);
 
@@ -120,18 +119,18 @@ export function usePrivateState(
       const tokenBigInts = config.tokens.map((t) => BigInt(t.address));
 
       const [notesResult, channelsResult, requirement, ...transparentBalances] = await Promise.all([
-        indexer.discoverNotes(BigInt(account.address), BigInt(account.viewingKey), {
+        indexer.discoverNotes(BigInt(account.address), viewingKey, {
           cursor: registry.cursor,
           tokens: tokenBigInts,
           blockIdentifier: "pre_confirmed",
         }),
-        indexer.discoverChannels(BigInt(account.address), BigInt(account.viewingKey), "all", {
+        indexer.discoverChannels(BigInt(account.address), viewingKey, "all", {
           cursor: { channels: registry.channels },
           blockIdentifier: "pre_confirmed",
         }),
         indexer.discoverRequirement(
           BigInt(account.address),
-          BigInt(account.viewingKey),
+          viewingKey,
           BigInt(account.address),
           BigInt(config.tokens[0].address)
         ),
@@ -291,7 +290,7 @@ export function usePrivateState(
     } finally {
       setLoading(false);
     }
-  }, [provider, transfers, account, allAccounts, poolAddress, config, registry]);
+  }, [provider, account, allAccounts, poolAddress, config, registry]);
 
   const refreshBalances = useCallback(async () => {
     if (!provider || !account) return;

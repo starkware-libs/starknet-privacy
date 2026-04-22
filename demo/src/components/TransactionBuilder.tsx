@@ -1,5 +1,7 @@
 import { useState, useRef, type FormEvent } from "react";
 import type { AccountConfig, TokenConfig } from "../config.ts";
+import type { TokenBalance } from "../hooks/usePrivateState.ts";
+import { formatAmount } from "../format.ts";
 
 export type OperationType = "deposit" | "transfer" | "withdraw" | "surplus";
 
@@ -28,19 +30,24 @@ export type BuilderOperation = {
 
 type Props = {
   pending: boolean;
+  sendCapable: boolean;
   activeAddress: string;
   otherAccounts: AccountConfig[];
   tokens: TokenConfig[];
+  tokenBalances: TokenBalance[];
   onExecute: (operations: BuilderOperation[]) => void;
 };
 
 export function TransactionBuilder({
   pending,
+  sendCapable,
   activeAddress,
   otherAccounts,
   tokens,
+  tokenBalances,
   onExecute,
 }: Props) {
+  const disabledTitle = sendCapable ? undefined : "View-only — connect a wallet to send";
   const defaultToken = tokens[0]?.address ?? "";
   const [operations, setOperations] = useState<BuilderOperation[]>([]);
   const [selectedType, setSelectedType] = useState<OperationType>("deposit");
@@ -128,14 +135,39 @@ export function TransactionBuilder({
         )}
 
         {selectedType !== "surplus" && (
-          <input
-            type="number"
-            value={amount}
-            onChange={(event) => setAmount(event.target.value)}
-            placeholder="Amount"
-            min="0"
-            step="any"
-          />
+          <span className="amount-with-max">
+            <input
+              type="number"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+              placeholder="Amount"
+              min="0"
+              step="any"
+            />
+            {(selectedType === "transfer" ||
+              selectedType === "withdraw" ||
+              selectedType === "deposit") && (
+              <button
+                type="button"
+                className="max-link"
+                disabled={pending}
+                onClick={() => {
+                  if (!token) return;
+                  const target = BigInt(token);
+                  const tokenBalance = tokenBalances.find(
+                    (tb) => BigInt(tb.address) === target
+                  );
+                  if (!tokenBalance) return;
+                  const balance =
+                    selectedType === "deposit" ? tokenBalance.transparent : tokenBalance.private;
+                  const decimals = tokens.find((t) => t.address === token)?.decimals ?? 18;
+                  setAmount(formatAmount(balance, decimals));
+                }}
+              >
+                Max
+              </button>
+            )}
+          </span>
         )}
 
         {(selectedType === "transfer" ||
@@ -209,8 +241,9 @@ export function TransactionBuilder({
       <div style={{ display: "flex", gap: "4px", marginTop: "8px" }}>
         <button
           onClick={handleExecute}
-          disabled={pending || operations.length === 0}
+          disabled={pending || !sendCapable || operations.length === 0}
           style={{ flex: 1 }}
+          title={disabledTitle}
         >
           {pending && <span className="spinner" />}
           Execute ({operations.length} ops)

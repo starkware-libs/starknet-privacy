@@ -400,6 +400,47 @@ input[type="number"] {
   margin-left: 6px;
 }
 
+.amount-with-max {
+  position: relative;
+  display: inline-block;
+}
+
+.amount-with-max input[type="number"] {
+  padding-right: 34px;
+  -moz-appearance: textfield;
+}
+
+.amount-with-max input[type="number"]::-webkit-outer-spin-button,
+.amount-with-max input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.amount-with-max .max-link {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: #7d8590;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.amount-with-max .max-link:hover:not(:disabled) {
+  color: #f0f6fc;
+  background: none;
+}
+
+.amount-with-max .max-link:disabled {
+  color: #484f58;
+  cursor: not-allowed;
+}
+
 .status-bar {
   padding: 8px;
   margin-bottom: 12px;
@@ -1017,6 +1058,15 @@ input[type="number"] {
   padding: 0;
 }
 
+.swap-row .amount-with-max {
+  flex: 1;
+  display: block;
+}
+
+.swap-row .amount-with-max input {
+  width: 100%;
+}
+
 .swap-row select {
   flex-shrink: 0;
   min-width: 70px;
@@ -1064,6 +1114,45 @@ input[type="number"] {
   font-size: 12px;
   margin: 4px 0 0;
   text-align: center;
+}
+
+.slippage-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+
+.slippage-label {
+  color: #8b949e;
+}
+
+.slippage-row .slippage-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: #7d8590;
+  font-size: 11px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.slippage-row .slippage-link:hover:not(:disabled) {
+  color: #f0f6fc;
+  background: none;
+}
+
+.slippage-row .slippage-link-active {
+  color: #f0f6fc;
+  text-decoration: underline;
+}
+
+.slippage-min {
+  margin-left: auto;
+  color: #8b949e;
 }
 
 @keyframes glow-pulse {

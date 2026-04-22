@@ -4,9 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --mode testnet",
+    "dev:mainnet": "vite --mode mainnet",
     "build": "tsc -b && vite build",
+    "build:testnet": "tsc -b && vite build --mode testnet",
+    "build:mainnet": "tsc -b && vite build --mode mainnet",
     "preview": "vite preview",
+    "preview:mainnet": "vite preview --mode mainnet",
     "pull-env": "bash scripts/pull-env.sh",
     "lint": "prettier --check src/ && eslint src/ && tsc --noEmit",
     "format": "prettier --write src/ && eslint --fix src/"

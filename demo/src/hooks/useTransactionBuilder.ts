@@ -1,7 +1,7 @@
-import { useState, useCallback, useMemo, useRef, type RefObject } from "react";
-import { Account, TransactionFinalityStatus, hash, type RpcProvider } from "starknet";
+import { useState, useCallback, useRef, type RefObject } from "react";
+import { TransactionFinalityStatus, hash, type Account, type RpcProvider } from "starknet";
 import type { PrivateTransfersInterface } from "starknet-sdk";
-import type { AccountConfig, AppConfig } from "../config.ts";
+import type { AppConfig } from "../config.ts";
 import { type TransactionStatus, waitForProvingBlock } from "./useTransactions.ts";
 import type { BuilderOperation } from "../components/TransactionBuilder.tsx";
 import { Timeline } from "../timeline.ts";
@@ -35,10 +35,10 @@ function base64ByteLength(base64: string): number {
 export function useTransactionBuilder(
   provider: RpcProvider | undefined,
   transfers: PrivateTransfersInterface | undefined,
+  userAccount: Account | undefined,
   activeAddress: string | undefined,
   poolAddress: string,
   config: AppConfig,
-  accounts: AccountConfig[],
   onSettled: () => void,
   lastTxBlockNumberRef: RefObject<number | undefined>,
   updateLastTxBlockNumber: (blockNumber: number) => void
@@ -54,18 +54,6 @@ export function useTransactionBuilder(
 
   const onSettledRef = useRef(onSettled);
   onSettledRef.current = onSettled;
-
-  const userAccount = useMemo(() => {
-    if (!provider || !activeAddress) return undefined;
-    const accountConfig = accounts.find((account) => account.address === activeAddress);
-    if (!accountConfig) return undefined;
-    return new Account({
-      provider,
-      address: accountConfig.address,
-      signer: accountConfig.privateKey,
-      cairoVersion: "1",
-    });
-  }, [provider, activeAddress, accounts]);
 
   const executeBatch = useCallback(
     (operations: BuilderOperation[]) => {
@@ -294,7 +282,7 @@ export function useTransactionBuilder(
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          console.error(`[${action}] failed:`, err);
+          console.error(`[${action}] failed: ${message}`);
           setStatus({
             pending: false,
             action: null,
@@ -308,7 +296,7 @@ export function useTransactionBuilder(
         }
       })();
     },
-    [userAccount, transfers, provider, activeAddress, config, poolAddress, accounts]
+    [userAccount, transfers, provider, activeAddress, config, poolAddress]
   );
 
   return { status, executeBatch };

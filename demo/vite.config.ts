@@ -7,6 +7,11 @@ const sdkDist = resolve(__dirname, "../sdk/dist");
 export default defineConfig({
   plugins: [react()],
   resolve: {
+    // Force all `starknet` imports to resolve to demo/node_modules/starknet.
+    // Without this, Rollup walks up from starknet-sdk's symlinked dist files
+    // and misses the hoisted copy. dedupe is also what keeps TS and the
+    // bundler agreeing on a single Account class identity.
+    dedupe: ["starknet"],
     alias: {
       // Remap testing imports to avoid pulling in Node-only devnet module
       "starknet-sdk/dist/testing/mock-proving.js": resolve(

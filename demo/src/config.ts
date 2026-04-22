@@ -1,11 +1,15 @@
-import type { constants } from "starknet";
+import type { constants, RpcProvider } from "starknet";
 import { paymasterBuildApplyAction } from "./paymaster.ts";
 
+// `viewingKey` is optional: if a `privateKey` is supplied the demo derives
+// the viewing key deterministically (see `deriveViewingKey` in session.ts).
+// A view-only account supplies `viewingKey` but no `privateKey`. At least
+// one of the two must be present.
 export type AccountConfig = {
   name: string;
   address: string;
-  privateKey: string;
-  viewingKey: string;
+  privateKey?: string;
+  viewingKey?: string;
   admin?: boolean;
 };
 
@@ -18,18 +22,42 @@ export type TokenConfig = {
   mintEntrypoint?: string;
 };
 
+export type EkuboPool = {
+  token0: string;
+  token1: string;
+  fee: string;
+  tickSpacing: string;
+  extension: string;
+  skipAhead: string;
+};
+
 export type EkuboConfig = {
   coreAddress: string;
   routerAddress: string;
   executorAddress: string;
-  poolToken0: string;
-  poolToken1: string;
-  poolFee: string;
-  tickSpacing: string;
-  extension: string;
-  skipAhead: string;
+  pools: EkuboPool[];
+  /** Union of all token addresses across pools, resolved to TokenConfig. */
   swapTokens: TokenConfig[];
 };
+
+// The Ekubo swap helper is single-hop: it takes one pool_key per swap. To
+// support multiple pairs, the app carries an array of pool configs and
+// picks the matching one at swap time. Token order in a pool is canonical
+// (numerically ascending), so a pool serves both directions.
+export function findEkuboPool(
+  ekubo: EkuboConfig | undefined,
+  fromToken: string,
+  toToken: string
+): EkuboPool | undefined {
+  if (!ekubo || !fromToken || !toToken) return undefined;
+  const fromBig = BigInt(fromToken);
+  const toBig = BigInt(toToken);
+  return ekubo.pools.find((pool) => {
+    const t0 = BigInt(pool.token0);
+    const t1 = BigInt(pool.token1);
+    return (t0 === fromBig && t1 === toBig) || (t0 === toBig && t1 === fromBig);
+  });
+}
 
 export type VesuVault = {
   tokenConfig: TokenConfig;
@@ -69,6 +97,15 @@ export type AppConfig = {
   paymasterFeeToken?: string;
   avnuApiKey?: string;
   paymasterForwarderAddress?: string;
+  /**
+   * Protocol fee charged on every `apply_actions` call, in STRK wei. Cached
+   * from the pool's `get_fee_amount()` view. When the paymaster is disabled
+   * the user's account must approve this amount of STRK to the pool on top
+   * of any token-specific allowances.
+   */
+  feeAmount?: bigint;
+  /** Fee recipient (pool's `get_fee_collector()` view). Cached for display. */
+  feeCollectorAddress?: string;
 };
 
 function requireEnv(key: string): string {
@@ -81,36 +118,34 @@ function parseEkuboConfig(tokens: TokenConfig[]): EkuboConfig | undefined {
   const executorAddress = import.meta.env.VITE_EKUBO_EXECUTOR_ADDRESS as string | undefined;
   if (!executorAddress) return undefined;
 
-  const poolRaw = requireEnv("VITE_EKUBO_POOL");
-  let pool: {
-    token0: string;
-    token1: string;
-    fee: string;
-    tickSpacing: string;
-    extension: string;
-    skipAhead: string;
-  };
+  const poolsRaw = requireEnv("VITE_EKUBO_POOLS");
+  let pools: EkuboPool[];
   try {
-    pool = JSON.parse(poolRaw);
+    const parsed = JSON.parse(poolsRaw) as unknown;
+    if (!Array.isArray(parsed)) throw new Error("not array");
+    pools = parsed as EkuboPool[];
   } catch {
-    throw new Error("VITE_EKUBO_POOL must be valid JSON");
+    throw new Error("VITE_EKUBO_POOLS must be a JSON array of pool configs");
   }
 
-  const tokenByAddress = new Map(tokens.map((t) => [t.address, t]));
-  const swapTokens = [pool.token0, pool.token1]
-    .map((address) => tokenByAddress.get(address))
+  // Union of pool tokens resolved against VITE_TOKENS. Addresses not in
+  // VITE_TOKENS are dropped (e.g. a pool references a token the demo
+  // doesn't know about).
+  const tokenByBigInt = new Map(tokens.map((t) => [BigInt(t.address), t]));
+  const addressesInPools = new Set<bigint>();
+  for (const pool of pools) {
+    addressesInPools.add(BigInt(pool.token0));
+    addressesInPools.add(BigInt(pool.token1));
+  }
+  const swapTokens = [...addressesInPools]
+    .map((addr) => tokenByBigInt.get(addr))
     .filter((t): t is TokenConfig => t != null);
 
   return {
     coreAddress: requireEnv("VITE_EKUBO_CORE_ADDRESS"),
     routerAddress: requireEnv("VITE_EKUBO_ROUTER_ADDRESS"),
     executorAddress,
-    poolToken0: pool.token0,
-    poolToken1: pool.token1,
-    poolFee: pool.fee,
-    tickSpacing: pool.tickSpacing,
-    extension: pool.extension,
-    skipAhead: pool.skipAhead,
+    pools,
     swapTokens,
   };
 }
@@ -146,6 +181,29 @@ export function loadConfig(): AppConfig {
     throw new Error("VITE_TOKENS must be valid JSON array");
   }
 
+  const ekubo = parseEkuboConfig(tokens);
+  const vesu = parseVesuConfig(tokens);
+
+  // Append Vesu vTokens to the displayed token list so their balances
+  // render alongside the underlying assets. Vesu vTokens are always 18
+  // decimals regardless of the underlying (verified on-chain via
+  // `scripts/query-vtoken-decimals.ts`) — do NOT inherit `tokenConfig.decimals`.
+  // Ekubo's swapTokens was already captured above, so vTokens won't appear
+  // as swap options.
+  if (vesu) {
+    const known = new Set(tokens.map((t) => BigInt(t.address)));
+    for (const vault of vesu.vaults) {
+      const vTokenAddrBigInt = BigInt(vault.vTokenAddress);
+      if (known.has(vTokenAddrBigInt)) continue;
+      tokens.push({
+        name: `v${vault.tokenConfig.name}`,
+        address: vault.vTokenAddress,
+        decimals: 18,
+      });
+      known.add(vTokenAddrBigInt);
+    }
+  }
+
   return {
     rpcUrl: requireEnv("VITE_RPC_URL"),
     indexerUrl: requireEnv("VITE_INDEXER_URL"),
@@ -159,17 +217,51 @@ export function loadConfig(): AppConfig {
     backendIndexerUrl: import.meta.env.VITE_BACKEND_INDEXER_URL as string | undefined,
     backendProverUrl: import.meta.env.VITE_BACKEND_PROVER_URL as string | undefined,
     ohttpKeyConfig: import.meta.env.VITE_OHTTP_KEY_CONFIG
-      ? Uint8Array.from(atob(import.meta.env.VITE_OHTTP_KEY_CONFIG as string), (c) => c.charCodeAt(0))
+      ? Uint8Array.from(atob(import.meta.env.VITE_OHTTP_KEY_CONFIG as string), (c) =>
+          c.charCodeAt(0),
+        )
       : undefined,
     gatewayUrl: import.meta.env.VITE_GATEWAY_URL as string | undefined,
     feederGatewayUrl: import.meta.env.VITE_FEEDER_GATEWAY_URL as string | undefined,
     explorerUrl: import.meta.env.VITE_EXPLORER_URL as string | undefined,
-    ekubo: parseEkuboConfig(tokens),
-    vesu: parseVesuConfig(tokens),
+    ekubo,
+    vesu,
     paymasterUrl: import.meta.env.VITE_PAYMASTER_URL as string | undefined,
     paymasterFeeToken: import.meta.env.VITE_PAYMASTER_FEE_TOKEN as string | undefined,
     avnuApiKey: import.meta.env.VITE_AVNU_API_KEY as string | undefined,
+    paymasterForwarderAddress: import.meta.env.VITE_PAYMASTER_FORWARDER_ADDRESS as
+      | string
+      | undefined,
   };
+}
+
+/**
+ * Fetch the pool's protocol fee (amount + collector) once and cache it on
+ * the config. The pool's `apply_actions` calls `collect_fee()` which pulls
+ * `fee_amount` STRK from the tx caller to `fee_collector`. When the
+ * paymaster is disabled the user account is the caller, so the demo must
+ * approve STRK to the pool for this amount on top of any per-token allowance.
+ */
+export async function initFeeConfig(config: AppConfig, provider: RpcProvider): Promise<void> {
+  if (config.feeAmount !== undefined) return;
+  try {
+    const [amountResult, collectorResult] = await Promise.all([
+      provider.callContract({
+        contractAddress: config.poolAddress,
+        entrypoint: "get_fee_amount",
+        calldata: [],
+      }),
+      provider.callContract({
+        contractAddress: config.poolAddress,
+        entrypoint: "get_fee_collector",
+        calldata: [],
+      }),
+    ]);
+    config.feeAmount = BigInt(amountResult[0]);
+    config.feeCollectorAddress = collectorResult[0];
+  } catch (err) {
+    console.warn("Failed to fetch pool fee config:", err);
+  }
 }
 
 /** Fetch the paymaster forwarder address once and store it in the config. */
@@ -180,7 +272,7 @@ export async function initPaymasterForwarder(config: AppConfig): Promise<void> {
       config.paymasterUrl,
       config.poolAddress,
       { mode: "sponsored_private", pool_fee_token: config.paymasterFeeToken, tip: "normal" },
-      config.avnuApiKey,
+      config.avnuApiKey
     );
     config.paymasterForwarderAddress = fee_action.recipient;
   } catch (err) {

@@ -35,25 +35,23 @@ jobs:
         # (required for manual "Promote to Production") while still baking in
         # preview env values.
         run: |
-          # Try branch-named custom env first, fall back to preview
-          # Vercel env names: underscores -> hyphens, truncated to 32 chars
-          BRANCH=$(echo "$BRANCH_RAW" | tr '_' '-' | cut -c1-32)
-          if npx vercel pull --yes --environment="$BRANCH" --token=${{ secrets.VERCEL_TOKEN }}; then
-            cp ".vercel/.env.$BRANCH.local" .vercel/.env.production.local
-          else
-            npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
-            mv .vercel/.env.preview.local .vercel/.env.production.local
-          fi
+          npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+          mv .vercel/.env.preview.local .vercel/.env.production.local
 
-          # Generate vercel.json with rewrites to proxy HTTP backends through
-          # the Vercel deployment, avoiding mixed HTTP/HTTPS content errors.
+          # Generate vercel.json with:
+          # - rewrites: proxy HTTP backends through the Vercel deployment,
+          #   avoiding mixed HTTP/HTTPS content errors.
+          # - headers: CSP blocks cross-origin script injection; Referrer-Policy
+          #   prevents URL-param leaks (e.g. a ?view= link) from reaching
+          #   upstream services via the Referer header; X-Frame-Options blocks
+          #   clickjacking; Permissions-Policy denies unused device APIs.
           eval "$(grep '^BACKEND_' ".vercel/.env.production.local")"
-          printf '{"installCommand":"echo skipped","outputDirectory":"dist","rewrites":[{"source":"/api/rpc/:path*","destination":"%s/rpc/:path*"},{"source":"/api/indexer/:path*","destination":"%s/:path*"},{"source":"/api/prover/:path*","destination":"%s/:path*"},{"source":"/api/gateway/:path*","destination":"%s/:path*"}]}\n' \
-            "$BACKEND_RPC_URL" "$BACKEND_INDEXER_URL" "$BACKEND_PROVER_URL" "$BACKEND_GATEWAY_URL" > vercel.json
+          CSP="default-src 'self'; script-src 'self'; connect-src 'self' https: wss:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'"
+          printf '{"installCommand":"echo skipped","outputDirectory":"dist","rewrites":[{"source":"/api/rpc/:path*","destination":"%s/rpc/:path*"},{"source":"/api/indexer/:path*","destination":"%s/:path*"},{"source":"/api/prover/:path*","destination":"%s/:path*"},{"source":"/api/gateway/:path*","destination":"%s/:path*"}],"headers":[{"source":"/(.*)","headers":[{"key":"Content-Security-Policy","value":"%s"},{"key":"Referrer-Policy","value":"no-referrer"},{"key":"X-Frame-Options","value":"DENY"},{"key":"X-Content-Type-Options","value":"nosniff"},{"key":"Permissions-Policy","value":"camera=(), microphone=(), geolocation=()"}]}]}\n' \
+            "$BACKEND_RPC_URL" "$BACKEND_INDEXER_URL" "$BACKEND_PROVER_URL" "$BACKEND_GATEWAY_URL" "$CSP" > vercel.json
 
           npx vercel build --prod
         env:
-          BRANCH_RAW: ${{ github.head_ref || github.ref_name }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 

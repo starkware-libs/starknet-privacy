@@ -8,17 +8,15 @@ export function formatChainId(hex: string): string {
   return name;
 }
 
-/** Format a bigint token amount for display, optionally with decimal places. */
+/** Format a bigint token amount as a plain decimal string. Round-trip safe
+ *  with `toRawAmount` — no thousand separators, trailing zeros trimmed. Used
+ *  for Max buttons and any input-field value that must re-parse exactly. */
 export function formatAmount(value: bigint, decimals?: number): string {
-  if (decimals == null || decimals === 0) {
-    return value.toLocaleString("en-US");
-  }
+  if (decimals == null || decimals === 0) return value.toString();
   const divisor = 10n ** BigInt(decimals);
   const whole = value / divisor;
-  const remainder = value % divisor;
-  const fractionStr = remainder.toString().padStart(decimals, "0").replace(/0+$/, "");
-  const wholeFormatted = whole.toLocaleString("en-US");
-  return fractionStr ? `${wholeFormatted}.${fractionStr}` : wholeFormatted;
+  const fraction = (value % divisor).toString().padStart(decimals, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
 const SUBSCRIPT_DIGITS = "\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089";
@@ -47,11 +45,14 @@ export function formatTokenAmount(rawAmount: bigint, decimals: number, maxFracti
   }
 
   // Significant digits are beyond maxFraction — use subscript zero-count notation
-  // e.g. 0.000000000000000050 → 0.0₁₅50
+  // (Uniswap / CoinGecko convention): subscript equals the TOTAL count of
+  // zeros between the decimal point and the first significant digit. The
+  // leading "0" before the subscript is visual framing, not counted.
+  // e.g. 0.000024 → 0.0₄24, 0.000000000000000050 → 0.0₁₆5
   if (wholePart === 0n) {
     const leadingZeros = fractionFull.match(/^0*/)![0].length;
     const significant = fractionFull.slice(leadingZeros).replace(/0+$/, "").slice(0, maxFraction);
-    return `0.0${toSubscript(leadingZeros - 1)}${significant}`;
+    return `0.0${toSubscript(leadingZeros)}${significant}`;
   }
 
   return wholePart.toLocaleString("en-US");
