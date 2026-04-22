@@ -3,7 +3,7 @@
 //! Orchestrates note reading, block event fetching, and withdrawal event
 //! fetching, then merges results into a unified transaction list.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use starknet_core::types::{BlockId, BlockTag};
 use starknet_types_core::felt::Felt;
@@ -46,11 +46,29 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
 
     let mut note_scanner = BufferedNoteScanner::new();
     let mut transactions: HashMap<Felt, HistoryTransaction> = HashMap::new();
-    let mut completed_blocks: HashSet<u64> = HashSet::new();
     let mut budget_error: Option<DiscoveryError> = None;
     let mut scanner_complete = false;
 
     loop {
+        // TODO: current iteration order (note block -> block events -> gap
+        // withdrawals) has two failure modes:
+        //   1. Gap withdrawals are inserted after the `max_transactions` check
+        //      for the iteration, so a single iteration can push
+        //      `transactions.len()` past the caller's limit.
+        //   2. The gap range `[K_i + 1, previous_upper]` is fetched in one
+        //      shot; a long empty stretch with no prior notes forces the
+        //      entire gap into a single page's budget, and a failure there
+        //      makes no forward progress (next page re-queries the same
+        //      range).
+        // Proposed flow (per iteration):
+        //   a. Peek the next note block `K_i` from the scanner.
+        //   b. Scan withdrawals in the gap `(K_i, previous_upper]`, possibly
+        //      in sub-chunks; update cursor as each sub-chunk completes so a
+        //      budget failure mid-gap still advances forward.
+        //   c. Fetch block events at `K_i`, insert the note's tx; update
+        //      cursor past `K_i`.
+        // Evaluating `max_transactions` between (b) and (c) then honors the
+        // caller's limit exactly. Alternative: pre-index events off-path.
         if transactions.len() >= max_transactions {
             trace!("history: hit max_transactions limit");
             break;
@@ -67,7 +85,6 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
         .await
         {
             Ok(Some(block_number)) => {
-                completed_blocks.insert(block_number);
                 cursor.begin_block_number = Some(block_number.saturating_sub(1));
             }
             Ok(None) => {
@@ -82,9 +99,24 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
         }
     }
 
+    // Drop orphaned transactions from an iteration that didn't complete.
+    // `process_next_block` is two sequential RPC fetches (block events, then
+    // gap withdrawals); if the second fails mid-iteration, the first may have
+    // already inserted the note's tx. `cursor.begin_block_number` only
+    // advances on a fully completed iteration, so `block_number >
+    // cursor.begin_block_number` is exactly the range of completed
+    // iterations — including every gap withdrawal they picked up, which sit
+    // above the note block but are still part of a completed iteration.
     let mut result: Vec<HistoryTransaction> = transactions.into_values().collect();
     if !scanner_complete {
-        result.retain(|tx| completed_blocks.contains(&tx.block_number));
+        match cursor.begin_block_number {
+            Some(bound) => result.retain(|tx| tx.block_number > bound),
+            // First-iteration partial failure: block-events fetch inserted a
+            // tx before the gap-withdrawal fetch failed with
+            // InsufficientBudget, so the cursor never advanced. Drop the
+            // orphan so the next page re-scans from the original upper bound.
+            None => result.clear(),
+        }
     }
 
     // Append the synthetic registration transaction when the note scan is
@@ -1082,7 +1114,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn gap_withdrawal_filtered_on_early_break() {
+    async fn gap_withdrawal_kept_on_early_break() {
+        // Regression: the iteration-1 gap fetch covers `[K_max + 1, tip]` and
+        // successfully picks up withdrawals above the highest note block. When
+        // budget runs out mid-iteration-2, those gap-range transactions must
+        // still be returned — dropping them leaves subsequent pages with no
+        // way to re-fetch that range (later gaps cover `[K_i+1, K_{i-1}]`,
+        // strictly below `K_max`).
         const TX_HASH_3: Felt = Felt::from_hex_unchecked("0x1003");
 
         let (backend, mut cursor) = FixtureBuilder::new()
@@ -1105,9 +1143,18 @@ mod tests {
         .await
         .unwrap();
 
-        // Block 20 tx kept, gap-range withdrawal at block 50 filtered out
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].block_number, 20);
+        // Block 20 tx AND the gap-range withdrawal at block 50 are both
+        // kept; block-10 iteration didn't complete so any orphan from it is
+        // dropped.
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].block_number, 50);
+        assert_eq!(result[0].transaction_hash, TX_HASH_3);
+        assert_eq!(result[0].withdrawals.len(), 1);
+        assert_eq!(result[0].withdrawals[0].amount, 50);
+        assert!(result[0].notes.is_empty());
+        assert_eq!(result[1].block_number, 20);
+        assert_eq!(result[1].notes.len(), 1);
+        assert_eq!(result[1].deposits.len(), 1);
         assert!(!cursor.history_complete);
     }
 
