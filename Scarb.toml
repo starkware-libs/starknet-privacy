@@ -11,9 +11,9 @@ edition = "2024_07"
 license-file = "LICENSE"
 
 [workspace.dependencies]
-starknet = "2.17.0-rc.4"
-snforge_std = { version = "0.55.0+nightly-2026-02-20", registry = "https://scarbs.dev/" }
-assert_macros = "2.17.0-rc.4"
+starknet = "2.17.0"
+snforge_std = "0.59.0"
+assert_macros = "2.17.0"
 # TODO: once openzeppelin upgrades to Cairo >=2.17, remove all SCARB_IGNORE_CAIRO_VERSION
 # flags from CI workflows and sdk/package.json scripts
 openzeppelin = "3.0.0"
@@ -26,6 +26,12 @@ sort-module-level-items = true
 
 [workspace.tool.scarb]
 allow-prebuilt-plugins = ["snforge_std"]
+
+# Redirect transitive `starkware_utils_testing` requests for snforge_std (pinned to
+# scarbs.dev) to the stable 0.59.0 release on scarbs.xyz, so we don't end up with
+# two snforge_scarb_plugin copies from incompatible registries.
+[patch."https://scarbs.dev/"]
+snforge_std = "0.59.0"
 
 [scripts]
 test = "SNFORGE_BACKTRACE=1 snforge test"

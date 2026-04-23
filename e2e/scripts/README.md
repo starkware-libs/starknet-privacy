@@ -14,7 +14,7 @@ cd e2e/contracts/vesu      && scarb build  # Vesu Pool, PoolFactory, VToken, Ora
 scarb build                                 # Privacy pool + VesuLendingHelper + EkuboSwapHelper (from repo root)
 ```
 
-Note: `contracts/vesu/` requires Scarb 2.11.4 (pinned in its `.tool-versions`). The repo root, `contracts/test-token/`, and `contracts/ekubo/` use Scarb 2.17.0-rc.4.
+Note: `contracts/vesu/` requires Scarb 2.11.4 (pinned in its `.tool-versions`). The repo root, `contracts/test-token/`, and `contracts/ekubo/` use Scarb 2.17.0.
 
 ### Ekubo deployment
 
