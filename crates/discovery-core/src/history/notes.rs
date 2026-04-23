@@ -37,6 +37,29 @@ impl BufferedNoteScanner {
         }
     }
 
+    /// Returns the next (highest) block number without draining.
+    ///
+    /// Fills empty buffer slots via `fill_buffers`, then returns the highest
+    /// block among buffered notes. Idempotent: callers can peek multiple times
+    /// before committing to drain with [`next_block`].
+    ///
+    /// Returns:
+    /// - `Ok(Some(block_number))` — next block's number
+    /// - `Ok(None)` — all subchannels exhausted
+    /// - `Err(InsufficientBudget)` — budget ran out during `fill_buffers`
+    ///
+    /// [`next_block`]: Self::next_block
+    pub async fn peek_block_number<V: IViews>(
+        &mut self,
+        views: &V,
+        cursor: &HistoryCursor,
+        budget: &IoBudget,
+    ) -> Result<Option<u64>, DiscoveryError> {
+        self.fill_buffers(views, &cursor.subchannels, budget)
+            .await?;
+        Ok(self.buffered_notes.values().map(|(block, _)| *block).max())
+    }
+
     /// Drains the next (highest) block of notes.
     ///
     /// 1. Fill empty buffer slots via `get_notes_batch_with_block`.
@@ -452,6 +475,97 @@ mod tests {
             .await
             .unwrap();
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn peek_block_number_returns_highest_without_draining() {
+        let channel_key = test_channel_key();
+        let token = test_token();
+        let packed_value = non_zero_packed();
+
+        let mut backend = MockBackend::empty();
+        insert_note(&mut backend, &channel_key, token, 0, packed_value, 10);
+
+        let cursor = test_cursor(vec![test_subchannel(channel_key.clone(), token, Some(0))]);
+        let mut scanner = BufferedNoteScanner::new();
+        let budget = IoBudget::new(100);
+
+        let peeked = scanner
+            .peek_block_number(&backend, &cursor, &budget)
+            .await
+            .unwrap();
+        assert_eq!(peeked, Some(10));
+
+        // Idempotent: a second peek returns the same block without re-reading storage.
+        let budget_remaining_before_second = budget.remaining();
+        let peeked_again = scanner
+            .peek_block_number(&backend, &cursor, &budget)
+            .await
+            .unwrap();
+        assert_eq!(peeked_again, Some(10));
+        assert_eq!(budget.remaining(), budget_remaining_before_second);
+    }
+
+    #[tokio::test]
+    async fn peek_block_number_matches_next_block_drain() {
+        let channel_key = test_channel_key();
+        let token = test_token();
+        let packed_value = non_zero_packed();
+
+        let mut backend = MockBackend::empty();
+        insert_note(&mut backend, &channel_key, token, 0, packed_value, 42);
+
+        let mut cursor = test_cursor(vec![test_subchannel(channel_key.clone(), token, Some(0))]);
+        let mut scanner = BufferedNoteScanner::new();
+        let budget = IoBudget::new(100);
+
+        let peeked = scanner
+            .peek_block_number(&backend, &cursor, &budget)
+            .await
+            .unwrap();
+        let (drained_block, _) = scanner
+            .next_block(&backend, &mut cursor, &budget)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(peeked, Some(drained_block));
+    }
+
+    #[tokio::test]
+    async fn peek_block_number_exhausted_returns_none() {
+        let backend = MockBackend::empty();
+        let cursor = test_cursor(vec![]);
+        let mut scanner = BufferedNoteScanner::new();
+        let budget = IoBudget::new(100);
+
+        let peeked = scanner
+            .peek_block_number(&backend, &cursor, &budget)
+            .await
+            .unwrap();
+        assert!(peeked.is_none());
+    }
+
+    #[tokio::test]
+    async fn peek_block_number_zero_budget_returns_error() {
+        let channel_key = test_channel_key();
+        let token = test_token();
+        let packed_value = non_zero_packed();
+
+        let mut backend = MockBackend::empty();
+        insert_note(&mut backend, &channel_key, token, 0, packed_value, 10);
+
+        let cursor = test_cursor(vec![test_subchannel(channel_key.clone(), token, Some(0))]);
+        let mut scanner = BufferedNoteScanner::new();
+        let budget = IoBudget::new(0);
+
+        let error = scanner
+            .peek_block_number(&backend, &cursor, &budget)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, DiscoveryError::InsufficientBudget { .. }),
+            "expected InsufficientBudget, got: {error:?}"
+        );
     }
 
     #[tokio::test]

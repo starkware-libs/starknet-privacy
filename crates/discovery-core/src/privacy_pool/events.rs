@@ -123,6 +123,10 @@ pub trait IEvents: Send + Sync {
     /// Resolved once at snapshot creation and stable thereafter. Used as an
     /// upper-bound estimator for event-range cost accounting.
     fn block_number(&self) -> u64;
+
+    /// Returns the RPC's configured events-page size. See
+    /// [`RawEventAccess::event_page_size`].
+    fn event_page_size(&self) -> usize;
 }
 
 /// Reason a raw event could not be converted to a typed event.
@@ -272,6 +276,10 @@ impl<T: RawEventAccess> IEvents for T {
 
     fn block_number(&self) -> u64 {
         RawEventAccess::block_number(self)
+    }
+
+    fn event_page_size(&self) -> usize {
+        RawEventAccess::event_page_size(self)
     }
 }
 

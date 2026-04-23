@@ -333,6 +333,10 @@ impl RawEventAccess for RpcSnapshot {
     fn block_number(&self) -> u64 {
         self.block_number
     }
+
+    fn event_page_size(&self) -> usize {
+        self.backend.inner.event_page_size
+    }
 }
 
 /// TODO: Pathfinder workaround — pre-confirmed events are returned with

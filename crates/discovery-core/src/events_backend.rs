@@ -13,11 +13,17 @@ use crate::storage_backend::StorageError;
 /// Low-level event access for reading contract events.
 #[async_trait]
 pub trait RawEventAccess: Send + Sync {
-    /// Fetches events matching the given key filters within a block range.
+    /// Fetches all events matching the given key filters within a block range.
     ///
     /// Each element of `keys` is a set of accepted values for that key position.
     /// An event matches if, for every non-empty filter, the event's key at that
     /// position is contained in the filter set.
+    ///
+    /// Implementations drain the RPC's continuation-token pagination internally
+    /// and return the fully-accumulated list. Callers who want bounded work per
+    /// call should keep the block range small (≤ [`event_page_size`](Self::event_page_size)
+    /// blocks) — under the sparse-user assumption, that bound produces exactly
+    /// one RPC page.
     async fn get_events(
         &self,
         keys: &[Vec<Felt>],
@@ -36,6 +42,12 @@ pub trait RawEventAccess: Send + Sync {
     /// Resolved once at snapshot creation and stable thereafter. Used as an
     /// upper-bound estimator for event-range cost accounting.
     fn block_number(&self) -> u64;
+
+    /// Returns the RPC's configured events-page size (max events per
+    /// `starknet_getEvents` call). Orchestrators use this to size reverse-order
+    /// block sub-ranges so each `get_events` call typically resolves in a
+    /// single underlying RPC page.
+    fn event_page_size(&self) -> usize;
 }
 
 #[cfg(test)]
@@ -50,6 +62,9 @@ pub struct MockEventBackend {
 
 #[cfg(test)]
 const MOCK_BLOCK_NUMBER: u64 = 1_000;
+
+#[cfg(test)]
+pub const MOCK_EVENT_PAGE_SIZE: usize = 1024;
 
 #[cfg(test)]
 impl MockEventBackend {
@@ -104,6 +119,10 @@ impl RawEventAccess for MockEventBackend {
 
     fn block_number(&self) -> u64 {
         MOCK_BLOCK_NUMBER
+    }
+
+    fn event_page_size(&self) -> usize {
+        MOCK_EVENT_PAGE_SIZE
     }
 }
 

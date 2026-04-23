@@ -35,13 +35,22 @@ pub const COST_NOTE_PROBING: usize = 1;
 /// Cost for a single `get_public_key` (1 storage slot read).
 pub const COST_PUBLIC_KEY: usize = 1;
 
-/// Cost per `get_block_events` call (fetches all events in a single block).
-pub const COST_BLOCK_EVENTS_QUERY: usize = 10;
+/// Cost per `get_block_events` call (events in a single block).
+///
+/// Cheaper than a range scan because the server walks only one block and the
+/// filtered event set is small in the common case.
+pub const COST_BLOCK_EVENTS_QUERY: usize = 2;
 
-/// Number of blocks per pricing chunk for event range queries.
-pub const EVENTS_COST_CHUNK_SIZE: usize = 1024;
-
-/// Cost per event range chunk (covers up to [`EVENTS_COST_CHUNK_SIZE`] blocks).
+/// Cost per block sub-range event scan (up to
+/// [`RawEventAccess::event_page_size`] blocks).
+///
+/// Range scans are more expensive than block-level queries because the server
+/// walks every block in the range. Orchestrators size sub-ranges by
+/// `event_page_size` so, under the sparse-per-user assumption, each call
+/// resolves in one underlying RPC page; dense cases paginate internally and
+/// we undercount — acceptable for the history path.
+///
+/// [`RawEventAccess::event_page_size`]: crate::events_backend::RawEventAccess::event_page_size
 pub const COST_EVENTS_CHUNK: usize = 10;
 
 /// Minimum server budget to make progress through one step at each discovery level:
