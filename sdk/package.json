@@ -19,14 +19,8 @@
       "import": "./dist/testing/index.js",
       "types": "./dist/testing/index.d.ts"
     },
-    "./browser": {
-      "import": "./dist/browser/starknet-sdk.js",
-      "default": "./dist/browser/starknet-sdk.min.js"
-    },
-    "./browser/testing": {
-      "import": "./dist/browser/starknet-sdk-testing.js",
-      "default": "./dist/browser/starknet-sdk-testing.min.js"
-    },
+    "./browser": "./dist/browser/starknet-sdk.min.js",
+    "./browser/testing": "./dist/browser/starknet-sdk-testing.min.js",
     "./abi": {
       "import": "./dist/internal/abi.js",
       "types": "./dist/internal/abi.d.ts"
@@ -36,7 +30,8 @@
     "registry": "https://npm.pkg.github.com"
   },
   "files": [
-    "dist"
+    "dist/**",
+    "!dist/**/*.map"
   ],
   "scripts": {
     "scarb:build": "cd .. && SCARB_IGNORE_CAIRO_VERSION=true scarb cache clean && SCARB_IGNORE_CAIRO_VERSION=true scarb build --features test_contracts",

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Changed
+
+- Slimmed the published npm package from ~2.4 MB compressed / ~11 MB unpacked down to ~310 KB compressed / ~1.3 MB unpacked:
+  - Sourcemaps (`dist/**/*.map`) are no longer published (excluded via `files` in `package.json`); they are still emitted locally for debugging.
+  - `dist/browser/` now ships only the minified bundles (`starknet-sdk.min.js`, `starknet-sdk-testing.min.js`). The non-minified dev bundles are no longer built or published.
+  - Updated `./browser` and `./browser/testing` subpath exports to point directly at the minified files.
+
 ## 0.14.2-RC.3
 
 ### Breaking

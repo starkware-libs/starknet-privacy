@@ -2,10 +2,14 @@
  * Build browser-compatible bundles for the SDK.
  *
  * Creates:
- * - dist/browser/starknet-sdk.js - Main SDK (ESM)
- * - dist/browser/starknet-sdk.min.js - Main SDK (minified)
- * - dist/browser/starknet-sdk-testing.js - Testing utilities (ESM)
- * - dist/browser/starknet-sdk-testing.min.js - Testing utilities (minified)
+ * - dist/browser/starknet-sdk.min.js - Main SDK (minified, ESM)
+ * - dist/browser/starknet-sdk-testing.min.js - Testing utilities (minified, ESM)
+ *
+ * Sourcemaps (.map) are emitted next to each bundle for local debugging but
+ * are excluded from the published npm package via the `files` field in
+ * sdk/package.json. Non-minified dev bundles are not produced — consumers
+ * that need readable code should import from the main (non-browser) entry
+ * and let their bundler handle it.
  *
  * Run with: npx tsx scripts/build-browser.ts
  */
@@ -39,18 +43,15 @@ const sharedOptions: Partial<BuildOptions> = {
 
 async function buildBundle(
   name: string,
-  entryPoint: string,
-  minify: boolean
+  entryPoint: string
 ): Promise<{ size: number; gzipSize: number }> {
-  const suffix = minify ? ".min.js" : ".js";
-  const outfile = join(outdir, `${name}${suffix}`);
+  const outfile = join(outdir, `${name}.min.js`);
 
-  const result = await build({
+  await build({
     ...sharedOptions,
     entryPoints: [entryPoint],
     outfile,
-    minify,
-    metafile: true,
+    minify: true,
   });
 
   // Calculate sizes
@@ -78,22 +79,14 @@ async function main() {
   // Build main SDK
   console.log("Building main SDK...");
   const mainEntry = join(sdkRoot, "src", "index.ts");
-
-  const mainDev = await buildBundle("starknet-sdk", mainEntry, false);
-  console.log(`  starknet-sdk.js: ${formatSize(mainDev.size)}`);
-
-  const mainMin = await buildBundle("starknet-sdk", mainEntry, true);
-  console.log(`  starknet-sdk.min.js: ${formatSize(mainMin.size)}`);
+  const main = await buildBundle("starknet-sdk", mainEntry);
+  console.log(`  starknet-sdk.min.js: ${formatSize(main.size)}`);
 
   // Build testing utilities (browser-compatible)
   console.log("\nBuilding testing utilities...");
   const testingEntry = join(sdkRoot, "src", "testing", "browser.ts");
-
-  const testingDev = await buildBundle("starknet-sdk-testing", testingEntry, false);
-  console.log(`  starknet-sdk-testing.js: ${formatSize(testingDev.size)}`);
-
-  const testingMin = await buildBundle("starknet-sdk-testing", testingEntry, true);
-  console.log(`  starknet-sdk-testing.min.js: ${formatSize(testingMin.size)}`);
+  const testing = await buildBundle("starknet-sdk-testing", testingEntry);
+  console.log(`  starknet-sdk-testing.min.js: ${formatSize(testing.size)}`);
 
   // Generate package.json for the browser dist
   const browserPkg = {
@@ -101,16 +94,9 @@ async function main() {
     version: "0.1.0",
     type: "module",
     main: "./starknet-sdk.min.js",
-    module: "./starknet-sdk.js",
     exports: {
-      ".": {
-        import: "./starknet-sdk.js",
-        default: "./starknet-sdk.min.js",
-      },
-      "./testing": {
-        import: "./starknet-sdk-testing.js",
-        default: "./starknet-sdk-testing.min.js",
-      },
+      ".": "./starknet-sdk.min.js",
+      "./testing": "./starknet-sdk-testing.min.js",
     },
   };
   writeFileSync(join(outdir, "package.json"), JSON.stringify(browserPkg, null, 2));
@@ -118,8 +104,8 @@ async function main() {
   console.log("\n✓ Browser bundles created at dist/browser/");
   console.log("\nUsage in browser:");
   console.log('  <script type="module">');
-  console.log('    import { createPrivateTransfers } from "./starknet-sdk.js";');
-  console.log('    import { Mocknet } from "./starknet-sdk-testing.js";');
+  console.log('    import { createPrivateTransfers } from "./starknet-sdk.min.js";');
+  console.log('    import { Mocknet } from "./starknet-sdk-testing.min.js";');
   console.log("  </script>");
 }
 
