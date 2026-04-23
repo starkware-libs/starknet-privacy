@@ -107,7 +107,7 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
     { "sender_addr": "0x...", "token": "0x..." }
   ],
   "notes": [
-    { "sender_addr": "0x...", "token": "0x...", "index": 1, "note_id": "0x...", "amount": "1000", "salt": "12345" }
+    { "sender_addr": "0x...", "token": "0x...", "index": 1, "note_id": "0x...", "amount": "1000", "salt": "12345", "block_number": 12345 }
   ],
   "cursor": {
     "channel_discovery_complete": false,
@@ -146,6 +146,8 @@ A unified endpoint that discovers channels, subchannels, and notes in one call w
 3. **Store for next session**: If the final `block_ref` is a block hash, save it as your `last_known_block` for reorg detection. Block number or tag refs cannot be used for reorg detection.
 
 **Note filtering:** For each decrypted note, the service derives the nullifier and checks if it exists in contract state. Only unspent notes (those whose nullifier does not exist) are included in the response.
+
+**Note `block_number`:** The slot's `last_update_block` from the storage RPC (`get_storage_at` with the `IncludeLastUpdateBlock` flag). Note slots are write-once, so this equals the block in which the note was created. Clients use it to enforce the 10-block maturity rule before spending.
 
 ## 6.6 Outgoing Channel Sync Endpoint
 
