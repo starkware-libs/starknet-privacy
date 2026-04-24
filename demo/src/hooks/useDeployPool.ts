@@ -5,7 +5,7 @@ import type { AccountConfig, AppConfig } from "../config.ts";
 export function useDeployPool(
   provider: RpcProvider | undefined,
   config: AppConfig,
-  accounts: AccountConfig[],
+  accounts: AccountConfig[]
 ) {
   const [deploying, setDeploying] = useState(false);
   const [deployError, setDeployError] = useState<string | null>(null);
@@ -13,7 +13,7 @@ export function useDeployPool(
   const adminConfig = useMemo(() => accounts.find((a) => a.admin), [accounts]);
 
   const adminAccount = useMemo(() => {
-    if (!provider || !adminConfig) return undefined;
+    if (!provider || !adminConfig || !adminConfig.privateKey) return undefined;
     return new Account({
       provider,
       address: adminConfig.address,
@@ -42,12 +42,10 @@ export function useDeployPool(
       });
       const deployResult = await adminAccount.deployContract(
         { classHash: config.poolClassHash, constructorCalldata, salt },
-        { tip: 0n, resourceBounds: deployFee.resourceBounds },
+        { tip: 0n, resourceBounds: deployFee.resourceBounds }
       );
 
-      const receipt = await provider.waitForTransaction(
-        deployResult.transaction_hash,
-      );
+      const receipt = await provider.waitForTransaction(deployResult.transaction_hash);
       if (!receipt.isSuccess()) {
         throw new Error(`Deploy reverted: ${JSON.stringify(receipt)}`);
       }

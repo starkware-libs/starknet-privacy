@@ -3,7 +3,6 @@ import type { AccountConfig } from "../config.ts";
 
 const ACCOUNTS_KEY = "accounts";
 const ACTIVE_INDEX_KEY = "activeAccountIndex";
-const QUERY_PARAM = "accounts";
 
 function loadStoredAccounts(): AccountConfig[] {
   try {
@@ -32,7 +31,12 @@ function loadStoredIndex(accounts: AccountConfig[]): number {
   }
 }
 
-/** Parse and validate the JSON accounts string (same format as VITE_ACCOUNTS). */
+// Accepts entries with any of:
+//   - privateKey + viewingKey: full account, viewing key used as-is
+//   - privateKey only: full account, viewing key derived (see `deriveViewingKey`)
+//   - viewingKey only: view-only (action buttons gated via `isSendCapable`)
+// `name` and `address` are always required. At least one of privateKey /
+// viewingKey must be present.
 function parseAccounts(raw: string): AccountConfig[] {
   const parsed = JSON.parse(raw) as unknown;
   if (!Array.isArray(parsed)) throw new Error("Expected a JSON array");
@@ -42,11 +46,14 @@ function parseAccounts(raw: string): AccountConfig[] {
       entry === null ||
       typeof entry.name !== "string" ||
       typeof entry.address !== "string" ||
-      typeof entry.privateKey !== "string" ||
-      typeof entry.viewingKey !== "string"
+      (entry.privateKey !== undefined && typeof entry.privateKey !== "string") ||
+      (entry.viewingKey !== undefined && typeof entry.viewingKey !== "string")
     ) {
+      throw new Error("Each account must have name and address");
+    }
+    if (!entry.privateKey && !entry.viewingKey) {
       throw new Error(
-        "Each account must have name, address, privateKey, viewingKey",
+        `Account "${entry.name}" must supply privateKey (to derive the viewing key) or viewingKey (for view-only)`
       );
     }
   }
@@ -55,41 +62,7 @@ function parseAccounts(raw: string): AccountConfig[] {
 
 function saveAccounts(accounts: AccountConfig[]): void {
   localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
-  localStorage.setItem(
-    ACTIVE_INDEX_KEY,
-    String(firstNonAdminIndex(accounts)),
-  );
-}
-
-/** Try to load accounts from the `?accounts=<base64>` query param. */
-function loadFromQueryParam(): AccountConfig[] | null {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const encoded = params.get(QUERY_PARAM);
-    if (!encoded) return null;
-    const json = atob(encoded);
-    const accounts = parseAccounts(json);
-    if (accounts.length === 0) return null;
-    // Persist and strip the query param from the URL
-    saveAccounts(accounts);
-    params.delete(QUERY_PARAM);
-    const cleanUrl =
-      window.location.pathname +
-      (params.size > 0 ? `?${params.toString()}` : "") +
-      window.location.hash;
-    window.history.replaceState(null, "", cleanUrl);
-    return accounts;
-  } catch {
-    return null;
-  }
-}
-
-/** Build a shareable URL with accounts encoded as a base64 query param. */
-export function buildShareUrl(accounts: AccountConfig[]): string {
-  const encoded = btoa(JSON.stringify(accounts));
-  const url = new URL(window.location.href);
-  url.searchParams.set(QUERY_PARAM, encoded);
-  return url.toString();
+  localStorage.setItem(ACTIVE_INDEX_KEY, String(firstNonAdminIndex(accounts)));
 }
 
 export type UseAccountsResult = {
@@ -97,39 +70,49 @@ export type UseAccountsResult = {
   activeIndex: number;
   activeAccount: AccountConfig | undefined;
   setActiveIndex: (index: number) => void;
-  /** Parse JSON, validate, persist to localStorage. Returns error message or null. */
+  /** Parse JSON, validate, set accounts. Returns error message or null. */
   importAccounts: (raw: string) => string | null;
 };
 
-export function useAccounts(): UseAccountsResult {
-  const [accounts, setAccounts] = useState(
-    () => loadFromQueryParam() ?? loadStoredAccounts(),
+// `persist=false` keeps accounts in memory only — nothing is written to
+// localStorage and no localStorage is read on mount. Used on mainnet so a
+// pasted signing key never survives a page reload.
+export function useAccounts(persist: boolean = true): UseAccountsResult {
+  const [accounts, setAccounts] = useState<AccountConfig[]>(() =>
+    persist ? loadStoredAccounts() : []
   );
   const [activeIndex, setActiveIndexState] = useState(() =>
-    loadStoredIndex(accounts),
+    persist ? loadStoredIndex(accounts) : 0
   );
 
-  const setActiveIndex = useCallback((index: number) => {
-    setActiveIndexState(index);
-    try {
-      localStorage.setItem(ACTIVE_INDEX_KEY, String(index));
-    } catch {
-      // localStorage unavailable — ignore
-    }
-  }, []);
+  const setActiveIndex = useCallback(
+    (index: number) => {
+      setActiveIndexState(index);
+      if (!persist) return;
+      try {
+        localStorage.setItem(ACTIVE_INDEX_KEY, String(index));
+      } catch {
+        // localStorage unavailable — ignore
+      }
+    },
+    [persist]
+  );
 
-  const importAccounts = useCallback((raw: string): string | null => {
-    try {
-      const parsed = parseAccounts(raw);
-      if (parsed.length === 0) return "No accounts in the list";
-      saveAccounts(parsed);
-      setAccounts(parsed);
-      setActiveIndexState(firstNonAdminIndex(parsed));
-      return null;
-    } catch (error) {
-      return error instanceof Error ? error.message : "Invalid JSON";
-    }
-  }, []);
+  const importAccounts = useCallback(
+    (raw: string): string | null => {
+      try {
+        const parsed = parseAccounts(raw);
+        if (parsed.length === 0) return "No accounts in the list";
+        if (persist) saveAccounts(parsed);
+        setAccounts(parsed);
+        setActiveIndexState(firstNonAdminIndex(parsed));
+        return null;
+      } catch (error) {
+        return error instanceof Error ? error.message : "Invalid JSON";
+      }
+    },
+    [persist]
+  );
 
   return {
     accounts,

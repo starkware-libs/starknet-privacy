@@ -7,12 +7,20 @@ import {
 // Direct import avoids pulling in Node-only modules from the testing barrel
 // @ts-expect-error — deep import into dist, not part of the declared exports
 import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
-import type { AppConfig, AccountConfig } from "./config.ts";
+import type { AppConfig } from "./config.ts";
 import { NoValidateProofProvider } from "./proof-provider.ts";
+
+/**
+ * STRK fee-token address. Hardcoded into the privacy pool Cairo
+ * (`packages/privacy/src/utils.cairo:62`) and identical across mainnet,
+ * sepolia, and devnet — safe to pin as a module constant.
+ */
+export const STRK_TOKEN_ADDRESS =
+  "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 
 export function createDiscoveryProvider(
   config: AppConfig,
-  poolAddress: string,
+  poolAddress: string
 ): InstanceType<typeof IndexerDiscoveryProvider> {
   if (config.ohttpEnabled === false) {
     return new IndexerDiscoveryProvider(config.indexerUrl, poolAddress);
@@ -31,11 +39,7 @@ export function createProvider(rpcUrl: string): RpcProvider {
   return new RpcProvider({ nodeUrl: rpcUrl, batch: 50 });
 }
 
-export function createAccount(
-  provider: RpcProvider,
-  address: string,
-  privateKey: string,
-): Account {
+export function createAccount(provider: RpcProvider, address: string, privateKey: string): Account {
   return new Account({
     provider,
     address,
@@ -47,7 +51,7 @@ export function createAccount(
 export function createTransfers(
   provider: RpcProvider,
   account: Account,
-  accountConfig: AccountConfig,
+  viewingKey: bigint,
   poolAddress: string,
   config: AppConfig
 ): PrivateTransfersInterface {
@@ -59,7 +63,7 @@ export function createTransfers(
   return createPrivateTransfers({
     account,
     viewingKeyProvider: {
-      getViewingKey: async () => BigInt(accountConfig.viewingKey),
+      getViewingKey: async () => viewingKey,
     },
     provingProvider,
     discoveryProvider: discovery,
@@ -71,7 +75,7 @@ export async function getErc20Balance(
   provider: RpcProvider,
   tokenAddress: string,
   ownerAddress: string,
-  blockIdentifier?: string,
+  blockIdentifier?: string
 ): Promise<bigint> {
   const result = await provider.callContract(
     {
@@ -79,7 +83,7 @@ export async function getErc20Balance(
       entrypoint: "balance_of",
       calldata: [ownerAddress],
     },
-    blockIdentifier,
+    blockIdentifier
   );
   return BigInt(result[0]);
 }
@@ -88,7 +92,7 @@ export async function getErc20Balance(
 export async function previewDeposit(
   provider: RpcProvider,
   vTokenAddress: string,
-  assets: bigint,
+  assets: bigint
 ): Promise<bigint> {
   const result = await provider.callContract({
     contractAddress: vTokenAddress,
@@ -102,7 +106,7 @@ export async function previewDeposit(
 export async function previewRedeem(
   provider: RpcProvider,
   vTokenAddress: string,
-  shares: bigint,
+  shares: bigint
 ): Promise<bigint> {
   const result = await provider.callContract({
     contractAddress: vTokenAddress,
@@ -131,7 +135,7 @@ function decodeFeltString(hex: string): string {
 
 export async function getErc20Metadata(
   provider: RpcProvider,
-  tokenAddress: string,
+  tokenAddress: string
 ): Promise<TokenMetadata> {
   const [nameResult, symbolResult, decimalsResult] = await Promise.all([
     provider.callContract({ contractAddress: tokenAddress, entrypoint: "name", calldata: [] }),
@@ -166,7 +170,7 @@ export async function getPoolPrice(
   tickSpacing: string,
   extension: string,
   token0Decimals: number,
-  token1Decimals: number,
+  token1Decimals: number
 ): Promise<PoolPriceResult> {
   const result = await provider.callContract({
     contractAddress: coreAddress,

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import type { AccountConfig } from "../config.ts";
-import { buildShareUrl } from "../hooks/useAccounts.ts";
 
 type Props = {
   accounts: AccountConfig[];
@@ -13,16 +12,10 @@ function serializeAccounts(accounts: AccountConfig[]): string {
   return accounts.length > 0 ? JSON.stringify(accounts, null, 2) : "";
 }
 
-export function AccountSelector({
-  accounts,
-  activeIndex,
-  onSelect,
-  onSave,
-}: Props) {
+export function AccountSelector({ accounts, activeIndex, onSelect, onSave }: Props) {
   const [editText, setEditText] = useState(() => serializeAccounts(accounts));
   const [editError, setEditError] = useState<string | null>(null);
   const [showEdit, setShowEdit] = useState(accounts.length === 0);
-  const [copied, setCopied] = useState(false);
 
   const handleSave = () => {
     const error = onSave(editText);
@@ -42,13 +35,6 @@ export function AccountSelector({
     setShowEdit(!showEdit);
   };
 
-  const handleShare = () => {
-    const url = buildShareUrl(accounts);
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-
   return (
     <div className={`account-selector${showEdit ? " account-selector-import" : ""}`}>
       <div className="account-selector-row">
@@ -62,20 +48,13 @@ export function AccountSelector({
                 onClick={() => onSelect(index)}
               >
                 {account.name}
-                <span className="account-tab-address">
-                  ({account.address.slice(0, 10)}...)
-                </span>
+                <span className="account-tab-address">({account.address.slice(0, 10)}...)</span>
               </button>
-            ),
+            )
           )}
           <button className="account-tab import-toggle" onClick={toggleEdit}>
             Edit
           </button>
-          {accounts.length > 0 && (
-            <button className="account-tab import-toggle" onClick={handleShare}>
-              {copied ? "Copied!" : "Share"}
-            </button>
-          )}
         </div>
       </div>
       {showEdit && (

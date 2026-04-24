@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Account } from "starknet";
 import { createEmptyRegistry } from "starknet-sdk";
 import { formatChainId } from "./format.ts";
-import { loadConfig, initPaymasterForwarder } from "./config.ts";
-import { createProvider, createAccount, createTransfers } from "./starknet.ts";
+import {
+  loadConfig,
+  initPaymasterForwarder,
+  initFeeConfig,
+  type AccountConfig,
+} from "./config.ts";
+import { createProvider, createTransfers } from "./starknet.ts";
 import { useAccounts } from "./hooks/useAccounts.ts";
 import { usePoolSelector } from "./hooks/usePoolSelector.ts";
 import { useDeployPool } from "./hooks/useDeployPool.ts";
@@ -20,17 +26,20 @@ import { useTransactionBuilder } from "./hooks/useTransactionBuilder.ts";
 import { useLastTxBlockNumber } from "./hooks/useLastTxBlock.ts";
 import { useServiceHealth } from "./hooks/useServiceHealth.ts";
 import { DefiPanel } from "./components/DefiPanel.tsx";
-import { useTokenMetadata } from "./hooks/useTokenMetadata.ts";
+import { isMainnet, isSendCapable, withViewingKey } from "./session.ts";
 import "./App.css";
 
 const config = loadConfig();
+const isMainnetChain = isMainnet(config.chainId);
 
 export function App() {
   const [classHash, setClassHash] = useState(config.poolClassHash);
   const [paymasterForwarderAddress, setPaymasterForwarderAddress] = useState<string | undefined>();
+  const [feeAmount, setFeeAmount] = useState<bigint | undefined>();
+  const [feeCollectorAddress, setFeeCollectorAddress] = useState<string | undefined>();
 
   useEffect(() => {
-    initPaymasterForwarder(config).then(() => {
+    void initPaymasterForwarder(config).then(() => {
       setPaymasterForwarderAddress(config.paymasterForwarderAddress);
     });
   }, []);
@@ -44,37 +53,104 @@ export function App() {
     localStorage.setItem("paymasterEnabled", String(enabled));
   }, []);
 
+  const [feeToken, setFeeToken] = useState<string | undefined>(() => {
+    const stored = localStorage.getItem("paymasterFeeToken");
+    return stored ?? config.paymasterFeeToken;
+  });
+
+  const selectFeeToken = useCallback((address: string) => {
+    setFeeToken(address);
+    localStorage.setItem("paymasterFeeToken", address);
+  }, []);
+
+  const isValidFeeToken = useCallback(
+    (address: string | undefined, balances: { address: string; private: bigint }[]) => {
+      if (!address) return false;
+      const target = BigInt(address);
+      return balances.some((tb) => BigInt(tb.address) === target && tb.private > 0n);
+    },
+    []
+  );
+
+  // OHTTP is mandatory on mainnet — without the relay layer a passive
+  // observer of the discovery / proving backend correlates the viewer's
+  // address with their encrypted notes, defeating the pool's privacy.
+  // Testnet/devnet keep the toggle for debugging.
   const [ohttpEnabled, setOhttpEnabled] = useState(() => {
+    if (isMainnetChain) return true;
     const stored = localStorage.getItem("ohttpEnabled");
     return stored !== null ? stored === "true" : true;
   });
 
   const toggleOhttp = useCallback((enabled: boolean) => {
+    if (isMainnetChain) return;
     setOhttpEnabled(enabled);
     localStorage.setItem("ohttpEnabled", String(enabled));
   }, []);
 
-  const { accounts, activeIndex, activeAccount, setActiveIndex, importAccounts } =
-    useAccounts();
+  // On mainnet, accounts live in memory only — no localStorage, no URL
+  // sharing. Reload clears state. Testnet persists for developer convenience.
+  const {
+    accounts: rawAccounts,
+    activeIndex,
+    activeAccount: rawActiveAccount,
+    setActiveIndex,
+    importAccounts,
+  } = useAccounts(!isMainnetChain);
 
   const provider = useMemo(() => createProvider(config.rpcUrl), []);
+  const sendCapable = isSendCapable(rawActiveAccount);
 
-  const { activeAddress: poolAddress, search, selectPool, addPool, searchPools, stopSearch, closeSearch } =
-    usePoolSelector(provider, config.poolAddress, classHash);
+  useEffect(() => {
+    void initFeeConfig(config, provider).then(() => {
+      setFeeAmount(config.feeAmount);
+      setFeeCollectorAddress(config.feeCollectorAddress);
+    });
+  }, [provider]);
 
-  const configWithClassHash = useMemo(
-    () => ({ ...config, poolClassHash: classHash }),
-    [classHash],
+  const {
+    activeAddress: poolAddress,
+    search,
+    selectPool,
+    addPool,
+    searchPools,
+    stopSearch,
+    closeSearch,
+  } = usePoolSelector(provider, config.poolAddress, classHash);
+
+  // Fill in `viewingKey` deterministically from the account's private key
+  // when it's absent (see `deriveViewingKey`). Depends on poolAddress, so
+  // switching pools re-derives. Accounts that have neither a privateKey
+  // nor a viewingKey are dropped as unusable.
+  const accounts = useMemo(
+    () =>
+      rawAccounts
+        .map((account) => withViewingKey(account, config.chainId, poolAddress))
+        .filter((account): account is AccountConfig => account !== undefined),
+    [rawAccounts, poolAddress]
   );
+  const activeAccount = accounts[activeIndex];
+
+  const configWithClassHash = useMemo(() => ({ ...config, poolClassHash: classHash }), [classHash]);
 
   const effectiveConfig = useMemo(
     () => ({
       ...config,
+      paymasterFeeToken: feeToken,
       ...(paymasterEnabled ? {} : { paymasterUrl: undefined }),
       ohttpEnabled,
       paymasterForwarderAddress,
+      feeAmount,
+      feeCollectorAddress,
     }),
-    [paymasterEnabled, ohttpEnabled, paymasterForwarderAddress],
+    [
+      paymasterEnabled,
+      ohttpEnabled,
+      paymasterForwarderAddress,
+      feeToken,
+      feeAmount,
+      feeCollectorAddress,
+    ]
   );
 
   const { deploying, deployError, deploy } = useDeployPool(provider, configWithClassHash, accounts);
@@ -88,21 +164,41 @@ export function App() {
     }
   }, [deploy, addPool]);
 
-  const account = useMemo(() => {
-    if (!activeAccount) return undefined;
-    return createAccount(provider, activeAccount.address, activeAccount.privateKey);
+  const userAccount = useMemo(() => {
+    if (!provider || !activeAccount?.privateKey) return undefined;
+    return new Account({
+      provider,
+      address: activeAccount.address,
+      signer: activeAccount.privateKey,
+      cairoVersion: "1",
+    });
   }, [provider, activeAccount]);
 
+  const adminAccount = useMemo(() => {
+    if (!provider || isMainnetChain) return undefined;
+    const admin = accounts.find((a) => a.admin);
+    if (!admin?.privateKey) return undefined;
+    return new Account({
+      provider,
+      address: admin.address,
+      signer: admin.privateKey,
+      cairoVersion: "1",
+    });
+  }, [provider, accounts]);
+
   const transfers = useMemo(() => {
-    if (!account || !activeAccount) return undefined;
-    return createTransfers(provider, account, activeAccount, poolAddress, effectiveConfig);
-  }, [provider, account, activeAccount, poolAddress, effectiveConfig]);
+    if (!userAccount || !activeAccount?.viewingKey) return undefined;
+    return createTransfers(
+      provider,
+      userAccount,
+      BigInt(activeAccount.viewingKey),
+      poolAddress,
+      effectiveConfig
+    );
+  }, [provider, userAccount, activeAccount, poolAddress, effectiveConfig]);
 
   const registry = useRef(createEmptyRegistry());
 
-  // Reset registry BEFORE useHistory's auto-fetch effect runs on account/pool
-  // switch. Otherwise useHistory captures the previous account's cursor and
-  // calls fetchHistory against the new account's address, producing mixed data.
   useEffect(() => {
     const reg = registry.current;
     reg.cursor = undefined;
@@ -112,13 +208,27 @@ export function App() {
 
   const { state, loading, error, refresh, refreshBalances } = usePrivateState(
     provider,
-    transfers,
     activeAccount,
     accounts,
     poolAddress,
     effectiveConfig,
-    registry.current,
+    registry.current
   );
+
+  useEffect(() => {
+    if (isValidFeeToken(feeToken, state.tokenBalances)) return;
+    const firstWithBalance = state.tokenBalances.find((tb) => tb.private > 0n);
+    if (firstWithBalance) selectFeeToken(firstWithBalance.address);
+  }, [feeToken, state.tokenBalances, isValidFeeToken, selectFeeToken]);
+
+  // Paymaster requires a private note to pay the fee from. If the account has
+  // no private balance, drop paymasterUrl so transactions fall back to normal
+  // signing instead of failing in the fee-withdraw step.
+  const txConfig = useMemo(() => {
+    const hasPrivateBalance = state.tokenBalances.some((tb) => tb.private > 0n);
+    if (hasPrivateBalance) return effectiveConfig;
+    return { ...effectiveConfig, paymasterUrl: undefined };
+  }, [effectiveConfig, state.tokenBalances]);
 
   const {
     transactions: historyTransactions,
@@ -131,57 +241,61 @@ export function App() {
 
   const { lastTxBlockNumberRef, updateLastTxBlockNumber } = useLastTxBlockNumber(
     activeAccount?.address,
-    historyTransactions,
+    historyTransactions
   );
 
   const refreshAll = useCallback(async () => {
-    // Reset cursors so refresh does a full re-sync — incremental discovery
-    // only returns new notes, so stale cursors would yield empty results
-    // after a transaction that consumed/created notes.
     const reg = registry.current;
     reg.cursor = undefined;
     reg.channels = createEmptyRegistry().channels;
     reg.notes = createEmptyRegistry().notes;
     await refresh();
-    refreshHistoryLatest();
+    void refreshHistoryLatest();
   }, [refresh, refreshHistoryLatest]);
 
-  // Reset registry in-place before each refresh. Incremental discovery returns
-  // only delta notes past registry.cursor, so any change that rebuilds refresh
-  // (account, pool, config, transfers) must first clear cursors or balances
-  // will zero out. Mutating (not replacing) preserves the ref identity that
-  // captured callbacks rely on.
   useEffect(() => {
     const reg = registry.current;
     reg.cursor = undefined;
     reg.channels = createEmptyRegistry().channels;
     reg.notes = createEmptyRegistry().notes;
-    refresh();
+    void refresh();
   }, [refresh]);
 
-  const { status, register, mint, deposit, withdraw, transfer, swap, vesuSupply, vesuWithdraw } = useTransactions(
-    provider,
-    transfers,
-    activeAccount?.address,
-    poolAddress,
-    effectiveConfig,
-    accounts,
-    refreshAll,
-    refreshBalances,
-    lastTxBlockNumberRef,
-    updateLastTxBlockNumber,
-  );
+  const {
+    status,
+    register,
+    mint,
+    deposit,
+    withdraw,
+    transfer,
+    swap,
+    avnuSwap,
+    vesuSupply,
+    vesuWithdraw,
+  } = useTransactions(
+      provider,
+      transfers,
+      userAccount,
+      adminAccount,
+      activeAccount?.address,
+      poolAddress,
+      txConfig,
+      refreshAll,
+      refreshBalances,
+      lastTxBlockNumberRef,
+      updateLastTxBlockNumber
+    );
 
   const { status: builderStatus, executeBatch } = useTransactionBuilder(
     provider,
     transfers,
+    userAccount,
     activeAccount?.address,
     poolAddress,
-    effectiveConfig,
-    accounts,
+    txConfig,
     refreshAll,
     lastTxBlockNumberRef,
-    updateLastTxBlockNumber,
+    updateLastTxBlockNumber
   );
 
   const serviceHealth = useServiceHealth(provider, effectiveConfig);
@@ -195,6 +309,22 @@ export function App() {
         Chain: <code>{formatChainId(config.chainId)}</code>
         <ServiceHealthBar health={serviceHealth} />
       </div>
+      {isMainnetChain && (
+        <div
+          style={{
+            background: "#7a1e1e",
+            color: "#fff",
+            padding: "8px 12px",
+            borderRadius: 4,
+            margin: "8px 0",
+            fontWeight: 600,
+          }}
+        >
+          MAINNET — real funds. Keys you paste stay in this tab only (not saved, not shared, cleared
+          on reload). Use a throwaway account for testing. For read-only access, paste JSON without
+          a <code>privateKey</code> field.
+        </div>
+      )}
       <PoolSelector
         activeAddress={poolAddress}
         search={search}
@@ -257,11 +387,13 @@ export function App() {
                 <ActionPanel
                   pending={status.pending}
                   pendingAction={status.action}
+                  sendCapable={sendCapable}
                   activeAddress={activeAccount.address}
                   otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
                   tokens={config.tokens}
+                  tokenBalances={state.tokenBalances}
                   onRegister={register}
-                  onMint={mint}
+                  onMint={isMainnetChain ? undefined : mint}
                   onDeposit={deposit}
                   onWithdraw={withdraw}
                   onTransfer={transfer}
@@ -270,9 +402,11 @@ export function App() {
               {activeView === "builder" && (
                 <TransactionBuilder
                   pending={builderStatus.pending}
+                  sendCapable={sendCapable}
                   activeAddress={activeAccount.address}
                   otherAccounts={accounts.filter((_, index) => index !== activeIndex)}
                   tokens={config.tokens}
+                  tokenBalances={state.tokenBalances}
                   onExecute={executeBatch}
                 />
               )}
@@ -280,42 +414,71 @@ export function App() {
                 <DefiPanel
                   pending={status.pending}
                   pendingAction={status.action}
+                  sendCapable={sendCapable}
                   tokens={config.tokens}
+                  tokenBalances={state.tokenBalances}
                   swapTokens={config.ekubo?.swapTokens}
                   provider={provider}
                   ekubo={config.ekubo}
                   vesu={config.vesu}
+                  paymasterAvailable={Boolean(txConfig.paymasterUrl)}
                   onSwap={swap}
+                  onAvnuSwap={avnuSwap}
                   onVesuSupply={vesuSupply}
                   onVesuWithdraw={vesuWithdraw}
                 />
               )}
               <div className="config-island">
                 <h3>Config</h3>
-                <label className="builder-checkbox">
+                <label
+                  className="builder-checkbox"
+                  title={isMainnetChain ? "OHTTP is enforced on mainnet" : undefined}
+                >
                   <input
                     type="checkbox"
                     checked={ohttpEnabled}
                     onChange={(e) => toggleOhttp(e.target.checked)}
+                    disabled={isMainnetChain}
                   />
                   OHTTP
                   {config.backendIndexerUrl && <span className="chip">relay</span>}
+                  {isMainnetChain && <span className="chip">enforced</span>}
                 </label>
-                {config.paymasterUrl && (
-                  <label className="builder-checkbox">
-                    <input
-                      type="checkbox"
-                      checked={paymasterEnabled}
-                      onChange={(e) => togglePaymaster(e.target.checked)}
-                    />
-                    Paymaster
-                    {config.paymasterFeeToken && (
-                      <span className="chip">
-                        {config.tokens.find((t) => t.address === config.paymasterFeeToken)?.name ?? "?"}
-                      </span>
-                    )}
-                  </label>
-                )}
+                {config.paymasterUrl && (() => {
+                  const tokensWithBalance = state.tokenBalances.filter((tb) => tb.private > 0n);
+                  const hasPrivateBalance = tokensWithBalance.length > 0;
+                  return (
+                    <label className="builder-checkbox">
+                      <input
+                        type="checkbox"
+                        checked={paymasterEnabled && hasPrivateBalance}
+                        onChange={(e) => togglePaymaster(e.target.checked)}
+                        disabled={!hasPrivateBalance}
+                      />
+                      Paymaster
+                      {hasPrivateBalance ? (
+                        <select
+                          value={feeToken ?? ""}
+                          onChange={(e) => selectFeeToken(e.target.value)}
+                          disabled={!paymasterEnabled}
+                        >
+                          {tokensWithBalance.map((tb) => {
+                            const name =
+                              config.tokens.find((t) => BigInt(t.address) === BigInt(tb.address))
+                                ?.name ?? "?";
+                            return (
+                              <option key={tb.address} value={tb.address}>
+                                {name}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      ) : (
+                        <span className="chip">no private balance</span>
+                      )}
+                    </label>
+                  );
+                })()}
               </div>
             </div>
           </div>
@@ -323,7 +486,11 @@ export function App() {
       )}
       <footer className="app-footer">
         Built by Starkware &middot; Docs{" "}
-        <a href="https://github.com/starkware-libs/starknet-privacy" target="_blank" rel="noreferrer">
+        <a
+          href="https://github.com/starkware-libs/starknet-privacy"
+          target="_blank"
+          rel="noreferrer"
+        >
           github.com/starkware-libs/starknet-privacy
         </a>
       </footer>

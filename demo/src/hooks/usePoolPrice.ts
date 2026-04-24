@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { RpcProvider } from "starknet";
-import type { EkuboConfig, TokenConfig } from "../config.ts";
+import { findEkuboPool, type EkuboConfig, type TokenConfig } from "../config.ts";
 import { getPoolPrice } from "../starknet.ts";
 
 export type PoolPrice = {
@@ -37,8 +37,18 @@ export function usePoolPrice(
       return;
     }
 
-    const token0Decimals = tokenMap.get(ekubo.poolToken0)?.decimals ?? 18;
-    const token1Decimals = tokenMap.get(ekubo.poolToken1)?.decimals ?? 18;
+    const pool = findEkuboPool(ekubo, fromToken, toToken);
+    if (!pool) {
+      setPoolPrice(null);
+      return;
+    }
+
+    // Token maps use hex strings; pool.token0/token1 also hex but may differ
+    // in casing / zero-padding. Match via BigInt equality.
+    const token0BigInt = BigInt(pool.token0);
+    const tokenByBigInt = new Map(allTokens.map((t) => [BigInt(t.address), t]));
+    const token0Decimals = tokenByBigInt.get(token0BigInt)?.decimals ?? 18;
+    const token1Decimals = tokenByBigInt.get(BigInt(pool.token1))?.decimals ?? 18;
 
     let cancelled = false;
     setLoading(true);
@@ -46,18 +56,18 @@ export function usePoolPrice(
     void getPoolPrice(
       provider,
       ekubo.coreAddress,
-      ekubo.poolToken0,
-      ekubo.poolToken1,
-      ekubo.poolFee,
-      ekubo.tickSpacing,
-      ekubo.extension,
+      pool.token0,
+      pool.token1,
+      pool.fee,
+      pool.tickSpacing,
+      pool.extension,
       token0Decimals,
       token1Decimals
     ).then(
       (result) => {
         if (cancelled) return;
         // result.price is token1/token0. Convert to fromToken/toToken direction.
-        const isFromToken0 = BigInt(fromToken) < BigInt(toToken);
+        const isFromToken0 = BigInt(fromToken) === token0BigInt;
         const directionalPrice = isFromToken0 ? result.price : 1 / result.price;
         setPoolPrice({
           price: directionalPrice,

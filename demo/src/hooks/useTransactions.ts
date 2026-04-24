@@ -1,9 +1,11 @@
 import { useState, useCallback, useMemo, useRef, type RefObject } from "react";
-import { Account, TransactionFinalityStatus, type RpcProvider } from "starknet";
+import { TransactionFinalityStatus, transaction, type Account, type RpcProvider } from "starknet";
 import { Open, type PrivateTransfersInterface, type PrivateTransfersBuilder } from "starknet-sdk";
-import type { AccountConfig, AppConfig } from "../config.ts";
+import { getQuotes, quoteToCalls } from "../avnu.ts";
+import { findEkuboPool, type AppConfig } from "../config.ts";
 import { Timeline } from "../timeline.ts";
 import { toRawAmount } from "../format.ts";
+import { previewRedeem, STRK_TOKEN_ADDRESS } from "../starknet.ts";
 import {
   type FeeAction,
   type FeeMode,
@@ -44,6 +46,48 @@ async function fetchPaymasterFee(
   ).fee_action;
 }
 
+/**
+ * The pool's `apply_actions` calls `collect_fee()` which pulls
+ * `config.feeAmount` STRK from the tx caller to the fee collector.
+ *
+ * - With paymaster (`feeAction` defined): the paymaster forwarder is the
+ *   caller and handles its own allowance. Nothing to do.
+ * - Without paymaster: the user account is the caller and must approve STRK
+ *   to the pool for `feeAmount` before submitting. This helper issues that
+ *   approve and waits for its receipt.
+ *
+ * `alreadyCovered` is set by `deposit` when depositing STRK — it folds the
+ * fee amount into the existing deposit-token approve, so no separate
+ * allowance tx is needed.
+ */
+async function ensureFeeApproval(
+  userAccount: Account,
+  provider: RpcProvider,
+  feeAction: FeeAction | undefined,
+  config: AppConfig,
+  poolAddress: string,
+  timeline: Timeline,
+  alreadyCovered = false
+): Promise<void> {
+  if (feeAction) return;
+  if (alreadyCovered) return;
+  const feeAmount = config.feeAmount ?? 0n;
+  if (feeAmount === 0n) return;
+  await timeline.step("Approve fee", async () => {
+    const approveCall = {
+      contractAddress: STRK_TOKEN_ADDRESS,
+      entrypoint: "approve",
+      calldata: [poolAddress, feeAmount.toString(), "0"],
+    };
+    const approveTx = await timeline.step("Estimate + submit", () =>
+      userAccount.execute(approveCall, { tip: 0n })
+    );
+    await timeline.step("Wait for receipt", () =>
+      provider.waitForTransaction(approveTx.transaction_hash, WAIT_OPTIONS)
+    );
+  });
+}
+
 function addFeeWithdraw(builder: PrivateTransfersBuilder, feeAction: FeeAction | undefined): void {
   if (feeAction) {
     builder.with(feeAction.token, (t) =>
@@ -55,7 +99,7 @@ function addFeeWithdraw(builder: PrivateTransfersBuilder, feeAction: FeeAction |
 // Sequencer accepts proofs for at most latest-10. We use latest-8 as the
 // proving block — proving takes ~4s which is less than 2 block times, so
 // the proof is still within the acceptance window when the tx arrives.
-const PROVING_BLOCK_DEPTH = 8;
+const PROVING_BLOCK_DEPTH = 9;
 
 export async function waitForProvingBlock(
   timeline: Timeline,
@@ -144,10 +188,11 @@ export type TransactionStatus = {
 export function useTransactions(
   provider: RpcProvider | undefined,
   transfers: PrivateTransfersInterface | undefined,
+  userAccount: Account | undefined,
+  adminAccount: Account | undefined,
   activeAddress: string | undefined,
   poolAddress: string,
   config: AppConfig,
-  accounts: AccountConfig[],
   onSettled: () => void,
   onBalancesChanged: (() => Promise<void>) | undefined,
   lastTxBlockNumberRef: RefObject<number | undefined>,
@@ -166,30 +211,6 @@ export function useTransactions(
   onSettledRef.current = onSettled;
   const onBalancesChangedRef = useRef(onBalancesChanged);
   onBalancesChangedRef.current = onBalancesChanged;
-
-  const adminAccount = useMemo(() => {
-    if (!provider) return undefined;
-    const admin = accounts.find((a) => a.admin);
-    if (!admin) return undefined;
-    return new Account({
-      provider,
-      address: admin.address,
-      signer: admin.privateKey,
-      cairoVersion: "1",
-    });
-  }, [provider, accounts]);
-
-  const userAccount = useMemo(() => {
-    if (!provider || !activeAddress) return undefined;
-    const accountConfig = accounts.find((a) => a.address === activeAddress);
-    if (!accountConfig) return undefined;
-    return new Account({
-      provider,
-      address: accountConfig.address,
-      signer: accountConfig.privateKey,
-      cairoVersion: "1",
-    });
-  }, [provider, activeAddress, accounts]);
 
   const decimalsByToken = useMemo(
     () => new Map(config.tokens.map((t) => [t.address, t.decimals])),
@@ -235,7 +256,7 @@ export function useTransactions(
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`[${action}] failed:`, err);
+        console.error(`[${action}] failed: ${message}`);
         setStatus({
           pending: false,
           action,
@@ -256,6 +277,8 @@ export function useTransactions(
       execute("Register", async (tl) => {
         if (!userAccount || !transfers || !provider) throw new Error("Not ready");
 
+        await ensureFeeApproval(userAccount, provider, undefined, config, poolAddress, tl);
+
         const lastTxBlockNumber = lastTxBlockNumberRef.current;
 
         const builder = transfers.build().register();
@@ -270,7 +293,7 @@ export function useTransactions(
           lastTxBlockNumber
         );
       }),
-    [userAccount, transfers, provider, config, execute, lastTxBlockNumberRef]
+    [userAccount, transfers, provider, config, poolAddress, execute, lastTxBlockNumberRef]
   );
 
   const mint = useCallback(
@@ -306,11 +329,18 @@ export function useTransactions(
         if (!userAccount || !transfers || !provider || !activeAddress) throw new Error("Not ready");
         const rawAmount = scaleAmount(token, amount);
 
+        // Fetch paymaster fee first so the deposit-token approve can fold in
+        // the pool fee when depositing STRK without a paymaster (saves one tx).
+        const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+
+        const strkDeposit = !feeAction && BigInt(token) === BigInt(STRK_TOKEN_ADDRESS);
+        const depositApprovalAmount = rawAmount + (strkDeposit ? (config.feeAmount ?? 0n) : 0n);
+
         await tl.step("Approve", async () => {
           const approveCall = {
             contractAddress: token,
             entrypoint: "approve",
-            calldata: [poolAddress, rawAmount.toString(), "0"],
+            calldata: [poolAddress, depositApprovalAmount.toString(), "0"],
           };
           const approveTx = await tl.step("Estimate + submit", () =>
             userAccount.execute(approveCall, { tip: 0n })
@@ -320,6 +350,16 @@ export function useTransactions(
           );
         });
 
+        await ensureFeeApproval(
+          userAccount,
+          provider,
+          feeAction,
+          config,
+          poolAddress,
+          tl,
+          strkDeposit
+        );
+
         const lastTxBlockNumber = lastTxBlockNumberRef.current;
 
         const builder = transfers
@@ -327,11 +367,13 @@ export function useTransactions(
             autoRegister: true,
             autoSetup: true,
             autoDiscover: { notes: "refresh", channels: "refresh" },
+            autoSelectNotes: "naive",
           })
+          .surplusTo(activeAddress)
           .with(token, (t) => t.deposit({ amount: rawAmount, recipient: activeAddress }));
         return buildProveSubmit(
           builder,
-          undefined,
+          feeAction,
           transfers,
           config,
           tl,
@@ -358,6 +400,7 @@ export function useTransactions(
         if (!userAccount || !transfers || !provider || !activeAddress) throw new Error("Not ready");
         const rawAmount = scaleAmount(token, amount);
         const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+        await ensureFeeApproval(userAccount, provider, feeAction, config, poolAddress, tl);
 
         const lastTxBlockNumber = lastTxBlockNumberRef.current;
 
@@ -397,6 +440,7 @@ export function useTransactions(
         if (!userAccount || !transfers || !provider || !activeAddress) throw new Error("Not ready");
         const rawAmount = scaleAmount(token, amount);
         const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+        await ensureFeeApproval(userAccount, provider, feeAction, config, poolAddress, tl);
 
         const lastTxBlockNumber = lastTxBlockNumberRef.current;
 
@@ -432,24 +476,27 @@ export function useTransactions(
   );
 
   const swap = useCallback(
-    (fromToken: string, toToken: string, amount: string) =>
+    (fromToken: string, toToken: string, amount: string, minReceivedRaw: bigint) =>
       execute("Swap", async (tl) => {
         if (!userAccount || !transfers || !provider || !activeAddress) throw new Error("Not ready");
         if (!config.ekubo) throw new Error("Ekubo config not set");
         const rawAmount = scaleAmount(fromToken, amount);
 
+        const pool = findEkuboPool(config.ekubo, fromToken, toToken);
+        if (!pool) throw new Error("No Ekubo pool configured for this pair");
+
+        const { executorAddress, routerAddress } = config.ekubo;
         const {
-          executorAddress,
-          routerAddress,
-          poolToken0,
-          poolToken1,
-          poolFee,
+          token0: poolToken0,
+          token1: poolToken1,
+          fee: poolFee,
           tickSpacing,
           extension,
           skipAhead,
-        } = config.ekubo;
+        } = pool;
 
         const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+        await ensureFeeApproval(userAccount, provider, feeAction, config, poolAddress, tl);
 
         const lastTxBlockNumber = lastTxBlockNumberRef.current;
 
@@ -483,11 +530,102 @@ export function useTransactions(
                 poolFee,
                 tickSpacing,
                 extension,
-                0n, // minimum_received (low)
-                0n, // minimum_received (high)
+                minReceivedRaw & ((1n << 128n) - 1n), // minimum_received (low)
+                minReceivedRaw >> 128n, // minimum_received (high)
                 skipAhead,
                 openNote.noteId,
               ],
+            };
+          });
+        return buildProveSubmit(
+          builder,
+          feeAction,
+          transfers,
+          config,
+          tl,
+          userAccount,
+          provider,
+          lastTxBlockNumber
+        );
+      }),
+    [
+      userAccount,
+      transfers,
+      provider,
+      activeAddress,
+      config,
+      poolAddress,
+      execute,
+      lastTxBlockNumberRef,
+    ]
+  );
+
+  const avnuSwap = useCallback(
+    (fromToken: string, toToken: string, amount: string, slippageBps: number) =>
+      execute("AVNU Swap", async (tl) => {
+        if (!userAccount || !transfers || !provider || !activeAddress) throw new Error("Not ready");
+        const rawAmount = scaleAmount(fromToken, amount);
+
+        const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+        if (!feeAction) {
+          throw new Error("AVNU private swap requires the paymaster — enable it and retry");
+        }
+
+        const quotes = await tl.step("Get AVNU quote", () =>
+          getQuotes({
+            sellTokenAddress: fromToken,
+            buyTokenAddress: toToken,
+            sellAmount: rawAmount,
+            takerAddress: activeAddress,
+            size: 1,
+          })
+        );
+        const quote = quotes[0];
+        if (!quote) throw new Error("AVNU: no quote for this pair");
+
+        const avnuCalls = await tl.step("Build swap calls", () =>
+          // `private: true` routes through AVNU's private-swap executor and
+          // returns calldata that expects the privacy pool's open-note id.
+          quoteToCalls({
+            quoteId: quote.quoteId,
+            slippage: slippageBps / 10000,
+            private: true,
+          })
+        );
+        const { calls: innerCalls, executorAddress } = avnuCalls;
+        if (!executorAddress) {
+          throw new Error("AVNU: missing executorAddress — enable private swap on the branch");
+        }
+
+        const lastTxBlockNumber = lastTxBlockNumberRef.current;
+
+        const builder = transfers
+          .build({
+            autoSetup: true,
+            autoSelectNotes: "all",
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+          })
+          .surplusTo(activeAddress)
+          .with(fromToken)
+          .withdraw({ recipient: executorAddress, amount: rawAmount })
+          .surplusTo(activeAddress, false)
+          .with(toToken)
+          .transfer({ recipient: activeAddress, amount: Open })
+          .done()
+          .invoke((args) => {
+            const openNote = args.openNotes[0];
+            if (!openNote) {
+              throw new Error("Expected one open note for AVNU swap invocation");
+            }
+            // AVNU private-swap executor entrypoint layout:
+            //   [buyToken, ...Array<Call> (Cairo 1 serialization), openNoteId]
+            // transaction.fromCallsToExecuteCalldata_cairo1 emits
+            //   [num_calls, (to, selector, calldata_len, ...calldata)*] — exactly
+            // what the executor expects for the inner swap route.
+            const serializedCalls = transaction.fromCallsToExecuteCalldata_cairo1(innerCalls);
+            return {
+              contractAddress: executorAddress,
+              calldata: [toToken, ...serializedCalls, openNote.noteId],
             };
           });
         return buildProveSubmit(
@@ -522,6 +660,7 @@ export function useTransactions(
         const { helperAddress } = config.vesu;
 
         const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+        await ensureFeeApproval(userAccount, provider, feeAction, config, poolAddress, tl);
 
         const lastTxBlockNumber = lastTxBlockNumberRef.current;
 
@@ -577,10 +716,24 @@ export function useTransactions(
       execute("Vesu Withdraw", async (tl) => {
         if (!userAccount || !transfers || !provider || !activeAddress) throw new Error("Not ready");
         if (!config.vesu) throw new Error("Vesu config not set");
-        const rawAmount = scaleAmount(token, amount);
+        // `amount` is in vToken shares (matches the displayed balance). Two
+        // different denominations are needed downstream:
+        //   - rawShares: privacy-pool `.with(vTokenAddress).withdraw(amount)`
+        //     moves vTokens from the pool to the helper, so `amount` there is
+        //     in vToken raw units (18 decimals).
+        //   - rawAssets: the helper's `assets` calldata field is interpreted
+        //     as underlying raw units (e.g. USDC 6 decimals) by Vesu. Compute
+        //     it via preview_redeem(shares) → assets. Using rawShares here
+        //     asks Vesu for 10^(18-6)× too much underlying and triggers
+        //     "insufficient-reserve".
+        const rawShares = scaleAmount(vTokenAddress, amount);
+        const rawAssets = await tl.step("Preview redeem", () =>
+          previewRedeem(provider, vTokenAddress, rawShares)
+        );
         const { helperAddress } = config.vesu;
 
         const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+        await ensureFeeApproval(userAccount, provider, feeAction, config, poolAddress, tl);
 
         const lastTxBlockNumber = lastTxBlockNumberRef.current;
 
@@ -592,7 +745,7 @@ export function useTransactions(
           })
           .surplusTo(activeAddress)
           .with(vTokenAddress)
-          .withdraw({ recipient: helperAddress, amount: rawAmount })
+          .withdraw({ recipient: helperAddress, amount: rawShares })
           .surplusTo(activeAddress, false)
           .with(token)
           .transfer({ recipient: activeAddress, amount: Open })
@@ -603,7 +756,7 @@ export function useTransactions(
               1n, // LendingOperation::Withdraw
               vTokenAddress, // in_token (vToken)
               token, // out_token (underlying)
-              rawAmount, // assets (u256 low)
+              rawAssets, // assets (u256 low) — underlying units
               0n, // assets (u256 high)
               args.openNotes[0].noteId,
             ],
@@ -631,5 +784,16 @@ export function useTransactions(
     ]
   );
 
-  return { status, register, mint, deposit, withdraw, transfer, swap, vesuSupply, vesuWithdraw };
+  return {
+    status,
+    register,
+    mint,
+    deposit,
+    withdraw,
+    transfer,
+    swap,
+    avnuSwap,
+    vesuSupply,
+    vesuWithdraw,
+  };
 }

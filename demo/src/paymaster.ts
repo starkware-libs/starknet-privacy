@@ -46,7 +46,13 @@ async function rpcCall<T>(url: string, method: string, params: unknown, apiKey?:
   });
   const json = await response.json();
   if (json.error) {
-    const dataDetail = json.error.data ? `: ${json.error.data}` : "";
+    const data = json.error.data;
+    let dataDetail = "";
+    if (typeof data === "string") dataDetail = `: ${data}`;
+    else if (data && typeof data === "object") {
+      const execError = (data as { execution_error?: string }).execution_error;
+      dataDetail = `: ${execError ?? JSON.stringify(data)}`;
+    }
     throw new Error(`Paymaster ${method}: ${json.error.message} (code: ${json.error.code})${dataDetail}`);
   }
   return json.result as T;

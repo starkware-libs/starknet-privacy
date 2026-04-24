@@ -1,18 +1,32 @@
 import { useState, type FormEvent } from "react";
 import type { AccountConfig, TokenConfig } from "../config.ts";
+import type { TokenBalance } from "../hooks/usePrivateState.ts";
+import { formatAmount } from "../format.ts";
 
 type Props = {
   pending: boolean;
   pendingAction: string | null;
+  sendCapable: boolean;
   activeAddress: string;
   otherAccounts: AccountConfig[];
   tokens: TokenConfig[];
+  tokenBalances: TokenBalance[];
   onRegister: () => void;
-  onMint: (token: string, amount: string) => void;
+  /** When undefined, the mint form is hidden (e.g. on mainnet, no admin). */
+  onMint?: (token: string, amount: string) => void;
   onDeposit: (token: string, amount: string) => void;
   onWithdraw: (token: string, amount: string) => void;
   onTransfer: (token: string, recipient: string, amount: string) => void;
 };
+
+function privateBalanceOf(
+  tokenBalances: TokenBalance[],
+  tokenAddress: string
+): bigint | undefined {
+  if (!tokenAddress) return undefined;
+  const target = BigInt(tokenAddress);
+  return tokenBalances.find((tb) => BigInt(tb.address) === target)?.private;
+}
 
 function TokenSelect({
   tokens,
@@ -37,15 +51,19 @@ function TokenSelect({
 export function ActionPanel({
   pending,
   pendingAction,
+  sendCapable,
   activeAddress,
   otherAccounts,
   tokens,
+  tokenBalances,
   onRegister,
   onMint,
   onDeposit,
   onWithdraw,
   onTransfer,
 }: Props) {
+  const disabledTitle = sendCapable ? undefined : "View-only — connect a wallet to send";
+  const disabled = pending || !sendCapable;
   const defaultToken = tokens[0]?.address ?? "";
   const [mintToken, setMintToken] = useState(defaultToken);
   const [mintAmount, setMintAmount] = useState("100");
@@ -59,7 +77,7 @@ export function ActionPanel({
 
   function handleMint(event: FormEvent) {
     event.preventDefault();
-    onMint(mintToken, mintAmount);
+    onMint?.(mintToken, mintAmount);
   }
 
   function handleDeposit(event: FormEvent) {
@@ -82,29 +100,31 @@ export function ActionPanel({
     <>
       <h2>Simple Actions</h2>
 
-      <form onSubmit={handleMint} className="action-form">
-        <h3>Mint tokens (transparent)</h3>
-        <div className="action-row">
-          <TokenSelect tokens={tokens} value={mintToken} onChange={setMintToken} />
-          <input
-            type="number"
-            value={mintAmount}
-            onChange={(event) => setMintAmount(event.target.value)}
-            placeholder="Amount"
-            min="0"
-            step="any"
-          />
-          <button type="submit" disabled={pending}>
-            {pending && pendingAction === "Mint" && <span className="spinner" />}
-            Mint
-          </button>
-        </div>
-      </form>
+      {onMint && (
+        <form onSubmit={handleMint} className="action-form">
+          <h3>Mint tokens (transparent)</h3>
+          <div className="action-row">
+            <TokenSelect tokens={tokens} value={mintToken} onChange={setMintToken} />
+            <input
+              type="number"
+              value={mintAmount}
+              onChange={(event) => setMintAmount(event.target.value)}
+              placeholder="Amount"
+              min="0"
+              step="any"
+            />
+            <button type="submit" disabled={disabled} title={disabledTitle}>
+              {pending && pendingAction === "Mint" && <span className="spinner" />}
+              Mint
+            </button>
+          </div>
+        </form>
+      )}
 
       <div className="action-form">
         <div className="action-row">
           <h3 style={{ margin: 0, flex: 1 }}>Register in the pool</h3>
-          <button type="button" disabled={pending} onClick={onRegister}>
+          <button type="button" disabled={disabled} onClick={onRegister} title={disabledTitle}>
             {pending && pendingAction === "Register" && <span className="spinner" />}
             Register
           </button>
@@ -115,15 +135,33 @@ export function ActionPanel({
         <h3>Deposit to self (auto setup)</h3>
         <div className="action-row">
           <TokenSelect tokens={tokens} value={depositToken} onChange={setDepositToken} />
-          <input
-            type="number"
-            value={depositAmount}
-            onChange={(event) => setDepositAmount(event.target.value)}
-            placeholder="Amount"
-            min="0"
-            step="any"
-          />
-          <button type="submit" disabled={pending}>
+          <span className="amount-with-max">
+            <input
+              type="number"
+              value={depositAmount}
+              onChange={(event) => setDepositAmount(event.target.value)}
+              placeholder="Amount"
+              min="0"
+              step="any"
+            />
+            <button
+              type="button"
+              className="max-link"
+              disabled={pending}
+              onClick={() => {
+                const target = BigInt(depositToken);
+                const balance = tokenBalances.find(
+                  (tb) => BigInt(tb.address) === target
+                )?.transparent;
+                if (balance == null) return;
+                const decimals = tokens.find((t) => t.address === depositToken)?.decimals ?? 18;
+                setDepositAmount(formatAmount(balance, decimals));
+              }}
+            >
+              Max
+            </button>
+          </span>
+          <button type="submit" disabled={disabled} title={disabledTitle}>
             {pending && pendingAction === "Deposit" && <span className="spinner" />}
             Deposit
           </button>
@@ -134,15 +172,31 @@ export function ActionPanel({
         <h3>Withdraw to self</h3>
         <div className="action-row">
           <TokenSelect tokens={tokens} value={withdrawToken} onChange={setWithdrawToken} />
-          <input
-            type="number"
-            value={withdrawAmount}
-            onChange={(event) => setWithdrawAmount(event.target.value)}
-            placeholder="Amount"
-            min="0"
-            step="any"
-          />
-          <button type="submit" disabled={pending}>
+          <span className="amount-with-max">
+            <input
+              type="number"
+              value={withdrawAmount}
+              onChange={(event) => setWithdrawAmount(event.target.value)}
+              placeholder="Amount"
+              min="0"
+              step="any"
+            />
+            <button
+              type="button"
+              className="max-link"
+              disabled={disabled}
+              onClick={() => {
+                const balance = privateBalanceOf(tokenBalances, withdrawToken);
+                if (balance == null) return;
+                const decimals =
+                  tokens.find((t) => t.address === withdrawToken)?.decimals ?? 18;
+                setWithdrawAmount(formatAmount(balance, decimals));
+              }}
+            >
+              Max
+            </button>
+          </span>
+          <button type="submit" disabled={disabled} title={disabledTitle}>
             {pending && pendingAction === "Withdraw" && <span className="spinner" />}
             Withdraw
           </button>
@@ -175,24 +229,40 @@ export function ActionPanel({
         )}
         <div className="action-row">
           <TokenSelect tokens={tokens} value={transferToken} onChange={setTransferToken} />
-          <input
-            type="number"
-            value={transferAmount}
-            onChange={(event) => setTransferAmount(event.target.value)}
-            placeholder="Amount"
-            min="0"
-            step="any"
-          />
+          <span className="amount-with-max">
+            <input
+              type="number"
+              value={transferAmount}
+              onChange={(event) => setTransferAmount(event.target.value)}
+              placeholder="Amount"
+              min="0"
+              step="any"
+            />
+            <button
+              type="button"
+              className="max-link"
+              disabled={disabled}
+              onClick={() => {
+                const balance = privateBalanceOf(tokenBalances, transferToken);
+                if (balance == null) return;
+                const decimals =
+                  tokens.find((t) => t.address === transferToken)?.decimals ?? 18;
+                setTransferAmount(formatAmount(balance, decimals));
+              }}
+            >
+              Max
+            </button>
+          </span>
           <button
             type="submit"
-            disabled={pending || !transferRecipient || transferRecipient === "custom"}
+            disabled={disabled || !transferRecipient || transferRecipient === "custom"}
+            title={disabledTitle}
           >
             {pending && pendingAction === "Transfer" && <span className="spinner" />}
             Transfer
           </button>
         </div>
       </form>
-
     </>
   );
 }
