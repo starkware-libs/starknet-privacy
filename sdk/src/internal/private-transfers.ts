@@ -13,7 +13,7 @@ import type {
   ProofInvocationResult,
   ProvingBlockId,
 } from "../interfaces.js";
-import type { Account, TypedContractV2 } from "starknet";
+import type { Account, SignerInterface, TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
 import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
@@ -29,6 +29,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     private readonly params: {
       account: Account; // the user account (for signing)
       viewingKeyProvider: ViewingKeyProvider;
+      proofSigner?: SignerInterface;
       provingProvider: ProofProviderInterface;
       discoveryProvider: DiscoveryProviderInterface;
       proofInvocationFactory: ProofInvocationFactoryInterface;
@@ -66,8 +67,9 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
 
     // Create invocation for proving
     const details = await this.params.provingProvider.getDefaultDetails();
+    const proofSigner = this.params.proofSigner ?? this.params.account.signer;
     const invocation = await this.params.proofInvocationFactory.create(
-      { address: this.params.account.address, signer: this.params.account.signer, viewingKey },
+      { address: this.params.account.address, signer: proofSigner, viewingKey },
       this.params.poolContractAddress,
       clientActions,
       details

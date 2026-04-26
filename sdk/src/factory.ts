@@ -11,7 +11,7 @@ import type {
   DiscoveryProviderConfig,
   StarknetAddress,
 } from "./interfaces.js";
-import type { Account } from "starknet";
+import type { Account, SignerInterface } from "starknet";
 import { PrivateTransfers } from "./internal/private-transfers.js";
 import {
   ProofInvocationFactory,
@@ -69,6 +69,19 @@ export function createPrivateTransfers(params: {
   account: Account;
   viewingKeyProvider: ViewingKeyProvider;
   proofInvocationFactory?: ProofInvocationFactoryInterface;
+  /**
+   * Optional signer override for proof invocations. When provided, this signer
+   * is used instead of `account.signer` to sign proof transactions.
+   *
+   * This is needed for smart wallet accounts (e.g. Argent smart accounts,
+   * multisig) where `is_valid_signature` expects an account-formatted signature
+   * (with signer type, public key, guardian co-signature, etc.) rather than
+   * raw `[r, s]` ECDSA output.
+   *
+   * The signer receives the exact same calls and details (including
+   * `walletAddress: poolAddress`) that would normally go to `account.signer`.
+   */
+  proofSigner?: SignerInterface;
   provingProvider: ProofProviderInterface | ProofProviderConfig;
   discoveryProvider: DiscoveryProviderInterface | DiscoveryProviderConfig;
   poolContractAddress: StarknetAddress;
