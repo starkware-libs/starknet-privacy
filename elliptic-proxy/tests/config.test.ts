@@ -107,4 +107,46 @@ describe("ConfigLoader", () => {
       "partners.bad-partner must be a non-empty string"
     );
   });
+
+  it("leaves mockScreener unset by default", async () => {
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(VALID_CONFIG));
+    const loader = new ConfigLoader(fetcher);
+    const config = await loader.get();
+    expect(config.mockScreener).toBeUndefined();
+    expect(config.mockBlockedAddresses).toBeUndefined();
+  });
+
+  it("accepts mockScreener: true with a fixture list, lowercasing addresses", async () => {
+    const config = {
+      ...VALID_CONFIG,
+      mockScreener: true,
+      mockBlockedAddresses: ["0xABCDEF", "0xdeadbeef"],
+    };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(config));
+    const loader = new ConfigLoader(fetcher);
+    const loaded = await loader.get();
+    expect(loaded.mockScreener).toBe(true);
+    expect(loaded.mockBlockedAddresses).toEqual(["0xabcdef", "0xdeadbeef"]);
+  });
+
+  it("throws when mockScreener is not a boolean", async () => {
+    const invalidConfig = { ...VALID_CONFIG, mockScreener: "yes" };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "mockScreener must be a boolean"
+    );
+  });
+
+  it("throws when mockBlockedAddresses is not a string array", async () => {
+    const invalidConfig = {
+      ...VALID_CONFIG,
+      mockBlockedAddresses: ["0xabc", 123],
+    };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "mockBlockedAddresses must be string[]"
+    );
+  });
 });

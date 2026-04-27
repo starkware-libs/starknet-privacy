@@ -12,6 +12,15 @@ export interface Config {
   configCacheTtlSeconds: number;
   blockedCacheTtlSeconds: number;
   partners: Record<string, string>; // partner name -> HMAC secret
+  // When true, the proxy short-circuits all screening: it never calls
+  // Elliptic and instead returns blocked iff the address is listed in
+  // mockBlockedAddresses. Intended for non-mainnet deployments where
+  // Elliptic has no data coverage. Off by default; set on testnet
+  // proxy deployments only.
+  mockScreener?: boolean;
+  // Lowercase hex addresses that mock-mode reports as blocked. Ignored
+  // when mockScreener is false/unset.
+  mockBlockedAddresses?: string[];
 }
 
 type SecretFetcher = () => Promise<string>;
@@ -100,6 +109,25 @@ function validateConfig(raw: unknown): Config {
     }
   }
 
+  let mockScreener: boolean | undefined;
+  if (root.mockScreener !== undefined) {
+    if (typeof root.mockScreener !== "boolean") {
+      throw new Error("config: mockScreener must be a boolean");
+    }
+    mockScreener = root.mockScreener;
+  }
+
+  let mockBlockedAddresses: string[] | undefined;
+  if (root.mockBlockedAddresses !== undefined) {
+    if (
+      !Array.isArray(root.mockBlockedAddresses) ||
+      !root.mockBlockedAddresses.every((a) => typeof a === "string")
+    ) {
+      throw new Error("config: mockBlockedAddresses must be string[]");
+    }
+    mockBlockedAddresses = root.mockBlockedAddresses.map((a) => a.toLowerCase());
+  }
+
   return {
     elliptic: {
       url: requireString(elliptic, "url"),
@@ -115,5 +143,7 @@ function validateConfig(raw: unknown): Config {
       "blockedCacheTtlSeconds"
     ),
     partners: root.partners as Record<string, string>,
+    mockScreener,
+    mockBlockedAddresses,
   };
 }
