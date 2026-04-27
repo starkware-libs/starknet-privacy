@@ -128,6 +128,24 @@ export function createHandler(
     }
     address = address.toLowerCase();
 
+    // Mock-screener short-circuit for non-mainnet deployments.
+    //
+    // Elliptic has no testnet coverage, so calling it from a Sepolia (or
+    // similar) deployment is wasted: legitimate addresses come back as
+    // 404 NotInBlockchain and there's no real-world sanctions data to
+    // hit anyway. When mockScreener is enabled, return a deterministic
+    // verdict from a fixture list instead. Mainnet deployments leave
+    // mockScreener unset and use the live Elliptic path below.
+    if (config.mockScreener) {
+      const blocked = config.mockBlockedAddresses?.includes(address) ?? false;
+      sendResponse(200, JSON.stringify({ blocked, source: "mock" }), {
+        partner: partnerName,
+        result: blocked ? "blocked" : "allowed",
+        source: "mock",
+      });
+      return;
+    }
+
     // Check cache first — blocked addresses skip the Elliptic call
     if (blockedCache.isBlocked(address)) {
       sendResponse(200, JSON.stringify({ blocked: true }), {

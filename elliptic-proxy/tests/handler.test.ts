@@ -519,4 +519,53 @@ describe("createHandler", () => {
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body)).toEqual({ blocked: false });
   });
+  describe("mock-screener mode", () => {
+    function makeMockConfig(blocked: string[] = []): Config {
+      return {
+        ...makeConfig(),
+        mockScreener: true,
+        mockBlockedAddresses: blocked.map((a) => a.toLowerCase()),
+      };
+    }
+
+    it("returns allowed without calling Elliptic when address is not in fixture list", async () => {
+      const configLoader = {
+        get: vi.fn().mockResolvedValue(makeMockConfig()),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const req = makeRequest({}, "0xf00d");
+      const res = makeResponse();
+      await handler(req, res);
+
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body)).toEqual({ blocked: false, source: "mock" });
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("returns blocked when address is in the fixture list", async () => {
+      const configLoader = {
+        get: vi.fn().mockResolvedValue(makeMockConfig(["0xdeadbeef"])),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const req = makeRequest({}, "0xdeadbeef");
+      const res = makeResponse();
+      await handler(req, res);
+
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body)).toEqual({ blocked: true, source: "mock" });
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("matches the fixture list case-insensitively (handler lowercases the address)", async () => {
+      const configLoader = {
+        get: vi.fn().mockResolvedValue(makeMockConfig(["0xabcdef"])),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const req = makeRequest({}, "0xABCDEF");
+      const res = makeResponse();
+      await handler(req, res);
+
+      expect(JSON.parse(res.body)).toEqual({ blocked: true, source: "mock" });
+    });
+  });
 });
