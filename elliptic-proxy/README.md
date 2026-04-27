@@ -26,7 +26,7 @@ The secret value must be a JSON string with this structure:
 ```json
 {
   "elliptic": {
-    "url": "https://api.elliptic.co",
+    "url": "https://aml-api.elliptic.co",
     "key": "your-elliptic-api-key",
     "secret": "<base64-encoded-elliptic-secret>",
     "timeoutMs": 10000
@@ -37,21 +37,25 @@ The secret value must be a JSON string with this structure:
   "blockedCacheTtlSeconds": 3600,
   "partners": {
     "partner-name": "<base64-encoded-partner-secret>"
-  }
+  },
+  "mockScreener": false,
+  "mockBlockedAddresses": []
 }
 ```
 
-| Field                    | Description                                                                               |
-| ------------------------ | ----------------------------------------------------------------------------------------- |
-| `elliptic.url`           | Elliptic API base URL                                                                     |
-| `elliptic.key`           | Real Elliptic API key                                                                     |
-| `elliptic.secret`        | Real Elliptic HMAC secret (base64-encoded)                                                |
-| `elliptic.timeoutMs`     | Timeout for upstream Elliptic requests (ms)                                               |
-| `rateLimitPerMinute`     | Per-partner rate limit (requests per minute)                                              |
-| `maxBodyBytes`           | Max request body size                                                                     |
-| `configCacheTtlSeconds`  | How long to cache the config before re-reading from Secret Manager (seconds)              |
-| `blockedCacheTtlSeconds` | How long to cache blocked address verdicts (seconds)                                      |
-| `partners.<name>`        | Partner HMAC secret (base64-encoded). The key is the partner name, sent in `x-access-key` |
+| Field                               | Description                                                                                                                                                                                                                                                                                                                                                                                                |
+| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `elliptic.url`                      | Elliptic AML API base URL. Use `https://aml-api.elliptic.co` (note `aml-api`, **not** `api`).                                                                                                                                                                                                                                                                                                              |
+| `elliptic.key`                      | Real Elliptic API key                                                                                                                                                                                                                                                                                                                                                                                      |
+| `elliptic.secret`                   | Real Elliptic HMAC secret. Paste the value Elliptic provides exactly as-is. **Caution**: a base64 secret can look identical to hex (e.g. `2586b6295906e305ba2a37db56b03aaa` is valid in both alphabets). Don't run a value through `xxd -r -p \| base64` just because it "looks like hex" — trust Elliptic's label, not the string's appearance. |
+| `elliptic.timeoutMs`                | Timeout for upstream Elliptic requests (ms)                                                                                                                                                                                                                                                                                                                                                                |
+| `rateLimitPerMinute`                | Per-partner rate limit (requests per minute)                                                                                                                                                                                                                                                                                                                                                               |
+| `maxBodyBytes`                      | Max request body size                                                                                                                                                                                                                                                                                                                                                                                      |
+| `configCacheTtlSeconds`             | How long to cache the config before re-reading from Secret Manager (seconds)                                                                                                                                                                                                                                                                                                                               |
+| `blockedCacheTtlSeconds`            | How long to cache blocked address verdicts (seconds)                                                                                                                                                                                                                                                                                                                                                       |
+| `partners.<name>`                   | Partner HMAC secret (base64-encoded). The key is the partner name, sent in `x-access-key`                                                                                                                                                                                                                                                                                                                  |
+| `mockScreener` *(optional)*         | When `true`, the proxy short-circuits before any Elliptic call and returns a deterministic verdict from `mockBlockedAddresses`. Intended for non-mainnet deployments where Elliptic has no data coverage (Elliptic does not index testnets, and at the time of writing has no Starknet coverage at all). Defaults to `false`.                                                                              |
+| `mockBlockedAddresses` *(optional)* | Lowercase hex addresses that mock-mode reports as `{blocked: true, source: "mock"}`. Anything else under mock-mode returns `{blocked: false, source: "mock"}`. Ignored when `mockScreener` is unset/false.                                                                                                                                                                                                 |
 
 ### Generating partner secrets
 
@@ -80,6 +84,23 @@ Required headers on every request:
 | `x-access-sign`      | Base64-encoded HMAC-SHA256 signature              |
 | `x-access-timestamp` | Unix timestamp in milliseconds                    |
 
+## Response shape
+
+Successful responses (HTTP 200) include a `blocked` boolean and a `source`
+field that names which code path produced the verdict:
+
+```json
+{ "blocked": false, "source": "elliptic" }
+```
+
+| `source` | Meaning |
+|----------|---------|
+| `elliptic` | Verdict scored from a live Elliptic call. |
+| `cache` | Verdict served from the local 1-hour blocked-address cache (skips the Elliptic call for known-blocked addresses). |
+| `mock` | Verdict from mock-screener-mode fixture lookup. Only emitted when `mockScreener` is enabled in config. |
+
+Errors (HTTP 4xx/5xx) return `{ "error": "<reason>" }` with no `source` field.
+
 ## Deployment
 
 ### Prerequisites
@@ -102,13 +123,18 @@ npm run build
 
 gcloud functions deploy elliptic-proxy \
   --gen2 \
-  --runtime=nodejs20 \
+  --runtime=nodejs22 \
   --trigger-http \
   --allow-unauthenticated \
   --entry-point=ellipticProxy \
   --set-env-vars=PROXY_CONFIG=projects/<PROJECT_ID>/secrets/elliptic-proxy-config/versions/latest \
   --source=.
 ```
+
+The `gcp-build` npm script runs `tsc` automatically during the Cloud
+Buildpacks build, so the source-only deploy above is sufficient. Don't
+add `dist/` to `.gcloudignore`; the buildpack will (re)compile it from
+`src/` on every deploy.
 
 ### Updating config
 
@@ -142,14 +168,21 @@ npm run test:watch   # watch mode
 
 All requests are logged as structured JSON to stdout (picked up by Cloud Logging automatically). Each log line includes:
 
-| Field            | Description                                                                                                                                                      |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `method`         | HTTP method                                                                                                                                                      |
-| `path`           | Request path                                                                                                                                                     |
-| `status`         | Response status code                                                                                                                                             |
-| `latencyMs`      | Total request duration                                                                                                                                           |
-| `partner`        | Partner name (if identified)                                                                                                                                     |
-| `reason`         | Rejection reason (`missing_headers`, `timestamp_expired`, `unknown_partner`, `invalid_signature`, `rate_limited`, `upstream_request_failed`, `upstream_non_2xx`) |
-| `ellipticStatus` | Upstream Elliptic response status (on success)                                                                                                                   |
+| Field               | Description                                                                                                                                                      |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `method`            | HTTP method                                                                                                                                                      |
+| `path`              | Request path                                                                                                                                                     |
+| `status`            | Response status code                                                                                                                                             |
+| `latencyMs`         | Total request duration                                                                                                                                           |
+| `partner`           | Partner name (if identified)                                                                                                                                     |
+| `result`            | `allowed` / `blocked` / `cached` / `error`                                                                                                                       |
+| `source`            | Which path produced the verdict: `elliptic`, `cache`, or `mock`. Absent on error responses.                                                                      |
+| `reason`            | Rejection reason (`missing_headers`, `timestamp_expired`, `unknown_partner`, `invalid_signature`, `rate_limited`, `upstream_request_failed`, `upstream_non_2xx`) |
+| `ellipticStatus`    | Upstream Elliptic response status (on success)                                                                                                                   |
+| `ellipticLatencyMs` | Upstream Elliptic response latency (on success, source=elliptic)                                                                                                 |
 
-Config load failures are logged to stderr with `error: "config_load_failed"`.
+Errors are logged to stderr:
+
+- `error: "config_load_failed"` — Secret Manager fetch / parse failure.
+- `error: "upstream_request_failed"` — fetch to Elliptic threw at the transport layer (DNS, TLS, TCP, timeout). Includes `cause.code` (e.g. `ENOTFOUND`, `ECONNREFUSED`) so the underlying reason is visible without code changes.
+- `error: "upstream_error"` — Elliptic returned a non-2xx response. Includes `ellipticStatus` and the first 2KB of the response body, so HTTP-level errors (`401 AuthenticationError`, `400 ValidationError`, etc.) are diagnosable from logs alone.
