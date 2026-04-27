@@ -79,7 +79,10 @@ describe("integration: full request flow", () => {
     await handler(req, res as unknown as Parameters<typeof handler>[1]);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ blocked: false });
+    expect(JSON.parse(res.body)).toEqual({
+      blocked: false,
+      source: "elliptic",
+    });
     expect(mockForward).toHaveBeenCalledWith(
       expect.objectContaining({ address: "0xabc123" })
     );
