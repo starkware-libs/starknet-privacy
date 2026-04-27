@@ -68,6 +68,14 @@ fn test_set_auditor_public_key_assertions() {
     );
     let result = test.privacy.safe_set_auditor_public_key(auditor_public_key: Zero::zero());
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AUDITOR_PUBLIC_KEY);
+
+    // Catch INVALID_AUDITOR_PUBLIC_KEY (non-zero but not a valid Stark curve point).
+    cheat_caller_address_once(
+        contract_address: test.privacy.address,
+        caller_address: test.privacy.roles.security_governor,
+    );
+    let result = test.privacy.safe_set_auditor_public_key(auditor_public_key: 5);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_AUDITOR_PUBLIC_KEY);
 }
 
 /// Flow test for `set_auditor_public_key`.

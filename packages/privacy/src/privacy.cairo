@@ -1,5 +1,6 @@
 #[starknet::contract(account)]
 pub mod Privacy {
+    use core::ec::EcPointTrait;
     use core::iter::Extend;
     use core::num::traits::{CheckedSub, Zero};
     use openzeppelin::access::accesscontrol::AccessControlComponent;
@@ -1002,6 +1003,10 @@ pub mod Privacy {
     impl AdminInternalImpl of AdminInternalTrait {
         fn _set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
             assert(auditor_public_key.is_non_zero(), errors::ZERO_AUDITOR_PUBLIC_KEY);
+            assert(
+                EcPointTrait::new_from_x(x: auditor_public_key).is_some(),
+                errors::INVALID_AUDITOR_PUBLIC_KEY,
+            );
             self.auditor_public_key.write(auditor_public_key);
             self.emit(events::AuditorPublicKeySet { auditor_public_key });
         }
