@@ -148,12 +148,17 @@ export function createHandler(
 
     // Check cache first — blocked addresses skip the Elliptic call
     if (blockedCache.isBlocked(address)) {
-      sendResponse(200, JSON.stringify({ blocked: true }), {
-        partner: partnerName,
-        result: "cached",
-        cached: true,
-        cacheSize: blockedCache.size,
-      });
+      sendResponse(
+        200,
+        JSON.stringify({ blocked: true, source: "cache" }),
+        {
+          partner: partnerName,
+          result: "cached",
+          source: "cache",
+          cached: true,
+          cacheSize: blockedCache.size,
+        }
+      );
       return;
     }
 
@@ -222,17 +227,22 @@ export function createHandler(
       blockedCache.markBlocked(address);
     }
 
-    sendResponse(200, JSON.stringify({ blocked: scoringResult.blocked }), {
-      partner: partnerName,
-      ellipticStatus: result.status,
-      ellipticLatencyMs: result.durationMs,
-      result: blocked ? "blocked" : "allowed",
-      scoringReason: scoringResult.reason,
-      triggeringRuleIds:
-        scoringResult.triggeringRuleIds.length > 0
-          ? scoringResult.triggeringRuleIds
-          : undefined,
-      cacheSize: blockedCache.size,
-    });
+    sendResponse(
+      200,
+      JSON.stringify({ blocked: scoringResult.blocked, source: "elliptic" }),
+      {
+        partner: partnerName,
+        ellipticStatus: result.status,
+        ellipticLatencyMs: result.durationMs,
+        result: blocked ? "blocked" : "allowed",
+        source: "elliptic",
+        scoringReason: scoringResult.reason,
+        triggeringRuleIds:
+          scoringResult.triggeringRuleIds.length > 0
+            ? scoringResult.triggeringRuleIds
+            : undefined,
+        cacheSize: blockedCache.size,
+      }
+    );
   };
 }
