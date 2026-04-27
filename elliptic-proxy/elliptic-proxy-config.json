@@ -1,8 +1,8 @@
 {
   "elliptic": {
     "url": "https://aml-api.elliptic.co",
-    "key": "e2825978e0bc475b358ac232f16f2468",
-    "secret": "2586b6295906e305ba2a37db56b03aaa",
+    "key": "<elliptic-api-key>",
+    "secret": "<base64-encoded-elliptic-secret>",
     "timeoutMs": 10000
   },
   "rateLimitPerMinute": 100,
@@ -10,6 +10,6 @@
   "configCacheTtlSeconds": 300,
   "blockedCacheTtlSeconds": 3600,
   "partners": {
-    "starkware": "L2Fl3rlEVsEHOGaZt95NjmnY5ZKpQ1t5BD1nCV19TUQ="
+    "<partner-name>": "<base64-encoded-partner-secret>"
   }
 }
