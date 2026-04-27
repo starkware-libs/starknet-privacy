@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "gcp-build": "tsc",
     "start": "functions-framework --target=ellipticProxy --source=dist/",
     "dev": "tsc --watch",
     "test": "vitest run",
