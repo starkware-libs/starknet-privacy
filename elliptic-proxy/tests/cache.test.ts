@@ -1,5 +1,5 @@
 // tests/cache.test.ts
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { BlockedAddressCache } from "../src/cache.js";
 
 describe("BlockedAddressCache", () => {
@@ -14,17 +14,19 @@ describe("BlockedAddressCache", () => {
     expect(cache.isBlocked("0xabc")).toBe(true);
   });
 
-  it("expires after TTL", () => {
-    vi.useFakeTimers();
-    const cache = new BlockedAddressCache(1000);
+  it("expires after TTL", async () => {
+    // Start non-zero: lru-cache treats a start time of 0 as "no TTL set".
+    let now = 1000;
+    const cache = new BlockedAddressCache(100, undefined, { now: () => now });
     cache.markBlocked("0xabc");
 
     expect(cache.isBlocked("0xabc")).toBe(true);
 
-    vi.advanceTimersByTime(1001);
+    // lru-cache caches "now" for ttlResolution (1ms by default); wait past it
+    // before advancing the mock clock so the next check re-reads it.
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    now = 1101;
     expect(cache.isBlocked("0xabc")).toBe(false);
-
-    vi.useRealTimers();
   });
 
   it("does not cross-contaminate addresses", () => {

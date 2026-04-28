@@ -110,7 +110,10 @@ function validateConfig(raw: unknown): Config {
     rateLimitPerMinute: requirePositiveNumber(root, "rateLimitPerMinute"),
     maxBodyBytes: requirePositiveNumber(root, "maxBodyBytes"),
     configCacheTtlSeconds: requirePositiveNumber(root, "configCacheTtlSeconds"),
-    blockedCacheTtlSeconds: requirePositiveNumber(root, "blockedCacheTtlSeconds"),
+    blockedCacheTtlSeconds: requirePositiveNumber(
+      root,
+      "blockedCacheTtlSeconds"
+    ),
     partners: root.partners as Record<string, string>,
   };
 }

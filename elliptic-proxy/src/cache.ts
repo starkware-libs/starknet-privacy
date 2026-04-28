@@ -12,10 +12,15 @@ const DEFAULT_MAX_ENTRIES = 10_000;
 export class BlockedAddressCache {
   private readonly cache: LRUCache<string, true>;
 
-  constructor(ttlMs: number, maxEntries: number = DEFAULT_MAX_ENTRIES) {
+  constructor(
+    ttlMs: number,
+    maxEntries: number = DEFAULT_MAX_ENTRIES,
+    clock: { now(): number } = performance
+  ) {
     this.cache = new LRUCache<string, true>({
       max: maxEntries,
       ttl: ttlMs,
+      perf: clock,
     });
   }
 

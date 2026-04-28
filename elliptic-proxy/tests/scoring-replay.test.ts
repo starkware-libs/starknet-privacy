@@ -21,12 +21,12 @@ interface EllipticRecord {
 
 const RESPONSES_PATH = process.env.ELLIPTIC_RESPONSES;
 
-const records: EllipticRecord[] = RESPONSES_PATH && existsSync(RESPONSES_PATH)
-  ? JSON.parse(readFileSync(RESPONSES_PATH, "utf-8"))
-  : [];
+const records: EllipticRecord[] =
+  RESPONSES_PATH && existsSync(RESPONSES_PATH)
+    ? JSON.parse(readFileSync(RESPONSES_PATH, "utf-8"))
+    : [];
 
 describe.runIf(records.length > 0)(`scoring replay (${RESPONSES_PATH})`, () => {
-
   it("scores every record without throwing", () => {
     for (const record of records) {
       expect(() => scoreResponse(JSON.stringify(record))).not.toThrow();

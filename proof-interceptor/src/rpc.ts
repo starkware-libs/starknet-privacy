@@ -12,25 +12,24 @@ const METHOD_NOT_FOUND = -32601;
 const BLOCK_NOT_FOUND = 24;
 const UNSUPPORTED_TX_VERSION = 61;
 
-export enum RpcAction {
-  ForwardAsIs = "forward_as_is",
-  CheckWithInterceptors = "check_with_interceptors",
-  Error = "error",
-}
+export type RpcErrorType =
+  | "parse_error"
+  | "invalid_request"
+  | "method_not_found"
+  | "block_not_found"
+  | "unsupported_tx_version";
 
 export type RpcVerdict =
-  | { action: RpcAction.ForwardAsIs; requestId: string | number | null }
   | {
-      action: RpcAction.CheckWithInterceptors;
+      ok: true;
       transaction: ProveTxnV3;
       requestId: string | number | null;
     }
-  | { action: RpcAction.Error; response: JsonRpcErrorResponse };
+  | { ok: false; errorType: RpcErrorType; response: JsonRpcErrorResponse };
 
 /**
- * Validates a JSON-RPC request body. Returns ForwardAsIs (for
- * starknet_specVersion), CheckWithInterceptors (parsed transaction for
- * interceptors), or Error (return error response to the caller).
+ * Validates a JSON-RPC request body. On success returns the parsed transaction
+ * and request id; on failure returns a ready-to-send JSON-RPC error response.
  */
 export function validateRpcRequest(body: string): RpcVerdict {
   let request: JsonRpcRequest;
@@ -42,14 +41,16 @@ export function validateRpcRequest(body: string): RpcVerdict {
       Array.isArray(parsed)
     ) {
       return {
-        action: RpcAction.Error,
+        ok: false,
+        errorType: "invalid_request",
         response: jsonRpcError(null, INVALID_REQUEST, "Invalid Request"),
       };
     }
     request = parsed as JsonRpcRequest;
   } catch {
     return {
-      action: RpcAction.Error,
+      ok: false,
+      errorType: "parse_error",
       response: jsonRpcError(null, INVALID_REQUEST, "Parse error"),
     };
   }
@@ -60,7 +61,8 @@ export function validateRpcRequest(body: string): RpcVerdict {
     request.id === undefined
   ) {
     return {
-      action: RpcAction.Error,
+      ok: false,
+      errorType: "invalid_request",
       response: jsonRpcError(
         request.id ?? null,
         INVALID_REQUEST,
@@ -70,15 +72,13 @@ export function validateRpcRequest(body: string): RpcVerdict {
   }
 
   switch (request.method) {
-    case "starknet_specVersion":
-      return { action: RpcAction.ForwardAsIs, requestId: request.id };
-
     case "starknet_checkTransaction":
       return validateCheckTransaction(request);
 
     default:
       return {
-        action: RpcAction.Error,
+        ok: false,
+        errorType: "method_not_found",
         response: jsonRpcError(
           request.id,
           METHOD_NOT_FOUND,
@@ -92,7 +92,8 @@ function validateCheckTransaction(request: JsonRpcRequest): RpcVerdict {
   const params = request.params;
   if (!Array.isArray(params) || params.length < 2) {
     return {
-      action: RpcAction.Error,
+      ok: false,
+      errorType: "invalid_request",
       response: jsonRpcError(request.id, INVALID_REQUEST, "Invalid Request"),
     };
   }
@@ -100,7 +101,8 @@ function validateCheckTransaction(request: JsonRpcRequest): RpcVerdict {
   const blockId = params[0];
   if (blockId === "pending") {
     return {
-      action: RpcAction.Error,
+      ok: false,
+      errorType: "block_not_found",
       response: jsonRpcError(request.id, BLOCK_NOT_FOUND, "Block not found"),
     };
   }
@@ -112,14 +114,16 @@ function validateCheckTransaction(request: JsonRpcRequest): RpcVerdict {
     Array.isArray(transaction)
   ) {
     return {
-      action: RpcAction.Error,
+      ok: false,
+      errorType: "invalid_request",
       response: jsonRpcError(request.id, INVALID_REQUEST, "Invalid Request"),
     };
   }
 
   if (transaction.type !== "INVOKE") {
     return {
-      action: RpcAction.Error,
+      ok: false,
+      errorType: "unsupported_tx_version",
       response: jsonRpcError(
         request.id,
         UNSUPPORTED_TX_VERSION,
@@ -131,7 +135,8 @@ function validateCheckTransaction(request: JsonRpcRequest): RpcVerdict {
 
   if (transaction.version !== "0x3") {
     return {
-      action: RpcAction.Error,
+      ok: false,
+      errorType: "unsupported_tx_version",
       response: jsonRpcError(
         request.id,
         UNSUPPORTED_TX_VERSION,
@@ -143,13 +148,14 @@ function validateCheckTransaction(request: JsonRpcRequest): RpcVerdict {
 
   if (!Array.isArray(transaction.calldata)) {
     return {
-      action: RpcAction.Error,
+      ok: false,
+      errorType: "invalid_request",
       response: jsonRpcError(request.id, INVALID_REQUEST, "Invalid Request"),
     };
   }
 
   return {
-    action: RpcAction.CheckWithInterceptors,
+    ok: true,
     transaction: transaction as unknown as ProveTxnV3,
     requestId: request.id,
   };
