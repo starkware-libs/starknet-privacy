@@ -8,6 +8,7 @@
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import type { ClientAction } from "../internal/client-actions.js";
 import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js";
+import { ProvingServiceError } from "../internal/proving-service.js";
 import type { MockPoolContract } from "./mock-pool-contract.js";
 import { bigintReviver } from "./mock-proof-invocation-factory.js";
 import { constants } from "starknet";
@@ -37,13 +38,23 @@ export class MockProofProvider implements ProofProviderInterface {
     const clientActions: ClientAction[] = JSON.parse(calldata[2], bigintReviver);
 
     // Execute on mock pool - returns MockServerAction[] (serialized as string[])
-    const callbacks = this.pool.execute(userAddress, privateKey, ...clientActions);
+    let callbacks: string[];
+    try {
+      callbacks = this.pool.execute(
+        userAddress,
+        privateKey,
+        ...clientActions
+      ) as unknown as string[];
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ProvingServiceError(-32603, "Internal error", message);
+    }
 
     return {
       data: "",
       // L2-to-L1 message payload: [class_hash, ...callbacks].
       // The consumer strips the class_hash prefix before passing to apply_actions.
-      output: buildMessagePayload("0x0", callbacks as unknown as string[]),
+      output: buildMessagePayload("0x0", callbacks),
       proofFacts: [],
     };
   }
