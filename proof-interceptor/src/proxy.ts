@@ -1,7 +1,12 @@
 // src/proxy.ts
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { validateRpcRequest } from "./rpc.js";
-import { runInterceptors, type TransactionInterceptor } from "./interceptor.js";
+import {
+  runInterceptors,
+  notifyInterceptorError,
+  notifyInterceptorComplete,
+  type TransactionInterceptor,
+} from "./interceptor.js";
 import { jsonRpcError } from "./types.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./config.js";
 import {
@@ -74,13 +79,13 @@ export function createHandler(options: HandlerOptions = {}) {
       return;
     }
 
-    // Only accept JSON-RPC POST requests
+    // Only JSON-RPC POST requests are handled
     if (req.method !== "POST" || !isJsonContent(req)) {
       errorsTotal.inc({ type: "invalid_request" });
       finishRequest("error", { error: "invalid_request" });
       res.writeHead(400, { "content-type": "application/json" });
       res.end(
-        JSON.stringify({ error: "only JSON-RPC POST requests accepted" })
+        JSON.stringify({ error: "only JSON-RPC POST requests are supported" })
       );
       return;
     }
@@ -110,6 +115,11 @@ export function createHandler(options: HandlerOptions = {}) {
     );
 
     if (interceptorVerdict.action === "block") {
+      await notifyInterceptorError(
+        interceptors,
+        TRANSACTION_REJECTED,
+        verdict.transaction
+      );
       console.error(JSON.stringify({ error: "transaction_rejected" }));
       finishRequest("check_with_interceptors", {
         rpcAction: "check_with_interceptors",
@@ -128,6 +138,8 @@ export function createHandler(options: HandlerOptions = {}) {
       );
       return;
     }
+
+    notifyInterceptorComplete(interceptors, verdict.transaction);
 
     // All interceptors allowed the transaction
     finishRequest("check_with_interceptors", {
