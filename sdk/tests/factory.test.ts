@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { constants, type Account } from "starknet";
+import { constants, type Account, type SignerInterface } from "starknet";
 import { createPrivateTransfers } from "../src/factory.js";
 import type { ProofProviderConfig, DiscoveryProviderConfig } from "../src/interfaces.js";
 import { Mocknet } from "../src/testing/mocknet.js";
@@ -18,6 +18,28 @@ function mockAccount(address: string): Account {
 
 describe("createPrivateTransfers", () => {
   describe("with instance providers", () => {
+    it("accepts a minimal user without requiring an Account", async () => {
+      const mocknet = new Mocknet({ poolAddress: POOL_ADDRESS });
+      const env = mocknet.initialize();
+      const pool = mocknet.pool;
+
+      const transfers = createPrivateTransfers({
+        user: {
+          address: `0x${env.alice.address.toString(16)}`,
+          signer: {} as SignerInterface,
+        },
+        viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
+        provingProvider: new MockProofProvider(pool),
+        discoveryProvider: new ContractDiscoveryProvider(pool),
+        proofInvocationFactory: new MockProofInvocationFactory(),
+        poolContractAddress: `0x${POOL_ADDRESS.toString(16)}`,
+      });
+
+      mocknet.executeOutside(await transfers.build().register().execute());
+      const { notes } = await transfers.discoverNotes();
+      expect(notes).toBeDefined();
+    });
+
     it("accepts ProofProviderInterface and DiscoveryProviderInterface and returns working PrivateTransfers", async () => {
       const mocknet = new Mocknet({ poolAddress: POOL_ADDRESS });
       const env = mocknet.initialize();

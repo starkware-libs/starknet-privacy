@@ -1,5 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
-import type { Call, InvocationsSignerDetails, Signature, SignerInterface } from "starknet";
+import type {
+  Account,
+  Call,
+  DeclareSignerDetails,
+  DeployAccountSignerDetails,
+  InvocationsSignerDetails,
+  Signature,
+  SignerInterface,
+  TypedData,
+} from "starknet";
 import { stark } from "starknet";
 import { Mocknet } from "../src/testing/mocknet.js";
 import { createPrivateTransfers } from "../src/factory.js";
@@ -9,7 +18,11 @@ import {
   ProofInvocationFactory,
   type ProofUser,
 } from "../src/internal/proof-invocation-factory.js";
-import type { ProofInvocation, ProofInvocationFactoryDetails } from "../src/interfaces.js";
+import type {
+  ProofInvocation,
+  ProofInvocationFactoryDetails,
+  StarknetAddress,
+} from "../src/interfaces.js";
 import type { ClientAction } from "../src/internal/client-actions.js";
 
 const POOL_ADDRESS = 0x1n;
@@ -30,11 +43,12 @@ function createSpySigner(delegate: SignerInterface, signaturePrefix: string[]): 
 
   return {
     getPubKey: () => delegate.getPubKey(),
-    signMessage: (typedData: any, accountAddress: string) =>
+    signMessage: (typedData: TypedData, accountAddress: string) =>
       delegate.signMessage(typedData, accountAddress),
     signTransaction,
-    signDeclareTransaction: (details: any) => delegate.signDeclareTransaction(details),
-    signDeployAccountTransaction: (details: any) =>
+    signDeclareTransaction: (details: DeclareSignerDetails) =>
+      delegate.signDeclareTransaction(details),
+    signDeployAccountTransaction: (details: DeployAccountSignerDetails) =>
       delegate.signDeployAccountTransaction(details),
   } as SignerInterface;
 }
@@ -48,7 +62,7 @@ class SpyProofInvocationFactory extends ProofInvocationFactory {
 
   async create(
     user: ProofUser,
-    poolAddress: any,
+    poolAddress: StarknetAddress,
     clientActions: ClientAction[],
     details: ProofInvocationFactoryDetails
   ): Promise<ProofInvocation> {
@@ -68,7 +82,7 @@ describe("proofSigner", () => {
     const account = {
       address: `0x${env.alice.address.toString(16)}`,
       signer: accountSigner,
-    } as any;
+    } as unknown as Account;
 
     const transfers = createPrivateTransfers({
       account,
@@ -91,7 +105,7 @@ describe("proofSigner", () => {
     const account = {
       address: `0x${env.alice.address.toString(16)}`,
       signer: {} as SignerInterface,
-    } as any;
+    } as unknown as Account;
 
     const transfers = createPrivateTransfers({
       account,
@@ -105,7 +119,7 @@ describe("proofSigner", () => {
     expect(transfers).toBeDefined();
   });
 
-  it("proofSigner receives correct calls and details during proof invocation", async () => {
+  it("user.signer receives correct calls and details during proof invocation", async () => {
     const mocknet = new Mocknet({ poolAddress: POOL_ADDRESS });
     const env = mocknet.initialize();
     const poolHex = `0x${POOL_ADDRESS.toString(16)}`;
@@ -121,15 +135,12 @@ describe("proofSigner", () => {
     // Use the real ProofInvocationFactory (not mock) with a spy to capture the user
     const spyFactory = new SpyProofInvocationFactory();
 
-    const account = {
-      address: `0x${env.alice.address.toString(16)}`,
-      signer: rawSigner,
-    } as any;
-
     const transfers = createPrivateTransfers({
-      account,
+      user: {
+        address: `0x${env.alice.address.toString(16)}`,
+        signer: proofSigner,
+      },
       viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
-      proofSigner,
       proofInvocationFactory: spyFactory,
       provingProvider: new MockProofProvider(mocknet.pool),
       discoveryProvider: new ContractDiscoveryProvider(mocknet.pool),
@@ -139,7 +150,7 @@ describe("proofSigner", () => {
     // Register to trigger a proof invocation
     const result = await transfers.build().register().createProofInvocation();
 
-    // Verify the spy factory received the proofSigner, not account.signer
+    // Verify the spy factory received the user.signer directly — no Account needed.
     expect(spyFactory.capturedUsers).toHaveLength(1);
     expect(spyFactory.capturedUsers[0].signer).toBe(proofSigner);
     expect(spyFactory.capturedUsers[0].signer).not.toBe(rawSigner);
@@ -173,7 +184,7 @@ describe("proofSigner", () => {
     const account = {
       address: `0x${env.alice.address.toString(16)}`,
       signer: rawSigner,
-    } as any;
+    } as unknown as Account;
 
     const transfers = createPrivateTransfers({
       account,

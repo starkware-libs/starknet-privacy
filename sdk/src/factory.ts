@@ -10,6 +10,7 @@ import type {
   DiscoveryProviderInterface,
   DiscoveryProviderConfig,
   StarknetAddress,
+  PrivateTransfersUser,
 } from "./interfaces.js";
 import type { Account, SignerInterface } from "starknet";
 import { PrivateTransfers } from "./internal/private-transfers.js";
@@ -40,13 +41,13 @@ function isDiscoveryProviderConfig(
  * creates the corresponding production implementation (ProvingServiceProofProvider /
  * IndexerDiscoveryProvider) for you.
  *
- * @param params - Configuration object containing account, providers (or configs), and pool address
+ * @param params - Configuration object containing user/account, providers (or configs), and pool address
  * @returns A PrivateTransfers instance
  *
  * @example With instances (e.g. mocks)
  * ```typescript
  * const privateTransfers = createPrivateTransfers({
- *   account: myAccount,
+ *   user: { address: myAddress, signer: mySigner },
  *   viewingKeyProvider: { getViewingKey: async () => myPrivateKey },
  *   provingProvider: new MockProofProvider(pool),
  *   discoveryProvider: new ContractDiscoveryProvider(pool),
@@ -57,7 +58,7 @@ function isDiscoveryProviderConfig(
  * @example With production configs
  * ```typescript
  * const privateTransfers = createPrivateTransfers({
- *   account: myAccount,
+ *   user: { address: myAddress, signer: mySigner },
  *   viewingKeyProvider: { getViewingKey: async () => myPrivateKey },
  *   provingProvider: { url: "https://prover.example.com", chainId: constants.StarknetChainId.SN_MAIN },
  *   discoveryProvider: { url: "https://indexer.example.com" },
@@ -65,27 +66,49 @@ function isDiscoveryProviderConfig(
  * });
  * ```
  */
-export function createPrivateTransfers(params: {
-  account: Account;
+interface CreatePrivateTransfersBaseParams {
   viewingKeyProvider: ViewingKeyProvider;
   proofInvocationFactory?: ProofInvocationFactoryInterface;
-  /**
-   * Optional signer override for proof invocations. When provided, this signer
-   * is used instead of `account.signer` to sign proof transactions.
-   *
-   * This is needed for smart wallet accounts (e.g. Argent smart accounts,
-   * multisig) where `is_valid_signature` expects an account-formatted signature
-   * (with signer type, public key, guardian co-signature, etc.) rather than
-   * raw `[r, s]` ECDSA output.
-   *
-   * The signer receives the exact same calls and details (including
-   * `walletAddress: poolAddress`) that would normally go to `account.signer`.
-   */
-  proofSigner?: SignerInterface;
   provingProvider: ProofProviderInterface | ProofProviderConfig;
   discoveryProvider: DiscoveryProviderInterface | DiscoveryProviderConfig;
   poolContractAddress: StarknetAddress;
-}): PrivateTransfersInterface {
+}
+
+export type CreatePrivateTransfersParams = CreatePrivateTransfersBaseParams &
+  (
+    | {
+        /** Minimal user identity. Prefer this over passing a full Account. */
+        user: PrivateTransfersUser;
+        account?: never;
+        proofSigner?: never;
+      }
+    | {
+        /** Backwards-compatible full Account input. */
+        account: Account;
+        user?: never;
+        /**
+         * Optional signer override for proof invocations. When provided, this signer
+         * is used instead of `account.signer` to sign proof transactions.
+         *
+         * Prefer passing `user: { address, signer }` for new integrations. This
+         * field remains for backwards compatibility with existing `account` callers.
+         */
+        proofSigner?: SignerInterface;
+      }
+  );
+
+function hasAccount(
+  params: CreatePrivateTransfersParams
+): params is CreatePrivateTransfersBaseParams & {
+  account: Account;
+  proofSigner?: SignerInterface;
+} {
+  return "account" in params && params.account !== undefined;
+}
+
+export function createPrivateTransfers(
+  params: CreatePrivateTransfersParams
+): PrivateTransfersInterface {
   const provingProvider: ProofProviderInterface = isProofProviderConfig(params.provingProvider)
     ? new ProvingServiceProofProvider(params.provingProvider.url, params.provingProvider.chainId, {
         requestTimeoutMs: params.provingProvider.requestTimeoutMs,
@@ -102,10 +125,19 @@ export function createPrivateTransfers(params: {
     ? new IndexerDiscoveryProvider(params.discoveryProvider.url, params.poolContractAddress)
     : params.discoveryProvider;
 
+  const user: PrivateTransfersUser = hasAccount(params)
+    ? {
+        address: params.account.address,
+        signer: params.proofSigner ?? params.account.signer,
+      }
+    : params.user;
+
   return new PrivateTransfers({
-    ...params,
+    user,
+    viewingKeyProvider: params.viewingKeyProvider,
     provingProvider,
     discoveryProvider,
     proofInvocationFactory: params.proofInvocationFactory ?? new ProofInvocationFactory(),
+    poolContractAddress: params.poolContractAddress,
   });
 }
