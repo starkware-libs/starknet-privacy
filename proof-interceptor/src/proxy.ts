@@ -1,9 +1,16 @@
 // src/proxy.ts
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { RpcAction, validateRpcRequest } from "./rpc.js";
+import { validateRpcRequest } from "./rpc.js";
 import { runInterceptors, type TransactionInterceptor } from "./interceptor.js";
 import { jsonRpcError } from "./types.js";
 import { DEFAULT_MAX_BODY_BYTES } from "./config.js";
+import {
+  registry,
+  rpcRequestsTotal,
+  requestDuration,
+  errorsTotal,
+  inFlightRequests,
+} from "./metrics.js";
 
 const TRANSACTION_REJECTED = 10000;
 
@@ -23,8 +30,19 @@ export function createHandler(options: HandlerOptions = {}) {
       return;
     }
 
+    if (req.url === "/metrics" && req.method === "GET") {
+      const metricsBody = await registry.metrics();
+      res.writeHead(200, { "content-type": registry.contentType });
+      res.end(metricsBody);
+      return;
+    }
+
+    inFlightRequests.inc();
     const startTime = Date.now();
-    function logRequest(fields: object) {
+    function finishRequest(rpcAction: string, fields: object) {
+      const durationSeconds = (Date.now() - startTime) / 1000;
+      inFlightRequests.dec();
+      requestDuration.observe({ action: rpcAction }, durationSeconds);
       console.log(
         JSON.stringify({
           method: req.method,
@@ -35,13 +53,10 @@ export function createHandler(options: HandlerOptions = {}) {
       );
     }
 
-    function finishRequest(fields: object, statusCode: number) {
-      logRequest({ ...fields, statusCode });
-    }
-
     const declaredLength = parseInt(req.headers["content-length"] ?? "", 10);
     if (!Number.isNaN(declaredLength) && declaredLength > maxBodyBytes) {
-      finishRequest({ error: "payload_too_large" }, 413);
+      errorsTotal.inc({ type: "payload_too_large" });
+      finishRequest("error", { error: "payload_too_large" });
       res.writeHead(413, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "payload too large" }));
       req.destroy();
@@ -52,45 +67,43 @@ export function createHandler(options: HandlerOptions = {}) {
     try {
       body = await readBody(req, maxBodyBytes);
     } catch {
-      finishRequest({ error: "payload_too_large" }, 413);
+      errorsTotal.inc({ type: "payload_too_large" });
+      finishRequest("error", { error: "payload_too_large" });
       res.writeHead(413, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "payload too large" }));
       return;
     }
 
+    // Only accept JSON-RPC POST requests
     if (req.method !== "POST" || !isJsonContent(req)) {
-      finishRequest({ error: "not_json_rpc" }, 400);
+      errorsTotal.inc({ type: "invalid_request" });
+      finishRequest("error", { error: "invalid_request" });
       res.writeHead(400, { "content-type": "application/json" });
       res.end(
-        JSON.stringify({ error: "only JSON-RPC POST requests are supported" })
+        JSON.stringify({ error: "only JSON-RPC POST requests accepted" })
       );
       return;
     }
 
     const verdict = validateRpcRequest(body.toString());
 
-    if (verdict.action === RpcAction.Error) {
-      finishRequest({ rpcAction: "error" }, 200);
+    if (!verdict.ok) {
+      rpcRequestsTotal.inc({ action: "error", method: "" });
+      errorsTotal.inc({ type: verdict.errorType });
+      finishRequest("error", {
+        rpcAction: "error",
+        errorType: verdict.errorType,
+      });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(verdict.response));
       return;
     }
 
-    if (verdict.action === RpcAction.ForwardAsIs) {
-      // starknet_specVersion: return a static response without upstream
-      finishRequest({ rpcAction: "forward_as_is" }, 200);
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: verdict.requestId,
-          result: "0.10.1",
-        })
-      );
-      return;
-    }
+    rpcRequestsTotal.inc({
+      action: "check_with_interceptors",
+      method: "starknet_checkTransaction",
+    });
 
-    // RpcAction.CheckWithInterceptors
     const interceptorVerdict = await runInterceptors(
       interceptors,
       verdict.transaction
@@ -98,10 +111,10 @@ export function createHandler(options: HandlerOptions = {}) {
 
     if (interceptorVerdict.action === "block") {
       console.error(JSON.stringify({ error: "transaction_rejected" }));
-      finishRequest(
-        { rpcAction: "check_with_interceptors", interceptorVerdict: "block" },
-        200
-      );
+      finishRequest("check_with_interceptors", {
+        rpcAction: "check_with_interceptors",
+        interceptorVerdict: "block",
+      });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify(
@@ -116,10 +129,11 @@ export function createHandler(options: HandlerOptions = {}) {
       return;
     }
 
-    finishRequest(
-      { rpcAction: "check_with_interceptors", interceptorVerdict: "allow" },
-      200
-    );
+    // All interceptors allowed the transaction
+    finishRequest("check_with_interceptors", {
+      rpcAction: "check_with_interceptors",
+      interceptorVerdict: "allow",
+    });
     res.writeHead(200, { "content-type": "application/json" });
     res.end(
       JSON.stringify({

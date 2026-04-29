@@ -2,7 +2,7 @@ export * from "./interfaces.js";
 export { AddressMap } from "./utils/index.js";
 export { createPrivateTransfers } from "./factory.js";
 export { SimplePrivateTransfersImpl } from "./simple-private-transfers.js";
-export { ProvingService } from "./internal/proving-service.js";
+export { ProvingService, ProvingServiceError } from "./internal/proving-service.js";
 export type {
   MessageToL1,
   ProvingServiceConfig,

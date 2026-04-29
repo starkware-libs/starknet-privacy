@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { ProvingService, type MessageToL1 } from "../../src/internal/proving-service.js";
+import {
+  ProvingService,
+  ProvingServiceError,
+  type MessageToL1,
+} from "../../src/internal/proving-service.js";
 import type { OhttpClient } from "../../src/internal/ohttp-client.js";
 
 const PROVER_URL = "https://prover.test";
@@ -73,9 +77,13 @@ describe("ProvingService with OHTTP", () => {
 
     const service = new ProvingService({ baseUrl: PROVER_URL, ohttpClient });
 
-    await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
-      /Proving service error \(code 24\)/
-    );
+    const error = await service
+      .proveTransaction("latest", MINIMAL_INVOKE_TX)
+      .catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ProvingServiceError);
+    expect((error as ProvingServiceError).code).toBe(24);
+    expect((error as ProvingServiceError).message).toBe("Block not found");
+    expect((error as ProvingServiceError).data).toBeUndefined();
   });
 
   it("throws when OHTTP response has no result", async () => {
