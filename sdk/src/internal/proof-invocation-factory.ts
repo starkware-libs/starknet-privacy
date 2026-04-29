@@ -6,12 +6,7 @@
  * - Mock implementation: passes through client actions directly
  */
 
-import type {
-  BigNumberish,
-  CallResult,
-  SignerInterface,
-  V3InvocationsSignerDetails,
-} from "starknet";
+import type { Account, BigNumberish, CallResult, V3InvocationsSignerDetails } from "starknet";
 import type { constants } from "starknet";
 import { CallData, ETransactionVersion, hash, stark } from "starknet";
 
@@ -62,8 +57,7 @@ export function getDefaultProofDetails(
  * Minimal user info needed for creating a proof invocation.
  */
 export interface ProofUser {
-  address: BigNumberish;
-  signer: SignerInterface;
+  account: Account;
   viewingKey: BigNumberish;
 }
 
@@ -126,7 +120,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
   ): Promise<ProofInvocation> {
     const cairoActions = serializeClientActions(clientActions);
     const callDataCompiler = new CallData(PrivacyPoolABI);
-    const userAddress = toBigInt(user.address);
+    const userAddress = toBigInt(user.account.address);
     const poolAddressHex = toHex(poolAddress);
 
     const executeViewCalldata = callDataCompiler.compile("compile_actions", [
@@ -145,7 +139,7 @@ export class ProofInvocationFactory implements ProofInvocationFactoryInterface {
     // signTransaction internally calls getExecuteCalldata which wraps the call
     // into Array<Call> format — the same layout as compiledCalldata. So we pass
     // the inner executeViewCalldata here, not the already-wrapped compiledCalldata.
-    const signature = await user.signer.signTransaction(
+    const signature = await user.account.signer.signTransaction(
       [
         {
           contractAddress: poolAddressHex,

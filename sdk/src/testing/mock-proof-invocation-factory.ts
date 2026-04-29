@@ -70,7 +70,7 @@ export class MockProofInvocationFactory implements ProofInvocationFactoryInterfa
       type: "INVOKE",
       sender_address: poolAddressHex,
       calldata: [
-        toHex(user.address),
+        toHex(user.account.address),
         toHex(user.viewingKey),
         JSON.stringify(clientActions, jsonReplacer),
       ],

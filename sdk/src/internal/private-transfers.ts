@@ -67,7 +67,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     // Create invocation for proving
     const details = await this.params.provingProvider.getDefaultDetails();
     const invocation = await this.params.proofInvocationFactory.create(
-      { address: this.params.account.address, signer: this.params.account.signer, viewingKey },
+      { account: this.params.account, viewingKey },
       this.params.poolContractAddress,
       clientActions,
       details
