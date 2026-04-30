@@ -66,7 +66,7 @@ describe("E2E Smoke", () => {
       de.privacy.address,
     );
     const aliceIndexer = createPrivateTransfers({
-      user: de.alice,
+      account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(
         de.provider,
@@ -97,7 +97,7 @@ describe("E2E Smoke", () => {
 
     // --- Bob's incoming discovery ---
     const bobIndexer = createPrivateTransfers({
-      user: de.bob,
+      account: de.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(
         de.provider,

@@ -136,8 +136,8 @@ export class Mocknet {
     const pool = this.pool;
 
     return new PrivateTransfers({
-      // Mock factory does not sign, but PrivateTransfers only needs a minimal user.
-      user: {
+      // Mock factory does not sign, but PrivateTransfers needs the minimal account shape.
+      account: {
         address: `0x${userAddress.toString(16)}`,
         signer: {} as SignerInterface,
       },

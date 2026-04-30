@@ -38,14 +38,14 @@ const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
 const transfers = {
   alice: createPrivateTransfers({
-    user: env.alice,
+    account: env.alice,
     viewingKeyProvider: { getViewingKey: async () => ALICE_VIEWING_KEY },
     provingProvider: new CallMockProofProvider(env.provider, chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
   }),
   bob: createPrivateTransfers({
-    user: env.bob,
+    account: env.bob,
     viewingKeyProvider: { getViewingKey: async () => BOB_VIEWING_KEY },
     provingProvider: new CallMockProofProvider(env.provider, chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),

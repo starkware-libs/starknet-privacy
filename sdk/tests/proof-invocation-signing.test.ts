@@ -88,7 +88,7 @@ describe("proof invocation signing", () => {
     const spyFactory = new SpyProofInvocationFactory();
 
     const transfers = createPrivateTransfers({
-      user: {
+      account: {
         address: `0x${env.alice.address.toString(16)}`,
         signer: wrappedSigner,
       },

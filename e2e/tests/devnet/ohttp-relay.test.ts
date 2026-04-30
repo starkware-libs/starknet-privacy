@@ -81,7 +81,7 @@ describe("E2E OHTTP via relay", () => {
     );
 
     const aliceOhttp = createPrivateTransfers({
-      user: de.alice,
+      account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(
         de.provider,
@@ -115,7 +115,7 @@ describe("E2E OHTTP via relay", () => {
 
     // Bob's discovery via relay
     const bobOhttp = createPrivateTransfers({
-      user: de.bob,
+      account: de.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(
         de.provider,

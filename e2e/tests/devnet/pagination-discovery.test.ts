@@ -68,7 +68,7 @@ describe("Discovery pagination with small budget", () => {
     );
 
     const aliceTransfers = createPrivateTransfers({
-      user: de.alice,
+      account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(
         de.provider,
@@ -102,7 +102,7 @@ describe("Discovery pagination with small budget", () => {
 
     // Alice incoming: 1 note (50 STRK change)
     const aliceTransfers = createPrivateTransfers({
-      user: de.alice,
+      account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(
         de.provider,
@@ -119,7 +119,7 @@ describe("Discovery pagination with small budget", () => {
 
     // Bob incoming: 1 note (50 STRK from Alice)
     const bobTransfers = createPrivateTransfers({
-      user: de.bob,
+      account: de.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(
         de.provider,

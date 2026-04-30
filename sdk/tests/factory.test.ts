@@ -28,7 +28,7 @@ describe("createPrivateTransfers", () => {
       const pool = mocknet.pool;
 
       const transfers = createPrivateTransfers({
-        user: mockUser(`0x${env.alice.address.toString(16)}`),
+        account: mockUser(`0x${env.alice.address.toString(16)}`),
         viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
         provingProvider: new MockProofProvider(pool),
         discoveryProvider: new ContractDiscoveryProvider(pool),
@@ -58,7 +58,7 @@ describe("createPrivateTransfers", () => {
       const discoveryConfig: DiscoveryProviderConfig = { url: DISCOVERY_URL };
 
       const transfers = createPrivateTransfers({
-        user: mockUser("0xabc"),
+        account: mockUser("0xabc"),
         viewingKeyProvider: { getViewingKey: async () => 0n },
         provingProvider: provingConfig,
         discoveryProvider: discoveryConfig,
@@ -95,7 +95,7 @@ describe("createPrivateTransfers", () => {
       globalThis.fetch = mockFetch;
 
       const transfers = createPrivateTransfers({
-        user: mockUser("0xabc"),
+        account: mockUser("0xabc"),
         viewingKeyProvider: { getViewingKey: async () => 0n },
         provingProvider: {
           url: PROVER_URL,
@@ -119,7 +119,7 @@ describe("createPrivateTransfers", () => {
       const env = mocknet.initialize();
 
       const transfers = createPrivateTransfers({
-        user: mockUser(`0x${env.alice.address.toString(16)}`),
+        account: mockUser(`0x${env.alice.address.toString(16)}`),
         viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
         provingProvider: {
           url: PROVER_URL,
@@ -158,7 +158,7 @@ describe("createPrivateTransfers", () => {
       const env = mocknet.initialize();
 
       const transfers = createPrivateTransfers({
-        user: mockUser(`0x${env.alice.address.toString(16)}`),
+        account: mockUser(`0x${env.alice.address.toString(16)}`),
         viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
         provingProvider: new MockProofProvider(mocknet.pool),
         discoveryProvider: { url: DISCOVERY_URL },
@@ -177,7 +177,7 @@ describe("createPrivateTransfers", () => {
   describe("config resolution", () => {
     it("ProofProviderConfig with optional fields is passed to ProvingServiceProofProvider", () => {
       const transfers = createPrivateTransfers({
-        user: mockUser("0x1"),
+        account: mockUser("0x1"),
         viewingKeyProvider: { getViewingKey: async () => 0n },
         provingProvider: {
           url: PROVER_URL,

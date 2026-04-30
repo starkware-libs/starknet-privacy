@@ -34,13 +34,14 @@ function isDiscoveryProviderConfig(
 
 export interface CreatePrivateTransfersParams {
   /**
-   * Minimal user identity used to sign proof invocations. A full `Account`
-   * instance is structurally assignable here, since it exposes both `address`
-   * and `signer`. For smart wallets where account-level signature wrapping
-   * (e.g. owner + guardian merge) lives outside the signer, supply a custom
-   * `signer` implementation instead of `account.signer`.
+   * Identity used to sign proof invocations. Only `address` and `signer` are
+   * read, so a full starknet.js `Account` is structurally assignable here as
+   * well as a minimal `{ address, signer }` object. For smart wallets where
+   * account-level signature wrapping (e.g. owner + guardian merge) lives
+   * outside the signer, supply a custom `signer` implementation rather than
+   * passing the full `Account`.
    */
-  user: PrivateTransfersUser;
+  account: PrivateTransfersUser;
   viewingKeyProvider: ViewingKeyProvider;
   proofInvocationFactory?: ProofInvocationFactoryInterface;
   provingProvider: ProofProviderInterface | ProofProviderConfig;
@@ -56,24 +57,14 @@ export interface CreatePrivateTransfersParams {
  * creates the corresponding production implementation (ProvingServiceProofProvider /
  * IndexerDiscoveryProvider) for you.
  *
- * @param params - Configuration object containing user, providers (or configs), and pool address
+ * @param params - Configuration object containing account, providers (or configs), and pool address
  * @returns A PrivateTransfers instance
  *
- * @example With instances (e.g. mocks)
+ * @example With a full Account
  * ```typescript
+ * const account = new Account(provider, address, privateKey);
  * const privateTransfers = createPrivateTransfers({
- *   user: { address: myAddress, signer: mySigner },
- *   viewingKeyProvider: { getViewingKey: async () => myPrivateKey },
- *   provingProvider: new MockProofProvider(pool),
- *   discoveryProvider: new ContractDiscoveryProvider(pool),
- *   poolContractAddress: poolAddress,
- * });
- * ```
- *
- * @example With production configs
- * ```typescript
- * const privateTransfers = createPrivateTransfers({
- *   user: { address: myAddress, signer: mySigner },
+ *   account,
  *   viewingKeyProvider: { getViewingKey: async () => myPrivateKey },
  *   provingProvider: { url: "https://prover.example.com", chainId: constants.StarknetChainId.SN_MAIN },
  *   discoveryProvider: { url: "https://indexer.example.com" },
@@ -81,12 +72,14 @@ export interface CreatePrivateTransfersParams {
  * });
  * ```
  *
- * @example With a full Account instance (structurally assignable)
+ * @example With a minimal `{ address, signer }` (e.g. smart wallets that wrap signing)
  * ```typescript
- * const account = new Account(provider, address, privateKey);
  * const privateTransfers = createPrivateTransfers({
- *   user: account,
- *   // ...
+ *   account: { address: myAddress, signer: customProofSigner },
+ *   viewingKeyProvider: { getViewingKey: async () => myPrivateKey },
+ *   provingProvider: new MockProofProvider(pool),
+ *   discoveryProvider: new ContractDiscoveryProvider(pool),
+ *   poolContractAddress: poolAddress,
  * });
  * ```
  */
@@ -110,7 +103,7 @@ export function createPrivateTransfers(
     : params.discoveryProvider;
 
   return new PrivateTransfers({
-    user: params.user,
+    account: params.account,
     viewingKeyProvider: params.viewingKeyProvider,
     provingProvider,
     discoveryProvider,
