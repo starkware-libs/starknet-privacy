@@ -53,8 +53,10 @@ type ClientActions = {
   openTokenChannels: Extract<ClientAction, { type: "OpenSubchannel" }>[];
   deposits: Extract<ClientAction, { type: "Deposit" }>[];
   useNotes: Extract<ClientAction, { type: "UseNote" }>[];
-  createEncNotes: Extract<ClientAction, { type: "CreateEncNote" }>[];
-  createOpenNotes: Extract<ClientAction, { type: "CreateOpenNote" }>[];
+  createNotes: (
+    | Extract<ClientAction, { type: "CreateEncNote" }>
+    | Extract<ClientAction, { type: "CreateOpenNote" }>
+  )[];
   withdraws: Extract<ClientAction, { type: "Withdraw" }>[];
   invoke?: Extract<ClientAction, { type: "InvokeExternal" }>;
 };
@@ -229,8 +231,7 @@ export class ActionCompiler {
       openTokenChannels: [],
       deposits: [],
       useNotes: [],
-      createEncNotes: [],
-      createOpenNotes: [],
+      createNotes: [],
       withdraws: [],
       invoke: undefined,
     };
@@ -258,7 +259,10 @@ export class ActionCompiler {
       }
     }
 
-    const execute = <T extends ClientAction>(input: StrictClientAction<T>, arr: T[] = []): T => {
+    const execute = <T extends A, A extends ClientAction = ClientAction>(
+      input: StrictClientAction<T>,
+      arr: A[] = []
+    ): T => {
       pool.execute(input);
       arr.push(input);
       return input;
@@ -404,7 +408,7 @@ export class ActionCompiler {
               random: generateRandom(),
             },
           } as const; // typescipt magic
-          execute(input, clientActions.createOpenNotes);
+          execute(input, clientActions.createNotes);
         } else {
           const input = {
             type: "CreateEncNote",
@@ -417,7 +421,7 @@ export class ActionCompiler {
               salt: generateRandom120(),
             },
           } as const; // typescipt magic
-          execute(input, clientActions.createEncNotes);
+          execute(input, clientActions.createNotes);
         }
       }
     }
@@ -442,13 +446,16 @@ export class ActionCompiler {
 
     // 8. InvokeExternal
     if (actions.invoke) {
-      const openNotes = clientActions.createOpenNotes.map((openNote) => {
-        const channelKey = pool.getChannel(openNote.input.recipient_addr)?.key;
+      const openNotes = clientActions.createNotes.flatMap((note) => {
+        if (note.type !== "CreateOpenNote") return [];
+        const channelKey = pool.getChannel(note.input.recipient_addr)?.key;
         assert(channelKey, () => `Missing channel key for open note recipient`);
-        return {
-          noteId: compute_note_id(channelKey, openNote.input.token, openNote.input.index),
-          token: openNote.input.token,
-        };
+        return [
+          {
+            noteId: compute_note_id(channelKey, note.input.token, note.input.index),
+            token: note.input.token,
+          },
+        ];
       });
       const withdrawals = clientActions.withdraws.map((withdraw) => ({
         recipient: withdraw.input.to_addr,
