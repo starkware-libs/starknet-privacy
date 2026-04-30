@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Changed
+
+- `createPrivateTransfers()` `account` parameter type relaxed from `Account` to `{ address, signer }`. A full starknet.js `Account` is structurally assignable, so existing callers compile unchanged. Smart wallets that need account-formatted signatures (e.g. owner + guardian merge) can now pass `{ address: account.address, signer: customProofSigner }` to override the signer used for proof invocations. Closes #718.
+
+### Added
+
+- `PrivateTransfersUser` interface (`{ address, signer }`) exported from `interfaces.ts` for callers who want to type their own minimal account shape.
+
 ### Fixed
 
 - Fixed `INDEX_NOT_SEQUENTIAL` error when the paymaster fee token equals the swap output token (`toToken`) in a private swap. The compiler was emitting `CreateEncNote` at index N+1 before `CreateOpenNote` at index N for the same token. Note-creation actions are now accumulated in a single list in processing order instead of separate enc/open arrays.

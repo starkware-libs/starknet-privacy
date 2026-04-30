@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
-  Account,
   Call,
   DeclareSignerDetails,
   DeployAccountSignerDetails,
@@ -71,55 +70,8 @@ class SpyProofInvocationFactory extends ProofInvocationFactory {
   }
 }
 
-describe("proofSigner", () => {
-  it("uses proofSigner instead of account.signer when provided", () => {
-    const mocknet = new Mocknet({ poolAddress: POOL_ADDRESS });
-    const env = mocknet.initialize();
-
-    const accountSigner = { signTransaction: vi.fn() } as unknown as SignerInterface;
-    const proofSigner = { signTransaction: vi.fn() } as unknown as SignerInterface;
-
-    const account = {
-      address: `0x${env.alice.address.toString(16)}`,
-      signer: accountSigner,
-    } as unknown as Account;
-
-    const transfers = createPrivateTransfers({
-      account,
-      viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
-      proofSigner,
-      provingProvider: new MockProofProvider(mocknet.pool),
-      discoveryProvider: new ContractDiscoveryProvider(mocknet.pool),
-      poolContractAddress: `0x${POOL_ADDRESS.toString(16)}`,
-    });
-
-    // Verify the instance was created successfully
-    expect(transfers).toBeDefined();
-    expect(transfers.build).toBeDefined();
-  });
-
-  it("falls back to account.signer when proofSigner is not provided", () => {
-    const mocknet = new Mocknet({ poolAddress: POOL_ADDRESS });
-    const env = mocknet.initialize();
-
-    const account = {
-      address: `0x${env.alice.address.toString(16)}`,
-      signer: {} as SignerInterface,
-    } as unknown as Account;
-
-    const transfers = createPrivateTransfers({
-      account,
-      viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
-      // no proofSigner
-      provingProvider: new MockProofProvider(mocknet.pool),
-      discoveryProvider: new ContractDiscoveryProvider(mocknet.pool),
-      poolContractAddress: `0x${POOL_ADDRESS.toString(16)}`,
-    });
-
-    expect(transfers).toBeDefined();
-  });
-
-  it("user.signer receives correct calls and details during proof invocation", async () => {
+describe("proof invocation signing", () => {
+  it("forwards user.signer to the proof invocation factory and signs at walletAddress = poolAddress", async () => {
     const mocknet = new Mocknet({ poolAddress: POOL_ADDRESS });
     const env = mocknet.initialize();
     const poolHex = `0x${POOL_ADDRESS.toString(16)}`;
@@ -130,7 +82,7 @@ describe("proofSigner", () => {
 
     // Wrap with a spy that adds a prefix (simulating Argent signature wrapping)
     const SIGNATURE_PREFIX = ["0x3", "0xdeadbeef"]; // e.g. [sig_count, signer_type]
-    const proofSigner = createSpySigner(rawSigner, SIGNATURE_PREFIX);
+    const wrappedSigner = createSpySigner(rawSigner, SIGNATURE_PREFIX);
 
     // Use the real ProofInvocationFactory (not mock) with a spy to capture the user
     const spyFactory = new SpyProofInvocationFactory();
@@ -138,7 +90,7 @@ describe("proofSigner", () => {
     const transfers = createPrivateTransfers({
       user: {
         address: `0x${env.alice.address.toString(16)}`,
-        signer: proofSigner,
+        signer: wrappedSigner,
       },
       viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
       proofInvocationFactory: spyFactory,
@@ -150,64 +102,24 @@ describe("proofSigner", () => {
     // Register to trigger a proof invocation
     const result = await transfers.build().register().createProofInvocation();
 
-    // Verify the spy factory received the user.signer directly — no Account needed.
+    // Factory received the wrapped signer directly — no Account needed.
     expect(spyFactory.capturedUsers).toHaveLength(1);
-    expect(spyFactory.capturedUsers[0].signer).toBe(proofSigner);
+    expect(spyFactory.capturedUsers[0].signer).toBe(wrappedSigner);
     expect(spyFactory.capturedUsers[0].signer).not.toBe(rawSigner);
 
-    // Verify the proofSigner.signTransaction was actually called
-    expect(proofSigner.signTransaction).toHaveBeenCalledOnce();
+    // The wrapped signer was actually invoked for signing.
+    expect(wrappedSigner.signTransaction).toHaveBeenCalledOnce();
 
-    // Verify it was called with walletAddress = poolAddress (not user address)
-    const callArgs = (proofSigner.signTransaction as ReturnType<typeof vi.fn>).mock.calls[0];
+    // Signed at walletAddress = poolAddress (so the pool, not the user, is the sender).
+    const callArgs = (wrappedSigner.signTransaction as ReturnType<typeof vi.fn>).mock.calls[0];
     const details = callArgs[1] as InvocationsSignerDetails;
     expect(details.walletAddress).toBe(poolHex);
 
-    // Verify the resulting invocation signature contains the prefix (proof of wrapping)
+    // Resulting invocation signature carries the wrapping prefix — proof that
+    // a smart-wallet-style custom signer can format the signature however it needs.
     const signature = result.invocation.signature as string[];
     expect(signature.length).toBeGreaterThan(2); // More than raw [r, s]
     expect(signature[0]).toBe(SIGNATURE_PREFIX[0]);
     expect(signature[1]).toBe(SIGNATURE_PREFIX[1]);
-  });
-
-  it("account.signer is used for proof invocation when proofSigner is absent", async () => {
-    const mocknet = new Mocknet({ poolAddress: POOL_ADDRESS });
-    const env = mocknet.initialize();
-    const poolHex = `0x${POOL_ADDRESS.toString(16)}`;
-
-    const { Signer } = await import("starknet");
-    const rawSigner = new Signer("0x1234");
-    const signTransactionSpy = vi.spyOn(rawSigner, "signTransaction");
-
-    const spyFactory = new SpyProofInvocationFactory();
-
-    const account = {
-      address: `0x${env.alice.address.toString(16)}`,
-      signer: rawSigner,
-    } as unknown as Account;
-
-    const transfers = createPrivateTransfers({
-      account,
-      viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
-      // no proofSigner
-      proofInvocationFactory: spyFactory,
-      provingProvider: new MockProofProvider(mocknet.pool),
-      discoveryProvider: new ContractDiscoveryProvider(mocknet.pool),
-      poolContractAddress: poolHex,
-    });
-
-    await transfers.build().register().createProofInvocation();
-
-    // Verify the factory received account.signer (the raw one)
-    expect(spyFactory.capturedUsers).toHaveLength(1);
-    expect(spyFactory.capturedUsers[0].signer).toBe(rawSigner);
-
-    // Verify account.signer.signTransaction was called
-    expect(signTransactionSpy).toHaveBeenCalledOnce();
-
-    // Verify signature is raw [r, s] — exactly 2 elements
-    const callArgs = signTransactionSpy.mock.calls[0];
-    const details = callArgs[1] as InvocationsSignerDetails;
-    expect(details.walletAddress).toBe(poolHex);
   });
 });

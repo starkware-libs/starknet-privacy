@@ -155,7 +155,7 @@ describe("Privacy StarkNet integration", () => {
       console.log(`[${new Date().toISOString()}] ${msg}`);
 
     const transfers = createPrivateTransfers({
-      account: aliceAccount,
+      user: aliceAccount,
       viewingKeyProvider: {
         getViewingKey: async () => BigInt(alice.viewingKey),
       },

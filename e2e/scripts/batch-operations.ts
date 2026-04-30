@@ -268,7 +268,7 @@ async function runDeposit() {
   console.log("Approve tx:", approveTx.transaction_hash);
 
   const transfers = createPrivateTransfers({
-    account: aliceAccount,
+    user: aliceAccount,
     viewingKeyProvider: { getViewingKey: async () => BigInt(alice.viewingKey) },
     provingProvider: new ProvingServiceProofProvider(
       PROVING_SERVICE_URL,
@@ -395,7 +395,7 @@ async function runTransfer() {
   );
 
   const transfers = createPrivateTransfers({
-    account: aliceAccount,
+    user: aliceAccount,
     viewingKeyProvider: { getViewingKey: async () => BigInt(alice.viewingKey) },
     provingProvider: new ProvingServiceProofProvider(
       PROVING_SERVICE_URL,

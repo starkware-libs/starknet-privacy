@@ -51,9 +51,9 @@ describe("Payment Service Discovery", () => {
     aliceTransfers = env.transfers.alice;
 
     // Create PrivateTransfersInterface for each user
-    userTransfers = users.map((account, i) =>
+    userTransfers = users.map((user, i) =>
       createPrivateTransfers({
-        account,
+        user,
         viewingKeyProvider: { getViewingKey: async () => userKey(i) },
         provingProvider: new CallMockProofProvider(de.provider, chainId),
         discoveryProvider: indexerDiscovery,
@@ -225,7 +225,7 @@ describe("Payment Service Discovery", () => {
     const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
     const aliceDiscover = createPrivateTransfers({
-      account: de.alice,
+      user: de.alice,
       viewingKeyProvider: { getViewingKey: async () => ALICE_KEY },
       provingProvider: new CallMockProofProvider(de.provider, chainId),
       discoveryProvider: indexerDiscovery,
@@ -254,7 +254,7 @@ describe("Payment Service Discovery", () => {
     const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
     const aliceDiscover = createPrivateTransfers({
-      account: de.alice,
+      user: de.alice,
       viewingKeyProvider: { getViewingKey: async () => ALICE_KEY },
       provingProvider: new CallMockProofProvider(de.provider, chainId),
       discoveryProvider: indexerDiscovery,
@@ -282,7 +282,7 @@ describe("Payment Service Discovery", () => {
 
     for (let i = 0; i < users.length; i++) {
       const userDiscover = createPrivateTransfers({
-        account: users[i],
+        user: users[i],
         viewingKeyProvider: { getViewingKey: async () => userKey(i) },
         provingProvider: new CallMockProofProvider(de.provider, chainId),
         discoveryProvider: indexerDiscovery,
@@ -309,7 +309,7 @@ describe("Payment Service Discovery", () => {
 
     for (let i = 0; i < users.length; i++) {
       const userDiscover = createPrivateTransfers({
-        account: users[i],
+        user: users[i],
         viewingKeyProvider: { getViewingKey: async () => userKey(i) },
         provingProvider: new CallMockProofProvider(de.provider, chainId),
         discoveryProvider: indexerDiscovery,

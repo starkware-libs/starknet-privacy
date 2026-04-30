@@ -77,7 +77,7 @@ describe("E2E OHTTP", () => {
     );
 
     const aliceOhttp = createPrivateTransfers({
-      account: de.alice,
+      user: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new CallMockProofProvider(
         de.provider,
@@ -111,7 +111,7 @@ describe("E2E OHTTP", () => {
 
     // Bob's discovery via OHTTP
     const bobOhttp = createPrivateTransfers({
-      account: de.bob,
+      user: de.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
       provingProvider: new CallMockProofProvider(
         de.provider,

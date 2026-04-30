@@ -12,7 +12,6 @@ import type {
   StarknetAddress,
   PrivateTransfersUser,
 } from "./interfaces.js";
-import type { Account, SignerInterface } from "starknet";
 import { PrivateTransfers } from "./internal/private-transfers.js";
 import {
   ProofInvocationFactory,
@@ -33,6 +32,22 @@ function isDiscoveryProviderConfig(
   return typeof x === "object" && x !== null && "url" in x && !("discoverNotes" in x);
 }
 
+export interface CreatePrivateTransfersParams {
+  /**
+   * Minimal user identity used to sign proof invocations. A full `Account`
+   * instance is structurally assignable here, since it exposes both `address`
+   * and `signer`. For smart wallets where account-level signature wrapping
+   * (e.g. owner + guardian merge) lives outside the signer, supply a custom
+   * `signer` implementation instead of `account.signer`.
+   */
+  user: PrivateTransfersUser;
+  viewingKeyProvider: ViewingKeyProvider;
+  proofInvocationFactory?: ProofInvocationFactoryInterface;
+  provingProvider: ProofProviderInterface | ProofProviderConfig;
+  discoveryProvider: DiscoveryProviderInterface | DiscoveryProviderConfig;
+  poolContractAddress: StarknetAddress;
+}
+
 /**
  * Creates a new PrivateTransfers instance for interacting with the privacy pool.
  *
@@ -41,7 +56,7 @@ function isDiscoveryProviderConfig(
  * creates the corresponding production implementation (ProvingServiceProofProvider /
  * IndexerDiscoveryProvider) for you.
  *
- * @param params - Configuration object containing user/account, providers (or configs), and pool address
+ * @param params - Configuration object containing user, providers (or configs), and pool address
  * @returns A PrivateTransfers instance
  *
  * @example With instances (e.g. mocks)
@@ -65,47 +80,16 @@ function isDiscoveryProviderConfig(
  *   poolContractAddress: poolAddress,
  * });
  * ```
+ *
+ * @example With a full Account instance (structurally assignable)
+ * ```typescript
+ * const account = new Account(provider, address, privateKey);
+ * const privateTransfers = createPrivateTransfers({
+ *   user: account,
+ *   // ...
+ * });
+ * ```
  */
-interface CreatePrivateTransfersBaseParams {
-  viewingKeyProvider: ViewingKeyProvider;
-  proofInvocationFactory?: ProofInvocationFactoryInterface;
-  provingProvider: ProofProviderInterface | ProofProviderConfig;
-  discoveryProvider: DiscoveryProviderInterface | DiscoveryProviderConfig;
-  poolContractAddress: StarknetAddress;
-}
-
-export type CreatePrivateTransfersParams = CreatePrivateTransfersBaseParams &
-  (
-    | {
-        /** Minimal user identity. Prefer this over passing a full Account. */
-        user: PrivateTransfersUser;
-        account?: never;
-        proofSigner?: never;
-      }
-    | {
-        /** Backwards-compatible full Account input. */
-        account: Account;
-        user?: never;
-        /**
-         * Optional signer override for proof invocations. When provided, this signer
-         * is used instead of `account.signer` to sign proof transactions.
-         *
-         * Prefer passing `user: { address, signer }` for new integrations. This
-         * field remains for backwards compatibility with existing `account` callers.
-         */
-        proofSigner?: SignerInterface;
-      }
-  );
-
-function hasAccount(
-  params: CreatePrivateTransfersParams
-): params is CreatePrivateTransfersBaseParams & {
-  account: Account;
-  proofSigner?: SignerInterface;
-} {
-  return "account" in params && params.account !== undefined;
-}
-
 export function createPrivateTransfers(
   params: CreatePrivateTransfersParams
 ): PrivateTransfersInterface {
@@ -125,15 +109,8 @@ export function createPrivateTransfers(
     ? new IndexerDiscoveryProvider(params.discoveryProvider.url, params.poolContractAddress)
     : params.discoveryProvider;
 
-  const user: PrivateTransfersUser = hasAccount(params)
-    ? {
-        address: params.account.address,
-        signer: params.proofSigner ?? params.account.signer,
-      }
-    : params.user;
-
   return new PrivateTransfers({
-    user,
+    user: params.user,
     viewingKeyProvider: params.viewingKeyProvider,
     provingProvider,
     discoveryProvider,
