@@ -473,9 +473,26 @@ export class ActionCompiler {
       clientActions.invoke = execute(input);
     }
 
-    return Object.values(clientActions)
-      .filter((action) => action !== undefined)
-      .flat();
+    // Merge enc and open note-creation actions and sort by (token, index) so
+    // that within each token the lower-indexed note is always created first.
+    // Without this, CreateEncNote (change note, higher index) can appear before
+    // CreateOpenNote (open note, lower index) for the same token when they end
+    // up in different output arrays — causing INDEX_NOT_SEQUENTIAL on-chain.
+    const sortedNoteCreations = [
+      ...clientActions.createEncNotes,
+      ...clientActions.createOpenNotes,
+    ].sort((a, b) => (a.input.token === b.input.token ? a.input.index - b.input.index : 0));
+
+    return [
+      clientActions.setViewingKey,
+      ...clientActions.openChannels,
+      ...clientActions.openTokenChannels,
+      ...clientActions.deposits,
+      ...clientActions.useNotes,
+      ...sortedNoteCreations,
+      ...clientActions.withdraws,
+      clientActions.invoke,
+    ].filter((action): action is ClientAction => action !== undefined);
   }
 
   /**
