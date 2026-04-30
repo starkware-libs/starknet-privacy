@@ -1,0 +1,36 @@
+# Keep the build context lean. BuildKit (default in modern Docker) looks
+# for <dockerfile>.dockerignore first, falling back to .dockerignore at
+# the context root. Only patterns that match files actually copied in
+# the Dockerfile matter; the rest are harmless.
+
+# never copied
+**/.git
+**/.gitignore
+**/node_modules
+**/dist
+**/.cache
+**/coverage
+**/*.log
+
+# vscode/jetbrains noise
+**/.vscode
+**/.idea
+
+# things outside the two directories the Dockerfile copies
+crates
+target
+e2e
+demo
+elliptic-proxy
+docs
+deploy
+scripts
+lean
+.claude
+**/*.md
+**/Cargo.lock
+**/Cargo.toml
+**/Scarb.lock
+**/Scarb.toml
+**/conftest.py
+**/py_requirements.txt
