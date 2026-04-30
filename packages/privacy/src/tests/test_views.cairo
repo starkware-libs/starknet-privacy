@@ -6,7 +6,7 @@ use privacy::tests::utils_for_tests::constants::{
 };
 use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
 use privacy::utils::constants::OPEN_NOTE_SALT;
-use privacy::utils::unpack;
+use privacy::utils::{derive_public_key, unpack};
 use snforge_std::TokenTrait;
 use starkware_utils::components::replaceability::interface::{
     IReplaceableDispatcher, IReplaceableDispatcherTrait,
@@ -51,13 +51,25 @@ fn test_constructor_zero_auditor_public_key() {
 }
 
 #[test]
+#[should_panic(expected: 'INVALID_AUDITOR_PUBLIC_KEY')]
+fn test_constructor_invalid_auditor_public_key() {
+    let mut state = Privacy::contract_state_for_testing();
+    Privacy::constructor(
+        ref state,
+        governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
+        auditor_public_key: 5,
+        proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
+    );
+}
+
+#[test]
 #[should_panic(expected: 'ZERO_PROOF_VALIDITY_BLOCKS')]
 fn test_constructor_zero_proof_validity_blocks() {
     let mut state = Privacy::contract_state_for_testing();
     Privacy::constructor(
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
-        auditor_public_key: 'AUDITOR_PUBLIC_KEY'.try_into().unwrap(),
+        auditor_public_key: derive_public_key(private_key: 'AUDITOR_PRIVATE_KEY'),
         proof_validity_blocks: Zero::zero(),
     );
 }
