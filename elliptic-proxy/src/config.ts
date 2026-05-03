@@ -12,6 +12,18 @@ export interface Config {
   configCacheTtlSeconds: number;
   blockedCacheTtlSeconds: number;
   partners: Record<string, string>; // partner name -> HMAC secret
+  // When true, the proxy never calls Elliptic. Use on non-mainnet
+  // deployments where Elliptic has no data coverage, or as a kill
+  // switch. Off by default. Operator-curated lists below still apply.
+  skipElliptic?: boolean;
+  // Lowercase hex addresses to always treat as blocked, regardless of
+  // Elliptic's verdict (or in lieu of it when skipElliptic is set).
+  // Supplemental deny list for operator policy.
+  additionalBlockedAddresses?: string[];
+  // Lowercase hex addresses to always treat as allowed, regardless of
+  // Elliptic's verdict and regardless of additionalBlockedAddresses.
+  // Operator override for addresses we believe were wrongly flagged.
+  blockOverrideAddresses?: string[];
 }
 
 type SecretFetcher = () => Promise<string>;
@@ -100,6 +112,14 @@ function validateConfig(raw: unknown): Config {
     }
   }
 
+  let skipElliptic: boolean | undefined;
+  if (root.skipElliptic !== undefined) {
+    if (typeof root.skipElliptic !== "boolean") {
+      throw new Error("config: skipElliptic must be a boolean");
+    }
+    skipElliptic = root.skipElliptic;
+  }
+
   return {
     elliptic: {
       url: requireString(elliptic, "url"),
@@ -115,5 +135,26 @@ function validateConfig(raw: unknown): Config {
       "blockedCacheTtlSeconds"
     ),
     partners: root.partners as Record<string, string>,
+    skipElliptic,
+    additionalBlockedAddresses: parseLowercaseHexList(
+      root,
+      "additionalBlockedAddresses"
+    ),
+    blockOverrideAddresses: parseLowercaseHexList(
+      root,
+      "blockOverrideAddresses"
+    ),
   };
+}
+
+function parseLowercaseHexList(
+  object: Record<string, unknown>,
+  key: string
+): string[] | undefined {
+  const value = object[key];
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every((a) => typeof a === "string")) {
+    throw new Error(`config: ${key} must be string[]`);
+  }
+  return (value as string[]).map((a) => a.toLowerCase());
 }

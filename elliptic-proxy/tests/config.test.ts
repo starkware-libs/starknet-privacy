@@ -107,4 +107,64 @@ describe("ConfigLoader", () => {
       "partners.bad-partner must be a non-empty string"
     );
   });
+
+  it("leaves operator-policy fields unset by default", async () => {
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(VALID_CONFIG));
+    const loader = new ConfigLoader(fetcher);
+    const config = await loader.get();
+    expect(config.skipElliptic).toBeUndefined();
+    expect(config.additionalBlockedAddresses).toBeUndefined();
+    expect(config.blockOverrideAddresses).toBeUndefined();
+  });
+
+  it("accepts skipElliptic with operator-curated lists, lowercasing addresses", async () => {
+    const config = {
+      ...VALID_CONFIG,
+      skipElliptic: true,
+      additionalBlockedAddresses: ["0xABCDEF", "0xdeadbeef"],
+      blockOverrideAddresses: ["0xCAFE"],
+    };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(config));
+    const loader = new ConfigLoader(fetcher);
+    const loaded = await loader.get();
+    expect(loaded.skipElliptic).toBe(true);
+    expect(loaded.additionalBlockedAddresses).toEqual([
+      "0xabcdef",
+      "0xdeadbeef",
+    ]);
+    expect(loaded.blockOverrideAddresses).toEqual(["0xcafe"]);
+  });
+
+  it("throws when skipElliptic is not a boolean", async () => {
+    const invalidConfig = { ...VALID_CONFIG, skipElliptic: "yes" };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "skipElliptic must be a boolean"
+    );
+  });
+
+  it("throws when additionalBlockedAddresses is not a string array", async () => {
+    const invalidConfig = {
+      ...VALID_CONFIG,
+      additionalBlockedAddresses: ["0xabc", 123],
+    };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "additionalBlockedAddresses must be string[]"
+    );
+  });
+
+  it("throws when blockOverrideAddresses is not a string array", async () => {
+    const invalidConfig = {
+      ...VALID_CONFIG,
+      blockOverrideAddresses: "not-an-array",
+    };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "blockOverrideAddresses must be string[]"
+    );
+  });
 });

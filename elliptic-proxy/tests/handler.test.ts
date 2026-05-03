@@ -519,4 +519,156 @@ describe("createHandler", () => {
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body)).toEqual({ blocked: false });
   });
+  describe("operator policy lists", () => {
+    function makePolicyConfig(overrides: Partial<Config> = {}): Config {
+      return { ...makeConfig(), ...overrides };
+    }
+
+    it("blocks via additionalBlockedAddresses without calling Elliptic", async () => {
+      const configLoader = {
+        get: vi
+          .fn()
+          .mockResolvedValue(
+            makePolicyConfig({ additionalBlockedAddresses: ["0xdeadbeef"] })
+          ),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const req = makeRequest({}, "0xdeadbeef");
+      const res = makeResponse();
+      await handler(req, res);
+
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body)).toEqual({
+        blocked: true,
+        source: "blocklist",
+      });
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("allows via blockOverrideAddresses without calling Elliptic", async () => {
+      const configLoader = {
+        get: vi
+          .fn()
+          .mockResolvedValue(
+            makePolicyConfig({ blockOverrideAddresses: ["0xcafe"] })
+          ),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const req = makeRequest({}, "0xCAFE");
+      const res = makeResponse();
+      await handler(req, res);
+
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body)).toEqual({
+        blocked: false,
+        source: "allowlist",
+      });
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("allowlist wins over blocklist when both list the same address", async () => {
+      const configLoader = {
+        get: vi.fn().mockResolvedValue(
+          makePolicyConfig({
+            additionalBlockedAddresses: ["0xdeadbeef"],
+            blockOverrideAddresses: ["0xdeadbeef"],
+          })
+        ),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const req = makeRequest({}, "0xdeadbeef");
+      const res = makeResponse();
+      await handler(req, res);
+
+      expect(JSON.parse(res.body)).toEqual({
+        blocked: false,
+        source: "allowlist",
+      });
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("skipElliptic returns allowed without calling Elliptic when no list matches", async () => {
+      const configLoader = {
+        get: vi
+          .fn()
+          .mockResolvedValue(makePolicyConfig({ skipElliptic: true })),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const req = makeRequest({}, "0xf00d");
+      const res = makeResponse();
+      await handler(req, res);
+
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.body)).toEqual({ blocked: false, source: "skip" });
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("blocklist still applies under skipElliptic", async () => {
+      const configLoader = {
+        get: vi.fn().mockResolvedValue(
+          makePolicyConfig({
+            skipElliptic: true,
+            additionalBlockedAddresses: ["0xdeadbeef"],
+          })
+        ),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const req = makeRequest({}, "0xdeadbeef");
+      const res = makeResponse();
+      await handler(req, res);
+
+      expect(JSON.parse(res.body)).toEqual({
+        blocked: true,
+        source: "blocklist",
+      });
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("blocklist overrides Elliptic on a clean live response", async () => {
+      mockForward.mockResolvedValue({
+        status: 200,
+        durationMs: 5,
+        body: JSON.stringify({
+          process_status: "complete",
+          evaluation_detail: { source: [], destination: [] },
+        }),
+      });
+      const configLoader = {
+        get: vi
+          .fn()
+          .mockResolvedValue(
+            makePolicyConfig({ additionalBlockedAddresses: ["0xabc123"] })
+          ),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const req = makeRequest();
+      const res = makeResponse();
+      await handler(req, res);
+
+      expect(JSON.parse(res.body)).toEqual({
+        blocked: true,
+        source: "blocklist",
+      });
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("matches policy lists case-insensitively (handler lowercases the address)", async () => {
+      const configLoader = {
+        get: vi
+          .fn()
+          .mockResolvedValue(
+            makePolicyConfig({ additionalBlockedAddresses: ["0xabcdef"] })
+          ),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const req = makeRequest({}, "0xABCDEF");
+      const res = makeResponse();
+      await handler(req, res);
+
+      expect(JSON.parse(res.body)).toEqual({
+        blocked: true,
+        source: "blocklist",
+      });
+    });
+  });
 });

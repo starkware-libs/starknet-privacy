@@ -128,6 +128,47 @@ export function createHandler(
     }
     address = address.toLowerCase();
 
+    // Operator overrides take precedence over Elliptic and the cache.
+    // blockOverrideAddresses wins over additionalBlockedAddresses so an
+    // explicit allow can rescue a globally-denied address.
+    if (config.blockOverrideAddresses?.includes(address)) {
+      sendResponse(
+        200,
+        JSON.stringify({ blocked: false, source: "allowlist" }),
+        {
+          partner: partnerName,
+          result: "allowed",
+          source: "allowlist",
+        }
+      );
+      return;
+    }
+
+    if (config.additionalBlockedAddresses?.includes(address)) {
+      sendResponse(
+        200,
+        JSON.stringify({ blocked: true, source: "blocklist" }),
+        {
+          partner: partnerName,
+          result: "blocked",
+          source: "blocklist",
+        }
+      );
+      return;
+    }
+
+    // skipElliptic short-circuits the live screening path. Useful on
+    // non-mainnet deployments where Elliptic has no Starknet coverage,
+    // or as a kill switch. Operator lists above still apply.
+    if (config.skipElliptic) {
+      sendResponse(200, JSON.stringify({ blocked: false, source: "skip" }), {
+        partner: partnerName,
+        result: "allowed",
+        source: "skip",
+      });
+      return;
+    }
+
     // Check cache first — blocked addresses skip the Elliptic call
     if (blockedCache.isBlocked(address)) {
       sendResponse(200, JSON.stringify({ blocked: true }), {
