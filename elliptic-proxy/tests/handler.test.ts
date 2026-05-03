@@ -295,7 +295,7 @@ describe("createHandler", () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ blocked: true });
+    expect(JSON.parse(res.body)).toEqual({ blocked: true, source: "elliptic" });
     expect(mockForward).toHaveBeenCalledWith(
       expect.objectContaining({ address: "0xabc123" })
     );
@@ -332,7 +332,10 @@ describe("createHandler", () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ blocked: false });
+    expect(JSON.parse(res.body)).toEqual({
+      blocked: false,
+      source: "elliptic",
+    });
 
     const logCall = logSpy.mock.calls.find((call) => {
       const parsed = JSON.parse(call[0] as string);
@@ -413,7 +416,10 @@ describe("createHandler", () => {
     const res1 = makeResponse();
     await handler(makeRequest({}, "0xcacbed"), res1);
     expect(res1.statusCode).toBe(200);
-    expect(JSON.parse(res1.body)).toEqual({ blocked: true });
+    expect(JSON.parse(res1.body)).toEqual({
+      blocked: true,
+      source: "elliptic",
+    });
     expect(mockForward).toHaveBeenCalledTimes(1);
 
     // Second request: same address should return cached result
@@ -422,7 +428,7 @@ describe("createHandler", () => {
     const res2 = makeResponse();
     await handler(makeRequest({}, "0xcacbed"), res2);
     expect(res2.statusCode).toBe(200);
-    expect(JSON.parse(res2.body)).toEqual({ blocked: true });
+    expect(JSON.parse(res2.body)).toEqual({ blocked: true, source: "cache" });
     expect(mockForward).not.toHaveBeenCalled();
 
     const cachedLog = logSpy.mock.calls.find((call) => {
@@ -463,7 +469,10 @@ describe("createHandler", () => {
     const res2 = makeResponse();
     await handler(makeRequest({}, "0xd0e5cafe"), res2);
     expect(res2.statusCode).toBe(200);
-    expect(JSON.parse(res2.body)).toEqual({ blocked: false });
+    expect(JSON.parse(res2.body)).toEqual({
+      blocked: false,
+      source: "elliptic",
+    });
     // If the address had been erroneously cached as blocked on the 500,
     // this second request would return { blocked: true } from cache.
     spy.mockRestore();
@@ -498,7 +507,10 @@ describe("createHandler", () => {
     const res2 = makeResponse();
     await handler(makeRequest({}, "0xbadcafe"), res2);
     expect(res2.statusCode).toBe(200);
-    expect(JSON.parse(res2.body)).toEqual({ blocked: false });
+    expect(JSON.parse(res2.body)).toEqual({
+      blocked: false,
+      source: "elliptic",
+    });
     spy.mockRestore();
   });
 
@@ -517,8 +529,12 @@ describe("createHandler", () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({ blocked: false });
+    expect(JSON.parse(res.body)).toEqual({
+      blocked: false,
+      source: "elliptic",
+    });
   });
+
   describe("operator policy lists", () => {
     function makePolicyConfig(overrides: Partial<Config> = {}): Config {
       return { ...makeConfig(), ...overrides };
