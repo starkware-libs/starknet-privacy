@@ -140,14 +140,30 @@ export class ActionCompiler {
   }
 
   private checkWarnings(clientActions: ClientAction[]): Warning[] {
-    const warnings: Warning[] = [];
-    if (clientActions.filter((action) => action.type === "OpenChannel").length > 1) {
-      warnings.push({
-        code: WarningCode.USER_LINKAGE,
-        message: "Multiple open channel actions found",
-      });
+    // Collect addresses that this transaction publicly links together. If more
+    // than one distinct address ends up here, the tx exposes a linkage between
+    // them on-chain.
+    const linkedAddresses = new AddressMap<boolean>();
+    for (const action of clientActions) {
+      if (action.type === "OpenChannel") {
+        linkedAddresses.set(action.input.recipient_addr, true);
+      } else if (action.type === "Withdraw") {
+        linkedAddresses.set(action.input.to_addr, true);
+      } else if (action.type === "Deposit") {
+        linkedAddresses.set(this.userAddress, true);
+      }
     }
-    return warnings;
+
+    if (linkedAddresses.size <= 1) {
+      return [];
+    }
+    return [
+      {
+        code: WarningCode.USER_LINKAGE,
+        message: "Transaction publicly links multiple distinct addresses",
+        context: { addresses: Array.from(linkedAddresses.keys()) },
+      },
+    ];
   }
 
   private getRecipientsNeeded(actions: Actions): AddressMap<boolean> {

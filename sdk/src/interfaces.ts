@@ -297,14 +297,19 @@ export type ExecuteOptions = {
   provingBlockId?: ProvingBlockId;
 };
 
-export type Warning = {
-  code: WarningCode;
-  message: string;
-};
-
 export enum WarningCode {
   USER_LINKAGE = "USER_LINKAGE",
 }
+
+export type Warning = {
+  code: WarningCode.USER_LINKAGE;
+  message: string;
+  /** Addresses publicly linked together by the transaction. Includes the user's
+   *  own address when a Deposit is present. Callers (e.g. wallets) can filter
+   *  out known public addresses such as a paymaster forwarder before deciding
+   *  whether to surface the warning to the user. */
+  context: { addresses: bigint[] };
+};
 /**
  * Result of execute, including the call/proof and updated registry.
  */
