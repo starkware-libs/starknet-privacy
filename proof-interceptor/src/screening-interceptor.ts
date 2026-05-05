@@ -19,6 +19,10 @@ export interface ScreeningConfig {
   maxRetries: number;
   totalTimeoutMs: number;
   poolAddress: string;
+  // When true, transactions that are not a single direct INVOKE call to
+  // `poolAddress` are blocked outright. When false (default), such transactions
+  // bypass screening and are allowed through.
+  blockNonPoolTx: boolean;
 }
 
 const ACTIONS_TYPE =
@@ -27,33 +31,48 @@ const ACTIONS_TYPE =
 const callDataDecoder = new CallData(PrivacyPoolABI);
 
 /**
- * Extracts addresses that need screening from a privacy pool transaction,
- * but only if the transaction targets the configured pool and contains a
- * Deposit action.
+ * Returns true iff the transaction is a single-call INVOKE whose target
+ * contract matches `poolAddress`.
  *
- * Expected calldata layout for a single-call INVOKE (calldata[0] === "0x1"):
- *   [0] call_count          — "0x1" for single call
- *   [1] contract_address     — pool contract
- *   [2] selector             — entrypoint selector
+ * Expected calldata layout for a single-call INVOKE:
+ *   [0] call_count          — must be "0x1"
+ *   [1] contract_address    — must match `poolAddress`
+ *   [2] selector             — entrypoint selector (not checked here)
  *   [3] inner_calldata_len   — length of inner calldata
- *   [4..] inner calldata     — compile_actions(user_addr, user_private_key, client_actions)
+ *   [4..] inner calldata
  *
- * The inner calldata is decoded using the contract ABI from the SDK.
- * Only single-call transactions are supported. Multi-call batches (calldata[0]
- * !== "0x1") are passed through without screening. Transactions whose contract
- * address does not match `poolAddress` are also passed through, since they are
- * not privacy-pool interactions.
+ * Multi-call batches (calldata[0] !== "0x1") are not considered pool
+ * transactions even if one of the inner calls targets the pool, because
+ * single-call shape is required for the screening logic to extract the
+ * deposit action and user address.
+ */
+export function isSinglePoolCall(
+  transaction: ProveTxnV3,
+  poolAddress: string
+): boolean {
+  const calldata = transaction.calldata;
+  if (calldata.length < 7 || calldata[0] !== "0x1") return false;
+  return normalizeAddress(calldata[1]) === normalizeAddress(poolAddress);
+}
+
+/**
+ * Extracts addresses that need screening from a privacy pool transaction,
+ * but only if the transaction is a single direct call to the pool and
+ * contains a Deposit action. The inner calldata is decoded using the
+ * contract ABI from the SDK.
+ *
+ * Returns `[]` for non-pool transactions and for pool transactions that
+ * carry no Deposit action (e.g., Withdraw-only). Whether non-pool
+ * transactions are then allowed through or blocked is decided by the
+ * caller via `ScreeningConfig.blockNonPoolTx`.
  */
 export function getScreenedAddresses(
   transaction: ProveTxnV3,
   poolAddress: string
 ): string[] {
+  if (!isSinglePoolCall(transaction, poolAddress)) return [];
+
   const calldata = transaction.calldata;
-  if (calldata.length < 7 || calldata[0] !== "0x1") return [];
-
-  if (normalizeAddress(calldata[1]) !== normalizeAddress(poolAddress))
-    return [];
-
   const innerCalldataLength = parseInt(calldata[3], 16);
   if (Number.isNaN(innerCalldataLength) || innerCalldataLength < 3) return [];
 
@@ -96,6 +115,24 @@ export class ScreeningInterceptor implements TransactionInterceptor {
   constructor(private readonly config: ScreeningConfig) {}
 
   async intercept(transaction: ProveTxnV3): Promise<Verdict> {
+    if (!isSinglePoolCall(transaction, this.config.poolAddress)) {
+      const action = this.config.blockNonPoolTx ? "block" : "allow";
+      console.log(
+        JSON.stringify({
+          screening: "non_pool_tx",
+          action,
+          blockNonPoolTx: this.config.blockNonPoolTx,
+        })
+      );
+      if (action === "block") {
+        return {
+          action: "block",
+          reason: "transaction is not a direct call to the privacy pool",
+        };
+      }
+      return { action: "allow" };
+    }
+
     const addresses = getScreenedAddresses(
       transaction,
       this.config.poolAddress
