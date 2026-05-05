@@ -10,8 +10,8 @@ use privacy::actions::{
 };
 use privacy::objects::OpenNoteDeposit;
 use privacy::tests::utils_for_tests::{
-    PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait,
-    build_ekubo_swap_anonymizer_calldata, pool_key_for_tokens,
+    CreateOpenNoteInputWithDepositorTrait, PrivacyCfgTrait, Test, TestTrait, User, UserTrait,
+    VesuTrait, build_ekubo_swap_anonymizer_calldata, pool_key_for_tokens,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_channel_info, unpack};
@@ -212,7 +212,8 @@ fn test_e2e_client_actions_one_by_one() {
     let create_open_note_input = user_1
         .new_open_note_with_generated_random(
             recipient: user_2, token_addr: out_token_addr, index: 0,
-        );
+        )
+        .with_depositor(depositor: test.privacy.echo_executor);
     let (open_note_id, _) = user_1.compute_open_note(create_note_input: create_open_note_input);
 
     // Fund the depositor (echo_executor) with out_token and approve.
@@ -318,7 +319,8 @@ fn test_e2e_action_phases_in_correct_order() {
     let create_open_note = user_1
         .new_open_note_with_generated_random(
             recipient: user_1, token_addr: out_token_addr, index: 0,
-        );
+        )
+        .with_depositor(depositor: swap_executor_addr);
     let (open_note_id, _) = user_1.compute_open_note(create_note_input: create_open_note);
     let invoke_input = user_1
         .invoke_external_mock_swap_executor_input(
@@ -1115,9 +1117,11 @@ fn test_e2e_actions_twice() {
 
     // 7. user1: 2 create open note (one tx)
     let create_open_note_1 = user_1
-        .new_open_note_with_generated_random(recipient: user_1, token_addr: token_1_addr, index: 1);
+        .new_open_note_with_generated_random(recipient: user_1, token_addr: token_1_addr, index: 1)
+        .with_depositor(depositor: test.privacy.echo_executor);
     let create_open_note_2 = user_1
-        .new_open_note_with_generated_random(recipient: user_1, token_addr: token_1_addr, index: 2);
+        .new_open_note_with_generated_random(recipient: user_1, token_addr: token_1_addr, index: 2)
+        .with_depositor(depositor: test.privacy.echo_executor);
     let (open_id_1, open_note_1) = user_1
         .compute_open_note_with_amount(create_note_input: create_open_note_1, amount: half);
     let (open_id_2, open_note_2) = user_1
@@ -1302,7 +1306,8 @@ fn test_e2e_vesu_invoke() {
     // Tx 2 (vesu deposit): UseNote + Withdraw(underlying to anonymizer) + OpenSubchannel(vault) +
     // CreateOpenNote(vault) + InvokeExternal(vesu deposit)
     let create_open_vault = user
-        .new_open_note_with_generated_random(recipient: user, token_addr: vault_addr, index: 0);
+        .new_open_note_with_generated_random(recipient: user, token_addr: vault_addr, index: 0)
+        .with_depositor(depositor: anonymizer_addr);
     let (open_note_vault_id, _) = user.compute_open_note(create_note_input: create_open_vault);
     let invoke_deposit = vesu
         .invoke_vesu_deposit_external_input(assets: amount, note_id: open_note_vault_id);
@@ -1341,7 +1346,8 @@ fn test_e2e_vesu_invoke() {
     let create_open_underlying = user
         .new_open_note_with_generated_random(
             recipient: user, token_addr: underlying_token_addr, index: 1,
-        );
+        )
+        .with_depositor(depositor: anonymizer_addr);
     let (open_note_underlying_id, _) = user
         .compute_open_note(create_note_input: create_open_underlying);
     let invoke_withdraw = vesu
@@ -1394,7 +1400,8 @@ fn test_e2e_open_note_chain() {
     // Tx 4: user_a opens channel + subchannel to user_b, creates open note, and deposits via echo.
     let channel_key_a_b = user_a.compute_channel_key(recipient: user_b);
     let open_note_input = user_a
-        .new_open_note_with_generated_random(recipient: user_b, :token_addr, index: 0);
+        .new_open_note_with_generated_random(recipient: user_b, :token_addr, index: 0)
+        .with_depositor(depositor: echo_executor_addr);
     let (open_note_id, _) = user_a.compute_open_note(create_note_input: open_note_input);
     let deposit = OpenNoteDeposit { note_id: open_note_id, token: token_addr, amount };
     let echo_invoke_input = test.privacy.invoke_external_echo_deposits([deposit].span());
@@ -1529,7 +1536,8 @@ fn test_e2e_open_note_round_trip() {
     // Tx 4: depositor opens channel + subchannel to user_a, creates open note, deposits via echo.
     let channel_key_dep_a = depositor.compute_channel_key(recipient: user_a);
     let open_note_1_input = depositor
-        .new_open_note_with_generated_random(recipient: user_a, :token_addr, index: 0);
+        .new_open_note_with_generated_random(recipient: user_a, :token_addr, index: 0)
+        .with_depositor(depositor: echo_executor_addr);
     let (note_1_id, _) = depositor.compute_open_note(create_note_input: open_note_1_input);
     let deposit_1 = OpenNoteDeposit { note_id: note_1_id, token: token_addr, amount };
     let echo_invoke_1 = test.privacy.invoke_external_echo_deposits([deposit_1].span());
@@ -1617,7 +1625,8 @@ fn test_e2e_open_note_round_trip() {
     // uses enc note, withdraws, and deposits to the new open note via echo executor.
     let channel_key_b_a = user_b.compute_channel_key(recipient: user_a);
     let open_note_2_input = user_b
-        .new_open_note_with_generated_random(recipient: user_a, :token_addr, index: 0);
+        .new_open_note_with_generated_random(recipient: user_a, :token_addr, index: 0)
+        .with_depositor(depositor: echo_executor_addr);
     let (note_2_id, _) = user_b.compute_open_note(create_note_input: open_note_2_input);
     let deposit_2 = OpenNoteDeposit { note_id: note_2_id, token: token_addr, amount };
     let echo_invoke_2 = test.privacy.invoke_external_echo_deposits([deposit_2].span());
@@ -1768,7 +1777,8 @@ fn test_e2e_create_and_deposit_open_note_same_tx() {
     // Tx 2: in one tx, create the open note for out_token AND deposit to it via swap executor.
     // CreateOpenNote runs before InvokeExternal, so the note exists when the swap fires.
     let open_note_input = user
-        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 0);
+        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 0)
+        .with_depositor(depositor: swap_executor_addr);
     let (open_note_id, _) = user.compute_open_note(create_note_input: open_note_input);
     let invoke_input = user
         .invoke_external_mock_swap_executor_input(
@@ -1851,7 +1861,8 @@ fn test_e2e_ekubo_invoke() {
     let create_open_output = user
         .new_open_note_with_generated_random(
             recipient: user, token_addr: output_token_addr, index: 0,
-        );
+        )
+        .with_depositor(depositor: anonymizer_addr);
     let (open_note_output_id, _) = user.compute_open_note(create_note_input: create_open_output);
     let invoke_swap_calldata = build_ekubo_swap_anonymizer_calldata(
         router_addr: ekubo.router,

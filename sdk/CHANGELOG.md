@@ -5,6 +5,7 @@
 ### Breaking
 
 - Renamed `MockSwapHelper` to `MockSwapAnonymizer` in `@starkware-libs/starknet-privacy-sdk/testing` (and its `browser` re-export). Update imports accordingly.
+- Open-note transfers now require a `depositor` address. The contract's `CreateOpenNoteInput` and `Note` storage gained a `depositor` field; deposits to the open note (via Invoke or the new public `deposit_to_open_note` entrypoint) are rejected unless the caller matches the bound depositor. Update calls of `transfer({ recipient, amount: Open })` to `transfer({ recipient, amount: Open, depositor })` where `depositor` is the contract that funds the note (e.g. swap/lending helper, or the user's own address when calling `deposit_to_open_note` directly).
 
 ### Fixed
 

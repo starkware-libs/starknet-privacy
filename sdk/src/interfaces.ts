@@ -174,7 +174,7 @@ export type UseNoteAction = {
 export type CreateNoteAction = {
   recipient: StarknetAddressBigint;
   token: StarknetAddressBigint;
-} & ({ amount: Amount } | { amount: Open });
+} & ({ amount: Amount } | { amount: Open; depositor: StarknetAddressBigint });
 
 export type WithdrawAction = {
   recipient: StarknetAddressBigint;
@@ -464,7 +464,7 @@ export interface PrivateTransfersInterface {
  */
 export type TransferOutput = { recipient: StarknetAddress } & (
   | { amount: Amount }
-  | { amount: Open }
+  | { amount: Open; depositor: StarknetAddress }
 );
 export type WithdrawOutput = { recipient?: StarknetAddress; amount: Amount };
 export type DepositInput = { recipient?: StarknetAddress; amount: Amount };

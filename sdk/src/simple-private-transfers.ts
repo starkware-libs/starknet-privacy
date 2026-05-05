@@ -69,7 +69,7 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
       .withdraw({ recipient: executor, amount: fromAmount })
       .surplusTo(this.inner.user, false) // Keep ACE surplus as private note
       .with(toToken)
-      .transfer({ recipient: this.inner.user, amount: Open })
+      .transfer({ recipient: this.inner.user, amount: Open, depositor: executor })
       .done()
       .invoke(({ openNotes, withdrawals }) => {
         return {

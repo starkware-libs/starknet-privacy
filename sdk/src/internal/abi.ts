@@ -156,6 +156,10 @@ export const PrivacyPoolABI = [
         "type": "core::integer::u32"
       },
       {
+        "name": "depositor",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
         "name": "random",
         "type": "core::felt252"
       }

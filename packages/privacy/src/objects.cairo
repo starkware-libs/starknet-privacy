@@ -97,6 +97,8 @@ pub struct Note {
     pub packed_value: felt252,
     /// The token address of the note (zero for encrypted notes).
     pub token: ContractAddress,
+    /// The address of the contract permitted to deposit into the note (zero for encrypted notes).
+    pub depositor: ContractAddress,
 }
 
 /// Input for depositing to an open note (returned by invoked contract).
