@@ -85,6 +85,7 @@ describe("Vesu lending on devnet", () => {
       .transfer({
         recipient: de.alice.address,
         amount: Open,
+        depositor: helperAddress,
       })
       .done()
       .invoke((args) => {
@@ -131,6 +132,7 @@ describe("Vesu lending on devnet", () => {
       .transfer({
         recipient: de.alice.address,
         amount: Open,
+        depositor: helperAddress,
       })
       .done()
       .invoke((args) => {

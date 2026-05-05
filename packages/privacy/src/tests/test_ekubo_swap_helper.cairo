@@ -10,9 +10,9 @@ use ekubo_swap_helper::test_utils_contracts::mock_ekubo_amm::{
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{ClientAction, InvokeExternalInput};
 use privacy::tests::utils_for_tests::{
-    EkuboSwapHelperCfgTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait,
-    build_ekubo_swap_helper_calldata, constants, deploy_ekubo_swap_helper, deploy_mock_ekubo_amm,
-    pool_key_for_tokens,
+    CreateOpenNoteInputWithDepositorTrait, EkuboSwapHelperCfgTrait, PrivacyCfgTrait, Test, TestTrait,
+    UserTrait, build_ekubo_swap_helper_calldata, constants, deploy_ekubo_swap_helper,
+    deploy_mock_ekubo_amm, pool_key_for_tokens,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::unpack;
@@ -185,7 +185,8 @@ fn test_ekubo_privacy_invoke_via_privacy_contract() {
     let create_note_input = user_1
         .new_open_note_with_generated_random(
             recipient: user_2, token_addr: output_token.contract_address(), index: 0,
-        );
+        )
+        .with_depositor(depositor: ekubo_helper.address);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
     input_token.supply(address: ekubo_helper.address, amount: swap_amount);

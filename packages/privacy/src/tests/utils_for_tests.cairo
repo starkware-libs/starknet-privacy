@@ -81,11 +81,11 @@ use vesu_lending_helper::vesu_lending_helper::{
 
 pub impl NoteZero of Zero<Note> {
     fn zero() -> Note {
-        Note { packed_value: Zero::zero(), token: Zero::zero() }
+        Note { packed_value: Zero::zero(), token: Zero::zero(), depositor: Zero::zero() }
     }
 
     fn is_zero(self: @Note) -> bool {
-        (*self.packed_value).is_zero() && (*self.token).is_zero()
+        (*self.packed_value).is_zero() && (*self.token).is_zero() && (*self.depositor).is_zero()
     }
 
     fn is_non_zero(self: @Note) -> bool {
@@ -123,6 +123,22 @@ pub(crate) impl CreateEncNoteInputIntoServerActionImpl of CreateEncNoteInputInto
 }
 
 #[generate_trait]
+pub(crate) impl CreateOpenNoteInputWithDepositorImpl of CreateOpenNoteInputWithDepositorTrait {
+    /// Returns a copy of `self` with `depositor` overridden. Use in tests that fill the open note
+    /// via Invoke or `deposit_to_open_note` so the note's stored depositor matches the funder.
+    fn with_depositor(
+        self: @CreateOpenNoteInput, depositor: ContractAddress,
+    ) -> CreateOpenNoteInput {
+        let CreateOpenNoteInput {
+            recipient_addr, recipient_public_key, token, index, depositor: _, random,
+        } = *self;
+        CreateOpenNoteInput {
+            recipient_addr, recipient_public_key, token, index, depositor, random,
+        }
+    }
+}
+
+#[generate_trait]
 pub(crate) impl CreateOpenNoteInputIntoServerActionImpl of CreateOpenNoteInputIntoServerActionTrait {
     fn into_server_actions(self: @CreateOpenNoteInput, user: User) -> Span<ServerAction> {
         let (note_id, note) = user.compute_open_note(create_note_input: *self);
@@ -138,7 +154,9 @@ pub(crate) impl CreateOpenNoteInputIntoServerActionImpl of CreateOpenNoteInputIn
         [
             to_write_once_action(storage_address: storage_path, value: note),
             ServerAction::EmitOpenNoteCreated(
-                events::OpenNoteCreated { enc_recipient_addr, token: note.token, note_id },
+                events::OpenNoteCreated {
+                    enc_recipient_addr, depositor: note.depositor, token: note.token, note_id,
+                },
             ),
         ]
             .span()
@@ -753,10 +771,13 @@ pub(crate) impl UserImpl of UserTrait {
     }
 
     /// Build server actions that create an open note and deposit to it via the echo executor.
-    /// Returns (note_id, server actions).
+    /// The note's `depositor` is overridden to the echo executor's address so the deposit step
+    /// passes the contract's depositor check. Returns (note_id, server actions).
     fn create_and_deposit_to_open_note(
         self: @User, create_note_input: CreateOpenNoteInput, amount: u128,
     ) -> (felt252, Span<ServerAction>) {
+        let echo_executor_addr = *self.privacy.echo_executor;
+        let create_note_input = create_note_input.with_depositor(depositor: echo_executor_addr);
         let mut client_actions = array![ClientAction::CreateOpenNote(create_note_input)];
         let (note_id, _) = self.compute_open_note(:create_note_input);
         let deposit = OpenNoteDeposit { note_id, token: create_note_input.token, amount };
@@ -860,7 +881,7 @@ pub(crate) impl UserImpl of UserTrait {
             salt: create_note_input.salt,
             amount: create_note_input.amount,
         );
-        (note_id, Note { packed_value, token: Zero::zero() })
+        (note_id, Note { packed_value, token: Zero::zero(), depositor: Zero::zero() })
     }
 
     /// Computes the note ID and Note for a given CreateOpenNoteInput.
@@ -884,7 +905,14 @@ pub(crate) impl UserImpl of UserTrait {
             :channel_key, token: create_note_input.token, index: create_note_input.index,
         );
         let packed_value = pack(value_1: OPEN_NOTE_SALT, value_2: amount);
-        (note_id, Note { packed_value, token: create_note_input.token })
+        (
+            note_id,
+            Note {
+                packed_value,
+                token: create_note_input.token,
+                depositor: create_note_input.depositor,
+            },
+        )
     }
 
     fn compute_enc_user_addr(self: @User, random: felt252) -> EncUserAddr {
@@ -975,11 +1003,15 @@ pub(crate) impl UserImpl of UserTrait {
     fn new_open_note(
         self: @User, recipient: User, token_addr: ContractAddress, index: usize, random: felt252,
     ) -> CreateOpenNoteInput {
+        // Default depositor: recipient. Tests that exercise the deposit-to-open-note flow should
+        // override `depositor` (e.g. via `with_depositor`) to match the contract that funds the
+        // note (echo_executor, swap_executor, vesu helper, etc.).
         CreateOpenNoteInput {
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
             token: token_addr,
             index,
+            depositor: recipient.address,
             random,
         }
     }
@@ -1453,7 +1485,14 @@ pub(crate) impl TestImpl of TestTrait {
         let note_id = 'NOTE_ID' + self.nonce.into();
         let packed_value = 'PACKED_VALUE' + amount.into() + self.nonce.into();
         let token = self.mock_new_token();
-        (note_id, Note { packed_value, token })
+        let depositor = self.mock_new_depositor();
+        (note_id, Note { packed_value, token, depositor })
+    }
+
+    /// Mock function to generate a new depositor address.
+    fn mock_new_depositor(ref self: Test) -> ContractAddress {
+        self.nonce += 1;
+        ('DEPOSITOR' + self.nonce.into()).try_into().unwrap()
     }
 
     /// Mock function to generate a new nullifier.
