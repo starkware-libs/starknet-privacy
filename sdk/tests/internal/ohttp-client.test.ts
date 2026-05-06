@@ -5,6 +5,11 @@ import { OhttpClient } from "../../src/internal/ohttp-client.js";
 // Module-level factory for customizing decapsulateResponse per test.
 let decapsulateResponseFactory: () => Promise<unknown>;
 
+// Module-level capture of the inner Request objects passed to encapsulateRequest,
+// so tests can assert on what URL/method/path the SDK serialized into the
+// encrypted envelope (this is what the gateway's router will route on).
+let capturedInnerRequests: Request[] = [];
+
 function defaultDecapsulateResponse(): Promise<unknown> {
   return Promise.resolve({
     status: 200,
@@ -18,16 +23,19 @@ function defaultDecapsulateResponse(): Promise<unknown> {
 // We provide minimal stubs so ensureClient() and encapsulateRequest() succeed.
 vi.mock("ohttp-ts", () => {
   class MockOHTTPClient {
-    encapsulateRequest = vi.fn().mockImplementation(async () => ({
-      init: {
-        method: "POST",
-        headers: { "Content-Type": "message/ohttp-req" },
-        body: new Uint8Array(),
-      },
-      context: {
-        decapsulateResponse: vi.fn().mockImplementation(() => decapsulateResponseFactory()),
-      },
-    }));
+    encapsulateRequest = vi.fn().mockImplementation(async (request: Request) => {
+      capturedInnerRequests.push(request);
+      return {
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "message/ohttp-req" },
+          body: new Uint8Array(),
+        },
+        context: {
+          decapsulateResponse: vi.fn().mockImplementation(() => decapsulateResponseFactory()),
+        },
+      };
+    });
   }
   return {
     OHTTPClient: MockOHTTPClient,
@@ -50,6 +58,7 @@ describe("OhttpClient", () => {
   beforeEach(() => {
     originalFetch = globalThis.fetch;
     decapsulateResponseFactory = defaultDecapsulateResponse;
+    capturedInnerRequests = [];
   });
 
   afterEach(() => {
@@ -106,6 +115,81 @@ describe("OhttpClient", () => {
 
       expect(fetchMock.mock.calls[0][0]).toBe("https://relay.example.com/ohttp-relay");
       expect(fetchMock.mock.calls[1][0]).toBe("https://relay.example.com/ohttp-relay");
+    });
+  });
+
+  describe("inner request URL", () => {
+    function mockFetch() {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: { get: () => "message/ohttp-res" },
+        arrayBuffer: () => Promise.resolve(new ArrayBuffer(0)),
+      });
+      globalThis.fetch = fetchMock;
+      return fetchMock;
+    }
+
+    it("encapsulates POST inner request with the supplied path, ignoring gatewayUrl prefix", async () => {
+      mockFetch();
+      const client = new OhttpClient("https://api.example.com/discovery", {
+        publicKeyConfig: new Uint8Array([1]),
+      });
+
+      await client.post("/v1/sync/outgoing_state", { key: "abc" });
+
+      expect(capturedInnerRequests).toHaveLength(1);
+      const innerUrl = new URL(capturedInnerRequests[0].url);
+      expect(innerUrl.pathname).toBe("/v1/sync/outgoing_state");
+      expect(innerUrl.host).not.toBe("api.example.com");
+      expect(capturedInnerRequests[0].method).toBe("POST");
+    });
+
+    it("encapsulates GET inner request with the supplied path, ignoring gatewayUrl prefix", async () => {
+      mockFetch();
+      const client = new OhttpClient("https://api.example.com/discovery", {
+        publicKeyConfig: new Uint8Array([1]),
+      });
+
+      await client.get("/health");
+
+      expect(capturedInnerRequests).toHaveLength(1);
+      const innerUrl = new URL(capturedInnerRequests[0].url);
+      expect(innerUrl.pathname).toBe("/health");
+      expect(innerUrl.host).not.toBe("api.example.com");
+      expect(capturedInnerRequests[0].method).toBe("GET");
+    });
+
+    it("inner path is identical regardless of gatewayUrl prefix depth", async () => {
+      mockFetch();
+      const noPrefix = new OhttpClient("https://api.example.com", {
+        publicKeyConfig: new Uint8Array([1]),
+      });
+      const onePrefix = new OhttpClient("https://api.example.com/discovery", {
+        publicKeyConfig: new Uint8Array([1]),
+      });
+      const deepPrefix = new OhttpClient("https://api.example.com/a/b/c", {
+        publicKeyConfig: new Uint8Array([1]),
+      });
+
+      await noPrefix.post("/v1/history", {});
+      await onePrefix.post("/v1/history", {});
+      await deepPrefix.post("/v1/history", {});
+
+      const paths = capturedInnerRequests.map((request) => new URL(request.url).pathname);
+      expect(paths).toEqual(["/v1/history", "/v1/history", "/v1/history"]);
+    });
+
+    it("relayUrl does not affect inner request path", async () => {
+      mockFetch();
+      const client = new OhttpClient("https://api.example.com/discovery", {
+        publicKeyConfig: new Uint8Array([1]),
+        relayUrl: "https://relay.example.com/forward",
+      });
+
+      await client.post("/v1/sync/outgoing_state", {});
+
+      expect(new URL(capturedInnerRequests[0].url).pathname).toBe("/v1/sync/outgoing_state");
     });
   });
 
