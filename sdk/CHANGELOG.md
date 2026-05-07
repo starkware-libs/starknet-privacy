@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.2-RC.5
+
 ### Breaking
 
 - Renamed `MockSwapHelper` to `MockSwapAnonymizer` in `@starkware-libs/starknet-privacy-sdk/testing` (and its `browser` re-export). Update imports accordingly.
