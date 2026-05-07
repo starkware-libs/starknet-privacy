@@ -598,7 +598,24 @@ The wallet sends `callAndProof` in a transaction to the contract's `execute_acti
 
 **`ExecuteOptions`** — Options controlling automation (auto-register, auto-setup, auto-discover, auto-select notes, registry, provingBlockId).
 
-**`Warning`** — A privacy warning with a `WarningCode` and message. Currently defined code: `USER_LINKAGE`.
+**`Warning`** — A privacy warning with a `WarningCode`, a human-readable `message`, and a typed `context` payload that varies per code. Defined codes:
+
+- `USER_LINKAGE` — emitted when an execution publicly links two or more distinct addresses on-chain. Each `OpenChannel` contributes its recipient address, each `Withdraw` contributes its `to_addr`, and any `Deposit` contributes the user's own address. The warning fires when this set has more than one distinct address (e.g. open-channel to Bob + withdraw to Charlie, or deposit + withdraw to a non-self address). It is suppressed when all involved addresses are the same (e.g. open-channel-to-self + deposit, or open-channel-to-Bob + withdraw-to-Bob).
+
+  The `context` payload for this code is `{ addresses: bigint[] }` — every address that contributed to the linkage, including the user's own address when a `Deposit` was present.
+
+  **Note on widely-shared addresses (paymasters, fee forwarders, central wallet accounts):** the SDK has no notion of "public" addresses and will include them in `context.addresses`. Wallet integrations that withdraw to a known paymaster forwarder (or any address shared by many users) should filter such addresses out of `context.addresses` before deciding to surface the warning — if only one distinct address remains, the linkage is benign:
+
+  ```ts
+  const knownPublicAddresses = new Set([paymasterAddress]);
+  for (const warning of result.warnings) {
+    if (warning.code !== WarningCode.USER_LINKAGE) continue;
+    const linked = warning.context.addresses.filter((a) => !knownPublicAddresses.has(a));
+    if (linked.length > 1) {
+      // surface to the user
+    }
+  }
+  ```
 
 ## Testing
 

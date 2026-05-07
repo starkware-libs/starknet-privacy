@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Changed
+
+- `WarningCode.USER_LINKAGE` now fires whenever an execution publicly links two or more distinct addresses: each `OpenChannel` recipient, each `Withdraw` `to_addr`, and the user's own address (when a `Deposit` is present) all contribute to the linked set. The warning is suppressed when all involved addresses are the same (e.g. open-channel-to-self + deposit, or open-channel-to-Bob + withdraw-to-Bob).
+- `Warning` now carries a typed `context` payload. For `USER_LINKAGE`, `context` is `{ addresses: bigint[] }` containing every address that contributed to the linkage (including the user's own address when a `Deposit` was present). Wallet integrations can filter known public addresses (e.g. a paymaster forwarder) from `context.addresses` before deciding whether to surface the warning. Existing readers that destructure `{ code, message }` continue to work; the new field is additive on the SDK output.
+
 ### Fixed
 
 - Fixed `INDEX_NOT_SEQUENTIAL` error when the paymaster fee token equals the swap output token (`toToken`) in a private swap. The compiler was emitting `CreateEncNote` at index N+1 before `CreateOpenNote` at index N for the same token. Note-creation actions are now accumulated in a single list in processing order instead of separate enc/open arrays.
