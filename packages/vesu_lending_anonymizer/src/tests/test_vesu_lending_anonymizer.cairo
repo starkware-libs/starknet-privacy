@@ -38,7 +38,8 @@ fn test_privacy_invoke_deposit_withdraw(preexisting_balance: u128) {
     assert_eq!(ret_out_token, vesu.vault);
     assert_eq!(ret_out_amount, amount);
     assert_eq!(
-        vesu.underlying_token.balance_of(address: vesu.lending_anonymizer), preexisting_balance.into(),
+        vesu.underlying_token.balance_of(address: vesu.lending_anonymizer),
+        preexisting_balance.into(),
     );
     assert_eq!(vesu.underlying_token.balance_of(address: vesu.vault), amount.into());
     assert_eq!(vesu.vault_balance_of(address: vesu.lending_anonymizer), amount.into());

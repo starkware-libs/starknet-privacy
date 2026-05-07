@@ -10,8 +10,8 @@ use privacy::actions::{
 };
 use privacy::objects::OpenNoteDeposit;
 use privacy::tests::utils_for_tests::{
-    PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait, build_ekubo_swap_anonymizer_calldata,
-    pool_key_for_tokens,
+    PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait,
+    build_ekubo_swap_anonymizer_calldata, pool_key_for_tokens,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_channel_info, unpack};
@@ -1259,7 +1259,8 @@ fn test_e2e_multi_action_multi_token_one_tx() {
     assert!(test.privacy.nullifier_exists(:nullifier));
 }
 
-/// Invokes Vesu Lending Anonymizer (deposit underlying → vault, then withdraw vault → underlying).
+/// Invokes Vesu Lending Anonymizer (deposit underlying → vault, then withdraw vault →
+/// underlying).
 #[test]
 fn test_e2e_vesu_invoke() {
     let mut test: Test = Default::default();
@@ -1313,7 +1314,9 @@ fn test_e2e_vesu_invoke() {
                 open_subchannel_action(from: user, to: user, token_addr: vault_addr, index: 1),
                 use_note_action(channel_key_self, token_addr: underlying_token_addr, index: 0),
                 ClientAction::CreateOpenNote(create_open_vault),
-                withdraw_action(to_addr: anonymizer_addr, token_addr: underlying_token_addr, :amount),
+                withdraw_action(
+                    to_addr: anonymizer_addr, token_addr: underlying_token_addr, :amount,
+                ),
                 ClientAction::InvokeExternal(invoke_deposit),
             ]
                 .span(),
@@ -1805,7 +1808,8 @@ fn test_e2e_create_and_deposit_open_note_same_tx() {
     assert_eq!(out_token.balance_of(address: test.privacy.address), amount.into());
 }
 
-/// E2E: deposit input token, withdraw to ekubo anonymizer, swap via InvokeExternal, verify open note.
+/// E2E: deposit input token, withdraw to ekubo anonymizer, swap via InvokeExternal, verify open
+/// note.
 #[test]
 fn test_e2e_ekubo_invoke() {
     let mut test: Test = Default::default();

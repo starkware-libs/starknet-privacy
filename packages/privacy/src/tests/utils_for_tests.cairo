@@ -6,8 +6,8 @@ use ekubo::interfaces::router::TokenAmount;
 use ekubo::types::keys::PoolKey;
 use ekubo_swap_anonymizer::ekubo_swap_anonymizer::EkuboSwapAnonymizer::deploy_for_test as deploy_ekubo_swap_anonymizer_for_test;
 use ekubo_swap_anonymizer::ekubo_swap_anonymizer::{
-    IEkuboSwapAnonymizerDispatcher, IEkuboSwapAnonymizerDispatcherTrait, IEkuboSwapAnonymizerSafeDispatcher,
-    IEkuboSwapAnonymizerSafeDispatcherTrait,
+    IEkuboSwapAnonymizerDispatcher, IEkuboSwapAnonymizerDispatcherTrait,
+    IEkuboSwapAnonymizerSafeDispatcher, IEkuboSwapAnonymizerSafeDispatcherTrait,
 };
 use ekubo_swap_anonymizer::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM::deploy_for_test as deploy_mock_ekubo_amm_for_test;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
@@ -75,8 +75,8 @@ use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaul
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
 use vesu_lending_anonymizer::vesu_lending_anonymizer::{
     IVesuLendingAnonymizerDispatcher, IVesuLendingAnonymizerDispatcherTrait,
-    IVesuLendingAnonymizerSafeDispatcher, IVesuLendingAnonymizerSafeDispatcherTrait, LendingOperation,
-    VesuLendingAnonymizer,
+    IVesuLendingAnonymizerSafeDispatcher, IVesuLendingAnonymizerSafeDispatcherTrait,
+    LendingOperation, VesuLendingAnonymizer,
 };
 
 pub impl NoteZero of Zero<Note> {
@@ -1499,7 +1499,9 @@ pub(crate) impl TestImpl of TestTrait {
         let input_token = self.new_token();
         let output_token = self.new_token();
         let router = deploy_mock_ekubo_amm();
-        let swap_anonymizer = deploy_ekubo_swap_anonymizer(:router, privacy_address: self.privacy.address)
+        let swap_anonymizer = deploy_ekubo_swap_anonymizer(
+            :router, privacy_address: self.privacy.address,
+        )
             .address;
         Ekubo { input_token, output_token, router, swap_anonymizer }
     }

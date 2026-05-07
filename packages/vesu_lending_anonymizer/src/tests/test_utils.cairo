@@ -9,8 +9,8 @@ use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaul
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
 use vesu_lending_anonymizer::vesu_lending_anonymizer::{
     IVesuLendingAnonymizerDispatcher, IVesuLendingAnonymizerDispatcherTrait,
-    IVesuLendingAnonymizerSafeDispatcher, IVesuLendingAnonymizerSafeDispatcherTrait, LendingOperation,
-    VesuLendingAnonymizer,
+    IVesuLendingAnonymizerSafeDispatcher, IVesuLendingAnonymizerSafeDispatcherTrait,
+    LendingOperation, VesuLendingAnonymizer,
 };
 
 #[derive(Drop, Copy)]
