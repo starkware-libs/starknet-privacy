@@ -12,6 +12,15 @@ import { ReorgError } from "./errors.js";
 /** HTTP 409 — the discovery service returns this exclusively for block reorgs (BLOCK_REORGED). */
 const REORG_STATUS = 409;
 
+// Synthetic origin for the inner OHTTP Request URL. The OHTTP gateway routes
+// the decapsulated request by path only (axum does not match on Host), so the
+// scheme/authority on the inner Request are inert. Using a fixed reserved-TLD
+// origin (RFC 6761 `.invalid`) decouples the inner request path from whatever
+// outer URL the SDK was configured with — without this, a `gatewayUrl` that
+// includes a reverse-proxy path prefix (e.g. `/discovery`) leaks into the
+// inner path and produces a 404 when the gateway server tries to route it.
+const INNER_REQUEST_ORIGIN = "https://ohttp-target.invalid";
+
 /** Configuration for enabling OHTTP. `true` uses defaults; an object allows custom relay/key config. */
 export type OhttpOption = boolean | { relayUrl?: string; publicKeyConfig?: Uint8Array };
 
@@ -26,11 +35,18 @@ export class OhttpClient {
   private readonly pinnedKeyConfig: Uint8Array | undefined;
 
   /**
-   * @param gatewayUrl - Discovery service base URL (used for `/ohttp-keys` and as default target).
-   *   Must be HTTPS in production — without it (or a pinned `publicKeyConfig`), an active
-   *   network attacker can replace the OHTTP key config.
-   * @param options.relayUrl - Optional OHTTP relay URL. When set, encapsulated requests are sent here instead of the gateway.
-   * @param options.publicKeyConfig - Optional pinned key config bytes (`application/ohttp-keys` format). When set, `/ohttp-keys` is never fetched.
+   * @param gatewayUrl - URL where the OHTTP gateway accepts encapsulated requests
+   *   and serves `/ohttp-keys`. May include a reverse-proxy path prefix (e.g.
+   *   `https://api.example.com/discovery`); the prefix is preserved on outer
+   *   requests but stripped from the inner OHTTP request path (which always
+   *   uses just the supplied per-call `path`).
+   *   Must be HTTPS in production — without it (or a pinned `publicKeyConfig`),
+   *   an active network attacker can replace the OHTTP key config.
+   * @param options.relayUrl - Optional OHTTP relay URL. When set, encapsulated
+   *   requests are sent here instead of the gateway. `/ohttp-keys` is still
+   *   fetched from `gatewayUrl`.
+   * @param options.publicKeyConfig - Optional pinned key config bytes
+   *   (`application/ohttp-keys` format). When set, `/ohttp-keys` is never fetched.
    */
   constructor(
     private readonly gatewayUrl: string,
@@ -48,7 +64,7 @@ export class OhttpClient {
    * Send an OHTTP-encapsulated GET request and return the decrypted JSON response.
    */
   async get<T>(path: string): Promise<T> {
-    return this.send<T>(path, new Request(`${this.gatewayUrl}${path}`, { method: "GET" }));
+    return this.send<T>(path, new Request(`${INNER_REQUEST_ORIGIN}${path}`, { method: "GET" }));
   }
 
   /**
@@ -57,7 +73,7 @@ export class OhttpClient {
   async post<T>(path: string, body: unknown): Promise<T> {
     return this.send<T>(
       path,
-      new Request(`${this.gatewayUrl}${path}`, {
+      new Request(`${INNER_REQUEST_ORIGIN}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
