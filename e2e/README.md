@@ -150,13 +150,13 @@ npx vitest run tests/integration/privacy-starknet-integration.test.ts
 ## Testnet deployment: Vesu lending
 
 Deploy test tokens (USD, BTC), Vesu PoolFactory, mock oracles, lending pool with
-USD/BTC pairs, initial liquidity, and VesuLendingHelper:
+USD/BTC pairs, initial liquidity, and VesuLendingAnonymizer:
 
 ```bash
 # 1. Build contract artifacts
 cd e2e/contracts/test-token && scarb build
 cd e2e/contracts/vesu      && scarb build
-scarb build   # VesuLendingHelper (from repo root)
+scarb build   # VesuLendingAnonymizer (from repo root)
 
 # 2. Deploy (from e2e/)
 npm run deploy-vesu
@@ -173,12 +173,12 @@ npm run test-lending
 ## Testnet deployment: Ekubo swap
 
 Deploy Ekubo Core, Router, Positions with a seeded BTC/USD liquidity pool, and
-the EkuboSwapHelper executor. Reuses tokens from `.env.deployed` (run deploy-vesu first):
+the EkuboSwapAnonymizer executor. Reuses tokens from `.env.deployed` (run deploy-vesu first):
 
 ```bash
 # 1. Build contract artifacts
 cd e2e/contracts/ekubo && scarb build
-scarb build   # EkuboSwapHelper (from repo root)
+scarb build   # EkuboSwapAnonymizer (from repo root)
 
 # 2. Deploy (from e2e/)
 npm run deploy-ekubo

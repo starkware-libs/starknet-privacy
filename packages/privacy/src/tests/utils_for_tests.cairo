@@ -4,12 +4,12 @@ use core::poseidon::poseidon_hash_span;
 use core::traits::Neg;
 use ekubo::interfaces::router::TokenAmount;
 use ekubo::types::keys::PoolKey;
-use ekubo_swap_helper::ekubo_swap_helper::EkuboSwapHelper::deploy_for_test as deploy_ekubo_swap_helper_for_test;
-use ekubo_swap_helper::ekubo_swap_helper::{
-    IEkuboSwapHelperDispatcher, IEkuboSwapHelperDispatcherTrait, IEkuboSwapHelperSafeDispatcher,
-    IEkuboSwapHelperSafeDispatcherTrait,
+use ekubo_swap_anonymizer::ekubo_swap_anonymizer::EkuboSwapAnonymizer::deploy_for_test as deploy_ekubo_swap_anonymizer_for_test;
+use ekubo_swap_anonymizer::ekubo_swap_anonymizer::{
+    IEkuboSwapAnonymizerDispatcher, IEkuboSwapAnonymizerDispatcherTrait, IEkuboSwapAnonymizerSafeDispatcher,
+    IEkuboSwapAnonymizerSafeDispatcherTrait,
 };
-use ekubo_swap_helper::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM::deploy_for_test as deploy_mock_ekubo_amm_for_test;
+use ekubo_swap_anonymizer::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM::deploy_for_test as deploy_mock_ekubo_amm_for_test;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
     AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
@@ -70,13 +70,13 @@ use starkware_utils_testing::test_utils::{
     set_account_as_app_governor, set_account_as_app_role_admin, set_account_as_security_agent,
     set_account_as_security_governor,
 };
-use vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
-use vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
-use vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
-use vesu_lending_helper::vesu_lending_helper::{
-    IVesuLendingHelperDispatcher, IVesuLendingHelperDispatcherTrait,
-    IVesuLendingHelperSafeDispatcher, IVesuLendingHelperSafeDispatcherTrait, LendingOperation,
-    VesuLendingHelper,
+use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
+use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
+use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
+use vesu_lending_anonymizer::vesu_lending_anonymizer::{
+    IVesuLendingAnonymizerDispatcher, IVesuLendingAnonymizerDispatcherTrait,
+    IVesuLendingAnonymizerSafeDispatcher, IVesuLendingAnonymizerSafeDispatcherTrait, LendingOperation,
+    VesuLendingAnonymizer,
 };
 
 pub impl NoteZero of Zero<Note> {
@@ -1251,7 +1251,7 @@ pub(crate) struct Test {
 pub(crate) struct Vesu {
     pub underlying_token: Token,
     pub vault: ContractAddress,
-    pub lending_helper: ContractAddress,
+    pub lending_anonymizer: ContractAddress,
 }
 
 #[generate_trait]
@@ -1259,7 +1259,7 @@ pub(crate) impl VesuImpl of VesuTrait {
     fn privacy_invoke_deposit(
         self: @Vesu, amount: u128, note_id: felt252,
     ) -> Span<OpenNoteDeposit> {
-        IVesuLendingHelperDispatcher { contract_address: *self.lending_helper }
+        IVesuLendingAnonymizerDispatcher { contract_address: *self.lending_anonymizer }
             .privacy_invoke(
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
@@ -1272,7 +1272,7 @@ pub(crate) impl VesuImpl of VesuTrait {
     fn privacy_invoke_withdraw(
         self: @Vesu, amount: u128, note_id: felt252,
     ) -> Span<OpenNoteDeposit> {
-        IVesuLendingHelperDispatcher { contract_address: *self.lending_helper }
+        IVesuLendingAnonymizerDispatcher { contract_address: *self.lending_anonymizer }
             .privacy_invoke(
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
@@ -1286,7 +1286,7 @@ pub(crate) impl VesuImpl of VesuTrait {
     fn safe_privacy_invoke_deposit(
         self: @Vesu, amount: u128, note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
-        IVesuLendingHelperSafeDispatcher { contract_address: *self.lending_helper }
+        IVesuLendingAnonymizerSafeDispatcher { contract_address: *self.lending_anonymizer }
             .privacy_invoke(
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
@@ -1300,7 +1300,7 @@ pub(crate) impl VesuImpl of VesuTrait {
     fn safe_privacy_invoke_withdraw(
         self: @Vesu, amount: u128, note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
-        IVesuLendingHelperSafeDispatcher { contract_address: *self.lending_helper }
+        IVesuLendingAnonymizerSafeDispatcher { contract_address: *self.lending_anonymizer }
             .privacy_invoke(
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
@@ -1319,11 +1319,11 @@ pub(crate) impl VesuImpl of VesuTrait {
         assets: u128,
         note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
-        IVesuLendingHelperSafeDispatcher { contract_address: *self.lending_helper }
+        IVesuLendingAnonymizerSafeDispatcher { contract_address: *self.lending_anonymizer }
             .privacy_invoke(:operation, :in_token, :out_token, assets: assets.into(), :note_id)
     }
 
-    /// Creates an `InvokeInput` for the Vesu lending helper from the given parameters.
+    /// Creates an `InvokeInput` for the Vesu lending anonymizer from the given parameters.
     fn invoke_vesu_deposit_input(self: @Vesu, assets: u128, note_id: felt252) -> InvokeInput {
         let assets: u256 = assets.into();
         let mut calldata: Array<felt252> = array![];
@@ -1332,7 +1332,7 @@ pub(crate) impl VesuImpl of VesuTrait {
         self.vault.serialize(ref calldata);
         assets.serialize(ref calldata);
         note_id.serialize(ref calldata);
-        InvokeInput { contract_address: *self.lending_helper, calldata: calldata.span() }
+        InvokeInput { contract_address: *self.lending_anonymizer, calldata: calldata.span() }
     }
 
     fn invoke_vesu_withdraw_input(self: @Vesu, assets: u128, note_id: felt252) -> InvokeInput {
@@ -1343,7 +1343,7 @@ pub(crate) impl VesuImpl of VesuTrait {
         self.underlying_token.contract_address().serialize(ref calldata);
         assets.serialize(ref calldata);
         note_id.serialize(ref calldata);
-        InvokeInput { contract_address: *self.lending_helper, calldata: calldata.span() }
+        InvokeInput { contract_address: *self.lending_anonymizer, calldata: calldata.span() }
     }
 
     /// Creates an `InvokeExternalInput` for Vesu deposit (for use with
@@ -1374,7 +1374,7 @@ pub(crate) struct Ekubo {
     pub input_token: Token,
     pub output_token: Token,
     pub router: ContractAddress,
-    pub swap_helper: ContractAddress,
+    pub swap_anonymizer: ContractAddress,
 }
 
 #[generate_trait]
@@ -1491,17 +1491,17 @@ pub(crate) impl TestImpl of TestTrait {
     fn deploy_vesu_components(ref self: Test) -> Vesu {
         let underlying_token = self.new_token();
         let vault = deploy_mock_vesu_vault(underlying_token: underlying_token.contract_address());
-        let lending_helper = deploy_vesu_lending_helper();
-        Vesu { underlying_token, vault, lending_helper }
+        let lending_anonymizer = deploy_vesu_lending_anonymizer();
+        Vesu { underlying_token, vault, lending_anonymizer }
     }
 
     fn deploy_ekubo_components(ref self: Test) -> Ekubo {
         let input_token = self.new_token();
         let output_token = self.new_token();
         let router = deploy_mock_ekubo_amm();
-        let swap_helper = deploy_ekubo_swap_helper(:router, privacy_address: self.privacy.address)
+        let swap_anonymizer = deploy_ekubo_swap_anonymizer(:router, privacy_address: self.privacy.address)
             .address;
-        Ekubo { input_token, output_token, router, swap_helper }
+        Ekubo { input_token, output_token, router, swap_anonymizer }
     }
 }
 
@@ -2049,16 +2049,16 @@ fn deploy_privacy(
     }
 }
 
-fn deploy_vesu_lending_helper() -> ContractAddress {
-    let class_hash = declare(contract: "VesuLendingHelper")
+fn deploy_vesu_lending_anonymizer() -> ContractAddress {
+    let class_hash = declare(contract: "VesuLendingAnonymizer")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
-    let (address, _) = VesuLendingHelper::deploy_for_test(
+    let (address, _) = VesuLendingAnonymizer::deploy_for_test(
         class_hash: *class_hash, :deployment_params,
     )
-        .expect('VesuLendingHelper deploy failed');
+        .expect('VesuAnonymizer deploy failed');
     address
 }
 
@@ -2233,20 +2233,20 @@ pub(crate) fn deploy_mock_ekubo_amm() -> ContractAddress {
     contract_address
 }
 
-/// Deploy a new stateless Ekubo swap helper.
-pub(crate) fn deploy_ekubo_swap_helper(
+/// Deploy a new stateless Ekubo swap anonymizer.
+pub(crate) fn deploy_ekubo_swap_anonymizer(
     router: ContractAddress, privacy_address: ContractAddress,
-) -> EkuboSwapHelperCfg {
-    let class_hash = declare(contract: "EkuboSwapHelper")
+) -> EkuboSwapAnonymizerCfg {
+    let class_hash = declare(contract: "EkuboSwapAnonymizer")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
-    let (contract_address, _) = deploy_ekubo_swap_helper_for_test(
+    let (contract_address, _) = deploy_ekubo_swap_anonymizer_for_test(
         class_hash: *class_hash, :deployment_params,
     )
-        .expect('EkuboSwapHelper deploy failed');
-    EkuboSwapHelperCfg { address: contract_address, router, privacy_address }
+        .expect('EkuboAnonymizer deploy failed');
+    EkuboSwapAnonymizerCfg { address: contract_address, router, privacy_address }
 }
 
 /// Build a PoolKey for the given token pair with default fee/tick_spacing and zero extension.
@@ -2260,18 +2260,18 @@ pub(crate) fn pool_key_for_tokens(token_a: ContractAddress, token_b: ContractAdd
     PoolKey { token0, token1, fee: 0, tick_spacing: 1, extension: Zero::zero() }
 }
 
-/// Config for calling the Ekubo swap helper in tests (address + router + privacy contract).
+/// Config for calling the Ekubo swap anonymizer in tests (address + router + privacy contract).
 #[derive(Copy, Drop)]
-pub(crate) struct EkuboSwapHelperCfg {
+pub(crate) struct EkuboSwapAnonymizerCfg {
     pub address: ContractAddress,
     pub router: ContractAddress,
     pub privacy_address: ContractAddress,
 }
 
 #[generate_trait]
-pub(crate) impl EkuboSwapHelperCfgImpl of EkuboSwapHelperCfgTrait {
+pub(crate) impl EkuboSwapAnonymizerCfgImpl of EkuboSwapAnonymizerCfgTrait {
     fn privacy_invoke(
-        self: @EkuboSwapHelperCfg,
+        self: @EkuboSwapAnonymizerCfg,
         token_amount: TokenAmount,
         pool_key: ekubo::types::keys::PoolKey,
         minimum_received: u256,
@@ -2281,7 +2281,7 @@ pub(crate) impl EkuboSwapHelperCfgImpl of EkuboSwapHelperCfgTrait {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.privacy_address,
         );
-        IEkuboSwapHelperDispatcher { contract_address: *self.address }
+        IEkuboSwapAnonymizerDispatcher { contract_address: *self.address }
             .privacy_invoke(
                 router_addr: *self.router,
                 :token_amount,
@@ -2294,7 +2294,7 @@ pub(crate) impl EkuboSwapHelperCfgImpl of EkuboSwapHelperCfgTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_privacy_invoke(
-        self: @EkuboSwapHelperCfg,
+        self: @EkuboSwapAnonymizerCfg,
         router_addr: ContractAddress,
         token_amount: TokenAmount,
         pool_key: ekubo::types::keys::PoolKey,
@@ -2302,15 +2302,15 @@ pub(crate) impl EkuboSwapHelperCfgImpl of EkuboSwapHelperCfgTrait {
         skip_ahead: u128,
         note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
-        IEkuboSwapHelperSafeDispatcher { contract_address: *self.address }
+        IEkuboSwapAnonymizerSafeDispatcher { contract_address: *self.address }
             .privacy_invoke(
                 :router_addr, :token_amount, :pool_key, :minimum_received, :skip_ahead, :note_id,
             )
     }
 }
 
-/// Build calldata for EkuboSwapHelper::privacy_invoke.
-pub(crate) fn build_ekubo_swap_helper_calldata(
+/// Build calldata for EkuboSwapAnonymizer::privacy_invoke.
+pub(crate) fn build_ekubo_swap_anonymizer_calldata(
     router_addr: ContractAddress,
     token_amount: TokenAmount,
     pool_key: ekubo::types::keys::PoolKey,

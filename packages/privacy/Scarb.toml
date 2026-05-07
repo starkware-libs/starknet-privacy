@@ -17,21 +17,21 @@ starkware_utils.workspace = true
 [dev-dependencies]
 assert_macros.workspace = true
 ekubo.workspace = true
-ekubo_swap_helper = { path = "../ekubo_swap_helper", features = ["test_utils"] }
+ekubo_swap_anonymizer = { path = "../ekubo_swap_anonymizer", features = ["test_utils"] }
 snforge_std.workspace = true
 starkware_utils_testing.workspace = true
-vesu_lending_helper = { path = "../vesu_lending_helper", features = ["test_utils"] }
+vesu_lending_anonymizer = { path = "../vesu_lending_anonymizer", features = ["test_utils"] }
 
 [[test]]
 name = "privacy_unittest"
 build-external-contracts = [
     "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
-    "ekubo_swap_helper::ekubo_swap_helper::EkuboSwapHelper",
-    "ekubo_swap_helper::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM",
-    "vesu_lending_helper::vesu_lending_helper::VesuLendingHelper",
-    "vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVault",
-    "vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop",
-    "vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow",
+    "ekubo_swap_anonymizer::ekubo_swap_anonymizer::EkuboSwapAnonymizer",
+    "ekubo_swap_anonymizer::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM",
+    "vesu_lending_anonymizer::vesu_lending_anonymizer::VesuLendingAnonymizer",
+    "vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault",
+    "vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop",
+    "vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow",
 ]
 
 [features]

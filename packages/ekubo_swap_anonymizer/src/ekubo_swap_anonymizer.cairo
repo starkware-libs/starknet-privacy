@@ -1,4 +1,4 @@
-//! Ekubo swap helper contract: executes a single-hop swap on an Ekubo Router and
+//! Ekubo swap anonymizer contract: executes a single-hop swap on an Ekubo Router and
 //! deposits the output to an open note on the caller (privacy contract).
 //!
 //! Callable via the privacy contract's Invoke action with
@@ -23,7 +23,7 @@ pub mod errors {
 }
 
 #[starknet::interface]
-pub trait IEkuboSwapHelper<T> {
+pub trait IEkuboSwapAnonymizer<T> {
     /// Executes a single-hop swap on the given Ekubo Router and returns appropriate data for
     /// depositing the received output to an open note on the caller (privacy contract).
     ///
@@ -44,7 +44,7 @@ pub trait IEkuboSwapHelper<T> {
     /// - `note_id` – Open note id to deposit the output to.
     ///
     /// #### Preconditions
-    /// - The helper must hold at least `token_amount.amount` of `token_amount.token`.
+    /// - The anonymizer must hold at least `token_amount.amount` of `token_amount.token`.
     /// - `token_amount.token` must be one of the two tokens in `pool_key`.
     ///
     /// #### Reverts
@@ -75,7 +75,7 @@ pub trait IEkuboSwapHelper<T> {
 }
 
 #[starknet::contract]
-pub mod EkuboSwapHelper {
+pub mod EkuboSwapAnonymizer {
     use core::num::traits::Zero;
     use ekubo::components::clear::{IClearDispatcher, IClearDispatcherTrait};
     use ekubo::interfaces::erc20::IERC20Dispatcher as EkuboIERC20Dispatcher;
@@ -88,7 +88,7 @@ pub mod EkuboSwapHelper {
     use privacy::objects::OpenNoteDeposit;
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use starkware_utils::erc20::erc20_utils::checked_transfer;
-    use super::{IEkuboSwapHelper, errors};
+    use super::{IEkuboSwapAnonymizer, errors};
 
     #[storage]
     struct Storage {}
@@ -97,7 +97,7 @@ pub mod EkuboSwapHelper {
     fn constructor(ref self: ContractState) {}
 
     #[abi(embed_v0)]
-    pub impl EkuboSwapHelperImpl of IEkuboSwapHelper<ContractState> {
+    pub impl EkuboSwapAnonymizerImpl of IEkuboSwapAnonymizer<ContractState> {
         fn privacy_invoke(
             ref self: ContractState,
             router_addr: ContractAddress,

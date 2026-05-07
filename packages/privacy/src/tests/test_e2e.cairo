@@ -10,7 +10,7 @@ use privacy::actions::{
 };
 use privacy::objects::OpenNoteDeposit;
 use privacy::tests::utils_for_tests::{
-    PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait, build_ekubo_swap_helper_calldata,
+    PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait, build_ekubo_swap_anonymizer_calldata,
     pool_key_for_tokens,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
@@ -1259,7 +1259,7 @@ fn test_e2e_multi_action_multi_token_one_tx() {
     assert!(test.privacy.nullifier_exists(:nullifier));
 }
 
-/// Invokes Vesu Lending Helper (deposit underlying → vault, then withdraw vault → underlying).
+/// Invokes Vesu Lending Anonymizer (deposit underlying → vault, then withdraw vault → underlying).
 #[test]
 fn test_e2e_vesu_invoke() {
     let mut test: Test = Default::default();
@@ -1267,7 +1267,7 @@ fn test_e2e_vesu_invoke() {
     let mut user = test.new_user();
     let underlying_token_addr = vesu.underlying_token.contract_address();
     let vault_addr = vesu.vault;
-    let helper_addr = vesu.lending_helper;
+    let anonymizer_addr = vesu.lending_anonymizer;
     let amount = 100_u128;
 
     user.increase_token_balance(token: vesu.underlying_token, :amount);
@@ -1298,7 +1298,7 @@ fn test_e2e_vesu_invoke() {
     let (note_id_0, note_0) = user.compute_enc_note(create_note_input: create_note_0);
     assert_eq!(test.privacy.get_note(note_id: note_id_0), note_0);
 
-    // Tx 2 (vesu deposit): UseNote + Withdraw(underlying to helper) + OpenSubchannel(vault) +
+    // Tx 2 (vesu deposit): UseNote + Withdraw(underlying to anonymizer) + OpenSubchannel(vault) +
     // CreateOpenNote(vault) + InvokeExternal(vesu deposit)
     let create_open_vault = user
         .new_open_note_with_generated_random(recipient: user, token_addr: vault_addr, index: 0);
@@ -1313,7 +1313,7 @@ fn test_e2e_vesu_invoke() {
                 open_subchannel_action(from: user, to: user, token_addr: vault_addr, index: 1),
                 use_note_action(channel_key_self, token_addr: underlying_token_addr, index: 0),
                 ClientAction::CreateOpenNote(create_open_vault),
-                withdraw_action(to_addr: helper_addr, token_addr: underlying_token_addr, :amount),
+                withdraw_action(to_addr: anonymizer_addr, token_addr: underlying_token_addr, :amount),
                 ClientAction::InvokeExternal(invoke_deposit),
             ]
                 .span(),
@@ -1322,9 +1322,9 @@ fn test_e2e_vesu_invoke() {
         .compute_nullifier(sender: user, token_addr: underlying_token_addr, index: 0);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
     assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), 0);
-    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), amount.into());
-    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
     assert_eq!(vesu.vault_balance_of(address: test.privacy.address), amount.into());
     let filled_vault_note = test.privacy.get_note(note_id: open_note_vault_id);
@@ -1334,7 +1334,7 @@ fn test_e2e_vesu_invoke() {
     assert_eq!(filled_vault_note.token, vault_addr);
 
     // Tx 3 (vesu withdraw): UseNote(vault) + CreateOpenNote(underlying) +
-    // Withdraw(vault to helper) + InvokeExternal(vesu withdraw)
+    // Withdraw(vault to anonymizer) + InvokeExternal(vesu withdraw)
     let create_open_underlying = user
         .new_open_note_with_generated_random(
             recipient: user, token_addr: underlying_token_addr, index: 1,
@@ -1350,7 +1350,7 @@ fn test_e2e_vesu_invoke() {
             client_actions: [
                 use_note_action(channel_key_self, token_addr: vault_addr, index: 0),
                 ClientAction::CreateOpenNote(create_open_underlying),
-                withdraw_action(to_addr: helper_addr, token_addr: vault_addr, :amount),
+                withdraw_action(to_addr: anonymizer_addr, token_addr: vault_addr, :amount),
                 ClientAction::InvokeExternal(invoke_withdraw),
             ]
                 .span(),
@@ -1358,9 +1358,9 @@ fn test_e2e_vesu_invoke() {
     let nullifier_vault = user.compute_nullifier(sender: user, token_addr: vault_addr, index: 0);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_vault));
     assert_eq!(vesu.vault_balance_of(address: test.privacy.address), 0);
-    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
-    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), 0);
     assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), amount.into());
     let filled_underlying_note = test.privacy.get_note(note_id: open_note_underlying_id);
@@ -1805,7 +1805,7 @@ fn test_e2e_create_and_deposit_open_note_same_tx() {
     assert_eq!(out_token.balance_of(address: test.privacy.address), amount.into());
 }
 
-/// E2E: deposit input token, withdraw to ekubo helper, swap via InvokeExternal, verify open note.
+/// E2E: deposit input token, withdraw to ekubo anonymizer, swap via InvokeExternal, verify open note.
 #[test]
 fn test_e2e_ekubo_invoke() {
     let mut test: Test = Default::default();
@@ -1813,7 +1813,7 @@ fn test_e2e_ekubo_invoke() {
     let mut user = test.new_user();
     let input_token_addr = ekubo.input_token.contract_address();
     let output_token_addr = ekubo.output_token.contract_address();
-    let helper_addr = ekubo.swap_helper;
+    let anonymizer_addr = ekubo.swap_anonymizer;
     let amount = 100_u128;
 
     user.increase_token_balance(token: ekubo.input_token, :amount);
@@ -1842,14 +1842,14 @@ fn test_e2e_ekubo_invoke() {
         );
     assert_eq!(ekubo.input_token.balance_of(address: test.privacy.address), amount.into());
 
-    // Tx 2 (swap): UseNote(input) + Withdraw(input to helper) + OpenSubchannel(output) +
+    // Tx 2 (swap): UseNote(input) + Withdraw(input to anonymizer) + OpenSubchannel(output) +
     // CreateOpenNote(output) + InvokeExternal(ekubo swap)
     let create_open_output = user
         .new_open_note_with_generated_random(
             recipient: user, token_addr: output_token_addr, index: 0,
         );
     let (open_note_output_id, _) = user.compute_open_note(create_note_input: create_open_output);
-    let invoke_swap_calldata = build_ekubo_swap_helper_calldata(
+    let invoke_swap_calldata = build_ekubo_swap_anonymizer_calldata(
         router_addr: ekubo.router,
         token_amount: TokenAmount {
             token: ekubo.input_token.contract_address(), amount: i129 { mag: amount, sign: false },
@@ -1862,7 +1862,7 @@ fn test_e2e_ekubo_invoke() {
         note_id: open_note_output_id,
     );
     let invoke_swap = InvokeExternalInput {
-        contract_address: ekubo.swap_helper, calldata: invoke_swap_calldata.span(),
+        contract_address: ekubo.swap_anonymizer, calldata: invoke_swap_calldata.span(),
     };
     test
         .privacy
@@ -1874,21 +1874,21 @@ fn test_e2e_ekubo_invoke() {
                 ),
                 use_note_action(channel_key_self, token_addr: input_token_addr, index: 0),
                 ClientAction::CreateOpenNote(create_open_output),
-                withdraw_action(to_addr: helper_addr, token_addr: input_token_addr, :amount),
+                withdraw_action(to_addr: anonymizer_addr, token_addr: input_token_addr, :amount),
                 ClientAction::InvokeExternal(invoke_swap),
             ]
                 .span(),
         );
 
-    // Input tokens consumed: privacy has 0, helper has 0, router received them.
+    // Input tokens consumed: privacy has 0, anonymizer has 0, router received them.
     let nullifier_0 = user.compute_nullifier(sender: user, token_addr: input_token_addr, index: 0);
     assert!(test.privacy.nullifier_exists(nullifier: nullifier_0));
     assert_eq!(ekubo.input_token.balance_of(address: test.privacy.address), 0);
-    assert_eq!(ekubo.input_token.balance_of(address: helper_addr), 0);
+    assert_eq!(ekubo.input_token.balance_of(address: anonymizer_addr), 0);
     assert_eq!(ekubo.input_token.balance_of(address: ekubo.router), 0);
     // Output tokens: privacy received them via open note deposit.
     assert_eq!(ekubo.output_token.balance_of(address: test.privacy.address), amount.into());
-    assert_eq!(ekubo.output_token.balance_of(address: helper_addr), 0);
+    assert_eq!(ekubo.output_token.balance_of(address: anonymizer_addr), 0);
     assert_eq!(ekubo.output_token.balance_of(address: ekubo.router), 0);
     // Open note filled with output amount.
     let filled_note = test.privacy.get_note(note_id: open_note_output_id);

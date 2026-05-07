@@ -6,7 +6,7 @@ const STRK = 0x1n;
 const ETH = 0x2n;
 const ALICE = 0xa11cen;
 const BOB = 0xb0bn;
-const HELPER = 0xbeefn;
+const ANONYMIZER = 0xbeefn;
 
 function emptyTransaction(overrides: Partial<HistoryTransaction> = {}): HistoryTransaction {
   return {
@@ -97,15 +97,15 @@ describe("classifyTransaction", () => {
   it("classifies a single-leg swap", () => {
     const { actions } = classifyTransaction(
       emptyTransaction({
-        withdrawals: [{ toAddress: HELPER, token: STRK, amount: 10n }],
-        openNoteDeposits: [{ depositor: HELPER, token: ETH, noteId: 1n, amount: 20n }],
+        withdrawals: [{ toAddress: ANONYMIZER, token: STRK, amount: 10n }],
+        openNoteDeposits: [{ depositor: ANONYMIZER, token: ETH, noteId: 1n, amount: 20n }],
       })
     );
 
     expect(actions).toEqual([
       {
         type: "swap",
-        executor: HELPER,
+        executor: ANONYMIZER,
         sent: [{ token: STRK, amount: 10n }],
         received: [{ token: ETH, amount: 20n }],
       },
@@ -116,17 +116,17 @@ describe("classifyTransaction", () => {
     const { actions } = classifyTransaction(
       emptyTransaction({
         withdrawals: [
-          { toAddress: HELPER, token: STRK, amount: 10n },
-          { toAddress: HELPER, token: ETH, amount: 5n },
+          { toAddress: ANONYMIZER, token: STRK, amount: 10n },
+          { toAddress: ANONYMIZER, token: ETH, amount: 5n },
         ],
-        openNoteDeposits: [{ depositor: HELPER, token: STRK, noteId: 1n, amount: 30n }],
+        openNoteDeposits: [{ depositor: ANONYMIZER, token: STRK, noteId: 1n, amount: 30n }],
       })
     );
 
     expect(actions).toEqual([
       {
         type: "swap",
-        executor: HELPER,
+        executor: ANONYMIZER,
         sent: [
           { token: STRK, amount: 10n },
           { token: ETH, amount: 5n },
@@ -228,14 +228,14 @@ describe("classifyTransaction", () => {
   it("classifies openNoteDeposit without matching withdrawal as swap with empty sent", () => {
     const { actions } = classifyTransaction(
       emptyTransaction({
-        openNoteDeposits: [{ depositor: HELPER, token: ETH, noteId: 1n, amount: 20n }],
+        openNoteDeposits: [{ depositor: ANONYMIZER, token: ETH, noteId: 1n, amount: 20n }],
       })
     );
 
     expect(actions).toEqual([
       {
         type: "swap",
-        executor: HELPER,
+        executor: ANONYMIZER,
         sent: [],
         received: [{ token: ETH, amount: 20n }],
       },

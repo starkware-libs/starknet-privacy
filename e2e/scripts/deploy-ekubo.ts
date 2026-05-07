@@ -2,13 +2,13 @@
  * Deploy Ekubo infrastructure to a live StarkNet network (e.g. Sepolia).
  *
  * Deploys test tokens (unless already set in env), Ekubo Core + Router +
- * Positions with a seeded pool, and the EkuboSwapHelper executor.
+ * Positions with a seeded pool, and the EkuboSwapAnonymizer executor.
  * All output addresses are written to `ekubo-deployment.env`.
  *
  * Prerequisites:
  *   cd e2e/contracts/ekubo      && scarb build   # Ekubo Core/Router/Positions
  *   cd e2e/contracts/test-token && scarb build   # TestToken
- *   scarb build                              # EkuboSwapHelper (repo root)
+ *   scarb build                              # EkuboSwapAnonymizer (repo root)
  *
  * Usage: npm run deploy-ekubo (from e2e/, with .env populated)
  */

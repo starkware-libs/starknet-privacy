@@ -31,7 +31,7 @@ use starkware_utils_testing::test_utils::{
     TokenHelperTrait, advance_block_number_global, assert_expected_event_emitted,
     assert_panic_with_error, assert_panic_with_felt_error,
 };
-use vesu_lending_helper::vesu_lending_helper::errors as vesu_errors;
+use vesu_lending_anonymizer::vesu_lending_anonymizer::errors as vesu_errors;
 
 #[test]
 fn test_set_viewing_key_multiple_users() {
@@ -1522,10 +1522,10 @@ fn test_apply_invoke_vesu_deposit() {
     let mut test: Test = Default::default();
     let vesu = test.deploy_vesu_components();
     let deposit_amount = constants::DEFAULT_AMOUNT;
-    let helper_addr = vesu.lending_helper;
+    let anonymizer_addr = vesu.lending_anonymizer;
     let vault_addr = vesu.vault;
 
-    // Create an open note with lending_helper.
+    // Create an open note with lending_anonymizer.
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
     let recipient = user;
@@ -1535,14 +1535,14 @@ fn test_apply_invoke_vesu_deposit() {
         .new_open_note_with_generated_random(:recipient, token_addr: vault_addr, index: 0);
     let (note_id, _) = user.compute_open_note(:create_note_input);
 
-    // Fund lending helper with underlying tokens.
-    vesu.underlying_token.supply(address: helper_addr, amount: deposit_amount);
+    // Fund lending anonymizer with underlying tokens.
+    vesu.underlying_token.supply(address: anonymizer_addr, amount: deposit_amount);
 
     // Verify balances before deposit.
     assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), 0);
-    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), deposit_amount.into());
+    assert_eq!(vesu.underlying_token.balance_of(address: anonymizer_addr), deposit_amount.into());
     assert_eq!(vesu.vault_balance_of(address: test.privacy.address), 0);
-    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
 
     // Spy on events before executing.
@@ -1565,10 +1565,10 @@ fn test_apply_invoke_vesu_deposit() {
 
     // Verify balances after deposit.
     assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), 0);
-    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), deposit_amount.into());
     assert_eq!(vesu.vault_balance_of(address: test.privacy.address), deposit_amount.into());
-    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
 
     // Verify OpenNoteCreated and OpenNoteDeposited events emitted.
@@ -1582,7 +1582,7 @@ fn test_apply_invoke_vesu_deposit() {
         note_id,
     };
     let expected_event_deposit = events::OpenNoteDeposited {
-        depositor: helper_addr, token: vault_addr, note_id, amount: deposit_amount,
+        depositor: anonymizer_addr, token: vault_addr, note_id, amount: deposit_amount,
     };
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(emitted_events.len(), 2);
@@ -1606,11 +1606,11 @@ fn test_apply_invoke_vesu_withdraw() {
     let mut test: Test = Default::default();
     let vesu = test.deploy_vesu_components();
     let deposit_amount = constants::DEFAULT_AMOUNT;
-    let helper_addr = vesu.lending_helper;
+    let anonymizer_addr = vesu.lending_anonymizer;
     let vault_addr = vesu.vault;
     let underlying_token_addr = vesu.underlying_token.contract_address();
 
-    // Create an open note with lending_helper.
+    // Create an open note with lending_anonymizer.
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
     let recipient = user;
@@ -1620,8 +1620,8 @@ fn test_apply_invoke_vesu_withdraw() {
         .new_open_note_with_generated_random(:recipient, token_addr: vault_addr, index: 0);
     let (note_id, _) = user.compute_open_note(:create_note_input);
 
-    // Fund lending helper with underlying tokens.
-    vesu.underlying_token.supply(address: helper_addr, amount: deposit_amount);
+    // Fund lending anonymizer with underlying tokens.
+    vesu.underlying_token.supply(address: anonymizer_addr, amount: deposit_amount);
 
     // Deposit before withdraw.
     let invoke_input = vesu.invoke_vesu_deposit_input(assets: deposit_amount, :note_id);
@@ -1633,13 +1633,13 @@ fn test_apply_invoke_vesu_withdraw() {
 
     // Verify balances before withdraw.
     assert_eq!(vesu.underlying_token.balance_of(address: test.privacy.address), 0);
-    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), deposit_amount.into());
     assert_eq!(vesu.vault_balance_of(address: test.privacy.address), deposit_amount.into());
-    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
 
-    // Create open note with lending_helper for the withdraw.
+    // Create open note with lending_anonymizer for the withdraw.
     user.open_subchannel_e2e(:recipient, token_addr: underlying_token_addr, index: 1);
     let create_note_input = user
         .new_open_note_with_generated_random(
@@ -1647,10 +1647,10 @@ fn test_apply_invoke_vesu_withdraw() {
         );
     let (note_id, _) = user.compute_open_note(:create_note_input);
 
-    // Withdraw vault to helper contract.
+    // Withdraw vault to anonymizer contract.
     user
         .withdraw_and_use_note_e2e(
-            to_addr: helper_addr,
+            to_addr: anonymizer_addr,
             token_addr: vault_addr,
             amount: deposit_amount,
             channel_key: user.compute_channel_key(recipient: user),
@@ -1681,10 +1681,10 @@ fn test_apply_invoke_vesu_withdraw() {
     assert_eq!(
         vesu.underlying_token.balance_of(address: test.privacy.address), deposit_amount.into(),
     );
-    assert_eq!(vesu.underlying_token.balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.underlying_token.balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.underlying_token.balance_of(address: vault_addr), 0);
     assert_eq!(vesu.vault_balance_of(address: test.privacy.address), 0);
-    assert_eq!(vesu.vault_balance_of(address: helper_addr), 0);
+    assert_eq!(vesu.vault_balance_of(address: anonymizer_addr), 0);
     assert_eq!(vesu.vault_balance_of(address: vault_addr), 0);
 
     // Verify OpenNoteCreated and OpenNoteDeposited events emitted.
@@ -1698,7 +1698,7 @@ fn test_apply_invoke_vesu_withdraw() {
         note_id,
     };
     let expected_event_deposit = events::OpenNoteDeposited {
-        depositor: helper_addr, token: underlying_token_addr, note_id, amount: deposit_amount,
+        depositor: anonymizer_addr, token: underlying_token_addr, note_id, amount: deposit_amount,
     };
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(emitted_events.len(), 2);
@@ -1721,10 +1721,10 @@ fn test_apply_invoke_vesu_assertions() {
     let mut test: Test = Default::default();
     let vesu = test.deploy_vesu_components();
     let amount = constants::DEFAULT_AMOUNT;
-    let helper_addr = vesu.lending_helper;
+    let anonymizer_addr = vesu.lending_anonymizer;
     let vault_addr = vesu.vault;
 
-    // Create an open note with lending_helper.
+    // Create an open note with lending_anonymizer.
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
     let recipient = user;
@@ -1790,7 +1790,7 @@ fn test_apply_invoke_vesu_assertions() {
     );
     let mut vesu_noop = vesu;
     vesu_noop.vault = noop_vault;
-    vesu_noop.underlying_token.supply(address: helper_addr, :amount);
+    vesu_noop.underlying_token.supply(address: anonymizer_addr, :amount);
     let noop_invoke_input = vesu_noop.invoke_vesu_deposit_input(assets: amount, :note_id);
     let mut server_actions: Array<ServerAction> = create_actions.into();
     server_actions.append(ServerAction::Invoke(noop_invoke_input));
@@ -1808,7 +1808,7 @@ fn test_apply_invoke_vesu_open_note_deposit_assertions() {
     let mut test: Test = Default::default();
     let vesu = test.deploy_vesu_components();
     let amount = constants::DEFAULT_AMOUNT;
-    let helper_addr = vesu.lending_helper;
+    let anonymizer_addr = vesu.lending_anonymizer;
     let vault_addr = vesu.vault;
     let token_addr = vesu.underlying_token.contract_address();
 
@@ -1819,8 +1819,8 @@ fn test_apply_invoke_vesu_open_note_deposit_assertions() {
     user.open_channel_e2e(:recipient, index: 0);
     user.open_subchannel_e2e(:recipient, token_addr: vault_addr, index: 0);
 
-    // Fund lending helper with underlying (enough for multiple attempts).
-    vesu.underlying_token.supply(address: helper_addr, amount: amount * 4);
+    // Fund lending anonymizer with underlying (enough for multiple attempts).
+    vesu.underlying_token.supply(address: anonymizer_addr, amount: amount * 4);
 
     // Catch NOTE_NOT_FOUND
     let nonexistent_note_id = 'NONEXISTENT_NOTE';
@@ -1862,7 +1862,7 @@ fn test_apply_invoke_vesu_open_note_deposit_assertions() {
     let result = test.privacy.safe_apply_actions(server_actions.span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
-    // Catch TOKEN_MISMATCH: open note is for underlying; helper deposits share token (vault).
+    // Catch TOKEN_MISMATCH: open note is for underlying; anonymizer deposits share token (vault).
     user.open_subchannel_e2e(:recipient, :token_addr, index: 1);
     let create_note_input = user
         .new_open_note_with_generated_random(:recipient, :token_addr, index: 0);
@@ -1895,7 +1895,7 @@ fn test_apply_actions_with_fee() {
     assert_eq!(strk_token.balance_of(address: fee_collector), Zero::zero());
     assert_eq!(strk_token.balance_of(address: privacy_address), Zero::zero());
 
-    // Call apply_actions — the helper auto-funds the caller.
+    // Call apply_actions — the anonymizer auto-funds the caller.
     test.privacy.apply_actions_as(actions: [].span(), :caller);
 
     // Verify balances after apply_actions: fee moved from caller to fee_collector.

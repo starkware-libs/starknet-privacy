@@ -40,7 +40,7 @@ export type EkuboConfig = {
   swapTokens: TokenConfig[];
 };
 
-// The Ekubo swap helper is single-hop: it takes one pool_key per swap. To
+// The Ekubo swap anonymizer is single-hop: it takes one pool_key per swap. To
 // support multiple pairs, the app carries an array of pool configs and
 // picks the matching one at swap time. Token order in a pool is canonical
 // (numerically ascending), so a pool serves both directions.
@@ -65,7 +65,7 @@ export type VesuVault = {
 };
 
 export type VesuConfig = {
-  helperAddress: string;
+  anonymizerAddress: string;
   vaults: VesuVault[];
 };
 
@@ -151,8 +151,8 @@ function parseEkuboConfig(tokens: TokenConfig[]): EkuboConfig | undefined {
 }
 
 function parseVesuConfig(tokens: TokenConfig[]): VesuConfig | undefined {
-  const helperAddress = import.meta.env.VITE_VESU_LENDING_HELPER_ADDRESS as string | undefined;
-  if (!helperAddress) return undefined;
+  const anonymizerAddress = import.meta.env.VITE_VESU_LENDING_ANONYMIZER_ADDRESS as string | undefined;
+  if (!anonymizerAddress) return undefined;
 
   const raw = requireEnv("VITE_VESU");
   let parsed: { vaults: { token: string; vTokenAddress: string }[] };
@@ -169,7 +169,7 @@ function parseVesuConfig(tokens: TokenConfig[]): VesuConfig | undefined {
     return { tokenConfig, vTokenAddress: vault.vTokenAddress };
   });
 
-  return { helperAddress, vaults };
+  return { anonymizerAddress, vaults };
 }
 
 export function loadConfig(): AppConfig {

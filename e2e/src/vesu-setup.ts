@@ -88,7 +88,9 @@ export async function deployTestTokens(
     admin,
     provider,
     tokenClassHash,
-    [...serializeByteArray("TestUSD"), ...serializeByteArray("USD")] as Array<string | bigint>,
+    [...serializeByteArray("TestUSD"), ...serializeByteArray("USD")] as Array<
+      string | bigint
+    >,
     "0x400",
   );
 
@@ -96,7 +98,9 @@ export async function deployTestTokens(
     admin,
     provider,
     tokenClassHash,
-    [...serializeByteArray("TestBTC"), ...serializeByteArray("BTC")] as Array<string | bigint>,
+    [...serializeByteArray("TestBTC"), ...serializeByteArray("BTC")] as Array<
+      string | bigint
+    >,
     "0x500",
   );
 
@@ -357,25 +361,25 @@ export async function deployVesuInfra(
 }
 
 /**
- * Declare and deploy the VesuLendingHelper contract (stateless).
+ * Declare and deploy the VesuLendingAnonymizer contract (stateless).
  * Idempotent: skips already-declared class and already-deployed contract.
  */
-export async function deployVesuHelper(
+export async function deployVesuAnonymizer(
   admin: Account,
   provider: RpcProvider,
 ): Promise<string> {
-  const helperArtifact = artifactPair(
+  const anonymizerArtifact = artifactPair(
     join(repoRoot(), "target/dev"),
-    "vesu_lending_helper",
-    "VesuLendingHelper",
+    "vesu_lending_anonymizer",
+    "VesuLendingAnonymizer",
   );
 
-  const helperClassHash = await declareClass(
+  const anonymizerClassHash = await declareClass(
     admin,
     provider,
-    helperArtifact.classPath,
-    helperArtifact.compiledPath,
+    anonymizerArtifact.classPath,
+    anonymizerArtifact.compiledPath,
   );
 
-  return deployContract(admin, provider, helperClassHash, [], "0x700");
+  return deployContract(admin, provider, anonymizerClassHash, [], "0x700");
 }

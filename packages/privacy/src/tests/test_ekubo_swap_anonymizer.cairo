@@ -1,17 +1,17 @@
-//! Integration tests for the Ekubo swap helper with the privacy contract.
+//! Integration tests for the Ekubo swap anonymizer with the privacy contract.
 
 use core::num::traits::Zero;
 use ekubo::interfaces::router::TokenAmount;
 use ekubo::types::i129::i129;
-use ekubo_swap_helper::ekubo_swap_helper::errors;
-use ekubo_swap_helper::test_utils_contracts::mock_ekubo_amm::{
+use ekubo_swap_anonymizer::ekubo_swap_anonymizer::errors;
+use ekubo_swap_anonymizer::test_utils_contracts::mock_ekubo_amm::{
     IMockEkuboAMMControlDispatcher, IMockEkuboAMMControlDispatcherTrait, SwapBehavior,
 };
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{ClientAction, InvokeExternalInput};
 use privacy::tests::utils_for_tests::{
-    EkuboSwapHelperCfgTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait,
-    build_ekubo_swap_helper_calldata, constants, deploy_ekubo_swap_helper, deploy_mock_ekubo_amm,
+    EkuboSwapAnonymizerCfgTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait,
+    build_ekubo_swap_anonymizer_calldata, constants, deploy_ekubo_swap_anonymizer, deploy_mock_ekubo_amm,
     pool_key_for_tokens,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
@@ -42,7 +42,7 @@ fn test_ekubo_privacy_invoke_basic() {
         );
 
     let mock_router = deploy_mock_ekubo_amm();
-    let ekubo_helper = deploy_ekubo_swap_helper(
+    let ekubo_anonymizer = deploy_ekubo_swap_anonymizer(
         router: mock_router, privacy_address: test.privacy.address,
     );
 
@@ -53,21 +53,21 @@ fn test_ekubo_privacy_invoke_basic() {
     user_1.cheat_create_open_note(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
-    input_token.supply(address: ekubo_helper.address, amount: swap_amount);
+    input_token.supply(address: ekubo_anonymizer.address, amount: swap_amount);
     output_token.supply(address: mock_router, amount: swap_amount);
 
-    // Balances before swap: helper holds in, mock holds out, privacy holds nothing.
+    // Balances before swap: anonymizer holds in, mock holds out, privacy holds nothing.
     assert_eq!(input_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(input_token.balance_of(address: ekubo_helper.address), swap_amount.into());
+    assert_eq!(input_token.balance_of(address: ekubo_anonymizer.address), swap_amount.into());
     assert_eq!(input_token.balance_of(address: mock_router), Zero::zero());
     assert_eq!(output_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(output_token.balance_of(address: ekubo_helper.address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: ekubo_anonymizer.address), Zero::zero());
     assert_eq!(output_token.balance_of(address: mock_router), swap_amount.into());
 
     let in_addr = input_token.contract_address();
     let out_addr = output_token.contract_address();
     let pool_key = pool_key_for_tokens(in_addr, out_addr);
-    ekubo_helper
+    ekubo_anonymizer
         .privacy_invoke(
             token_amount: make_token_amount(in_addr, swap_amount),
             :pool_key,
@@ -76,22 +76,22 @@ fn test_ekubo_privacy_invoke_basic() {
             :note_id,
         );
 
-    // Balances after swap: in moved to mock, out moved to helper (approved for privacy).
+    // Balances after swap: in moved to mock, out moved to anonymizer (approved for privacy).
     assert_eq!(input_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(input_token.balance_of(address: ekubo_helper.address), Zero::zero());
+    assert_eq!(input_token.balance_of(address: ekubo_anonymizer.address), Zero::zero());
     assert_eq!(output_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(output_token.balance_of(address: ekubo_helper.address), swap_amount.into());
+    assert_eq!(output_token.balance_of(address: ekubo_anonymizer.address), swap_amount.into());
     assert_eq!(output_token.balance_of(address: mock_router), Zero::zero());
 
     let out_erc20 = IERC20Dispatcher { contract_address: out_addr };
     assert_eq!(
-        out_erc20.allowance(owner: ekubo_helper.address, spender: test.privacy.address),
+        out_erc20.allowance(owner: ekubo_anonymizer.address, spender: test.privacy.address),
         swap_amount.into(),
     );
 }
 
 #[test]
-fn test_ekubo_same_helper_different_pool() {
+fn test_ekubo_same_anonymizer_different_pool() {
     let mut test: Test = Default::default();
     let token_a = test.new_token();
     let token_b = test.new_token();
@@ -109,7 +109,7 @@ fn test_ekubo_same_helper_different_pool() {
     user_1.open_subchannel_e2e(recipient: user_2, token_addr: token_c.contract_address(), index: 1);
 
     let mock_router = deploy_mock_ekubo_amm();
-    let ekubo_helper = deploy_ekubo_swap_helper(
+    let ekubo_anonymizer = deploy_ekubo_swap_anonymizer(
         router: mock_router, privacy_address: test.privacy.address,
     );
 
@@ -130,11 +130,11 @@ fn test_ekubo_same_helper_different_pool() {
     user_1.cheat_create_open_note(create_note_input: create_note_2);
     let (note_id_2, _) = user_1.compute_open_note(create_note_input: create_note_2);
 
-    token_a.supply(address: ekubo_helper.address, amount: swap_amount * 2);
+    token_a.supply(address: ekubo_anonymizer.address, amount: swap_amount * 2);
     token_b.supply(address: mock_router, amount: swap_amount);
     token_c.supply(address: mock_router, amount: swap_amount);
 
-    ekubo_helper
+    ekubo_anonymizer
         .privacy_invoke(
             token_amount: make_token_amount(token_a.contract_address(), swap_amount),
             pool_key: pool_key_ab,
@@ -143,10 +143,10 @@ fn test_ekubo_same_helper_different_pool() {
             note_id: note_id_1,
         );
 
-    assert_eq!(token_a.balance_of(address: ekubo_helper.address), swap_amount.into());
-    assert_eq!(token_b.balance_of(address: ekubo_helper.address), swap_amount.into());
+    assert_eq!(token_a.balance_of(address: ekubo_anonymizer.address), swap_amount.into());
+    assert_eq!(token_b.balance_of(address: ekubo_anonymizer.address), swap_amount.into());
 
-    ekubo_helper
+    ekubo_anonymizer
         .privacy_invoke(
             token_amount: make_token_amount(token_a.contract_address(), swap_amount),
             pool_key: pool_key_ac,
@@ -155,8 +155,8 @@ fn test_ekubo_same_helper_different_pool() {
             note_id: note_id_2,
         );
 
-    assert_eq!(token_a.balance_of(address: ekubo_helper.address), Zero::zero());
-    assert_eq!(token_c.balance_of(address: ekubo_helper.address), swap_amount.into());
+    assert_eq!(token_a.balance_of(address: ekubo_anonymizer.address), Zero::zero());
+    assert_eq!(token_c.balance_of(address: ekubo_anonymizer.address), swap_amount.into());
 }
 
 #[test]
@@ -178,7 +178,7 @@ fn test_ekubo_privacy_invoke_via_privacy_contract() {
         );
 
     let mock_router = deploy_mock_ekubo_amm();
-    let ekubo_helper = deploy_ekubo_swap_helper(
+    let ekubo_anonymizer = deploy_ekubo_swap_anonymizer(
         router: mock_router, privacy_address: test.privacy.address,
     );
 
@@ -188,13 +188,13 @@ fn test_ekubo_privacy_invoke_via_privacy_contract() {
         );
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
-    input_token.supply(address: ekubo_helper.address, amount: swap_amount);
+    input_token.supply(address: ekubo_anonymizer.address, amount: swap_amount);
     output_token.supply(address: mock_router, amount: swap_amount);
 
     let in_addr = input_token.contract_address();
     let out_addr = output_token.contract_address();
     let pool_key = pool_key_for_tokens(in_addr, out_addr);
-    let calldata = build_ekubo_swap_helper_calldata(
+    let calldata = build_ekubo_swap_anonymizer_calldata(
         router_addr: mock_router,
         token_amount: make_token_amount(in_addr, swap_amount),
         :pool_key,
@@ -203,7 +203,7 @@ fn test_ekubo_privacy_invoke_via_privacy_contract() {
         :note_id,
     );
     let invoke_external_input = InvokeExternalInput {
-        contract_address: ekubo_helper.address, calldata: calldata.span(),
+        contract_address: ekubo_anonymizer.address, calldata: calldata.span(),
     };
     let client_actions = [
         ClientAction::CreateOpenNote(create_note_input),
@@ -214,9 +214,9 @@ fn test_ekubo_privacy_invoke_via_privacy_contract() {
     test.privacy.apply_actions(actions: server_actions);
 
     assert_eq!(input_token.balance_of(address: test.privacy.address), Zero::zero());
-    assert_eq!(input_token.balance_of(address: ekubo_helper.address), Zero::zero());
+    assert_eq!(input_token.balance_of(address: ekubo_anonymizer.address), Zero::zero());
     assert_eq!(output_token.balance_of(address: test.privacy.address), swap_amount.into());
-    assert_eq!(output_token.balance_of(address: ekubo_helper.address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: ekubo_anonymizer.address), Zero::zero());
     assert_eq!(output_token.balance_of(address: mock_router), Zero::zero());
 
     let stored_note = test.privacy.get_note(:note_id);
@@ -249,7 +249,7 @@ fn test_ekubo_privacy_invoke_assert_in_token_not_cleared() {
     let mock_router = deploy_mock_ekubo_amm();
     IMockEkuboAMMControlDispatcher { contract_address: mock_router }
         .set_swap_behavior(SwapBehavior::PartialSwap);
-    let ekubo_helper = deploy_ekubo_swap_helper(
+    let ekubo_anonymizer = deploy_ekubo_swap_anonymizer(
         router: mock_router, privacy_address: test.privacy.address,
     );
 
@@ -260,13 +260,13 @@ fn test_ekubo_privacy_invoke_assert_in_token_not_cleared() {
     user_1.cheat_create_open_note(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
-    input_token.supply(address: ekubo_helper.address, amount: swap_amount);
+    input_token.supply(address: ekubo_anonymizer.address, amount: swap_amount);
     output_token.supply(address: mock_router, amount: swap_amount);
 
     let in_addr = input_token.contract_address();
     let out_addr = output_token.contract_address();
     let pool_key = pool_key_for_tokens(in_addr, out_addr);
-    let result = ekubo_helper
+    let result = ekubo_anonymizer
         .safe_privacy_invoke(
             router_addr: mock_router,
             token_amount: make_token_amount(in_addr, swap_amount),
@@ -280,9 +280,9 @@ fn test_ekubo_privacy_invoke_assert_in_token_not_cleared() {
     );
 
     // After revert: no state change.
-    assert_eq!(input_token.balance_of(address: ekubo_helper.address), swap_amount.into());
+    assert_eq!(input_token.balance_of(address: ekubo_anonymizer.address), swap_amount.into());
     assert_eq!(input_token.balance_of(address: mock_router), Zero::zero());
-    assert_eq!(output_token.balance_of(address: ekubo_helper.address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: ekubo_anonymizer.address), Zero::zero());
     assert_eq!(output_token.balance_of(address: mock_router), swap_amount.into());
 }
 
@@ -306,7 +306,7 @@ fn test_ekubo_privacy_invoke_assert_clear_minimum_not_met() {
         );
 
     let mock_router = deploy_mock_ekubo_amm();
-    let ekubo_helper = deploy_ekubo_swap_helper(
+    let ekubo_anonymizer = deploy_ekubo_swap_anonymizer(
         router: mock_router, privacy_address: test.privacy.address,
     );
 
@@ -317,14 +317,14 @@ fn test_ekubo_privacy_invoke_assert_clear_minimum_not_met() {
     user_1.cheat_create_open_note(:create_note_input);
     let (note_id, _) = user_1.compute_open_note(:create_note_input);
 
-    input_token.supply(address: ekubo_helper.address, amount: swap_amount);
+    input_token.supply(address: ekubo_anonymizer.address, amount: swap_amount);
     output_token.supply(address: mock_router, amount: swap_amount);
 
     let in_addr = input_token.contract_address();
     let out_addr = output_token.contract_address();
     let pool_key = pool_key_for_tokens(in_addr, out_addr);
     // Mock does a 1:1 swap, so output = swap_amount. Requesting more triggers the failure.
-    let result = ekubo_helper
+    let result = ekubo_anonymizer
         .safe_privacy_invoke(
             router_addr: mock_router,
             token_amount: make_token_amount(in_addr, swap_amount),
@@ -338,8 +338,8 @@ fn test_ekubo_privacy_invoke_assert_clear_minimum_not_met() {
     );
 
     // After revert: no state change.
-    assert_eq!(input_token.balance_of(address: ekubo_helper.address), swap_amount.into());
+    assert_eq!(input_token.balance_of(address: ekubo_anonymizer.address), swap_amount.into());
     assert_eq!(input_token.balance_of(address: mock_router), Zero::zero());
-    assert_eq!(output_token.balance_of(address: ekubo_helper.address), Zero::zero());
+    assert_eq!(output_token.balance_of(address: ekubo_anonymizer.address), Zero::zero());
     assert_eq!(output_token.balance_of(address: mock_router), swap_amount.into());
 }

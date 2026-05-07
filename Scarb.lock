@@ -7,7 +7,7 @@ version = "0.1.0"
 source = "git+https://github.com/EkuboProtocol/starknet-contracts?rev=8b4de8b5701d10b101c06b786740bf45b6cf15cb#8b4de8b5701d10b101c06b786740bf45b6cf15cb"
 
 [[package]]
-name = "ekubo_swap_helper"
+name = "ekubo_swap_anonymizer"
 version = "0.1.0"
 dependencies = [
  "ekubo",
@@ -161,12 +161,12 @@ name = "privacy"
 version = "0.1.0"
 dependencies = [
  "ekubo",
- "ekubo_swap_helper",
+ "ekubo_swap_anonymizer",
  "openzeppelin",
  "snforge_std",
  "starkware_utils",
  "starkware_utils_testing",
- "vesu_lending_helper",
+ "vesu_lending_anonymizer",
 ]
 
 [[package]]
@@ -203,7 +203,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "vesu_lending_helper"
+name = "vesu_lending_anonymizer"
 version = "0.1.0"
 dependencies = [
  "openzeppelin",

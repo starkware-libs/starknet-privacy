@@ -5,7 +5,7 @@ import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 import {
   deployTestTokens,
   deployVesuInfra,
-  deployVesuHelper,
+  deployVesuAnonymizer,
   type TokenAddresses,
   type VesuAddresses,
 } from "../../src/vesu-setup.js";
@@ -16,7 +16,7 @@ describe("Vesu lending on devnet", () => {
   let env: E2eTestEnv;
   let tokens: TokenAddresses;
   let vesu: VesuAddresses;
-  let helperAddress: string;
+  let anonymizerAddress: string;
 
   beforeAll(async () => {
     devnet = new Devnet();
@@ -27,7 +27,7 @@ describe("Vesu lending on devnet", () => {
     const { admin, provider } = env.env;
     tokens = await deployTestTokens(admin, provider);
     vesu = await deployVesuInfra(admin, provider, tokens);
-    helperAddress = await deployVesuHelper(admin, provider);
+    anonymizerAddress = await deployVesuAnonymizer(admin, provider);
   });
 
   afterAll(async () => {
@@ -71,7 +71,7 @@ describe("Vesu lending on devnet", () => {
     await devnet.executeOutside(depositCall);
     await env.indexer.waitForBlock(devnet.url);
 
-    // Phase 2: Lend (withdraw USD to helper → helper deposits into Vesu → get vToken)
+    // Phase 2: Lend (withdraw USD to anonymizer → anonymizer deposits into Vesu → get vToken)
     const { callAndProof: lendCall } = await transfers.alice
       .build({
         autoSetup: true,
@@ -79,7 +79,7 @@ describe("Vesu lending on devnet", () => {
         autoDiscover: { notes: "refresh", channels: "refresh" },
       })
       .with(tokens.usdToken)
-      .withdraw({ recipient: helperAddress, amount: lendAmount })
+      .withdraw({ recipient: anonymizerAddress, amount: lendAmount })
       .surplusTo(de.alice.address, false)
       .with(vesu.usdVToken)
       .transfer({
@@ -93,7 +93,7 @@ describe("Vesu lending on devnet", () => {
           throw new Error("Expected one open note for lend invocation");
         }
         return {
-          contractAddress: helperAddress,
+          contractAddress: anonymizerAddress,
           calldata: [
             0n, // LendingOperation::Deposit
             tokens.usdToken,
@@ -117,7 +117,7 @@ describe("Vesu lending on devnet", () => {
     );
     expect(vTokenAmount).toBeGreaterThan(0n);
 
-    // Phase 4: Unlend (withdraw vTokens → helper → get USD back)
+    // Phase 4: Unlend (withdraw vTokens → anonymizer → get USD back)
     const { callAndProof: unlendCall } = await transfers.alice
       .build({
         autoSetup: true,
@@ -125,7 +125,7 @@ describe("Vesu lending on devnet", () => {
         autoDiscover: { notes: "refresh", channels: "refresh" },
       })
       .with(vesu.usdVToken)
-      .withdraw({ recipient: helperAddress, amount: vTokenAmount })
+      .withdraw({ recipient: anonymizerAddress, amount: vTokenAmount })
       .surplusTo(de.alice.address, false)
       .with(tokens.usdToken)
       .transfer({
@@ -139,7 +139,7 @@ describe("Vesu lending on devnet", () => {
           throw new Error("Expected one open note for unlend invocation");
         }
         return {
-          contractAddress: helperAddress,
+          contractAddress: anonymizerAddress,
           calldata: [
             1n, // LendingOperation::Withdraw
             vesu.usdVToken,

@@ -307,10 +307,10 @@ const result = await transfers
 const result = await transfers.build()
   .with(STRK, (t) => t
     .inputs(strkNote)
-    .withdraw({ recipient: swapHelper, amount: 10n }))
+    .withdraw({ recipient: swapAnonymizer, amount: 10n }))
   .with(BTC, (t) => t
-    .deposit({ amount: Open, depositor: swapHelper }))
-  .invoke({ contractAddress: swapHelper, entrypoint: "swap", calldata: [...] })
+    .deposit({ amount: Open, depositor: swapAnonymizer }))
+  .invoke({ contractAddress: swapAnonymizer, entrypoint: "swap", calldata: [...] })
   .execute();
 ```
 
@@ -372,9 +372,9 @@ const usdNotes = notes.get(BigInt(USD_TOKEN)) ?? [];
 
 ### Anonymous lending (Vesu)
 
-Deposit tokens into a Vesu lending pool privately and receive vToken shares as a private note. The lending helper withdraws tokens from the privacy pool, deposits them into the Vesu vToken vault, and deposits the received shares back as an open note.
+Deposit tokens into a Vesu lending pool privately and receive vToken shares as a private note. The lending anonymizer withdraws tokens from the privacy pool, deposits them into the Vesu vToken vault, and deposits the received shares back as an open note.
 
-The flow: withdraw USD to helper → helper deposits USD into vToken vault → helper deposits vUSD into an open note.
+The flow: withdraw USD to anonymizer → anonymizer deposits USD into vToken vault → anonymizer deposits vUSD into an open note.
 
 ```typescript
 import { Open } from "@starkware-libs/starknet-privacy-sdk";
@@ -389,13 +389,13 @@ const { callAndProof: lendCall } = await transfers
     autoDiscover: { notes: "refresh", channels: "refresh" },
   })
   .with(USD_TOKEN)
-  .withdraw({ recipient: HELPER_ADDRESS, amount: lendAmount })
+  .withdraw({ recipient: ANONYMIZER_ADDRESS, amount: lendAmount })
   .surplusTo(self, false)
   .with(USD_VTOKEN)
   .transfer({ recipient: self, amount: Open })
   .done()
   .invoke((args) => ({
-    contractAddress: HELPER_ADDRESS,
+    contractAddress: ANONYMIZER_ADDRESS,
     calldata: [
       0n, // LendingOperation::Deposit
       USD_TOKEN, // underlying asset
@@ -424,13 +424,13 @@ const { callAndProof: unlendCall } = await transfers
     autoDiscover: { notes: "refresh", channels: "refresh" },
   })
   .with(USD_VTOKEN)
-  .withdraw({ recipient: HELPER_ADDRESS, amount: vTokenAmount })
+  .withdraw({ recipient: ANONYMIZER_ADDRESS, amount: vTokenAmount })
   .surplusTo(self, false)
   .with(USD_TOKEN)
   .transfer({ recipient: self, amount: Open })
   .done()
   .invoke((args) => ({
-    contractAddress: HELPER_ADDRESS,
+    contractAddress: ANONYMIZER_ADDRESS,
     calldata: [
       1n, // LendingOperation::Withdraw
       USD_VTOKEN, // vToken to redeem
@@ -616,7 +616,7 @@ import {
 Key exports:
 
 - **Devnet**: `Devnet`, `createDevnetTestEnv`, `DevnetConfig`, `DevnetEnvironment`, `DevnetTestEnv`
-- **Mocks**: `MockPoolContract`, `MockProofProvider`, `MockProofInvocationFactory`, `MockSwapHelper`, `MockContracts`, `Mocknet`, `ERC20`
+- **Mocks**: `MockPoolContract`, `MockProofProvider`, `MockProofInvocationFactory`, `MockSwapAnonymizer`, `MockContracts`, `Mocknet`, `ERC20`
 - **Helpers**: `createMockProof`, `createMockCallAndProof`, `CallMockProofProvider`, `Withdrawal`
 - **Hash functions**: `compute_channel_key`, `compute_channel_marker`, `compute_subchannel_id`, `compute_subchannel_marker`, `compute_note_id`, `compute_nullifier`, `compute_enc_amount_hash`, `compute_enc_token_hash`, `compute_enc_private_key_hash`, `compute_enc_user_addr_hash`, `compute_enc_channel_key_hash`, `compute_enc_sender_addr_hash`
 - **Diagnostics**: `TracingRpcProvider`, `createConcurrencyProfiler`, `formatReport`

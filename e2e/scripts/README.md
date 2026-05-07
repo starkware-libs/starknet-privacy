@@ -11,14 +11,14 @@ Setup scripts deploy contracts to the integration Starknet environment. Each scr
 cd e2e/contracts/test-token && scarb build  # TestToken (shared ERC-20 with open mint)
 cd e2e/contracts/ekubo     && scarb build  # Ekubo Core, Router, Positions, OwnedNFT
 cd e2e/contracts/vesu      && scarb build  # Vesu Pool, PoolFactory, VToken, Oracle, mock oracles
-scarb build                                 # Privacy pool + VesuLendingHelper + EkuboSwapHelper (from repo root)
+scarb build                                 # Privacy pool + VesuLendingAnonymizer + EkuboSwapAnonymizer (from repo root)
 ```
 
 Note: `contracts/vesu/` requires Scarb 2.11.4 (pinned in its `.tool-versions`). The repo root, `contracts/test-token/`, and `contracts/ekubo/` use Scarb 2.17.0.
 
 ### Ekubo deployment
 
-Deploys test tokens, Ekubo Core + Router + Positions with a seeded liquidity pool, and the EkuboSwapHelper executor in a single run:
+Deploys test tokens, Ekubo Core + Router + Positions with a seeded liquidity pool, and the EkuboSwapAnonymizer executor in a single run:
 
 ```bash
 npm run deploy-ekubo
@@ -36,7 +36,7 @@ npm run test-swap
 
 ### Vesu deployment
 
-Deploys test tokens (if not already set), Vesu PoolFactory + mock oracles + Oracle + Pool with USD/BTC pairs, seeds liquidity, and deploys VesuLendingHelper in a single run:
+Deploys test tokens (if not already set), Vesu PoolFactory + mock oracles + Oracle + Pool with USD/BTC pairs, seeds liquidity, and deploys VesuLendingAnonymizer in a single run:
 
 ```bash
 npm run deploy-vesu
@@ -57,7 +57,7 @@ If `USD_TOKEN_ADDRESS` and `BTC_TOKEN_ADDRESS` are already set in `.env`, token 
 
 | Script         | What it does                                                                      | Depends on                                            |
 | -------------- | --------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `deploy-vesu`  | Deploys tokens + Vesu infra + helper. Writes `.env.deployed`                      | `contracts/test-token/` + `contracts/vesu/` artifacts |
+| `deploy-vesu`  | Deploys tokens + Vesu infra + anonymizer. Writes `.env.deployed`                  | `contracts/test-token/` + `contracts/vesu/` artifacts |
 | `test-lending` | Smoke test: deposit USD into vToken vault, redeem back                            | `.env.deployed` (from `deploy-vesu`)                  |
 | `deploy-ekubo` | Deploys Ekubo Core/Router/Positions + pool + executor. Appends to `.env.deployed` | `contracts/ekubo/` + repo root artifacts              |
 | `test-swap`    | Smoke test: swap BTC→USD via Router                                               | `.env.deployed` (from `deploy-ekubo`)                 |

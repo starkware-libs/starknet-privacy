@@ -3,12 +3,12 @@
  *
  * Deploys test tokens (unless already set in env), Vesu PoolFactory + mock
  * oracles + Oracle + Pool with USD/BTC pairs, seeds liquidity, and deploys
- * VesuLendingHelper. All output addresses are written to `vesu-deployment.env`.
+ * VesuLendingAnonymizer. All output addresses are written to `vesu-deployment.env`.
  *
  * Prerequisites:
  *   cd e2e/contracts/test-token && scarb build   # TestToken
  *   cd e2e/contracts/vesu      && scarb build   # Vesu Pool, Oracle, etc.
- *   scarb build                             # VesuLendingHelper (repo root)
+ *   scarb build                             # VesuLendingAnonymizer (repo root)
  *
  * Usage: npm run deploy-vesu (from e2e/, with .env populated)
  */
@@ -20,7 +20,7 @@ import { setupAdmin } from "../src/utils.js";
 import {
   deployTestTokens,
   deployVesuInfra,
-  deployVesuHelper,
+  deployVesuAnonymizer,
 } from "../src/vesu-setup.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -47,10 +47,13 @@ if (hasExistingTokens) {
 }
 
 console.log("\n=== Deploying Vesu infrastructure ===");
-const vesu = await deployVesuInfra(adminAccount, provider, { usdToken, btcToken });
+const vesu = await deployVesuInfra(adminAccount, provider, {
+  usdToken,
+  btcToken,
+});
 
-console.log("\n=== Deploying Vesu lending helper ===");
-const helperAddress = await deployVesuHelper(adminAccount, provider);
+console.log("\n=== Deploying Vesu lending anonymizer ===");
+const anonymizerAddress = await deployVesuAnonymizer(adminAccount, provider);
 
 // Build output env vars
 const tokens = [
@@ -75,10 +78,10 @@ const envVars: Record<string, string> = {
   VESU_ORACLE_ADDRESS: vesu.oracleAddress,
   USD_VTOKEN_ADDRESS: vesu.usdVToken,
   BTC_VTOKEN_ADDRESS: vesu.btcVToken,
-  VESU_LENDING_HELPER_ADDRESS: helperAddress,
+  VESU_LENDING_ANONYMIZER_ADDRESS: anonymizerAddress,
   // Demo app format
   VITE_TOKENS: JSON.stringify(tokens),
-  VITE_VESU_LENDING_HELPER_ADDRESS: helperAddress,
+  VITE_VESU_LENDING_ANONYMIZER_ADDRESS: anonymizerAddress,
   VITE_VESU: JSON.stringify(vesuConfig),
 };
 
