@@ -78,10 +78,10 @@ const envVars: Record<string, string> = {
   VESU_ORACLE_ADDRESS: vesu.oracleAddress,
   USD_VTOKEN_ADDRESS: vesu.usdVToken,
   BTC_VTOKEN_ADDRESS: vesu.btcVToken,
-  VESU_LENDING_ANONYMIZER_ADDRESS: anonymizerAddress,
+  VESU_LENDING_HELPER_ADDRESS: anonymizerAddress,
   // Demo app format
   VITE_TOKENS: JSON.stringify(tokens),
-  VITE_VESU_LENDING_ANONYMIZER_ADDRESS: anonymizerAddress,
+  VITE_VESU_LENDING_HELPER_ADDRESS: anonymizerAddress,
   VITE_VESU: JSON.stringify(vesuConfig),
 };
 

@@ -151,7 +151,11 @@ function parseEkuboConfig(tokens: TokenConfig[]): EkuboConfig | undefined {
 }
 
 function parseVesuConfig(tokens: TokenConfig[]): VesuConfig | undefined {
-  const anonymizerAddress = import.meta.env.VITE_VESU_LENDING_ANONYMIZER_ADDRESS as string | undefined;
+  // TODO: rename env key to VITE_VESU_LENDING_ANONYMIZER_ADDRESS once the
+  // Vercel project (keep-starknet-strange/starknet-privacy-demo) env vars
+  // are updated to the new key. Kept as HELPER here so the existing preview
+  // deployment continues to surface the Vesu UI.
+  const anonymizerAddress = import.meta.env.VITE_VESU_LENDING_HELPER_ADDRESS as string | undefined;
   if (!anonymizerAddress) return undefined;
 
   const raw = requireEnv("VITE_VESU");

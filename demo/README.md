@@ -68,11 +68,11 @@ This creates `.env` with all required variables, rewriting backend URLs for loca
 | `VITE_EKUBO_ROUTER_ADDRESS` | Ekubo Router contract address (passed to executor) |
 | `VITE_EKUBO_POOLS` | JSON array of pool configs (`token0`, `token1`, `fee`, `tickSpacing`, `extension`, `skipAhead`). One entry per supported pair — the anonymizer is single-hop. Token addresses must match entries in `VITE_TOKENS` and be ordered numerically ascending |
 
-**Vesu lending (optional — all required if `VITE_VESU_LENDING_ANONYMIZER_ADDRESS` is set):**
+**Vesu lending (optional — all required if `VITE_VESU_LENDING_HELPER_ADDRESS` is set):**
 
 | Variable | Description |
 |----------|-------------|
-| `VITE_VESU_LENDING_ANONYMIZER_ADDRESS` | Vesu lending anonymizer contract address |
+| `VITE_VESU_LENDING_HELPER_ADDRESS` | Vesu lending anonymizer contract address |
 | `VITE_VESU` | Vaults as JSON. Token names must match entries in `VITE_TOKENS` |
 
 ## Running
