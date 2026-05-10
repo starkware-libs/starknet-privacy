@@ -2060,7 +2060,7 @@ fn deploy_vesu_lending_anonymizer() -> ContractAddress {
     let (address, _) = VesuLendingAnonymizer::deploy_for_test(
         class_hash: *class_hash, :deployment_params,
     )
-        .expect('VesuAnonymizer deploy failed');
+        .expect('VesuLending deploy failed');
     address
 }
 
@@ -2247,7 +2247,7 @@ pub(crate) fn deploy_ekubo_swap_anonymizer(
     let (contract_address, _) = deploy_ekubo_swap_anonymizer_for_test(
         class_hash: *class_hash, :deployment_params,
     )
-        .expect('EkuboAnonymizer deploy failed');
+        .expect('EkuboSwap deploy failed');
     EkuboSwapAnonymizerCfg { address: contract_address, router, privacy_address }
 }
 

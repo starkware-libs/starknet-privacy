@@ -32,7 +32,7 @@ pub fn deploy_ekubo_swap_anonymizer() -> ContractAddress {
     let (contract_address, _) = EkuboSwapAnonymizer::deploy_for_test(
         class_hash: *class_hash, :deployment_params,
     )
-        .expect('EkuboAnonymizer deploy failed');
+        .expect('EkuboSwap deploy failed');
     contract_address
 }
 
