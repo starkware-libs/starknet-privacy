@@ -4,7 +4,7 @@
  */
 import { describe, expect, it, beforeEach } from "vitest";
 import { createTestEnv, MockTestEnv, POOL_ADDRESS } from "../helpers/test-fixtures.js";
-import { MockSwapHelper } from "../../src/testing/contracts.js";
+import { MockSwapAnonymizer } from "../../src/testing/contracts.js";
 import { toBigInt, toHex } from "../../src/utils/index.js";
 import { Open } from "../../src/interfaces.js";
 
@@ -20,8 +20,8 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
     const ace = toBigInt(env.ace);
     const bee = toBigInt(env.bee);
 
-    const helper = new MockSwapHelper("0x53A2", env.contracts, POOL_ADDRESS);
-    env.contracts.register(helper);
+    const anonymizer = new MockSwapAnonymizer("0x53A2", env.contracts, POOL_ADDRESS);
+    env.contracts.register(anonymizer);
 
     mocknet.executeOutside(await transfers.alice.build().register().execute());
 
@@ -49,7 +49,7 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
         })
         .with(env.ace)
         .inputs(...((await transfers.alice.discoverNotes()).notes.get(ace) ?? []))
-        .withdraw({ recipient: helper.address, amount: 10n })
+        .withdraw({ recipient: anonymizer.address, amount: 10n })
         .surplusTo(env.alice.address, false)
         .with(env.bee)
         .transfer({ recipient: env.alice.address, amount: Open })
@@ -62,11 +62,11 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
           expect(openNotes.length).toBe(2);
           expect(openNotes[0].token).toBe(bee);
           expect(withdrawals.length).toBe(1);
-          expect(withdrawals[0].recipient).toBe(toBigInt(helper.address));
+          expect(withdrawals[0].recipient).toBe(toBigInt(anonymizer.address));
           expect(withdrawals[0].token).toBe(ace);
           expect(withdrawals[0].amount).toBe(10n);
           return {
-            contractAddress: toHex(helper.address),
+            contractAddress: toHex(anonymizer.address),
             calldata: [ace, bee, 10n, openNotes[0].noteId],
           };
         })
@@ -86,8 +86,8 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
     const ace = toBigInt(env.ace);
     const bee = toBigInt(env.bee);
 
-    const helper = new MockSwapHelper("0x53A2", env.contracts, POOL_ADDRESS);
-    env.contracts.register(helper);
+    const anonymizer = new MockSwapAnonymizer("0x53A2", env.contracts, POOL_ADDRESS);
+    env.contracts.register(anonymizer);
 
     // Register Alice and give her existing bee notes (index 0) so the fee
     // withdrawal needs to consume them and produce a change note at index 2,
@@ -122,7 +122,7 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
         })
         .surplusTo(env.alice.address)
         .with(env.ace)
-        .withdraw({ recipient: helper.address, amount: swapAmount })
+        .withdraw({ recipient: anonymizer.address, amount: swapAmount })
         .surplusTo(env.alice.address, false)
         .with(env.bee)
         .transfer({ recipient: env.alice.address, amount: Open })
@@ -132,7 +132,7 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
           const openNote = openNotes[0];
           if (!openNote) throw new Error("Expected one open note");
           return {
-            contractAddress: toHex(helper.address),
+            contractAddress: toHex(anonymizer.address),
             calldata: [ace, bee, swapAmount, openNote.noteId],
           };
         })
@@ -142,14 +142,14 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
     const beeNotes = (await transfers.alice.discoverNotes()).notes.get(bee) ?? [];
     // Change note: 50 (existing) - 5 (fee) = 45
     expect(beeNotes.some((note) => note.amount === 45n)).toBe(true);
-    // Open note filled by helper: swapAmount * 2 = 20 (MockSwapHelper doubles the amount)
+    // Open note filled by anonymizer: swapAmount * 2 = 20 (MockSwapAnonymizer doubles the amount)
     expect(beeNotes.some((note) => note.open && note.amount === swapAmount * 2n)).toBe(true);
   });
 
   it("two .invoke() on the builder throws", async () => {
     const { env, transfers } = testEnv;
-    const helper = new MockSwapHelper("0x53A2", env.contracts, POOL_ADDRESS);
-    env.contracts.register(helper);
+    const anonymizer = new MockSwapAnonymizer("0x53A2", env.contracts, POOL_ADDRESS);
+    env.contracts.register(anonymizer);
 
     const builder = transfers.alice
       .build({ autoDiscover: { channels: "refresh", notes: "refresh" } })
@@ -158,7 +158,7 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
       .done()
       .invoke(() => {
         return {
-          contractAddress: toHex(helper.address),
+          contractAddress: toHex(anonymizer.address),
           calldata: [1n, 2n],
         };
       });
@@ -166,7 +166,7 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
     expect(() =>
       builder.invoke(() => {
         return {
-          contractAddress: toHex(helper.address),
+          contractAddress: toHex(anonymizer.address),
           calldata: [3n, 4n],
         };
       })
@@ -177,8 +177,8 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
     const { mocknet, env, transfers } = testEnv;
     const ace = toBigInt(env.ace);
     const bee = toBigInt(env.bee);
-    const helper = new MockSwapHelper("0x53A2", env.contracts, POOL_ADDRESS);
-    env.contracts.register(helper);
+    const anonymizer = new MockSwapAnonymizer("0x53A2", env.contracts, POOL_ADDRESS);
+    env.contracts.register(anonymizer);
 
     mocknet.executeOutside(
       await transfers.alice
@@ -190,7 +190,7 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
         })
         .with(env.ace)
         .deposit({ amount: 100n })
-        .withdraw({ recipient: helper.address, amount: 10n })
+        .withdraw({ recipient: anonymizer.address, amount: 10n })
         .surplusTo(env.alice.address, false)
         .with(env.bee)
         .transfer({ recipient: env.alice.address, amount: Open })
@@ -199,11 +199,11 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
           expect(openNotes.length).toBe(1);
           expect(openNotes[0].token).toBe(bee);
           expect(withdrawals.length).toBe(1);
-          expect(withdrawals[0].recipient).toBe(toBigInt(helper.address));
+          expect(withdrawals[0].recipient).toBe(toBigInt(anonymizer.address));
           expect(withdrawals[0].token).toBe(ace);
           expect(withdrawals[0].amount).toBe(10n);
           return {
-            contractAddress: toHex(helper.address),
+            contractAddress: toHex(anonymizer.address),
             calldata: [ace, bee, 10n, openNotes[0].noteId],
           };
         })

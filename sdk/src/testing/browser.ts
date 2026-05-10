@@ -3,7 +3,7 @@
  * Excludes Devnet which requires Node.js.
  */
 
-export { ERC20, MockContracts, MockSwapHelper } from "./contracts.js";
+export { ERC20, MockContracts, MockSwapAnonymizer } from "./contracts.js";
 export { MockPoolContract } from "./mock-pool-contract.js";
 export {
   Mocknet,

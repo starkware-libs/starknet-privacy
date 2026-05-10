@@ -1,16 +1,16 @@
-# Ekubo Swap Helper
+# Ekubo Swap Anonymizer
 
 Cairo smart contract for privacy-preserving single-hop swaps on the [Ekubo](https://ekubo.org) AMM.
 
 ## Overview
 
-`EkuboSwapHelper` is an invoke helper contract called by the privacy pool contract via the `privacy_invoke` selector. It executes a single-hop Ekubo swap on behalf of the privacy contract and returns a span of `OpenNoteDeposit` values for the privacy contract to apply.
+`EkuboSwapAnonymizer` is an invoke anonymizer contract called by the privacy pool contract via the `privacy_invoke` selector. It executes a single-hop Ekubo swap on behalf of the privacy contract and returns a span of `OpenNoteDeposit` values for the privacy contract to apply.
 
-Full-swap-only: the helper asserts no input tokens remain on the router after the swap (`sqrt_ratio_limit = 0`), so partial fills revert.
+Full-swap-only: the anonymizer asserts no input tokens remain on the router after the swap (`sqrt_ratio_limit = 0`), so partial fills revert.
 
 ## Interface
 
-### IEkuboSwapHelper
+### IEkuboSwapAnonymizer
 
 ```
 fn privacy_invoke(
@@ -51,12 +51,12 @@ Returns a single-element `Span<OpenNoteDeposit>` containing `(note_id, out_token
 
 | File                                                            | Purpose                                                           |
 |-----------------------------------------------------------------|-------------------------------------------------------------------|
-| [`ekubo_swap_helper.cairo`](src/ekubo_swap_helper.cairo)        | `IEkuboSwapHelper`, `errors`, `EkuboSwapHelper` contract          |
+| [`ekubo_swap_anonymizer.cairo`](src/ekubo_swap_anonymizer.cairo)        | `IEkuboSwapAnonymizer`, `errors`, `EkuboSwapAnonymizer` contract          |
 
 ## Build and test
 
 ```bash
-scarb build --package ekubo_swap_helper
+scarb build --package ekubo_swap_anonymizer
 scarb test   # wraps snforge test
 ```
 
@@ -69,8 +69,8 @@ scarb test   # wraps snforge test
 ```bash
 scarb --profile release build
 sncast --account <ACCOUNT_NAME> declare \
-  --contract-name EkuboSwapHelper \
-  --package ekubo_swap_helper \
+  --contract-name EkuboSwapAnonymizer \
+  --package ekubo_swap_anonymizer \
   --network <mainnet|sepolia|devnet>
 ```
 
@@ -89,5 +89,5 @@ sncast --account <ACCOUNT_NAME> deploy \
 ## See also
 
 - [Privacy pool contract](../privacy/README.md) — calls this contract via `InvokeExternal`
-- [Vesu Lending Helper](../vesu_lending_helper/README.md) — sibling helper for lending operations
+- [Vesu Lending Anonymizer](../vesu_lending_anonymizer/README.md) — sibling anonymizer for lending operations
 - [Project root](../../README.md) — architecture overview and prerequisites

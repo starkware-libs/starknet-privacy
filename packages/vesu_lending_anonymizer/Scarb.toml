@@ -1,5 +1,5 @@
 [package]
-name = "vesu_lending_helper"
+name = "vesu_lending_anonymizer"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
@@ -26,12 +26,12 @@ test_utils = []
 [lib]
 
 [[test]]
-name = "vesu_lending_helper_unittest"
+name = "vesu_lending_anonymizer_unittest"
 build-external-contracts = [
     "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
-    "vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVault",
-    "vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop",
-    "vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow",
+    "vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault",
+    "vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop",
+    "vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow",
 ]
 
 [scripts]

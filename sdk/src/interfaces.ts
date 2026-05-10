@@ -355,7 +355,7 @@ export interface SimplePrivateTransfersInterface {
   ): Promise<ExecuteResult>;
 
   /**
-   * will withdraw to the contract in `helperCall` and then deposit to the privacy pool in `toToken`
+   * will withdraw to the contract in `executor` and then deposit to the privacy pool in `toToken`
    */
   swap(
     fromToken: StarknetAddress,
@@ -578,15 +578,15 @@ export interface TokenOperationsBuilder {
  *
  * @example Swap
  * ```ts
- * // Prepare for swap: withdraw STRK to swap helper, deposit result back
+ * // Prepare for swap: withdraw STRK to swap anonymizer, deposit result back
  * await transfers.build()
  *   .with(STRK, t => t
  *     .inputs(strkNote)
- *     .withdraw({ recipient: swapHelper, amount: 10n }))
+ *     .withdraw({ recipient: swapAnonymizer, amount: 10n }))
  *   .with(BTC, t => t
  *     .deposit(open)) // semi-transparent note for swap result
  *   .invoke(({ openNotes, withdrawals, poolAddress }) => ({
- *       contractAddress: swapHelper,
+ *       contractAddress: swapAnonymizer,
  *       calldata: [...]
  *   }))
  *   .execute();

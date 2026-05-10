@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, afterAll } from "vitest";
 import { createTestEnv, MockTestEnv, POOL_ADDRESS } from "./helpers/test-fixtures.js";
 import { SimplePrivateTransfersImpl } from "../src/simple-private-transfers.js";
 import { debugHint, isDebugEnabled, toBigInt, toHex } from "../src/utils/index.js";
-import { MockSwapHelper } from "../src/testing/contracts.js";
+import { MockSwapAnonymizer } from "../src/testing/contracts.js";
 
 describe("SimplePrivateTransfers", () => {
   let testEnv: MockTestEnv;
@@ -83,13 +83,13 @@ describe("SimplePrivateTransfers", () => {
     expect(aliceNotes[0].amount).toBe(70n);
   });
 
-  it("swaps ACE for BEE via swap helper and open note", async () => {
+  it("swaps ACE for BEE via swap anonymizer and open note", async () => {
     const { mocknet, env, transfers } = testEnv;
     const ace = toBigInt(env.ace);
     const bee = toBigInt(env.bee);
 
-    const swapHelper = new MockSwapHelper("0x53A2", env.contracts, POOL_ADDRESS);
-    env.contracts.register(swapHelper);
+    const swapAnonymizer = new MockSwapAnonymizer("0x53A2", env.contracts, POOL_ADDRESS);
+    env.contracts.register(swapAnonymizer);
 
     mocknet.executeOutside(await transfers.alice.build().register().execute());
 
@@ -98,16 +98,16 @@ describe("SimplePrivateTransfers", () => {
     // Deposit 100 ACE first
     mocknet.executeOutside(await alice.deposit(env.ace, 100n));
 
-    // Swap 10 ACE for BEE using the swap helper.
+    // Swap 10 ACE for BEE using the swap anonymizer.
     // note_id is auto-injected by the compiler into the invoke calldata.
-    mocknet.executeOutside(await alice.swap(env.ace, 10n, env.bee, toHex(swapHelper.address)));
+    mocknet.executeOutside(await alice.swap(env.ace, 10n, env.bee, toHex(swapAnonymizer.address)));
 
     // Verify: Alice has 90n ACE change note
     const aceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];
     expect(aceNotes.length).toBe(1);
     expect(aceNotes[0].amount).toBe(90n);
 
-    // Alice has 20n BEE note (swap helper gives 2x)
+    // Alice has 20n BEE note (swap anonymizer gives 2x)
     const beeNotes = (await transfers.alice.discoverNotes()).notes.get(bee) ?? [];
     expect(beeNotes.length).toBe(1);
     expect(beeNotes[0].amount).toBe(20n);

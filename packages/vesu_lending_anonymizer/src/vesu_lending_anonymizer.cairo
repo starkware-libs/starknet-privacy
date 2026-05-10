@@ -1,4 +1,4 @@
-//! Vesu lending helper for privacy-preserving deposit and withdraw operations.
+//! Vesu lending anonymizer for privacy-preserving deposit and withdraw operations.
 //!
 //! Integrates with [Vesu](https://vesu.xyz), a permissionless lending protocol on Starknet that
 //! uses ERC-4626 / SNIP-22 compatible tokenized vaults. Each pool is a vault: depositing underlying
@@ -50,7 +50,7 @@ pub enum LendingOperation {
 }
 
 #[starknet::interface]
-pub trait IVesuLendingHelper<T> {
+pub trait IVesuLendingAnonymizer<T> {
     /// Executes a lending operation on the VESU lending pool.
     ///
     /// Can be called by the privacy contract via the
@@ -104,16 +104,16 @@ pub mod errors {
     pub const ZERO_OUT_AMOUNT: felt252 = 'ZERO_OUT_AMOUNT';
 }
 
-/// Vesu lending helper contract that performs Vesu deposit/withdraw on behalf of the privacy
+/// Vesu lending anonymizer contract that performs Vesu deposit/withdraw on behalf of the privacy
 /// contract.
 #[starknet::contract]
-pub mod VesuLendingHelper {
+pub mod VesuLendingAnonymizer {
     use core::num::traits::Zero;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use privacy::objects::OpenNoteDeposit;
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use super::{
-        IVTokenDispatcher, IVTokenDispatcherTrait, IVesuLendingHelper, LendingOperation, errors,
+        IVTokenDispatcher, IVTokenDispatcherTrait, IVesuLendingAnonymizer, LendingOperation, errors,
     };
 
     #[storage]
@@ -123,7 +123,7 @@ pub mod VesuLendingHelper {
     fn constructor(ref self: ContractState) {}
 
     #[abi(embed_v0)]
-    pub impl VesuLendingHelperImpl of IVesuLendingHelper<ContractState> {
+    pub impl VesuLendingAnonymizerImpl of IVesuLendingAnonymizer<ContractState> {
         fn privacy_invoke(
             ref self: ContractState,
             operation: LendingOperation,

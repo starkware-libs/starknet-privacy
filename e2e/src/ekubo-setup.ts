@@ -168,7 +168,7 @@ export async function deployEkuboInfra(
 }
 
 /**
- * Declare and deploy the EkuboSwapHelper contract.
+ * Declare and deploy the EkuboSwapAnonymizer contract.
  * Idempotent: skips already-declared class and already-deployed contract.
  */
 export async function deployEkuboExecutor(
@@ -177,8 +177,8 @@ export async function deployEkuboExecutor(
 ): Promise<string> {
   const executorArtifact = artifactPair(
     join(repoRoot(), "target/dev"),
-    "ekubo_swap_helper",
-    "EkuboSwapHelper",
+    "ekubo_swap_anonymizer",
+    "EkuboSwapAnonymizer",
   );
 
   const executorClassHash = await declareClass(
