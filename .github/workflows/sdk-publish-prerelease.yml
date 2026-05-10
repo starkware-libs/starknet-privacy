@@ -8,7 +8,7 @@ jobs:
     name: Publish branch prerelease to GitHub Packages
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       packages: write
     defaults:
       run:
@@ -46,24 +46,68 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Pack tarball
+        id: pack
+        run: |
+          TARBALL=$(npm pack --silent)
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
       - name: Publish to GitHub Packages
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DIST_TAG: ${{ steps.version.outputs.tag }}
-        run: npm publish --tag "$DIST_TAG"
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+        run: npm publish "$TARBALL" --tag "$DIST_TAG"
+
+      - name: Upload tarball as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.pack.outputs.tarball }}
+          path: sdk/${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+
+      - name: Create prerelease with tarball
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PUBLISHED_VERSION: ${{ steps.version.outputs.version }}
+          DIST_TAG: ${{ steps.version.outputs.tag }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          RELEASE_TAG="sdk-v${PUBLISHED_VERSION}"
+          gh release create "$RELEASE_TAG" "$TARBALL" \
+            --target "$TARGET_SHA" \
+            --prerelease \
+            --title "SDK ${PUBLISHED_VERSION}" \
+            --notes "Branch build for dist-tag \`${DIST_TAG}\`. Download the \`.tgz\` and run: \`npm install ./${TARBALL}\`"
+          RELEASE_URL=$(gh release view "$RELEASE_TAG" --json url --jq .url)
+          echo "url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
 
       - name: Summary
         env:
           PUBLISHED_VERSION: ${{ steps.version.outputs.version }}
           DIST_TAG: ${{ steps.version.outputs.tag }}
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
         run: |
           {
             echo "Published \`@starkware-libs/starknet-privacy-sdk@${PUBLISHED_VERSION}\`"
             echo
-            echo "Install with:"
+            echo "**Install via npm (requires GitHub Packages auth):**"
             echo '```'
             echo "npm install @starkware-libs/starknet-privacy-sdk@${PUBLISHED_VERSION}"
             echo "# or, latest from this branch:"
             echo "npm install @starkware-libs/starknet-privacy-sdk@${DIST_TAG}"
+            echo '```'
+            echo
+            echo "**Or download the tarball from the release** (browser, no token needed beyond GitHub login):"
+            echo
+            echo "${RELEASE_URL}"
+            echo
+            echo "Then:"
+            echo '```'
+            echo "npm install ./${TARBALL}"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
