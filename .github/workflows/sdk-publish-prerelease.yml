@@ -8,7 +8,7 @@ jobs:
     name: Publish branch prerelease to GitHub Packages
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
       packages: write
     defaults:
       run:
@@ -65,32 +65,14 @@ jobs:
           name: ${{ steps.pack.outputs.tarball }}
           path: sdk/${{ steps.pack.outputs.tarball }}
           if-no-files-found: error
-
-      - name: Create prerelease with tarball
-        id: release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          PUBLISHED_VERSION: ${{ steps.version.outputs.version }}
-          DIST_TAG: ${{ steps.version.outputs.tag }}
-          TARBALL: ${{ steps.pack.outputs.tarball }}
-          TARGET_SHA: ${{ github.sha }}
-        run: |
-          RELEASE_TAG="sdk-v${PUBLISHED_VERSION}"
-          gh release create "$RELEASE_TAG" "$TARBALL" \
-            --target "$TARGET_SHA" \
-            --prerelease \
-            --title "SDK ${PUBLISHED_VERSION}" \
-            --notes "Branch build for dist-tag \`${DIST_TAG}\`. Download the \`.tgz\` and run: \`npm install ./${TARBALL}\`"
-          RELEASE_URL=$(gh release view "$RELEASE_TAG" --json url --jq .url)
-          echo "url=$RELEASE_URL" >> "$GITHUB_OUTPUT"
+          retention-days: 30
 
       - name: Summary
         env:
           PUBLISHED_VERSION: ${{ steps.version.outputs.version }}
           DIST_TAG: ${{ steps.version.outputs.tag }}
           TARBALL: ${{ steps.pack.outputs.tarball }}
-          RELEASE_URL: ${{ steps.release.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           {
             echo "Published \`@starkware-libs/starknet-privacy-sdk@${PUBLISHED_VERSION}\`"
@@ -102,11 +84,12 @@ jobs:
             echo "npm install @starkware-libs/starknet-privacy-sdk@${DIST_TAG}"
             echo '```'
             echo
-            echo "**Or download the tarball from the release** (browser, no token needed beyond GitHub login):"
+            echo "**Or download the tarball from this run** (browser, GitHub login only)."
+            echo "Open the run page below and grab \`${TARBALL}\` from the *Artifacts* section at the bottom:"
             echo
-            echo "${RELEASE_URL}"
+            echo "${RUN_URL}"
             echo
-            echo "Then:"
+            echo "GitHub wraps the artifact in a \`.zip\`. After unzipping:"
             echo '```'
             echo "npm install ./${TARBALL}"
             echo '```'
