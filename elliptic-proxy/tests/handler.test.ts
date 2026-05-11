@@ -383,6 +383,63 @@ describe("createHandler", () => {
     spy.mockRestore();
   });
 
+  it("allows when Elliptic returns 404 NotInBlockchain", async () => {
+    const configLoader = { get: vi.fn().mockResolvedValue(makeConfig()) };
+
+    mockForward.mockResolvedValue({
+      status: 404,
+      durationMs: 5,
+      body: JSON.stringify({
+        id: "6cc452d5-bbcc-43e5-a615-0093adfb38a7",
+        name: "NotInBlockchain",
+        message:
+          "The submitted address with hash 0xabc has not yet been processed into the Elliptic tool or does not exist on the blockchain.",
+        status: 404,
+      }),
+    });
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handler = createHandler(configLoader, mockForward);
+    const req = makeRequest({}, "0xf1e5ad");
+    const res = makeResponse();
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({
+      blocked: false,
+      source: "elliptic",
+    });
+    expect(errorSpy).not.toHaveBeenCalled();
+    const allowedLog = logSpy.mock.calls.find((call) => {
+      const parsed = JSON.parse(call[0] as string);
+      return parsed.scoringReason === "not_in_blockchain";
+    });
+    expect(allowedLog).toBeDefined();
+    logSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it("allows on any 404 body shape", async () => {
+    const configLoader = { get: vi.fn().mockResolvedValue(makeConfig()) };
+
+    mockForward.mockResolvedValue({
+      status: 404,
+      durationMs: 5,
+      body: "<html>not found</html>",
+    });
+
+    const handler = createHandler(configLoader, mockForward);
+    const res = makeResponse();
+    await handler(makeRequest({}, "0xab07f0d"), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({
+      blocked: false,
+      source: "elliptic",
+    });
+  });
+
   it("returns cached blocked result without calling forwarder again", async () => {
     const configLoader = { get: vi.fn().mockResolvedValue(makeConfig()) };
 
