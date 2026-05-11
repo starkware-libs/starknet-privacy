@@ -105,7 +105,8 @@ The proxy:
 | Body exceeds `maxBodyBytes`            | `413 Payload Too Large`   |
 | Config unavailable from Secret Manager | `503 Service Unavailable` |
 | Elliptic network error                 | `503 Service Unavailable` |
-| Elliptic non-2xx response              | `502 Upstream Error`      |
+| Elliptic 404 (subject not on chain)    | `200 { blocked: false }`  |
+| Elliptic other non-2xx response        | `502 Upstream Error`      |
 
 ## Project Structure
 

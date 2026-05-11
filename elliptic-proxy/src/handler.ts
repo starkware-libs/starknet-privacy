@@ -205,6 +205,26 @@ export function createHandler(
       return;
     }
 
+    // Elliptic documents 404 as "Requested subject not found on the
+    // blockchain" — e.g. a freshly derived StarkNet address with no on-chain
+    // history. There is no exposure to score, so allow the address.
+    if (result.status === 404) {
+      sendResponse(
+        200,
+        JSON.stringify({ blocked: false, source: "elliptic" }),
+        {
+          partner: partnerName,
+          ellipticStatus: result.status,
+          ellipticLatencyMs: result.durationMs,
+          result: "allowed",
+          source: "elliptic",
+          scoringReason: "not_in_blockchain",
+          cacheSize: blockedCache.size,
+        }
+      );
+      return;
+    }
+
     // Only score successful Elliptic responses — non-2xx indicates an upstream
     // error and must not be interpreted as a screening result.
     if (result.status < 200 || result.status >= 300) {
