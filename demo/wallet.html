@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Veil — Private Wallet</title>
+    <!-- Inline whale-on-gradient favicon. SVG data URI so the browser tab
+         renders the brand mark without a separate request (and without
+         needing a static asset path that the CSP would have to whitelist). -->
+    <!-- Favicon — uses the whale asset directly from `demo/public/whale.png`,
+         so the tab icon is the same image as the sidebar / splash mark. -->
+    <link rel="icon" type="image/png" href="/whale.png" />
+    <!-- Fonts intentionally NOT loaded from fonts.googleapis.com — the
+         deploy CSP allows style-src 'self' only. The CSS falls back to
+         system-ui, which gives SF Pro / Segoe UI / Roboto on Apple /
+         Windows / Android respectively. -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/wallet/main.tsx"></script>
+  </body>
+</html>

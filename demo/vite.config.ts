@@ -6,6 +6,17 @@ const sdkDist = resolve(__dirname, "../sdk/dist");
 
 export default defineConfig({
   plugins: [react()],
+  // Multi-page build: emit both the original demo (`index.html`) and the
+  // standalone wallet (`wallet.html`) into dist/. Without this, vite's prod
+  // build only bundles `index.html` and the deployed site 404s on /wallet.html.
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, "index.html"),
+        wallet: resolve(__dirname, "wallet.html"),
+      },
+    },
+  },
   server: {
     proxy: {
       "/api/rpc": {

@@ -109,6 +109,7 @@ export class TokenOperationsBuilderImpl implements TokenOperationsBuilder {
           token: this.token,
           recipient: toBigInt(output.recipient),
           amount: output.amount as Amount,
+          ...(output.salt !== undefined ? { salt: output.salt } : {}),
         });
       }
     }

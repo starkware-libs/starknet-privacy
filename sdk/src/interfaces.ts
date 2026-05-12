@@ -174,6 +174,10 @@ export type UseNoteAction = {
 export type CreateNoteAction = {
   recipient: StarknetAddressBigint;
   token: StarknetAddressBigint;
+  // Optional override for the 120-bit note salt. Forwarded to the CreateEncNote
+  // ClientAction in the compiler; ignored for open notes. Used by the OTC flow
+  // to make the recipient-side WriteOnce/EncNoteCreated deterministic.
+  salt?: bigint;
 } & ({ amount: Amount } | { amount: Open });
 
 export type WithdrawAction = {
@@ -501,9 +505,13 @@ export interface PrivateTransfersInterface {
 // ============ Builder Types ============
 
 /**
- * Output specification for transfer/withdraw operations
+ * Output specification for transfer/withdraw operations.
+ *
+ * `salt` (optional, 120-bit) overrides the random salt used to encrypt the note
+ * amount. Use only when the recipient also derives the same salt (e.g. shared
+ * trade_id). For normal privacy use, omit this so a fresh random salt is used.
  */
-export type TransferOutput = { recipient: StarknetAddress } & (
+export type TransferOutput = { recipient: StarknetAddress; salt?: bigint } & (
   | { amount: Amount }
   | { amount: Open }
 );

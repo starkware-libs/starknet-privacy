@@ -157,6 +157,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "otc_settlement"
+version = "0.1.0"
+dependencies = [
+ "privacy",
+]
+
+[[package]]
 name = "privacy"
 version = "0.1.0"
 dependencies = [

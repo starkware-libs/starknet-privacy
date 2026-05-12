@@ -1,6 +1,7 @@
 export * from "./interfaces.js";
 export { AddressMap } from "./utils/index.js";
 export { createPrivateTransfers } from "./factory.js";
+export { predictReceivedEncNote } from "./utils/predict-note.js";
 export { SimplePrivateTransfersImpl } from "./simple-private-transfers.js";
 export { ProvingService, ProvingServiceError } from "./internal/proving-service.js";
 export type {

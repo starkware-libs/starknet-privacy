@@ -418,7 +418,7 @@ export class ActionCompiler {
               token: action.token,
               amount: action.amount,
               index: channel.tokens.get(action.token)!.noteNonce,
-              salt: generateRandom120(),
+              salt: action.salt ?? generateRandom120(),
             },
           } as const; // typescipt magic
           execute(input, clientActions.createNotes);

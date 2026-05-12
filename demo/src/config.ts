@@ -91,6 +91,8 @@ export type AppConfig = {
   explorerUrl?: string;
   ekubo?: EkuboConfig;
   vesu?: VesuConfig;
+  /** OtcSettlement contract address — enables the OTC tab when set. */
+  otcExecutorAddress?: string;
   /** Whether OHTTP encryption is enabled for indexer and prover requests. Default true. */
   ohttpEnabled?: boolean;
   paymasterUrl?: string;
@@ -230,6 +232,8 @@ export function loadConfig(): AppConfig {
     explorerUrl: import.meta.env.VITE_EXPLORER_URL as string | undefined,
     ekubo,
     vesu,
+    otcExecutorAddress:
+      (import.meta.env.VITE_OTC_EXECUTOR_ADDRESS as string | undefined)?.trim() || undefined,
     paymasterUrl: import.meta.env.VITE_PAYMASTER_URL as string | undefined,
     paymasterFeeToken: import.meta.env.VITE_PAYMASTER_FEE_TOKEN as string | undefined,
     avnuApiKey: import.meta.env.VITE_AVNU_API_KEY as string | undefined,

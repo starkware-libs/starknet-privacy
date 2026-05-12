@@ -1,0 +1,12 @@
+[package]
+name = "otc_settlement"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+starknet.workspace = true
+privacy = { path = "../privacy" }
+
+[[target.starknet-contract]]
+sierra = true
+casm = true

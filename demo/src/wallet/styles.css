@@ -1,0 +1,1668 @@
+:root {
+  --bg-base: #07080f;
+  --bg-1: #0d0f1c;
+  --bg-2: #141733;
+  --bg-3: #1c2042;
+  --card: rgba(22, 25, 53, 0.72);
+  --card-border: rgba(120, 132, 192, 0.14);
+  --card-border-strong: rgba(140, 154, 220, 0.28);
+
+  --text: #ecedf8;
+  --text-dim: #9aa0c4;
+  --text-muted: #6c7298;
+
+  --accent: #7c5cff;
+  --accent-2: #4d80ff;
+  --accent-3: #21d4fd;
+  --accent-grad: linear-gradient(135deg, #7c5cff 0%, #4d80ff 60%, #21d4fd 100%);
+  --accent-grad-soft: linear-gradient(
+    135deg,
+    rgba(124, 92, 255, 0.18) 0%,
+    rgba(33, 212, 253, 0.18) 100%
+  );
+
+  --success: #34d399;
+  --danger: #f87171;
+  --warning: #fbbf24;
+
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+
+  --shadow-card: 0 18px 60px -20px rgba(8, 11, 28, 0.9),
+    0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  --shadow-pop: 0 24px 90px -22px rgba(124, 92, 255, 0.55),
+    0 0 0 1px rgba(124, 92, 255, 0.35) inset;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  font-feature-settings: "cv11", "ss01";
+  background: var(--bg-base);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+#root {
+  background:
+    radial-gradient(900px 600px at 12% -10%, rgba(124, 92, 255, 0.22), transparent 60%),
+    radial-gradient(800px 700px at 110% 10%, rgba(33, 212, 253, 0.16), transparent 55%),
+    radial-gradient(700px 600px at 50% 110%, rgba(77, 128, 255, 0.16), transparent 60%),
+    var(--bg-base);
+}
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: inherit;
+}
+
+input,
+select,
+textarea {
+  font-family: inherit;
+  color: inherit;
+}
+
+/* Native dropdown items: the open <select> popup is rendered by the UA on a
+ * light surface by default. The visible text inherits our --text (light) and
+ * vanishes against it. Force a dark popup so unhovered options stay readable
+ * in every native picker (Chrome, Firefox, Safari on macOS/Linux/Windows). */
+option,
+optgroup {
+  background-color: var(--bg-1);
+  color: var(--text);
+}
+
+option:checked,
+option:hover {
+  background-color: var(--bg-3);
+  color: var(--text);
+}
+
+optgroup {
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+a {
+  color: var(--accent-3);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+code,
+.mono {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-size: 0.92em;
+}
+
+/* ───── Layout shell ───── */
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 240px 1fr;
+}
+
+.sidebar {
+  padding: 28px 20px;
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 4px 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.brand-mark {
+  width: 96px;
+  height: 96px;
+  border-radius: 24px;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  /* Outer cyan→indigo glow that picks up the whale's own gradient palette,
+   * so the white tile still feels brand-consistent against the dark
+   * sidebar. */
+  box-shadow:
+    0 22px 46px -12px rgba(89, 64, 255, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.9);
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1;
+  min-width: 0;
+}
+
+.brand-text-name {
+  font-size: 48px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  background: var(--accent-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  line-height: 0.95;
+}
+
+.brand-text-tag {
+  font-size: 10px;
+  margin-top: 8px;
+  color: var(--accent-3);
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  color: var(--text-dim);
+  font-weight: 500;
+  font-size: 14px;
+  text-align: left;
+  transition: color 0.15s, background 0.15s;
+}
+
+.nav-item:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.nav-item.active {
+  color: var(--text);
+  background: var(--accent-grad-soft);
+  box-shadow: inset 0 0 0 1px var(--card-border-strong);
+}
+
+.nav-icon {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.sidebar-foot {
+  padding: 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.health-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 6px;
+  background: var(--text-muted);
+}
+.health-dot.ok {
+  background: var(--success);
+  box-shadow: 0 0 8px var(--success);
+}
+.health-dot.warn {
+  background: var(--warning);
+}
+.health-dot.fail {
+  background: var(--danger);
+}
+
+/* ───── Main content ───── */
+
+.main {
+  padding: 28px 36px 60px;
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.page-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.acc-chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 8px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px var(--card-border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.acc-chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.acc-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent-grad);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.acc-chip-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.acc-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.acc-addr {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
+}
+
+/* ───── Card primitive ───── */
+
+.card {
+  background: var(--card);
+  backdrop-filter: blur(20px);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--card-border);
+  padding: 20px;
+}
+
+.card-pad-lg {
+  padding: 28px;
+}
+
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+}
+
+/* ───── Hero balance card ───── */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 28px 28px 26px;
+  background:
+    radial-gradient(700px 280px at 100% -20%, rgba(33, 212, 253, 0.18), transparent 60%),
+    radial-gradient(560px 260px at -10% 110%, rgba(124, 92, 255, 0.28), transparent 60%),
+    var(--card);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--card-border-strong);
+}
+
+.hero-label {
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hero-balance {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 10px 0 4px;
+  background: var(--accent-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-meta {
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.hero-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+  flex-wrap: wrap;
+}
+
+.eye-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--text-muted);
+}
+.eye-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ───── Buttons ───── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 18px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 14px;
+  transition: transform 0.08s, background 0.15s, color 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent-grad);
+  color: #fff;
+  box-shadow: 0 12px 32px -14px rgba(124, 92, 255, 0.85);
+}
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 18px 40px -14px rgba(124, 92, 255, 1);
+}
+
+.btn-ghost {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--card-border);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.btn-quiet {
+  background: transparent;
+  color: var(--text-dim);
+}
+.btn-quiet:hover:not(:disabled) {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.btn-danger {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.3);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-sm {
+  padding: 7px 12px;
+  font-size: 13px;
+  border-radius: 10px;
+}
+
+/* Quick action pills (Send/Receive/...).
+ *
+ * Layout: a compact 2×2 grid on the left holds the four standard actions
+ * (Send / Receive / Deposit / Withdraw); the OTC action sits to the right
+ * at double the height, taking ~60% of the row width so it's the visual
+ * hero of the row. The four regular actions are shrunk vs. their default
+ * sizing because they're routine — OTC is the new/featured thing.
+ *
+ *   ┌────┬────┬───────────────┐
+ *   │ Sn │ Rv │               │
+ *   ├────┼────┤   OTC trade   │
+ *   │ Dp │ Wd │               │
+ *   └────┴────┴───────────────┘
+ *
+ * Without the .qa-row-otc modifier (i.e. when no OTC action is rendered),
+ * the row falls back to the original auto-fit grid so the four buttons
+ * still flow naturally.
+ */
+
+.qa-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.qa-row-otc {
+  /* Small 2×2 grid (~40%) + big OTC tile (~60%). */
+  grid-template-columns: minmax(160px, 0.7fr) 1fr;
+}
+
+.qa-row-otc .qa-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 8px;
+}
+
+/* Smaller regular tiles inside the 2×2 — they're routine, not headline. */
+.qa-row-otc .qa-grid .qa {
+  padding: 8px 6px;
+  gap: 5px;
+  font-size: 11px;
+}
+
+.qa-row-otc .qa-grid .qa .qa-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  box-shadow: 0 6px 14px -6px rgba(124, 92, 255, 0.45);
+}
+
+/* Big OTC tile — fills the right column floor-to-ceiling. */
+.qa-row-otc .qa-otc-big {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px 16px;
+  border-radius: var(--radius-lg);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.qa-row-otc .qa-otc-big .qa-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  box-shadow:
+    0 14px 32px -10px rgba(124, 92, 255, 0.85),
+    0 0 0 1.5px rgba(255, 255, 255, 0.22) inset;
+}
+
+.qa {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px var(--card-border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  transition: transform 0.1s, background 0.15s;
+}
+.qa:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+}
+.qa:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.qa-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 10px;
+  background: var(--accent-grad);
+  display: grid;
+  place-items: center;
+  color: #fff;
+  box-shadow: 0 8px 18px -8px rgba(124, 92, 255, 0.55);
+}
+
+/* Shiny "new" treatment for a quick-action that we want to draw the eye to.
+ * Adds a slow rainbow shimmer over the button surface plus a pulsing accent
+ * ring; the `.qa-new-badge` chip in the top-right reinforces the "this is
+ * fresh" signal. Pure CSS — no JS overhead and pauses with prefers-reduced-motion. */
+
+.qa-shiny {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    rgba(124, 92, 255, 0.18),
+    rgba(33, 212, 253, 0.18)
+  );
+  box-shadow:
+    inset 0 0 0 1px rgba(124, 92, 255, 0.45),
+    0 12px 32px -16px rgba(124, 92, 255, 0.65);
+  animation: qa-shiny-pulse 2.6s ease-in-out infinite;
+}
+
+.qa-shiny::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.22) 50%,
+    transparent 70%
+  );
+  transform: translateX(-100%);
+  animation: qa-shiny-sweep 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.qa-shiny:hover:not(:disabled) {
+  background: linear-gradient(
+    135deg,
+    rgba(124, 92, 255, 0.28),
+    rgba(33, 212, 253, 0.28)
+  );
+  transform: translateY(-1px);
+}
+
+.qa-shiny .qa-icon {
+  background: var(--accent-grad);
+  box-shadow:
+    0 10px 24px -8px rgba(124, 92, 255, 0.85),
+    0 0 0 1.5px rgba(255, 255, 255, 0.18) inset;
+}
+
+.qa-new-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff;
+  background: var(--accent-grad);
+  box-shadow:
+    0 4px 12px -2px rgba(124, 92, 255, 0.7),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+  line-height: 1;
+}
+
+@keyframes qa-shiny-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(124, 92, 255, 0.45),
+      0 12px 32px -16px rgba(124, 92, 255, 0.65);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(124, 92, 255, 0.75),
+      0 14px 44px -14px rgba(124, 92, 255, 0.95);
+  }
+}
+
+@keyframes qa-shiny-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  60%,
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qa-shiny,
+  .qa-shiny::before {
+    animation: none;
+  }
+}
+
+/* ───── Token list ───── */
+
+.token-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.token-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 14px;
+  border-radius: var(--radius-md);
+  transition: background 0.15s;
+}
+
+.token-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.token-row.glow {
+  animation: glow 1.6s ease-out;
+}
+
+@keyframes glow {
+  0% {
+    background: rgba(33, 212, 253, 0.18);
+  }
+  100% {
+    background: transparent;
+  }
+}
+
+.token-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: #fff;
+  background: linear-gradient(135deg, #2a2f55, #3b416f);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.token-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.token-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.token-amt {
+  text-align: right;
+}
+
+.token-amt-private {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.token-amt-public {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ───── Chips ───── */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
+  box-shadow: inset 0 0 0 1px var(--card-border);
+}
+
+.chip-private {
+  background: rgba(33, 212, 253, 0.12);
+  color: var(--accent-3);
+  box-shadow: inset 0 0 0 1px rgba(33, 212, 253, 0.28);
+}
+
+.chip-ok {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--success);
+  box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.32);
+}
+
+.chip-bad {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.32);
+}
+
+.chip-warn {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--warning);
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.32);
+}
+
+/* ───── Forms ───── */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.field-input,
+.field-select,
+.field-textarea {
+  width: 100%;
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--card-border);
+  font-size: 15px;
+  outline: none;
+  transition: border 0.15s, box-shadow 0.15s;
+}
+
+.field-input:focus,
+.field-select:focus,
+.field-textarea:focus {
+  border-color: rgba(124, 92, 255, 0.7);
+  box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.16);
+}
+
+.field-textarea {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  min-height: 120px;
+  resize: vertical;
+}
+
+.field-select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
+}
+
+.field-error {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+/* Amount field with token select + max */
+
+.amt {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--card-border);
+  padding: 12px 14px;
+}
+
+.amt:focus-within {
+  border-color: rgba(124, 92, 255, 0.7);
+  box-shadow: 0 0 0 4px rgba(124, 92, 255, 0.16);
+}
+
+.amt-input {
+  background: none;
+  border: none;
+  outline: none;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+  width: 100%;
+  letter-spacing: -0.01em;
+}
+
+.amt-input::placeholder {
+  color: var(--text-muted);
+}
+
+.amt-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.amt-token-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 6px 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 0 0 1px var(--card-border);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.amt-token-btn select {
+  background: none;
+  border: none;
+  outline: none;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.amt-max {
+  font-size: 11px;
+  color: var(--accent-3);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.amt-max:hover {
+  text-decoration: underline;
+}
+
+/* ───── Layout helpers ───── */
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.divider {
+  height: 1px;
+  background: var(--card-border);
+  margin: 6px 0;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.dim {
+  color: var(--text-dim);
+}
+
+.center {
+  text-align: center;
+}
+
+.empty {
+  padding: 28px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  border: 1px dashed var(--card-border);
+  border-radius: var(--radius-md);
+}
+
+/* ───── Activity ───── */
+
+.activity-row {
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.activity-row:last-child {
+  border-bottom: none;
+}
+
+.activity-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-dim);
+  box-shadow: inset 0 0 0 1px var(--card-border);
+}
+
+.activity-icon.up {
+  background: rgba(248, 113, 113, 0.12);
+  color: var(--danger);
+  box-shadow: inset 0 0 0 1px rgba(248, 113, 113, 0.28);
+}
+.activity-icon.down {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--success);
+  box-shadow: inset 0 0 0 1px rgba(52, 211, 153, 0.28);
+}
+.activity-icon.swap {
+  background: var(--accent-grad-soft);
+  color: var(--accent-3);
+  box-shadow: inset 0 0 0 1px rgba(33, 212, 253, 0.32);
+}
+
+.activity-icon.otc {
+  background: linear-gradient(
+    135deg,
+    rgba(124, 92, 255, 0.22),
+    rgba(244, 114, 182, 0.22)
+  );
+  color: #f0c2ff;
+  box-shadow: inset 0 0 0 1px rgba(244, 114, 182, 0.42);
+}
+
+.activity-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.activity-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.activity-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.activity-amount {
+  text-align: right;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.activity-amount.up {
+  color: var(--danger);
+}
+.activity-amount.down {
+  color: var(--success);
+}
+
+/* ───── Audit table ───── */
+
+.audit-table-wrap {
+  overflow-x: auto;
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+}
+
+.audit-table thead th {
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.audit-table tbody td {
+  padding: 14px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  vertical-align: middle;
+}
+
+.audit-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.audit-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+/* ───── Toast ───── */
+
+.toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 380px;
+}
+
+.toast-item {
+  background: var(--card);
+  backdrop-filter: blur(20px);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--card-border-strong);
+  box-shadow: var(--shadow-card);
+  padding: 14px 16px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.toast-item.ok {
+  border-color: rgba(52, 211, 153, 0.4);
+}
+
+.toast-item.bad {
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.toast-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.toast-body {
+  font-size: 12px;
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+.toast-close {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+/* ───── Modal ───── */
+
+.modal-veil {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 16, 0.7);
+  backdrop-filter: blur(8px);
+  display: grid;
+  place-items: center;
+  z-index: 40;
+  padding: 24px;
+}
+
+.modal {
+  width: 100%;
+  max-width: 440px;
+  background: var(--bg-1);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--card-border-strong);
+  box-shadow: var(--shadow-pop);
+  padding: 24px;
+  position: relative;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 18px;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.modal-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+}
+
+.modal-close:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+}
+
+/* ───── Onboarding splash ───── */
+
+.splash {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.splash-card {
+  width: 100%;
+  max-width: 560px;
+  padding: 44px 40px;
+  background: var(--card);
+  backdrop-filter: blur(20px);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--card-border-strong);
+  box-shadow: var(--shadow-pop);
+  text-align: center;
+}
+
+.splash-logo {
+  width: 200px;
+  height: 200px;
+  border-radius: 44px;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 26px;
+  padding: 6px;
+  /* Same cyan→indigo glow as the sidebar mark, bigger spread because the
+   * splash tile is on a darker card background. */
+  box-shadow:
+    0 36px 100px -18px rgba(89, 64, 255, 0.65),
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.9);
+  position: relative;
+  overflow: hidden;
+}
+
+.splash-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.splash-title {
+  font-size: 64px;
+  font-weight: 800;
+  margin: 0 0 10px;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+/* Highlight only "Veil" inside the splash heading with the brand gradient,
+ * so the wordmark reads as a logo at first glance without losing the
+ * surrounding "Welcome to" copy. */
+.splash-title .brand-word {
+  background: var(--accent-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* The "VAIL FOR WHALES" slogan banner. Sits right under the title; uppercase
+ * and slightly-spaced so it reads as a marketing line, not a sentence. */
+.splash-slogan {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent-3);
+  margin: 0 0 18px;
+}
+
+.splash-sub {
+  color: var(--text-dim);
+  font-size: 14px;
+  margin: 0 0 28px;
+}
+
+.splash-points {
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.splash-point {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.splash-point-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--accent-3);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px var(--card-border);
+}
+
+/* ───── QR / receive ───── */
+
+.qr-frame {
+  background: #fff;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  display: inline-block;
+}
+
+.qr-frame svg {
+  display: block;
+}
+
+/* ───── Success check animation ───── */
+
+.success-check-wrap {
+  display: grid;
+  place-items: center;
+}
+
+.success-check {
+  display: block;
+}
+
+.success-check-circle {
+  fill: rgba(52, 211, 153, 0.12);
+  stroke: var(--success);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-dasharray: 201;
+  stroke-dashoffset: 201;
+  animation: success-circle 0.55s ease-out forwards;
+}
+
+.success-check-tick {
+  fill: none;
+  stroke: var(--success);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 50;
+  stroke-dashoffset: 50;
+  animation: success-tick 0.35s 0.45s ease-out forwards;
+}
+
+@keyframes success-circle {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes success-tick {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* ───── Spinners ───── */
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ───── Timeline (pending action) ───── */
+
+.timeline-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--accent-grad-soft);
+  border-radius: var(--radius-md);
+  box-shadow: inset 0 0 0 1px rgba(124, 92, 255, 0.32);
+  font-size: 13px;
+}
+
+.timeline-strip-label {
+  font-weight: 600;
+}
+
+/* ───── Pending stored mini ───── */
+
+.pending-mini {
+  border: 1px solid rgba(251, 191, 36, 0.32);
+  background: rgba(251, 191, 36, 0.06);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pending-mini-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ───── Responsive ─────
+ *
+ * Two breakpoints:
+ *   ≤900px (tablet): collapse the sidebar into a bottom nav, single-column grids.
+ *   ≤600px (phone):  more aggressive stacking — the top-bar drops onto two rows,
+ *                    token rows simplify, the toast clears the bottom nav, modals
+ *                    bleed closer to the screen edges.
+ */
+
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    top: auto;
+    height: auto;
+    flex-direction: row;
+    border-right: none;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(7, 8, 15, 0.92);
+    backdrop-filter: blur(14px);
+    padding: 8px 10px;
+    gap: 0;
+    z-index: 30;
+  }
+  .brand,
+  .sidebar-foot {
+    display: none;
+  }
+  .nav {
+    flex-direction: row;
+    flex: 1;
+    justify-content: space-around;
+    gap: 0;
+  }
+  .nav-item {
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+  .main {
+    padding: 18px 18px 100px;
+  }
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+  .hero-balance {
+    font-size: 36px;
+  }
+  /* The top-bar's right-side control cluster is the most common overflow
+   * culprit. Let it wrap onto a second row at the tablet breakpoint already. */
+  .top-bar {
+    flex-wrap: wrap;
+    row-gap: 12px;
+  }
+  /* Bottom-anchored toast must clear the bottom nav (~64px tall). */
+  .toast {
+    right: 14px;
+    bottom: 80px;
+    left: 14px;
+    max-width: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .main {
+    padding: 14px 14px 96px;
+  }
+
+  /* Top-bar: stack heading above controls. The controls themselves wrap.
+   * `min-width: 0` on the heading so its flex item doesn't overflow when the
+   * username is long. */
+  .top-bar {
+    align-items: stretch;
+  }
+  .top-bar > *:first-child {
+    min-width: 0;
+  }
+  .top-bar .row {
+    flex-wrap: wrap;
+  }
+  .page-title {
+    font-size: 19px;
+  }
+  .page-sub {
+    font-size: 12px;
+  }
+
+  /* Hero: tighter padding, smaller balance label, slightly smaller QA tiles
+   * so 5 fit two per row without horizontal scroll. */
+  .hero {
+    padding: 20px 18px;
+  }
+  .hero-label {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .hero-balance {
+    font-size: 32px;
+  }
+  .qa-row {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .qa {
+    padding: 10px 6px;
+    font-size: 12px;
+  }
+  .qa-icon {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* Token list: smaller avatar slot + slightly smaller text so the
+   * private/public balance pair doesn't get pushed off the right edge by
+   * a long token address. Address mono text is also harder to fit on a
+   * phone width — collapse the chip onto its own line if needed. */
+  .token-row {
+    grid-template-columns: 36px 1fr auto;
+    gap: 10px;
+    padding: 12px 10px;
+  }
+  .token-name {
+    font-size: 14px;
+  }
+  .token-sub {
+    font-size: 11px;
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+  .token-amt-private {
+    font-size: 14px;
+  }
+
+  /* Activity rows: same logic — the right-hand amount column should keep
+   * its own line per delta but stay readable. */
+  .activity-row {
+    grid-template-columns: 32px 1fr auto;
+    gap: 10px;
+    padding: 12px 4px;
+  }
+  .activity-icon {
+    width: 32px;
+    height: 32px;
+  }
+  .activity-amount {
+    font-size: 13px;
+  }
+
+  /* Modal: bleed closer to edges, tighter padding so the inner form fits a
+   * phone without horizontal scroll. The modal already maxes at 90vh tall
+   * with overflow-y; the fix is purely horizontal. */
+  .modal-veil {
+    padding: 10px;
+    align-items: flex-end;
+  }
+  .modal {
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    max-height: 92vh;
+  }
+  .modal-title {
+    font-size: 17px;
+  }
+
+  /* Onboarding splash needs a similar treatment so the long JSON textarea
+   * doesn't push the card off-screen. */
+  .splash {
+    padding: 12px;
+  }
+  .splash-card {
+    padding: 24px 20px;
+  }
+  .splash-logo {
+    width: 132px;
+    height: 132px;
+    border-radius: 30px;
+  }
+  .splash-title {
+    font-size: 36px;
+  }
+  .splash-slogan {
+    font-size: 11px;
+    letter-spacing: 0.22em;
+  }
+
+  /* Amount input — the big numeric field can squeeze the token chip; cap the
+   * font-size so a 10-digit balance still fits. */
+  .amt-input {
+    font-size: 22px;
+  }
+
+  /* Card defaults — small surfaces feel cramped at full desktop padding. */
+  .card {
+    padding: 16px;
+  }
+  .card-pad-lg {
+    padding: 20px;
+  }
+}

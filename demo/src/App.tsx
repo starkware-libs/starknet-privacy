@@ -28,6 +28,8 @@ import { usePendingStored } from "./hooks/usePendingStored.ts";
 import { useLastTxBlockNumber } from "./hooks/useLastTxBlock.ts";
 import { useServiceHealth } from "./hooks/useServiceHealth.ts";
 import { DefiPanel } from "./components/DefiPanel.tsx";
+import { OtcPanel } from "./components/OtcPanel.tsx";
+import { AuditPanel } from "./components/AuditPanel.tsx";
 import { isMainnet, isSendCapable, withViewingKey } from "./session.ts";
 import "./App.css";
 
@@ -326,7 +328,9 @@ export function App() {
 
   const serviceHealth = useServiceHealth(provider, effectiveConfig);
 
-  const [activeView, setActiveView] = useState<"actions" | "builder" | "defi">("actions");
+  const [activeView, setActiveView] = useState<
+    "actions" | "builder" | "defi" | "otc" | "audit"
+  >("actions");
 
   return (
     <div className="app">
@@ -411,6 +415,20 @@ export function App() {
                     DeFi
                   </button>
                 )}
+                {config.otcExecutorAddress && (
+                  <button
+                    className={activeView === "otc" ? "active" : ""}
+                    onClick={() => setActiveView("otc")}
+                  >
+                    OTC
+                  </button>
+                )}
+                <button
+                  className={activeView === "audit" ? "active" : ""}
+                  onClick={() => setActiveView("audit")}
+                >
+                  Audit
+                </button>
               </div>
               {activeView === "actions" && (
                 <ActionPanel
@@ -457,6 +475,32 @@ export function App() {
                   onAvnuSwap={isMainnetChain ? avnuSwap : undefined}
                   onVesuSupply={vesuSupply}
                   onVesuWithdraw={vesuWithdraw}
+                />
+              )}
+              {activeView === "otc" && config.otcExecutorAddress && (
+                <OtcPanel
+                  account={userAccount}
+                  provider={provider}
+                  viewingKey={
+                    activeAccount?.viewingKey ? BigInt(activeAccount.viewingKey) : undefined
+                  }
+                  poolAddress={poolAddress}
+                  otcExecutorAddress={config.otcExecutorAddress}
+                  proverUrl={config.provingServiceUrl}
+                  indexerUrl={config.indexerUrl}
+                  tokens={config.tokens}
+                  accounts={accounts}
+                  activeAddress={activeAccount?.address}
+                />
+              )}
+              {activeView === "audit" && (
+                <AuditPanel
+                  account={userAccount}
+                  provider={provider}
+                  viewingKey={
+                    activeAccount?.viewingKey ? BigInt(activeAccount.viewingKey) : undefined
+                  }
+                  config={effectiveConfig}
                 />
               )}
               <PendingStoredPanel
