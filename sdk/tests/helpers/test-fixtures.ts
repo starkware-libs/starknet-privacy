@@ -10,6 +10,8 @@ import {
 } from "../../src/interfaces.js";
 
 export const POOL_ADDRESS = 0x1n;
+/** Used by `account-deposit.test.ts` to stand in for a deployed `CallAnonymizer`. */
+export const CALL_ANONYMIZER_ADDRESS = 0xa1n;
 
 // Default options presets - for operations AFTER registration and setup are done
 export const AUTO_ALL: ExecuteOptions = {

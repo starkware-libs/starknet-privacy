@@ -37,3 +37,11 @@ export type {
   HistoryAction,
   SwapLeg,
 } from "./internal/action-classifier.js";
+export {
+  calculateEphemeralAddress,
+  buildAccountDepositInvoke,
+} from "./internal/account-deposit.js";
+export type {
+  AccountDepositParams,
+  AccountDepositInvokeParams,
+} from "./internal/account-deposit.js";

@@ -128,7 +128,12 @@ export class ActionCompiler {
     const pool = this.createPool(toBigInt(this.userViewingKey), registry, channels, total);
 
     // Phase 3: Transform Actions to ClientAction[]
-    const clientActions = this.transformToClientActions(actions, pool, recipientsNeeded, options);
+    const { clientActions } = this.transformToClientActions(
+      actions,
+      pool,
+      recipientsNeeded,
+      options
+    );
 
     debugLog("compiler", "compile", "post transformToClientActions", clientActions);
 
@@ -224,7 +229,7 @@ export class ActionCompiler {
     pool: PoolSimulator,
     recipientsNeeded: AddressMap<boolean>,
     options?: ExecuteOptions
-  ): ClientAction[] {
+  ): { clientActions: ClientAction[] } {
     const clientActions: ClientActions = {
       setViewingKey: undefined,
       openChannels: [],
@@ -444,7 +449,8 @@ export class ActionCompiler {
 
     // surpluses were handled in resolveNotes
 
-    // 8. InvokeExternal
+    // 8. InvokeExternal — pass the open notes created above so the invoke callback can
+    // reference their ids.
     if (actions.invoke) {
       const openNotes = clientActions.createNotes.flatMap((note) => {
         if (note.type !== "CreateOpenNote") return [];
@@ -480,9 +486,11 @@ export class ActionCompiler {
       clientActions.invoke = execute(input);
     }
 
-    return Object.values(clientActions)
-      .filter((action) => action !== undefined)
-      .flat();
+    return {
+      clientActions: Object.values(clientActions)
+        .filter((action) => action !== undefined)
+        .flat(),
+    };
   }
 
   /**

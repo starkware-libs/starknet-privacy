@@ -19,10 +19,11 @@ import {
   RpcProvider,
   UniversalDetails,
   waitForTransactionOptions,
+  type Call,
   type GetTransactionReceiptResponse,
 } from "starknet";
 import { TracingRpcProvider } from "./tracing-provider.js";
-import type { CallAndProof, PrivateTransfersInterface } from "../interfaces.js";
+import type { CallAndProof, Proof, PrivateTransfersInterface } from "../interfaces.js";
 import { createPrivateTransfers } from "../factory.js";
 import { CallMockProofProvider } from "./mock-proving.js";
 import {
@@ -50,6 +51,14 @@ const CONTRACT_CLASS_PATH = join(
 const COMPILED_CONTRACT_PATH = join(
   __dirname,
   "../../../target/dev/privacy_Privacy.compiled_contract_class.json"
+);
+const CALL_ANONYMIZER_CONTRACT_CLASS_PATH = join(
+  __dirname,
+  "../../../target/dev/call_anonymizer_CallAnonymizer.contract_class.json"
+);
+const CALL_ANONYMIZER_COMPILED_CONTRACT_PATH = join(
+  __dirname,
+  "../../../target/dev/call_anonymizer_CallAnonymizer.compiled_contract_class.json"
 );
 
 // Resource bounds for devnet transactions
@@ -83,6 +92,8 @@ export interface DevnetEnvironment {
   strk: string;
   eth: string;
   privacy: PrivacyPoolContract;
+  /** Deployed `CallAnonymizer` address; required for ephemeral-deposit flows. */
+  callAnonymizer: string;
   provider: RpcProvider;
 }
 
@@ -229,6 +240,22 @@ export class Devnet {
     // Deploy the privacy pool contract
     const privacy = await this.deployPrivacyContract(admin, contractClass, compiledContract);
 
+    // Deploy the generic call anonymizer (used by createEphemeralDeposit and any other flow
+    // that wants to thread user-signed calls through `privacy_invoke`).
+    const callAnonymizerContractClass = JSON.parse(
+      readFileSync(CALL_ANONYMIZER_CONTRACT_CLASS_PATH, "utf8")
+    );
+    const callAnonymizerCompiledContract = JSON.parse(
+      readFileSync(CALL_ANONYMIZER_COMPILED_CONTRACT_PATH, "utf8")
+    );
+    const callAnonymizer = await this.deployNoArgContract(
+      admin,
+      callAnonymizerContractClass,
+      callAnonymizerCompiledContract,
+      "0x1" // salt
+    );
+    debugLog("devnet", "setup", "CallAnonymizer at:", callAnonymizer);
+
     // Pad devnet with empty blocks so block numbers exceed the blockifier's
     // STORED_BLOCK_HASH_BUFFER (10), required for proof_facts validation.
     for (let blockIndex = 0; blockIndex < 10; blockIndex++) {
@@ -247,6 +274,7 @@ export class Devnet {
       strk,
       eth,
       privacy,
+      callAnonymizer,
       provider: this.provider,
     };
 
@@ -313,6 +341,29 @@ export class Devnet {
   }
 
   /**
+   * Declare and deploy a contract that takes no constructor arguments. Returns the deployed
+   * contract address. Used for utility contracts like the ephemeral-deposit anonymizer.
+   */
+  private async deployNoArgContract(
+    deployer: Account,
+    contractClass: CompiledContract,
+    compiledContract: CairoAssembly,
+    salt: string
+  ): Promise<string> {
+    const declareResponse = await deployer.declare({
+      contract: contractClass,
+      casm: compiledContract,
+      compiledClassHash: hash.computeCompiledClassHash(compiledContract),
+    });
+    const classHash = declareResponse.class_hash;
+    const deployResponse = await deployer.deployContract(
+      { classHash, constructorCalldata: [], salt },
+      { retryInterval: 100 }
+    );
+    return deployResponse.contract_address;
+  }
+
+  /**
    * Deploy the privacy pool contract
    */
   private async deployPrivacyContract(
@@ -361,14 +412,25 @@ export class Devnet {
   }
 
   /**
-   * Execute a call via outside execution using the admin account.
-   * The admin creates the outside transaction and executes it.
+   * Execute a call (or multi-call) via outside execution using the admin
+   * account. The admin creates the outside transaction and executes it.
    * This simulates a paymaster flow.
+   *
+   * Accepts either:
+   * - the legacy `CallAndProof` shape (single inner call), as produced by
+   *   `transfers.execute()`; or
+   * - `{ calls: Call[]; proof: Proof }` for multi-call flows such as
+   *   `transfers.createEphemeralDeposit()`.
    */
-  async executeOutside(callAndProof: CallAndProof): Promise<GetTransactionReceiptResponse> {
+  async executeOutside(
+    input: CallAndProof | { calls: Call[]; proof: Proof }
+  ): Promise<GetTransactionReceiptResponse> {
     if (!this.setup) {
       throw new Error("Devnet not initialized");
     }
+
+    const calls = "call" in input ? input.call : input.calls;
+    const proof = input.proof;
 
     const now_seconds = Math.floor(Date.now() / 1000);
     const callOptions: OutsideExecutionOptions = {
@@ -391,13 +453,13 @@ export class Devnet {
 
     const outsideTransaction = await this.setup.admin.getOutsideTransaction(
       callOptions,
-      callAndProof.call,
+      calls,
       OutsideExecutionVersion.V2
     );
 
     const response = await this.setup.admin.executeFromOutside(outsideTransaction, {
-      proofFacts: callAndProof.proof.proofFacts,
-      proof: callAndProof.proof.data,
+      proofFacts: proof.proofFacts,
+      proof: proof.data,
     });
     const receipt = await this.provider!.waitForTransaction(response.transaction_hash);
     if (!receipt.isSuccess()) {

@@ -33,6 +33,14 @@ npm run test      # run all tests
 npm run test:fast # run tests excluding devnet
 ```
 
+### Test file naming
+
+Tests that spawn a real devnet (`new Devnet()` / `createDevnetTestEnv`) **must** be named
+`*.devnet.test.ts` (or be the exact file `tests/devnet.test.ts`). `vitest.config.ts` routes
+them to a separate project that disables file-level parallelism; otherwise concurrent devnet
+spawns collide on RPC traffic and filesystem state. Tests using the in-memory mocknet need no
+special naming.
+
 ## Installation
 
 From a tagged release (GitHub npm registry):
