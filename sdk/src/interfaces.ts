@@ -6,6 +6,7 @@ import type {
   BlockNumber,
   Call,
   CallDetails,
+  SignerInterface,
   constants,
 } from "starknet";
 import { ec } from "starknet";
@@ -314,12 +315,16 @@ export type ExecuteResult = {
   registry: PrivateRegistry;
 
   warnings: Warning[];
+  /** Ids of open notes created by `createNotes` actions, in input order. */
+  openNoteIds: readonly NoteId[];
 };
 
 export type ProofInvocationResult = {
   invocation: ProofInvocation;
   registry: PrivateRegistry;
   warnings: Warning[];
+  /** Ids of open notes created by `createNotes` actions, in input order. */
+  openNoteIds: readonly NoteId[];
 };
 
 /**
@@ -455,7 +460,87 @@ export interface PrivateTransfersInterface {
 
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
+
+  /**
+   * Build the calls needed to deposit funds held by an ephemeral SNIP-9 account
+   * `ephemeralAddress` into a fresh open note in the caller's own channel.
+   *
+   * The returned `calls` array packages, in order:
+   *   1. `pool.apply_actions(...)` that creates the open note (depositor = `ephemeralAddress`).
+   *   2. (optional) `UDC.deployContract(...)` if `params.deploy` is provided.
+   *   3. `ephemeralAddress.execute_from_outside_v2(payload, sig)` whose inner calls are
+   *      `[token.approve(pool, amount), pool.deposit_to_open_note(noteId, token, amount)]`.
+   *
+   * Submit the whole array as one Starknet multicall from any wallet, wiring the
+   * usual `proof_facts = proof.proofFacts` on the apply_actions sub-call.
+   *
+   * The ephemeral account class **must** implement SNIP-9 `execute_from_outside_v2`
+   * (OpenZeppelin `AccountComponent` ships it).
+   */
+  createEphemeralDeposit(
+    params: EphemeralDepositParams,
+    options?: ExecuteOptions
+  ): Promise<EphemeralDepositResult>;
 }
+
+/**
+ * Inputs for `PrivateTransfersInterface.createEphemeralDeposit`.
+ */
+export type EphemeralDepositParams = {
+  /** The address of the ephemeral account that holds the funds to deposit. */
+  ephemeralAddress: StarknetAddress;
+  /** ERC-20 to deposit. */
+  token: StarknetAddress;
+  /** Amount to deposit (and to approve, since open notes are single-fill). */
+  amount: Amount;
+  /** Signs the SNIP-9 OutsideExecution typed data with the ephemeral private key. */
+  signer: Pick<SignerInterface, "signMessage">;
+  /**
+   * If provided, prepend a UDC `deployContract` call to deploy the ephemeral
+   * account in the same tx. The SDK derives the address from these fields and
+   * throws if it does not match `ephemeralAddress`.
+   */
+  deploy?: {
+    classHash: BigNumberish;
+    constructorCalldata: BigNumberish[];
+    /** Defaults to 0. */
+    salt?: BigNumberish;
+    /** Defaults to false. */
+    unique?: boolean;
+    /** Required iff `unique === true`. */
+    deployerAddress?: BigNumberish;
+  };
+  /**
+   * Optional SNIP-9 OutsideExecution knobs. Defaults to a random nonce, no
+   * expiry, and `ANY_CALLER`.
+   */
+  outsideExecution?: {
+    nonce?: BigNumberish;
+    executeAfter?: BigNumberish;
+    executeBefore?: BigNumberish;
+    caller?: StarknetAddress;
+  };
+};
+
+/**
+ * Result of `PrivateTransfersInterface.createEphemeralDeposit`.
+ */
+export type EphemeralDepositResult = {
+  ephemeralAddress: StarknetAddress;
+  /** The id of the created open note. */
+  noteId: NoteId;
+  /** Proof for the apply_actions call. Must be wired into the tx envelope. */
+  proof: Proof;
+  /**
+   * 2 or 3 calls in canonical order:
+   *   [0]    pool.apply_actions(...)             — submit with proof_facts = proof
+   *   [1]?   UDC.deployContract(...)             — only if `params.deploy`
+   *   [last] ephemeralAddress.execute_from_outside_v2(payload, sig)
+   */
+  calls: Call[];
+  registry: PrivateRegistry;
+  warnings: Warning[];
+};
 
 // ============ Builder Types ============
 

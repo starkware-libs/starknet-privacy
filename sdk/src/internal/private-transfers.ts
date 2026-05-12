@@ -4,6 +4,8 @@
 
 import type {
   Actions,
+  EphemeralDepositParams,
+  EphemeralDepositResult,
   ExecuteOptions,
   ExecuteResult,
   ProofProviderInterface,
@@ -17,6 +19,7 @@ import type { Account, TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
 import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
+import { createEphemeralDeposit as createEphemeralDepositImpl } from "./ephemeral-deposit.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toBigInt, toHex } from "../utils/convert.js";
@@ -62,7 +65,10 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     );
 
     // Compile actions
-    const { clientActions, registry, warnings } = await compiler.compile(actions, options);
+    const { clientActions, registry, warnings, openNoteIds } = await compiler.compile(
+      actions,
+      options
+    );
 
     // Create invocation for proving
     const details = await this.params.provingProvider.getDefaultDetails();
@@ -73,7 +79,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       details
     );
 
-    return { invocation, registry, warnings };
+    return { invocation, registry, warnings, openNoteIds };
   }
 
   invalidateProofNonceCache(): void {
@@ -81,7 +87,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
   }
 
   async executeWithInvocation(
-    { invocation, registry, warnings }: ProofInvocationResult,
+    { invocation, registry, warnings, openNoteIds }: ProofInvocationResult,
     provingBlockId?: ProvingBlockId
   ): Promise<ExecuteResult> {
     const proof = await this.params.provingProvider.prove(invocation, provingBlockId);
@@ -106,6 +112,21 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       },
       registry,
       warnings,
+      openNoteIds,
     };
+  }
+
+  async createEphemeralDeposit(
+    params: EphemeralDepositParams,
+    options?: ExecuteOptions
+  ): Promise<EphemeralDepositResult> {
+    const { chainId } = await this.params.provingProvider.getDefaultDetails();
+    return createEphemeralDepositImpl(
+      this,
+      this.params.poolContractAddress,
+      chainId,
+      params,
+      options
+    );
   }
 }

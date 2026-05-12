@@ -45,6 +45,8 @@ export type CompileResult = {
   clientActions: ClientAction[];
   registry: PrivateRegistry;
   warnings: Warning[];
+  /** Ids of open notes created by `createNotes` actions, in input order. */
+  openNoteIds: bigint[];
 };
 
 type ClientActions = {
@@ -128,7 +130,12 @@ export class ActionCompiler {
     const pool = this.createPool(toBigInt(this.userViewingKey), registry, channels, total);
 
     // Phase 3: Transform Actions to ClientAction[]
-    const clientActions = this.transformToClientActions(actions, pool, recipientsNeeded, options);
+    const { clientActions, openNoteIds } = this.transformToClientActions(
+      actions,
+      pool,
+      recipientsNeeded,
+      options
+    );
 
     debugLog("compiler", "compile", "post transformToClientActions", clientActions);
 
@@ -136,6 +143,7 @@ export class ActionCompiler {
       clientActions,
       registry: pool.updateRegistry(registry),
       warnings: this.checkWarnings(clientActions),
+      openNoteIds,
     };
   }
 
@@ -224,7 +232,7 @@ export class ActionCompiler {
     pool: PoolSimulator,
     recipientsNeeded: AddressMap<boolean>,
     options?: ExecuteOptions
-  ): ClientAction[] {
+  ): { clientActions: ClientAction[]; openNoteIds: bigint[] } {
     const clientActions: ClientActions = {
       setViewingKey: undefined,
       openChannels: [],
@@ -445,19 +453,22 @@ export class ActionCompiler {
 
     // surpluses were handled in resolveNotes
 
+    // Compute open note ids for each CreateOpenNote (used by InvokeExternal below
+    // and surfaced on CompileResult for downstream callers like createEphemeralDeposit).
+    const openNotes = clientActions.createNotes.flatMap((note) => {
+      if (note.type !== "CreateOpenNote") return [];
+      const channelKey = pool.getChannel(note.input.recipient_addr)?.key;
+      assert(channelKey, () => `Missing channel key for open note recipient`);
+      return [
+        {
+          noteId: compute_note_id(channelKey, note.input.token, note.input.index),
+          token: note.input.token,
+        },
+      ];
+    });
+
     // 8. InvokeExternal
     if (actions.invoke) {
-      const openNotes = clientActions.createNotes.flatMap((note) => {
-        if (note.type !== "CreateOpenNote") return [];
-        const channelKey = pool.getChannel(note.input.recipient_addr)?.key;
-        assert(channelKey, () => `Missing channel key for open note recipient`);
-        return [
-          {
-            noteId: compute_note_id(channelKey, note.input.token, note.input.index),
-            token: note.input.token,
-          },
-        ];
-      });
       const withdrawals = clientActions.withdraws.map((withdraw) => ({
         recipient: withdraw.input.to_addr,
         token: withdraw.input.token,
@@ -481,9 +492,12 @@ export class ActionCompiler {
       clientActions.invoke = execute(input);
     }
 
-    return Object.values(clientActions)
-      .filter((action) => action !== undefined)
-      .flat();
+    return {
+      clientActions: Object.values(clientActions)
+        .filter((action) => action !== undefined)
+        .flat(),
+      openNoteIds: openNotes.map((n) => n.noteId),
+    };
   }
 
   /**

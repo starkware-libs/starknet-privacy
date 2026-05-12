@@ -10,6 +10,8 @@ import type {
   Actions,
   Channel,
   DiscoveryProviderInterface,
+  EphemeralDepositParams,
+  EphemeralDepositResult,
   ExecuteOptions,
   ExecuteResult,
   Note,
@@ -124,4 +126,12 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
     invocation: ProofInvocationResult,
     provingBlockId?: ProvingBlockId
   ): Promise<ExecuteResult>;
+
+  /**
+   * Build the calls for an ephemeral-account deposit. See `PrivateTransfersInterface.createEphemeralDeposit`.
+   */
+  abstract createEphemeralDeposit(
+    params: EphemeralDepositParams,
+    options?: ExecuteOptions
+  ): Promise<EphemeralDepositResult>;
 }

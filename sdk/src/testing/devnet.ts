@@ -19,10 +19,11 @@ import {
   RpcProvider,
   UniversalDetails,
   waitForTransactionOptions,
+  type Call,
   type GetTransactionReceiptResponse,
 } from "starknet";
 import { TracingRpcProvider } from "./tracing-provider.js";
-import type { CallAndProof, PrivateTransfersInterface } from "../interfaces.js";
+import type { CallAndProof, Proof, PrivateTransfersInterface } from "../interfaces.js";
 import { createPrivateTransfers } from "../factory.js";
 import { CallMockProofProvider } from "./mock-proving.js";
 import {
@@ -361,14 +362,25 @@ export class Devnet {
   }
 
   /**
-   * Execute a call via outside execution using the admin account.
-   * The admin creates the outside transaction and executes it.
+   * Execute a call (or multi-call) via outside execution using the admin
+   * account. The admin creates the outside transaction and executes it.
    * This simulates a paymaster flow.
+   *
+   * Accepts either:
+   * - the legacy `CallAndProof` shape (single inner call), as produced by
+   *   `transfers.execute()`; or
+   * - `{ calls: Call[]; proof: Proof }` for multi-call flows such as
+   *   `transfers.createEphemeralDeposit()`.
    */
-  async executeOutside(callAndProof: CallAndProof): Promise<GetTransactionReceiptResponse> {
+  async executeOutside(
+    input: CallAndProof | { calls: Call[]; proof: Proof }
+  ): Promise<GetTransactionReceiptResponse> {
     if (!this.setup) {
       throw new Error("Devnet not initialized");
     }
+
+    const calls = "call" in input ? input.call : input.calls;
+    const proof = input.proof;
 
     const now_seconds = Math.floor(Date.now() / 1000);
     const callOptions: OutsideExecutionOptions = {
@@ -391,13 +403,13 @@ export class Devnet {
 
     const outsideTransaction = await this.setup.admin.getOutsideTransaction(
       callOptions,
-      callAndProof.call,
+      calls,
       OutsideExecutionVersion.V2
     );
 
     const response = await this.setup.admin.executeFromOutside(outsideTransaction, {
-      proofFacts: callAndProof.proof.proofFacts,
-      proof: callAndProof.proof.data,
+      proofFacts: proof.proofFacts,
+      proof: proof.data,
     });
     const receipt = await this.provider!.waitForTransaction(response.transaction_hash);
     if (!receipt.isSuccess()) {
