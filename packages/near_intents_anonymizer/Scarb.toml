@@ -29,6 +29,7 @@ name = "near_intents_anonymizer_unittest"
 build-external-contracts = [
     "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
     "near_intents_anonymizer::tests::deploy_probe::DeployProbe",
+    "near_intents_anonymizer::tests::mock_pool::MockPool",
 ]
 
 [scripts]
