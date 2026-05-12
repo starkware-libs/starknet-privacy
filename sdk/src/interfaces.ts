@@ -206,7 +206,7 @@ export type InvokeCalldataBuilderArgs = {
 };
 
 export type InvokeAction = {
-  callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails;
+  callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails | Promise<CallDetails>;
 };
 
 /** Actions - context comes from registry */
@@ -600,7 +600,9 @@ export interface PrivateTransfersBuilder {
   setup(recipient: StarknetAddress): this;
 
   /** Add a call to `privacy_invoke` entrypoint that will run on starknet after the private operations are executed */
-  invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this;
+  invoke(
+    callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails | Promise<CallDetails>
+  ): this;
 
   /**
    * Set the default recipient for any surplus across all tokens.

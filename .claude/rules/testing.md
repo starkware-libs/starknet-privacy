@@ -18,3 +18,7 @@
 - Use reference vectors when available in the codebase; if none exist, ask user to provide them or instructions to generate them
 - Think about edge cases: empty inputs, boundary values, error conditions
 - Always assume the worst - test failure modes, not just happy paths
+
+**SDK devnet test naming:**
+- Any new vitest file that spawns a real devnet (e.g. `new Devnet()`, `createDevnetTestEnv`) MUST be named `*.devnet.test.ts` (or be the exact path `tests/devnet.test.ts`). `sdk/vitest.config.ts` routes those into a `devnet` project with `fileParallelism: false`; everything else stays parallel.
+- If a devnet test isn't named that way it lands in the parallel `unit` project, where two devnet-spawning files race on RPC traffic and filesystem state and fail intermittently. Mocknet-only tests have no naming requirement.

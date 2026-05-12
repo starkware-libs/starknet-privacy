@@ -38,16 +38,6 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     super(params.account.address, params.viewingKeyProvider, params.discoveryProvider);
   }
 
-  private async getCompiler(): Promise<ActionCompiler> {
-    const viewingKey = await this.params.viewingKeyProvider.getViewingKey();
-    return new ActionCompiler(
-      this.user,
-      viewingKey,
-      this.params.discoveryProvider,
-      toBigInt(this.params.poolContractAddress)
-    );
-  }
-
   async createProofInvocation(
     actions: Actions,
     options?: Omit<ExecuteOptions, "provingBlockId">

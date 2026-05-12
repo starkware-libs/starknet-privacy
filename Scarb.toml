@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "packages/deposit_anonymizer",
     "packages/ekubo_swap_anonymizer",
     "packages/privacy",
     "packages/vesu_lending_anonymizer",

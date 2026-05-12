@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### Added
+
+- Standalone utilities `buildAccountDepositInvoke` and
+  `calculateAccountAddress`: build the `.invoke()` callback for a
+  single-tx deposit from a SNIP-9-capable account into the caller's own
+  channel. The deposit is routed through the new `DepositAnonymizer`
+  contract (separate Cairo package). The user signs an
+  `execute_from_outside_v2` whose inner calls are
+  `[token.approve(anonymizer, amount), anonymizer.deposit_to_open_note(note_id, token, amount)]`;
+  the anonymizer parses the `OpenNoteDeposit` out of the SNIP-9 return
+  chain and approves the pool to fill the open note. Because `note_id`
+  is in the signed calldata, a front-runner cannot redirect a captured
+  signed outside execution to a different note. The `.invoke()`
+  callback is now invoked asynchronously by the compiler, so signing
+  can happen after the open-note id is minted. The account class must
+  implement SNIP-9 outside execution (OpenZeppelin `AccountComponent`
+  ships it).
+- `Devnet.executeOutside` (in `@starkware-libs/starknet-privacy-sdk/testing`)
+  now also accepts `{ calls: Call[]; proof: Proof }` for multi-call flows.
+  The existing single-call `CallAndProof` overload is unchanged.
+
 ### Breaking
 
 - Renamed `MockSwapHelper` to `MockSwapAnonymizer` in `@starkware-libs/starknet-privacy-sdk/testing` (and its `browser` re-export). Update imports accordingly.
