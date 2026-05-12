@@ -2159,3 +2159,108 @@ fn test_same_depositor_funds_multiple_open_notes() {
     assert_eq!(stored_amount_b, amount_b);
     assert_eq!(stored_amount_c, amount_c);
 }
+
+#[test]
+fn test_store_and_apply_stored_actions_happy_path() {
+    let mut test: Test = Default::default();
+    let (_, channel_marker) = test.mock_new_channel();
+    let storage_address = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
+    );
+    let actions: Span<ServerAction> = [to_write_once_action(:storage_address, value: true)].span();
+
+    // The store call must not mutate the action target.
+    assert!(!test.privacy.channel_exists(:channel_marker));
+    let actions_hash = test.privacy.store_actions(:actions);
+    let expected_hash = compute_message_hash(:actions, contract_address: test.privacy.address);
+    assert_eq!(actions_hash, expected_hash);
+    assert!(!test.privacy.channel_exists(:channel_marker));
+
+    // Apply later with proof.
+    test.privacy.apply_stored_actions(:actions_hash, :actions);
+    assert!(test.privacy.channel_exists(:channel_marker));
+
+    // Cannot re-apply.
+    let result = test.privacy.safe_apply_stored_actions(:actions_hash, :actions);
+    assert_panic_with_felt_error(
+        :result, expected_error: errors::STORED_ACTIONS_ALREADY_APPLIED,
+    );
+}
+
+#[test]
+fn test_store_actions_rejects_double_store() {
+    let mut test: Test = Default::default();
+    let (_, channel_marker) = test.mock_new_channel();
+    let storage_address = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
+    );
+    let actions: Span<ServerAction> = [to_write_once_action(:storage_address, value: true)].span();
+
+    test.privacy.store_actions(:actions);
+    let result = test.privacy.safe_store_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_ALREADY_STORED);
+}
+
+#[test]
+fn test_store_actions_rejects_store_after_apply() {
+    let mut test: Test = Default::default();
+    let (_, channel_marker) = test.mock_new_channel();
+    let storage_address = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
+    );
+    let actions: Span<ServerAction> = [to_write_once_action(:storage_address, value: true)].span();
+
+    let actions_hash = test.privacy.store_actions(:actions);
+    test.privacy.apply_stored_actions(:actions_hash, :actions);
+
+    // Same hash cannot be re-stored after being consumed.
+    let result = test.privacy.safe_store_actions(:actions);
+    assert_panic_with_felt_error(
+        :result, expected_error: errors::STORED_ACTIONS_ALREADY_APPLIED,
+    );
+}
+
+#[test]
+fn test_apply_stored_actions_rejects_missing_entry() {
+    let test: Test = Default::default();
+    let unknown_hash: felt252 = 'NEVER_STORED';
+    let result = test
+        .privacy
+        .safe_apply_stored_actions_without_cheat(actions_hash: unknown_hash);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_STORED_ACTIONS);
+}
+
+#[test]
+fn test_store_actions_does_not_require_proof() {
+    // The whole point of the deferred flow: a caller can store actions before the proof exists.
+    // Storing must succeed without `cheat_proof_facts` being primed.
+    let mut test: Test = Default::default();
+    let (_, channel_marker) = test.mock_new_channel();
+    let storage_address = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
+    );
+    let actions: Span<ServerAction> = [to_write_once_action(:storage_address, value: true)].span();
+    let actions_hash = test.privacy.store_actions(:actions);
+    let expected_hash = compute_message_hash(:actions, contract_address: test.privacy.address);
+    assert_eq!(actions_hash, expected_hash);
+}
+
+#[test]
+fn test_apply_stored_actions_requires_valid_proof() {
+    // The proof must be validated at apply time, not at store time.
+    let mut test: Test = Default::default();
+    let (_, channel_marker) = test.mock_new_channel();
+    let storage_address = map_entry_address(
+        map_selector: selector!("channel_exists"), keys: [channel_marker].span(),
+    );
+    let actions: Span<ServerAction> = [to_write_once_action(:storage_address, value: true)].span();
+    let actions_hash = test.privacy.store_actions(:actions);
+
+    // No proof facts cheated → apply must revert with EMPTY_PROOF_FACTS.
+    let result = test.privacy.safe_apply_stored_actions_without_cheat(:actions_hash);
+    assert_panic_with_felt_error(:result, expected_error: errors::EMPTY_PROOF_FACTS);
+
+    // After the failed attempt, the entry is still pending and a valid proof allows apply.
+    test.privacy.apply_stored_actions(:actions_hash, :actions);
+    assert!(test.privacy.channel_exists(:channel_marker));
+}

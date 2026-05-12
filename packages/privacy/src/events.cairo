@@ -105,3 +105,17 @@ pub struct ProofValidityBlocksSet {
     /// The number of blocks that a proof is valid for.
     pub proof_validity_blocks: u64,
 }
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct ActionsStored {
+    /// Hash of the stored actions, used as the key for `apply_stored_actions`.
+    #[key]
+    pub actions_hash: felt252,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct StoredActionsApplied {
+    /// Hash of the actions that were applied.
+    #[key]
+    pub actions_hash: felt252,
+}

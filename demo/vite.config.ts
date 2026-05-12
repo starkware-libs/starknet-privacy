@@ -6,6 +6,15 @@ const sdkDist = resolve(__dirname, "../sdk/dist");
 
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      "/api/rpc": {
+        target: "https://rpc.pathfinder.equilibrium.co",
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/api\/rpc/, "/testnet-sepolia/rpc/v0_10"),
+      },
+    },
+  },
   resolve: {
     // Force all `starknet` imports to resolve to demo/node_modules/starknet.
     // Without this, Rollup walks up from starknet-sdk's symlinked dist files

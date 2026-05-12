@@ -107,6 +107,12 @@ pub mod Privacy {
         fee_collector: ContractAddress,
         /// The number of blocks that a proof is valid for.
         proof_validity_blocks: u64,
+        /// Map of actions hash to the serialized `Span<ServerAction>` stored via `store_actions`,
+        /// pending application by `apply_stored_actions`. Drained on apply.
+        stored_actions: Map<felt252, Vec<felt252>>,
+        /// Map of actions hash to whether the stored actions have been applied. Once true, the
+        /// hash is permanently consumed and cannot be re-stored or re-applied.
+        stored_actions_applied: Map<felt252, bool>,
     }
 
     #[event]
@@ -135,6 +141,8 @@ pub mod Privacy {
         FeeAmountSet: events::FeeAmountSet,
         FeeCollectorSet: events::FeeCollectorSet,
         ProofValidityBlocksSet: events::ProofValidityBlocksSet,
+        ActionsStored: events::ActionsStored,
+        StoredActionsApplied: events::StoredActionsApplied,
     }
 
     #[constructor]
@@ -728,6 +736,66 @@ pub mod Privacy {
             self.validate_proof(:actions);
             self.collect_fee();
             self._apply_actions(:actions);
+            self.reentrancy_guard.end();
+        }
+
+        fn store_actions(ref self: ContractState, actions: Span<ServerAction>) -> felt252 {
+            self.reentrancy_guard.start();
+            self.pausable.assert_not_paused();
+
+            let actions_hash = compute_message_hash(
+                :actions, contract_address: get_contract_address(),
+            );
+            assert(
+                !self.stored_actions_applied.read(actions_hash),
+                errors::STORED_ACTIONS_ALREADY_APPLIED,
+            );
+            let entry = self.stored_actions.entry(actions_hash);
+            assert(entry.len().is_zero(), errors::ACTIONS_ALREADY_STORED);
+
+            let mut serialized: Array<felt252> = array![];
+            actions.serialize(ref serialized);
+            for felt in serialized.span() {
+                entry.push(*felt);
+            }
+
+            self.emit(events::ActionsStored { actions_hash });
+            self.reentrancy_guard.end();
+            actions_hash
+        }
+
+        fn apply_stored_actions(ref self: ContractState, actions_hash: felt252) {
+            self.reentrancy_guard.start();
+            self.pausable.assert_not_paused();
+            assert(
+                !self.stored_actions_applied.read(actions_hash),
+                errors::STORED_ACTIONS_ALREADY_APPLIED,
+            );
+            let entry = self.stored_actions.entry(actions_hash);
+            let length = entry.len();
+            assert(length.is_non_zero(), errors::NO_STORED_ACTIONS);
+
+            let mut serialized: Array<felt252> = array![];
+            for i in 0..length {
+                serialized.append(entry.at(i).read());
+            }
+            let mut serialized_span = serialized.span();
+            let actions: Span<ServerAction> = Serde::deserialize(ref serialized_span)
+                .expect(errors::INVALID_STORED_ACTIONS);
+            assert(serialized_span.is_empty(), errors::INVALID_STORED_ACTIONS);
+
+            // The proof is validated here (not at store time), so the proof may be issued any
+            // time after store_actions, against a recent block at apply time.
+            self.validate_proof(:actions);
+            self.collect_fee();
+
+            // Mark as applied before applying, so any reentrancy via Invoke cannot replay.
+            self.stored_actions_applied.entry(actions_hash).write(true);
+            // Drain the Vec to reclaim storage and make future reads return empty.
+            while let Some(_) = entry.pop() {}
+
+            self._apply_actions(:actions);
+            self.emit(events::StoredActionsApplied { actions_hash });
             self.reentrancy_guard.end();
         }
     }
